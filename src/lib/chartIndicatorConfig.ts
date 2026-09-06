@@ -5,6 +5,7 @@ import { PIVOT_POINT_DEFAULTS } from "@/lib/pivotPoints";
 import { GAP_DETECTOR_DEFAULTS } from "@/lib/gapDetector";
 import { ZIG_ZAG_DEFAULTS, ZIG_ZAG_NUMERIC_SETTINGS, normalizeZigZagSettings } from "@/lib/zigZag";
 import { INVERSE_CYBER_CYCLE_DEFAULTS, normalizeInverseCyberCycleSettings } from "@/lib/inverseCyberCycle";
+import { ICHIMOKU_DEFAULTS, normalizeIchimokuSettings } from "@/lib/ichimoku";
 import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
@@ -94,6 +95,7 @@ import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder"
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
   "inverse-cyber-cycle",
+  "ichimoku-indicator",
   "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
@@ -256,6 +258,16 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "levelWidth", label: "Level width", defaultValue: 1, min: 1, max: 4, step: 1 },
     { key: "cycleALineWidth", label: "Cycle A line width", defaultValue: 2, min: 1, max: 4, step: 1 },
     { key: "cycleBLineWidth", label: "Cycle B line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+  ],
+  "ichimoku-indicator": [
+    { key: "conversionLinePeriod", label: "Conversion line period", defaultValue: 9, min: 1, max: 1000, step: 1 },
+    { key: "baseLinePeriod", label: "Base line period", defaultValue: 26, min: 1, max: 1000, step: 1 },
+    { key: "laggingSpanPeriod", label: "Lagging span period", defaultValue: 52, min: 1, max: 1000, step: 1 },
+    { key: "tenkanLineWidth", label: "Tenkan Sen line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "kijunLineWidth", label: "Kijun Sen line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "chikouLineWidth", label: "Chikou Span line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "senkouLineWidth", label: "Senkou Span line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "cloudOpacity", label: "Cloud opacity", defaultValue: 14, min: 0, max: 100, step: 1 },
   ],
   "auction-gap-tracker": AUCTION_GAP_NUMERIC_SETTINGS,
   "know-sure-thing-kst": KST_NUMERIC_SETTINGS,
@@ -1513,6 +1525,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     retracementTextColor: theme?.upColor ?? ZIG_ZAG_DEFAULTS.retracementTextColor,
   } : {}),
   ...(indicatorId === "inverse-cyber-cycle" ? INVERSE_CYBER_CYCLE_DEFAULTS : {}),
+  ...(indicatorId === "ichimoku-indicator" ? ICHIMOKU_DEFAULTS : {}),
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
@@ -2894,6 +2907,13 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "inverse-cyber-cycle") {
     const settings = normalizeInverseCyberCycleSettings({
       ...defaultIndicatorSettings("inverse-cyber-cycle"),
+      ...(normalizedInstance.settings ?? {}),
+    });
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "ichimoku-indicator") {
+    const settings = normalizeIchimokuSettings({
+      ...defaultIndicatorSettings("ichimoku-indicator"),
       ...(normalizedInstance.settings ?? {}),
     });
     return { ...normalizedInstance, settings };

@@ -10,6 +10,7 @@ import { SuperTrendLabels } from "../../src/lib/superTrendLabels";
 import { PivotPointLabels } from "../../src/lib/pivotPointLabels";
 import { GapZonePrimitive } from "../../src/lib/gapZonePrimitive";
 import { ZigZagRetracementPrimitive } from "../../src/lib/zigZagRetracementPrimitive";
+import { IchimokuCloudPrimitive } from "../../src/lib/ichimokuCloudPrimitive";
 import { useSuperTrendAlerts } from "../../src/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "../../src/lib/superTrendSeries";
 import { LIVE_CHART_CANDLE_EVENT } from "../../src/lib/chartLiveEvents";
@@ -19,8 +20,8 @@ import actualOverlayOptions from "kwant-preview-overlay-options";
 // Isolated, clearly labelled fixtures: never a market feed or production page.
 const requestedPreview = new URLSearchParams(location.search).get("indicator");
 const autoOpenSettings = new URLSearchParams(location.search).get("settings") === "1";
-const previewId = requestedPreview === "inverse-cyber-cycle" ? "inverse-cyber-cycle" : requestedPreview === "zigzag" ? "zig-zag" : requestedPreview === "gap" ? "gap-detector" : requestedPreview === "pivot" ? "pivot-points" : requestedPreview === "supertrend" ? "super-trend" : requestedPreview === "supertrend-difference" ? "super-trend-difference" : requestedPreview === "kst" ? "know-sure-thing-kst" : requestedPreview === "t3" ? "tillson-t3" : requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
-const previewName = previewId === "inverse-cyber-cycle" ? "Inverse Cyber Cycle" : previewId === "zig-zag" ? "Zig Zag" : previewId === "gap-detector" ? "Gap Detector" : previewId === "pivot-points" ? "Pivot Points" : previewId === "super-trend" ? "Super Trend" : previewId === "super-trend-difference" ? "Super Trend Difference" : previewId === "know-sure-thing-kst" ? "Know Sure Thing" : previewId === "tillson-t3" ? "Tillson T3" : previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
+const previewId = requestedPreview === "ichimoku-indicator" ? "ichimoku-indicator" : requestedPreview === "inverse-cyber-cycle" ? "inverse-cyber-cycle" : requestedPreview === "zigzag" ? "zig-zag" : requestedPreview === "gap" ? "gap-detector" : requestedPreview === "pivot" ? "pivot-points" : requestedPreview === "supertrend" ? "super-trend" : requestedPreview === "supertrend-difference" ? "super-trend-difference" : requestedPreview === "kst" ? "know-sure-thing-kst" : requestedPreview === "t3" ? "tillson-t3" : requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
+const previewName = previewId === "ichimoku-indicator" ? "Ichimoku Indicator" : previewId === "inverse-cyber-cycle" ? "Inverse Cyber Cycle" : previewId === "zig-zag" ? "Zig Zag" : previewId === "gap-detector" ? "Gap Detector" : previewId === "pivot-points" ? "Pivot Points" : previewId === "super-trend" ? "Super Trend" : previewId === "super-trend-difference" ? "Super Trend Difference" : previewId === "know-sure-thing-kst" ? "Know Sure Thing" : previewId === "tillson-t3" ? "Tillson T3" : previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
 const storageKey = `qa-indicators-${previewId}`;
 const candles = Array.from({ length: previewId === "absolute-levels" ? 30 : previewId === "pivot-points" ? 96 : 100 }, (_, i) => {
   const gapStep = previewId === "gap-detector" ? (Math.floor(i / 18) % 2) * 3 : 0;
@@ -92,6 +93,10 @@ function Preview() {
         if (definition.zigZagRetracements) {
           labels = new ZigZagRetracementPrimitive(); plot.attachPrimitive(labels);
           labels.update(definition.zigZagRetracements);
+        }
+        if (definition.ichimokuCloud) {
+          labels = new IchimokuCloudPrimitive(); plot.attachPrimitive(labels);
+          labels.update(definition.ichimokuCloud);
         }
         livePlots.current.set(definition.key, { plot, labels, definition, buffer: new SuperTrendPlotBuffer() });
       }

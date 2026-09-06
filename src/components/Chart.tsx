@@ -4,6 +4,7 @@ import { SuperTrendLabels } from "@/lib/superTrendLabels";
 import { PivotPointLabels } from "@/lib/pivotPointLabels";
 import { GapZonePrimitive } from "@/lib/gapZonePrimitive";
 import { ZigZagRetracementPrimitive } from "@/lib/zigZagRetracementPrimitive";
+import { IchimokuCloudPrimitive } from "@/lib/ichimokuCloudPrimitive";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -533,6 +534,7 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
 const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
+  "ichimoku-indicator",
   // Linear recurrence: measured 20k-bar p95 ~4.3ms; live updates are incremental.
   "super-trend",
   "super-trend-difference",
@@ -3340,6 +3342,7 @@ function Chart({
     pivotPointLabels?: PivotPointLabels;
     gapZonePrimitive?: GapZonePrimitive;
     zigZagRetracementPrimitive?: ZigZagRetracementPrimitive;
+    ichimokuCloudPrimitive?: IchimokuCloudPrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -16887,6 +16890,7 @@ function Chart({
         if (definition.pivotLabels) existing.pivotPointLabels?.update(definition.data, definition.pivotLabels, definition.color);
         if (definition.gapZones) existing.gapZonePrimitive?.update(definition.gapZones, definition.color);
         if (definition.zigZagRetracements) existing.zigZagRetracementPrimitive?.update(definition.zigZagRetracements);
+        if (definition.ichimokuCloud) existing.ichimokuCloudPrimitive?.update(definition.ichimokuCloud);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -16930,11 +16934,17 @@ function Chart({
         series.attachPrimitive(zigZagRetracementPrimitive);
         zigZagRetracementPrimitive.update(definition.zigZagRetracements);
       }
+      const ichimokuCloudPrimitive = definition.ichimokuCloud ? new IchimokuCloudPrimitive() : undefined;
+      if (ichimokuCloudPrimitive && definition.ichimokuCloud) {
+        series.attachPrimitive(ichimokuCloudPrimitive);
+        ichimokuCloudPrimitive.update(definition.ichimokuCloud);
+      }
       return {
         superTrendLabels,
         pivotPointLabels,
         gapZonePrimitive,
         zigZagRetracementPrimitive,
+        ichimokuCloudPrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,

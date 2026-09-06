@@ -466,6 +466,8 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
       ? key.startsWith("retracement") || /^showRetracement/.test(key) || key === "extendRight" ? "Retracement settings" : "Zig Zag settings"
     : indicatorId === "inverse-cyber-cycle"
       ? /^(middle|low|high|levelWidth)/.test(key) ? "Level settings" : /^cycleA/.test(key) ? "Cycle A" : /^cycleB/.test(key) ? "Cycle B" : "Parameters"
+    : indicatorId === "ichimoku-indicator"
+      ? /Period$/.test(key) ? "Parameters" : /^(tenkan|kijun|chikou|senkou)/.test(key) ? "Subgraphs" : "Cloud"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 const PIVOT_POINT_MANAGED_SETTINGS = new Set([
@@ -477,9 +479,14 @@ const INVERSE_CYBER_CYCLE_MANAGED_SETTINGS = new Set([
   "cycleAAutoColor", "cycleBAutoColor", "cycleALineStyle", "cycleBLineStyle",
   "cycleAShortName", "cycleBShortName",
 ]);
+const ICHIMOKU_MANAGED_SETTINGS = new Set([
+  "tenkanLineStyle", "kijunLineStyle", "chikouLineStyle", "senkouLineStyle",
+  "tenkanShortName", "kijunShortName", "chikouShortName", "senkouShortName",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
+  "ichimoku-indicator",
   "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
@@ -736,6 +743,18 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       middleLevelColor: visible.muted,
       lowLevelColor: visible.negative,
       highLevelColor: visible.positive,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "ichimoku-indicator") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      tenkanColor: visible.primary,
+      kijunColor: visible.negative,
+      chikouColor: visible.secondary,
+      senkouColor: visible.positive,
+      senkouSecondaryColor: visible.negative,
+      bullishCloudColor: visible.positive,
+      bearishCloudColor: visible.negative,
     } as Record<string, string>;
   }
   if (indicatorId === "unfinished-auction") {
@@ -6707,6 +6726,30 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "ichimoku-indicator" ? (
+                <div data-settings-section="Subgraphs" className="grid gap-3 sm:grid-cols-2">
+                  {(["tenkan", "kijun", "chikou", "senkou"] as const).flatMap((plot) => {
+                    const names = { tenkan: "Tenkan Sen", kijun: "Kijun Sen", chikou: "Chikou Span", senkou: "Senkou Span" };
+                    return [
+                      <label key={`${plot}-style`} className="block space-y-1 text-[10px] text-muted">
+                        <span>{names[plot]} line style</span>
+                        <KwantSelect value={String(settingsInstance.settings?.[`${plot}LineStyle`] ?? "solid")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${plot}LineStyle`]: event.target.value } }))}
+                          menuLabel={`${names[plot]} line style`} className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                          <option value="solid">Solid</option><option value="dashed">Dash</option><option value="dotted">Dot</option>
+                        </KwantSelect>
+                      </label>,
+                      <label key={`${plot}-name`} className="block space-y-1 text-[10px] text-muted">
+                        <span>{names[plot]} short name</span>
+                        <input type="text" maxLength={40} value={String(settingsInstance.settings?.[`${plot}ShortName`] ?? names[plot])}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${plot}ShortName`]: event.target.value } }))}
+                          className="h-9 w-full border border-border bg-background px-3 text-foreground" />
+                      </label>,
+                    ];
+                  })}
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "pivot-points" ? (
                 <div data-settings-section="Custom reference" className="grid gap-3 sm:grid-cols-2">
                   <label className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted sm:col-span-2">
@@ -7770,6 +7813,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "pivot-points" && PIVOT_POINT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "gap-detector" && GAP_DETECTOR_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "inverse-cyber-cycle" && INVERSE_CYBER_CYCLE_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "ichimoku-indicator" && ICHIMOKU_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

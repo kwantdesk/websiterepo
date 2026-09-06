@@ -267,6 +267,15 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
   "average-true-range-atr": [
     { key: "plotColor", role: "primary" },
   ],
+  "ichimoku-indicator": [
+    { key: "tenkanColor", role: "primary" },
+    { key: "kijunColor", role: "negative" },
+    { key: "chikouColor", role: "secondary" },
+    { key: "senkouColor", role: "positive" },
+    { key: "senkouSecondaryColor", role: "negative" },
+    { key: "bullishCloudColor", role: "positive" },
+    { key: "bearishCloudColor", role: "negative" },
+  ],
   "confluence-identifier": [
     { key: "supportColor1", role: "positive" },
     { key: "supportColor2", role: "positive" },

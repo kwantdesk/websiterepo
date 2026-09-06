@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 24 — not released by blanket enablement
+## Remaining 23 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -131,7 +131,7 @@ Do not tick a row just because its Add gate changes.
 | `average-daily-range-target` | [ ] Audit / implement / verify |
 | `session-marker` | [ ] Audit / implement / verify |
 | `shift-candle` | [ ] Audit / implement / verify |
-| `ichimoku-indicator` | [ ] Audit / implement / verify |
+| `ichimoku-indicator` | [x] Standard five-line/cloud calculation; public `9/26/52` defaults and DLL bounds; browser/release gates recorded in dedicated audit |
 | `parabolic-sar` | [x] Implemented; documented seed and parity limits |
 | `linear-regression` | [x] Implemented; documented endpoint and parity limits |
 | `regression-channel` | [ ] Audit / implement / verify |

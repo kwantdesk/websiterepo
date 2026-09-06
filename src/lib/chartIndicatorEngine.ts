@@ -6,6 +6,8 @@ import { calculateGapDetector } from "@/lib/gapDetector";
 import type { GapZoneRenderOptions } from "@/lib/gapZonePrimitive";
 import { calculateZigZag } from "@/lib/zigZag";
 import { calculateInverseCyberCycle } from "@/lib/inverseCyberCycle";
+import { calculateIchimoku } from "@/lib/ichimoku";
+import type { IchimokuCloudOptions } from "@/lib/ichimokuCloudPrimitive";
 import type { ZigZagRetracementOptions } from "@/lib/zigZagRetracementPrimitive";
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
 import { calculateParabolicSar } from "@/lib/parabolicSar";
@@ -30,6 +32,7 @@ import {
 } from "@/lib/vwap";
 
 export type CalculatedIndicatorSeries = {
+  ichimokuCloud?: IchimokuCloudOptions;
   gapZones?: GapZoneRenderOptions;
   zigZagRetracements?: ZigZagRetracementOptions;
   pivotLabels?: PivotPointLabelOptions;
@@ -355,6 +358,7 @@ function computeIndicatorSeries(
   if (key === "gap-detector") return calculateGapDetector(candles, instance.settings ?? {}, theme, context.tickSize);
   if (key === "zig-zag") return calculateZigZag(candles, instance.settings ?? {}, theme, context.tickSize, instance.instanceId);
   if (key === "inverse-cyber-cycle") return calculateInverseCyberCycle(candles, instance.settings ?? {}, theme, instance.instanceId);
+  if (key === "ichimoku-indicator") return calculateIchimoku(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
   if (key === "parabolic-sar") return calculateParabolicSar(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "linear-regression") return calculateLinearRegression(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);

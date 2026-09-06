@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Ichimoku Indicator converted from Pending
+
+- Added the standard Tenkan/Kijun/Chikou and two forward Senkou plots with a
+  real bullish/bearish Kumo primitive over chart candles.
+- Public DeepCharts screenshot gives installed `9/26/52` defaults; licensed
+  DLL public properties/bounds give the three `1..1000` period contracts.
+- The article's contradictory third-period wording and the standards-backed
+  resolution are explicit in `docs/deepcharts-ichimoku-indicator-audit.md`.
+- Six focused tests, shared slider/template/theme checks, scoped ESLint,
+  TypeScript and the complete 80-page production build pass. Isolated browser
+  QA verifies plotted lines/cloud, sliders and Save/close/reopen. Production
+  deployed-SHA verification is due.
+- Pending inventory is 23.
+
 ## 2026-09-07 — Inverse Cyber Cycle converted from Pending
 
 - Added the real two-window inverse-Fisher oscillator over an Ehlers Cyber
