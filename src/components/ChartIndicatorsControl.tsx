@@ -22,6 +22,7 @@ import {
   CHART_INDICATOR_BY_ID,
   CHART_INDICATOR_CATALOG,
   CHART_INDICATOR_CATEGORIES,
+  canonicalChartIndicatorId,
   type ChartIndicatorCategory,
   type ChartIndicatorInstance,
 } from "@/lib/chartIndicatorCatalog";
@@ -595,7 +596,9 @@ function readFavourites() {
       ?? window.localStorage.getItem("olisa-chart-indicator-favourites")
       ?? "[]",
     );
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((item): item is string => typeof item === "string").map(canonicalChartIndicatorId))]
+      : [];
   } catch {
     return [];
   }

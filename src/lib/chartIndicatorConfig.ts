@@ -1,5 +1,6 @@
 import type { ChartSettings } from "@/lib/chartSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
+import { canonicalChartIndicatorId } from "@/lib/chartIndicatorCatalog";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { VOLUME_PROFILE_GRADIENT_OFF } from "@/lib/volumeProfileGradients";
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
@@ -2773,6 +2774,8 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
 });
 
 export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): ChartIndicatorInstance => {
+  const canonicalId = canonicalChartIndicatorId(instance.indicatorId);
+  if (canonicalId !== instance.indicatorId) instance = { ...instance, indicatorId: canonicalId };
   let normalizedInstance = instance.indicatorId === "deep-profile"
     ? { ...instance, indicatorId: "kwant-profile" }
     : instance.indicatorId === "deep-stats"

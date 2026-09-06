@@ -1,5 +1,12 @@
 # KWANTDESK important notes
 
+- **Pending indicator library:** the earlier 21-row checklist did not cover
+  the whole catalogue. The September 6 audit found 38 blocked rows; two were
+  broken catalogue IDs for existing Big Contracts/Liquidity Sweep engines.
+  Those links are repaired; 36 still require individual implementation/audit.
+  Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion
+  claim. Registration is not evidence of formula or visual parity.
+
 This is the persistent launch ledger for material work that is incomplete,
 provider-blocked or unsafe to forget. Every task handoff should include a short
 recap of the open items below and update this file when their state changes.

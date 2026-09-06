@@ -26,6 +26,13 @@ export type ChartIndicatorInstance = {
   settings?: Record<string, number | string | boolean>;
 };
 
+/** Display-name-derived IDs shipped without matching their existing engines. */
+export function canonicalChartIndicatorId(id: string): string {
+  if (id === "big-trades-deep-trades") return "big-trades";
+  if (id === "liquidity-sweep-stop-sweep-detector") return "liquidity-stop-sweep-detector";
+  return id;
+}
+
 const indicator = (
   name: string,
   category: ChartIndicatorCategory,
@@ -85,7 +92,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Speed of Tape (Instant)", "Order Flow", "Low-latency transaction-speed signal.", true),
   indicator("Volume/Delta Sprint", "Order Flow", "Detects rapid bursts in volume and delta.", true),
   indicator("Tape Speed & Order-Flow Burst", "Order Flow", "Live transaction velocity, directional burst, churn, response and contextual order-flow classification from the shared Rithmic execution tape.", true, "Kwantify", undefined, "Tape"),
-  indicator("Big Contracts", "Order Flow", "Instant Big contracts markers and Deep contracts price boxes from exact aggressive executions.", true, "Reference", "Big Trades + Deep Trades"),
+  indicator("Big Contracts", "Order Flow", "Instant Big contracts markers and Deep contracts price boxes from exact aggressive executions.", true, "Reference", "Big Trades"),
   indicator("Ratio Highlight", "Order Flow", "Highlights bid/ask ratios at price.", true),
   indicator("Stop Spotter", "Order Flow", "Locates potential stop-driven execution clusters.", true),
   indicator("Auction Gap Tracker", "Order Flow", "Tracks auction gaps and subsequent interaction.", true),
@@ -93,7 +100,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Absorption Detector", "Order Flow", "Professional price-time absorption cells, confirmed zones, replenishment context, retests and breaks from the shared execution and Level 3 feed.", true, "Kwantify"),
   indicator("Stacked Imbalance Suite", "Order Flow", "Diagonal, horizontal and stacked aggressive-volume imbalances with scored zones, retests and breaks from the shared Footprint stream.", true, "Kwantify", undefined, "Imbalances"),
   indicator("Iceberg / Refresh Detector", "Order Flow", "Repeated passive-liquidity replenishment inferred from aggressive executions and the shared Level 3 order-book lifecycle.", true, "Kwantify", undefined, "Liquidity"),
-  indicator("Liquidity Sweep / Stop Sweep Detector", "Order Flow", "Direct multi-level aggressive execution sweeps with inferred reference-level stop sweeps, continuation and rejection.", true, "Kwantify", undefined, "Signals"),
+  indicator("Liquidity Sweep / Stop Sweep Detector", "Order Flow", "Direct multi-level aggressive execution sweeps with inferred reference-level stop sweeps, continuation and rejection.", true, "Kwantify", "Liquidity Stop Sweep Detector", "Signals"),
   indicator("POC & Auction Suite", "Order Flow", "Professional bar, session, rolling and anchored POC analysis with naked-level lifecycle, finished and unfinished auctions, excess and migration.", true, "Kwantify", undefined, "Auction"),
   indicator("Cumulative Iceberg/Stop", "Order Flow", "Signed cumulative or rolling Rithmic iceberg-replenishment and inferred stop-sweep activity.", true),
   indicator("Book Speed", "Order Flow", "Execution-confirmed Bid and Ask book levels consumed in time or tick-reversal windows.", true),

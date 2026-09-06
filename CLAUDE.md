@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Pending library reopened: earlier inventory was incomplete
+
+- Actual catalogue audit found 38 blocked entries, not zero. The earlier
+  21-row overhaul covered only a subset; do not repeat its whole-library
+  completion claim. Complete inventory and ongoing checklist:
+  `docs/pending-indicator-library-2026-09-06.md`.
+- Big Contracts and Liquidity Sweep had display-derived IDs disconnected
+  from their already implemented engines/settings/renderers. Corrected their
+  catalogue IDs and migrated saved aliases/favourites, without altering
+  working calculations. 36 genuinely blocked rows remain for individual work.
+- Run `node --import ./scripts/alias-hook.mjs scripts/audit-indicator-library.mjs`
+  and the registration regression before every indicator release. Registered
+  is not proof of formula/pixel/live-session parity.
+
 ## 2026-09-06 — Finer minimum volume-profile width
 
 - Shared final-pixel scaling makes width 1 one-quarter of its former size,
