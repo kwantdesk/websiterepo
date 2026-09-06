@@ -6,8 +6,10 @@ import { chicagoTradingDate } from "./trading-session.mjs";
 import { resolveInstrument } from "./recorder.mjs";
 import { tradeFromRecord } from "./futures-bar-archive.mjs";
 import { readArchiveRecords } from "./archive-reader.mjs";
-import { createEventBarBuilder, eventInterval } from "./event-bar-builder.mjs";
-import { coverageFileName, readCoverageReceipt } from "./trade-tape-coverage.mjs";
+import { createEventBarBuilder, eventInterval, futuresTickSize } from "./event-bar-builder.mjs";
+import {
+  coverageFileName, provesCoverageIntervals, readCoverageReceipt,
+} from "./trade-tape-coverage.mjs";
 
 /**
  * Every print, compactly, so range and volume bars have a history.
@@ -400,7 +402,8 @@ export class TradeTapeArchive {
    * browser panes share one promise, and the live bucket is refreshed every
    * fifteen seconds so a newly opened chart has no historical/live hole.
    */
-  async loadEventBars({ exchange, symbol, interval, fromMs, toMs, limit = MAX_SERVED_EVENT_BARS }) {
+  async loadEventBars({ exchange, symbol, interval, fromMs, toMs, limit = MAX_SERVED_EVENT_BARS,
+    auctionGap = false }) {
     if (!eventInterval(interval)) throw new Error(`Unsupported event interval: ${interval}`);
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
@@ -411,13 +414,16 @@ export class TradeTapeArchive {
     const cap = Math.max(1, Math.min(MAX_SERVED_EVENT_BARS, Number(limit) || MAX_SERVED_EVENT_BARS));
     const startDate = chicagoTradingDate(start);
     const endBucket = Math.floor(end / EVENT_CACHE_MS);
-    const key = `${upper}:${upperSymbol}:${interval}:${startDate}:${endBucket}:${cap}`;
+    const key = `${upper}:${upperSymbol}:${interval}:${startDate}:${endBucket}:${cap}:${auctionGap ? "gap" : "base"}`;
     const existing = this.eventRequests.get(key);
     if (existing) return existing;
 
     const request = (async () => {
       const builder = createEventBarBuilder(interval, upperSymbol, cap);
       const executions = [];
+      let auctionRows = new Map();
+      const coverageReceipts = [];
+      let ownershipTruncated = false;
       const flowStart = end - EVENT_FLOW_LOOKBACK_MS;
       const dates = new Set();
       for (let at = start; at < end; at += 6 * 60 * 60_000) dates.add(chicagoTradingDate(at));
@@ -433,7 +439,29 @@ export class TradeTapeArchive {
         const size = Math.max(0, Number(trade.size) || 0);
         if (!Number.isFinite(price) || price <= 0 || size <= 0) return;
         const delta = Number(trade.side) > 0 ? size : Number(trade.side) < 0 ? -size : 0;
-        builder.add({ timestamp: trade.timestamp, price, size, trades: 1, delta });
+        const ownership = builder.add({ timestamp: trade.timestamp, price, size, trades: 1, delta });
+        if (auctionGap) {
+          if (!ownership || !Number.isSafeInteger(ownership.chartIndex)) {
+            ownershipTruncated = true;
+          } else {
+            if (ownership.removed > 0) {
+              ownershipTruncated = true;
+              auctionRows = new Map([...auctionRows]
+                .filter(([index]) => index >= ownership.removed)
+                .map(([index, rows]) => [index - ownership.removed, rows]));
+            }
+            const tickSize = futuresTickSize(upperSymbol);
+            const tickIndex = Math.round(price / tickSize);
+            const rows = auctionRows.get(ownership.chartIndex) ?? new Map();
+            const row = rows.get(tickIndex)
+              ?? { tickIndex, bidVolume: 0, askVolume: 0, unknownVolume: 0 };
+            if (trade.side > 0) row.askVolume += size;
+            else if (trade.side < 0) row.bidVolume += size;
+            else row.unknownVolume += size;
+            rows.set(tickIndex, row);
+            auctionRows.set(ownership.chartIndex, rows);
+          }
+        }
         sourceRecordCount += 1;
         earliestMs = earliestMs === null ? trade.timestamp : Math.min(earliestMs, trade.timestamp);
         latestMs = latestMs === null ? trade.timestamp : Math.max(latestMs, trade.timestamp);
@@ -456,6 +484,12 @@ export class TradeTapeArchive {
       };
 
       for (const tradingDate of [...dates].sort()) {
+        if (auctionGap) {
+          const receipt = await readCoverageReceipt(join(
+            this.dir, tradingDate, coverageFileName(upper, upperSymbol),
+          ));
+          if (receipt) coverageReceipts.push(receipt);
+        }
         // Backfill is older than the first live print by construction.
         for (const name of [
           backfillFileName(upper, upperSymbol),
@@ -466,6 +500,45 @@ export class TradeTapeArchive {
         }
       }
 
+      const candles = builder.finish();
+      let auctionGapRows = null;
+      if (auctionGap) {
+        const compact = candles.map((candle, chartIndex) => ({
+          chartIndex,
+          timestamp: candle.timestamp,
+          sourceStartTimestamp: candle.sourceStartTimestamp,
+          sourceEndTimestamp: candle.sourceEndTimestamp,
+          rows: [...(auctionRows.get(chartIndex)?.values() ?? [])]
+            .sort((left, right) => left.tickIndex - right.tickIndex),
+        }));
+        const volumesMatch = compact.every((bar, index) => Math.abs(
+          bar.rows.reduce((sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0)
+          - Number(candles[index]?.volume || 0),
+        ) <= 1e-8);
+        const intervals = candles.map((candle) => ({
+          fromMs: Number(candle.sourceStartTimestamp),
+          toMs: Number(candle.sourceEndTimestamp) + 1,
+        }));
+        const coverageComplete = !ownershipTruncated && volumesMatch && intervals.length > 0
+          && provesCoverageIntervals(coverageReceipts, { exchange: upper, symbol: upperSymbol }, intervals);
+        auctionGapRows = coverageComplete ? {
+          schemaVersion: "kwantify-auction-gap-rows-v1",
+          provider: "Rithmic",
+          contractSymbol: upperSymbol,
+          coverageComplete: true,
+          executionOrderComplete: true,
+          rows: compact,
+        } : {
+          schemaVersion: "kwantify-auction-gap-rows-v1",
+          provider: "Rithmic",
+          contractSymbol: upperSymbol,
+          coverageComplete: false,
+          executionOrderComplete: !ownershipTruncated,
+          reason: ownershipTruncated ? "event-history-truncated"
+            : !volumesMatch ? "source-volume-mismatch" : "historical-coverage-unproved",
+          rows: [],
+        };
+      }
       return {
         exchange: upper,
         symbol: upperSymbol,
@@ -477,8 +550,9 @@ export class TradeTapeArchive {
         latestMs,
         sourceRecordCount,
         truncated: false,
-        candles: builder.finish(),
+        candles,
         executions,
+        ...(auctionGap ? { auctionGap: auctionGapRows } : {}),
       };
     })().finally(() => {
       // Retain the settled promise for this live time bucket, while preventing

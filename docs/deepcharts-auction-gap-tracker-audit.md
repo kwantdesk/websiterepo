@@ -1,5 +1,19 @@
 # Auction Gap Tracker — implementation in progress
 
+### Event history route performs the compact fold once — 2026-09-07
+
+The existing event-history archive scan can now opt into Auction Gap rows via
+`auctionGap=1`. It collects exact one-tick rows during the same builder pass,
+validates row volume, checks per-bar intervals against raw coverage receipts and
+returns a versioned Rithmic row envelope only when all proof passes. Otherwise it
+returns an empty explicit reason. Builder retention reports truncation, and the
+event cache key separates ordinary and Auction Gap requests so a prior base cache
+cannot hide the requested data or leak study payloads into unrelated charts.
+
+31 event/archive tests and scoped lint pass. Time-history route, live coverage,
+settings segmentation and browser/Chart consumption remain. Pending gate stays
+off; no production push/deployment.
+
 ### Raw observation bounds replace trade-only bounds — 2026-09-07
 
 Corrected backfill receipts to use the raw recorder message span rather than

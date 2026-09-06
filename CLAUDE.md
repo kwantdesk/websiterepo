@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap rows in the existing event-history scan
+
+- Event history accepts opt-in `auctionGap=1` and aggregates one-tick rows in
+  its existing archive pass; it does not scan the tape twice.
+- It verifies compact row volume and raw-receipt coverage for every resulting
+  event bar. Success is a versioned Rithmic envelope; failure has empty rows and
+  an explicit reason. Builder retention makes truncation fail closed.
+- Base and gap requests have separate cache keys, preventing cache-order data
+  omission/leakage. 31 tests and scoped lint pass. Time route/live/settings/
+  Chart integration remain; gate OFF, no deployment.
+
 ## 2026-09-07 — Backfill coverage uses raw observation span
 
 - Corrected receipt bounds from first/last trade to first/last observed raw

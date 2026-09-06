@@ -1,5 +1,11 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 event-route continuation: `auctionGap=1` now folds compact one-tick
+rows inside the existing event-history scan, validates volume and coverage, and
+returns a versioned complete envelope or explicit empty failure. Retention is
+reported and cache keys isolate base/gap requests. 31 tests and lint pass.
+Time-route/live/settings/Chart remain; still Pending, no push/deploy.
+
 2026-09-07 receipt-bound correction: backfill proof now spans observed raw
 messages, not just trades, and scopes gap/drop markers to the pre-live-cutoff
 segment. Untimed loss still fails closed; old rows fall back only to real trade

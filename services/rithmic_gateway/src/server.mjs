@@ -1591,6 +1591,7 @@ const server = createServer(async (request, response) => {
             fromMs: url.searchParams.get("fromMs"),
             toMs: url.searchParams.get("toMs"),
             limit: url.searchParams.get("limit"),
+            auctionGap: url.searchParams.get("auctionGap") === "1",
           });
           return json(response, 200, {
             ...eventHistory,

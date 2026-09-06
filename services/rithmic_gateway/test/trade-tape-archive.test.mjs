@@ -501,3 +501,69 @@ test("event bars are folded once beside the tape with exact flow and a shared ca
     assert.ok(first.candles.every((candle) => candle.high >= candle.low));
   });
 });
+
+test("event history can include coverage-proven compact Auction Gap rows in the same scan", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const tradingDate = chicagoTradingDate(T0);
+    const dayDir = join(dir, "trades", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    const rows = [
+      [T0, 100, 2, 1], [T0 + 1_000, 100.25, 3, -1],
+      [T0 + 2_000, 100.5, 4, 0], [T0 + 3_000, 100.25, 5, 1],
+    ];
+    writeFileSync(join(dayDir, backfillFileName("CME", "NQU6")), gzipSync(Buffer.from(
+      `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    )));
+    const receipt = createBackfillCoverageReceipt({
+      exchange: "CME", symbol: "NQU6", tradingDate,
+      observationFromMs: T0 - 1_000, observationToMs: T0 + 4_000,
+      sourcePrintCount: rows.length, gapMarkers: 0, damagedMembers: 0,
+    });
+    await writeCoverageReceipt(join(dayDir, coverageFileName("CME", "NQU6")), receipt);
+    const result = await archive.loadEventBars({
+      exchange: "CME", symbol: "NQU6", interval: "2t",
+      fromMs: T0 - 1, toMs: T0 + 4_000, auctionGap: true,
+    });
+    assert.equal(result.auctionGap.coverageComplete, true);
+    assert.equal(result.auctionGap.executionOrderComplete, true);
+    assert.equal(result.auctionGap.rows.length, result.candles.length);
+    assert.equal(result.auctionGap.rows.flatMap((bar) => bar.rows)
+      .reduce((sum, row) => sum + row.unknownVolume, 0), 4);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("event Auction Gap rows fail closed when archive coverage is unproved", async () => {
+  await withArchive(async (archive) => {
+    const client = new EventEmitter();
+    archive.attach(client);
+    client.emit("rawMessage", print(0, 100, 2));
+    client.emit("rawMessage", print(1_000, 100.25, 3, "SELL"));
+    await archive.close();
+    const result = await archive.loadEventBars({
+      exchange: "CME", symbol: "NQU6", interval: "2t",
+      fromMs: T0 - 1, toMs: T0 + 2_000, auctionGap: true,
+    });
+    assert.equal(result.auctionGap.coverageComplete, false);
+    assert.equal(result.auctionGap.reason, "historical-coverage-unproved");
+    assert.deepEqual(result.auctionGap.rows, []);
+  });
+});
+
+test("ordinary event-history cache cannot hide a later Auction Gap request", async () => {
+  await withArchive(async (archive) => {
+    const client = new EventEmitter();
+    archive.attach(client);
+    client.emit("rawMessage", print(0, 100, 2));
+    client.emit("rawMessage", print(1_000, 100.25, 3, "SELL"));
+    await archive.close();
+    const args = { exchange: "CME", symbol: "NQU6", interval: "2t", fromMs: T0 - 1, toMs: T0 + 2_000 };
+    const ordinary = await archive.loadEventBars(args);
+    const requested = await archive.loadEventBars({ ...args, auctionGap: true });
+    assert.equal("auctionGap" in ordinary, false);
+    assert.equal("auctionGap" in requested, true);
+  });
+});

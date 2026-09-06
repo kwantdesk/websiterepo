@@ -281,7 +281,7 @@ export function createEventBarBuilder(interval, symbol, limit = 250_000) {
         bars.splice(0, removed);
       }
       return Number.isSafeInteger(owner) && owner >= removed
-        ? { chartIndex: owner - removed }
+        ? { chartIndex: owner - removed, removed }
         : null;
     },
     finish() {
