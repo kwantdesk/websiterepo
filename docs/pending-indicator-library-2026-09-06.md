@@ -82,7 +82,22 @@ reachable catalogue row and that catalogue IDs are unique.
   point mode, labels, Save/close/reload. 52 combined tests pass. Exact vendor
   geometry/seeds and live soak are not claimed; `docs/deepcharts-kst-audit.md`.
 
-## Remaining 30 — not released by blanket enablement
+## Batch 8 — Super Trend and Super Trend Difference (local release candidate)
+
+- [x] Shared Wilder ATR/band recurrence with explicit seed conventions, real
+  OHLC validation, independent batch/live equivalence and source-time guards.
+- [x] Overlay/dockable price pane and signed Difference histogram/line, bounded
+  settings, theme/custom colours, labels/backgrounds, scale retention, warmup
+  status, actual live popup/tone path and template export/import integration.
+- [x] 37 focused tests, 18 template checks, full shared-worktree production
+  build and browser save/reload/export/live/docking/auto-centre checks passed.
+- Isolated release-tree build and exact deployed SHA verification still due;
+  registration is local, not proof that this batch is live. No native pixel or
+  protected constructor/formula parity, speaker audibility, authenticated
+  cross-device template roundtrip or market-open soak is claimed. Full evidence
+  and implementation conventions: `docs/deepcharts-super-trend-audit.md`.
+
+## Remaining 28 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -115,8 +130,8 @@ Do not tick a row just because its Add gate changes.
 | `parabolic-sar` | [x] Implemented; documented seed and parity limits |
 | `linear-regression` | [x] Implemented; documented endpoint and parity limits |
 | `regression-channel` | [ ] Audit / implement / verify |
-| `super-trend` | [ ] Audit / implement / verify |
-| `super-trend-difference` | [ ] Audit / implement / verify |
+| `super-trend` | [x] Implemented and locally registered; Batch 8 deployment verification outstanding |
+| `super-trend-difference` | [x] Implemented and locally registered; Batch 8 deployment verification outstanding |
 | `tillson-t3` | [x] Implemented; explicit seed and reference limits |
 | `zig-zag` | [ ] Audit / implement / verify |
 | `inverse-cyber-cycle` | [ ] Audit / implement / verify |

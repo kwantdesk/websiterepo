@@ -8196,6 +8196,17 @@ function Chart({
         definition.groupKey === instance.instanceId && definition.placement === "pane");
       const cumulativeDeltaStudy = CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId);
 
+      if (instance.indicatorId === "super-trend-difference"
+        || instance.indicatorId === "super-trend" && instance.settings?.chartArea === "pane") {
+        return [{
+          key: instance.instanceId,
+          title: instance.indicatorId === "super-trend" ? "Super Trend" : "Super Trend Difference",
+          indicatorId: instance.indicatorId, settings: instance.settings, series,
+          statusLabel: series.length ? undefined : "ATR warming up",
+          unavailableReason: series.length ? undefined : "Waiting for enough valid candles to calculate Super Trend.",
+        }];
+      }
+
       if (instance.indicatorId === "know-sure-thing-kst") {
         return [{
           key: instance.instanceId, title: "Know Sure Thing (KST)",

@@ -87,6 +87,8 @@ import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
+  "super-trend",
+  "super-trend-difference",
   "know-sure-thing-kst",
   "tillson-t3",
   "linear-regression",

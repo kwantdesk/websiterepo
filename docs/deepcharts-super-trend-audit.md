@@ -304,4 +304,25 @@ not disappear upon toggling this control. Fix this in the pending pair only;
 do not change existing working indicator scaling. Also finish warmup status,
 final combined build and scoped release-tree verification before enabling.
 
+## Auto-scale repair and local registration candidate
+
+Repaired separate-pane auto-centre-off with a Super Trend-only retained domain.
+It keeps the preceding useful domain, bootstraps saved-off settings from actual
+finite values, clears on chart/replay scope or removed instance, and supports
+explicit recenter without touching existing working study scaling. Both pane
+orientations share the baseline. Tests execute the real pane-domain function.
+Warmup panes now explicitly report ATR warming up instead of disappearing.
+
+37 focused tests and scoped lint pass. Full production build passes on the
+shared worktree (TypeScript plus 80 pages). Browser actual setting toggle kept
+99..104, and saved-off reload/right docking retained that range. Calculation
+microbenchmark: 100,000 same-bar updates, maximum length 1000, 1500-bar seed,
+16.22ms on this machine; not a browser FPS or live-market soak claim.
+
+Both catalogue/renderer gates are now registered LOCALLY. Inventory confirms
+128 total / 100 registered / 28 Pending, zero orphan gates. No push yet:
+isolated release-tree build and exact production SHA verification remain.
+Reference caveats above remain explicit, including protected seeds and marker
+semantics; these are documented implementation conventions, not DLL parity.
+
 No available indicator modified. No production release for this prerequisite.

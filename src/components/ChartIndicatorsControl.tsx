@@ -459,6 +459,8 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "super-trend",
+  "super-trend-difference",
   "know-sure-thing-kst",
   "tillson-t3",
   "linear-regression",

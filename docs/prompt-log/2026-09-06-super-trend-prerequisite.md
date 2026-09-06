@@ -77,3 +77,10 @@ Four controlled actual-hook audio lifecycle tests pass. Browser synthetic live
 ticks visibly update ST and Difference, including labels and histogram scale.
 Found remaining auto-centre-off domain fallback issue in separate panes; this
 needs scoped correction before release. No production changes, still 30 Pending.
+
+Scale/release-candidate continuation: fixed auto-centre-off with a retained,
+scope-safe Super Trend-only domain and explicit recenter. Added warmup pane
+status. 37 focused tests, full shared-worktree build, and browser off/save/
+reload/vertical-scale checks pass. Both gates now registered locally; inventory
+is 100 registered / 28 Pending. Isolated release-tree build and one scoped
+main push with exact live SHA verification still due. No deployment yet.

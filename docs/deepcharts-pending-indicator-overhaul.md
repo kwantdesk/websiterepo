@@ -32,9 +32,10 @@ Started: 2026-09-04
 
 ## Ordered checklist
 
-Super Trend pair prerequisite: shared calculator and six tests implemented;
-settings/plot/alert integration still outstanding. Both remain Pending. See
-`deepcharts-super-trend-audit.md` for sources, conventions and release gates.
+Super Trend pair: calculation/settings/plot/live/alert/template implementation
+and browser checks completed; locally registered, isolated release-tree and
+production verification still outstanding. Actual local tally is 28 Pending.
+See `deepcharts-super-trend-audit.md` for sources and explicit parity limits.
 
 Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 

@@ -3,6 +3,7 @@
 import { indicatorHistogramWidth } from "@/lib/indicatorHistogramWidth";
 import { useSuperTrendLivePanes } from "@/components/useSuperTrendLivePanes";
 import SuperTrendPaneLabels from "@/components/SuperTrendPaneLabels";
+import { SuperTrendPaneScale } from "@/lib/superTrendPaneScale";
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 } from "lucide-react";
@@ -102,6 +103,7 @@ function isCvdIndicator(indicatorId: string) {
 }
 
 function ChartIndicatorPaneSurface({
+  superTrendScale,
   groups,
   width,
   priceScaleWidth,
@@ -117,6 +119,7 @@ function ChartIndicatorPaneSurface({
   placementStyle,
   onPaneHandlePointerDown,
 }: {
+  superTrendScale: SuperTrendPaneScale;
   groups: IndicatorPaneGroup[];
   width: number;
   priceScaleWidth: number;
@@ -295,7 +298,7 @@ function ChartIndicatorPaneSurface({
         const verticalScale = verticalScaleByPane[group.key] ?? 1;
         const verticalPan = verticalPanByPane[group.key] ?? 0;
         const automaticSharedDomain = scaleDomain(
-          group.fixedDomain ?? seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries),
+          group.fixedDomain ?? superTrendScale.resolve(group.key, sharedSeries.length ? sharedSeries : visibleSeries, seriesDomain),
           verticalScale,
           verticalPan,
         );
@@ -764,8 +767,9 @@ function ChartIndicatorPaneSurface({
               onClick={(event) => {
                 event.stopPropagation();
                 setOpenMenu(null);
+                const resetSuperTrend = superTrendScale.reset(group.key);
                 const drop = (current: Record<string, number>) => {
-                  if (!(group.key in current)) return current;
+                  if (!(group.key in current)) return resetSuperTrend ? { ...current } : current;
                   const next = { ...current };
                   delete next[group.key];
                   return next;
@@ -977,6 +981,7 @@ function ChartIndicatorPaneSurface({
 }
 
 function ChartVerticalIndicatorPaneSurface({
+  superTrendScale,
   groups,
   width,
   height,
@@ -989,6 +994,7 @@ function ChartVerticalIndicatorPaneSurface({
   placementStyle,
   onPaneHandlePointerDown,
 }: {
+  superTrendScale: SuperTrendPaneScale;
   groups: IndicatorPaneGroup[];
   width: number;
   height: number;
@@ -1073,7 +1079,7 @@ function ChartVerticalIndicatorPaneSurface({
           }));
           const sharedSeries = visibleSeries.filter((series) => !series.independentScale);
           const domain = scaleDomain(
-            seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries),
+            superTrendScale.resolve(group.key, sharedSeries.length ? sharedSeries : visibleSeries, seriesDomain),
             scaleByPane[group.key] ?? 1,
           );
           const xForValue = (value: number) =>
@@ -1296,6 +1302,8 @@ function ChartIndicatorPanes({
   onOpenSettings?: (instanceId: string) => void;
 }) {
   const groups = useSuperTrendLivePanes(baseGroups, liveChartKey);
+  const superTrendScale = useRef(new SuperTrendPaneScale());
+  superTrendScale.current.retain(liveChartKey, groups.filter(g => g.indicatorId === "super-trend" || g.indicatorId === "super-trend-difference").map(g => g.key));
   const rootRef = useRef<HTMLDivElement>(null);
   const suppressToggleRef = useRef<string | null>(null);
   const [drag, setDrag] = useState<{
@@ -1435,6 +1443,7 @@ function ChartIndicatorPanes({
       return globalX === null ? null : globalX - boundedLeftInset;
     };
     return <ChartIndicatorPaneSurface
+      superTrendScale={superTrendScale.current}
       key={dock}
       groups={surfaceGroups}
       width={surfaceWidth}
@@ -1462,6 +1471,7 @@ function ChartIndicatorPanes({
     if (!surfaceGroups.length || surfaceHeight <= 0) return null;
     return (
       <ChartVerticalIndicatorPaneSurface
+        superTrendScale={superTrendScale.current}
         key={dock}
         groups={surfaceGroups}
         width={sideWidthFor(surfaceGroups.length)}
