@@ -42,3 +42,7 @@ reset subsegments; connected to lifecycle with real chart-index accounting.
 Empty bridges require explicit source time/reset metadata. Integration tests
 prove filtered-out prints still retest zones. Project tsc passes. No deployment
 or gate change; live pipeline/UI/settings/performance verification remain.
+
+Whole-study continuation: linked all pure stages; end-to-end source-to-zone
+tests pass. Added actual time-chart execution OHLC reconciliation, beyond just
+volume. Four end-to-end tests and project tsc pass; worker/live/UI still due.

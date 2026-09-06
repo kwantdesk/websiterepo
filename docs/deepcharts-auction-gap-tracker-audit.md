@@ -51,6 +51,22 @@ the successful project-config check; it is not a production build claim.
 
 ## Required before release
 
+### Whole-study calculation path
+
+`calculateAuctionGapStudy` joins the validated execution source, explicit
+calendar, time/event ownership, independent raw/detection rows and lifecycle.
+Failures carry explicit unavailable reasons, not successful empty output. Chart
+geometry must match expected candles. For time charts, raw executions must also
+reproduce OHLC as well as volume. Synthetic event-chart OHLC is checked against
+the unchanged event builder instead. Caller source-coverage provenance remains
+required; no records or candles are fetched by the calculation itself.
+
+Four end-to-end tests pass including source-to-retest, partial/mismatched source,
+filtered-out retest prints and fabricated-wick rejection; project tsc passes.
+48 combined tests passed before the last OHLC test addition. Worker scheduling,
+incremental updates, Chart/settings/theme/renderer and real-source/browser QA
+still required. No new gate or production deployment.
+
 ### Raw row materialization and lifecycle connection
 
 `auctionGapRows.ts` joins exact execution assignments with chart geometry,

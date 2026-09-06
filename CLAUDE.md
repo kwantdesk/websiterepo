@@ -1,5 +1,14 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap full pure calculation path
+
+- `auctionGapStudy.ts` now joins source/clock/ownership/rows/lifecycle. Explicit
+  unavailable reasons, candle/geometry validation and time-chart raw OHLC+volume
+  reconciliation. Event-chart geometry follows unchanged event builder.
+- Four end-to-end tests and full tsc pass. Combined 48 passed before extra OHLC
+  rejection test. No production release: 28 Pending. Next worker/history and
+  incremental live scheduling, then real Chart/settings/render/browser QA.
+
 ## 2026-09-07 — Auction Gap rows connected to lifecycle in tests
 
 - `auctionGapRows.ts` materializes raw and filtered maps, preserves trade prices,
