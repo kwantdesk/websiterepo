@@ -1,6 +1,6 @@
 import type { ISeriesPrimitive, ISeriesPrimitivePaneView, SeriesAttachedParameter, Time } from "@/lib/lightweightChartsCompat";
 
-export type PivotPointLabelOptions = { label: string; align: "left" | "right"; fontSize: number; color?: string };
+export type PivotPointLabelOptions = { label: string; align: "left" | "right"; fontSize: number; color?: string; backgroundColor?: string };
 type Point = { time: number; value: number; breakBefore?: boolean };
 
 export class PivotPointLabels implements ISeriesPrimitive<Time> {
@@ -35,7 +35,18 @@ export class PivotPointLabels implements ISeriesPrimitive<Time> {
           const y = attached.series.priceToCoordinate(point.value);
           if (x === null || y === null || x < 0 || x > mediaSize.width || y < 0 || y > mediaSize.height) continue;
           const offset = options.align === "left" ? 4 : -4;
-          context.fillText(options.label, Math.max(2, Math.min(mediaSize.width - 2, x + offset)), y - 2);
+          const labelX = Math.max(2, Math.min(mediaSize.width - 2, x + offset));
+          const labelY = y - 2;
+          if (options.backgroundColor) {
+            const metrics = context.measureText(options.label);
+            const paddingX = 3;
+            const height = Math.max(8, options.fontSize + 4);
+            const left = options.align === "left" ? labelX - paddingX : labelX - metrics.width - paddingX;
+            context.fillStyle = options.backgroundColor;
+            context.fillRect(left, labelY - height + 2, metrics.width + paddingX * 2, height);
+            context.fillStyle = options.color ?? this.color;
+          }
+          context.fillText(options.label, labelX, labelY);
         }
         context.restore();
       });

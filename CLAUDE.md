@@ -2652,3 +2652,12 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - `market-profile-tpo` is a legacy alias of `tpo-chart` / TPO Daily. Preserve
   canonical migration for old workspaces and favourites; never reintroduce it
   as a separate Pending catalogue row.
+
+## 2026-09-07 — Average Daily Range Target
+
+- Average Daily Range Target trains only on completed CME trading periods;
+  never include the forming period or bridge an invalid candle seam. Daily
+  periods roll at 17:00 America/Chicago, with weekly/monthly keyed from that
+  trading date. Scaling is the current period open and the visible 0.5x/1x/
+  1.5x target mapping is a screenshot-supported interpretation, not claimed
+  protected formula parity.

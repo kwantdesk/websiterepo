@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 13 — not released by blanket enablement
+## Remaining 12 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -128,7 +128,7 @@ Do not tick a row just because its Add gate changes.
 | `fvg-identifier` | [x] Standard future-safe three-candle zones, full public/DLL settings contract, bounded mitigation lookup and browser Save/reload QA; protected formula/pixel parity limits documented |
 | `gap-detector` | [x] Public behavior + exact DLL settings contract implemented; synthetic renderer/settings QA passed; market-open parity remains limited |
 | `swing-point` | [x] Confirmed high/low segments, full public settings contract, gap safety and browser QA; protected tie/filter parity documented |
-| `average-daily-range-target` | [ ] Audit / implement / verify |
+| `average-daily-range-target` | [x] Completed-period Daily/Weekly/Monthly range targets, CME rollover, deep-history routing, labels/theme/persistence and focused tests; multiplier mapping is screenshot-supported inference and protected parity/live soak are not claimed |
 | `session-marker` | [x] DST-aware Asian/Europe/USA windows, imbalance, OHLC/mid/VWAP, range fills, settings/theme/persistence and focused tests; protected pixel/formula and live-market soak limits documented |
 | `shift-candle` | [ ] Audit / implement / verify |
 | `ichimoku-indicator` | [x] Standard five-line/cloud calculation; public `9/26/52` defaults and DLL bounds; browser/release gates recorded in dedicated audit |
@@ -178,6 +178,9 @@ Do not tick a row just because its Add gate changes.
   live-market limits: `docs/deepcharts-session-marker-audit.md`.
 - Session Imbalance public/DLL contract, exact extension calculation and
   explicit parity limits: `docs/deepcharts-session-imbalance-audit.md`.
+- Average Daily Range Target public/DLL settings, no-lookahead calculation and
+  explicit formula/pixel limits:
+  `docs/deepcharts-average-daily-range-target-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

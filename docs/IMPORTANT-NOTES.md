@@ -437,3 +437,12 @@ recap of the open items below and update this file when their state changes.
   expressions are parsed from C1-C4 and logical operators only; never evaluate
   user-authored code, and never let an indicator signal bypass order
   confirmation or place a trade.
+
+## 2026-09-07 — Average Daily Range Target
+
+- Average Daily Range Target trains only on completed CME trading periods;
+  never include the forming period or bridge an invalid candle seam. Daily
+  periods roll at 17:00 America/Chicago, with weekly/monthly keyed from that
+  trading date. Scaling is the current period open and the visible 0.5x/1x/
+  1.5x target mapping is a screenshot-supported interpretation, not claimed
+  protected formula parity.

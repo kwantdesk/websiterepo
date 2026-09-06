@@ -556,6 +556,8 @@ const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "swing-point",
   "fvg-identifier",
   "price-movement-levels",
+  // Daily/weekly/monthly targets can require hundreds of completed periods.
+  "average-daily-range-target",
   // Single-pass running extremes; the selectable 10k confirmation window and
   // long structural swings must not be truncated to the 1.5k lite tail.
   "zig-zag",

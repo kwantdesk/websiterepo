@@ -505,6 +505,7 @@ const PRICE_MOVEMENT_LEVELS_MANAGED_SETTINGS = new Set([
   "levelBasedOn", "stepMode", "supportLineStyle", "resistanceLineStyle", "zeroLineStyle",
   "customStartTime", "customEndTime",
 ]);
+const ADR_TARGET_MANAGED_SETTINGS = new Set(["lengthType", "textAlign"]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -524,6 +525,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gap-detector",
   "fvg-identifier",
   "price-movement-levels",
+  "average-daily-range-target",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -784,6 +786,10 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       level50Color: visible.muted,
       level100Color: visible.secondary,
     };
+  }
+  if (indicatorId === "average-daily-range-target") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { textColor: visible.primary, backgroundColor: visible.muted } as Record<string, string>;
   }
   if (indicatorId === "zig-zag") {
     const visible = visibleIndicatorTheme(chartSettings);
@@ -7910,6 +7916,24 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "average-daily-range-target" ? (
+                <div data-settings-section="General" className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Length type</span>
+                    <KwantSelect value={String(settingsInstance.settings?.lengthType ?? "daily")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), lengthType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="ADR Target length type">
+                      <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Text alignment</span>
+                    <KwantSelect value={String(settingsInstance.settings?.textAlign ?? "right")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), textAlign: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="ADR Target text alignment">
+                      <option value="right">Right</option><option value="left">Left</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Scaling is the current period open. Primary, Secondary and Extension targets project 0.5×, 1× and 1.5× the average completed-period range on both sides, without using future bars.</p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "session-imbalance" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8081,6 +8105,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "regression-channel" && REGRESSION_CHANNEL_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "swing-point" && SWING_POINT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "price-movement-levels" && PRICE_MOVEMENT_LEVELS_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "average-daily-range-target" && ADR_TARGET_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
