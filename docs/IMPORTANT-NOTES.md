@@ -500,3 +500,12 @@ recap of the open items below and update this file when their state changes.
   recompute/mutate the source indicator.
 - Source unmount removes the registry entry; self-reference and absent source
   IDs fail closed. Cross-process windows and manual drawings are not covered.
+
+## 2026-09-07 — Important Levels
+
+- Important Levels uses the 17:00 Chicago trading date for daily/weekly/monthly
+  grouping. OHLC and HLC3 VWAP use authoritative candles; POC and 70% value
+  area require exact one-tick execution rows and disappear if those are absent.
+- Average Value is implemented as period high/low midpoint. Current-to-Right
+  and Current-to-Last retain their saved option but currently use right-edge
+  label placement; do not claim exact vendor viewport anchoring.

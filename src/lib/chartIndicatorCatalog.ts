@@ -141,7 +141,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Market Statistics", "Volume & Profiles", "Compact market and participation statistics.", true),
   indicator("On Candle Stats", "Volume & Profiles", "Displays selected statistics directly on candles.", true),
 
-  indicator("Important Levels", "Market Structure", "Session open, high, low and other key references."),
+  indicator("Important Levels", "Market Structure", "Daily, weekly and monthly OHLC, midpoint, POC, value-area and VWAP references.", true),
   indicator("Absolute Levels", "Market Structure", "Fixed user-defined price levels."),
   indicator("Pivot Points", "Market Structure", "Traditional pivot support and resistance levels."),
   indicator("Price Movement Levels", "Market Structure", "Levels calculated from measured price movement."),

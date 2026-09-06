@@ -121,7 +121,7 @@ Do not tick a row just because its Add gate changes.
 | `market-profile-tpo` | [x] Removed duplicate catalogue row; legacy ID/favourites/workspaces canonicalize to the already-complete `tpo-chart` (TPO Daily) engine and settings instead of presenting a false second Pending study |
 | `anchored-vwap` | [x] Library entry now arms the existing live draw-on Anchored VWAP with four sources, three deviation bands, fill, theme styling and persistent drawing settings |
 | `on-candle-stats` | [x] Dedicated on-price text-box primitive using ordered execution statistics for volume/delta/trades, max/min delta, extension, COT and ratios; full public data/text/color/price controls, theme/persistence and tests; missing execution sequencing stays blank |
-| `important-levels` | [ ] Audit / implement / verify |
+| `important-levels` | [x] Daily/weekly/monthly OHLC, midpoint, VWAP and exact-footprint POC/70% value area; counts, Skip Last, ETH/RTH/custom exchange-time filters, plot/label/theme/persistence and focused tests; viewport-relative vendor label pixels remain limited |
 | `absolute-levels` | [x] Batch 2; reference/default limits recorded above |
 | `pivot-points` | [x] Public formula + exact DLL/UI contract implemented; synthetic browser QA passed; native pixel/open-session parity remains limited |
 | `price-movement-levels` | [x] Exchange-session Open/prior-Close anchors, percentage/tick steps, dynamic support/resistance/zero levels, full public settings surface and persistence; protected rounding/pixel limits documented |
@@ -195,6 +195,8 @@ Do not tick a row just because its Add gate changes.
   trigger limits: `docs/deepcharts-shift-candle-audit.md`.
 - Annotations Overlay public Chart ID / Indicator ID contract and runtime
   boundaries: `docs/deepcharts-annotations-overlay-audit.md`.
+- Important Levels period, plot and session contract plus exact-flow limits:
+  `docs/deepcharts-important-levels-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

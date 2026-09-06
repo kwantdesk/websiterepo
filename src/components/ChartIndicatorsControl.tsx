@@ -526,6 +526,9 @@ const SHIFT_CANDLE_MANAGED_SETTINGS = new Set([
 const ANNOTATIONS_OVERLAY_MANAGED_SETTINGS = new Set([
   "sourceChartId", "sourceIndicatorId", "preserveSourceColors", "annotationsOverlaySettingsVersion",
 ]);
+const IMPORTANT_LEVELS_MANAGED_SETTINGS = new Set([
+  "filterTime", "customStartTime", "customEndTime", "plotType", "textAlign", "skipLast", "importantLevelsSettingsVersion",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -552,6 +555,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "on-candle-stats",
   "shift-candle",
   "annotations-overlay",
+  "important-levels",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -7972,6 +7976,19 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "important-levels" ? (
+                <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Filter time</span><KwantSelect value={String(settingsInstance.settings?.filterTime ?? "eth")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), filterTime: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Important Levels filter time"><option value="none">None</option><option value="eth">ETH</option><option value="rth">RTH</option><option value="custom">Custom</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Plot type</span><KwantSelect value={String(settingsInstance.settings?.plotType ?? "label-and-line")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), plotType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Important Levels plot type"><option value="label">Label</option><option value="line">Line</option><option value="label-and-line">Label and line</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Text align</span><KwantSelect value={String(settingsInstance.settings?.textAlign ?? "right")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), textAlign: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Important Levels text align"><option value="left">Left</option><option value="right">Right</option><option value="current-right">Current to right</option><option value="current-last">Current to last</option></KwantSelect></label>
+                    <button type="button" aria-pressed={settingsInstance.settings?.skipLast === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), skipLast: current.settings?.skipLast !== true } }))} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Skip last period</span><span className={settingsInstance.settings?.skipLast === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.skipLast === true ? "On" : "Off"}</span></button>
+                    {String(settingsInstance.settings?.filterTime ?? "eth") === "custom" ? <><label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Ini session · exchange time</span><input type="time" value={String(settingsInstance.settings?.customStartTime ?? "08:30")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customStartTime: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-foreground" /></label><label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>End session · exchange time</span><input type="time" value={String(settingsInstance.settings?.customEndTime ?? "15:15")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customEndTime: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-foreground" /></label></> : null}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Daily, weekly and monthly levels use Chicago exchange sessions. OHLC, midpoint and VWAP use authoritative candles; POC and value area appear only when exact volume-at-price history exists.</p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "session-marker" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8239,6 +8256,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "on-candle-stats" && ON_CANDLE_STATS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "shift-candle" && SHIFT_CANDLE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "annotations-overlay" && ANNOTATIONS_OVERLAY_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "important-levels" && IMPORTANT_LEVELS_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

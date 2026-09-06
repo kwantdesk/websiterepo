@@ -26,6 +26,7 @@ import type { OnCandleStatsModel } from "@/lib/onCandleStatsPrimitive";
 import { calculateShiftCandleSeries } from "@/lib/shiftCandle";
 import type { ShiftCandlePrimitiveModel } from "@/lib/shiftCandle";
 import type { FootprintBarModel } from "@/lib/footprintTypes";
+import { calculateImportantLevels } from "@/lib/importantLevels";
 import type { TextOnChartOptions } from "@/lib/textOnChartPrimitive";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
@@ -391,6 +392,7 @@ function computeIndicatorSeries(
   if (key === "volume-delta-sprint") return calculateVolumeDeltaSprint(candles, instance.settings ?? {}, theme);
   if (key === "overlay-timeframe-highlight") return calculateOverlayTimeframeHighlight(candles, instance.settings ?? {}, theme);
   if (key === "shift-candle") return calculateShiftCandleSeries(candles, context.footprintBars ?? [], instance.settings ?? {}, theme, context.tickSize);
+  if (key === "important-levels") return calculateImportantLevels(candles, context.footprintBars ?? [], instance.settings ?? {}, theme);
   if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
   if (key === "source-code-indicator") {

@@ -2712,3 +2712,11 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   raw annotation timestamps and align only on the target chart.
 - Never open a duplicate market-data connection for a mirror, mutate the
   source series, permit self-reference, or retain a source after unmount.
+
+## 2026-09-07 — Important Levels
+
+- `important-levels` groups periods from the 17:00 America/Chicago trading
+  date. OHLC/midpoint/HLC3 VWAP may use authoritative candles; POC/VAH/VAL must
+  use exact footprint rows and fail closed without them.
+- Do not infer profile levels from total candle volume or call current-to-right
+  label placement exact DeepCharts viewport parity without further evidence.
