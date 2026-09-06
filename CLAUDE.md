@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Linear Regression pending-library batch
+
+- Rolling OLS endpoint, length 21 default, all OHLC/Volume sources, themes,
+  direction colouring and styles. Real cash-index volume is unavailable, not
+  substituted; volume uses an independent scale. No new feed/timers.
+- Measured 20k-bar calculator p95 1.51ms at length 21. Added ONLY this new study
+  to the existing deep-history set so a 10k length does not get 1.5k candles.
+- Seven tests / 30 combined pass; browser verified length/source/Save/reload
+  and Volume independent scale. `docs/deepcharts-linear-regression-audit.md`
+  records endpoint conventions and reference/performance limitations.
+- 32 pending remain. Regression Channel's Zig Zag modes are not this study;
+  profiles and the rest of the checklist still need individual implementation.
+
 ## 2026-09-06 — Parabolic SAR pending-library batch
 
 - Real high/low stop/reversal calculator, explicit seed and acceleration cap,

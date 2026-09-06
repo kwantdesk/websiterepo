@@ -6,7 +6,8 @@
   Those links are repaired; Absolute Levels is now implemented and locally
   verified (documented parity limits). ADX is also implemented and browser-tested
   with explicit Wilder seeds; Parabolic SAR is implemented with documented seed
-  and browser-tested dots/settings. 33 still require individual work. Monthly/Session/
+  and browser-tested dots/settings. Linear Regression now has all five inputs,
+  tested rolling math and deep-history routing. 32 still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion

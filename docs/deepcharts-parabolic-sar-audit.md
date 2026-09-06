@@ -52,4 +52,7 @@ and warns that its independent scaling is not directly comparable to candles.
 - No authenticated cloud-template roundtrip, live-market soak, exact DeepCharts
   seed/visual parity or whole-workspace frame-rate guarantee is claimed.
 
-Outcome: working SAR candidate, not completion of the whole indicator library.
+Outcome: released SAR, not completion of the whole indicator library.
+Commit `5c16e9a5074a3272c450e1a9e656c08533b5a806` was pushed through main;
+Vercel reported success for websiterepo-yfmi and the live diagnostics endpoint
+returned that exact commit. No duplicate deployment or data-service restart.

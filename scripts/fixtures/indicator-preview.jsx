@@ -10,8 +10,8 @@ import actualOverlayOptions from "kwant-preview-overlay-options";
 
 // Isolated, clearly labelled fixtures: never a market feed or production page.
 const requestedPreview = new URLSearchParams(location.search).get("indicator");
-const previewId = requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
-const previewName = previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
+const previewId = requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
+const previewName = previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
 const storageKey = `qa-indicators-${previewId}`;
 const candles = Array.from({ length: previewId === "absolute-levels" ? 30 : 100 }, (_, i) => {
   const close = previewId === "absolute-levels" ? 100.2 + i / 40 : 100 + Math.sin(i / 8) * 2 + i / 40;

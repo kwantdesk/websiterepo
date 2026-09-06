@@ -58,7 +58,15 @@ reachable catalogue row and that catalogue IDs are unique.
   Seven tests and actual settings/rendering browser QA passed. Exact vendor
   seed/visual parity remains unproven; `docs/deepcharts-parabolic-sar-audit.md`.
 
-## Remaining 33 — not released by blanket enablement
+## Batch 5 — Linear Regression
+
+- [x] Rolling least-squares endpoint with all five input fields, stable bounded
+  sums, full-window warmup, source/volume guards and all documented control
+  categories. Seven tests and actual browser settings/rendering checks pass.
+  Deep-history routing supports the selectable 10,000-bar length. Reference
+  and visual/latency limits: `docs/deepcharts-linear-regression-audit.md`.
+
+## Remaining 32 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -89,7 +97,7 @@ Do not tick a row just because its Add gate changes.
 | `shift-candle` | [ ] Audit / implement / verify |
 | `ichimoku-indicator` | [ ] Audit / implement / verify |
 | `parabolic-sar` | [x] Implemented; documented seed and parity limits |
-| `linear-regression` | [ ] Audit / implement / verify |
+| `linear-regression` | [x] Implemented; documented endpoint and parity limits |
 | `regression-channel` | [ ] Audit / implement / verify |
 | `super-trend` | [ ] Audit / implement / verify |
 | `super-trend-difference` | [ ] Audit / implement / verify |

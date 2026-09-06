@@ -77,3 +77,11 @@ lint and production build. Browser verified dots, acceleration changes, line
 mode, directional colours, immediate clean Save, close and reload persistence.
 Removed a misleading duplicate colour control found during QA. 33 rows remain;
 the library goal and explicit DeepCharts parity limitations remain open.
+
+Batch 5: continued the same request with Linear Regression. Implemented centered
+rolling OLS endpoints, all five sources, length/styles/colours and separate-axis
+handling. Found the 1,500-bar generic history cutoff would invalidate large
+lengths; routed only this new study to the existing bounded 20,000-bar window
+after measuring it. Seven new tests and 30 combined passed; real local browser
+verified length/source changes, clean Save/close/reload and volume independent
+scaling. 32 still pending; no protected formula/pixel parity or live soak claim.
