@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allocateAuctionGapEventExecutions } from '../src/lib/auctionGapEventAllocation.ts';
+import { allocateAuctionGapEventExecutions, advanceAuctionGapEventExecutions } from '../src/lib/auctionGapEventAllocation.ts';
 import { applyMarketTradesToEventBars } from '../src/lib/eventBars.ts';
 const execution = (i, price, volume = 10) => ({ id: String(i), timestamp: 1700000000000,
   tickIndex: price / .25, volume, tradeCount: 1, bidVolume: 0, askVolume: volume,
@@ -48,4 +48,40 @@ test('invalid identities and non-event inputs rejected; source and expected char
   assert.deepEqual(executions, copy); assert.deepEqual(candles, snapshot);
   assert.equal(run([executions[0], executions[0]], '40r').status, 'invalid-source');
   assert.equal(run(executions, '1m', []).status, 'invalid-source');
+});
+
+test('incremental batches match full ownership for every event family, including same-ms bridges', () => {
+  const executions = Array.from({ length: 90 }, (_, i) => execution(i, 100 + (i % 20), i % 9 ? 20 : 600));
+  for (const timeframe of ['500v', '50t', '50dv', '40r', '4R', '1/27PF', '10/100VB']) {
+    let result = run(executions.slice(0, 3), timeframe), prior = executions.slice(0, 3);
+    const committed = new Set(prior.map(e => e.id));
+    assert.equal(result.status, 'ready');
+    for (let start = 3; start < executions.length; start += 3) {
+      const added = executions.slice(start, start + 3), all = [...prior, ...added];
+      const checkpoint = structuredClone(result.continuation), original = structuredClone(checkpoint);
+      const complete = run(all, timeframe);
+      const incremental = advanceAuctionGapEventExecutions({ executions: added, timeframe, symbol: 'NQ', tickSize: .25,
+        expectedCandles: build(all, timeframe).slice(checkpoint.chartIndex) }, checkpoint, committed);
+      assert.equal(incremental.status, 'ready', `${timeframe}:${start}`);
+      assert.deepEqual(incremental.assignments, complete.assignments.slice(start));
+      assert.deepEqual(incremental.continuation, complete.continuation);
+      assert.deepEqual(checkpoint, original);
+      assert.equal(committed.size, start);
+      added.forEach(e => committed.add(e.id)); result = incremental; prior = all;
+    }
+  }
+});
+
+test('append rejects duplicate/older prints and interval or chart mismatch without corrupting seed', () => {
+  const prior = [execution(1, 100)], seeded = run(prior, '500v'), seed = seeded.continuation;
+  const committed = new Set(['1']), original = structuredClone(seed);
+  const next = execution(2, 101), expected = build([...prior, next], '500v');
+  const args = { executions: [next], expectedCandles: expected, timeframe: '500v', symbol: 'NQ', tickSize: .25 };
+  assert.equal(advanceAuctionGapEventExecutions({ ...args, executions: prior }, seed, committed).status, 'invalid-source');
+  assert.equal(advanceAuctionGapEventExecutions({ ...args, executions: [{ ...next, timestamp: next.timestamp - 1 }] }, seed, committed).status, 'invalid-source');
+  assert.equal(advanceAuctionGapEventExecutions({ ...args, timeframe: '40r' }, seed, committed).status, 'invalid-source');
+  const bad = structuredClone(expected); bad[0].high++;
+  assert.equal(advanceAuctionGapEventExecutions({ ...args, expectedCandles: bad }, seed, committed).status, 'source-chart-mismatch');
+  assert.deepEqual(seed, original); assert.deepEqual([...committed], ['1']);
+  assert.equal(advanceAuctionGapEventExecutions(args, seed, committed).status, 'ready');
 });

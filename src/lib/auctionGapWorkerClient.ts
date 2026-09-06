@@ -42,6 +42,15 @@ export class AuctionGapWorkerClient {
     return this.enqueue({ scope, revision: ++this.revision, input, operation: "time-tail", chartIndex });
   }
 
+  /** Event batches cannot replace each other in the coalesced snapshot queue:
+   * losing a batch loses executions. While busy, return false so the caller
+   * retains/merges its delta or submits a complete history reconstruction.
+   */
+  requestEventTail(scope: string, chartIndex: number, input: AuctionGapStudyInput): boolean {
+    if (this.disposed || this.active || this.pending || scope !== this.scope || !this.worker) return false;
+    return this.enqueue({ scope, revision: ++this.revision, input, operation: "event-tail", chartIndex });
+  }
+
   private enqueue(job: AuctionGapWorkerJob): boolean {
     if (this.disposed) return false;
     if (job.scope !== this.scope) {

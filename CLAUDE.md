@@ -1,5 +1,26 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap event-bar incremental worker path
+
+- Event allocation now returns validated unchanged-builder continuation; append
+  allocation processes only prior tail + new prints, recovers global ownership,
+  compares the complete affected candle span, rejects duplicate/older prints.
+- Prepared study exposes executions/ownership/checkpoint. StudySession retains
+  last-bar prints plus committed identity set, processes event deltas through
+  exact allocation, raw rows/reset segments and incremental zones. Event worker
+  operation/client exposed. Busy client rejects event deltas (caller retains or
+  reseeds), never silently coalesces them like time-bar snapshots.
+- 74 tests, full tsc and scoped lint pass. Seven event families compare real
+  nonempty zones with complete reconstruction repeatedly; bridges/same-ms
+  ownership, duplicate retry and identity-capacity failures covered. Identity
+  retention defaults to explicit 1m cap; no silent eviction. Browser/source
+  performance at real depth remains unproved, not a production-size guarantee.
+- Still 28 Pending. Next actual Chart source/coverage adapter, settings/render/
+  template/alerts and browser/bundled-worker/live QA. No gate/deployment yet.
+  Historical corrections reseed; event deltas must include every intervening
+  print and expected geometry from the previous last bar onward, with stable
+  global IDs and explicit empty-bridge source/reset metadata.
+
 ## 2026-09-07 — Auction Gap worker history-to-live state
 
 - Extracted validated `prepareAuctionGapStudy` stages; batch calculator retained.

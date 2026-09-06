@@ -67,6 +67,17 @@ test('message cloning failure terminates the worker and allows an explicit subse
   assert.equal(replies[1].result.status, 'ready'); client.dispose();
 });
 
+test('event deltas are never silently coalesced while the worker is busy', () => {
+  const worker = new FakeWorker(), client = new AuctionGapWorkerClient(() => {}, () => worker);
+  assert.equal(client.requestEventTail('a', 0, {}), false);
+  client.request('a', {});
+  assert.equal(client.requestEventTail('a', 0, {}), false);
+  worker.complete(); assert.equal(client.requestEventTail('a', 0, {}), true);
+  assert.equal(worker.jobs[1].operation, 'event-tail');
+  assert.equal(client.requestEventTail('a', 1, {}), false);
+  worker.complete(); assert.equal(worker.jobs.length, 2); client.dispose();
+});
+
 test('actual entry calculates cloned execution data on a separate thread', { timeout: 10000 }, async () => {
   // Tests the real worker entry and structured-clone boundary, not browser bundling.
   const url = new URL('../src/lib/auctionGap.worker.ts', import.meta.url).href;

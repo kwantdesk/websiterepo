@@ -1,9 +1,9 @@
 import type { Candle } from "./backtester.ts";
 import type { InstitutionalTrade } from "./institutionalMarketData.ts";
 import { AuctionGapSessionClock, type AuctionGapCalendar, type AuctionGapTimeSettings } from "./auctionGapSessionClock.ts";
-import { prepareAuctionGapExecutions } from "./auctionGapExecutions.ts";
+import { prepareAuctionGapExecutions, type AuctionGapExecution } from "./auctionGapExecutions.ts";
 import { allocateAuctionGapTimeExecutions } from "./auctionGapTimeAllocation.ts";
-import { allocateAuctionGapEventExecutions } from "./auctionGapEventAllocation.ts";
+import { allocateAuctionGapEventExecutions, type AuctionGapEventContinuation } from "./auctionGapEventAllocation.ts";
 import { buildAuctionGapRows, type AuctionGapChartGeometry } from "./auctionGapRows.ts";
 import { buildAuctionGapLifecycle, type AuctionGapLifecycleSettings, type AuctionGapZone, type AuctionGapSourceBar } from "./auctionGapLifecycle.ts";
 
@@ -32,8 +32,22 @@ export type AuctionGapStudyResult = {
  * empty-success: UI must retain prior display with a truthful unavailable state.
  * Caller must supply fully source-matched/replay-clipped candles and coverage.
  */
-export type AuctionGapPreparedStudy = { status: "ready"; reason: null; segments: AuctionGapSourceBar[] }
+export type AuctionGapPreparedStudy = { status: "ready"; reason: null; segments: AuctionGapSourceBar[];
+  executions: AuctionGapExecution[]; assignments: { executionId: string; chartIndex: number }[];
+  eventContinuation: AuctionGapEventContinuation | null }
   | { status: "unavailable"; reason: string; segments: [] };
+
+export function auctionGapGeometryMatches(input: Pick<AuctionGapStudyInput, "candles" | "geometry" | "tickSize">) {
+  if (input.candles.length !== input.geometry.length) return false;
+  return input.candles.every((candle, i) => {
+    const geometry = input.geometry[i];
+    return candle.timestamp === geometry.timestamp
+      && [[candle.open, geometry.openTick], [candle.close, geometry.closeTick],
+        [candle.low, geometry.lowTick], [candle.high, geometry.highTick]]
+        .every(([price, tick]) => Number.isFinite(price) && Number.isSafeInteger(tick)
+          && Math.abs(price / input.tickSize - tick) <= 1e-6);
+  });
+}
 
 export function prepareAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapPreparedStudy {
   const unavailable = (reason: string): AuctionGapPreparedStudy => ({ status: "unavailable", reason, segments: [] });
@@ -42,21 +56,13 @@ export function prepareAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapP
   catch { return unavailable("invalid-calendar"); }
   const source = prepareAuctionGapExecutions(input, clock);
   if (source.status !== "ready") return unavailable(source.status);
-  if (input.candles.length !== input.geometry.length) return unavailable("geometry-mismatch");
-  for (let i = 0; i < input.candles.length; i++) {
-    const candle = input.candles[i], geometry = input.geometry[i];
-    if (candle.timestamp !== geometry.timestamp) return unavailable("geometry-mismatch");
-    for (const [price, tick] of [[candle.open, geometry.openTick], [candle.close, geometry.closeTick],
-      [candle.low, geometry.lowTick], [candle.high, geometry.highTick]]) {
-      if (!Number.isFinite(price) || Math.abs(price / input.tickSize - tick) > 1e-6) return unavailable("geometry-mismatch");
-    }
-  }
-  const allocation = input.chart.kind === "time"
-    ? allocateAuctionGapTimeExecutions(source.executions, input.geometry.map((bar, i) => ({
+  if (!auctionGapGeometryMatches(input)) return unavailable("geometry-mismatch");
+  const eventAllocation = input.chart.kind === "event"
+    ? allocateAuctionGapEventExecutions({ executions: source.executions, expectedCandles: input.candles,
+      timeframe: input.chart.timeframe, symbol: input.chart.symbol, tickSize: input.tickSize }) : null;
+  const allocation = eventAllocation ?? allocateAuctionGapTimeExecutions(source.executions, input.geometry.map((bar, i) => ({
       id: bar.id, startMs: bar.timestamp, endMs: bar.endTime, expectedVolume: Number(input.candles[i].volume),
-    })))
-    : allocateAuctionGapEventExecutions({ executions: source.executions, expectedCandles: input.candles,
-      timeframe: input.chart.timeframe, symbol: input.chart.symbol, tickSize: input.tickSize });
+    })));
   if (allocation.status !== "ready") return unavailable(allocation.status);
   if (input.chart.kind === "time") {
     const ohlc = new Map<number, { open: number; high: number; low: number; close: number }>();
@@ -77,6 +83,8 @@ export function prepareAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapP
     bars: input.geometry, instrument: input.contractSymbol });
   if (rows.status !== "ready") return unavailable(rows.status);
   return { status: "ready", reason: null,
+    executions: source.executions, assignments: allocation.assignments,
+    eventContinuation: eventAllocation?.continuation ?? null,
     segments: rows.segments.map(segment => ({ ...segment, bar: segment.rawBar, detect: true })) };
 }
 

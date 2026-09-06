@@ -1,5 +1,31 @@
 # Auction Gap Tracker — implementation in progress
 
+### Event-bar incremental worker connection — 2026-09-07
+
+Validated allocation now returns the exact unchanged event builder's last-candle
+checkpoint. Appending processes only that tail and new executions, recovers global
+bar ownership through volume increments and compares every affected candle to
+the supplied chart. Duplicate/older prints and mismatched interval/geometry fail
+without modifying the checkpoint. Source corrections require reconstruction.
+
+StudySession now connects this allocation to raw/filtered rows, session resets
+and incremental lifecycle. It retains last-bar executions and committed identities;
+identity retention has an explicit configurable 1,000,000 default limit, returning
+execution-capacity-limit rather than silently evicting deduplication evidence.
+This is a safety bound, not a proven production history-depth/memory budget.
+The worker/client expose event-tail messages. Unlike complete time snapshots,
+event deltas cannot overwrite queued deltas: a busy client returns false so the
+caller retains/merges prints or requests a complete reseed. Consumer still due.
+
+74 tests, full tsc and scoped lint pass. Incremental ownership and full source-to-
+zone output match reconstruction across volume/trade/delta/range/Renko/PF/VB.
+The study fixtures explicitly produce nonempty zones, not just equal empty
+results. Same-ms bridges, source immutability, duplicate retry, queue safety and
+capacity rejection covered. This verifies our builder consistency, NOT protected
+DeepCharts numerical/native visual parity. Chart provenance/source integration,
+settings/render/template/alerts, browser bundle and real-depth performance remain.
+No registration or production deployment.
+
 ### Worker history-to-live connection — 2026-09-07
 
 `prepareAuctionGapStudy` exposes the validated raw segments used by both batch

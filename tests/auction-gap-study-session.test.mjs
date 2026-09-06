@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { AuctionGapStudySession } from '../src/lib/auctionGapStudySession.ts';
 import { calculateAuctionGapStudy } from '../src/lib/auctionGapStudy.ts';
 import { runAuctionGapWorkerJob } from '../src/lib/auctionGap.worker.ts';
+import { applyMarketTradesToEventBars } from '../src/lib/eventBars.ts';
 const start = Date.parse('2026-09-08T13:30:00Z');
 function fixture(index = 0, prices = [100.25, 100.5, 100.75], isClosed = false) {
   const timestamp = start + index * 60000;
@@ -61,4 +62,57 @@ test('actual worker dispatcher preserves session between history and tail messag
     input: fixture(0, [100.5]) }, session);
   assert.equal(updated.result.status, 'ready'); assert.equal(updated.result.zones.length, 0);
   assert.equal(updated.revision, 2);
+});
+
+function eventFixture(count, timeframe) {
+  const input = fixture();
+  input.chart = { kind: 'event', timeframe, symbol: 'NQ' };
+  input.records = Array.from({ length: count }, (_, i) => {
+    const price = i % 12 === 11 ? 120 : 100 + (i % 20) * .25, volume = i % 9 ? 20 : 600;
+    return { recordIndex: i, timestamp: start, open: price, high: price, low: price, close: price,
+      volume, trades: 1, bidVolume: 0, askVolume: volume };
+  });
+  input.candles = applyMarketTradesToEventBars([], input.records.map(record => ({ timestamp: record.timestamp,
+    price: record.close, size: record.volume, trades: record.trades, delta: record.askVolume })), timeframe, 'NQ', 20000);
+  input.geometry = input.candles.map((c, i, candles) => ({ id: `event${i}`, timestamp: c.timestamp,
+    endTime: c.timestamp, lowTick: c.low * 4, highTick: c.high * 4, openTick: c.open * 4, closeTick: c.close * 4,
+    isClosed: i < candles.length - 1, emptySourceTime: c.sourceEndTimestamp, emptyResetKey: null }));
+  return input;
+}
+
+test('event worker state matches complete validated study across all seven event families', () => {
+  for (const timeframe of ['500v', '50t', '50dv', '40r', '4R', '1/27PF', '10/100VB']) {
+    const session = new AuctionGapStudySession(); let previous = eventFixture(3, timeframe);
+    assert.deepEqual(session.reset('event', previous), calculateAuctionGapStudy(previous), `${timeframe} seed`);
+    for (let count = 6; count <= 60; count += 3) {
+      const full = eventFixture(count, timeframe), chartIndex = previous.candles.length - 1;
+      const tail = { ...full, candles: full.candles.slice(chartIndex), geometry: full.geometry.slice(chartIndex),
+        records: full.records.slice(count - 3) };
+      const result = runAuctionGapWorkerJob({ scope: 'event', revision: count, operation: 'event-tail', chartIndex, input: tail }, session).result;
+      assert.equal(result.status, 'ready', `${timeframe}:${count}:${result.reason}`);
+      assert.deepEqual(result, calculateAuctionGapStudy(full), `${timeframe}:${count}`);
+      previous = full;
+    }
+    assert.ok(calculateAuctionGapStudy(previous).zones.length > 0, `${timeframe} fixture must exercise real zones`);
+  }
+});
+
+test('duplicate event batches fail without committing cursor; a correct retry remains valid', () => {
+  const session = new AuctionGapStudySession(), seed = eventFixture(3, '500v'), full = eventFixture(6, '500v');
+  session.reset('a', seed);
+  const chartIndex = seed.candles.length - 1;
+  const tail = { ...full, candles: full.candles.slice(chartIndex), geometry: full.geometry.slice(chartIndex), records: full.records.slice(3) };
+  const duplicate = { ...tail, records: seed.records };
+  assert.equal(session.updateEventTail('a', chartIndex, duplicate).reason, 'invalid-source');
+  assert.deepEqual(session.updateEventTail('a', chartIndex, tail), calculateAuctionGapStudy(full));
+});
+
+test('event identity retention has an explicit capacity failure instead of silent dedup eviction', () => {
+  const seed = eventFixture(3, '500v'), full = eventFixture(6, '500v');
+  const session = new AuctionGapStudySession(3);
+  assert.equal(session.reset('a', seed).status, 'ready');
+  const chartIndex = seed.candles.length - 1;
+  const tail = { ...full, candles: full.candles.slice(chartIndex), geometry: full.geometry.slice(chartIndex), records: full.records.slice(3) };
+  assert.equal(session.updateEventTail('a', chartIndex, tail).reason, 'execution-capacity-limit');
+  assert.equal(session.reset('a', full).reason, 'execution-capacity-limit');
 });

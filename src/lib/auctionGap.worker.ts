@@ -2,13 +2,15 @@ import { type AuctionGapStudyInput, type AuctionGapStudyResult } from "./auction
 import { AuctionGapStudySession } from "./auctionGapStudySession.ts";
 
 export type AuctionGapWorkerJob = { scope: string; revision: number; input: AuctionGapStudyInput }
-  & ({ operation?: "history" } | { operation: "time-tail"; chartIndex: number });
+  & ({ operation?: "history" } | { operation: "time-tail" | "event-tail"; chartIndex: number });
 export type AuctionGapWorkerReply = { scope: string; revision: number; result: AuctionGapStudyResult };
 
 export function runAuctionGapWorkerJob(job: AuctionGapWorkerJob, session = new AuctionGapStudySession()): AuctionGapWorkerReply {
   let result: AuctionGapStudyResult;
   try { result = job.operation === "time-tail"
-    ? session.updateTimeTail(job.scope, job.chartIndex, job.input) : session.reset(job.scope, job.input); }
+    ? session.updateTimeTail(job.scope, job.chartIndex, job.input)
+    : job.operation === "event-tail" ? session.updateEventTail(job.scope, job.chartIndex, job.input)
+      : session.reset(job.scope, job.input); }
   catch { result = { status: "unavailable", reason: "calculation-failed", zones: [] }; }
   return { scope: job.scope, revision: job.revision, result };
 }

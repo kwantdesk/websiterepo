@@ -3,29 +3,60 @@ import { applyMarketTradesToEventBars, futuresTickSize, type EventCandle } from 
 import { getChartInterval, isEventBasedChartInterval } from "./chartIntervals.ts";
 import type { AuctionGapExecution } from "./auctionGapExecutions.ts";
 
-/** Use the unchanged chart builder, but replay only its forming tail per print.
- * Compare volume deltas to recover the exact owning chart index. Never allocate
- * by synthetic chart timestamp or copy flow into zero-volume bridge bars.
- * Expected candles must cover this exact source seed, not a truncated viewport.
- */
-export function allocateAuctionGapEventExecutions(input: {
+export type AuctionGapEventContinuation = {
+  timeframe: string; symbol: string; tickSize: number;
+  lastCandle: EventCandle | null;
+  chartIndex: number;
+  lastTimestamp: number;
+};
+type AllocationInput = {
   executions: readonly AuctionGapExecution[];
   expectedCandles: readonly Candle[];
   timeframe: string;
   symbol: string;
   tickSize: number;
-}): { status: "ready" | "source-chart-mismatch" | "invalid-source";
-  assignments: { executionId: string; chartIndex: number }[] } {
-  const fail = (status: "source-chart-mismatch" | "invalid-source") => ({ status, assignments: [] });
+};
+type AllocationResult = {
+  status: "ready" | "source-chart-mismatch" | "invalid-source";
+  assignments: { executionId: string; chartIndex: number }[];
+  continuation: AuctionGapEventContinuation | null;
+};
+
+/** Use the unchanged chart builder, but replay only its forming tail per print.
+ * Compare volume deltas to recover the exact owning chart index. Never allocate
+ * by synthetic chart timestamp or copy flow into zero-volume bridge bars.
+ * Expected candles must cover this exact source seed, not a truncated viewport.
+ */
+export function allocateAuctionGapEventExecutions(input: AllocationInput): AllocationResult {
+  return allocate(input, null, new Set());
+}
+
+/** Append-only source batch after a validated allocation checkpoint. Expected
+ * candles cover the old last candle plus every resulting new/bridge candle.
+ * Caller supplies committed IDs, commits returned state only on success, and
+ * rebuilds on corrections. This function never mutates the checkpoint or IDs.
+ */
+export function advanceAuctionGapEventExecutions(input: AllocationInput,
+  continuation: AuctionGapEventContinuation, committedIds: ReadonlySet<string>): AllocationResult {
+  return allocate(input, continuation, committedIds);
+}
+
+function allocate(input: AllocationInput, seed: AuctionGapEventContinuation | null,
+  committedIds: ReadonlySet<string>): AllocationResult {
+  const fail = (status: "source-chart-mismatch" | "invalid-source"): AllocationResult => ({ status, assignments: [], continuation: null });
   const interval = getChartInterval(input.timeframe);
   if (!interval || !isEventBasedChartInterval(input.timeframe) || input.tickSize !== futuresTickSize(input.symbol)) return fail("invalid-source");
-  const rebuilt: EventCandle[] = [];
+  if (seed && (seed.timeframe !== input.timeframe || seed.symbol !== input.symbol || seed.tickSize !== input.tickSize
+    || !Number.isSafeInteger(seed.chartIndex) || seed.chartIndex < -1
+    || (seed.lastCandle === null) !== (seed.chartIndex === -1))) return fail("invalid-source");
+  const rebuilt: EventCandle[] = seed?.lastCandle ? [{ ...seed.lastCandle }] : [];
+  const indexOffset = seed?.lastCandle ? seed.chartIndex : 0;
   const assignments: { executionId: string; chartIndex: number }[] = [];
   const identities = new Set<string>();
-  let priorTimestamp = -Infinity;
+  let priorTimestamp = seed?.lastTimestamp ?? -Infinity;
   for (const execution of input.executions) {
     const price = execution.tickIndex * input.tickSize;
-    if (identities.has(execution.id) || !Number.isFinite(execution.timestamp) || execution.timestamp < priorTimestamp
+    if (committedIds.has(execution.id) || identities.has(execution.id) || !Number.isFinite(execution.timestamp) || execution.timestamp < priorTimestamp
       || !Number.isSafeInteger(execution.tickIndex) || !(price > 0) || !Number.isFinite(price)
       || !(execution.volume > 0) || !Number.isFinite(execution.volume)
       || !(execution.tradeCount > 0) || !Number.isFinite(execution.tradeCount)
@@ -43,7 +74,7 @@ export function allocateAuctionGapEventExecutions(input: {
       if (added < 0 || !Number.isFinite(added)) return fail("invalid-source");
       if (added > 0) {
         if (owner !== -1) return fail("source-chart-mismatch");
-        owner = startIndex + i;
+        owner = indexOffset + startIndex + i;
         allocated += added;
       }
     }
@@ -62,5 +93,10 @@ export function allocateAuctionGapEventExecutions(input: {
       if (!Number.isFinite(value) || Math.abs(value - computed) > tolerance) return fail("source-chart-mismatch");
     }
   }
-  return { status: "ready", assignments };
+  return { status: "ready", assignments, continuation: {
+    timeframe: input.timeframe, symbol: input.symbol, tickSize: input.tickSize,
+    lastCandle: rebuilt.length ? { ...rebuilt.at(-1)! } : null,
+    chartIndex: rebuilt.length ? indexOffset + rebuilt.length - 1 : -1,
+    lastTimestamp: priorTimestamp,
+  } };
 }

@@ -1,5 +1,12 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 event continuation: connected exact append-only event ownership to
+worker rows/session/lifecycle. Tested all seven event families against full
+reconstruction with actual nonempty zones. No silent delta queue replacement
+or identity eviction. 74 tests, tsc and scoped lint pass. Committed groundwork;
+still 28 Pending until actual Chart source/controls/render/template/alert/browser
+verification. No production push or native parity claim.
+
 2026-09-07 worker-state continuation: connected strict history validation to
 retained worker lifecycle and validated current time-bar replacements. Finalize
 then advance; skipped updates/configuration changes/rewind request rebuild.
