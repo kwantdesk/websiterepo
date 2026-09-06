@@ -294,6 +294,18 @@ recap of the open items below and update this file when their state changes.
 
 ## 2026-09-04 — Pending indicator release gate
 
+### Session Imbalance release contract — 2026-09-07
+
+- Session Imbalance is separate from the multi-session IB Levels study. It
+  owns a selected opening window inside the 17:00 Chicago CME trading session,
+  and may start from a user-selected exchange clock.
+- Its midpoint and ±50%/±100% extensions are derived from the observed opening
+  range only. A developing range must never read a future candle, and loading
+  history must never fire old popup/sound alerts.
+- The public guide and DLL contract are recorded in
+  `docs/deepcharts-session-imbalance-audit.md`. Do not invent the optional DLL
+  volume-line formula while it remains undocumented.
+
 - The pending-indicator overhaul starts from the frozen 21-row inventory in
   `docs/deepcharts-pending-indicator-overhaul.md`. Existing addable indicators
   are out of scope and must not be changed to make a pending row appear done.

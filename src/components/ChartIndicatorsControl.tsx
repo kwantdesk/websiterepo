@@ -598,6 +598,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "sessions",
   "session-highs-lows",
   "session-marker",
+  "session-imbalance",
   "ib-levels",
   "divergence-detector",
   "big-trades",
@@ -772,6 +773,16 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       ["markerPositiveColor", visible.positive],
       ["markerNegativeColor", visible.negative],
     ])) as Record<string, string>;
+  }
+  if (indicatorId === "session-imbalance") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      highColor: visible.positive,
+      lowColor: visible.negative,
+      midColor: visible.secondary,
+      level50Color: visible.muted,
+      level100Color: visible.secondary,
+    };
   }
   if (indicatorId === "zig-zag") {
     const visible = visibleIndicatorTheme(chartSettings);
@@ -7895,6 +7906,43 @@ export default function ChartIndicatorsControl({
                     ))}
                   </div>
                   <p className="text-[8px] leading-4 text-muted">Asian, Europe and USA use the reference platform's recovered stock session clocks. High, low, opening range, open, close, midpoint and optional session VWAP are calculated from the chart's real candles; no synthetic prints are inserted.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "session-imbalance" ? (
+                <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Custom start time · Chicago exchange time</span>
+                      <input
+                        type="time"
+                        step={60}
+                        disabled={settingsInstance.settings?.useCustomStartTime !== true}
+                        value={String(settingsInstance.settings?.customStartTime ?? "17:00")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customStartTime: event.target.value } }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none disabled:opacity-45"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Line style</span>
+                      <KwantSelect value={String(settingsInstance.settings?.lineStyle ?? "solid")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), lineStyle: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Session Imbalance line style">
+                        <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Text alignment</span>
+                      <KwantSelect value={String(settingsInstance.settings?.textAlignment ?? "right")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), textAlignment: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Session Imbalance text alignment">
+                        <option value="right">Right edge</option><option value="left">Start</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Extend</span>
+                      <KwantSelect value={String(settingsInstance.settings?.extendMode ?? "next-session")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), extendMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Session Imbalance extension mode">
+                        <option value="next-session">Until next session</option><option value="none">Formation only</option>
+                      </KwantSelect>
+                    </label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">The range develops from real chart candles for the selected opening window. High, low and midpoint are fixed when formation ends; optional 50% and 100% levels are exact extensions of that range.</p>
                 </div>
               ) : null}
 

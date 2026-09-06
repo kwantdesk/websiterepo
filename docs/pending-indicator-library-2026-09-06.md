@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 16 — not released by blanket enablement
+## Remaining 15 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -113,7 +113,7 @@ Do not tick a row just because its Add gate changes.
 | `speed-of-tape` | [ ] Audit / implement / verify |
 | `volume-delta-sprint` | [ ] DLL settings enums audited; numerical/data semantics outstanding |
 | `auction-gap-tracker` | [ ] Raw one-tick detector with six location modes tested; lifecycle/settings/render/live integration outstanding |
-| `session-imbalance` | [ ] Audit / implement / verify |
+| `session-imbalance` | [x] Dedicated CME-session range engine, IBH/IBL/mid and exact ±50/100% extensions, documented settings, theme/persistence/alerts and focused tests; protected pixel/formula and live-soak limits documented |
 | `volume-swing` | [ ] Audit / implement / verify |
 | `monthly-volume-profile` | [ ] Owned range/job foundation tested; workspace/live/settings integration outstanding |
 | `session-volume-profile` | [ ] Shared-engine routing audited; session/workspace integration outstanding |
@@ -176,6 +176,8 @@ Do not tick a row just because its Add gate changes.
   parity limits: `docs/deepcharts-fvg-identifier-audit.md`.
 - Session Marker public/DLL settings, candle calculations and explicit visual/
   live-market limits: `docs/deepcharts-session-marker-audit.md`.
+- Session Imbalance public/DLL contract, exact extension calculation and
+  explicit parity limits: `docs/deepcharts-session-imbalance-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

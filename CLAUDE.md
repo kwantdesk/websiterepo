@@ -2633,3 +2633,9 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Options roll by provider-listed expiration and New York session date, not a
   futures month code. Prompt outcome:
   `docs/prompt-log/2026-09-04-28-contract-rollovers.md`.
+
+## 2026-09-07 — Session Imbalance
+
+- `session-imbalance` is an independent 17:00 Chicago CME opening-range study,
+  not an alias of `ib-levels`. Keep its developing range no-lookahead, its
+  50/100% extensions exact, and historical hydration silent.

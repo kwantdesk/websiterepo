@@ -97,6 +97,7 @@ import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder"
 import { FAIR_VALUE_GAP_DEFAULTS, normalizeFairValueGapSettings } from "@/lib/fairValueGap";
 import { PRICE_MOVEMENT_LEVEL_DEFAULTS, normalizePriceMovementLevelSettings } from "@/lib/priceMovementLevels";
 import { SESSION_MARKER_DEFAULTS, normalizeSessionMarkerSettings } from "@/lib/sessionMarker";
+import { SESSION_IMBALANCE_DEFAULTS, normalizeSessionImbalanceSettings } from "@/lib/sessionImbalance";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
@@ -192,6 +193,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "sessions",
   "session-highs-lows",
   "session-marker",
+  "session-imbalance",
   "ib-levels",
   "big-trades",
   "deep-m-effort-nq",
@@ -1179,6 +1181,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "asianImbalanceMinutes", label: "Asian imbalance minutes", defaultValue: 60, min: 1, max: 240, step: 1 },
     { key: "europeImbalanceMinutes", label: "Europe imbalance minutes", defaultValue: 60, min: 1, max: 240, step: 1 },
     { key: "usaImbalanceMinutes", label: "USA imbalance minutes", defaultValue: 60, min: 1, max: 240, step: 1 },
+  ],
+  "session-imbalance": [
+    { key: "numberOfMinutes", label: "Number of minutes", defaultValue: 60, min: 1, max: 1440, step: 1 },
+    { key: "numberOfDays", label: "Number of days · 0 = all", defaultValue: 0, min: 0, max: 365, step: 1 },
+    { key: "lineOpacity", label: "Line opacity (%)", defaultValue: 100, min: 5, max: 100, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 0.5, max: 4, step: 0.5 },
+    { key: "textSize", label: "Text size", defaultValue: 10, min: 6, max: 32, step: 0.5 },
   ],
   "ib-levels": [
     { key: "lookbackDays", label: "Lookback (days)", defaultValue: 7, min: 1, max: 30 },
@@ -2446,6 +2455,14 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     usaVwapColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
     markerPositiveColor: theme?.upColor ?? "#22C55E",
     markerNegativeColor: theme?.downColor ?? "#EF4444",
+  } : {}),
+  ...(indicatorId === "session-imbalance" ? {
+    ...SESSION_IMBALANCE_DEFAULTS,
+    highColor: theme?.upColor ?? "#22C55E",
+    lowColor: theme?.downColor ?? "#EF4444",
+    midColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    level50Color: theme?.gridColor ?? "#F59E0B",
+    level100Color: theme?.borderDownColor ?? theme?.downColor ?? "#A78BFA",
   } : {}),
   ...(indicatorId === "ib-levels" ? {
     durationMinutes: 60,
@@ -4092,6 +4109,15 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...normalizedInstance,
       settings: normalizeSessionMarkerSettings({
         ...defaultIndicatorSettings("session-marker"),
+        ...(normalizedInstance.settings ?? {}),
+      }),
+    };
+  }
+  if (normalizedInstance.indicatorId === "session-imbalance") {
+    return {
+      ...normalizedInstance,
+      settings: normalizeSessionImbalanceSettings({
+        ...defaultIndicatorSettings("session-imbalance"),
         ...(normalizedInstance.settings ?? {}),
       }),
     };

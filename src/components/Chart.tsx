@@ -205,6 +205,11 @@ import {
 } from "@/lib/candleStyle";
 import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import {
+  buildSessionImbalanceLevels,
+  normalizeSessionImbalanceSettings,
+  type SessionImbalanceRole,
+} from "@/lib/sessionImbalance";
+import {
   calculateMarketStatistics,
   normalizeMarketStatisticsSettings,
   type MarketStatisticsFrame,
@@ -3382,6 +3387,7 @@ function Chart({
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
   const fixedPriceLevelLabelsRef = useRef<FixedPriceLevelLabelsPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
+  const sessionImbalanceAlertIdsRef = useRef(new Set<string>());
   const imbalanceZonesPrimitiveRef = useRef<ImbalanceZonesPrimitive | null>(null);
   const auctionGapPrimitiveRef = useRef<AuctionGapPrimitive | null>(null);
   const auctionGapModelsRef = useRef<AuctionGapPlotModel[]>([]);
@@ -12188,6 +12194,11 @@ function Chart({
       candidate.enabled && candidate.indicatorId === "session-marker") ?? null,
     [indicatorSignature, indicators],
   );
+  const sessionImbalanceIndicator = useMemo(
+    () => indicators.find((candidate) =>
+      candidate.enabled && candidate.indicatorId === "session-imbalance") ?? null,
+    [indicatorSignature, indicators],
+  );
   const initialBalanceIndicator = useMemo(
     () => indicators.find((candidate) =>
       candidate.enabled && candidate.indicatorId === "ib-levels") ?? null,
@@ -12266,6 +12277,74 @@ function Chart({
     ),
     [candleIntervalMs, sessionMarkerSettings, sessionMarkerWindows],
   );
+  const sessionImbalanceSettings = useMemo(
+    () => normalizeSessionImbalanceSettings(sessionImbalanceIndicator?.settings ?? {}),
+    [sessionImbalanceIndicator],
+  );
+  const sessionImbalanceLevels = useMemo(
+    () => sessionImbalanceIndicator
+      ? buildSessionImbalanceLevels(
+          initialBalanceCandles ?? indicatorCandles,
+          sessionImbalanceSettings,
+          initialBalanceCandles ? 60_000 : candleIntervalMs ?? 60_000,
+        )
+      : [],
+    [candleIntervalMs, indicatorCandles, initialBalanceCandles, sessionImbalanceIndicator, sessionImbalanceSettings],
+  );
+  useEffect(() => {
+    if (!sessionImbalanceIndicator || indicatorCandles.length < 2 || !sessionImbalanceLevels.length) return;
+    const previous = indicatorCandles.at(-2)!;
+    const current = indicatorCandles.at(-1)!;
+    // Opening a historical chart must never emit a wall of stale alerts.
+    const liveTolerance = Math.max(candleIntervalMs ?? 60_000, 60_000) + 5_000;
+    if (Math.abs(Date.now() - current.timestamp) > liveTolerance) return;
+    for (const level of sessionImbalanceLevels) {
+      const crossed = (previous.close < level.price && current.close >= level.price)
+        || (previous.close > level.price && current.close <= level.price);
+      if (!crossed) continue;
+      const group = level.role === "high" || level.role === "low"
+        ? "hhll"
+        : level.role === "upper50" || level.role === "lower50" ? "level50" : "level100";
+      if (level.role === "mid") continue;
+      const popupEnabled = sessionImbalanceSettings[`${group}EnableAlertPopup`] === true;
+      const soundEnabled = sessionImbalanceSettings[`${group}EnableAlertSound`] === true;
+      if (!popupEnabled && !soundEnabled) continue;
+      const alertId = `${level.id}:${current.timestamp}`;
+      if (sessionImbalanceAlertIdsRef.current.has(alertId)) continue;
+      sessionImbalanceAlertIdsRef.current.add(alertId);
+      if (sessionImbalanceAlertIdsRef.current.size > 500) {
+        sessionImbalanceAlertIdsRef.current = new Set([...sessionImbalanceAlertIdsRef.current].slice(-250));
+      }
+      const title = `${instrument} reached ${level.label.replace(" · BUILDING", "")}`;
+      if (popupEnabled) {
+        window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+          indicatorId: "session-imbalance",
+          instanceId: sessionImbalanceIndicator.instanceId,
+          instrument,
+          title,
+          event: { price: level.price, role: level.role, timestamp: current.timestamp },
+        } }));
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          new Notification("Session Imbalance", { body: title });
+        }
+      }
+      if (soundEnabled) {
+        const AudioContextCtor = window.AudioContext
+          || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AudioContextCtor) {
+          const audio = new AudioContextCtor();
+          const oscillator = audio.createOscillator();
+          const gain = audio.createGain();
+          oscillator.frequency.value = 660;
+          gain.gain.setValueAtTime(0.04, audio.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.15);
+          oscillator.connect(gain); gain.connect(audio.destination);
+          oscillator.start(); oscillator.stop(audio.currentTime + 0.15);
+          oscillator.addEventListener("ended", () => void audio.close(), { once: true });
+        }
+      }
+    }
+  }, [candleIntervalMs, indicatorCandles, instrument, sessionImbalanceIndicator, sessionImbalanceLevels, sessionImbalanceSettings]);
   const sessionHighLowRenderData = useMemo<SessionHighLowRenderLevel[]>(() => {
     const sessionTheme = visibleIndicatorTheme(settings);
     const opacity = clamp(Number(sessionHighLowSettings.lineOpacity ?? 82) / 100, 0.05, 1);
@@ -12430,7 +12509,38 @@ function Chart({
       showPriceInLabel: false,
       labelAnchor: "start",
     }));
-    return [...previousLevels, ...ibLevels, ...fibLevels, ...markerLevels];
+    const imbalanceTheme = visibleIndicatorTheme(settings);
+    const imbalanceUsesTheme = sessionImbalanceSettings.useThemeColors !== false;
+    const imbalanceColor = (role: SessionImbalanceRole) => {
+      if (imbalanceUsesTheme) {
+        if (role === "high") return imbalanceTheme.positive;
+        if (role === "low") return imbalanceTheme.negative;
+        if (role === "mid") return imbalanceTheme.secondary;
+        if (role === "upper50" || role === "lower50") return imbalanceTheme.muted;
+        return imbalanceTheme.secondary;
+      }
+      if (role === "high") return String(sessionImbalanceSettings.highColor);
+      if (role === "low") return String(sessionImbalanceSettings.lowColor);
+      if (role === "mid") return String(sessionImbalanceSettings.midColor);
+      if (role === "upper50" || role === "lower50") return String(sessionImbalanceSettings.level50Color);
+      return String(sessionImbalanceSettings.level100Color);
+    };
+    const imbalanceLevels: SessionHighLowRenderLevel[] = sessionImbalanceLevels.map((level) => ({
+      id: level.id,
+      startTime: markerChartTime(level.startTimestamp),
+      endTime: markerChartTime(level.endTimestamp),
+      price: level.price,
+      label: sessionImbalanceSettings.showLabels === false ? "" : level.label,
+      color: imbalanceColor(level.role),
+      opacity: clamp(Number(sessionImbalanceSettings.lineOpacity) / 100, 0.05, 1),
+      lineWidth: clamp(Number(sessionImbalanceSettings.lineWidth), 0.5, 4),
+      lineStyle: sessionImbalanceSettings.lineStyle,
+      fontSize: clamp(Number(sessionImbalanceSettings.textSize), 6, 32),
+      precision: priceFormat.precision,
+      showPriceInLabel: false,
+      labelAnchor: sessionImbalanceSettings.textAlignment === "left" ? "start" : "end",
+    }));
+    return [...previousLevels, ...ibLevels, ...fibLevels, ...markerLevels, ...imbalanceLevels];
   }, [
     chartReadyRevision,
     initialBalanceLevels,
@@ -12440,6 +12550,8 @@ function Chart({
     sessionMarkerLevels,
     sessionMarkerSettings,
     sessionMarkerWindows,
+    sessionImbalanceLevels,
+    sessionImbalanceSettings,
     sessionHighLowSettings,
     settings.downColor,
     settings.borderDownColor,
