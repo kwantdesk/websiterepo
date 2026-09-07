@@ -20532,19 +20532,6 @@ function Chart({
         </svg>
       ) : null}
 
-      {instantTapeIndicator && instantTapeFrame ? (
-        <SpeedOfTapeInstantOverlay
-          frame={instantTapeFrame}
-          settings={instantTapeSettings}
-          right={nativePriceScaleWidth + miniDomReservedWidth}
-          top={topIndicatorPaneHeight}
-          bottom={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
-          width={nativePriceScaleWidth}
-          backgroundColor={settings.backgroundColor}
-          eventKey={liveCandleEventKey}
-        />
-      ) : null}
-
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
         coordinateScope={`${chartFrameWorkKey}:${replayTimestampMs ?? "live"}`}
@@ -21534,6 +21521,24 @@ function Chart({
         </div>
       )}
       </div>
+      {instantTapeIndicator && instantTapeFrame ? (
+        <div
+          data-speed-of-tape-rail="price-scale-trailing"
+          className="relative h-full flex-none overflow-hidden"
+          style={{ width: nativePriceScaleWidth }}
+        >
+          <SpeedOfTapeInstantOverlay
+            frame={instantTapeFrame}
+            settings={instantTapeSettings}
+            right={0}
+            top={topIndicatorPaneHeight}
+            bottom={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
+            width={nativePriceScaleWidth}
+            backgroundColor={settings.backgroundColor}
+            eventKey={liveCandleEventKey}
+          />
+        </div>
+      ) : null}
       {depthOfMarketIndicator ? (
         <DepthOfMarketPanel
           instrument={instrument}
