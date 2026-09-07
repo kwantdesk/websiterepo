@@ -8525,10 +8525,12 @@ function WorkspaceChartPaneComponent({
           window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
             detail: { key: pane.id, candle: latest, sourceTimestampMs: chartSourceTimestamp(snapshot.timestamp) },
           }));
-          if (historyHydratedRef.current) {
-            setLoading(false);
-            setError(null);
-          }
+          // A verified live frame is enough to make the pane usable. History
+          // hydration continues independently and will merge the older bars
+          // when it completes, but it must never leave a live symbol hidden
+          // behind a spinner when the shared history queue is congested.
+          setLoading(false);
+          setError(null);
           const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
           const now = Date.now();
           const reconciliationCadence = activeRef.current ? 5_000 : 10_000;

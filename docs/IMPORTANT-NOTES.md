@@ -837,3 +837,14 @@ recap of the open items below and update this file when their state changes.
 - The seven visible stock presets are deterministic starting points and retain
   the user's palette/performance caps. Prompt/outcome:
   `docs/prompt-log/2026-09-07-footprint-polish.md`.
+
+## 2026-09-07 — Market-index live first paint
+
+- A verified live SPX/NDX/SPY/QQQ frame must make its chart usable immediately;
+  full historical hydration is not a prerequisite for clearing the spinner.
+- History continues independently and merges behind the live candle when ready.
+  Never invent history to achieve first paint.
+- A gateway overload can delay history without stopping an already hydrated
+  symbol. Keep backend overload diagnosis separate from this client loading
+  invariant. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-market-index-live-first-paint.md`.
