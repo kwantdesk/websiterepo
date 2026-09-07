@@ -11,8 +11,9 @@ const workspace = readFileSync(
   "utf8",
 );
 
-test("value area survives a delayed Databento close without hiding every level", () => {
-  assert.match(route, /recordedWindowProfile\(symbol, latestDaily\)/);
+test("value area prefers complete Rithmic daily and weekly profiles before vendor fallback", () => {
+  assert.match(route, /firstCompleteRecordedProfile\(symbol, dailyWindows, MINIMUM_DAILY_TRADES\)/);
+  assert.match(route, /firstCompleteRecordedProfile\(symbol, weeklyWindows, MINIMUM_WEEKLY_TRADES\)/);
   assert.match(route, /availableEndMs[\s\S]*continue;/);
   assert.match(route, /fellBackFromLatestDaily/);
   assert.match(route, /now \+ 5 \* 60_000/);

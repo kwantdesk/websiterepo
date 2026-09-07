@@ -138,6 +138,38 @@ export class RithmicHistoryPlantClient {
     return { bytesReceived: this.bytesReceived - before };
   }
 
+  async replayVolumeProfileMinuteBars({ exchange, symbol, startSec, finishSec, onBar }) {
+    if (this.pending) throw new Error("Only one History Plant replay may run at a time.");
+    await this.connect();
+    const id = `kwantdesk-volume-profile-${Date.now()}-${++this.requestSequence}`;
+    const before = this.bytesReceived;
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => this.failPending(new Error(`History volume-profile replay timed out for ${exchange}:${symbol}.`)),
+        this.requestTimeoutMs,
+      );
+      this.pending = {
+        id,
+        responseTemplateId: TEMPLATE_IDS.VOLUME_PROFILE_REPLAY_RESPONSE,
+        onRow: onBar,
+        resolve,
+        reject,
+        timer,
+      };
+      this.socket.send(this.protocol.encode("RequestVolumeProfileMinuteBars", {
+        templateId: TEMPLATE_IDS.VOLUME_PROFILE_REPLAY_REQUEST,
+        userMsg: [id],
+        symbol,
+        exchange,
+        barTypePeriod: 1,
+        startIndex: startSec,
+        finishIndex: finishSec,
+        resumeBars: true,
+      }));
+    });
+    return { bytesReceived: this.bytesReceived - before };
+  }
+
   close() {
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;

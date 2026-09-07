@@ -14,7 +14,7 @@ import { chicagoTradingDate } from "./trading-session.mjs";
 
 const TRADE_TEMPLATE_ID = 150;
 const completedProfileCache = new Map();
-const PERSISTED_CACHE_VERSION = 1;
+const PERSISTED_CACHE_VERSION = 2;
 
 function contractRoot(value) {
   return String(value || "")
@@ -22,8 +22,7 @@ function contractRoot(value) {
     .replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "");
 }
 
-function archiveFile(args) {
-  const tradingDate = chicagoTradingDate(args.startMs);
+function archiveFileForDate(args, tradingDate) {
   const dayDir = join(args.dir, tradingDate);
   if (!existsSync(dayDir)) return null;
   const exchange = String(args.exchange || "").toUpperCase();
@@ -54,6 +53,26 @@ function archiveFile(args) {
   };
 }
 
+function archiveFiles(args) {
+  if (!existsSync(args.dir)) return [];
+  const firstDate = chicagoTradingDate(args.startMs);
+  const lastDate = chicagoTradingDate(args.endMs - 1);
+  return readdirSync(args.dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name))
+    .map((entry) => entry.name)
+    .filter((tradingDate) => tradingDate >= firstDate && tradingDate <= lastDate)
+    .sort()
+    .map((tradingDate) => archiveFileForDate(args, tradingDate))
+    .filter(Boolean);
+}
+
+function receivedTimestamp(value) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function tradeTimestamp(payload, receivedAt) {
   const seconds = Number(payload?.ssboe ?? payload?.sourceSsboe);
   const micros = Number(payload?.usecs ?? payload?.sourceUsecs ?? 0);
@@ -74,7 +93,7 @@ function tickPrice(tickIndex, tickSize) {
   return Number((tickIndex * tickSize).toFixed(tickPrecision(tickSize)));
 }
 
-function finalize(rows, totals, tickSize, valueAreaPercent) {
+export function finalizeValueAreaRows(rows, totals, tickSize, valueAreaPercent) {
   const ordered = [...rows.entries()]
     .filter(([, volume]) => Number.isFinite(volume) && volume > 0)
     .sort(([left], [right]) => left - right);
@@ -148,19 +167,31 @@ export async function buildArchivedValueAreaProfile(args) {
   }
   const tickSize = Number(args.tickSize);
   if (!Number.isFinite(tickSize) || tickSize <= 0) return null;
-  const file = archiveFile(args);
-  if (!file) return null;
-  const metadata = statSync(file.path);
-  const cacheKey = [file.path, metadata.size, metadata.mtimeMs, args.startMs, args.endMs, tickSize].join(":");
+  const files = archiveFiles(args);
+  if (!files.length) return null;
+  const inputs = files.map((file) => ({ ...file, metadata: statSync(file.path) }));
+  const cacheKey = [
+    ...inputs.flatMap((file) => [file.path, file.metadata.size, file.metadata.mtimeMs]),
+    args.startMs,
+    args.endMs,
+    tickSize,
+  ].join(":");
   const cached = completedProfileCache.get(cacheKey);
   if (cached) return cached;
-  const persistedPath = `${file.path}.kwant-value-area.json`;
+  const persistedPath = inputs.length === 1
+    ? `${inputs[0].path}.kwant-value-area.json`
+    : `${inputs[0].path}.kwant-value-area-${args.startMs}-${args.endMs}.json`;
   try {
     const persisted = JSON.parse(readFileSync(persistedPath, "utf8"));
     if (
       persisted?.version === PERSISTED_CACHE_VERSION
-      && persisted.fileSize === metadata.size
-      && persisted.fileMtimeMs === metadata.mtimeMs
+      && Array.isArray(persisted.files)
+      && persisted.files.length === inputs.length
+      && persisted.files.every((entry, index) => (
+        entry.path === inputs[index].path
+        && entry.size === inputs[index].metadata.size
+        && entry.mtimeMs === inputs[index].metadata.mtimeMs
+      ))
       && persisted.startMs === args.startMs
       && persisted.endMs === args.endMs
       && persisted.tickSize === tickSize
@@ -182,59 +213,62 @@ export async function buildArchivedValueAreaProfile(args) {
     dropped: 0,
     archiveErrors: 0,
   };
-  const input = file.path.endsWith(".gz")
-    ? createReadStream(file.path).pipe(createGunzip())
-    : createReadStream(file.path);
-  const lines = createInterface({ input, crlfDelay: Number.POSITIVE_INFINITY });
-  try {
-    for await (const line of lines) {
-      if (!line) continue;
-      let record;
-      try {
-        record = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (record?.type === "GAP") {
-        const timestamp = Date.parse(record.receivedAt);
-        if (timestamp >= args.startMs && timestamp < args.endMs) totals.gaps += 1;
-        continue;
-      }
-      if (record?.type === "DROPPED") {
-        const timestamp = Date.parse(record.receivedAt);
-        if (timestamp >= args.startMs && timestamp < args.endMs) {
-          totals.dropped += Math.max(1, Number(record.droppedMessages) || 1);
+  for (const file of inputs) {
+    const input = file.path.endsWith(".gz")
+      ? createReadStream(file.path).pipe(createGunzip())
+      : createReadStream(file.path);
+    const lines = createInterface({ input, crlfDelay: Number.POSITIVE_INFINITY });
+    try {
+      for await (const line of lines) {
+        if (!line) continue;
+        let record;
+        try {
+          record = JSON.parse(line);
+        } catch {
+          continue;
         }
-        continue;
+        if (record?.type === "GAP") {
+          const timestamp = receivedTimestamp(record.receivedAt);
+          if (timestamp >= args.startMs && timestamp < args.endMs) totals.gaps += 1;
+          continue;
+        }
+        if (record?.type === "DROPPED") {
+          const timestamp = receivedTimestamp(record.receivedAt);
+          if (timestamp >= args.startMs && timestamp < args.endMs) {
+            totals.dropped += Math.max(1, Number(record.droppedMessages) || 1);
+          }
+          continue;
+        }
+        if (record?.templateId !== TRADE_TEMPLATE_ID || !record.payload) continue;
+        const timestamp = tradeTimestamp(record.payload, record.receivedAt);
+        if (timestamp < args.startMs || timestamp >= args.endMs) continue;
+        const price = Number(record.payload.tradePrice);
+        const size = Number(record.payload.tradeSize);
+        if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0) continue;
+        const tickIndex = Math.round(price / tickSize);
+        rows.set(tickIndex, (rows.get(tickIndex) ?? 0) + size);
+        totals.volume += size;
+        totals.priceVolume += price * size;
+        totals.trades += 1;
+        totals.firstTradeAt = totals.firstTradeAt === null ? timestamp : Math.min(totals.firstTradeAt, timestamp);
+        totals.lastTradeAt = totals.lastTradeAt === null ? timestamp : Math.max(totals.lastTradeAt, timestamp);
       }
-      if (record?.templateId !== TRADE_TEMPLATE_ID || !record.payload) continue;
-      const timestamp = tradeTimestamp(record.payload, record.receivedAt);
-      if (timestamp < args.startMs || timestamp >= args.endMs) continue;
-      const price = Number(record.payload.tradePrice);
-      const size = Number(record.payload.tradeSize);
-      if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0) continue;
-      const tickIndex = Math.round(price / tickSize);
-      rows.set(tickIndex, (rows.get(tickIndex) ?? 0) + size);
-      totals.volume += size;
-      totals.priceVolume += price * size;
-      totals.trades += 1;
-      totals.firstTradeAt = totals.firstTradeAt === null ? timestamp : Math.min(totals.firstTradeAt, timestamp);
-      totals.lastTradeAt = totals.lastTradeAt === null ? timestamp : Math.max(totals.lastTradeAt, timestamp);
+    } catch (error) {
+      // Preserve any readable prefix for diagnostics, but mark it compromised.
+      // Callers reject profiles with integrityGaps > 0, so a corrupt gzip member
+      // can never masquerade as a complete session or turn into trading levels.
+      totals.archiveErrors += 1;
     }
-  } catch (error) {
-    // Preserve any readable prefix for diagnostics, but mark it compromised.
-    // Callers reject profiles with integrityGaps > 0, so a corrupt gzip member
-    // can never masquerade as a complete session or turn into trading levels.
-    totals.archiveErrors += 1;
   }
-  const profile = finalize(rows, totals, tickSize, Number(args.valueAreaPercent ?? 0.7));
+  const profile = finalizeValueAreaRows(rows, totals, tickSize, Number(args.valueAreaPercent ?? 0.7));
   if (!profile) return null;
   const result = {
     ...profile,
     provider: "Rithmic",
     source: "Rithmic recorded trade tape",
-    tradingDate: file.tradingDate,
-    contractSymbol: file.symbol,
+    tradingDate: files[0].tradingDate,
+    tradingDates: files.map((file) => file.tradingDate),
+    contractSymbol: files.at(-1).symbol,
     startMs: args.startMs,
     endMs: args.endMs,
     integrityGaps: totals.gaps + totals.archiveErrors,
@@ -247,8 +281,11 @@ export async function buildArchivedValueAreaProfile(args) {
   try {
     writeFileSync(persistedPath, JSON.stringify({
       version: PERSISTED_CACHE_VERSION,
-      fileSize: metadata.size,
-      fileMtimeMs: metadata.mtimeMs,
+      files: inputs.map((file) => ({
+        path: file.path,
+        size: file.metadata.size,
+        mtimeMs: file.metadata.mtimeMs,
+      })),
       startMs: args.startMs,
       endMs: args.endMs,
       tickSize,

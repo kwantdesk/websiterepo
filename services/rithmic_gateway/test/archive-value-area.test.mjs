@@ -61,3 +61,48 @@ test("completed Rithmic tape reconstructs an exact prior-session value area", as
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("weekly reconstruction folds every trading-date file and counts numeric gap markers", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kwantdesk-value-area-week-"));
+  try {
+    const first = cmeSessionBounds("2026-08-12");
+    const second = cmeSessionBounds("2026-08-13");
+    for (const [bounds, price] of [[first, 100], [second, 101]]) {
+      const tradingDate = new Date(bounds.startMs).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+      const dayDir = join(dir, tradingDate);
+      mkdirSync(dayDir, { recursive: true });
+      const records = [{
+        templateId: 150,
+        payload: {
+          tradePrice: price,
+          tradeSize: 10,
+          ssboe: Math.floor((bounds.startMs + 60_000) / 1_000),
+          usecs: 0,
+        },
+        receivedAt: bounds.startMs + 60_000,
+      }];
+      if (bounds === second) records.unshift({ type: "GAP", receivedAt: bounds.startMs + 30_000 });
+      writeFileSync(
+        join(dayDir, "CME-NQU6.ndjson.gz"),
+        gzipSync(`${records.map((record) => JSON.stringify(record)).join("\n")}\n`),
+      );
+    }
+
+    const profile = await buildArchivedValueAreaProfile({
+      dir,
+      exchange: "CME",
+      symbol: "NQU6",
+      startMs: first.startMs,
+      endMs: second.endMs,
+      tickSize: 0.25,
+      valueAreaPercent: 0.7,
+    });
+    assert.ok(profile);
+    assert.equal(profile.tradeRecords, 2);
+    assert.equal(profile.totalVolume, 20);
+    assert.deepEqual(profile.tradingDates, ["2026-08-12", "2026-08-13"]);
+    assert.equal(profile.integrityGaps, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

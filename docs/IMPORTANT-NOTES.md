@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Value Area levels follow-up
+
+- Prior-day and prior-week Value Area levels now use Rithmic History Plant's
+  exact volume-at-price minute profiles. Do not rebuild these levels from OHLCV
+  candles: candles cannot reveal volume distribution by price.
+- Raw weekly fallback must continue folding every included trading-date file,
+  and archive GAP/DROPPED markers may be numeric epoch milliseconds.
+- **Still open:** visually compare PD/PW VAH, POC and VAL on authenticated NQ
+  and ES charts after production deployment. The live VPS source was verified
+  directly, but the desktop browser check still requires the owner's signed-in
+  chart state.
+
 ## 2026-09-07 — Workspace layout-switch follow-up
 
 - Existing chart panes now retain their component, canvas, history and

@@ -128,6 +128,33 @@ async function recordedWindowProfile(
   return null;
 }
 
+async function firstCompleteRecordedProfile(
+  symbol: string,
+  windows: CmeProfileWindow[],
+  minimumTrades: number,
+) {
+  for (const window of windows) {
+    const cacheKey = `rithmic:${symbol}:${window.start}:${window.end}`;
+    const now = Date.now();
+    const cached = valueAreaWindowCache.get(cacheKey);
+    const promise = cached && cached.expiresAt > now
+      ? cached.promise
+      : recordedWindowProfile(symbol, window);
+    if (!cached || cached.expiresAt <= now) {
+      valueAreaWindowCache.set(cacheKey, {
+        expiresAt: now + 8 * 24 * 60 * 60_000,
+        promise,
+      });
+    }
+    const profile = await promise;
+    if (profile && profile.tradeRecords >= minimumTrades) return { profile, window };
+    if (!profile && valueAreaWindowCache.get(cacheKey)?.promise === promise) {
+      valueAreaWindowCache.delete(cacheKey);
+    }
+  }
+  return null;
+}
+
 function durableWindowProfile(
   symbol: string,
   window: CmeProfileWindow,
@@ -272,19 +299,20 @@ export async function buildValueAreaPayload(symbol: string, now: number): Promis
   const dailyInsideWeekly = latestDaily.start >= latestWeekly.start
     && latestDaily.end <= latestWeekly.end;
 
-  // The always-on Rithmic collector records the just-finished session before
-  // Databento's historical archive exposes its final hours. Prefer that exact
-  // completed tape for PD VAH/VAL/POC/VWAP so Asia and Globex never lose the
-  // newest levels while waiting for the historical vendor to catch up.
-  const recordedDaily = await recordedWindowProfile(symbol, latestDaily);
-  if (recordedDaily && recordedDaily.tradeRecords >= MINIMUM_DAILY_TRADES) {
-    daily = { profile: recordedDaily, window: latestDaily };
-  }
+  // Rithmic is the desk's authoritative futures source. The gateway first
+  // uses its lossless local tape and heals any interrupted collector window
+  // from History Plant volume-at-price minute bars. This applies to both the
+  // prior session and the full five-session week; the retired vendor path is
+  // only a final compatibility fallback.
+  [daily, weekly] = await Promise.all([
+    firstCompleteRecordedProfile(symbol, dailyWindows, MINIMUM_DAILY_TRADES),
+    firstCompleteRecordedProfile(symbol, weeklyWindows, MINIMUM_WEEKLY_TRADES),
+  ]);
 
   // On the Sunday/Monday reopen, Friday's completed daily session is already
   // contained by the completed weekly profile. Build both accumulators during
   // one exact tick pass instead of downloading Friday twice.
-  if (!daily && dailyInsideWeekly) {
+  if (!daily && !weekly && dailyInsideWeekly) {
     const [dailyProfile, weeklyProfile] = await nestedWindowProfiles(
       symbol,
       latestDaily,

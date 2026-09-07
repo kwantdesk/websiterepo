@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Value Area levels restored from Rithmic History Plant
+
+- KwantDesk Levels → Value Area now obtains both the prior-session and full
+  prior-week volume-at-price profiles from Rithmic History Plant. It no longer
+  depends on the retired historical provider for the weekly half of the
+  overlay.
+- History replay work is coalesced and serialized on the VPS. The raw-tape
+  fallback now folds every trading-date file in a weekly window and correctly
+  counts numeric GAP/DROPPED timestamps; compromised recordings remain
+  rejected rather than producing confident trading levels.
+- Live isolated NQU6 verification returned complete 1,379-minute daily and
+  6,899-minute weekly profiles with zero reported integrity gaps. Prompt,
+  diagnosis and outcome:
+  `docs/prompt-log/2026-09-07-value-area-levels-data-path.md`.
+
 ## 2026-09-07 — Panel layout switches preserve live charts
 
 - Workspace layout templates no longer render heavyweight charts directly in

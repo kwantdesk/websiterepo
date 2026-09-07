@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { URL } from "node:url";
 
 import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
+import { buildHistoryValueAreaProfile } from "./history-value-area.mjs";
 import { replayArchiveIntoBook } from "./archive-replay.mjs";
 import { CashIndexArchiver } from "./cash-index-archiver.mjs";
 import { HeatmapReplayStore } from "./heatmap-replay.mjs";
@@ -2671,7 +2672,7 @@ const server = createServer(async (request, response) => {
       const instrument = requestedInstrument(url);
       const startMs = Number(url.searchParams.get("startMs") || 0);
       const endMs = Number(url.searchParams.get("endMs") || 0);
-      const profile = await buildArchivedValueAreaProfile({
+      const profileArgs = {
         dir: config.recordDir,
         exchange: instrument.exchange,
         symbol: instrument.symbol,
@@ -2679,10 +2680,28 @@ const server = createServer(async (request, response) => {
         endMs,
         tickSize: tickSize(instrument.symbol),
         valueAreaPercent: 0.7,
-      });
+      };
+      // History Plant returns exact volume-at-price rows in seconds and is not
+      // affected by a collector restart. Prefer it for completed levels; only
+      // scan the much larger local raw tape when History Plant is unavailable.
+      const historyProfile = config.sourceMode === "protocol"
+        ? await buildHistoryValueAreaProfile(config, profileArgs).catch(() => null)
+        : null;
+      const archivedProfile = historyProfile
+        ? null
+        : await buildArchivedValueAreaProfile(profileArgs);
+      const profile = historyProfile || (
+        archivedProfile
+        && Number(archivedProfile.integrityGaps || 0) === 0
+        && Number(archivedProfile.droppedMessages || 0) === 0
+          ? archivedProfile
+          : null
+      );
       if (!profile) {
         return json(response, 404, {
-          error: "No complete recorded trade profile is available for that session.",
+          error: "No complete Rithmic trade profile is available for that session.",
+          recordedIntegrityGaps: Number(archivedProfile?.integrityGaps || 0),
+          recordedDroppedMessages: Number(archivedProfile?.droppedMessages || 0),
         });
       }
       return json(response, 200, profile);
