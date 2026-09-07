@@ -9,7 +9,7 @@ import {
   isNativeGammaConversion,
 } from "@/lib/chartGammaConversion";
 
-export const KWANT_LEVELS_SETTINGS_VERSION = 4;
+export const KWANT_LEVELS_SETTINGS_VERSION = 3;
 
 export type KwantLevelsDataSource = "GEX_CALL_MINUS_PUT";
 
@@ -21,16 +21,6 @@ export type KwantLevelsSettings = {
   lineStyle: "solid" | "dashed" | "dotted";
   showLabels: boolean;
   showEnvironment: boolean;
-  showCallWall: boolean;
-  showPutWall: boolean;
-  showZeroGamma: boolean;
-  showGammaMagnet: boolean;
-  showGammaAccelerator: boolean;
-  showHighVolatilityLevel: boolean;
-  showGammaCentre: boolean;
-  showMajorLevels: boolean;
-  showRankedLevels: boolean;
-  showExpectedMove: boolean;
   useThemeColors: boolean;
   positiveColor: string;
   negativeColor: string;
@@ -64,16 +54,6 @@ export function normalizeKwantLevelsSettings(
     lineStyle: lineStyle === "solid" || lineStyle === "dotted" ? lineStyle : "dashed",
     showLabels: input?.showLabels !== false,
     showEnvironment: input?.showEnvironment !== false,
-    showCallWall: input?.showCallWall !== false,
-    showPutWall: input?.showPutWall !== false,
-    showZeroGamma: input?.showZeroGamma !== false,
-    showGammaMagnet: input?.showGammaMagnet !== false,
-    showGammaAccelerator: input?.showGammaAccelerator !== false,
-    showHighVolatilityLevel: input?.showHighVolatilityLevel !== false,
-    showGammaCentre: input?.showGammaCentre === true,
-    showMajorLevels: input?.showMajorLevels !== false,
-    showRankedLevels: input?.showRankedLevels !== false,
-    showExpectedMove: input?.showExpectedMove === true,
     useThemeColors: input?.useThemeColors !== false,
     positiveColor: typeof input?.positiveColor === "string" ? input.positiveColor : theme.upColor,
     negativeColor: typeof input?.negativeColor === "string" ? input.negativeColor : theme.downColor,
@@ -120,64 +100,6 @@ export function selectKwantLevels(
       || left.price - right.price
     ))
     .slice(0, limit);
-}
-
-const levelSettingByKind: Partial<Record<ChartGammaSourceLevel["kind"], keyof KwantLevelsSettings>> = {
-  CALL_WALL: "showCallWall",
-  PUT_WALL: "showPutWall",
-  ZERO_GAMMA: "showZeroGamma",
-  GAMMA_MAGNET: "showGammaMagnet",
-  GAMMA_ACCELERATOR: "showGammaAccelerator",
-  HIGH_VOL_LEVEL: "showHighVolatilityLevel",
-  GAMMA_CENTRE: "showGammaCentre",
-  MAJOR_POSITIVE_OI: "showMajorLevels",
-  MAJOR_POSITIVE_VOLUME: "showMajorLevels",
-  POSITIVE_GEX: "showRankedLevels",
-  NEGATIVE_GEX: "showRankedLevels",
-  EXPECTED_MOVE_MAX: "showExpectedMove",
-  EXPECTED_MOVE_MIN: "showExpectedMove",
-};
-
-export function filterGexLevels(
-  levels: ChartGammaSourceLevel[],
-  settings: KwantLevelsSettings,
-) {
-  return levels.filter((level) => {
-    const setting = levelSettingByKind[level.kind];
-    return setting ? settings[setting] !== false : true;
-  });
-}
-
-/**
- * Turns provider/rank names into stable trader-facing GEX roles. Generic
- * ranked strikes are described by their position around the live futures
- * price; named structural objects retain their exact options meaning.
- */
-export function labelGexLevels(
-  levels: ChartGammaSourceLevel[],
-  futuresPrice: number | null,
-) {
-  let resistance = 0;
-  let support = 0;
-  let pivot = 0;
-  return levels.map((level) => {
-    let label: string;
-    if (level.kind === "CALL_WALL") label = "Call Wall";
-    else if (level.kind === "PUT_WALL") label = "Put Wall";
-    else if (level.kind === "ZERO_GAMMA") label = "Zero Gamma";
-    else if (level.kind === "GAMMA_MAGNET") label = "Gamma Magnet";
-    else if (level.kind === "GAMMA_ACCELERATOR") label = "Gamma Accelerator";
-    else if (level.kind === "HIGH_VOL_LEVEL") label = "High Volatility Level";
-    else if (level.kind === "GAMMA_CENTRE") label = "GEX Centre";
-    else if (level.kind === "MAJOR_POSITIVE_OI") label = "Major Positive GEX · OI";
-    else if (level.kind === "MAJOR_POSITIVE_VOLUME") label = "Major Positive GEX · Volume";
-    else if (level.kind === "EXPECTED_MOVE_MAX") label = "Expected Move High";
-    else if (level.kind === "EXPECTED_MOVE_MIN") label = "Expected Move Low";
-    else if (futuresPrice !== null && level.price > futuresPrice) label = `GEX Resistance ${++resistance}`;
-    else if (futuresPrice !== null && level.price < futuresPrice) label = `GEX Support ${++support}`;
-    else label = `GEX Pivot ${++pivot}`;
-    return { ...level, label };
-  });
 }
 
 export function kwantLevelColor(

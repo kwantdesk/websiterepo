@@ -1,18 +1,5 @@
 # KwantDesk Engineering Handoff
 
-## 2026-09-07 — Kwant Levels is now GEX Levels
-
-- The public chart study is `GEX Levels`; preserve its stable `gamma-levels`
-  catalogue/storage ID so saved charts and templates continue to load.
-- Structural labels are Call Wall, Put Wall, Zero Gamma, Gamma Magnet, Gamma
-  Accelerator, High Volatility Level and Major Positive GEX. Generic signed
-  exposure ranks are labelled GEX Support/Resistance around live futures.
-- Positive/negative GEX is determined by exposure sign, never strike position.
-  A confirmed `NEW_YORK_EOD` frame remains fixed and wakes only for the next
-  regular New York options open.
-- Prompt, diagnosis, accuracy boundary and verification:
-  `docs/prompt-log/2026-09-07-gex-levels-reengineer.md`.
-
 ## 2026-09-07 — Volume profiles keep their last-good frame at candle boundaries
 
 - Rolling Composite Volume Profile requests change range identity when a new

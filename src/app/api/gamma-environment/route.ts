@@ -58,7 +58,7 @@ function sourceLabel(args: {
   if (args.display === "NQ" || args.display === "MNQ" || args.display === "ES" || args.display === "MES") {
     const scale = Number(args.levelPriceScale);
     const suffix = Number.isFinite(scale) && scale > 0 ? ` · ${scale.toFixed(6)}×` : "";
-    return `GEX levels · ${args.marketOpen ? "LIVE" : "NEW YORK EOD"}${suffix}`;
+    return `Kwant levels · ${args.marketOpen ? "LIVE NY OPTIONS" : "STALE"}${suffix}`;
   }
   return `${args.source} options · ${args.marketOpen ? "LIVE NY OPTIONS" : "NEW YORK EOD"}`;
 }

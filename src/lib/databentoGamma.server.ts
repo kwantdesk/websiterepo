@@ -600,11 +600,11 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
   const maxWall = ev.walls.length ? ev.walls[0][1] : 1;
   const levels: ChartGammaSourceLevel[] = [];
   ev.walls.slice(0, 8).forEach(([k, v], i) => {
-    const kind: ChartGammaSourceLevelKind = v >= 0 ? "POSITIVE_GEX" : "NEGATIVE_GEX";
-    levels.push(level(kind, `GEX ${i + 1}`, k, v, i + 1));
+    const kind: ChartGammaSourceLevelKind = k > liveSpot ? "POSITIVE_GEX" : "NEGATIVE_GEX";
+    levels.push(level(kind, `KWANT ${i + 1}`, k, v, i + 1));
   });
-  if (ev.callRes) levels.push(level("CALL_WALL", "Call Wall", ev.callRes, ev.callG.get(ev.callRes) ?? null, 0));
-  if (ev.putSup) levels.push(level("PUT_WALL", "Put Wall", ev.putSup, ev.putG.get(ev.putSup) ?? null, 0));
+  if (ev.callRes) levels.push(level("CALL_WALL", "Call Resistance", ev.callRes, ev.callG.get(ev.callRes) ?? null, 0));
+  if (ev.putSup) levels.push(level("PUT_WALL", "Put Support", ev.putSup, ev.putG.get(ev.putSup) ?? null, 0));
   if (ev.flip) levels.push(level("ZERO_GAMMA", "Zero Gamma", ev.flip, null, 0));
   if (ev.hvl) levels.push(level("HIGH_VOL_LEVEL", "HVL", ev.hvl, null, 0));
   if (ev.majorPositiveOi) {

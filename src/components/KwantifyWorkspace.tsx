@@ -166,9 +166,7 @@ import {
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
-  filterGexLevels,
   kwantLevelColor,
-  labelGexLevels,
   normalizeKwantLevelsSettings,
   resolveKwantLevelsConversion,
   selectKwantLevels,
@@ -4851,27 +4849,6 @@ function gammaRefreshDelay(value: unknown, minimumMs = 60_000) {
     : minimumMs;
 }
 
-const newYorkOptionsClock = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  weekday: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-
-function millisecondsUntilNextNewYorkOptionsOpen(now = Date.now()) {
-  const stepMs = 15 * 60_000;
-  const firstCandidate = Math.ceil((now + 60_000) / stepMs) * stepMs;
-  for (let candidate = firstCandidate; candidate <= now + 8 * 24 * 60 * 60_000; candidate += stepMs) {
-    const parts = newYorkOptionsClock.formatToParts(new Date(candidate));
-    const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
-    if (!["Sat", "Sun"].includes(value("weekday")) && value("hour") === "09" && value("minute") === "30") {
-      return Math.max(60_000, candidate - now);
-    }
-  }
-  return 6 * 60 * 60_000;
-}
-
 function fetchGammaPayload(
   conversion: GammaConversionDefinition,
   options: {
@@ -4946,7 +4923,7 @@ function fetchGammaPayload(
         window.clearTimeout(timeout);
       }
     }
-    throw lastError instanceof Error ? lastError : new Error("GEX Levels could not refresh.");
+    throw lastError instanceof Error ? lastError : new Error("Kwant Levels could not refresh.");
   };
   const promise = requestPayload()
     .then((payload) => {
@@ -5084,12 +5061,11 @@ function buildGammaChartOverlay(args: {
     upColor: args.settings.upColor,
     downColor: args.settings.downColor,
   });
-  const futuresPrice = args.futuresPrice ?? args.candles.at(-1)?.close ?? null;
-  const levels = labelGexLevels(selectKwantLevels(filterGexLevels(mergeGammaLevelsAtSamePrice(source.levels
+  const levels = selectKwantLevels(mergeGammaLevelsAtSamePrice(source.levels
     .map((level) => ({
       ...level,
       price: roundedGammaPrice(level.price, calibration.scale, args.tickSize),
-    })), args.tickSize), levelSettings), levelSettings.maxLevels), futuresPrice)
+    })), args.tickSize), levelSettings.maxLevels)
     .map((level): ChartLevel => ({
       id: `gamma-${conversion.id}-${level.id}`,
       price: level.price,
@@ -5112,7 +5088,7 @@ function buildGammaChartOverlay(args: {
     label: payload.environment.gammaStateLabel,
     regime: payload.environment.gammaRegime,
     checkedAt: payload.checkedAt,
-    sourceLabel: `GEX Levels · ${conversion.source} options → ${conversion.target} · ${payload.marketOpen ? "LIVE" : "NEW YORK EOD"} · ${calibration.scale.toFixed(6)}×`,
+    sourceLabel: `Kwant levels · QuantData ${conversion.source} options → Rithmic ${conversion.target} · ${payload.marketOpen ? "LIVE NY OPTIONS" : "STALE"} · ${calibration.scale.toFixed(6)}×`,
     stale: !payload.marketOpen,
   };
 }
@@ -7923,16 +7899,6 @@ function WorkspaceChartPaneComponent({
         setGammaLevelsLoading(false);
       } else if (!fulfilled.length) {
         setGammaOverlay((current) => current ? { ...current, stale: true } : current);
-      }
-
-      // The server returns one final snapshot fixed to the New York options
-      // close. Keep that frame untouched and wake only for the next regular
-      // session instead of pointlessly refreshing it throughout the night.
-      const finalEndOfDaySnapshot = fulfilled.length > 0
-        && fulfilled.every((payload) => !payload.marketOpen && payload.snapshotMode === "NEW_YORK_EOD");
-      if (finalEndOfDaySnapshot) {
-        timer = window.setTimeout(() => void loadGamma(), millisecondsUntilNextNewYorkOptionsOpen());
-        return;
       }
 
       const refreshAfterMs = fulfilled.length
@@ -19829,8 +19795,8 @@ export default function KwantifyWorkspace({
             levelControls={[
               {
                 id: "gamma",
-                label: "GEX levels",
-                description: "Live call wall, put wall, zero gamma and ranked exposure",
+                label: "Kwant levels",
+                description: "Live options positioning and gamma levels",
                 badge: "Γ",
                 enabled: gammaLevelsEnabled,
                 available: activeWorkspacePane.broker === "Databento"
