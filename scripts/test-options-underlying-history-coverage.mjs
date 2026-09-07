@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import {
+  QuantDataMarketHistoryService,
+  __test as historyTest,
+} from "../services/rithmic_gateway/src/quantdata-market-history.mjs";
 
 const optionsSource = readFileSync(new URL("../src/lib/optionsFlow.ts", import.meta.url), "utf8");
 const archiverSource = readFileSync(new URL("../services/rithmic_gateway/src/cash-index-archiver.mjs", import.meta.url), "utf8");
@@ -28,8 +32,21 @@ assert.deepEqual(
 for (const ticker of [...optionTickers, "VIX"]) {
   assert.match(historySource, new RegExp(`"${ticker}"`), `${ticker} is archived but cannot be served to charts`);
 }
+
+const historyService = new QuantDataMarketHistoryService({ apiKey: "audit-only" });
+const optionsTimeframes = [
+  "1m", "2m", "3m", "5m", "10m", "15m", "30m", "45m",
+  "1h", "2h", "4h", "1D", "1W", "1M",
+];
+for (const ticker of [...optionTickers, "VIX"]) {
+  assert.equal(historyService.supports(ticker), true, `${ticker} has no cash/options history route`);
+  for (const timeframe of optionsTimeframes) {
+    const plan = historyTest.historyPlan(timeframe);
+    assert.ok(plan.sourceAggregation, `${ticker} ${timeframe} has no authoritative source aggregation`);
+  }
+}
 assert.match(serverSource, /indexSymbols: \["SPX", "NDX", "VIX"\]/, "VIX is missing from the shared live QuantData index poller");
 assert.match(backfillSource, /CASH_INDEX_HISTORY_FROM \|\| "2025-01-01"/, "the backfill floor moved later than January 2025");
 assert.match(backfillSource, /isCashSessionOpen\(\)/, "bulk history is not blocked during the live US session");
 
-console.log(`options-underlying history: ${optionTickers.length} offered tickers map to ${expectedPhysicalTickers.length} provider roots; VIX is included separately`);
+console.log(`options-underlying history: ${optionTickers.length + 1} tickers x ${optionsTimeframes.length} intervals = ${(optionTickers.length + 1) * optionsTimeframes.length} routed combinations; ${expectedPhysicalTickers.length} physical provider roots plus VIX`);

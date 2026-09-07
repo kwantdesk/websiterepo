@@ -1,5 +1,23 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Cross-market candle integrity audit
+
+- Futures event bars now have one construction contract in the browser and
+  gateway. DeepCharts-style Vol Bars use the same target/reversal algorithm
+  on both sides instead of the gateway silently treating them as range bars.
+- Delayed cash/options history now reconciles the complete observed live tail,
+  preserving every live high, low and close rather than replaying only the
+  latest quote and erasing an earlier wick. The first live bucket keeps its
+  authoritative historical open; fully observed later buckets keep their real
+  first-trade open, including genuine market gaps.
+- QuantData and cash-index history reject structurally impossible OHLC rows at
+  the provider boundary. They are not widened into plausible-looking candles.
+- Verification passed for 53 futures instruments across 50 intervals (2,650
+  combinations), 14 options/cash symbols across 14 routed intervals (196
+  combinations), plus archive, rollover, gap, wick, event-ownership, live seam,
+  TypeScript and production-build suites. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-cross-market-candle-integrity.md`.
+
 ## 2026-09-07 — Liquidity-map live frame pacing
 
 - Normal 20 FPS map paints no longer rebuild the complete 1,800-frame Signals

@@ -50,6 +50,15 @@ function finiteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function validOhlc(open: number, high: number, low: number, close: number) {
+  return open > 0
+    && high > 0
+    && low > 0
+    && close > 0
+    && high >= Math.max(open, close)
+    && low <= Math.min(open, close);
+}
+
 /**
  * A chart's timeframe as a provider aggregate.
  *
@@ -110,7 +119,10 @@ async function fetchCboeVixDailyCandles() {
     const high = finiteNumber(highValue);
     const low = finiteNumber(lowValue);
     const close = finiteNumber(closeValue);
-    if (timestamp === null || open === null || high === null || low === null || close === null) return [];
+    if (
+      timestamp === null || open === null || high === null || low === null || close === null
+      || !validOhlc(open, high, low, close)
+    ) return [];
     return [{ timestamp, open, high, low, close, volume: 0 }];
   });
 }
@@ -405,7 +417,10 @@ export async function fetchMarketIndexCandles(options: {
       const high = finiteNumber(value.h ?? value.high);
       const low = finiteNumber(value.l ?? value.low);
       const close = finiteNumber(value.c ?? value.close);
-      if (timestamp === null || open === null || high === null || low === null || close === null) return [];
+      if (
+        timestamp === null || open === null || high === null || low === null || close === null
+        || !validOhlc(open, high, low, close)
+      ) return [];
       return [{
         timestamp,
         open,

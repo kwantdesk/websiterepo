@@ -42,6 +42,50 @@ export function mergeHistoricalAndLiveCandle(
 }
 
 /**
+ * Reconcile delayed history with every clock candle already observed live.
+ * Futures and cash/options-underlying charts share this authority so a late
+ * response cannot erase a real intrabar high or low at the live edge.
+ */
+export function mergeHistoricalAndLiveCandleSeries(
+  historical: Candle[],
+  live: Candle[],
+  firstObservedTimestamp: number | null,
+  bucketForTimestamp: (timestamp: number) => number,
+): Candle[] {
+  if (firstObservedTimestamp === null || !Number.isFinite(firstObservedTimestamp)) {
+    return historical;
+  }
+  const firstObservedBucket = bucketForTimestamp(firstObservedTimestamp);
+  const byTimestamp = new Map<number, Candle>();
+  for (const candle of historical) {
+    const timestamp = bucketForTimestamp(candle.timestamp);
+    byTimestamp.set(timestamp, { ...candle, timestamp });
+  }
+
+  for (const liveCandle of live) {
+    const timestamp = bucketForTimestamp(liveCandle.timestamp);
+    if (timestamp < firstObservedBucket) continue;
+    const historicalCandle = byTimestamp.get(timestamp);
+    if (!historicalCandle) {
+      byTimestamp.set(timestamp, { ...liveCandle, timestamp });
+      continue;
+    }
+    byTimestamp.set(timestamp, mergeHistoricalAndLiveCandle(
+      historicalCandle,
+      liveCandle,
+      timestamp,
+      isFullyObservedLiveBucket(
+        timestamp,
+        firstObservedTimestamp,
+        bucketForTimestamp,
+      ),
+    ));
+  }
+
+  return [...byTimestamp.values()].sort((left, right) => left.timestamp - right.timestamp);
+}
+
+/**
  * Once a forming candle has painted a real extremum, a later snapshot for the
  * same source bar cannot erase it. The newest close is still authoritative;
  * only high/low/open and cumulative counters retain their observed history.

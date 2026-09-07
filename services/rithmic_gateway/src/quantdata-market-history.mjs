@@ -321,7 +321,8 @@ function normalizedCandle(timestamp, raw) {
   const close = Number(raw.closePrice ?? raw.close ?? raw.c);
   const volume = Number(raw.volume ?? raw.totalVolume ?? raw.tradeVolume ?? raw.v ?? 0);
   if (timestamp === null || ![open, high, low, close, volume].every(Number.isFinite) ||
-      open <= 0 || low <= 0 || close <= 0 || high < low || volume < 0) return null;
+      open <= 0 || low <= 0 || close <= 0 || high < Math.max(open, close) ||
+      low > Math.min(open, close) || volume < 0) return null;
   return { timestamp, open, high, low, close, volume };
 }
 

@@ -25,6 +25,7 @@ import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileM
 import {
   isFullyObservedLiveBucket,
   mergeHistoricalAndLiveCandle,
+  mergeHistoricalAndLiveCandleSeries,
 } from "@/lib/liveCandleAuthority";
 import { groupByNewYorkDate } from "@/lib/newYorkTradingDay";
 import { resolveCompositeVolumeProfileRange } from "@/lib/compositeVolumeProfile";
@@ -2857,37 +2858,12 @@ function mergeHistoricalWithLiveTail(
     return mergeChartHistory(normalizedHistory, liveOnly);
   }
   if (liveTailStartTimestamp === null) return normalizedHistory;
-
-  const liveBucketStart = getTimeframeBucketStart(liveTailStartTimestamp, timeframe);
-  const byTimestamp = new Map(normalizedHistory.map((candle) => [
-    getTimeframeBucketStart(candle.timestamp, timeframe),
-    {
-      ...candle,
-      timestamp: getTimeframeBucketStart(candle.timestamp, timeframe),
-    },
-  ]));
-
-  for (const liveCandle of rendered) {
-    const timestamp = getTimeframeBucketStart(liveCandle.timestamp, timeframe);
-    if (timestamp < liveBucketStart) continue;
-    const historicalCandle = byTimestamp.get(timestamp);
-    if (!historicalCandle) {
-      byTimestamp.set(timestamp, { ...liveCandle, timestamp });
-      continue;
-    }
-    byTimestamp.set(timestamp, mergeHistoricalAndLiveCandle(
-      historicalCandle,
-      liveCandle,
-      timestamp,
-      isFullyObservedLiveBucket(
-        timestamp,
-        liveTailStartTimestamp,
-        (sourceTimestamp) => getTimeframeBucketStart(sourceTimestamp, timeframe),
-      ),
-    ));
-  }
-
-  return [...byTimestamp.values()].sort((left, right) => left.timestamp - right.timestamp);
+  return mergeHistoricalAndLiveCandleSeries(
+    normalizedHistory,
+    rendered,
+    liveTailStartTimestamp,
+    (sourceTimestamp) => getTimeframeBucketStart(sourceTimestamp, timeframe),
+  );
 }
 
 function mergeObservedDatabentoTail(
@@ -7067,15 +7043,15 @@ function WorkspaceChartPaneComponent({
             )
           : pane.broker === "Market Index" && latestMarketIndexFrameRef.current
             // History is authoritative for completed OHLC, but it may finish
-            // after one or more live quotes. Reapply the newest verified frame
-            // before committing the array so a backfill can never repaint an
-            // options chart back to its older completed-bar close.
-            ? mergeLiveMidIntoCandles(
+            // after several live observations. Merge the complete observed
+            // candle tail, not only the newest price: applying one final quote
+            // used to erase an earlier live wick from the same options/index
+            // candle when a delayed history response committed.
+            ? mergeHistoricalWithLiveTail(
                 clean,
-                latestMarketIndexFrameRef.current.lastPrice,
-                pane.symbol,
+                latestCandlesRef.current,
                 pane.timeframe,
-                latestMarketIndexFrameRef.current.timestamp,
+                liveTailStartTimestampRef.current,
               )
             : clean;
         const merged = needsOrderFlowHistory
@@ -8519,6 +8495,9 @@ function WorkspaceChartPaneComponent({
           const nextFrame = { timestamp: tickTimestamp, lastPrice: snapshot.lastPrice };
           if (!shouldAcceptMarketIndexFrame(latestMarketIndexFrameRef.current, nextFrame)) return;
           latestMarketIndexFrameRef.current = nextFrame;
+          liveTailStartTimestampRef.current = liveTailStartTimestampRef.current === null
+            ? tickTimestamp
+            : Math.min(liveTailStartTimestampRef.current, tickTimestamp);
           latestFuturesRef.current = {
             ...latestFuturesRef.current,
             price: snapshot.lastPrice,

@@ -1,5 +1,21 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Cross-market candle integrity follow-up
+
+- Futures time/event-bar geometry and the options/cash delayed-history seam are
+  deterministic and covered across every exposed instrument/interval route.
+  Impossible provider OHLC fails closed; no repair may invent a high or low.
+- A time candle's open is its provider open or first real trade. Do not force it
+  to the prior close: an overnight, session-boundary or illiquid-market gap can
+  be genuine. Quiet in-session buckets may be shown as explicitly synthetic
+  flat bars only under the existing session-aware gap policy.
+- **Still open:** during the next active US session, capture and reconcile NQ,
+  ES, one thin futures contract, SPX, NDX and two equity/ETF option underlyings
+  against provider history across a live bucket boundary. Classify any remaining
+  timestamp holes as exchange/session gaps, entitlement/coverage gaps or packet
+  loss before changing the renderer. Deterministic suites cannot prove packets
+  that the production provider has not delivered.
+
 ## 2026-09-07 — Liquidity-map frame-pacing follow-up
 
 - The recurring full-tape Signals and trade-cluster rebuilds were removed from

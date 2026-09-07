@@ -5,6 +5,7 @@ import { CHART_INTERVAL_OPTIONS, isEventBasedChartInterval } from "../src/lib/ch
 import {
   isFullyObservedLiveBucket,
   mergeHistoricalAndLiveCandle,
+  mergeHistoricalAndLiveCandleSeries,
 } from "../src/lib/liveCandleAuthority.ts";
 
 function durationMs(timeframe) {
@@ -67,10 +68,51 @@ for (const { id } of timeframes) {
   assert.equal(partial.open, 100, `${id} replaced a partially observed bar's authoritative open`);
 }
 
+// Cash/options-underlying history can land after several live snapshots. The
+// whole observed candle must survive that seam, not only its final price.
+{
+  const minute = 60_000;
+  const firstObserved = 120_010;
+  const history = [
+    { timestamp: 60_000, open: 98, high: 101, low: 97, close: 100, volume: 10 },
+    { timestamp: 120_000, open: 100, high: 103, low: 99, close: 102, volume: 5 },
+  ];
+  const observed = [
+    ...history,
+    { timestamp: 120_000, open: 102, high: 112, low: 101, close: 104, volume: 0 },
+    { timestamp: 180_000, open: 108, high: 110, low: 107, close: 109, volume: 0 },
+  ];
+  const merged = mergeHistoricalAndLiveCandleSeries(
+    history,
+    observed,
+    firstObserved,
+    (timestamp) => Math.floor(timestamp / minute) * minute,
+  );
+  assert.deepEqual(
+    [merged[1].open, merged[1].high, merged[1].low, merged[1].close],
+    [100, 112, 99, 104],
+    "the partially observed options candle lost history authority or its live wick",
+  );
+  assert.deepEqual(
+    [merged[2].open, merged[2].high, merged[2].low, merged[2].close],
+    [108, 110, 107, 109],
+    "a fully observed options candle did not retain exact live OHLC or its genuine opening gap",
+  );
+}
+
 const workspaceSource = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 assert.ok(
-  workspaceSource.match(/mergeHistoricalAndLiveCandle\(/g)?.length >= 2,
-  "both history/live reconciliation paths must use the candle authority arbiter",
+  workspaceSource.includes("mergeHistoricalAndLiveCandleSeries("),
+  "the history/live tail must use the shared candle-series authority arbiter",
+);
+assert.ok(
+  workspaceSource.includes("mergeHistoricalAndLiveCandle("),
+  "the observed-second seam must use the single-candle authority arbiter",
+);
+assert.match(
+  workspaceSource,
+  /pane\.broker === "Market Index"[\s\S]{0,700}\? mergeHistoricalWithLiveTail\(/,
+  "options/index history must merge the complete observed live tail",
 );
 const chartSource = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 assert.match(

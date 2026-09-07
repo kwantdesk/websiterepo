@@ -786,7 +786,11 @@ function parseCandles(payload: unknown, regularCashSessionOnly = false): Options
       const high = finiteNumber(raw.highPrice);
       const low = finiteNumber(raw.lowPrice);
       const close = finiteNumber(raw.closePrice);
-      if (time === null || open === null || high === null || low === null || close === null) return [];
+      if (
+        time === null || open === null || high === null || low === null || close === null
+        || open <= 0 || high <= 0 || low <= 0 || close <= 0 || high < Math.max(open, close)
+        || low > Math.min(open, close)
+      ) return [];
       return [{ timestamp: time, open, high, low, close, volume: 0 }];
     })
     .sort((a, b) => a.timestamp - b.timestamp);
@@ -803,7 +807,11 @@ function parseUnderlyingHistoryCandles(payload: unknown): OptionsCandle[] {
       const high = finiteNumber(raw.highPrice ?? raw.high ?? raw.h);
       const low = finiteNumber(raw.lowPrice ?? raw.low ?? raw.l);
       const close = finiteNumber(raw.closePrice ?? raw.close ?? raw.c);
-      if (time === null || open === null || high === null || low === null || close === null) return [];
+      if (
+        time === null || open === null || high === null || low === null || close === null
+        || open <= 0 || high <= 0 || low <= 0 || close <= 0 || high < Math.max(open, close)
+        || low > Math.min(open, close)
+      ) return [];
       return [{
         timestamp: time,
         open,

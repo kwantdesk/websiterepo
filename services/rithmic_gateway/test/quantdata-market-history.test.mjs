@@ -214,3 +214,20 @@ test("range history aggregates daily candles into deterministic weeks", async ()
   }]);
   assert.deepEqual(__test.historyPlan("4h"), { sourceAggregation: "1h", sessionScoped: false });
 });
+
+test("cash/options history rejects impossible OHLC instead of manufacturing a wick", () => {
+  const start = Date.UTC(2026, 7, 18, 13, 30);
+  const parsed = __test.parseCandles(providerCandles([
+    { timestamp: start, open: 100, high: 99, low: 98, close: 101, volume: 1 },
+    { timestamp: start + 60_000, open: 101, high: 102, low: 102, close: 101.5, volume: 1 },
+    { timestamp: start + 120_000, open: 101.5, high: 103, low: 101, close: 102.5, volume: 1 },
+  ]));
+  assert.deepEqual(parsed, [{
+    timestamp: start + 120_000,
+    open: 101.5,
+    high: 103,
+    low: 101,
+    close: 102.5,
+    volume: 1,
+  }]);
+});

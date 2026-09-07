@@ -255,6 +255,50 @@ function addPointFigure(bars, record, threshold) {
   return bars.length - 1;
 }
 
+/**
+ * DeepCharts' "Vol Bars" are price target/reversal bars, not fixed-volume
+ * bars. Keep this server builder byte-for-byte equivalent in behaviour to the
+ * browser continuation builder: once the target is reached, the first print
+ * that reverses by the configured distance owns the new bar exactly once.
+ */
+function addTargetReversal(bars, record, threshold) {
+  let last = bars.at(-1);
+  const volume = Math.max(0, Number(record.size) || 0);
+  const trades = Math.max(1, Number(record.trades) || 1);
+  const delta = Number(record.delta) || 0;
+  if (!last) {
+    bars.push(makeCandle(record, safeTimestamp(record.timestamp), volume, trades, delta));
+    return bars.length - 1;
+  }
+
+  const direction = Math.sign(Number(last.close) - Number(last.open));
+  const targetReached = Math.abs(Number(last.close) - Number(last.open)) >= threshold.value - 1e-10;
+  if (!targetReached || direction === 0) {
+    update(last, record.price, volume, trades, delta);
+    return bars.length - 1;
+  }
+
+  const reversalDistance = direction > 0
+    ? last.high - record.price
+    : record.price - last.low;
+  if (reversalDistance < threshold.secondary - 1e-10) {
+    update(last, record.price, volume, trades, delta);
+    return bars.length - 1;
+  }
+
+  const anchor = direction > 0 ? last.high : last.low;
+  const next = makeCandle(
+    { ...record, price: anchor },
+    safeTimestamp(record.timestamp, last),
+    0,
+    0,
+    0,
+  );
+  update(next, record.price, volume, trades, delta);
+  bars.push(next);
+  return bars.length - 1;
+}
+
 export function createEventBarBuilder(interval, symbol, limit = 250_000) {
   const threshold = thresholdFor(interval, symbol);
   if (!threshold) throw new Error(`Unsupported event interval: ${interval}`);
@@ -266,6 +310,7 @@ export function createEventBarBuilder(interval, symbol, limit = 250_000) {
       if (record.timestamp < processedThrough) return;
       let owner;
       if (["volume", "trade", "delta"].includes(threshold.kind)) owner = addThreshold(bars, record, threshold);
+      else if (threshold.kind === "volume-bars") owner = addTargetReversal(bars, record, threshold);
       else if (threshold.kind === "renko") owner = addRenko(bars, record, threshold);
       else if (threshold.kind === "point-figure") owner = addPointFigure(bars, record, threshold);
       else owner = addRange(bars, record, threshold);
