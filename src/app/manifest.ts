@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/charts",
     name: "Kwant Desk",
     short_name: "Kwant Desk",
-    description: "Private quantitative research workspace.",
+    description: "Professional trading platform for charts, order flow, options analytics, market intelligence and execution.",
     start_url: "/charts",
     scope: "/",
     display: "standalone",

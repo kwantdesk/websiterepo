@@ -1,5 +1,12 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Public product description
+
+- Browser metadata and the installable-app manifest describe Kwant Desk as a
+  professional trading platform for charts, order flow, options analytics,
+  market intelligence and execution. Do not revert this customer-facing copy
+  to “private quantitative research workspace.”
+
 ## 2026-09-07 — Session-window ownership
 
 - Session overlays are non-overlapping by default. Asia, London/Europe and

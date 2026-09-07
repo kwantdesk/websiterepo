@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Kwant Desk",
-  description: "Private quantitative research workspace.",
+  description: "Professional trading platform for charts, order flow, options analytics, market intelligence and execution.",
   applicationName: "Kwant Desk",
   manifest: "/manifest.webmanifest",
   icons: {

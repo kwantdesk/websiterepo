@@ -8,7 +8,7 @@ type LoginPageProps = {
 
 const messages: Record<string, string> = {
   restricted: "This Google account could not be authenticated.",
-  configuration: "The private workspace is waiting for its Supabase settings.",
+  configuration: "Kwant Desk is waiting for its authentication settings.",
   auth: "Sign-in could not be completed. Please try again.",
 };
 
@@ -27,7 +27,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
         <div className="login-heading">
           <h1>Welcome back</h1>
-          <p>Access your private quantitative research workspace.</p>
+          <p>Access your Kwant Desk trading platform.</p>
         </div>
         {error ? <p className="login-error">{messages[error] ?? messages.auth}</p> : null}
         <GoogleLoginButton returnTo={safeReturnTo} />

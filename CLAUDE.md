@@ -1,5 +1,12 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Public product description corrected
+
+- Root browser metadata, PWA manifest and login copy now describe Kwant Desk
+  as a professional trading platform, not a private quantitative research
+  workspace. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-public-product-description.md`.
+
 ## 2026-09-07 — Chart emoji counts hidden
 
 - Removed the total catalogue count from the picker heading and the filtered
