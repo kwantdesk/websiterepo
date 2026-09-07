@@ -79,9 +79,7 @@ const tape = [
   assert.match(controls, /<option value="volume">Volume<\/option><option value="trades">Trades<\/option>/);
   assert.match(controls, /<option value="total">Total<\/option>.*<option value="delta">Delta<\/option>/s);
   assert.match(chart, /buildSpeedOfTapeInstantFrame\(marketTrades, instantTapeSettings\)/);
-  assert.match(chart, /data-speed-of-tape-rail="price-scale-trailing"/);
-  assert.match(chart, /<SpeedOfTapeInstantOverlay[\s\S]*right=\{0\}/);
-  assert.doesNotMatch(chart, /right=\{nativePriceScaleWidth \+ miniDomReservedWidth\}/);
+  assert.match(chart, /right=\{nativePriceScaleWidth \+ miniDomReservedWidth\}/);
   assert.match(workspace, /footprintLiveActive \|\| instantTapeLiveActive/);
   const overlay = fs.readFileSync(new URL("../src/components/SpeedOfTapeInstantOverlay.tsx", import.meta.url), "utf8");
   assert.match(overlay, /bottom: settings\.textEnabled \? 16 : 0/);

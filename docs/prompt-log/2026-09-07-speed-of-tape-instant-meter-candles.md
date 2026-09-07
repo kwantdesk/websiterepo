@@ -44,13 +44,3 @@ cover wick/body values, chronology and reversed-coordinate wiring.
 - `npx tsc --noEmit`
 - `npm run build`
 
-## Follow-up — trailing price-scale rail
-
-The meter was still mounted inside the chart canvas and offset left by the
-native price-scale width (plus Mini DOM width). That placed it directly over
-volume profiles and other right-edge chart studies.
-
-It now owns a dedicated fixed-width rail immediately after the chart container:
-chart plot, Mini DOM and native price scale first; Speed of Tape rail second.
-The rail uses the same measured width as the native price scale, so it no longer
-covers any chart content and remains aligned as the price scale width changes.

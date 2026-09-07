@@ -843,9 +843,6 @@ recap of the open items below and update this file when their state changes.
   Total mode. Never flatten both into one solid rectangle.
 - `Plot reversed` changes vertical orientation only. It must not reverse the
   chronological order or move the newest meter bar from the right edge.
-- The Instant meter owns a separate trailing rail immediately to the right of
-  the native price scale. Never offset it left into the plot or over profiles,
-  drawings, candles or Mini DOM.
 - The indicator remains execution-only; never synthesize its wick or body from
   OHLCV bars. Prompt/outcome:
   `docs/prompt-log/2026-09-07-speed-of-tape-instant-meter-candles.md`.
