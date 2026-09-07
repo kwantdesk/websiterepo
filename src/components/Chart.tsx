@@ -127,6 +127,7 @@ import {
   type LiveChartCandleDetail,
   type LiveChartExecutionDetail,
 } from "@/lib/chartLiveEvents";
+import { mergeHistoricalAndLiveCandle } from "@/lib/liveCandleAuthority";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   CHART_INDICATOR_BY_ID,
@@ -4258,6 +4259,15 @@ function Chart({
   const viewportRefreshTimerRef = useRef<number | null>(null);
   const footprintViewportCoverageRef = useRef<{ first: number; last: number } | null>(null);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
+  // Direct live paint and React history commits travel on different clocks.
+  // Retain the direct candle separately so a late same-bucket state commit
+  // cannot rewind its open/close one frame after it was drawn correctly.
+  const latestDirectLiveCandleRef = useRef<{
+    key: string | undefined;
+    instrument: string;
+    timeframe: string | undefined;
+    candle: Candle;
+  } | null>(null);
   const drawingCandlesRef = useRef(candles);
   const drawingMarketTradesRef = useRef(marketTrades);
   const drawingDataRefreshTimerRef = useRef<number | null>(null);
@@ -4559,6 +4569,12 @@ function Chart({
       if (!detail || detail.key !== liveCandleEventKey) return;
       if (liveReplayActiveRef.current) return;
       pendingCandle = detail.candle;
+      latestDirectLiveCandleRef.current = {
+        key: liveCandleEventKey,
+        instrument,
+        timeframe,
+        candle: detail.candle,
+      };
       latestCandleRef.current = detail.candle;
       if (volumeIndicatorEnabled || nonFootprintOrderFlowIndicatorEnabled) {
         pendingLiveVolumeCandleRef.current = detail.candle;
@@ -14671,7 +14687,23 @@ function Chart({
       setChartVisualReady(false);
       return;
     }
-    const lastSourceCandle = candles[candles.length - 1];
+    const propLastCandle = candles[candles.length - 1];
+    const directLiveRecord = latestDirectLiveCandleRef.current;
+    const directLiveCandle = directLiveRecord
+      && directLiveRecord.key === liveCandleEventKey
+      && directLiveRecord.instrument === instrument
+      && directLiveRecord.timeframe === timeframe
+      ? directLiveRecord.candle
+      : null;
+    const eventBased = timeframeToMs(timeframe) === null;
+    const lastSourceCandle = !eventBased && directLiveCandle?.timestamp === propLastCandle.timestamp
+      ? mergeHistoricalAndLiveCandle(
+          propLastCandle,
+          directLiveCandle,
+          propLastCandle.timestamp,
+          true,
+        )
+      : propLastCandle;
     latestCandleRef.current = lastSourceCandle;
     if (!candleSeriesRef.current || !chartRef.current) return;
     const lastCandleKey = `${lastSourceCandle.timestamp}-${lastSourceCandle.open}-${lastSourceCandle.high}-${lastSourceCandle.low}-${lastSourceCandle.close}`;
@@ -14714,8 +14746,11 @@ function Chart({
       (prevFirstTimestampRef.current !== null && candles[0]?.timestamp !== prevFirstTimestampRef.current);
 
     if (needsFullRedraw) {
+      const drawCandles = !isHeikinAshiStyle(candleStyle) && lastSourceCandle !== propLastCandle
+        ? [...seriesCandles.slice(0, -1), lastSourceCandle]
+        : seriesCandles;
       const chartData = buildSafeChartData(
-        seriesCandles,
+        drawCandles,
         timeframeToMs(timeframe) === null,
         eventSourceTimeByChartTimeRef.current,
         eventChartTimeBySourceTimeRef.current,
@@ -14747,7 +14782,6 @@ function Chart({
     }
 
     const naturalTime = Math.floor(lastSourceCandle.timestamp / 1_000);
-    const eventBased = timeframeToMs(timeframe) === null;
     const sameSourceBar = lastRenderedSourceTimestampRef.current === lastSourceCandle.timestamp;
     const incrementalTime = eventBased && lastRenderedCandleTimeRef.current !== null
       ? sameSourceBar
@@ -14784,7 +14818,7 @@ function Chart({
     if (candles.length > prevCandlesLengthRef.current) {
       prevCandlesLengthRef.current = candles.length;
     }
-  }, [candles, candleStyle, seriesCandles]);
+  }, [candles, candleStyle, instrument, liveCandleEventKey, seriesCandles, timeframe]);
 
   const hasCandles = candles.length > 0;
   useEffect(() => {

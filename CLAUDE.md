@@ -2849,3 +2849,16 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Keep the original 16 as first-run defaults and synchronize the list across
   every open chart. Prompt/outcome:
   `docs/prompt-log/2026-09-07-chart-emoji-quick-picks.md`.
+
+## 2026-09-07 — Live time-candle authority
+
+- A forming clock candle owns its open once its bucket began under continuous
+  live observation. Delayed cache/history/React commits may widen verified
+  extrema but must not replace that open or rewind the newest live close.
+- The bucket in which a subscription starts may already be partial, so its
+  historical open remains authoritative. This distinction preserves genuine
+  gaps and avoids inventing previous-close continuity.
+- The renderer retains direct live authority separately from React props.
+  Event bars keep their execution-boundary authority and do not use this rule.
+- Prompt, diagnosis, fix and outcome:
+  `docs/prompt-log/2026-09-07-live-candle-open-authority.md`.

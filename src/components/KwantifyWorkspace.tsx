@@ -22,6 +22,10 @@ import { useGexBotFlow } from "@/hooks/useGexBotFlow";
 import { useVixEnvironment } from "@/hooks/useVixEnvironment";
 import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
+import {
+  isFullyObservedLiveBucket,
+  mergeHistoricalAndLiveCandle,
+} from "@/lib/liveCandleAuthority";
 import { groupByNewYorkDate } from "@/lib/newYorkTradingDay";
 import { resolveCompositeVolumeProfileRange } from "@/lib/compositeVolumeProfile";
 import { clearChartViewportGroup } from "@/lib/chartViewportSync";
@@ -2870,19 +2874,16 @@ function mergeHistoricalWithLiveTail(
       byTimestamp.set(timestamp, { ...liveCandle, timestamp });
       continue;
     }
-    byTimestamp.set(timestamp, {
-      ...historicalCandle,
-      ...liveCandle,
+    byTimestamp.set(timestamp, mergeHistoricalAndLiveCandle(
+      historicalCandle,
+      liveCandle,
       timestamp,
-      open: historicalCandle.open,
-      high: Math.max(historicalCandle.high, liveCandle.high),
-      low: Math.min(historicalCandle.low, liveCandle.low),
-      close: liveCandle.close,
-      volume: Math.max(
-        Number(historicalCandle.volume ?? 0),
-        Number(liveCandle.volume ?? 0),
+      isFullyObservedLiveBucket(
+        timestamp,
+        liveTailStartTimestamp,
+        (sourceTimestamp) => getTimeframeBucketStart(sourceTimestamp, timeframe),
       ),
-    });
+    ));
   }
 
   return [...byTimestamp.values()].sort((left, right) => left.timestamp - right.timestamp);
@@ -2917,6 +2918,7 @@ function mergeObservedDatabentoTail(
   }
 
   const currentBucket = getTimeframeBucketStart(Date.now(), timeframe);
+  const firstObservedTimestamp = observedSeconds[0]?.timestamp ?? null;
   const merged = new Map(mergeChartHistory([], historical).map((candle) => [
     getTimeframeBucketStart(candle.timestamp, timeframe),
     { ...candle, timestamp: getTimeframeBucketStart(candle.timestamp, timeframe) },
@@ -2931,14 +2933,16 @@ function mergeObservedDatabentoTail(
     // missing buckets and completes the still-forming bucket.
     if (timestamp < currentBucket) continue;
     merged.set(timestamp, {
-      ...existing,
-      ...observed,
-      timestamp,
-      open: existing.open,
-      high: Math.max(existing.high, observed.high),
-      low: Math.min(existing.low, observed.low),
-      close: observed.close,
-      volume: Math.max(Number(existing.volume ?? 0), Number(observed.volume ?? 0)),
+      ...mergeHistoricalAndLiveCandle(
+        existing,
+        observed,
+        timestamp,
+        isFullyObservedLiveBucket(
+          timestamp,
+          firstObservedTimestamp,
+          (sourceTimestamp) => getTimeframeBucketStart(sourceTimestamp, timeframe),
+        ),
+      ),
       trades: Math.max(Number(existing.trades ?? 0), Number(observed.trades ?? 0)),
       askVolume: Math.max(Number(existing.askVolume ?? 0), Number(observed.askVolume ?? 0)),
       bidVolume: Math.max(Number(existing.bidVolume ?? 0), Number(observed.bidVolume ?? 0)),
