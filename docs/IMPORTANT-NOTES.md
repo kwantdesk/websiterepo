@@ -1,5 +1,19 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Aggressive-flow CVD follow-up
+
+- Worker and pane delivery are now lossless and FIFO during aggressive trade
+  bursts. Never restore an overflow policy that silently discards the oldest
+  execution: that directly creates false CVD gaps.
+- Backpressure is retained as one in-flight structured-clone message per
+  contract with bounded delivery chunks; pending records stay in the worker
+  until acknowledged.
+- **Still open:** during the next genuinely aggressive NQ/ES session burst,
+  soak CVD and footprint together and confirm the tail keeps advancing without
+  `SYNCING EXECUTIONS` becoming persistent. Deterministic tests cover a 100,000
+  execution backlog and 5,000 consecutive aggressive CVD bars, but cannot
+  manufacture a provider-side outage.
+
 ## 2026-09-07 — Cross-market candle integrity follow-up
 
 - Futures time/event-bar geometry and the options/cash delayed-history seam are

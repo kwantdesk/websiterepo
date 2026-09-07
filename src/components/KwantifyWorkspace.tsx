@@ -549,24 +549,15 @@ const SocialNotificationsPanel = dynamic(() => import("@/components/socials/Soci
 // coalesces prints into 40ms batches and the pane folds those in 40-120ms
 // batches, which bounds React work without withholding live profile data.
 const PROFILE_COMMIT_INTERVAL_BACKGROUND_MS = 3_000;
-const MAX_PENDING_PANE_EXECUTION_RECORDS = 25_000;
 
-function appendBoundedPaneRecords(
+function appendLosslessPaneRecords(
   target: InstitutionalTrade[],
   records: InstitutionalTrade[],
 ) {
-  if (!records.length) return;
-  if (records.length >= MAX_PENDING_PANE_EXECUTION_RECORDS) {
-    target.length = 0;
-    for (
-      let index = records.length - MAX_PENDING_PANE_EXECUTION_RECORDS;
-      index < records.length;
-      index += 1
-    ) target.push(records[index]);
-    return;
-  }
-  const overflow = target.length + records.length - MAX_PENDING_PANE_EXECUTION_RECORDS;
-  if (overflow > 0) target.splice(0, overflow);
+  // The worker already allows only one bounded structured-clone batch in
+  // flight. This short timer queue must preserve every execution it receives:
+  // deleting its oldest entries under load creates a false CVD gap and can
+  // leave the continuity guard pinned to an older snapshot.
   for (const record of records) target.push(record);
 }
 
@@ -6272,7 +6263,7 @@ function WorkspaceChartPaneComponent({
     };
     const queueProfileUpdate = (records: InstitutionalTrade[]) => {
       if (!needsLiveVolumeProfiles || !records.length) return;
-      appendBoundedPaneRecords(pendingProfileRecords, records);
+      appendLosslessPaneRecords(pendingProfileRecords, records);
       // The active candle and its volume profile are two views of the same
       // Rithmic executions. Commit them together. Waiting another full second
       // here made the histogram appear frozen while the candle was trading.
@@ -6378,7 +6369,7 @@ function WorkspaceChartPaneComponent({
     };
     const queueExecutionUpdate = (records: InstitutionalTrade[]) => {
       if (!records.length) return;
-      appendBoundedPaneRecords(pendingExecutionRecords, records);
+      appendLosslessPaneRecords(pendingExecutionRecords, records);
       if (executionSyncTimer !== null) return;
       // The active footprint paints at the same cadence as the execution-tape
       // worker. Background panes remain deliberately throttled.

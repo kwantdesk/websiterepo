@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Aggressive-flow CVD continuity
+
+- Removed two silent 25,000-execution overflow paths between the market worker
+  and chart pane. Real executions now drain FIFO without being deleted during
+  an aggressive burst.
+- Structured-clone work remains bounded to one in-flight batch per contract and
+  at most 25,000 records per delivery, so correctness does not restore the old
+  browser message flood.
+- Stress coverage proves exact ordered delivery of 100,000 queued executions;
+  CVD coverage proves a 5,000-bar aggressive sequence reaches its exact final
+  cumulative value without an internal break. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-aggressive-flow-cvd-continuity.md`.
+
 ## 2026-09-07 — Cross-market candle integrity audit
 
 - Futures event bars now have one construction contract in the browser and

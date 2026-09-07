@@ -6,10 +6,11 @@
  * enqueue a new batch every 40 ms while a chart frame was still folding the
  * previous one. One slow frame became a self-amplifying multi-gigabyte queue.
  *
- * Keep exactly one batch in flight per contract. Further prints remain in the
- * market worker and are coalesced until the renderer acknowledges that batch.
- * The worker's authoritative tape remains the source of truth; this is only a
- * bounded delivery window between the worker and the renderer.
+ * Keep exactly one bounded batch in flight per contract. Further prints remain
+ * in the market worker and are delivered in order after the renderer
+ * acknowledges that batch. Never discard the front of this queue: those are
+ * real executions and dropping them creates holes in CVD during the exact
+ * aggressive bursts this backpressure is meant to survive.
  */
 export const MAX_PENDING_WORKER_TRADE_RECORDS = 25_000;
 
@@ -33,24 +34,13 @@ export function createWorkerTradeBackpressure<T>(
     return state;
   };
 
-  const appendBounded = (target: T[], records: T[]) => {
-    if (!records.length) return;
-    if (records.length >= maximumPending) {
-      target.length = 0;
-      for (let index = records.length - maximumPending; index < records.length; index += 1) {
-        target.push(records[index]);
-      }
-      return;
-    }
-    const overflow = target.length + records.length - maximumPending;
-    if (overflow > 0) target.splice(0, overflow);
+  const appendLossless = (target: T[], records: T[]) => {
     for (const record of records) target.push(record);
   };
 
   const sendNext = (key: string, state: PublishState<T>) => {
     if (state.inFlight || !state.pending.length) return;
-    const records = state.pending;
-    state.pending = [];
+    const records = state.pending.splice(0, maximumPending);
     state.inFlight = true;
     send(key, records);
   };
@@ -59,12 +49,8 @@ export function createWorkerTradeBackpressure<T>(
     publish(key: string, records: T[]) {
       if (!records.length) return;
       const state = stateFor(key);
-      if (!state.inFlight && !state.pending.length) {
-        state.inFlight = true;
-        send(key, records);
-        return;
-      }
-      appendBounded(state.pending, records);
+      appendLossless(state.pending, records);
+      sendNext(key, state);
     },
     acknowledge(key: string) {
       const state = states.get(key);

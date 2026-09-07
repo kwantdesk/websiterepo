@@ -168,4 +168,21 @@ check("missing aggressor history creates a new honest CVD segment", () => {
   assert.equal(series[0].data[1].close, 10);
 });
 
+check("aggressive consecutive flow advances without gaps or a stalled tail", () => {
+  const bars = Array.from({ length: 5_000 }, (_, index) => {
+    const ask = 10_000 + (index % 23) * 137;
+    const bid = 8_000 + (index % 17) * 89;
+    return candle(afterSession + index * 1_000, ask, bid);
+  });
+  const [series] = calculate("cumulative-volume-delta", {
+    resetToSession: false,
+    periodMode: "all",
+  }, bars);
+  const expectedClose = bars.reduce((sum, bar) => sum + bar.delta, 0);
+  assert.equal(series.data.length, bars.length);
+  assert.equal(series.data.at(-1).time, Math.floor(bars.at(-1).timestamp / 1_000));
+  assert.equal(series.data.at(-1).close, expectedClose);
+  assert.equal(series.data.filter((point, index) => index > 0 && point.breakBefore).length, 0);
+});
+
 console.log(`\nCVD settings parity: ${passed}/${passed} checks passed`);
