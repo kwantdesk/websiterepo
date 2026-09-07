@@ -51,6 +51,7 @@ import {
   saveFootprintSelection,
   saveFootprintSettings,
   trySaveFootprintTemplate,
+  FOOTPRINT_PRESET_OPTIONS,
   FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW,
   footprintProfileGranularityTicks,
   validateFootprintSettings,
@@ -4911,12 +4912,15 @@ export default function ChartIndicatorsControl({
                       menuLabel="Footprint preset"
                     >
                       <option value="">Choose a preset</option>
-                      <option value="kwantdesk">KwantDesk default</option>
-                      <option value="order-flow">Order flow</option>
-                      <option value="imbalance">Imbalance</option>
-                      <option value="delta">Delta</option>
-                      <option value="minimal">Minimal ladder</option>
+                      {FOOTPRINT_PRESET_OPTIONS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>{preset.label}</option>
+                      ))}
                     </KwantSelect>
+                    {selectedFootprintPreset ? (
+                      <span className="block text-[8px] normal-case leading-4 tracking-normal text-muted">
+                        {FOOTPRINT_PRESET_OPTIONS.find((preset) => preset.id === selectedFootprintPreset)?.description}
+                      </span>
+                    ) : null}
                   </label>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Local template</span>
@@ -5085,7 +5089,7 @@ export default function ChartIndicatorsControl({
                       ))}
                       {section === "Imbalance" ? (
                         <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                          Bid × Ask uses classified executions from the Rithmic / CME tape. Unclassified executions remain in total volume and POC, but never enter Bid, Ask, Delta or imbalance calculations.
+                          Bid × Ask uses classified exchange executions. Unclassified executions remain in total volume and POC, but never enter Bid, Ask, Delta or imbalance calculations.
                         </div>
                       ) : null}
                     </div>

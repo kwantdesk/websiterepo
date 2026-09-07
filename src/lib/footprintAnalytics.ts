@@ -202,23 +202,39 @@ export function calculateFootprintAnalytics(
 
   const byTick = new Map(levels.map((level) => [level.tickIndex, level]));
   for (const level of levels) {
+    const values = metric(level);
     if (settings.comparisonMode === "delta-percent") {
-      level.isAskImbalance = level.delta > 0
-        && level.delta >= settings.minimumDifference
-        && level.deltaPercent * 100 >= settings.imbalanceRatio * 10;
-      level.isBidImbalance = level.delta < 0
-        && -level.delta >= settings.minimumDifference
-        && -level.deltaPercent * 100 >= settings.imbalanceRatio * 10;
+      // A ratio threshold and a delta-percentage threshold are two views of
+      // the same pair. For R = dominant / opposing, delta % is
+      // (R - 1) / (R + 1). The old `R * 10` shortcut made 3:1 qualify at 30%
+      // instead of the correct 50%, and it also kept using contract volume in
+      // a trade-count footprint.
+      const classified = values.bid + values.ask;
+      const deltaPercent = classified > 0 ? values.delta / classified : 0;
+      const requiredDeltaPercent = (settings.imbalanceRatio - 1)
+        / (settings.imbalanceRatio + 1);
+      level.isAskImbalance = values.ask >= settings.minimumDominantVolume
+        && values.delta >= settings.minimumDifference
+        && deltaPercent >= requiredDeltaPercent;
+      level.isBidImbalance = values.bid >= settings.minimumDominantVolume
+        && -values.delta >= settings.minimumDifference
+        && -deltaPercent >= requiredDeltaPercent;
       continue;
     }
+    const askOpposingLevel = settings.comparisonMode === "diagonal"
+      ? byTick.get(level.tickIndex - groupedTickDistance)
+      : level;
+    const bidOpposingLevel = settings.comparisonMode === "diagonal"
+      ? byTick.get(level.tickIndex + groupedTickDistance)
+      : level;
     const askOpposing = settings.comparisonMode === "diagonal"
-      ? byTick.get(level.tickIndex - groupedTickDistance)?.bidVolume ?? 0
-      : level.bidVolume;
+      ? askOpposingLevel ? metric(askOpposingLevel).bid : 0
+      : values.bid;
     const bidOpposing = settings.comparisonMode === "diagonal"
-      ? byTick.get(level.tickIndex + groupedTickDistance)?.askVolume ?? 0
-      : level.askVolume;
-    level.isAskImbalance = qualifiesImbalance(level.askVolume, askOpposing, settings);
-    level.isBidImbalance = qualifiesImbalance(level.bidVolume, bidOpposing, settings);
+      ? bidOpposingLevel ? metric(bidOpposingLevel).ask : 0
+      : values.ask;
+    level.isAskImbalance = qualifiesImbalance(values.ask, askOpposing, settings);
+    level.isBidImbalance = qualifiesImbalance(values.bid, bidOpposing, settings);
   }
   markStacks(levels, "ask", groupedTickDistance, Math.max(2, settings.stackedImbalanceLevels));
   markStacks(levels, "bid", groupedTickDistance, Math.max(2, settings.stackedImbalanceLevels));
@@ -239,8 +255,11 @@ export function calculateFootprintAnalytics(
   const maxTrades = chooseMaximum(levels, levelTradeCount);
   if (maxBid) maxBid.isMaxBid = true;
   if (maxAsk) maxAsk.isMaxAsk = true;
-  if (maxPositiveDelta) maxPositiveDelta.isMaxPositiveDelta = true;
-  if (maxNegativeDelta) maxNegativeDelta.isMaxNegativeDelta = true;
+  // A bar with only negative delta has no positive-delta maximum (and vice
+  // versa). Marking the least-negative row as "max positive" produced a
+  // convincing but false highlight.
+  if (maxPositiveDelta && metric(maxPositiveDelta).delta > 0) maxPositiveDelta.isMaxPositiveDelta = true;
+  if (maxNegativeDelta && metric(maxNegativeDelta).delta < 0) maxNegativeDelta.isMaxNegativeDelta = true;
   if (maxTrades) maxTrades.isMaxTrades = true;
 
   return {
@@ -250,8 +269,8 @@ export function calculateFootprintAnalytics(
     maxBidTick: maxBid?.tickIndex ?? null,
     maxAskTick: maxAsk?.tickIndex ?? null,
     maxVolumeTick: poc?.tickIndex ?? null,
-    maxPositiveDeltaTick: maxPositiveDelta?.tickIndex ?? null,
-    maxNegativeDeltaTick: maxNegativeDelta?.tickIndex ?? null,
+    maxPositiveDeltaTick: maxPositiveDelta && metric(maxPositiveDelta).delta > 0 ? maxPositiveDelta.tickIndex : null,
+    maxNegativeDeltaTick: maxNegativeDelta && metric(maxNegativeDelta).delta < 0 ? maxNegativeDelta.tickIndex : null,
     maxTradesTick: maxTrades?.tickIndex ?? null,
     vwap,
   };

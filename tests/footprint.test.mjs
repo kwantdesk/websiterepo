@@ -315,6 +315,55 @@ test("visible preset aliases change the live footprint mode", () => {
   assert.equal(minimal.visualizationMode, "text-only");
 });
 
+test("presets select a matching named chart and include professional alternatives", () => {
+  const orderFlow = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "order-flow");
+  const heatmap = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "volume-heatmap");
+  const trades = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "trade-count");
+  assert.deepEqual([orderFlow.chartType, orderFlow.chartVariant], ["bid-ask", "bid-ask-digital-histogram"]);
+  assert.deepEqual([heatmap.chartType, heatmap.chartVariant], ["heatmap", "heatmap-volume"]);
+  assert.deepEqual([trades.chartType, trades.chartVariant, trades.inputType], ["trades", "trades-digital-histogram", "num-trades"]);
+  const minimalAfterOrderFlow = applyFootprintPreset(orderFlow, "minimal");
+  assert.equal(minimalAfterOrderFlow.showPerBarVolumeProfile, false, "a preset does not leak the previous preset's wings");
+  assert.equal(minimalAfterOrderFlow.showPerBarDeltaProfile, false);
+});
+
+test("trade-count imbalance calculations use trades rather than contract volume", () => {
+  const bars = buildFootprintBars(candles.slice(0, 1), [
+    trade({ recordIndex: 0, close: 100, volume: 100, bidVolume: 100, askVolume: 0, trades: 1, aggressor: "SELL" }),
+    trade({ recordIndex: 1, timestamp: 3_000, close: 100.25, volume: 20, bidVolume: 0, askVolume: 20, trades: 5 }),
+  ], {
+    ...defaults,
+    inputType: "num-trades",
+    minimumDominantVolume: 2,
+  });
+  const askRow = bars[0].rows.find((row) => row.price === 100.25);
+  assert.equal(askRow?.isAskImbalance, true, "five ask trades beat one opposing bid trade");
+});
+
+test("delta-percent mode converts a ratio threshold exactly", () => {
+  const bars = buildFootprintBars(candles.slice(0, 1), [
+    trade({ recordIndex: 0, close: 100, volume: 100, bidVolume: 30, askVolume: 70, trades: 2 }),
+    trade({ recordIndex: 1, timestamp: 3_000, close: 100.25, volume: 100, bidVolume: 25, askVolume: 75, trades: 2 }),
+  ], {
+    ...defaults,
+    imbalanceMode: "delta-percent",
+    minimumImbalancePercent: 300,
+    minimumDominantVolume: 1,
+    minimumDelta: 0,
+  });
+  assert.equal(bars[0].rows.find((row) => row.price === 100)?.isAskImbalance, false, "40% delta is below a 3:1 threshold");
+  assert.equal(bars[0].rows.find((row) => row.price === 100.25)?.isAskImbalance, true, "50% delta is exactly 3:1");
+});
+
+test("positive and negative delta extrema are not invented", () => {
+  const negative = buildFootprintBars(candles.slice(0, 1), [
+    trade({ recordIndex: 0, close: 100, volume: 12, bidVolume: 10, askVolume: 2, aggressor: "SELL" }),
+  ], defaults)[0];
+  assert.equal(negative.maxPositiveDeltaTick, null);
+  assert.equal(negative.rows[0].isMaxPositiveDelta, false);
+  assert.equal(negative.maxNegativeDeltaTick, negative.rows[0].tickIndex);
+});
+
 test("local footprint templates validate names, settings and invalid records", () => {
   const templates = validateFootprintTemplates([
     { id: "flow", name: "  NY Order Flow  ", settings: { contentMode: "delta", barWidth: 999 }, updatedAt: 12 },

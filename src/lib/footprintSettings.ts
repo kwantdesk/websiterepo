@@ -258,12 +258,29 @@ export type FootprintPresetName =
   | "delta"
   | "delta-focus"
   | "volume-heatmap"
+  | "trade-count"
   | "minimal"
   | "minimal-ladder";
+
+export const FOOTPRINT_PRESET_OPTIONS: ReadonlyArray<{
+  id: FootprintPresetName;
+  label: string;
+  description: string;
+}> = [
+  { id: "kwantdesk", label: "KwantDesk default", description: "Balanced Bid × Ask cells with value area, POC and stacked imbalances." },
+  { id: "order-flow", label: "Order flow + profiles", description: "Digital Bid × Ask histogram with live volume and delta wings." },
+  { id: "imbalance", label: "Imbalance", description: "High-contrast diagonal and stacked imbalance view." },
+  { id: "delta", label: "Delta", description: "Signed delta histogram with positive and negative extrema." },
+  { id: "volume-heatmap", label: "Volume heatmap", description: "Volume concentration by price with a clean heat scale." },
+  { id: "trade-count", label: "Trade count", description: "Number of executions at each price rather than contract volume." },
+  { id: "minimal", label: "Minimal ladder", description: "Text-only Bid × Ask ladder without secondary overlays." },
+];
 
 export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSettings>> = {
   kwantdesk: {},
   "order-flow": {
+    chartType: "bid-ask",
+    chartVariant: "bid-ask-digital-histogram",
     contentMode: "bid-ask-histogram",
     visualizationMode: "histogram",
     scaleMode: "visible-region",
@@ -278,6 +295,8 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
     perBarProfileExtraSpacing: 18,
   },
   imbalance: {
+    chartType: "bid-ask",
+    chartVariant: "bid-ask",
     contentMode: "bid-ask",
     visualizationMode: "heatmap-histogram",
     colorCalculation: "imbalance",
@@ -288,6 +307,8 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
     showSummary: true,
   },
   "delta-focus": {
+    chartType: "delta",
+    chartVariant: "delta-histogram",
     contentMode: "delta-histogram",
     visualizationMode: "heatmap-histogram",
     showMaxPositiveDelta: true,
@@ -295,6 +316,8 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
     showBetweenVolume: false,
   },
   delta: {
+    chartType: "delta",
+    chartVariant: "delta-histogram",
     contentMode: "delta-histogram",
     visualizationMode: "heatmap-histogram",
     showMaxPositiveDelta: true,
@@ -302,12 +325,27 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
     showBetweenVolume: false,
   },
   "volume-heatmap": {
+    chartType: "heatmap",
+    chartVariant: "heatmap-volume",
     contentMode: "volume",
     visualizationMode: "heatmap",
     maximumOpacity: 84,
     showStackedImbalances: false,
   },
+  "trade-count": {
+    chartType: "trades",
+    chartVariant: "trades-digital-histogram",
+    contentMode: "trades-histogram",
+    visualizationMode: "histogram",
+    colorCalculation: "volume",
+    inputType: "num-trades",
+    showCellText: true,
+    showValueArea: true,
+    showStackedImbalances: true,
+  },
   "minimal-ladder": {
+    chartType: "bid-ask",
+    chartVariant: "bid-ask-ladder",
     contentMode: "ladder",
     visualizationMode: "text-only",
     showSummary: false,
@@ -315,6 +353,8 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
     showStackedImbalances: false,
   },
   minimal: {
+    chartType: "bid-ask",
+    chartVariant: "bid-ask-ladder",
     contentMode: "ladder",
     visualizationMode: "text-only",
     showSummary: false,
@@ -581,9 +621,37 @@ export function applyFootprintPreset(
   current: FootprintSettings,
   preset: FootprintPresetName,
 ): FootprintSettings {
+  // Presets are complete starting points, not a handful of toggles laid over
+  // whichever preset ran before them. Keep only account-level presentation
+  // choices that should survive a view change: palette and performance caps.
+  const preserved = {
+    useThemeColors: current.useThemeColors,
+    askColor: current.askColor,
+    bidColor: current.bidColor,
+    betweenColor: current.betweenColor,
+    neutralColor: current.neutralColor,
+    textColor: current.textColor,
+    pocColor: current.pocColor,
+    valueAreaColor: current.valueAreaColor,
+    deltaPocColor: current.deltaPocColor,
+    clusterColor: current.clusterColor,
+    singlePrintColor: current.singlePrintColor,
+    stackedAskColor: current.stackedAskColor,
+    stackedBidColor: current.stackedBidColor,
+    unfinishedAuctionColor: current.unfinishedAuctionColor,
+    vwapColor: current.vwapColor,
+    perBarVolumeColor: current.perBarVolumeColor,
+    perBarPositiveDeltaColor: current.perBarPositiveDeltaColor,
+    perBarNegativeDeltaColor: current.perBarNegativeDeltaColor,
+    perBarProfilePocColor: current.perBarProfilePocColor,
+    fpsLimit: current.fpsLimit,
+    maximumRetainedBars: current.maximumRetainedBars,
+    maximumDetailedVisibleBars: current.maximumDetailedVisibleBars,
+  };
   return validateFootprintSettings({
-    ...current,
+    ...DEFAULT_FOOTPRINT_SETTINGS,
     ...(preset === "kwantdesk" ? DEFAULT_FOOTPRINT_SETTINGS : FOOTPRINT_PRESETS[preset]),
+    ...preserved,
   });
 }
 

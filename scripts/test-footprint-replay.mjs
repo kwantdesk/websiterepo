@@ -110,7 +110,7 @@ const executions = [
   assert.match(workspace, /loadReplayCandles\(timeframe, startAt, timeframe === "1m"\)/,
     "non-1m replay must not download the same large execution tape twice");
   assert.match(chart, /replayFootprintAdvanced/);
-  assert.match(chart, /replayFootprintAdvanced\) \{/,
+  assert.match(chart, /\|\| replayFootprintAdvanced/,
     "replay footprint changes must bypass the footprint-only live sampling shortcut");
   assert.match(chart, /showPerBarVolumeProfile/);
   assert.match(chart, /showPerBarDeltaProfile/);

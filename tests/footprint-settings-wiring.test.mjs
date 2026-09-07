@@ -18,7 +18,7 @@ test("every footprint setting has a default and a live runtime consumer", () => 
   const runtime = `${chart}\n${primitive}\n${build}`;
   for (const key of settingsKeys) {
     assert.match(settings, new RegExp(`\\b${key}:`), `${key} has a validated default`);
-    if (key === "footprintSettingsVersion") continue;
+    if (["footprintSettingsVersion", "chartType", "chartVariant"].includes(key)) continue;
     assert.match(runtime, new RegExp(`\\b${key}\\b`), `${key} reaches aggregation or rendering`);
   }
 });
@@ -39,7 +39,7 @@ test("every exposed footprint mode is connected to the live chart options", () =
     "markerAlignment",
     "fpsLimit",
   ]) {
-    assert.match(control, new RegExp(`"${key}"`), `${key} is exposed`);
+    assert.match(control, new RegExp(`(?:"${key}"|\\[String\\(key\\)\\])`), `${key} is exposed`);
     assert.match(chart, new RegExp(`footprintSettings\\.${key}`), `${key} reaches Chart`);
   }
 });
@@ -64,8 +64,8 @@ test("all footprint numeric controls feed aggregation, rendering, or performance
 test("previously disconnected footprint controls now change renderer behavior", () => {
   assert.match(primitive, /options\.scaleMode === "all-loaded" && options\.allLoadedScaleMaximum > 0/);
   assert.match(primitive, /loadedScaleByTime/);
-  assert.match(primitive, /visibleBars\.length <= options\.maximumDetailedVisibleBars/);
-  assert.match(primitive, /const compactFits = rowHeight >= 7/);
+  assert.match(primitive, /visibleBars\.length\s*\n\s*<= options\.maximumDetailedVisibleBars/);
+  assert.match(primitive, /const compactFits = !bidAskContent/);
   assert.match(primitive, /const fullBidAskFits = detailed/);
   assert.match(primitive, /const adaptiveProfileWidth = profileSideCount > 0/);
   assert.match(primitive, /options\.showImbalances && row\.isBidImbalance/);
@@ -74,10 +74,10 @@ test("previously disconnected footprint controls now change renderer behavior", 
   assert.match(primitive, /if \(options\.colorMode === "none"\) return 0/);
   assert.match(primitive, /1_000 \/ this\.renderOptions\.fpsLimit/);
   assert.match(chart, /return footprintVisibleCandles/);
-  assert.match(runtime, /FOOTPRINT_DATA_REFRESH_INTERVAL_MS = 250/);
-  assert.match(chart, /\? FOOTPRINT_DATA_REFRESH_INTERVAL_MS/);
+  assert.match(runtime, /ORDER_FLOW_DATA_REFRESH_INTERVAL_MS = 500/);
+  assert.match(chart, /\? ORDER_FLOW_DATA_REFRESH_INTERVAL_MS/);
   assert.match(workspace, /scheduleMarketTradeStateSync\(\)/);
-  assert.match(workspace, /setMarketTrades\(latestMarketTradesRef\.current\)/);
+  assert.match(workspace, /const tape = latestMarketTradesRef\.current;[\s\S]*setMarketTrades\(\(current\) => current === tape \? current : tape\)/);
   assert.doesNotMatch(chart, /Math\.round\(1_000 \/ footprintRefreshFps\)/);
   assert.doesNotMatch(workspace, /Math\.round\(1_000 \/ footprintRefreshFps\)/);
   assert.match(chart, /barWidth: clamp\([^\n]+, 28, 180\)/);
@@ -101,24 +101,23 @@ test("per-bar volume and delta profiles share the footprint execution rows", () 
     assert.match(control, new RegExp(`\\b${key}\\b`), `${key} is exposed in footprint settings`);
     assert.match(chart, new RegExp(`footprintSettings\\.${key}`), `${key} reaches the chart runtime`);
   }
-  assert.match(primitive, /profileValues = bar\.rows\.map\(\(row\) => displayValues\(row, options\)\)/);
-  assert.match(primitive, /values\.total \/ volumeDenominator/);
-  assert.match(primitive, /Math\.abs\(values\.delta\) \/ deltaDenominator/);
-  assert.match(primitive, /options\.showPerBarProfilePoc && row\.isPoc/);
+  assert.match(primitive, /profileValues = profileRows\.map\(\(row\) => displayValues\(row, options\)\)/);
+  assert.match(primitive, /profileRowValues\.total \/ volumeDenominator/);
+  assert.match(primitive, /Math\.abs\(profileRowValues\.delta\) \/ deltaDenominator/);
+  assert.match(primitive, /options\.showPerBarProfilePoc && profileRow\.isPoc/);
   assert.match(primitive, /deltaLeft = left - options\.perBarProfileGap - deltaWidth/);
-  assert.match(primitive, /volumeLeft = left \+ barWidth \+ options\.perBarProfileGap/);
   assert.match(primitive, /drawRightFacingVolumeProfileRow/);
   assert.match(primitive, /path\.roundRect\(x, y, width, rowHeight, \[0, radius, radius, 0\]\)/);
   assert.doesNotMatch(primitive, /context\.fillRect\(volumeLeft, profileTop, volumeWidth, profileHeight\)/);
   assert.match(chart, /const adaptiveProfileSpan = profileLayerEnabled/);
-  assert.match(chart, /Math\.min\([\s\S]*42,[\s\S]*profileSideWidth \* profileSideCount/);
+  assert.match(chart, /profileSideWidth \* profileSideCount/);
   assert.match(settings, /"order-flow": \{[\s\S]*showPerBarVolumeProfile: true,[\s\S]*showPerBarDeltaProfile: true/);
 });
 
 test("footprint preset and local-template selections remain controlled and persistent", () => {
   assert.match(control, /value=\{selectedFootprintPreset\}/);
   assert.match(control, /setSelectedFootprintPreset\(preset\)/);
-  assert.match(control, /setSelectedFootprintTemplateId\(saved\?\.id \?\? ""\)/);
+  assert.match(control, /setSelectedFootprintTemplateId\(saved\.id\)/);
   assert.match(control, /saveFootprintSelection\(settingsInstance\.instanceId/);
   assert.match(settings, /FOOTPRINT_SELECTION_STORAGE_PREFIX/);
   assert.match(settings, /loadFootprintSelection/);

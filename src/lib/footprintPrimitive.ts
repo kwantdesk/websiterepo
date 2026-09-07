@@ -15,6 +15,7 @@ import {
   type FootprintVisualizationMode,
 } from "./footprint";
 import { applyLiveFootprintCandleGeometry } from "./footprintLive";
+import { footprintPercentile } from "./footprintRenderMath";
 
 export type FootprintRenderBar = FootprintBar & {
   time: Time;
@@ -50,6 +51,8 @@ export type FootprintPrimitiveOptions = {
    * being read back off each bar's own rows.
    */
   rowPriceStep: number;
+  /** Price distance between adjacent rows in the optional side profiles. */
+  profileRowPriceStep: number;
   candleSpacing: number;
   borderWidth: number;
   opacity: number;
@@ -125,6 +128,7 @@ export type FootprintPrimitiveOptions = {
 
 const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   rowPriceStep: 0,
+  profileRowPriceStep: 0,
   contentMode: "bid-ask",
   visualizationMode: "heatmap-histogram",
   scaleMode: "visible-region",
@@ -268,9 +272,7 @@ function drawRightFacingVolumeProfileRow(
 }
 
 function percentile(values: number[], fraction: number) {
-  if (!values.length) return 1;
-  const ordered = [...values].sort((left, right) => left - right);
-  return Math.max(1, ordered[Math.min(ordered.length - 1, Math.floor((ordered.length - 1) * clamp(fraction, 0.5, 1)))]);
+  return footprintPercentile(values, fraction);
 }
 
 export function footprintScaleCeiling(
@@ -554,9 +556,11 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           const deltaDenominator = options.perBarProfileScaleMode === "shared"
             ? profileSharedMaximum
             : profileDeltaMaximum;
-          const neighbouringProfileTick = profileRows[1]
-            ? Math.abs(profileRows[1].price - profileRows[0].price)
-            : Math.max(0.000001, (bar.high - bar.low) / Math.max(1, profileRows.length));
+          const neighbouringProfileTick = options.profileRowPriceStep > 0
+            ? options.profileRowPriceStep
+            : profileRows[1]
+              ? Math.abs(profileRows[1].price - profileRows[0].price)
+              : Math.max(0.000001, (bar.high - bar.low) / Math.max(1, profileRows.length));
 
           for (let profileIndex = 0; profileIndex < profileRows.length; profileIndex += 1) {
             const profileRow = profileRows[profileIndex];
@@ -827,13 +831,19 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             && context.measureText(bidText).width
               + context.measureText(askText).width
               + 14 <= barWidth;
+          const bidAskContent = ["bid-ask", "bid-ask-histogram", "ladder"].includes(contentMode);
           const compactMetric = ["delta", "delta-histogram"].includes(contentMode)
             ? values.delta
             : values.total;
           const compactText = `${compactMetric > 0 && ["delta", "delta-histogram"].includes(contentMode) ? "+" : ""}${formatFootprintValue(compactMetric, format)}`;
           const compactFontSize = clamp(Math.min(fontSize, rowHeight * 0.58, 9), 7, 9);
           context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
-          const compactFits = options.showCellText !== false
+          // Bid × Ask is a pair. Replacing it with an unlabelled total as the
+          // candle narrows changes the meaning of the number under the
+          // trader's cursor. Those cells now stay visual-only until both sides
+          // fit; single-metric views may still use a compact K/M value.
+          const compactFits = !bidAskContent
+            && options.showCellText !== false
             && rowHeight >= 7
             && context.measureText(compactText).width + 4 <= barWidth;
           if (!fullBidAskFits && !compactFits && !detailed) {
@@ -841,7 +851,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             continue;
           }
           context.font = `${row.isPoc ? 700 : options.fontWeight} ${fullBidAskFits || detailed ? fontSize : compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
-          if (["bid-ask", "bid-ask-histogram", "ladder"].includes(contentMode)) {
+          if (bidAskContent) {
             if (fullBidAskFits && (options.showZeros || values.bid > 0)) {
               context.textAlign = "right";
               context.fillText(bidText, x - 5, rowY);
@@ -849,11 +859,6 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             if (fullBidAskFits && (options.showZeros || values.ask > 0)) {
               context.textAlign = "left";
               context.fillText(askText, x + 5, rowY);
-            }
-            if (!fullBidAskFits && compactFits) {
-              context.textAlign = "center";
-              context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
-              context.fillText(compactText, x, rowY);
             }
           } else {
             const metric = contentMode === "volume" || contentMode === "volume-histogram"

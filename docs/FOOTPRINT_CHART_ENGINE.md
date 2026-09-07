@@ -89,7 +89,8 @@ diagonal and stacked imbalance emphasis; POC and value area; maximum levels;
 unfinished auctions; summaries; unclassified-volume bands; and per-bar VWAP.
 
 `footprintSettings.ts` contains the versioned defaults, validation, migrations,
-five presets and an SSR-safe per-instance browser-storage fallback. Normal
+seven visible presets (plus legacy aliases) and an SSR-safe per-instance
+browser-storage fallback. Normal
 workspace persistence remains authoritative in the application.
 
 The footprint intentionally renders only when price-level execution data is

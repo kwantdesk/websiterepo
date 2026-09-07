@@ -6937,6 +6937,7 @@ function Chart({
       showPerBarProfilePoc: footprintSettings.showPerBarProfilePoc !== false,
       perBarProfilePocSize: clamp(Number(footprintSettings.perBarProfilePocSize ?? 5), 2, 12),
       perBarProfileOutline: footprintSettings.perBarProfileOutline === true,
+      profileRowPriceStep: priceFormat.minMove * footprintProfileGroupTicks,
       barWidth: clamp(Number(footprintSettings.barWidth ?? 92), 28, 180),
       // The study's own row spacing, so every bar draws rows the same height
       // and prints its numbers at the same size.

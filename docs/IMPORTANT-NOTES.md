@@ -811,3 +811,18 @@ recap of the open items below and update this file when their state changes.
 - Exact History Plant tick-side backfill for incomplete older sessions remains
   the durable historical-CVD follow-up. Prompt/outcome:
   `docs/prompt-log/2026-09-07-volume-profile-cvd-institutional-audit.md`.
+
+## 2026-09-07 — Footprint chart polish
+
+- A Footprint's selected input owns every related calculation. Trades mode
+  must use trade counts for POC, value area, VWAP, maxima and imbalance; never
+  display trade counts while classifying the row from contract volume.
+- A ratio `R` maps to delta percentage `(R - 1) / (R + 1)`. Do not restore the
+  old `R * 10` shortcut. Positive/negative maximum markers must fail closed
+  when that sign does not exist.
+- Bid x Ask cells never collapse into an unlabelled total. Hide the figures
+  until the pair fits. Side-profile row geometry comes from its configured
+  grouped tick step, not the distance between sparse prints.
+- The seven visible stock presets are deterministic starting points and retain
+  the user's palette/performance caps. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-footprint-polish.md`.
