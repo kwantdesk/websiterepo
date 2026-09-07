@@ -123,6 +123,7 @@ import {
   LIVE_CHART_EXECUTION_EVENT,
   WORKSPACE_LAYOUT_SETTLED_EVENT,
   enqueueLiveCandleSnapshot,
+  indicatorCandleSnapshotChanged,
   mergeLiveIndicatorCandle,
   type DatabentoLiveTick,
   type LiveChartCandleDetail,
@@ -4761,6 +4762,10 @@ function Chart({
       previousCandles.length !== candles.length
       || previousCandles[0]?.timestamp !== candles[0]?.timestamp
     );
+    const historyContentChanged = (
+      !historyShapeChanged
+      && indicatorCandleSnapshotChanged(previousCandles, candles)
+    );
     const orderFlowHydrated = (
       orderFlowHistoryReady
       && !sampledOrderFlowHistoryReadyRef.current
@@ -4802,7 +4807,7 @@ function Chart({
     // the same completed candle snapshot immediately, otherwise the price
     // chart appears first and CVD remains as its old flat/live-only sample for
     // another timer cycle after refresh.
-    if (historyShapeChanged || orderFlowHydrated || executionTapeHydrated || replayFootprintAdvanced) {
+    if (historyShapeChanged || historyContentChanged || orderFlowHydrated || executionTapeHydrated || replayFootprintAdvanced) {
       if (indicatorSampleTimerRef.current !== null) {
         window.clearTimeout(indicatorSampleTimerRef.current);
         indicatorSampleTimerRef.current = null;
@@ -20508,6 +20513,7 @@ function Chart({
 
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
+        coordinateScope={`${chartFrameWorkKey}:${replayTimestampMs ?? "live"}`}
         liveChartKey={replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0 ? undefined : liveCandleEventKey ?? undefined}
         width={overlaySize.width}
         leftInset={toolbarPlotLeftInset}

@@ -5,13 +5,15 @@ import { useSuperTrendLivePanes } from "@/components/useSuperTrendLivePanes";
 import SuperTrendPaneLabels from "@/components/SuperTrendPaneLabels";
 import { SuperTrendPaneScale } from "@/lib/superTrendPaneScale";
 
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 } from "lucide-react";
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 import type { KwantStatsTable } from "@/lib/kwantStats";
 import { chartCandleBodyWidth, paneBarSpacing } from "@/lib/chartBarWidth";
 import { sampledPanePoints, sampledVerticalPanePoints } from "@/lib/chartIndicatorPaneSampling";
 import KstPanePlot from "@/components/KstPanePlot";
+import { createPaneCoordinateCache, resolvePaneCoordinate } from "@/lib/paneCoordinateContinuity";
+import { cvdSeriesRegressed } from "@/lib/cvdRenderContinuity";
 
 type IndicatorPaneGroup = {
   key: string;
@@ -1299,6 +1301,7 @@ function ChartVerticalIndicatorPaneSurface({
 function ChartIndicatorPanes({
   groups: baseGroups,
   liveChartKey,
+  coordinateScope,
   width,
   leftInset = 0,
   priceScaleWidth,
@@ -1318,6 +1321,7 @@ function ChartIndicatorPanes({
 }: {
   groups: IndicatorPaneGroup[];
   liveChartKey?: string;
+  coordinateScope: string;
   width: number;
   leftInset?: number;
   priceScaleWidth: number;
@@ -1335,10 +1339,41 @@ function ChartIndicatorPanes({
   onUpdateSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenSettings?: (instanceId: string) => void;
 }) {
-  const groups = useSuperTrendLivePanes(baseGroups, liveChartKey);
+  const cvdSeriesCacheRef = useRef<{ scope: string; series: Map<string, CalculatedIndicatorSeries[]> }>({
+    scope: coordinateScope,
+    series: new Map(),
+  });
+  if (cvdSeriesCacheRef.current.scope !== coordinateScope) {
+    cvdSeriesCacheRef.current = { scope: coordinateScope, series: new Map() };
+  }
+  const continuityGroups = baseGroups.map((group) => {
+    if (!isCvdIndicator(group.indicatorId)) return group;
+    const previous = cvdSeriesCacheRef.current.series.get(group.key) ?? [];
+    if (cvdSeriesRegressed(previous, group.series)) {
+      return {
+        ...group,
+        series: previous,
+        unavailableReason: undefined,
+        statusLabel: "SYNCING EXECUTIONS",
+      };
+    }
+    if (group.series.length) cvdSeriesCacheRef.current.series.set(group.key, group.series);
+    return group;
+  });
+  const groups = useSuperTrendLivePanes(continuityGroups, liveChartKey);
   const superTrendScale = useRef(new SuperTrendPaneScale());
   superTrendScale.current.retain(liveChartKey, groups.filter(g => g.indicatorId === "super-trend" || g.indicatorId === "super-trend-difference").map(g => g.key));
   const rootRef = useRef<HTMLDivElement>(null);
+  const coordinateCacheRef = useRef(createPaneCoordinateCache(coordinateScope));
+  const stableTimeToX = useCallback(
+    (time: number) => resolvePaneCoordinate(
+      coordinateCacheRef.current,
+      coordinateScope,
+      time,
+      timeToX,
+    ),
+    [coordinateScope, timeToX],
+  );
   const suppressToggleRef = useRef<string | null>(null);
   const [drag, setDrag] = useState<{
     key: string;
@@ -1470,7 +1505,7 @@ function ChartIndicatorPanes({
     if (!surfaceGroups.length || surfacePaneHeight <= 0) return null;
     const localValueScaleWidth = Math.min(priceScaleWidth, Math.max(44, surfaceWidth * 0.24));
     const surfaceTimeToX = (time: number) => {
-      const globalX = timeToX(time);
+      const globalX = stableTimeToX(time);
       // Top and bottom panes share the native chart's horizontal coordinates.
       // Their DOM surface begins at the drawing rail's right edge, so translate
       // the coordinate into that local surface instead of stretching the tape.
@@ -1513,7 +1548,7 @@ function ChartIndicatorPanes({
         globalPlotWidth={Math.max(1, width - priceScaleWidth)}
         viewportVersion={viewportVersion}
         collapsedPanes={collapsedPanes}
-        timeToX={timeToX}
+        timeToX={stableTimeToX}
         onTogglePane={guardedToggle}
         onOpenSettings={onOpenSettings}
         placementStyle={placementStyle}

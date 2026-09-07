@@ -42,6 +42,48 @@ export type DatabentoLiveTick = {
   cached?: boolean;
 };
 
+const INDICATOR_CANDLE_FIELDS = [
+  "timestamp",
+  "open",
+  "high",
+  "low",
+  "close",
+  "volume",
+  "trades",
+  "bidVolume",
+  "askVolume",
+  "bidTrades",
+  "askTrades",
+  "delta",
+  "deltaOpen",
+  "deltaHigh",
+  "deltaLow",
+  "deltaClose",
+  "sourceStartTimestamp",
+  "sourceEndTimestamp",
+] as const satisfies readonly (keyof Candle)[];
+
+/**
+ * Detect an authoritative history correction even when its array length and
+ * endpoints are unchanged. Flow-heal responses normally replace values inside
+ * existing bars; treating that as an ordinary live sample lets CVD briefly
+ * combine the old history with the new tail.
+ */
+export function indicatorCandleSnapshotChanged(previous: Candle[], next: Candle[]) {
+  if (previous === next) return false;
+  if (previous.length !== next.length) return true;
+  for (let index = 0; index < next.length; index += 1) {
+    const before = previous[index];
+    const after = next[index];
+    if (before === after) continue;
+    if (!before || !after) return true;
+    for (const field of INDICATOR_CANDLE_FIELDS) {
+      if (!Object.is(before[field], after[field])) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Retain the first, extrema and last observation from a browser-frame burst,
  * but return them in their true arrival order. Sorting them as first/low/high/

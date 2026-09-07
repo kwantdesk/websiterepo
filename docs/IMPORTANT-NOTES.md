@@ -1,5 +1,19 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — CVD continuity follow-up
+
+- The periodic disappear/reappear and malformed interim-bar lifecycle is fixed
+  in code: same-shape flow corrections commit atomically, the pane survives a
+  temporary chart-coordinate outage, and a regressed CVD snapshot cannot
+  replace the last proven frame in the same chart scope.
+- **Still open:** run a representative live US-session soak after this build is
+  deployed, covering NQ/ES 1m plus one event chart through at least one
+  four-minute history-heal cycle. Confirm the `SYNCING EXECUTIONS` safeguard is
+  exceptional rather than continuous; continuous display would identify an
+  upstream coverage regression that must be repaired, not hidden.
+- Keep this file as the durable unfinished-work ledger. Every prompt/fix/outcome
+  note must add newly discovered open work here and close it only with evidence.
+
 ## 2026-09-07 — Weekly profile five-session invariant
 
 - Stock Weekly Volume Profile is one rolling profile over the latest five real

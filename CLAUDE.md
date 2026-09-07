@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — CVD render continuity
+
+- CVD history corrections are now committed atomically even when candle count
+  and endpoints do not change. This prevents the periodic flow-heal pass from
+  mixing an old indicator snapshot with corrected bar flow.
+- Lower panes retain proven same-scope time coordinates while Lightweight
+  Charts replaces its price-series map, and CVD retains its last complete frame
+  across a transient empty, materially shorter or newly fragmented snapshot.
+  Instrument/timeframe/replay scope changes clear both protections immediately.
+- Focused CVD lifecycle, hydration, settings, session-gap and flow-heal tests,
+  TypeScript and the complete production build pass. Live RTH soak remains an
+  explicit item in `docs/IMPORTANT-NOTES.md`.
+- Prompt, diagnosis, fix and outcome:
+  `docs/prompt-log/2026-09-07-cvd-render-continuity.md`.
+
 ## 2026-09-07 — Weekly profile defaults to five trading days
 
 - Weekly Volume Profile now starts as one rolling calculation across the latest

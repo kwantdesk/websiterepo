@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
-import { mergeLiveIndicatorCandle } from "../src/lib/chartLiveEvents.ts";
+import { indicatorCandleSnapshotChanged, mergeLiveIndicatorCandle } from "../src/lib/chartLiveEvents.ts";
 
 // Execute the real Chart effect and its dependency list with deterministic
 // timers. This catches the output -> effect -> timer -> output feedback loop,
@@ -45,6 +45,7 @@ function harness({ replay = false, regressOutputDependency = false } = {}) {
     volumeIndicatorEnabled: false, keyboardActive: true,
     chartFrameWorkKey: "test", replayTimestampMs: replay ? 100_001 : null,
     ORDER_FLOW_DATA_REFRESH_INTERVAL_MS: 750,
+    indicatorCandleSnapshotChanged,
     mergeLiveIndicatorCandle,
     queueChartFrameWork: (_key, callback) => callback(),
     startTransition: (callback) => callback(),
