@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { LIVE_CHART_EXECUTION_EVENT, type LiveChartExecutionDetail } from "@/lib/chartLiveEvents";
 import {
   buildSpeedOfTapeInstantFrame,
@@ -46,7 +46,7 @@ export default function SpeedOfTapeInstantOverlay({
 
   if (!liveFrame.bars.length) return null;
   const sd2 = liveFrame.mean + liveFrame.standardDeviation * 2;
-  const largest = Math.max(settings.scaleMinValue, sd2, ...liveFrame.bars.map((bar) => Math.abs(bar.value)), 1);
+  const largest = Math.max(settings.scaleMinValue, sd2, ...liveFrame.bars.map((bar) => bar.wickValue), 1);
   const label = `${settings.numberOfSeconds}s ${settings.inputData === "trades" ? "T" : "V"}`;
   return (
     <div
@@ -61,7 +61,9 @@ export default function SpeedOfTapeInstantOverlay({
       >
         {settings.showStandardDeviations && liveFrame.standardDeviation > 0 ? [1, 2].map((multiple) => {
           const value = liveFrame.mean + liveFrame.standardDeviation * multiple;
-          const y = speedOfTapeMeterTopPercent(value, largest);
+          const y = settings.plotReversed
+            ? speedOfTapeMeterHeightPercent(value, largest)
+            : speedOfTapeMeterTopPercent(value, largest);
           return (
             <div
               key={multiple}
@@ -79,20 +81,35 @@ export default function SpeedOfTapeInstantOverlay({
             </div>
           );
         }) : null}
-        <div className="absolute inset-0 flex items-end gap-0.5 px-0.5">
+        <div className={`absolute inset-0 flex gap-0.5 px-0.5 ${settings.plotReversed ? "items-start" : "items-end"}`}>
           {liveFrame.bars.map((bar) => {
             const positive = bar.positive;
-            const borderColor = positive ? settings.positiveBorderColor : settings.negativeBorderColor;
-            const fillColor = positive ? settings.positiveFillColor : settings.negativeFillColor;
-            const height = speedOfTapeMeterHeightPercent(bar.value, largest);
-            const style: CSSProperties = {
-              height: bar.value === 0 ? 0 : `max(2px, ${height}%)`,
-              borderColor,
-              backgroundColor: fillColor,
-              borderWidth: settings.lineWidth,
-              boxSizing: "border-box",
-            };
-            return <i key={bar.startMs} className="block min-w-0 flex-1 border-solid" style={style} />;
+            const shadowColor = positive ? settings.positiveBorderColor : settings.negativeBorderColor;
+            const bodyColor = positive ? settings.positiveFillColor : settings.negativeFillColor;
+            const wickHeight = speedOfTapeMeterHeightPercent(bar.wickValue, largest);
+            const bodyHeight = speedOfTapeMeterHeightPercent(bar.bodyValue, largest);
+            return (
+              <i key={bar.startMs} className="relative block h-full min-w-0 flex-1" data-tape-meter-candle="true">
+                {bar.wickValue > 0 ? (
+                  <span
+                    className={`absolute left-1/2 w-0 -translate-x-1/2 border-l ${settings.plotReversed ? "top-0" : "bottom-0"}`}
+                    style={{ height: `${wickHeight}%`, borderColor: shadowColor, borderLeftWidth: settings.lineWidth }}
+                  />
+                ) : null}
+                {bar.bodyValue > 0 ? (
+                  <span
+                    className={`absolute left-[12%] right-[12%] border-solid ${settings.plotReversed ? "top-0" : "bottom-0"}`}
+                    style={{
+                      height: `max(2px, ${bodyHeight}%)`,
+                      borderColor: shadowColor,
+                      backgroundColor: bodyColor,
+                      borderWidth: settings.lineWidth,
+                      boxSizing: "border-box",
+                    }}
+                  />
+                ) : null}
+              </i>
+            );
           })}
         </div>
       </div>
