@@ -1,5 +1,18 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — New-candle render continuity follow-up
+
+- A normal `previous.length + 1` live bucket append must stay on the low-
+  priority indicator sampler. Do not fold it back into immediate historical
+  hydration: that synchronously recalculates every study at the bar boundary
+  and makes chart drawings/panes appear to flash.
+- Initial history, backfills, corrections, replay movement and newly restored
+  execution archives still use the immediate hydration path.
+- **Still open:** soak an authenticated, indicator-heavy NQ chart through
+  several active one-minute boundaries. Deterministic tests cover the state
+  classification and transition contract; only a live session can measure the
+  final frame timing on the trader's browser/GPU.
+
 ## 2026-09-07 — Value Area levels follow-up
 
 - Prior-day and prior-week Value Area levels now use Rithmic History Plant's

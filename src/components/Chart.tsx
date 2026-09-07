@@ -124,6 +124,7 @@ import {
   WORKSPACE_LAYOUT_SETTLED_EVENT,
   enqueueLiveCandleSnapshot,
   indicatorCandleSnapshotChanged,
+  isLiveIndicatorBoundaryAppend,
   mergeLiveIndicatorCandle,
   type DatabentoLiveTick,
   type LiveChartCandleDetail,
@@ -4615,8 +4616,10 @@ function Chart({
             const liveVolumeCandle = pendingLiveVolumeCandleRef.current;
             pendingLiveVolumeCandleRef.current = null;
             if (liveVolumeCandle) {
-              setSampledIndicatorCandles((current) =>
-                mergeLiveIndicatorCandle(current, liveVolumeCandle));
+              startTransition(() => {
+                setSampledIndicatorCandles((current) =>
+                  mergeLiveIndicatorCandle(current, liveVolumeCandle));
+              });
             }
           // Every sampled snapshot triggers a full study recompute across the
           // pane's indicators. The faster keyboard cadence is affordable for
@@ -4769,6 +4772,7 @@ function Chart({
 
   useEffect(() => {
     const previousCandles = pendingIndicatorCandlesRef.current;
+    const liveBoundaryAppend = isLiveIndicatorBoundaryAppend(previousCandles, candles);
     const historyShapeChanged = (
       previousCandles.length !== candles.length
       || previousCandles[0]?.timestamp !== candles[0]?.timestamp
@@ -4818,16 +4822,23 @@ function Chart({
     // the same completed candle snapshot immediately, otherwise the price
     // chart appears first and CVD remains as its old flat/live-only sample for
     // another timer cycle after refresh.
-    if (historyShapeChanged || historyContentChanged || orderFlowHydrated || executionTapeHydrated || replayFootprintAdvanced) {
+    const requiresImmediateHydration = (
+      (historyShapeChanged && !liveBoundaryAppend)
+      || historyContentChanged
+      || orderFlowHydrated
+      || executionTapeHydrated
+      || replayFootprintAdvanced
+    );
+    if (requiresImmediateHydration) {
       if (indicatorSampleTimerRef.current !== null) {
         window.clearTimeout(indicatorSampleTimerRef.current);
         indicatorSampleTimerRef.current = null;
       }
       queueChartFrameWork(`indicators:${chartFrameWorkKey}`, () => {
-        // Initial and historical execution hydration is user-visible content,
-        // not background live-tick maintenance. Commit it on the next paint
-        // without a transition so Big Contracts cannot remain empty while a
-        // busy multi-pane workspace keeps deprioritising the React update.
+        // Initial/corrected history and a newly restored execution archive are
+        // user-visible hydration, not a normal live bucket opening. Commit
+        // those immediately. A one-bar append deliberately continues through
+        // the low-priority sampler below so it cannot blank the chart surface.
         setSampledIndicatorCandles(candles);
         if (orderFlowIndicatorEnabled) {
           sampledIndicatorMarketTradesRef.current = marketTrades;

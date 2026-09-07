@@ -7,10 +7,10 @@ const workspace = await fs.readFile(new URL("../src/components/KwantifyWorkspace
 
 test("Big Contracts paints an arriving execution archive without the live sampling delay", () => {
   assert.match(chart, /const executionTapeHydrated = \([\s\S]*?previousSampledTrades\.length === 0/);
-  assert.match(chart, /historyShapeChanged \|\| historyContentChanged \|\| orderFlowHydrated \|\| executionTapeHydrated/);
+  assert.match(chart, /const requiresImmediateHydration = \([\s\S]*?historyShapeChanged && !liveBoundaryAppend[\s\S]*?executionTapeHydrated/);
   assert.match(
     chart,
-    /if \(historyShapeChanged \|\| historyContentChanged \|\| orderFlowHydrated \|\| executionTapeHydrated \|\| replayFootprintAdvanced\)[\s\S]*?setSampledIndicatorMarketTrades\(\(current\)[\s\S]*?marketTrades/,
+    /if \(requiresImmediateHydration\)[\s\S]*?setSampledIndicatorMarketTrades\(\(current\)[\s\S]*?marketTrades/,
   );
 });
 

@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — New candles no longer flash the chart surface
+
+- A one-bar live append is no longer misclassified as a historical hydration.
+  Price still paints immediately through the direct chart event, while the
+  expensive shared indicator snapshot is refreshed as interruptible work.
+- All futures, cash-index and options live-boundary candle commits now use a
+  React transition, preventing heavy indicators from blocking calculators,
+  drawings and chart canvases at the opening of a new bucket.
+- Real backfills, corrected history, replay movement and restored execution
+  archives remain immediate. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-new-candle-render-continuity.md`.
+
 ## 2026-09-07 — Value Area levels restored from Rithmic History Plant
 
 - KwantDesk Levels → Value Area now obtains both the prior-session and full

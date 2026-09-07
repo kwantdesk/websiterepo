@@ -85,6 +85,28 @@ export function indicatorCandleSnapshotChanged(previous: Candle[], next: Candle[
 }
 
 /**
+ * A single appended bucket is the normal live bar-boundary transition, not a
+ * history hydration. Treating it as a history-shape replacement forces every
+ * study to synchronously rebuild in the same browser frame that paints the
+ * new candle. On indicator-heavy charts that starves the canvas and makes
+ * drawings/panes appear to flash away before the main thread catches up.
+ */
+export function isLiveIndicatorBoundaryAppend(previous: Candle[], next: Candle[]) {
+  if (!previous.length || next.length !== previous.length + 1) return false;
+  if (previous[0]?.timestamp !== next[0]?.timestamp) return false;
+  const previousLast = previous.at(-1);
+  const nextPreviousLast = next.at(-2);
+  const nextLast = next.at(-1);
+  return Boolean(
+    previousLast
+    && nextPreviousLast
+    && nextLast
+    && previousLast.timestamp === nextPreviousLast.timestamp
+    && nextLast.timestamp > previousLast.timestamp,
+  );
+}
+
+/**
  * Retain the first, extrema and last observation from a browser-frame burst,
  * but return them in their true arrival order. Sorting them as first/low/high/
  * last invents a price path and makes a fast wick appear to teleport.

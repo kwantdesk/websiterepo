@@ -6363,8 +6363,7 @@ function WorkspaceChartPaneComponent({
         // Direct candle and execution events already paint the forming bar.
         // Commit the full React history only at a real bar boundary; the old
         // two-second commit duplicated that work and visibly pulsed the chart.
-        if (activeRef.current) setCandles(reconciledCandles);
-        else startTransition(() => setCandles(reconciledCandles));
+        startTransition(() => setCandles(reconciledCandles));
       }
     };
     const queueExecutionUpdate = (records: InstitutionalTrade[]) => {
@@ -8369,8 +8368,7 @@ function WorkspaceChartPaneComponent({
             lastCandleStateSyncRef.current = Date.now();
             latestCandlesRef.current = committed;
             lightweightLiveTailRef.current = null;
-            if (activeRef.current) setCandles(committed);
-            else startTransition(() => setCandles(committed));
+            startTransition(() => setCandles(committed));
           }
           return;
         }
@@ -8424,8 +8422,7 @@ function WorkspaceChartPaneComponent({
           // The direct event above owns every forming-bar paint. React only
           // receives structural history changes, so it cannot periodically
           // redraw the chart while the trader is watching live price.
-          if (activeRef.current) setCandles([...next]);
-          else startTransition(() => setCandles([...next]));
+          startTransition(() => setCandles([...next]));
         }
       });
     };
@@ -8539,8 +8536,7 @@ function WorkspaceChartPaneComponent({
             lastCandleStateSyncRef.current = now;
             latestCandlesRef.current = committed;
             lightweightLiveTailRef.current = null;
-            if (activeRef.current) setCandles(committed);
-            else startTransition(() => setCandles(committed));
+            startTransition(() => setCandles(committed));
           }
         },
         () => {
