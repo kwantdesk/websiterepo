@@ -835,14 +835,3 @@ recap of the open items below and update this file when their state changes.
 - The seven visible stock presets are deterministic starting points and retain
   the user's palette/performance caps. Prompt/outcome:
   `docs/prompt-log/2026-09-07-footprint-polish.md`.
-
-## 2026-09-07 — Speed of Tape (Instant) meter candles
-
-- Instant meter candles require two independent extents: full tape activity is
-  the shadow/wick and absolute execution delta is the directional body in stock
-  Total mode. Never flatten both into one solid rectangle.
-- `Plot reversed` changes vertical orientation only. It must not reverse the
-  chronological order or move the newest meter bar from the right edge.
-- The indicator remains execution-only; never synthesize its wick or body from
-  OHLCV bars. Prompt/outcome:
-  `docs/prompt-log/2026-09-07-speed-of-tape-instant-meter-candles.md`.

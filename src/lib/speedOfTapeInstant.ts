@@ -1,6 +1,6 @@
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
-export const SPEED_OF_TAPE_INSTANT_SETTINGS_VERSION = 3;
+export const SPEED_OF_TAPE_INSTANT_SETTINGS_VERSION = 2;
 
 // Deep Charts leaves a stable ten-percent meter margin above the largest
 // visible/SD reference. Without it SD+2 was pinned to the top border and the
@@ -63,10 +63,6 @@ export type SpeedOfTapeInstantBar = {
   buy: number;
   sell: number;
   delta: number;
-  /** Full tape-speed extent. Rendered as the candle shadow/wick. */
-  wickValue: number;
-  /** Directional participation. Rendered as the candle body. */
-  bodyValue: number;
   value: number;
   positive: boolean;
 };
@@ -141,11 +137,9 @@ function selectedValue(
 }
 
 /**
- * Builds the DeepCharts-style instant tape-speed meter from actual executions.
- * Each column owns one non-overlapping N-second exchange window. The shadow
- * shows the selected activity extent while the body shows its directional
- * participation; these are meter candles, not price OHLC candles. OHLCV is
- * never substituted for a missing execution tape.
+ * Builds the DeepCharts-style instant tape-speed columns from actual
+ * executions. Each column owns one non-overlapping N-second exchange window;
+ * OHLCV candles are never used as a substitute for a missing execution tape.
  */
 export function buildSpeedOfTapeInstantFrame(
   tradesInput: readonly InstitutionalTrade[],
@@ -201,37 +195,18 @@ export function buildSpeedOfTapeInstantFrame(
 
   const allBars: SpeedOfTapeInstantBar[] = buckets.map((bucket) => {
     const value = selectedValue(settings.displayValue, bucket.total, bucket.buy, bucket.sell);
+    // DeepCharts names these paint slots Delta Positive/Negative. The height
+    // is the chosen speed metric; the side colour remains execution delta so
+    // Total and Trades do not lose which aggressor controlled the window.
     const delta = bucket.buy - bucket.sell;
-    // The licensed reference exposes separate MeterBarShadow and MeterBarBody
-    // paints. Its stock Total plot uses the full activity as the shadow and
-    // the absolute execution delta as the directional body. Rendering only
-    // `value` as a solid rectangle loses the reference wick completely and
-    // makes balanced high-speed windows look falsely dominant.
-    const wickValue = settings.displayValue === "total"
-      ? bucket.total
-      : settings.displayValue === "delta"
-        ? bucket.total
-        : Math.max(Math.abs(value), bucket.total);
-    const bodyValue = settings.displayValue === "total" || settings.displayValue === "delta"
-      ? Math.abs(delta)
-      : Math.abs(value);
-    return {
-      ...bucket,
-      delta,
-      value,
-      wickValue,
-      bodyValue: Math.min(wickValue, bodyValue),
-      positive: delta >= 0,
-    };
+    return { ...bucket, delta, value, positive: delta >= 0 };
   });
-  const baselineValues = allBars.map((bar) => bar.wickValue);
+  const baselineValues = allBars.map((bar) => Math.abs(bar.value));
   const mean = baselineValues.reduce((sum, value) => sum + value, 0) / Math.max(1, baselineValues.length);
   const variance = baselineValues.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, baselineValues.length);
   const visible = allBars.slice(-settings.barsToShow);
   return {
-    // Plot reversed is a vertical plot orientation switch. It must never
-    // reorder time; the newest meter candle remains on the right.
-    bars: visible,
+    bars: settings.plotReversed ? [...visible].reverse() : visible,
     mean,
     standardDeviation: Math.sqrt(variance),
     latestTradeMs,

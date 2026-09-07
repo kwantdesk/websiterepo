@@ -1,24 +1,5 @@
 # DeepCharts Speed of Tape (Instant) parity audit
 
-## 2026-09-07 meter-candle correction
-
-The first implementation flattened each speed window into one solid rectangle.
-That was observably wrong: the supplied reference shows separate meter shadows
-and bodies, and the licensed settings contract exposes independent
-`MeterBarShadow*` and `MeterBarBody*` paints.
-
-KwantDesk now renders the Total mode's complete activity as the shadow/wick and
-its absolute execution delta as the directional body. Delta sign selects the
-positive/negative paints. SD levels scale from the complete activity extent.
-`Plot reversed` flips the vertical plot and SD coordinates without reversing
-time order. This is a clean-room implementation from the visible behavior and
-settings contract; protected executable logic was not copied.
-
-Direct live inspection of the two open applications was attempted but the local
-Windows control RPC was unavailable. A live side-by-side pixel check therefore
-remains desirable when that service is restored; the structural no-wick and
-reversed-time defects are fixed and regression-covered.
-
 ## 2026-09-06 reference correction — implementation unchanged
 
 The earlier "DeepCharts exposes" bullet list below overstates what was verified.
@@ -61,9 +42,9 @@ larger `Tape Speed & Order-Flow Burst` research tool.
   it immediately rather than waiting for the heavy-indicator batching timer.
 - The rail is exactly the native price-scale width and docks immediately to its
   left. When Mini DOM is present it moves left instead of drawing underneath it.
-- The shadow height uses full selected activity and the body communicates
-  directional participation. Positive/negative colour is determined by the
-  execution delta of that window, matching the exposed paint roles.
+- The bar height uses the selected display metric. Positive/negative colour is
+  determined by the execution delta of that window, matching DeepCharts'
+  `Delta Positive` and `Delta Negative` paint roles.
 - Theme colours are passed through the chart's visibility/separation resolver,
   preventing black-on-black or same-colour positive/negative bars.
 - SD+1 and SD+2 are calculated from the configured trailing window and share

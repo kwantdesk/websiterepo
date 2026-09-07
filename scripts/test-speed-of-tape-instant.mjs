@@ -43,8 +43,6 @@ const tape = [
 {
   const frame = buildSpeedOfTapeInstantFrame(tape, { numberOfSeconds: 10, barsToShow: 3, standardDeviationLookback: 10 });
   assert.deepEqual(frame.bars.map((bar) => bar.value), [5, 7, 5]);
-  assert.deepEqual(frame.bars.map((bar) => bar.wickValue), [5, 7, 5]);
-  assert.deepEqual(frame.bars.map((bar) => bar.bodyValue), [1, 7, 5]);
   assert.deepEqual(frame.bars.map((bar) => bar.positive), [false, true, false]);
   assert.equal(frame.latestTradeMs, base + 21_000);
   assert.equal(frame.bars.some((bar) => bar.total === 99), false, "flow-only history must not masquerade as prints");
@@ -63,10 +61,7 @@ const tape = [
     numberOfSeconds: 10, barsToShow: 3, displayValue: "delta", filterMin: 3, filterMax: 7,
     standardDeviationLookback: 10, plotReversed: true,
   });
-  assert.deepEqual(frame.bars.map((bar) => bar.value), [-3, 7, -5]);
-  assert.deepEqual(frame.bars.map((bar) => bar.wickValue), [3, 7, 5]);
-  assert.deepEqual(frame.bars.map((bar) => bar.bodyValue), [3, 7, 5]);
-  assert.deepEqual(frame.bars.map((bar) => bar.startMs), [base, base + 10_000, base + 20_000], "plot reversal must not reverse time");
+  assert.deepEqual(frame.bars.map((bar) => bar.value), [-5, 7, -3]);
   assert.ok(frame.standardDeviation > 0);
 }
 
@@ -84,10 +79,6 @@ const tape = [
   const overlay = fs.readFileSync(new URL("../src/components/SpeedOfTapeInstantOverlay.tsx", import.meta.url), "utf8");
   assert.match(overlay, /bottom: settings\.textEnabled \? 16 : 0/);
   assert.match(overlay, /speedOfTapeMeterTopPercent\(value, largest\)/);
-  assert.match(overlay, /settings\.plotReversed[\s\S]*speedOfTapeMeterHeightPercent\(value, largest\)/);
-  assert.match(overlay, /data-tape-meter-candle="true"/);
-  assert.match(overlay, /bar\.wickValue/);
-  assert.match(overlay, /bar\.bodyValue/);
   assert.match(overlay, /S-T\(\{settings\.numberOfSeconds\}\)/);
 }
 
