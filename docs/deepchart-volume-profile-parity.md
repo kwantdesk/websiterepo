@@ -14,7 +14,7 @@ slot) and **Use sec. axis**.
 
 | Tab | DeepChart | Ours |
 | --- | --- | --- |
-| **GENERAL** | Vbp type, Vbp period, Length type, Length value, custom Start/End Date-Time | architecture differs — type is the Profile mode control; Daily, Weekly and Fixed Range are separate KwantDesk studies/tools; Composite and Latest remain absent |
+| **GENERAL** | Vbp type, Vbp period, Length type, Length value, custom Start/End Date-Time | architecture differs — type is the Profile mode control; Daily, Weekly, Composite and the range variants are separate KwantDesk studies/tools |
 | **DATA SETTINGS** | Input data, Filter min, Filter max, Auto grouping, Auto group factor, Manual ticks | execution Volume/Trades complete; MBO order-profile modes intentionally hidden until implemented |
 | **PLOT · Background/Text** | Background (nested dialog), Show text, Text (nested dialog) | partial — no nested text dialog |
 | **PLOT · Width/Offset** | Width type, Current Width, Current Offset, Previous Width, Previous Offset | complete — Automatic, Percentual period, Window width and Fixed bars use distinct units; a completed-profile bug that ignored Previous Width was fixed |
@@ -87,10 +87,24 @@ table above is their Chicago conversion.
   lifecycle events. `Order (MBO)` and `Number Orders (MBO)` stay hidden until
   that archive and calculator exist; presenting those options now would be a
   fake control.
-- DeepCharts Composite/Latest periods, Show above bars, full nested text and
+- DeepCharts Latest period, Show above bars, full nested text and
   background editors, profile shift alerts, untaped developing historical
   VWAP and arbitrary envelope definitions are not yet implemented. They are
   gaps, not claimed parity.
+
+## 7 September 2026 verification
+
+- The developing NQ profile returned complete coverage from the requested
+  session start.
+- Total volume equalled the sum of every price row; ask and bid totals equalled
+  their row sums; total delta equalled both the row-delta sum and ask minus bid;
+  and the reported POC was the maximum-volume row.
+- Session split, data grouping/filtering, value-area math, structure,
+  extensions/occlusion, delta bars, gradients, docking, zoom and Composite
+  live-update routing all passed their focused suites.
+- Two old source-shape checks were updated to follow the current owner resolver
+  and cached value-area calculation. No production math was changed to satisfy
+  those stale assertions.
 
 ## The tool
 

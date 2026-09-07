@@ -45,3 +45,26 @@ The current filter operates on the verified aggregate volume carried by each cha
 - deterministic period resets; and
 - hard reset gaps on CVD, bid, ask and filtered series.
 
+## 7 September 2026 data-path re-audit
+
+- Production NQ one-minute flow was reconciled from the raw execution response
+  to its compact candles: classified bars obey `delta = ask - bid`; no side
+  identity mismatch was found.
+- A real event-chart error was found after the bar builder. Range, volume,
+  tick and Renko candles already contain exact per-bar flow from the complete
+  ordered tape, but the workspace could overwrite it with a later bounded
+  indicator tape. That changed which executions appeared to belong to a bar.
+- Event bars now retain their baked flow. Only a bar with no verified flow can
+  be repaired, and only by exact executions; aggregated `flowOnly` summaries
+  are explicitly rejected for that repair.
+- The historical route now preserves all eight fields of a flow-summary tuple.
+  It no longer truncates the `flow` marker and then misreads the summary as one
+  directional execution.
+- A seven-calendar-day NQ sample contained 6,911 one-minute bars. Every
+  classified bar satisfied the delta identity, but only 79.179% of historical
+  contract volume had an aggressor side across that whole window. The current
+  session was 99.752% classified. CVD deliberately excludes the unknown older
+  volume rather than guessing its side; historical visual parity cannot be
+  claimed for those incomplete sessions until exact tick-side backfill exists.
+
+Focused regression: `tests/cvd-event-flow-authority.test.mjs`.

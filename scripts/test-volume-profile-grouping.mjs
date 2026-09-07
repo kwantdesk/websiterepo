@@ -87,8 +87,8 @@ assert.notEqual(
   "fixture must actually be sensitive to row size, or check 6 proves nothing",
 );
 const vaCall = primitive.slice(
-  primitive.indexOf("valueArea: calculateVolumeProfileValueArea("),
-  primitive.indexOf("this.derived.set(model.id"),
+  primitive.indexOf("const valueArea = calculateVolumeProfileValueArea("),
+  primitive.indexOf("derived = {", primitive.indexOf("const valueArea = calculateVolumeProfileValueArea(")),
 );
 assert.ok(
   vaCall.includes("sourceLevels") && vaCall.includes("profile.tickSize * requestedTicks"),

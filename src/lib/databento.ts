@@ -23,6 +23,13 @@ import {
   type AuctionGapCompactRowsResult,
 } from "@/lib/auctionGapCompactRows";
 import { fetchRecordedTape, fetchRecordedTrades } from "@/lib/recordedTradeTape.server";
+import {
+  normalizeDatabentoExecutionTuple,
+  type DatabentoExecutionTuple,
+} from "@/lib/databentoExecutionTuple";
+
+export { normalizeDatabentoExecutionTuple } from "@/lib/databentoExecutionTuple";
+export type { DatabentoExecutionTuple } from "@/lib/databentoExecutionTuple";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -44,15 +51,11 @@ export type DatabentoBar = {
   volume: number;
 };
 
-// Compact tuple sent to the browser for execution-tape indicators:
-// timestamp, price, size, signed aggressor delta.
-export type DatabentoExecutionTuple = [
-  timestamp: number,
-  price: number,
-  size: number,
-  delta: number,
-];
-
+// Compact tuple sent to the browser for execution-tape indicators.
+// Exact prints use the first four values. Historical routes may instead send
+// an already-aggregated aggressor-flow bucket with its ask/bid totals, trade
+// count and a `flow` marker. Keeping that marker is critical: treating a flow
+// bucket as one exact print corrupts CVD.
 export type DatabentoOrderFlowHistory = {
   candles: Candle[];
   executions: DatabentoExecutionTuple[];
@@ -656,13 +659,8 @@ export async function getDatabentoOrderFlowHistory(
     .sort((a, b) => a.timestamp - b.timestamp);
 
   const executions = (Array.isArray(payload.executions) ? payload.executions : [])
-    .map((row) => {
-      const tuple = row as unknown[];
-      return [
-        Number(tuple[0]), Number(tuple[1]), Number(tuple[2]), Number(tuple[3]),
-      ] as DatabentoExecutionTuple;
-    })
-    .filter((tuple) => tuple[0] > 0 && tuple[1] > 0 && tuple[2] > 0);
+    .map(normalizeDatabentoExecutionTuple)
+    .filter((tuple): tuple is DatabentoExecutionTuple => tuple !== null);
 
   const expectedContract = String(payload.symbol ?? "").trim().toUpperCase();
   const auctionGap = options.auctionGap

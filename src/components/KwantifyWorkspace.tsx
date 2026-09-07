@@ -190,6 +190,7 @@ import {
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
+import { mergeMissingEventBarOrderFlow } from "@/lib/eventOrderFlowMerge";
 import {
   mergeInstitutionalTradeTape,
   mergeInstitutionalTradeTapeInPlace,
@@ -3679,16 +3680,13 @@ function applyAvailableOrderFlowHistory(
   executionTape: InstitutionalTrade[],
 ) {
   if (!candles.length) return candles;
-  // Event bars (range/volume/Renko) are BUILT from the tape, so they use it
-  // whole. Time bars must not: beyond COMPLETE_EXECUTION_TAPE_WINDOW_MS the
-  // tape is a strongest-prints sample, and projecting it onto historical bars
-  // understates their aggressor volume — the flat-CVD-with-a-spike bug. Time
-  // bars prefer the gateway's exact per-bar flow, and fall back to the tape
-  // only for the bars the tape still covers completely.
+  // Event bars (range/volume/Renko) are BUILT from the full ordered tape and
+  // already carry their authoritative per-bar flow. A later bounded indicator
+  // tape may repair a genuinely missing bar, but aggregated flow buckets must
+  // never replace exact bar totals. Time bars must not use the tape either:
+  // beyond COMPLETE_EXECUTION_TAPE_WINDOW_MS it is a strongest-prints sample.
   if (isEventBasedChartInterval(timeframe)) {
-    return executionTape.length
-      ? enrichCandlesWithInstitutionalTrades(candles, executionTape, candles.length)
-      : candles;
+    return mergeMissingEventBarOrderFlow(candles, executionTape);
   }
   if (flowCandles.length) return enrichCandlesWithInstitutionalCandleFlow(candles, flowCandles);
   if (!executionTape.length) return candles;

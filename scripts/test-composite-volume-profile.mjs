@@ -64,6 +64,6 @@ assert.match(control, /RENDERED_CHART_INDICATOR_IDS[\s\S]*"composite-volume-prof
 assert.match(control, /Complete loaded range[\s\S]*Rolling bars[\s\S]*Rolling minutes[\s\S]*Rolling calendar days[\s\S]*Rolling weeks[\s\S]*Rolling calendar months[\s\S]*Custom start and end/);
 assert.match(workspace, /period: "custom"[\s\S]*startMs: compositeProfileRange\.startMs[\s\S]*endMs: compositeProfileRange\.endMs/);
 assert.match(workspace, /applyInstitutionalTradesToVolumeProfile\(profile, batch\)/);
-assert.match(chart, /profile\.period === "custom" \? compositeInstance : dailyInstance/);
+assert.match(chart, /const instance = resolveVolumeProfileOwner\(profile, indicators\)/);
 
 console.log("Composite Volume Profile range, activation, exact-request and live-update wiring verified.");

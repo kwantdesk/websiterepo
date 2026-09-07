@@ -796,3 +796,18 @@ recap of the open items below and update this file when their state changes.
   is mandatory so ordinary words such as `logarithmic` remain unchanged.
 - Prompt/outcome:
   `docs/prompt-log/2026-09-07-private-terminology-scrub.md`.
+
+## 2026-09-07 — CVD event-bar authority and historical coverage
+
+- Range, volume, tick and Renko bars own their baked ask/bid/delta fields. A
+  bounded indicator tape must never overwrite those values after construction.
+- Aggregated `flowOnly` tuples must retain their eight-field wire shape and may
+  not be reinterpreted as individual executions. They cannot repair event-bar
+  CVD; only exact prints may fill a genuinely missing bar.
+- Current production NQ flow is internally consistent, but the sampled prior
+  seven-calendar-day archive classified 79.179% of total volume versus 99.752%
+  in the current session. Do not claim exact historical CVD parity over an
+  incompletely classified session and never infer the missing side.
+- Exact History Plant tick-side backfill for incomplete older sessions remains
+  the durable historical-CVD follow-up. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-volume-profile-cvd-institutional-audit.md`.
