@@ -109,9 +109,9 @@ check("every level carries its own price line", () => {
 });
 
 check("position is imperative, not left to React's transition", () => {
-  // React commits coordinate overlays on a 64ms transition. Left to that, a
-  // label would trail the candles by about four frames through a pan.
-  assert.match(source, /const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;/);
+  // React commits coordinate overlays after the interaction burst. Left to
+  // that, a label would trail the candles throughout a pan.
+  assert.match(source, /const VIEWPORT_REACT_SETTLE_DELAY_MS = 80;/);
   assert.match(source, /const repositionPaperOverlays = useCallback\(/);
   assert.match(source, /const price = Number\(node\.dataset\.paperPrice\);/);
   assert.match(source, /node\.style\.top = `\$\{y\}px`;/);

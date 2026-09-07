@@ -2777,12 +2777,12 @@ const DEFAULT_RIGHT_CANDLE_PADDING = 8;
 // label. A one-pixel width change is enough to make the plot in every visible
 // workspace pane appear to wobble horizontally on each market tick.
 const STABLE_RIGHT_PRICE_SCALE_WIDTH = 76;
-// Lightweight Charts already moves its canvases at the browser refresh rate.
-// React only needs a bounded refresh cadence for the SVG/HTML studies that
-// read coordinates from that native viewport. Re-rendering this very large
-// component for every raw pan/zoom event makes pointer input monopolise the
-// main thread, especially with several workspace charts mounted.
-const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;
+// Lightweight Charts moves its canvases at the browser refresh rate. React
+// coordinate overlays settle once an interaction burst pauses; rebuilding the
+// complete Chart tree throughout a drag became expensive as the indicator
+// library grew. Native primitives, drawings and paper-order labels still move
+// imperatively every frame, then React catches up just after the hand pauses.
+const VIEWPORT_REACT_SETTLE_DELAY_MS = 80;
 
 /**
  * The KwantDesk mark, bottom-left of every chart.
@@ -4002,10 +4002,9 @@ function Chart({
   const chartPaneClipId = `chart-pane-clip-${chartInstanceId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const [viewportVersion, setViewportVersion] = useState(0);
   // Price-pane drawings are laid out by React, which commits viewport changes
-  // at most every VIEWPORT_REACT_REFRESH_INTERVAL_MS and does it inside a
-  // low-priority transition. The candles move on the canvas every frame, so
-  // between commits a position calculator sits where the chart used to be —
-  // the drawing visibly floating away from its own bars during a pan.
+  // after a viewport gesture pauses and does it inside a low-priority
+  // transition. The candles move on the canvas every frame, so drawings are
+  // imperatively projected between those settled React commits.
   //
   // The basis captured at each commit lets the overlay be re-projected onto
   // the live viewport every frame, exactly like the gamma heatmap re-projects
@@ -4243,7 +4242,6 @@ function Chart({
   const latestPointerRef = useRef<{ x: number; y: number } | null>(null);
   const viewportFrameRef = useRef<number | null>(null);
   const viewportRefreshTimerRef = useRef<number | null>(null);
-  const viewportRefreshLastAtRef = useRef(0);
   const footprintViewportCoverageRef = useRef<{ first: number; last: number } | null>(null);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
   const drawingCandlesRef = useRef(candles);
@@ -15607,7 +15605,6 @@ function Chart({
 
     const commitViewportRefresh = () => {
       viewportRefreshTimerRef.current = null;
-      viewportRefreshLastAtRef.current = performance.now();
       // Coordinate overlays are non-urgent visual work. A transition lets the
       // native canvas keep accepting pan/zoom input before React reconciles
       // footprint, CVD and optional exposure overlays.
@@ -15625,23 +15622,16 @@ function Chart({
         reprojectDrawingLayer();
         repositionPaperOverlays();
         refreshPaperLivePnl();
-        const elapsed = performance.now() - viewportRefreshLastAtRef.current;
-        if (elapsed >= VIEWPORT_REACT_REFRESH_INTERVAL_MS) {
-          if (viewportRefreshTimerRef.current !== null) {
-            window.clearTimeout(viewportRefreshTimerRef.current);
-            viewportRefreshTimerRef.current = null;
-          }
-          commitViewportRefresh();
-          return;
+        // Never reconcile the full React chart tree while the native canvas is
+        // processing a continuous drag/wheel burst. Keep replacing one short
+        // trailing timer; it commits the final coordinates after interaction.
+        if (viewportRefreshTimerRef.current !== null) {
+          window.clearTimeout(viewportRefreshTimerRef.current);
         }
-        // Keep one trailing refresh so all coordinate overlays finish exactly
-        // on the viewport where the trader releases the mouse.
-        if (viewportRefreshTimerRef.current === null) {
-          viewportRefreshTimerRef.current = window.setTimeout(
-            commitViewportRefresh,
-            Math.max(0, VIEWPORT_REACT_REFRESH_INTERVAL_MS - elapsed),
-          );
-        }
+        viewportRefreshTimerRef.current = window.setTimeout(
+          commitViewportRefresh,
+          VIEWPORT_REACT_SETTLE_DELAY_MS,
+        );
       });
     };
 
@@ -16619,6 +16609,8 @@ function Chart({
     instance.enabled && ["monthly-volume-profile", "session-volume-profile", "visible-range-volume-profile"].includes(instance.indicatorId)
   )), [indicatorSignature, indicators]);
   const variantProfileSignature = useMemo(() => JSON.stringify(variantProfileInstances), [variantProfileInstances]);
+  const variantProfileViewportRevision = variantProfileInstances.some((instance) =>
+    instance.indicatorId === "visible-range-volume-profile") ? viewportVersion : 0;
   useEffect(() => {
     if (!variantProfileInstances.length || !contractSymbol || !candles.length) {
       setOwnedVariantProfiles((current) => Object.keys(current).length ? {} : current);
@@ -16656,13 +16648,16 @@ function Chart({
       current = false;
       window.clearTimeout(timer);
     };
-  }, [candles, candleIntervalMs, chartReadyRevision, contractSymbol, instrument, replayTimestampMs, variantProfileInstances, variantProfileSignature, viewportVersion]);
+  }, [candles, candleIntervalMs, chartReadyRevision, contractSymbol, instrument, replayTimestampMs, variantProfileInstances, variantProfileSignature, variantProfileViewportRevision]);
   const renderedVolumeProfiles = useMemo(() => {
     const variants = Object.values(ownedVariantProfiles).map((profile) => (
       applyInstitutionalTradesToVolumeProfile(profile, indicatorMarketTrades)
     ));
     return [...volumeProfiles, ...variants];
   }, [indicatorMarketTrades, ownedVariantProfiles, volumeProfiles]);
+  const deepProfileValuesViewportRevision = deepProfileValuesSettings.periodMode === "visible"
+    ? viewportVersion
+    : 0;
   useEffect(() => {
     const primitive = volumeProfilePrimitiveRef.current;
     if (!primitive) return;
@@ -17061,7 +17056,7 @@ function Chart({
     }));
     primitive.setModels(models);
     setDeepProfileValuesFrame(frame);
-  }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileValuesIndicator, deepProfileValuesSettings, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, viewportVersion, volumeProfileLastCandleTimestamp]);
+  }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileValuesIndicator, deepProfileValuesSettings, deepProfileValuesViewportRevision, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
 
   useEffect(() => {
     const primitive = tpoProfilePrimitiveRef.current;

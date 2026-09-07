@@ -5,15 +5,26 @@ import test from "node:test";
 const chart = await readFile(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 
 test("chart pan and zoom keep native canvas input ahead of React overlays", () => {
-  assert.match(chart, /const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64/);
+  assert.match(chart, /const VIEWPORT_REACT_SETTLE_DELAY_MS = 80/);
   assert.match(
     chart,
-    /const scheduleViewportRefresh = \(\) => \{[\s\S]*?requestAnimationFrame[\s\S]*?elapsed >= VIEWPORT_REACT_REFRESH_INTERVAL_MS[\s\S]*?setTimeout\([\s\S]*?VIEWPORT_REACT_REFRESH_INTERVAL_MS - elapsed/,
+    /const scheduleViewportRefresh = \(\) => \{[\s\S]*?requestAnimationFrame[\s\S]*?clearTimeout\(viewportRefreshTimerRef\.current\)[\s\S]*?setTimeout\([\s\S]*?VIEWPORT_REACT_SETTLE_DELAY_MS/,
   );
   assert.match(
     chart,
     /const commitViewportRefresh = \(\) => \{[\s\S]*?startTransition\(\(\) => \{[\s\S]*?setViewportVersion/,
   );
+  const scheduleBlock = chart.slice(
+    chart.indexOf("const scheduleViewportRefresh = () =>"),
+    chart.indexOf("const handlePriceScaleWheel", chart.indexOf("const scheduleViewportRefresh = () =>")),
+  );
+  assert.doesNotMatch(scheduleBlock, /elapsed >=|setViewportVersion/);
+});
+
+test("profile calculations do not rebuild during ordinary viewport gestures", () => {
+  assert.match(chart, /variantProfileViewportRevision = variantProfileInstances\.some[\s\S]*visible-range-volume-profile/);
+  assert.match(chart, /deepProfileValuesViewportRevision = deepProfileValuesSettings\.periodMode === "visible"/);
+  assert.doesNotMatch(chart, /deepProfileValuesSettings,[^\]]*viewportVersion/);
 });
 
 test("raw chart mouse movement is coalesced without repeated layout reads", () => {

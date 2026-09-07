@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Chart interaction performance invariant
+
+- Never use continuous pan/zoom events to reconcile the full `Chart` React
+  tree. Lightweight Charts and native primitives own frame-rate movement;
+  drawings and paper-order labels are imperatively reprojected per frame, and
+  React coordinate overlays settle once after the gesture pauses.
+- Only genuinely viewport-defined calculations may depend on
+  `viewportVersion`. In particular, session/monthly volume profiles and
+  non-visible Profile Values modes must not rebuild while navigating a chart.
+- This is an interaction/rendering rule and must not throttle, batch or alter
+  the live Rithmic feed.
+
 ## 2026-09-07 — Public product description
 
 - Browser metadata and the installable-app manifest describe Kwant Desk as a

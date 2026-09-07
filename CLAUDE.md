@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Chart navigation regression removed
+
+- Panning and zooming no longer force a reconciliation of the full React chart
+  tree every 64 ms. Native chart canvases, drawings and paper-order overlays
+  remain frame-driven; React coordinate overlays now perform one trailing
+  settle after an interaction burst.
+- Session/monthly profile variants and non-visible Profile Values modes no
+  longer recalculate from ordinary viewport movement. Visible-range modes keep
+  the required viewport dependency. No market-data cadence was changed.
+- Prompt, diagnosis, fix and verification:
+  `docs/prompt-log/2026-09-07-chart-navigation-regression.md`.
+
 ## 2026-09-07 — Public product description corrected
 
 - Root browser metadata, PWA manifest and login copy now describe Kwant Desk

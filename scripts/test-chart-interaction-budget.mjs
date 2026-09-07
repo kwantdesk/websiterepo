@@ -6,6 +6,16 @@ const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.ur
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
+check("pan and zoom do not reconcile the full React chart tree mid-gesture", () => {
+  assert.match(chart, /const VIEWPORT_REACT_SETTLE_DELAY_MS = 80/);
+  const start = chart.indexOf("const scheduleViewportRefresh = () =>");
+  const end = chart.indexOf("const handlePriceScaleWheel", start);
+  const body = chart.slice(start, end);
+  assert.match(body, /clearTimeout\(viewportRefreshTimerRef\.current\)/);
+  assert.match(body, /window\.setTimeout\([\s\S]*VIEWPORT_REACT_SETTLE_DELAY_MS/);
+  assert.doesNotMatch(body, /elapsed >=/);
+});
+
 check("footprint viewport refresh has no human-visible debounce", () => {
   assert.doesNotMatch(chart, /footprintViewportRefreshTimerRef/);
   assert.match(chart, /footprintViewportCoverageRef/);

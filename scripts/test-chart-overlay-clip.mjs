@@ -32,11 +32,9 @@ const groups = chart.match(/clipPath=\{`url\(#\$\{chartPaneClipId\}\)`\}/g) ?? [
 assert.ok(groups.length >= 3, `expected every price-pane overlay group to be clipped, found ${groups.length}`);
 
 /**
- * Drawings are laid out by React, which commits viewport changes at most once
- * per VIEWPORT_REACT_REFRESH_INTERVAL_MS and does it inside a low-priority
- * transition, while the candles move on the canvas every frame. Between
- * commits the position calculators sat where the chart used to be — floating
- * away from their own bars during a pan.
+ * Drawings are laid out by React after a viewport interaction burst, while
+ * the candles move on the canvas every frame. Between commits the position
+ * calculators would sit where the chart used to be without re-projection.
  */
 {
   // Re-projection runs in the per-frame rAF, not on the throttled commit.
