@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { planVolumeProfileVariantJobs } from "../src/lib/volumeProfileVariants.ts";
-import { defaultIndicatorSettings, normalizePaneIndicatorState } from "../src/lib/chartIndicatorConfig.ts";
+import { VOLUME_PROFILE_INDICATOR_IDS, defaultIndicatorSettings, normalizePaneIndicatorState, normalizeStoredIndicator } from "../src/lib/chartIndicatorConfig.ts";
 import { auditIndicatorLibrary } from "../scripts/audit-indicator-library.mjs";
 
 const candles = Array.from({ length: 60 }, (_, index) => ({
@@ -10,6 +10,22 @@ const candles = Array.from({ length: 60 }, (_, index) => ({
 }));
 const base = { candles, intervalMs: 60_000, clockMs: Date.parse("2026-09-04T20:00:00Z"), symbol: "NQ", contractSymbol: "NQU6" };
 const instance = (indicatorId, settings = {}) => ({ instanceId: indicatorId, indicatorId, enabled: true, settings: { ...defaultIndicatorSettings(indicatorId), ...settings } });
+
+test("every fresh volume-profile variant starts at width two without replacing saved widths", () => {
+  for (const id of VOLUME_PROFILE_INDICATOR_IDS) {
+    const defaults = defaultIndicatorSettings(id);
+    assert.equal(defaults.profileWidth, 2, `${id} current width`);
+    assert.equal(defaults.previousProfileWidth, 2, `${id} previous width`);
+    const saved = normalizeStoredIndicator({
+      instanceId: id,
+      indicatorId: id,
+      enabled: true,
+      settings: { ...defaults, profileWidth: 7, previousProfileWidth: 5 },
+    });
+    assert.equal(saved.settings.profileWidth, 7, `${id} saved current width`);
+    assert.equal(saved.settings.previousProfileWidth, 5, `${id} saved previous width`);
+  }
+});
 
 test("monthly, session and visible variants own distinct exact custom jobs", () => {
   const jobs = planVolumeProfileVariantJobs({

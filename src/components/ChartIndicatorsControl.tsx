@@ -3627,8 +3627,8 @@ export default function ChartIndicatorsControl({
                     * completed ones behind it are sized and nudged separately.
                     */}
                   {([
-                    [String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? "Current width (bars)" : "Current width %", "profileWidth", 24, 0, String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? 400 : 100, 1],
-                    [String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? "Previous width (bars)" : "Previous width %", "previousProfileWidth", 24, 0, String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? 400 : 100, 1],
+                    [String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? "Current width (bars)" : "Current width %", "profileWidth", 2, 0, String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? 400 : 100, 1],
+                    [String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? "Previous width (bars)" : "Previous width %", "previousProfileWidth", 2, 0, String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? 400 : 100, 1],
                     ["Current offset", "currentProfileOffset", 0, -400, 400, 1],
                     ["Previous offset", "previousProfileOffset", 0, -400, 400, 1],
                     ["Profile opacity %", "opacity", 100, 10, 100, 1],

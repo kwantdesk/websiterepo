@@ -16887,13 +16887,13 @@ function Chart({
             : requestedWidthMode === "window-percent"
               ? "window-percent"
               : requestedWidthMode === "automatic" ? "automatic" : "period-percent",
-          widthPercent: clamp(Number(profileSettings.profileWidth ?? (profile.period === "weekly" ? 18 : 9)), 0, 100),
-          // Completed profiles fall back to the current width, so a chart that
-          // has never set these draws exactly as it did.
+          widthPercent: clamp(Number(profileSettings.profileWidth ?? 2), 0, 100),
+          // Completed profiles fall back to the current width. A truly missing
+          // legacy value uses the same slim stock width as a fresh profile.
           previousWidthPercent: clamp(
             Number(profileSettings.previousProfileWidth
               ?? profileSettings.profileWidth
-              ?? (profile.period === "weekly" ? 18 : 9)),
+              ?? 2),
             0, 100,
           ),
           currentOffsetPx: clamp(Number(profileSettings.currentProfileOffset ?? 0), -400, 400),

@@ -264,6 +264,8 @@ export type IndicatorNumericSetting = {
 export const MAXIMUM_DAILY_VOLUME_PROFILES = 12;
 /** What a chart draws when the trader has not chosen, unchanged from before. */
 export const DEFAULT_DAILY_VOLUME_PROFILE_COUNT = 6;
+/** Stock width for every newly-added volume-profile variant. */
+export const DEFAULT_VOLUME_PROFILE_WIDTH = 2;
 
 /**
  * How many daily profiles to draw - DeepChart's "Number of profile".
@@ -1262,7 +1264,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "kwant-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
+    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: DEFAULT_VOLUME_PROFILE_WIDTH, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 100, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
@@ -1360,7 +1362,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "weekly-volume-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
+    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: DEFAULT_VOLUME_PROFILE_WIDTH, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 100, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
@@ -1369,7 +1371,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "compositeLengthValue", label: "Composite length", defaultValue: 500, min: 1, max: 100000, step: 1 },
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
+    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: DEFAULT_VOLUME_PROFILE_WIDTH, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 100, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
@@ -1377,7 +1379,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "custom-draw-on-volume-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "profileWidth", label: "Profile width (% of selected range)", defaultValue: 45, min: 0, max: 100, step: 0.5 },
+    { key: "profileWidth", label: "Profile width (% of selected range)", defaultValue: DEFAULT_VOLUME_PROFILE_WIDTH, min: 0, max: 100, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 100, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
@@ -1385,7 +1387,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "ask-bid-volume-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 28, min: 0, max: 60, step: 0.5 },
+    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: DEFAULT_VOLUME_PROFILE_WIDTH, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 100, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
@@ -1393,7 +1395,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "delta-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
+    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: DEFAULT_VOLUME_PROFILE_WIDTH, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 100, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
@@ -3040,6 +3042,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     weeklyWindowSettingsVersion: 2,
   } : {}),
   ...(["kwant-profile", "weekly-volume-profile", "monthly-volume-profile", "session-volume-profile", "visible-range-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
+    profileWidth: DEFAULT_VOLUME_PROFILE_WIDTH,
     valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     // Data Settings — the input series, the trade-size band applied before
     // binning, and how many ticks share a profile row. Automatic derives the
@@ -3113,11 +3116,10 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     borderWidth: 1,
     numberOfProfiles: 0,
     /*
-     * DeepChart's Plot Width/Offset tab. Completed profiles default to the
-     * current width and both offsets to none, so switching to this build
-     * changes nothing until the trader asks for it.
+     * DeepChart's Plot Width/Offset tab. Fresh current and completed profiles
+     * share the slim stock width; both offsets remain at none.
      */
-    previousProfileWidth: 24,
+    previousProfileWidth: DEFAULT_VOLUME_PROFILE_WIDTH,
     currentProfileOffset: 0,
     previousProfileOffset: 0,
     sessionStartMinutes: 8 * 60 + 30,
@@ -4041,7 +4043,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showDelta: true,
         showProfileSpine: true,
         snapMode: normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
-        profileWidth: 24,
+        profileWidth: normalizedInstance.settings?.profileWidth ?? DEFAULT_VOLUME_PROFILE_WIDTH,
         opacity: 100,
         // Data Settings arrived in v7. Existing values always win so a
         // migration never silently re-tunes a saved profile.
@@ -4086,7 +4088,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
         numberOfProfiles: normalizedInstance.settings?.numberOfProfiles ?? 0,
         previousProfileWidth: normalizedInstance.settings?.previousProfileWidth
-          ?? normalizedInstance.settings?.profileWidth ?? 24,
+          ?? normalizedInstance.settings?.profileWidth ?? DEFAULT_VOLUME_PROFILE_WIDTH,
         currentProfileOffset: normalizedInstance.settings?.currentProfileOffset ?? 0,
         previousProfileOffset: normalizedInstance.settings?.previousProfileOffset ?? 0,
         filterTime: normalizedInstance.settings?.filterTime ?? "rth",
@@ -4176,7 +4178,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
         numberOfProfiles: normalizedInstance.settings?.numberOfProfiles ?? 0,
         previousProfileWidth: normalizedInstance.settings?.previousProfileWidth
-          ?? normalizedInstance.settings?.profileWidth ?? 24,
+          ?? normalizedInstance.settings?.profileWidth ?? DEFAULT_VOLUME_PROFILE_WIDTH,
         currentProfileOffset: normalizedInstance.settings?.currentProfileOffset ?? 0,
         previousProfileOffset: normalizedInstance.settings?.previousProfileOffset ?? 0,
         filterTime: normalizedInstance.settings?.filterTime ?? "rth",

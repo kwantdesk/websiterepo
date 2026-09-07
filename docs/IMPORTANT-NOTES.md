@@ -761,3 +761,12 @@ recap of the open items below and update this file when their state changes.
   defaults and synchronize changes across open charts.
 - Keep the picker heading and pager clean: do not show the total catalogue or
   filtered-result emoji count.
+
+## 2026-09-07 — Volume profile stock width
+
+- Every fresh or reset volume-profile family indicator starts with current and
+  previous width `2`. This includes Daily, Weekly, Composite, Monthly, Session,
+  Visible Range, Draw-on, Ask/Bid and Delta profiles.
+- Explicit saved widths belong to the user and must survive normalization and
+  settings migrations. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-volume-profile-stock-width.md`.

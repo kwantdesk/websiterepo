@@ -3032,3 +3032,12 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   stale raw colours.
 - Prompt, diagnosis, fix and outcome:
   `docs/prompt-log/2026-09-07-closed-candle-wick-integrity.md`.
+
+## 2026-09-07 — Volume profile stock width
+
+- All fresh and restored-default volume-profile family indicators use width
+  `2` for both the current and completed profiles. Do not reintroduce wider
+  per-variant stock values that cover the chart.
+- Preserve explicit user-saved current and previous widths during normalization
+  and schema migration. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-volume-profile-stock-width.md`.
