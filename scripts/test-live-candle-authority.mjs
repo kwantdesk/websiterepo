@@ -75,8 +75,13 @@ assert.ok(
 const chartSource = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 assert.match(
   chartSource,
-  /latestDirectLiveCandleRef\.current = \{[\s\S]*key: liveCandleEventKey,[\s\S]*instrument,[\s\S]*timeframe,[\s\S]*candle: detail\.candle/,
+  /latestDirectLiveCandleRef\.current = \{[\s\S]*key: liveCandleEventKey,[\s\S]*instrument,[\s\S]*timeframe,[\s\S]*candle: authoritativeCandle/,
   "the renderer must retain direct live authority separately from React props",
+);
+assert.match(
+  chartSource,
+  /authoritativeCandle = retainFormingCandleExtrema\([\s\S]*previousDirectCandle,[\s\S]*detail\.candle/,
+  "the final renderer boundary must not allow a stale same-bar snapshot to shrink a wick",
 );
 assert.match(
   chartSource,

@@ -129,7 +129,7 @@ import {
   type LiveChartCandleDetail,
   type LiveChartExecutionDetail,
 } from "@/lib/chartLiveEvents";
-import { mergeHistoricalAndLiveCandle } from "@/lib/liveCandleAuthority";
+import { mergeHistoricalAndLiveCandle, retainFormingCandleExtrema } from "@/lib/liveCandleAuthority";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   CHART_INDICATOR_BY_ID,
@@ -4584,16 +4584,27 @@ function Chart({
       const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
       if (!detail || detail.key !== liveCandleEventKey) return;
       if (liveReplayActiveRef.current) return;
-      pendingCandles = enqueueLiveCandleSnapshot(pendingCandles, detail.candle);
+      const previousDirectRecord = latestDirectLiveCandleRef.current;
+      const previousDirectCandle = previousDirectRecord
+        && previousDirectRecord.key === liveCandleEventKey
+        && previousDirectRecord.instrument === instrument
+        && previousDirectRecord.timeframe === timeframe
+        ? previousDirectRecord.candle
+        : null;
+      const authoritativeCandle = retainFormingCandleExtrema(
+        previousDirectCandle,
+        detail.candle,
+      );
+      pendingCandles = enqueueLiveCandleSnapshot(pendingCandles, authoritativeCandle);
       latestDirectLiveCandleRef.current = {
         key: liveCandleEventKey,
         instrument,
         timeframe,
-        candle: detail.candle,
+        candle: authoritativeCandle,
       };
-      latestCandleRef.current = detail.candle;
+      latestCandleRef.current = authoritativeCandle;
       if (volumeIndicatorEnabled || nonFootprintOrderFlowIndicatorEnabled) {
-        pendingLiveVolumeCandleRef.current = detail.candle;
+        pendingLiveVolumeCandleRef.current = authoritativeCandle;
         if (liveVolumeSampleTimerRef.current === null) {
           // Volume and the order-flow panes (CVD, delta studies) need a React
           // snapshot of the forming candle, which carries its live aggressor

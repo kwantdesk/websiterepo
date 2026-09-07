@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Forming candle wicks cannot shrink
+
+- The final direct-render boundary now owns monotonic same-bar OHLC authority.
+  Once a real forming candle has printed a high or low, a later stale/reconciled
+  snapshot cannot erase that wick; the newest real close continues to move.
+- Open, volume, trade counts and classified-flow counters also cannot rewind
+  inside the same source bar. A new source timestamp starts a clean candle, so
+  extrema never leak into the next bar or across chart scopes.
+- Live visual-path tests pass 13/13 across out-and-back bursts and explicit
+  stale-snapshot wick shrinkage; all 19 clock-interval authority cases and
+  OHLC healing 7/7 pass. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-forming-wick-retention.md`.
+
 ## 2026-09-07 — CVD render continuity
 
 - CVD history corrections are now committed atomically even when candle count

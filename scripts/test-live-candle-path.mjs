@@ -5,6 +5,7 @@ import {
   compactChronologicalLiveTicks,
   enqueueLiveCandleSnapshot,
 } from "../src/lib/chartLiveEvents.ts";
+import { retainFormingCandleExtrema } from "../src/lib/liveCandleAuthority.ts";
 
 const minute = Date.parse("2026-09-07T02:30:00Z");
 const ticks = [100, 110, 105, 90, 95, 100].map((mid, index) => ({
@@ -40,11 +41,43 @@ assert.equal(queue.length, 4, "the visible path must remain bounded during a bur
 assert.equal(queue[0].close, 100, "the first pending real observation must be retained");
 assert.deepEqual(queue.slice(1).map((candle) => candle.close), [90, 95, 100]);
 
+const observedWick = {
+  timestamp: minute,
+  open: 100,
+  high: 112,
+  low: 99,
+  close: 110,
+  volume: 20,
+  askVolume: 12,
+  bidVolume: 8,
+};
+const staleSnapshot = {
+  timestamp: minute,
+  open: 100,
+  high: 105,
+  low: 101,
+  close: 103,
+  volume: 12,
+  askVolume: 7,
+  bidVolume: 5,
+};
+const retainedWick = retainFormingCandleExtrema(observedWick, staleSnapshot);
+assert.equal(retainedWick.high, 112, "a later snapshot must not erase an observed upper wick");
+assert.equal(retainedWick.low, 99, "a later snapshot must not erase an observed lower wick");
+assert.equal(retainedWick.close, 103, "the newest real close must still move inside the retained wick");
+assert.equal(retainedWick.volume, 20, "a stale cumulative counter must not move backwards");
+assert.deepEqual(
+  retainFormingCandleExtrema(observedWick, { ...staleSnapshot, timestamp: minute + 60_000 }),
+  retainFormingCandleExtrema(null, { ...staleSnapshot, timestamp: minute + 60_000 }),
+  "a new source bar must start with its own independent extrema",
+);
+
 const workspaceSource = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 assert.match(workspaceSource, /for \(const point of liveTickPath\.path\)/);
 assert.match(workspaceSource, /for \(const point of timeBasedPath\.path\)/);
 const chartSource = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-assert.match(chartSource, /pendingCandles = enqueueLiveCandleSnapshot/);
+assert.match(chartSource, /authoritativeCandle = retainFormingCandleExtrema/);
+assert.match(chartSource, /pendingCandles = enqueueLiveCandleSnapshot\(pendingCandles, authoritativeCandle\)/);
 assert.match(chartSource, /const candle = pendingCandles\.shift\(\)/);
 
-console.log("Live candle visual path: 8/8 checks passed");
+console.log("Live candle visual path: 13/13 checks passed");

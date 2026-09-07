@@ -1,5 +1,15 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Forming-wick retention follow-up
+
+- The renderer now prevents a later same-bar snapshot from shrinking an
+  already observed high/low. This is enforced after every upstream publisher,
+  at the final chart event boundary, and applies to time and event candles.
+- **Still open:** visually confirm NQ and ES during the next liquid US session,
+  including a fast out-and-back move and the subsequent candle close. The
+  deterministic renderer/authority tests pass; the market is not currently
+  supplying a representative live burst for an authenticated visual soak.
+
 ## 2026-09-07 — CVD continuity follow-up
 
 - The periodic disappear/reappear and malformed interim-bar lifecycle is fixed
