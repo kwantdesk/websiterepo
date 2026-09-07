@@ -905,5 +905,5 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
     }
     return selected ? { x: selected.x, y: selected.y, node: selected.node, snapshot: selected.snapshot } : null;
   }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 }

@@ -37,7 +37,7 @@ export class DeepPatternBuilderPrimitive implements ISeriesPrimitive<Time> {
   private chartApi: IChartApi | null = null; private seriesApi: SeriesApi | null = null; private redraw: (() => void) | null = null; private renderModel: Model | null = null; private view = new View(this);
   attached(p: SeriesAttachedParameter<Time, "Candlestick">) { this.chartApi = p.chart as IChartApi; this.seriesApi = p.series; this.redraw = p.requestUpdate; }
   detached() { this.chartApi = null; this.seriesApi = null; this.redraw = null; }
-  paneViews() { return [this.view]; }
+  paneViews() { return this.renderModel ? [this.view] : []; }
   update(model: Model | null) { this.renderModel = model; this.redraw?.(); }
   model() { return this.renderModel; } chart() { return this.chartApi; } series() { return this.seriesApi; }
 }

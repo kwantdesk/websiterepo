@@ -307,7 +307,7 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.paneView];
+    return this.levels.length ? [this.paneView] : [];
   }
 
   private draw(target: CanvasRenderingTarget2D) {

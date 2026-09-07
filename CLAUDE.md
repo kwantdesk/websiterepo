@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Indicator frame-budget audit
+
+- Fixed the reported navigation stalls in Imbalance Tracker, Daily Volume
+  Profile, Big Blocks and Big Contracts. Offscreen zones are now indexed out,
+  profile analytics are cached between data changes, dense contract labels use
+  visual level-of-detail, and full Big Contracts tape reconciliation no longer
+  follows every live candle tick. Its direct execution listener remains the
+  immediate live path.
+- Big Blocks coalesces repeated forming-candle work to one calculation per
+  display frame. Empty native renderers across the broader indicator catalogue
+  no longer join chart repaints.
+- Production build, TypeScript, scoped lint, targeted live-edge tests and the
+  new frame-budget regression gate pass. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-indicator-frame-budget.md`.
+
 ## 2026-09-07 — Second-pass chart frame budget cleanup
 
 - Follow-up after the first navigation fix: removed price-rail state work and

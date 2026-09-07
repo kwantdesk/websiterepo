@@ -91,7 +91,7 @@ export class PositionCalculatorPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.paneView];
+    return this.models.length ? [this.paneView] : [];
   }
 
   private draw(target: CanvasRenderingTarget2D) {

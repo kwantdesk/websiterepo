@@ -96,6 +96,5 @@ export class UnfinishedAuctionPrimitive implements ISeriesPrimitive<Time> {
   data() { return this.renderData; }
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 }
-

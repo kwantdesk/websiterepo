@@ -377,5 +377,5 @@ export class GammaHeatmapPrimitive implements ISeriesPrimitive<Time> {
     if (!binHit || binHit.distance > 14) return null;
     return { x: closest.x, y: binHit.y, snapshot: closest.snapshot, bin: binHit.bin };
   }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 }

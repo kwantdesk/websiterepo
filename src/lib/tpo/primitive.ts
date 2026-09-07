@@ -69,7 +69,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.singlePrintPaneView, this.paneView];
+    return this.models.length ? [this.singlePrintPaneView, this.paneView] : [];
   }
 
   updateAllViews() {}

@@ -428,5 +428,5 @@ export class NetGammaExposurePrimitive implements ISeriesPrimitive<Time> {
     const hit = this.hits.find((candidate) => x >= candidate.left - 5 && x <= candidate.right + 5 && Math.abs(y - candidate.y) <= Math.max(7, candidate.height / 2 + 3));
     return hit ? { x, y: hit.y, row: hit.row, snapshot: hit.snapshot } : null;
   }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 }

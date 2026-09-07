@@ -330,5 +330,5 @@ export class GexIntervalMapPrimitive implements ISeriesPrimitive<Time> {
     }
     return hit;
   }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 }

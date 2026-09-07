@@ -48,7 +48,7 @@ class SmtDivergenceRenderer implements ISeriesPrimitivePaneRenderer {
       context.lineJoin = "round";
       context.font = `${Math.max(8, options.labelFontSize)}px 'JetBrains Mono', monospace`;
 
-      for (const signal of this.primitive.signals()) {
+      for (const signal of this.primitive.visibleSignals()) {
         const startX = timeScale.timeToCoordinate(Math.floor(signal.startTime / 1_000) as Time);
         const endX = timeScale.timeToCoordinate(Math.floor(signal.endTime / 1_000) as Time);
         const startY = params.series.priceToCoordinate(signal.startPrice);
@@ -120,6 +120,7 @@ class SmtDivergenceView implements ISeriesPrimitivePaneView {
 export class SmtDivergencePrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private renderSignals: SmtDivergenceSignal[] = [];
+  private maximumDurationMs = 0;
   private renderOptions = DEFAULT_OPTIONS;
   private readonly paneView = new SmtDivergenceView(this);
 
@@ -133,7 +134,11 @@ export class SmtDivergencePrimitive implements ISeriesPrimitive<Time> {
   }
 
   update(signals: SmtDivergenceSignal[], options: SmtDivergencePrimitiveOptions) {
-    this.renderSignals = signals;
+    this.renderSignals = [...signals].sort((left, right) => left.startTime - right.startTime);
+    this.maximumDurationMs = this.renderSignals.reduce(
+      (maximum, signal) => Math.max(maximum, Math.max(0, signal.endTime - signal.startTime)),
+      0,
+    );
     this.renderOptions = options;
     this.attachedParams?.requestUpdate();
   }
@@ -146,11 +151,33 @@ export class SmtDivergencePrimitive implements ISeriesPrimitive<Time> {
     return this.renderSignals;
   }
 
+  visibleSignals() {
+    const visible = this.attachedParams?.chart.timeScale().getVisibleRange();
+    if (!visible || typeof visible.from !== "number" || typeof visible.to !== "number") return this.renderSignals;
+    const fromMs = Number(visible.from) * 1_000 - this.maximumDurationMs;
+    const toMs = Number(visible.to) * 1_000;
+    let first = 0;
+    let last = this.renderSignals.length;
+    while (first < last) {
+      const middle = (first + last) >>> 1;
+      if (this.renderSignals[middle].startTime < fromMs) first = middle + 1;
+      else last = middle;
+    }
+    const start = first;
+    last = this.renderSignals.length;
+    while (first < last) {
+      const middle = (first + last) >>> 1;
+      if (this.renderSignals[middle].startTime <= toMs) first = middle + 1;
+      else last = middle;
+    }
+    return this.renderSignals.slice(start, first);
+  }
+
   options() {
     return this.renderOptions;
   }
 
   paneViews() {
-    return [this.paneView];
+    return this.renderSignals.length ? [this.paneView] : [];
   }
 }

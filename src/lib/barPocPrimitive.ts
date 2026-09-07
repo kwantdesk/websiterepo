@@ -99,7 +99,7 @@ export class BarPocPrimitive implements ISeriesPrimitive<Time> {
   private readonly view = new BarPocPaneView(this);
   attached(parameter: SeriesAttachedParameter<Time, "Candlestick">) { this.chartApi = parameter.chart as IChartApi; this.seriesApi = parameter.series; this.redraw = parameter.requestUpdate; }
   detached() { this.chartApi = null; this.seriesApi = null; this.redraw = null; }
-  paneViews() { return [this.view]; }
+  paneViews() { return this.renderData ? [this.view] : []; }
   update(data: RenderData | null) { this.renderData = data; this.redraw?.(); }
   data() { return this.renderData; }
   chart() { return this.chartApi; }

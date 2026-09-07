@@ -239,7 +239,7 @@ export class PullingStackingPrimitive implements ISeriesPrimitive<Time> {
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 
   queryHit(x: number, y: number): PullingStackingHit | null {
     if (!this.renderData || !this.candleSeries || !this.chartApi) return null;

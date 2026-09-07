@@ -507,7 +507,7 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
   setHits(hits: RenderedHit[]) { this.renderedHits = hits; }
   queryHit(x: number, y: number): DarkPoolGexHit | null {
     const matches = this.renderedHits.filter((hit) => x >= hit.left && x <= hit.right && y >= hit.top && y <= hit.bottom);

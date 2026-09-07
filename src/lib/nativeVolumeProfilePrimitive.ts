@@ -539,6 +539,9 @@ type ProfileDerived = {
   maxAbsDelta: number;
   maxSideVolume: number;
   valueArea: ReturnType<typeof calculateVolumeProfileValueArea>;
+  structure: ReturnType<typeof calculateVolumeProfileStructure> | null;
+  vwap: ReturnType<typeof calculateVolumeProfileVwap> | null;
+  summary: ReturnType<typeof summarizeVolumeProfile>;
 };
 
 /**
@@ -614,7 +617,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.paneView];
+    return this.models.length ? [this.paneView] : [];
   }
 
   updateAllViews() {
@@ -1040,6 +1043,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           profile.groupTicks,
           profile.tickSize,
           requestedValueAreaPercent,
+          style.showPeaks === true,
+          style.showValleys === true,
+          style.showBusinessZone === true,
+          style.pvSensitivity ?? 40,
+          style.pvExcludeHighLow !== false,
+          style.peakMinVolumePercent ?? 0,
+          style.valleyMaxVolumePercent ?? 100,
+          style.peakOnlyOutsideValueArea === true,
+          style.valleyOnlyOutsideValueArea === true,
+          style.showVwap === true,
+          (style.vwapBandDeviations ?? []).join(","),
         ].join(":");
         const cachedDerived = this.derived.get(model.id);
         let derived = cachedDerived?.key === derivedKey ? cachedDerived.value : null;
@@ -1067,6 +1081,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             const side = Math.max(level.askVolume, level.bidVolume);
             if (side > maxSideVolume) maxSideVolume = side;
           }
+          const valueArea = calculateVolumeProfileValueArea(
+            sourceLevels,
+            profile.tickSize * requestedTicks,
+            requestedValueAreaPercent,
+          );
           derived = {
             levels,
             maxVolume,
@@ -1084,11 +1103,25 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
              * legibility multiplier, and a value area that moved when you
              * zoomed would be worse than one that is merely off.
              */
-            valueArea: calculateVolumeProfileValueArea(
-              sourceLevels,
-              profile.tickSize * requestedTicks,
-              requestedValueAreaPercent,
-            ),
+            valueArea,
+            structure: style.showPeaks || style.showValleys || style.showBusinessZone
+              ? calculateVolumeProfileStructure(
+                  levels,
+                  {
+                    sensitivity: style.pvSensitivity ?? 40,
+                    excludeHighLow: style.pvExcludeHighLow !== false,
+                    peakMinVolumePercent: style.peakMinVolumePercent ?? 0,
+                    valleyMaxVolumePercent: style.valleyMaxVolumePercent ?? 100,
+                    peakOnlyOutsideValueArea: style.peakOnlyOutsideValueArea === true,
+                    valleyOnlyOutsideValueArea: style.valleyOnlyOutsideValueArea === true,
+                  },
+                  { vah: valueArea.vah ?? null, val: valueArea.val ?? null },
+                )
+              : null,
+            vwap: style.showVwap
+              ? calculateVolumeProfileVwap(levels, style.vwapBandDeviations ?? [])
+              : null,
+            summary: summarizeVolumeProfile(levels),
           };
           this.derived.set(model.id, { key: derivedKey, value: derived });
         }
@@ -1709,18 +1742,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // rows the histogram is drawn from, so a node always lines up with the
         // bar that produced it.
         if (style.showPeaks || style.showValleys || style.showBusinessZone) {
-          const structure = calculateVolumeProfileStructure(
-            levels,
-            {
-              sensitivity: style.pvSensitivity ?? 40,
-              excludeHighLow: style.pvExcludeHighLow !== false,
-              peakMinVolumePercent: style.peakMinVolumePercent ?? 0,
-              valleyMaxVolumePercent: style.valleyMaxVolumePercent ?? 100,
-              peakOnlyOutsideValueArea: style.peakOnlyOutsideValueArea === true,
-              valleyOnlyOutsideValueArea: style.valleyOnlyOutsideValueArea === true,
-            },
-            { vah: groupedVah ?? null, val: groupedVal ?? null },
-          );
+          const structure = derived.structure;
+          if (!structure) continue;
           if (style.showBusinessZone && structure.businessZone) {
             const highY = params.series.priceToCoordinate(structure.businessZone.high);
             const lowY = params.series.priceToCoordinate(structure.businessZone.low);
@@ -1767,7 +1790,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // DeepCharts has a master Enable switch above those controls; no
         // child may paint while it is off.
         if (style.showVwap) {
-          const vwap = calculateVolumeProfileVwap(levels, style.vwapBandDeviations ?? []);
+          const vwap = derived.vwap ?? calculateVolumeProfileVwap(levels, style.vwapBandDeviations ?? []);
           if (vwap.vwap !== null) {
             if (style.showVwapHighlight) {
               const sourceBody = drawnBodySpans.get(model.id);
@@ -1815,7 +1838,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
 
         // Summary block: the totals behind the picture.
         if (style.showSummaryVolume || style.showSummaryTrades) {
-          const summary = summarizeVolumeProfile(levels);
+          const summary = derived.summary;
           const lines: { text: string; color: string }[] = [];
           if (style.showSummaryVolume) {
             lines.push({

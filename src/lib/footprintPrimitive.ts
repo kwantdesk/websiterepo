@@ -987,7 +987,7 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
     // Release the offscreen surface's multi-megabyte backing store.
     this.paneView.release();
   }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderBars.length ? [this.paneView] : []; }
   params() { return this.attachedParams; }
   bars() { return this.renderBars; }
   options() { return this.renderOptions; }

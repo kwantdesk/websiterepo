@@ -1288,7 +1288,7 @@ class SessionHighLowPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.sessionView];
+    return this.renderLevels.length ? [this.sessionView] : [];
   }
 }
 
@@ -1454,7 +1454,7 @@ class SessionWindowPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.sessionView];
+    return this.renderSessions.length ? [this.sessionView] : [];
   }
 }
 
@@ -1672,7 +1672,7 @@ class HedgeLevelsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.hedgeView];
+    return this.renderLevels.length ? [this.hedgeView] : [];
   }
 }
 
@@ -1804,7 +1804,7 @@ class GameplanUnderlayPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.underlayView];
+    return this.priceLevels.length || this.priceZones.length ? [this.underlayView] : [];
   }
 }
 
@@ -1925,7 +1925,7 @@ class FixedPriceLevelLabelsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.levelView];
+    return this.renderLevels.length ? [this.levelView] : [];
   }
 }
 
@@ -2014,7 +2014,7 @@ class PaperFillMarkersPrimitive implements ISeriesPrimitive<Time> {
   chart() { return this.chartApi; }
   series() { return this.candleSeries; }
   markers() { return this.renderMarkers; }
-  paneViews() { return [this.markerView]; }
+  paneViews() { return this.renderMarkers.length ? [this.markerView] : []; }
 }
 
 
@@ -2943,6 +2943,20 @@ function formatChartTick(value: Time, timeZone: string, timeframe?: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function recentExecutionTail(trades: InstitutionalTrade[], windowMs: number) {
+  const newest = Number(trades.at(-1)?.timestamp ?? 0);
+  if (!(newest > 0) || trades.length < 2) return trades;
+  const cutoff = newest - Math.max(0, windowMs);
+  let first = 0;
+  let last = trades.length;
+  while (first < last) {
+    const middle = (first + last) >>> 1;
+    if (Number(trades[middle].timestamp) < cutoff) first = middle + 1;
+    else last = middle;
+  }
+  return first > 0 ? trades.slice(first) : trades;
 }
 
 function formatDateRangeLabel(a: number, b: number) {
@@ -11617,6 +11631,8 @@ function Chart({
     [deepEffortIndicator, indicatorCandles, instrument, priceFormat.minMove],
   );
   const deepEffortLiveCandlesRef = useRef<Candle[]>([]);
+  const pendingDeepEffortCandleRef = useRef<Candle | null>(null);
+  const deepEffortFrameRef = useRef<number | null>(null);
   const bigBlocksPrimitiveOptionsRef = useRef<BigBlocksPrimitiveOptions | null>(null);
   const bigBlocksCommittedZonesRef = useRef<BigBlockRenderZone[]>([]);
   const bigTradesIndicator = useMemo(
@@ -11625,16 +11641,34 @@ function Chart({
     [indicatorSignature, indicators],
   );
   const retainedDeepContractsRef = useRef<DeepContractEvent[]>([]);
+  const deepContractFullScanIdentityRef = useRef("");
   const deepContractTapeWatermarkRef = useRef(0);
   const deepContractCommittedRef = useRef<{ zones: BigBlockRenderZone[]; watermark: number }>({
     zones: [], watermark: 0,
   });
   const deepContractPrimitiveOptionsRef = useRef<BigBlocksPrimitiveOptions | null>(null);
+  // Re-measuring the full execution distribution is the expensive part of
+  // Big/Deep Contracts (50ms+ once an active tape has grown). The imperative
+  // execution listener below paints new qualifying events immediately, so the
+  // authoritative distribution pass only needs to settle the scale every five
+  // seconds. History/replay changes still force a pass straight away.
+  const bigTradeFullPassKey = (() => {
+    const firstTrade = Number(indicatorMarketTrades[0]?.timestamp ?? 0);
+    const latestTrade = Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0);
+    const historyStart = Number(indicatorCandles[0]?.timestamp ?? 0);
+    const tapeWindow = replayTimestampMs == null
+      ? Math.floor(latestTrade / 5_000)
+      : replayTimestampMs;
+    return `${firstTrade}:${historyStart}:${tapeWindow}`;
+  })();
   const deepContractEvents = useMemo(() => {
     if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return [];
     const settings = bigTradesIndicator.settings ?? {};
+    const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}`;
+    const requiresFullScan = deepContractFullScanIdentityRef.current !== fullScanIdentity;
+    deepContractFullScanIdentityRef.current = fullScanIdentity;
     const next = calculateDeepContractEvents(
-      indicatorMarketTrades,
+      requiresFullScan ? indicatorMarketTrades : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
       settings,
       priceFormat.minMove,
       replayTimestampMs ?? Date.now(),
@@ -11652,13 +11686,15 @@ function Chart({
     );
     retainedDeepContractsRef.current = retained;
     return retained;
-  }, [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove, replayTimestampMs]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the coarse key is intentional; the live listener covers intervening executions
+  }, [bigTradeFullPassKey, bigTradesIndicator, priceFormat.minMove, replayTimestampMs]);
   const depthOfMarketIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "depth-of-market") ?? null,
     [indicatorSignature, indicators],
   );
   const bigTradeLiveContextRef = useRef<BigTradeLiveContext | null>(null);
+  const bigTradeFullScanIdentityRef = useRef("");
   // How far along the TAPE the last full pass got, which is not the same thing
   // as the newest print it decided was big. The live edge admits prints newer
   // than this; keying that off the newest marker instead meant a chart with no
@@ -11676,12 +11712,17 @@ function Chart({
     () => {
       if (!bigTradesIndicator || bigTradesIndicator.settings?.showBigContracts === false) {
         bigTradeLiveContextRef.current = null;
+        bigTradeFullScanIdentityRef.current = "";
         return [];
       }
+      const settings = bigTradesIndicator.settings ?? {};
+      const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}`;
+      const requiresFullScan = bigTradeFullScanIdentityRef.current !== fullScanIdentity;
+      bigTradeFullScanIdentityRef.current = fullScanIdentity;
       const { prints, context } = calculateBigTradePrintsWithContext(
         indicatorCandles,
-        indicatorMarketTrades,
-        { ...(bigTradesIndicator.settings ?? {}), tickSize: priceFormat.minMove },
+        requiresFullScan ? indicatorMarketTrades : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
+        { ...settings, tickSize: priceFormat.minMove },
         replayTimestampMs ?? Date.now(),
       );
       // Retaining the measured scale is what lets a print arriving before the
@@ -11711,23 +11752,17 @@ function Chart({
       retainedBigTradePrintsRef.current = retained;
       return retained;
     },
-    [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove, replayTimestampMs],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the coarse key is intentional; the live listener covers intervening executions
+    [bigTradeFullPassKey, bigTradesIndicator, priceFormat.minMove, replayTimestampMs],
   );
   const anchoredBigTradePrints = useMemo(() => {
     if (!indicatorCandles.length || !bigTradePrints.length) return [];
     const anchored = anchorBigTradePrintsToCandles(
       bigTradePrints,
-      // The LIVE series, not the throttled study snapshot.
-      //
-      // A big print has to show the moment the tape carries it, and it has to
-      // show at the price it traded. The snapshot behind the studies is
-      // resampled every second or two, and on a 200-volume chart several bars
-      // form inside that window — so a print anchored against it landed on
-      // whichever bar the snapshot happened to end on. That is the print seen
-      // hanging in empty space, and withholding it instead only traded the
-      // wrong place for a late one. Anchored against the series the chart is
-      // actually drawing, the bar it belongs to is already there.
-      candles,
+      // This completed snapshot is the stable anchor for the authoritative
+      // pass. New prints use the direct live-edge map below, so a forming
+      // volume/range bar never forces every historical marker to be re-anchored.
+      indicatorCandles,
       // Clock charts anchor arithmetically; event charts keep the bar walk.
       timeframe && isEventBasedChartInterval(timeframe) ? null : candleIntervalMs,
     );
@@ -11835,7 +11870,7 @@ function Chart({
         opacity: minimumOpacity + (maximumOpacity - minimumOpacity) * visualWeight,
       };
     }).sort((left, right) => left.timestamp - right.timestamp);
-  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, candles, indicatorCandles, timeframe]);
+  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles, timeframe]);
   /**
    * Draw a qualifying print the moment the tape holds it.
    *
@@ -11895,7 +11930,7 @@ function Chart({
     );
     const anchored = anchorBigTradePrintsToCandles(
       deepContractEvents.map((event) => ({ ...event, radius: 1, opacity: 1 })),
-      candles,
+      indicatorCandles,
       timeframe && isEventBasedChartInterval(timeframe) ? null : candleIntervalMs,
     );
     const projectionBars = Math.max(1, Math.min(600, Number(bigTradesIndicator.settings?.deepProjectionBars ?? 22)));
@@ -11947,7 +11982,6 @@ function Chart({
     bigTradeEventChartTimes,
     bigTradesIndicator,
     candleIntervalMs,
-    candles,
     deepContractEvents,
     indicatorCandles,
     timeframe,
@@ -12220,18 +12254,18 @@ function Chart({
   ]);
   useEffect(() => {
     if (!deepEffortIndicator || deepEffortIndicator.settings?.showZones === false) return;
-    const receive = (event: Event) => {
-      const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
-      if (!detail || detail.key !== liveCandleEventKey || liveReplayActiveRef.current) return;
+    const paintLatest = () => {
+      deepEffortFrameRef.current = null;
+      const candle = pendingDeepEffortCandleRef.current;
+      pendingDeepEffortCandleRef.current = null;
       const primitive = bigBlocksPrimitiveRef.current;
       const options = bigBlocksPrimitiveOptionsRef.current;
-      if (!primitive || !options) return;
-      // Deep Effort is a BAR study, so the honest live input is the forming
-      // Rithmic candle (with its executed ask/bid split), not a periodic React
-      // snapshot. Bound the calculation to its maximum lookback and paint the
-      // primitive directly; no component render or indicator refresh timer is
-      // involved.
-      const source = mergeLiveIndicatorCandle(deepEffortLiveCandlesRef.current, detail.candle).slice(-240);
+      if (!candle || !primitive || !options) return;
+      // Multiple execution messages can update the same forming candle inside
+      // one display frame. Only the newest state is visible, so calculate the
+      // bar study once per frame instead of repeatedly blocking the UI with
+      // intermediate states the monitor can never display.
+      const source = mergeLiveIndicatorCandle(deepEffortLiveCandlesRef.current, candle).slice(-240);
       deepEffortLiveCandlesRef.current = source;
       const effortSettings = deepEffortIndicator.settings ?? {};
       const liveResult = calculateDeepEffort(source, {
@@ -12265,8 +12299,21 @@ function Chart({
       for (const zone of liveZones) merged.set(zone.id, zone);
       primitive.update([...merged.values()], options);
     };
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
+      if (!detail || detail.key !== liveCandleEventKey || liveReplayActiveRef.current) return;
+      pendingDeepEffortCandleRef.current = detail.candle;
+      if (deepEffortFrameRef.current === null) {
+        deepEffortFrameRef.current = window.requestAnimationFrame(paintLatest);
+      }
+    };
     window.addEventListener(LIVE_CHART_CANDLE_EVENT, receive);
-    return () => window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+    return () => {
+      window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+      if (deepEffortFrameRef.current !== null) window.cancelAnimationFrame(deepEffortFrameRef.current);
+      deepEffortFrameRef.current = null;
+      pendingDeepEffortCandleRef.current = null;
+    };
   }, [deepEffortIndicator, instrument, liveCandleEventKey, priceFormat.minMove]);
   const imbalanceTracker = useMemo(() => {
     const instance = indicators.find((candidate) =>

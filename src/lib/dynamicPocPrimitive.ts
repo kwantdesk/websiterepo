@@ -42,6 +42,5 @@ export class DynamicPocPrimitive implements ISeriesPrimitive<Time> {
   private chartApi: IChartApi | null = null; private seriesApi: CandleSeriesApi | null = null; private redraw: (() => void) | null = null; private renderData: RenderData | null = null; private view = new PaneView(this);
   attached(parameter: SeriesAttachedParameter<Time, "Candlestick">) { this.chartApi = parameter.chart as IChartApi; this.seriesApi = parameter.series; this.redraw = parameter.requestUpdate; }
   detached() { this.chartApi = null; this.seriesApi = null; this.redraw = null; }
-  paneViews() { return [this.view]; } update(data: RenderData | null) { this.renderData = data; this.redraw?.(); } data() { return this.renderData; } chart() { return this.chartApi; } series() { return this.seriesApi; }
+  paneViews() { return this.renderData ? [this.view] : []; } update(data: RenderData | null) { this.renderData = data; this.redraw?.(); } data() { return this.renderData; } chart() { return this.chartApi; } series() { return this.seriesApi; }
 }
-

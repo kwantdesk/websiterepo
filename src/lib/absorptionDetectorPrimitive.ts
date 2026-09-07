@@ -163,7 +163,7 @@ export class AbsorptionDetectorPrimitive implements ISeriesPrimitive<Time> {
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
   queryHit(x: number, y: number): AbsorptionHit | null {
     if (!this.renderData || !this.candleSeries || !this.chartApi) return null; let nearest: AbsorptionHit | null = null; let distance = Infinity;
     const inspect = (event: AbsorptionEvent | AbsorptionCandidate | AbsorptionZone, kind: AbsorptionHit["kind"]) => {

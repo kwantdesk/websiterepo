@@ -185,5 +185,5 @@ export class ClassicGexProfilePrimitive implements ISeriesPrimitive<Time> {
 
   series() { return this.candleSeries; }
   data() { return this.renderData; }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 }

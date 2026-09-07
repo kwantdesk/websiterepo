@@ -114,7 +114,7 @@ export class StackedImbalancePrimitive implements ISeriesPrimitive<Time> {
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) { this.candleSeries = param.series; this.chartApi = param.chart as IChartApi; this.requestRedraw = param.requestUpdate; }
   detached() { this.candleSeries = null; this.chartApi = null; this.requestRedraw = null; }
   update(data: StackedImbalancePrimitiveData | null) { this.renderData = data; this.requestRedraw?.(); }
-  data() { return this.renderData; } series() { return this.candleSeries; } chart() { return this.chartApi; } paneViews() { return [this.paneView]; }
+  data() { return this.renderData; } series() { return this.candleSeries; } chart() { return this.chartApi; } paneViews() { return this.renderData ? [this.paneView] : []; }
   queryHit(x: number, y: number): StackedImbalanceHit | null {
     if (!this.renderData || !this.candleSeries || !this.chartApi) return null;
     let nearest: StackedImbalanceHit | null = null; let distance = Infinity;

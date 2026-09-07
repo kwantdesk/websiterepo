@@ -59,7 +59,7 @@ export class RatioHighlightPrimitive implements ISeriesPrimitive<Time> {
   private readonly view = new PaneView(this);
   attached(parameter: SeriesAttachedParameter<Time, "Candlestick">) { this.chartApi = parameter.chart as IChartApi; this.seriesApi = parameter.series; this.requestRedraw = parameter.requestUpdate; }
   detached() { this.chartApi = null; this.seriesApi = null; this.requestRedraw = null; }
-  paneViews() { return [this.view]; }
+  paneViews() { return this.renderData ? [this.view] : []; }
   update(data: RenderData | null) { this.renderData = data; this.requestRedraw?.(); }
   data() { return this.renderData; }
   chart() { return this.chartApi; }

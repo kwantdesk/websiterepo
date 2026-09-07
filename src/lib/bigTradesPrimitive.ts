@@ -80,6 +80,10 @@ function markerLabel(marker: BigTradePrimitiveMarker, mode: BigTradesPrimitiveOp
 }
 
 class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
+  private readonly labelCache = new Map<string, string>();
+  private readonly textWidthCache = new Map<string, number>();
+  private readonly occupiedDenseCells = new Set<number>();
+
   constructor(private readonly primitive: BigTradesPrimitive) {}
 
   draw(target: CanvasRenderingTarget2D) {
@@ -120,6 +124,10 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
         }
         lastMarker = Math.min(markers.length, low + 1);
       }
+      const visibleMarkerCount = Math.max(0, lastMarker - firstMarker);
+      const denseViewport = visibleMarkerCount > 800;
+      const labelsFitFrameBudget = visibleMarkerCount <= 300;
+      this.occupiedDenseCells.clear();
 
       if (options.showProjection) {
         /*
@@ -175,11 +183,26 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
           || y - marker.radius > mediaSize.height
         ) continue;
 
+        // At far zoom levels many executions land on the same physical pixels.
+        // Painting every hidden circle cannot add information and can turn one
+        // pan frame into thousands of paths. Preserve one marker per resolvable
+        // 3x3 screen cell until the trader zooms back in.
+        if (denseViewport) {
+          const cellX = Math.floor(x / 3);
+          const cellY = Math.floor(y / 3);
+          const cellKey = cellX * 1_048_576 + cellY;
+          if (this.occupiedDenseCells.has(cellKey)) continue;
+          this.occupiedDenseCells.add(cellKey);
+        }
+
         const color = marker.side === "ASK" ? options.askColor : options.bidColor;
         const radius = marker.radius;
         const strokeWidth = Math.max(1, radius * 0.065);
-        const showLabel = options.markerType === "text"
-          || (options.showLabels && radius >= options.labelMinSize);
+        const showLabel = labelsFitFrameBudget && (
+          options.markerType === "text"
+          || (options.showLabels && radius >= options.labelMinSize)
+        );
+        const drawTextFallback = options.markerType === "text" && !showLabel;
 
         context.save();
         if (!options.hollowFill && options.markerType !== "text") {
@@ -194,7 +217,14 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
         context.strokeStyle = color;
         context.lineWidth = strokeWidth;
         context.fillStyle = color;
-        if (options.markerType === "square") {
+        if (drawTextFallback) {
+          // Text-only markers can otherwise create hundreds of font layouts in
+          // one pan frame. Keep the event visible as a compact dot while the
+          // viewport is dense; its full label returns when it can fit again.
+          context.beginPath();
+          context.arc(x, y, Math.max(1.5, Math.min(3, radius * 0.3)), 0, Math.PI * 2);
+          context.fill();
+        } else if (options.markerType === "square") {
           context.beginPath();
           context.roundRect(
             x - radius,
@@ -235,7 +265,13 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
 
         if (showLabel) {
           const fontSize = Math.max(7, Math.min(11, radius * 0.48));
-          const text = markerLabel(marker, options.informationMode);
+          const labelKey = `${marker.id}:${options.informationMode}:${marker.volume}:${marker.executions}`;
+          let text = this.labelCache.get(labelKey);
+          if (text === undefined) {
+            text = markerLabel(marker, options.informationMode);
+            if (this.labelCache.size > 4_096) this.labelCache.clear();
+            this.labelCache.set(labelKey, text);
+          }
           context.globalAlpha = marker.opacity;
           context.font = `800 ${fontSize}px 'JetBrains Mono', monospace`;
           context.textAlign = "center";
@@ -246,7 +282,13 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
           // is there. When the text will not fit inside the shape it is lifted
           // just above it, with the same halo, so shrinking the markers keeps
           // every number readable instead of erasing it.
-          const textWidth = context.measureText(text).width;
+          const textWidthKey = `${fontSize}:${text}`;
+          let textWidth = this.textWidthCache.get(textWidthKey);
+          if (textWidth === undefined) {
+            textWidth = context.measureText(text).width;
+            if (this.textWidthCache.size > 4_096) this.textWidthCache.clear();
+            this.textWidthCache.set(textWidthKey, textWidth);
+          }
           const fitsInside = textWidth + 2 <= radius * (options.markerType === "diamond" ? 1.4 : 1.9)
             && fontSize + 2 <= radius * 2;
           const labelY = fitsInside ? y : y - radius - fontSize * 0.75;
@@ -296,7 +338,7 @@ export class BigTradesPrimitive implements ISeriesPrimitive<Time> {
   }
 
   update(markers: BigTradePrimitiveMarker[], options: BigTradesPrimitiveOptions) {
-    this.renderMarkers = markers;
+    this.renderMarkers = [...markers].sort((left, right) => Number(left.time) - Number(right.time));
     this.renderOptions = options;
     this.attachedParams?.requestUpdate();
   }
@@ -314,6 +356,6 @@ export class BigTradesPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.paneView];
+    return this.renderMarkers.length ? [this.paneView] : [];
   }
 }

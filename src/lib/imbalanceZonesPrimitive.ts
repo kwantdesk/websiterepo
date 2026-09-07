@@ -41,7 +41,7 @@ class ImbalanceZonesRenderer implements ISeriesPrimitivePaneRenderer {
   draw(target: CanvasRenderingTarget2D) {
     const chart = this.primitive.chart();
     const series = this.primitive.series();
-    const zones = this.primitive.zones();
+    const zones = this.primitive.visibleZones();
     if (!chart || !series || !zones.length) return;
 
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
@@ -116,6 +116,8 @@ export class ImbalanceZonesPrimitive implements ISeriesPrimitive<Time> {
   private candleSeries: SeriesAttachedParameter<Time>["series"] | null = null;
   private requestRedraw: (() => void) | null = null;
   private renderZones: ImbalanceZoneModel[] = [];
+  private maximumDuration = 0;
+  private maximumFutureBars = 0;
   private readonly zonesView = new ImbalanceZonesView(this);
 
   attached(param: SeriesAttachedParameter<Time>) {
@@ -132,7 +134,16 @@ export class ImbalanceZonesPrimitive implements ISeriesPrimitive<Time> {
   }
 
   update(zones: ImbalanceZoneModel[]) {
-    this.renderZones = zones;
+    this.renderZones = [...zones].sort((left, right) => Number(left.startTime) - Number(right.startTime));
+    this.maximumDuration = 0;
+    this.maximumFutureBars = 0;
+    for (const zone of this.renderZones) {
+      this.maximumDuration = Math.max(
+        this.maximumDuration,
+        Math.max(0, Number(zone.endTime) - Number(zone.startTime)),
+      );
+      this.maximumFutureBars = Math.max(this.maximumFutureBars, Math.max(0, zone.futureBars));
+    }
     this.requestRedraw?.();
   }
 
@@ -148,7 +159,36 @@ export class ImbalanceZonesPrimitive implements ISeriesPrimitive<Time> {
     return this.renderZones;
   }
 
+  visibleZones() {
+    const timeScale = this.chartApi?.timeScale();
+    const visible = timeScale?.getVisibleRange();
+    if (!visible || typeof visible.from !== "number" || typeof visible.to !== "number") return this.renderZones;
+    const logical = timeScale?.getVisibleLogicalRange();
+    const logicalSpan = logical == null ? 0 : Math.abs(Number(logical.to) - Number(logical.from));
+    const secondsPerBar = logicalSpan > 0
+      ? Math.abs(Number(visible.to) - Number(visible.from)) / logicalSpan
+      : 0;
+    const paddedFrom = Number(visible.from)
+      - this.maximumDuration
+      - this.maximumFutureBars * secondsPerBar;
+    let first = 0;
+    let last = this.renderZones.length;
+    while (first < last) {
+      const middle = (first + last) >>> 1;
+      if (Number(this.renderZones[middle].startTime) < paddedFrom) first = middle + 1;
+      else last = middle;
+    }
+    const start = first;
+    last = this.renderZones.length;
+    while (first < last) {
+      const middle = (first + last) >>> 1;
+      if (Number(this.renderZones[middle].startTime) <= Number(visible.to)) first = middle + 1;
+      else last = middle;
+    }
+    return this.renderZones.slice(start, first);
+  }
+
   paneViews() {
-    return [this.zonesView];
+    return this.renderZones.length ? [this.zonesView] : [];
   }
 }

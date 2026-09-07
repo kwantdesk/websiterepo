@@ -190,7 +190,7 @@ export class DeltaLadderPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.paneView];
+    return this.options && this.levels.length ? [this.paneView] : [];
   }
 
   private draw(target: CanvasRenderingTarget2D) {

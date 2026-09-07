@@ -183,7 +183,7 @@ export class DarkPoolMapPrimitive implements ISeriesPrimitive<Time> {
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 
   queryHit(x: number, y: number): DarkPoolMapHit | null {
     if (!this.chartApi || !this.candleSeries || !this.renderData) return null;

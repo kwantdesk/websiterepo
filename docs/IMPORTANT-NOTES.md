@@ -1,5 +1,19 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Indicator rendering frame budget
+
+- Big Contracts must never re-anchor/regroup its retained history from every
+  live candle movement. New qualifying executions paint through the direct live
+  edge; the expensive authoritative distribution pass is a slower reconciliation
+  and steady passes scan the recent complete tape, not all raw retained history.
+- Zone studies must binary-select only viewport-relevant history before asking
+  the chart for coordinates. Dense marker views must limit repeated font layout
+  and overdraw without changing the underlying executions.
+- Volume-profile derived analytics (structure, VWAP bands and summary) are
+  data/settings results and must be cached across pan/zoom repaints.
+- A primitive with no render model must return no pane view. This applies across
+  footprint, TPO, gamma, DOM, POC, session, profile and order-flow studies.
+
 ## 2026-09-07 — Empty overlays must have zero viewport cost
 
 - A mounted drawing system with no drawings must not subscribe to chart repaint

@@ -129,7 +129,7 @@ export class OverlayVolumeWidthPrimitive implements ISeriesPrimitive<Time> {
     this.redraw = parameter.requestUpdate;
   }
   detached() { this.chartApi = null; this.seriesApi = null; this.redraw = null; }
-  paneViews() { return [this.view]; }
+  paneViews() { return this.renderModel ? [this.view] : []; }
   update(model: { overlay: ChartOverlaySeries; palette: Palette } | null) { this.renderModel = model; this.redraw?.(); }
   model() { return this.renderModel; }
   chart() { return this.chartApi; }

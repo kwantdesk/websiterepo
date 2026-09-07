@@ -233,7 +233,7 @@ export class PocAuctionPrimitive implements ISeriesPrimitive<Time> {
   data() { return this.renderData; }
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
-  paneViews() { return [this.paneView]; }
+  paneViews() { return this.renderData ? [this.paneView] : []; }
 
   queryHit(x: number, y: number): PocAuctionHit | null {
     if (!this.renderData || !this.candleSeries || !this.chartApi) return null;
