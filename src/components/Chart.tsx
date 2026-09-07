@@ -14980,12 +14980,7 @@ function Chart({
     setChartReadyRevision((current) => current + 1);
 
     const candleSeries = chart.addCandlestickSeries({
-      upColor: settings.upColor,
-      downColor: settings.downColor,
-      borderUpColor: settings.borderUpColor,
-      borderDownColor: settings.borderDownColor,
-      wickUpColor: settings.wickUpColor,
-      wickDownColor: settings.wickDownColor,
+      ...resolvedCandleColors,
       priceLineColor: legibleOn(settings.upColor, settings.backgroundColor, 4.5),
       priceFormat,
       crosshairMarkerVisible: false,

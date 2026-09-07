@@ -1944,6 +1944,27 @@ export function healClosedCandleFlow(
   });
   return repaired ? healed : null;
 }
+
+/**
+ * Reconcile every authoritative field of a closed candle in one pass.
+ *
+ * Price geometry is not conditional on an attached order-flow study: every
+ * ordinary chart must recover a high/low that the live stream missed. Flow is
+ * optional because downloading/merging it is only useful when a study consumes
+ * it. A null result lets the caller avoid repainting an already-correct chart.
+ */
+export function healClosedCandleIntegrity(
+  held: Candle[],
+  baked: Candle[],
+  liveEdgeFromMs: number,
+  includeFlow: boolean,
+): Candle[] | null {
+  const ohlcHealed = healClosedCandleOhlc(held, baked, liveEdgeFromMs) ?? held;
+  const fullyHealed = includeFlow
+    ? healClosedCandleFlow(ohlcHealed, baked, liveEdgeFromMs) ?? ohlcHealed
+    : ohlcHealed;
+  return fullyHealed === held ? null : fullyHealed;
+}
 function normalizeInstitutionalTradeRecords(value: unknown): InstitutionalTrade[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {

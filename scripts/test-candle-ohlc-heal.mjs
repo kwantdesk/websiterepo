@@ -9,7 +9,7 @@ execSync(
   `npx esbuild src/lib/institutionalMarketData.ts --bundle --format=esm --platform=node --alias:@=./src --outfile="${bundle}"`,
   { stdio: "pipe" },
 );
-const { healClosedCandleOhlc } = await import(`file://${bundle.replaceAll("\\", "/")}`);
+const { healClosedCandleIntegrity, healClosedCandleOhlc } = await import(`file://${bundle.replaceAll("\\", "/")}`);
 
 const MIN = 60_000;
 const NOW = 1_770_000_000_000;
@@ -67,7 +67,19 @@ const liveEdge = NOW - 2 * MIN;
 // 5. An already-correct series must not force a rebuild.
 assert.equal(healClosedCandleOhlc(baked.map((b) => ({ ...b })), baked, liveEdge), null);
 
-// 6. A bar the vendor has no view of yet is left exactly as the stream built it.
+// 6. Price repair is unconditional. A plain chart without CVD/footprint must
+//    not keep a body-only live-built bar just because it did not request flow.
+{
+  const held = baked.map((b, i) => (
+    i === 12 ? { ...b, high: Math.max(b.open, b.close), low: Math.min(b.open, b.close) } : { ...b }
+  ));
+  const healed = healClosedCandleIntegrity(held, baked, liveEdge, false);
+  assert.ok(healed, "ordinary price charts must run the closed OHLC repair");
+  assert.equal(healed[12].high, baked[12].high);
+  assert.equal(healed[12].low, baked[12].low);
+}
+
+// 7. A bar the vendor has no view of yet is left exactly as the stream built it.
 {
   const extra = { ...bar(30, 20_050, 20_050, 20_050, 20_050), timestamp: NOW + MIN };
   const held = [...baked.map((b) => ({ ...b })), extra];
@@ -75,4 +87,4 @@ assert.equal(healClosedCandleOhlc(baked.map((b) => ({ ...b })), baked, liveEdge)
 }
 
 rmSync(outDir, { recursive: true, force: true });
-console.log("candle OHLC heal: 6/6 checks passed");
+console.log("candle OHLC heal: 7/7 checks passed");

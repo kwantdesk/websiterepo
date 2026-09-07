@@ -2875,3 +2875,15 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   to make a move look smooth; a genuine exchange gap must still jump.
 - Prompt, diagnosis, fix and outcome:
   `docs/prompt-log/2026-09-07-live-wick-visual-path.md`.
+
+## 2026-09-07 — Closed candle wick integrity
+
+- A body-only candle is valid when authoritative high/low equal the body ends;
+  never manufacture a cosmetic minimum wick.
+- Every normal Rithmic time chart periodically reconciles safely closed OHLC
+  with History Plant bars, whether or not an order-flow study is attached.
+- The forming edge remains stream-owned, and the first series paint uses the
+  fully resolved theme/custom candle palette so a real wick is never hidden by
+  stale raw colours.
+- Prompt, diagnosis, fix and outcome:
+  `docs/prompt-log/2026-09-07-closed-candle-wick-integrity.md`.

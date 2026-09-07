@@ -170,7 +170,7 @@ import {
   buildChartVolumeProfile,
   applyInstitutionalTradesToVolumeProfile,
   enrichCandlesWithInstitutionalCandleFlow,
-  healClosedCandleFlow,
+  healClosedCandleIntegrity,
   enrichCandlesWithInstitutionalTrades,
   fetchInstitutionalFrontMonth,
   fetchInstitutionalSnapshot,
@@ -7375,20 +7375,22 @@ function WorkspaceChartPaneComponent({
     };
   }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, replayHistoryRange, resolvedContractSymbol]);
 
-  // Flow-heal loop. Enriched history is otherwise consumed exactly once at
-  // pane load, so any execution the live stream drops during a busy session
-  // leaves that bar without bid/ask volume forever — CVD then skips it and the
-  // series degrades into disconnected dots the longer the pane stays open
-  // (measured: IndexedDB flow runs fragmenting from the RTH open while the
-  // server's flow-baked history for the same window was complete). Re-consume
-  // the route's baked flow at a low cadence and back-fill closed bars; the
-  // live edge past the provider's availability lag stays with the stream.
+  // Closed-bar integrity heal. History is otherwise consumed exactly once at
+  // pane load, so a bar built while the live stream missed one or more prints
+  // could keep a truncated (occasionally body-only) wick forever even after
+  // Rithmic's History Plant had published the complete OHLC. Re-consume the
+  // route's baked bars at a deliberately low cadence and restore CLOSED bars
+  // from that authority. Genuinely wickless exchange bars remain wickless; we
+  // never manufacture a cosmetic minimum wick.
+  //
+  // When an order-flow study is attached, the same request also heals dropped
+  // bid/ask volume so CVD/footprint do not fragment. The forming edge remains
+  // stream-owned in both cases, because the provider's current bar is partial.
   useEffect(() => {
     if (
       replayHistoryRange
       ||
       pane.broker !== "Databento"
-      || !needsOrderFlowHistory
       || isEventBasedChartInterval(pane.timeframe)
     ) return;
     let cancelled = false;
@@ -7404,7 +7406,7 @@ function WorkspaceChartPaneComponent({
           pane.broker,
           period,
           500,
-          true,
+          needsOrderFlowHistory,
           controller.signal,
           false,
           true,
@@ -7416,14 +7418,18 @@ function WorkspaceChartPaneComponent({
         // live edge past the provider's availability lag stays with the
         // stream, so a partial baked bar cannot drag it backwards.
         const barMs = timeframeDurationMs(pane.timeframe) ?? 60_000;
-        const healed = healClosedCandleFlow(
+        const liveEdgeFromMs = Date.now() - Math.max(90_000, barMs * 2);
+        const healed = healClosedCandleIntegrity(
           previous,
           downloaded,
-          Date.now() - Math.max(90_000, barMs * 2),
+          liveEdgeFromMs,
+          needsOrderFlowHistory,
         );
         if (!healed) return;
         latestCandlesRef.current = healed;
-        if (hasUsableOrderFlowHistory(healed)) setOrderFlowHistoryReady(true);
+        if (needsOrderFlowHistory && hasUsableOrderFlowHistory(healed)) {
+          setOrderFlowHistoryReady(true);
+        }
         startTransition(() => setCandles(healed));
         void writeChartHistoryCache(pane.symbol, pane.timeframe, healed);
       } catch {
