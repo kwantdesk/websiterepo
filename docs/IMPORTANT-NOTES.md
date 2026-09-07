@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Weekly profile five-session invariant
+
+- Stock Weekly Volume Profile is one rolling profile over the latest five real
+  trading sessions, newest/developing session included. It is not five calendar
+  days and must skip weekends and known exchange holidays.
+- Use restored candle trading dates as the authoritative session list and the
+  Chicago weekday fallback only while history is hydrating.
+- Preserve user overrides: current calendar week and previous completed week
+  remain selectable. Older explicit previous-week choices must not migrate.
+- Futures and projected cash/options paths must send the same start/end window;
+  the chart viewport must never silently shorten the requested calculation.
+
 ## 2026-09-07 — Indicator rendering frame budget
 
 - Big Contracts must never re-anchor/regroup its retained history from every

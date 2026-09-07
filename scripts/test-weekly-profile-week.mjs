@@ -3,86 +3,64 @@ import { readFileSync } from "node:fs";
 
 const { cmeWeekRange, currentCmeWeekStart } = await import("../src/lib/cmeProfileWindows.ts");
 
-/**
- * Which week a weekly profile covers.
- *
- * A weekly profile of the CURRENT week is only worth as much as the week has
- * run. On a Monday morning it is a few hours of tape wearing a weekly label,
- * and it keeps reshaping until midweek - which is exactly when last week's
- * finished structure is most useful to lean on.
- */
-
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
+const chicago = (iso) => new Date(iso).getTime();
+const asChicago = (ms) => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Chicago", weekday: "short", year: "numeric", month: "2-digit",
+  day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+}).format(new Date(ms));
 
-// A Monday morning, 09:45 New York.
 const MONDAY_MORNING = Date.UTC(2026, 7, 31, 13, 45);
+const TRADING_DATES = [
+  "2026-08-24", "2026-08-25", "2026-08-26",
+  "2026-08-27", "2026-08-28", "2026-08-31",
+];
 const WEEK_MS = 7 * 24 * 60 * 60_000;
 
-check("current week is unchanged from what it always was", () => {
-  const range = cmeWeekRange(MONDAY_MORNING);
-  assert.equal(range.startMs, currentCmeWeekStart(MONDAY_MORNING));
-  assert.equal(range.endMs, null, "the live week must stay open-ended");
-  // The default must be the old behaviour exactly.
-  assert.deepEqual(cmeWeekRange(MONDAY_MORNING, "current"), range);
+check("stock weekly profile is the latest five trading sessions", () => {
+  const range = cmeWeekRange(MONDAY_MORNING, "rolling-five", TRADING_DATES);
+  assert.match(asChicago(range.startMs), /^Mon/);
+  assert.match(asChicago(range.startMs), /2026-08-24/);
+  assert.match(asChicago(range.startMs), /17:00/);
+  assert.equal(range.endMs, null, "the developing fifth session must stay open-ended");
+  assert.deepEqual(cmeWeekRange(MONDAY_MORNING, undefined, TRADING_DATES), range);
 });
 
-check("previous week is the one that finished, and is closed", () => {
-  const current = cmeWeekRange(MONDAY_MORNING);
+check("actual trading dates skip a weekday holiday", () => {
+  const dates = ["2026-08-21", "2026-08-24", "2026-08-25", "2026-08-27", "2026-08-28"];
+  const saturday = chicago("2026-08-29T18:00:00Z");
+  const range = cmeWeekRange(saturday, "rolling-five", dates);
+  assert.match(asChicago(range.startMs), /2026-08-20/, asChicago(range.startMs));
+  assert.match(asChicago(range.endMs), /2026-08-28/, asChicago(range.endMs));
+  assert.match(asChicago(range.endMs), /16:00/, asChicago(range.endMs));
+});
+
+check("current and previous calendar-week overrides remain available", () => {
+  const current = cmeWeekRange(MONDAY_MORNING, "current");
   const previous = cmeWeekRange(MONDAY_MORNING, "previous");
-  assert.ok(previous.startMs < current.startMs, "the previous week does not start earlier");
-  assert.equal(previous.endMs, current.startMs, "the finished week is not bounded at this week's open");
-  const span = previous.endMs - previous.startMs;
-  // Sunday open to Sunday open.
-  assert.equal(span, WEEK_MS, `expected a whole week, got ${span / 3_600_000}h`);
+  assert.equal(current.startMs, currentCmeWeekStart(MONDAY_MORNING));
+  assert.equal(current.endMs, null);
+  assert.equal(previous.endMs, current.startMs);
+  assert.equal(previous.endMs - previous.startMs, WEEK_MS);
 });
 
-check("no part of the live week can leak into a finished one", () => {
-  /*
-   * This is the whole point of the bound. A profile labelled "previous week"
-   * that quietly included Monday's tape would be a different measurement than
-   * the one it claims to be.
-   */
-  const previous = cmeWeekRange(MONDAY_MORNING, "previous");
-  assert.ok(previous.endMs <= MONDAY_MORNING, "the finished week reaches past now");
-  assert.ok(previous.endMs <= currentCmeWeekStart(MONDAY_MORNING));
+check("both live profile paths send the calculated five-session bounds", () => {
+  const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /cmeWeekRange\([\s\S]*?"rolling-five"[\s\S]*?tradingDates,/);
+  assert.match(workspace, /cmeWeekRange\([\s\S]*?"rolling-five"[\s\S]*?paneTradingDates,/);
+  assert.match(workspace, /period: "weekly",\s*\r?\n\s*startMs: weeklyWindow\.startMs,/);
+  assert.match(workspace, /period: "weekly",\s*\r?\n\s*startMs: weekStartMs,/);
+  assert.match(workspace, /endMs: weekEndMs \?\? undefined,/);
 });
 
-check("it holds on every day of the week", () => {
-  // Monday is the painful case, but the answer must not change shape midweek.
-  for (let day = 0; day < 7; day += 1) {
-    const at = MONDAY_MORNING + day * 24 * 60 * 60_000;
-    const current = cmeWeekRange(at);
-    const previous = cmeWeekRange(at, "previous");
-    assert.equal(previous.endMs, current.startMs, `day ${day} boundary drifted`);
-    assert.equal(previous.endMs - previous.startMs, WEEK_MS, `day ${day} was not a whole week`);
-  }
-});
-
-check("the chart asks for the selected week with a stable live cache key", () => {
-  const workspace = readFileSync(
-    new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8",
-  );
-  assert.match(workspace, /cmeWeekRange\(\s*\n?\s*Date\.now\(\),/, "the weekly profile ignores the setting");
-  assert.match(
-    workspace,
-    /weeklyProfileSettings\.weekSelection === "previous" \? "previous" : "current"/,
-    "an unrecognised value must fall back to the current week",
-  );
-  // Previous week is explicitly closed. Current week omits the moving end so
-  // receiving a candle does not create a brand-new cache identity; the
-  // gateway resolves its own current clock.
-  assert.match(workspace, /endMs: weekEndMs \?\? undefined,/, "the selected week is not bounded correctly");
-  assert.doesNotMatch(workspace, /const weeklyCandles = candles\.filter/);
-});
-
-check("the option is offered on the weekly profile only", () => {
-  const control = readFileSync(
-    new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8",
-  );
-  assert.match(control, /settingsDefinition\.id === "weekly-volume-profile" \? \[\[/);
-  assert.match(control, /"Week shown", "weekSelection", "current"/);
-  assert.match(control, /\["previous", "Previous week · complete"\]/);
+check("weekly UI defaults to automatic five-day calculation", () => {
+  const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+  const config = readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8");
+  assert.match(control, /"Calculation window", "weekSelection", "rolling-five"/);
+  assert.match(control, /\["rolling-five", "Last 5 trading days · automatic"\]/);
+  assert.match(config, /weekSelection: "rolling-five",\s*\r?\n\s*weeklyWindowSettingsVersion: 2/);
+  assert.match(config, /storedSelection === "previous" \? "previous" : "rolling-five"/);
 });
 
 console.log(`\nweekly profile week: ${passed}/${passed} checks passed`);

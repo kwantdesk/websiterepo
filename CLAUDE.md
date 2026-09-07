@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Weekly profile defaults to five trading days
+
+- Weekly Volume Profile now starts as one rolling calculation across the latest
+  five actual CME trading sessions, including the developing session. Candle
+  trading dates make the window holiday-aware; a weekday fallback covers the
+  initial history-hydration phase.
+- Existing untouched/current-week profiles migrate to the new stock behaviour.
+  Explicit previous-week profiles stay previous-week, and users can still
+  choose rolling five, current calendar week or previous calendar week.
+- Futures and projected cash/options profile requests use the same explicit
+  window. Prompt, fix and outcome:
+  `docs/prompt-log/2026-09-07-weekly-profile-five-days.md`.
+
 ## 2026-09-07 — Indicator frame-budget audit
 
 - Fixed the reported navigation stalls in Imbalance Tracker, Daily Volume

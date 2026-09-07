@@ -57,6 +57,13 @@ function localDateLabel(date: LocalDate) {
   return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
 }
 
+function parseLocalDateLabel(value: string): LocalDate | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const date = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  return localDateLabel(date) === value ? date : null;
+}
+
 function timeZoneOffsetMinutes(timestamp: number) {
   const parts = chicagoParts(timestamp);
   const representedAsUtc = Date.UTC(
@@ -141,7 +148,52 @@ export function nextCmeDailyCompletion(now: number) {
  * candles - a short range, or history still restoring - it collapsed to exactly
  * today and the weekly profile mirrored the daily one.
  */
-export type CmeWeekSelection = "current" | "previous";
+export type CmeWeekSelection = "rolling-five" | "current" | "previous";
+
+/**
+ * Five actual CME trading sessions, including the developing session when one
+ * is open. `tradingDates` comes from the restored candle series and therefore
+ * skips exchange holidays; the weekday fallback keeps the request useful while
+ * chart history is still hydrating.
+ */
+export function rollingCmeTradingDayRange(
+  now: number,
+  tradingDates: readonly string[] = [],
+  count = 5,
+) {
+  const wanted = Math.max(1, Math.min(20, Math.floor(count)));
+  const parts = chicagoParts(now);
+  const localToday = { year: parts.year, month: parts.month, day: parts.day };
+  const byLabel = new Map<string, LocalDate>();
+  for (const value of tradingDates) {
+    const parsed = parseLocalDateLabel(value);
+    if (parsed) byLabel.set(value, parsed);
+  }
+  // Include candidate sessions around the current date. A session belongs to
+  // its weekday close and starts at 17:00 CT on the preceding calendar day.
+  // Sunday evening therefore correctly adds Monday; Friday evening does not
+  // invent a Saturday session.
+  if (byLabel.size < wanted) {
+    for (let offset = -24; offset <= 3; offset += 1) {
+      const endDate = addLocalDays(localToday, offset);
+      const day = localDayOfWeek(endDate);
+      if (day === 0 || day === 6) continue;
+      const start = chicagoEpoch(addLocalDays(endDate, -1), 17);
+      if (start <= now) byLabel.set(localDateLabel(endDate), endDate);
+    }
+  }
+  const selected = [...byLabel.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(-wanted)
+    .map(([, date]) => date);
+  const earliest = selected[0] ?? localToday;
+  const latest = selected.at(-1) ?? localToday;
+  const latestClose = chicagoEpoch(latest, 16);
+  return {
+    startMs: chicagoEpoch(addLocalDays(earliest, -1), 17),
+    endMs: latestClose <= now ? latestClose : null as number | null,
+  };
+}
 
 /**
  * Which trading week a weekly profile covers.
@@ -155,7 +207,12 @@ export type CmeWeekSelection = "current" | "previous";
  * week's open so no part of the live week leaks into it. It is a complete,
  * settled profile rather than one that reshapes under you all day.
  */
-export function cmeWeekRange(now: number, selection: CmeWeekSelection = "current") {
+export function cmeWeekRange(
+  now: number,
+  selection: CmeWeekSelection = "rolling-five",
+  tradingDates: readonly string[] = [],
+) {
+  if (selection === "rolling-five") return rollingCmeTradingDayRange(now, tradingDates, 5);
   const thisWeekStart = currentCmeWeekStart(now);
   if (selection !== "previous") return { startMs: thisWeekStart, endMs: null as number | null };
   return {

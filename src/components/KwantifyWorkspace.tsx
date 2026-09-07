@@ -8756,10 +8756,21 @@ function WorkspaceChartPaneComponent({
           }
         }
         if (wantsWeekly) {
+          const selection = String(weeklyProfileInstance?.settings?.weekSelection ?? "rolling-five");
+          const paneTradingDates = [...new Set(
+            latestCandlesRef.current.map((candle) => chicagoTradingDate(candle.timestamp)),
+          )].sort();
+          const weeklyWindow = cmeWeekRange(
+            Date.now(),
+            selection === "previous" ? "previous" : selection === "current" ? "current" : "rolling-five",
+            paneTradingDates,
+          );
           requests.push(fetchInstitutionalVolumeProfile({
             symbol: projectionRoot,
             contractSymbol,
             period: "weekly",
+            startMs: weeklyWindow.startMs,
+            endMs: weeklyWindow.endMs ?? undefined,
             ...projectedArgsFor(weeklyProfileInstance?.settings ?? {}, 4),
           }));
         }
@@ -9236,30 +9247,14 @@ function WorkspaceChartPaneComponent({
         });
       }
       if (weeklyProfileInstance && includeCompletedProfiles) {
-        /*
-         * THIS WEEK, from the Sunday Globex open - not the last five sessions
-         * the chart happened to have loaded.
-         *
-         * The old window was `tradingDates.slice(-5)`, which is not a week. On
-         * a Tuesday it reached back into the previous Thursday and Friday, and
-         * when a pane held only today's candles - a short load range, or
-         * history still restoring - it collapsed to exactly today and the
-         * weekly profile mirrored the daily one.
-         *
-         * The start is the WEEK's open rather than the first loaded candle, so
-         * the profile covers Monday onward even when the chart's own history is
-         * shorter than that. The server has the tape; the pane's viewport
-         * should not decide how much of the week a weekly profile is made of.
-         */
-        /*
-         * On a Monday the current week is a few hours old, so a "weekly"
-         * profile is barely more than the daily one and reshapes all day. The
-         * setting lets the chart show the week that has actually FINISHED
-         * instead - complete structure to lean on while this one builds.
-         */
+        // Stock weekly behaviour is one rolling calculation over the latest
+        // five real trading dates. Current/previous calendar week remain user
+        // choices in settings.
+        const selection = String(weeklyProfileSettings.weekSelection ?? "rolling-five");
         const { startMs: weekStartMs, endMs: weekEndMs } = cmeWeekRange(
           Date.now(),
-          weeklyProfileSettings.weekSelection === "previous" ? "previous" : "current",
+          selection === "previous" ? "previous" : selection === "current" ? "current" : "rolling-five",
+          tradingDates,
         );
         const weeklyRequestArgs = {
           symbol: displayCmeSymbol(pane.symbol),

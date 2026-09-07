@@ -3034,12 +3034,11 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   } : {}),
   ...(indicatorId === "tpo-chart" ? tpoSettingsToRecord(defaultTpoSettings("daily-tpo", theme)) : {}),
   ...(indicatorId === "weekly-tpo" ? tpoSettingsToRecord(defaultTpoSettings("weekly-tpo", theme)) : {}),
-  /*
-   * Which week the weekly profile covers. Defaults to the current one, so a
-   * chart that has never been touched paints exactly what it painted before
-   * this setting existed.
-   */
-  ...(indicatorId === "weekly-volume-profile" ? { weekSelection: "current" } : {}),
+  /* Weekly starts as one rolling profile over the latest five CME sessions. */
+  ...(indicatorId === "weekly-volume-profile" ? {
+    weekSelection: "rolling-five",
+    weeklyWindowSettingsVersion: 2,
+  } : {}),
   ...(["kwant-profile", "weekly-volume-profile", "monthly-volume-profile", "session-volume-profile", "visible-range-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     // Data Settings — the input series, the trade-size band applied before
@@ -3992,6 +3991,23 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         },
       };
     }
+  }
+  if (
+    normalizedInstance.indicatorId === "weekly-volume-profile"
+    && Number(normalizedInstance.settings?.weeklyWindowSettingsVersion) < 2
+  ) {
+    const storedSelection = String(normalizedInstance.settings?.weekSelection ?? "");
+    normalizedInstance = {
+      ...normalizedInstance,
+      settings: {
+        ...(normalizedInstance.settings ?? {}),
+        // `current` was the former untouched stock value. Move those charts to
+        // the new five-session baseline; preserve the explicit completed-week
+        // choice. The Current Week option remains available going forward.
+        weekSelection: storedSelection === "previous" ? "previous" : "rolling-five",
+        weeklyWindowSettingsVersion: 2,
+      },
+    };
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"

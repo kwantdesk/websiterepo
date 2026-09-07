@@ -3108,13 +3108,10 @@ export default function ChartIndicatorsControl({
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Filter / split time</div>
                   {([
-                    /*
-                     * Weekly only. On a Monday the current week is a few hours
-                     * old, so the profile is barely more than the daily one and
-                     * reshapes all day — this shows the finished week instead.
-                     */
+                    /* Weekly defaults to a rolling five-session calculation. */
                     ...(settingsDefinition.id === "weekly-volume-profile" ? [[
-                      "Week shown", "weekSelection", "current", [
+                      "Calculation window", "weekSelection", "rolling-five", [
+                        ["rolling-five", "Last 5 trading days · automatic"],
                         ["current", "Current week · building"],
                         ["previous", "Previous week · complete"],
                       ],
