@@ -1,5 +1,6 @@
 const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
 const RAW_COLUMN_GEOMETRY_CACHE_LIMIT = 2;
+const MAX_VISIBLE_TRADE_CLUSTERS = 2_500;
 
 export const BOOKMAP_VISUAL_DEFAULTS = Object.freeze({
   circleSize: 40,
@@ -96,47 +97,81 @@ function mergeTradeGroups(left, right, differential) {
     anchorIndex: anchor.anchorIndex,
     anchorTick: anchor.anchorTick,
     anchorTimestamp: anchor.anchorTimestamp,
+    minimumFrame: left.minimumIndex <= right.minimumIndex ? left.minimumFrame : right.minimumFrame,
+    maximumFrame: left.maximumIndex >= right.maximumIndex ? left.maximumFrame : right.maximumFrame,
   };
 }
 
 function mergeNearbyTrades(groups, options) {
-  const distanceLimit = smartClusteringParameter(options.smartClustering) * 6;
+  const requestedDistance = smartClusteringParameter(options.smartClustering) * 6;
+  // Past this point individual minimum-size spheres cannot all be painted in a
+  // useful frame anyway. Increase only the screen-space aggregation radius as
+  // density rises; trade totals and the first real anchor remain exact.
+  const densityScale = Math.max(1, Math.sqrt(groups.length / MAX_VISIBLE_TRADE_CLUSTERS));
+  const distanceLimit = requestedDistance * densityScale;
   if (!(distanceLimit > 0) || groups.length < 2) return groups;
-  let working = groups;
-  for (let pass = 0; pass < 20 && working.length > 1; pass += 1) {
-    working.sort((left, right) => groupIndex(left) - groupIndex(right) || groupTick(left) - groupTick(right));
-    const consumed = new Set();
-    const next = [];
-    let mergeCount = 0;
-    for (let index = 0; index < working.length; index += 1) {
-      if (consumed.has(index)) continue;
-      const left = working[index];
-      let bestIndex = -1;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      for (let candidateIndex = index + 1; candidateIndex < Math.min(working.length, index + 11); candidateIndex += 1) {
-        if (consumed.has(candidateIndex)) continue;
-        const candidate = working[candidateIndex];
-        const dx = (groupIndex(candidate) - groupIndex(left)) * options.columnPixels;
-        if (dx >= distanceLimit) break;
-        const dy = (groupTick(candidate) - groupTick(left)) / options.rowTicks * options.rowPixels;
-        const distance = Math.hypot(dx, dy);
-        if (distance < distanceLimit && distance < bestDistance) {
-          bestDistance = distance;
-          bestIndex = candidateIndex;
+  // The old implementation repeatedly sorted the complete visible execution
+  // set for as many as 20 passes. At an active open, 50-100 prints per book
+  // frame made one rebuild block the UI for hundreds of milliseconds and left
+  // enough temporary arrays for periodic multi-second GC pauses. A spatial
+  // index visits only the neighbouring screen cells that can possibly merge.
+  const cellSize = Math.max(1, distanceLimit);
+  const cells = new Map();
+  const merged = [];
+  const cellFor = group => ({
+    x: Math.floor(groupIndex(group) * options.columnPixels / cellSize),
+    y: Math.floor(groupTick(group) / options.rowTicks * options.rowPixels / cellSize),
+  });
+  const addToCell = (index, cell) => {
+    const key = `${cell.x}:${cell.y}`;
+    const entries = cells.get(key) || [];
+    entries.push(index);
+    cells.set(key, entries);
+  };
+  const removeFromCell = (index, cell) => {
+    const key = `${cell.x}:${cell.y}`;
+    const entries = cells.get(key);
+    if (!entries) return;
+    const position = entries.indexOf(index);
+    if (position >= 0) entries.splice(position, 1);
+    if (!entries.length) cells.delete(key);
+  };
+
+  // Groups were inserted by the already chronological frame/trade walk above.
+  // Sorting that same 50k+ collection again was pure live-path allocation.
+  for (const group of groups) {
+    const cell = cellFor(group);
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        const candidates = cells.get(`${cell.x + offsetX}:${cell.y + offsetY}`) || [];
+        for (const candidateIndex of candidates) {
+          const candidate = merged[candidateIndex];
+          const dx = (groupIndex(candidate) - groupIndex(group)) * options.columnPixels;
+          const dy = (groupTick(candidate) - groupTick(group)) / options.rowTicks * options.rowPixels;
+          const distance = Math.hypot(dx, dy);
+          if (distance < distanceLimit && distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = candidateIndex;
+          }
         }
       }
-      if (bestIndex >= 0) {
-        consumed.add(bestIndex);
-        next.push(mergeTradeGroups(left, working[bestIndex], options.differential));
-        mergeCount += 1;
-      } else {
-        next.push(left);
-      }
     }
-    working = next.filter(group => group.total > 0);
-    if (mergeCount === 0) break;
+    if (bestIndex < 0) {
+      merged.push(group);
+      addToCell(merged.length - 1, cell);
+      continue;
+    }
+    const previousCell = cellFor(merged[bestIndex]);
+    merged[bestIndex] = mergeTradeGroups(merged[bestIndex], group, options.differential);
+    const nextCell = cellFor(merged[bestIndex]);
+    if (previousCell.x !== nextCell.x || previousCell.y !== nextCell.y) {
+      removeFromCell(bestIndex, previousCell);
+      addToCell(bestIndex, nextCell);
+    }
   }
-  return working;
+  return merged.filter(group => group.total > 0);
 }
 
 function applySmartClustering(groups, options) {
@@ -659,6 +694,8 @@ export class RollingDepthEngine {
           anchorIndex: index,
           anchorTick: trade.tick,
           anchorTimestamp: trade.timestamp,
+          minimumFrame: frame,
+          maximumFrame: frame,
         };
         group.total += trade.size;
         group[trade.side === 'buy' ? 'buyVolume' : 'sellVolume'] += trade.size;
@@ -712,6 +749,8 @@ export class RollingDepthEngine {
           tick: group.anchorTick,
           anchorFrame: group.anchorFrame,
           anchorTimestamp: group.anchorTimestamp,
+          minimumFrame: group.minimumFrame,
+          maximumFrame: group.maximumFrame,
           buyVolume: group.buyVolume,
           sellVolume: group.sellVolume,
           total: group.total,

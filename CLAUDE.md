@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Liquidity-map live frame pacing
+
+- Normal 20 FPS map paints no longer rebuild the complete 1,800-frame Signals
+  analysis every 200 ms. The canvas consumes the already incremental session
+  CVD; full order-flow analysis runs only when the Signals inspector requests it.
+- Trade clustering now uses a screen-space spatial index, applies bounded
+  density level-of-detail, and incrementally rebuilds only an overlapped live
+  tail. Settled anchored bubbles are retained without rescanning their trades.
+- A 90,000-print synthetic open measured the recurring cluster step at 13.2 ms
+  after its one-time initial build, versus roughly 158 ms for every live rebuild
+  on the former path. Feed/depth cadence and trade totals are unchanged.
+- Prompt/outcome: `docs/prompt-log/2026-09-07-liquidity-map-frame-pacing.md`.
+
 ## 2026-09-07 — Liquidity-map bubbles keep their execution anchor
 
 - Smart-cluster bubbles now retain the timestamp, price and frame of their

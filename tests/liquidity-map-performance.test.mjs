@@ -77,6 +77,7 @@ test("live map rendering avoids full-history analysis and repeated DOM replaceme
 
 test("wide and high-DPI screens use bounded canvas work and cached trade clusters", () => {
   const renderer = read("public/heatmap-app/src/renderer.js");
+  const depthEngine = read("public/heatmap-app/src/depth-engine.js");
   assert.match(renderer, /Math\.sqrt\(5_000_000 \/ Math\.max\(1, width \* height\)\)/);
   assert.match(renderer, /Math\.min\(1\.5, window\.devicePixelRatio/);
   assert.match(renderer, /this\.tradeClusterCache\.key !== clusterKey/);
@@ -102,6 +103,22 @@ test("wide and high-DPI screens use bounded canvas work and cached trade cluster
   assert.match(renderer, /const overlayCenterTick = this\.interaction/);
   assert.match(renderer, /overlayBottomTick, overlayTopTick, overlayCenterTick, overlayYForTick/);
   assert.match(renderer, /this\.interaction\?\.startTimestamp/);
+  assert.match(depthEngine, /const cells = new Map\(\)/);
+  assert.match(depthEngine, /MAX_VISIBLE_TRADE_CLUSTERS = 2_500/);
+  assert.match(depthEngine, /Math\.sqrt\(groups\.length \/ MAX_VISIBLE_TRADE_CLUSTERS\)/);
+  const nearbyMerge = depthEngine.match(/function mergeNearbyTrades[\s\S]*?function applySmartClustering/)?.[0] || "";
+  assert.doesNotMatch(nearbyMerge, /for \(let pass = 0; pass < 20 && working\.length > 1; pass \+= 1\)/);
+  assert.doesNotMatch(depthEngine, /const ordered = \[\.\.\.groups\]\.sort/);
+});
+
+test("ordinary map paints do not rebuild the full Signals analysis", () => {
+  const runtime = read("public/heatmap-app/src/main.js");
+  assert.match(runtime, /const indicatorAnalysis = \{ sessionCvd: \{ points: this\.cvdHistory \} \}/);
+  assert.doesNotMatch(
+    runtime,
+    /if \(this\.renderRequested && canvasPaintDue\)[\s\S]{0,900}this\.#getIndicatorAnalysis\(\)/,
+  );
+  assert.match(runtime, /#updateSignals\(snapshot\) \{[\s\S]{0,120}this\.#getIndicatorAnalysis\(\)/);
 });
 
 test("live heatmap raster buffers roll in place instead of allocating every frame", () => {

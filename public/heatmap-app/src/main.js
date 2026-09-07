@@ -1,6 +1,6 @@
-import { SYMBOLS } from './market-simulator.js?v=20260907-bubble-anchors';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260907-bubble-anchors';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260907-bubble-anchors';
+import { SYMBOLS } from './market-simulator.js?v=20260907-frame-pacing';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260907-frame-pacing';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260907-frame-pacing';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -13,22 +13,22 @@ import {
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20260907-bubble-anchors';
-import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20260907-bubble-anchors';
+} from './live-market.js?v=20260907-frame-pacing';
+import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20260907-frame-pacing';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
   computeOrderbookImbalance,
   computeVolumeImbalance,
   mergeLiveCvdHistory,
-} from './order-flow-indicators.js?v=20260907-bubble-anchors';
-import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20260907-bubble-anchors';
+} from './order-flow-indicators.js?v=20260907-frame-pacing';
+import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20260907-frame-pacing';
 import {
   DEFAULT_UI_THEME,
   WEBSITE_THEME_STORAGE_KEY,
   applyUiTheme,
   setWebsiteThemeColors,
-} from './ui-themes.js?v=20260907-bubble-anchors';
+} from './ui-themes.js?v=20260907-frame-pacing';
 
 // Retain genuine Rithmic book frames, not monitor presentation frames. The
 // gateway emits full books at 20 FPS; 1,800 frames therefore preserves the
@@ -1593,8 +1593,12 @@ class DepthForgeApp {
         const current = this.history[this.viewEnd];
         if (current) {
           if (this.settings.autoCenter && this.atLive) this.view.centerTick = null;
-          const indicatorAnalysis = this.#getIndicatorAnalysis();
-          indicatorAnalysis.sessionCvd = { points: this.cvdHistory };
+          // The normal canvas needs only the already-incremental session CVD.
+          // Running the full 1,800-frame Signals analysis here rebuilt and
+          // allocated the complete trade tape every 200 ms even while that
+          // inspector was closed. Signals still computes on demand in
+          // #updateSignals; the live map paint no longer waits behind it.
+          const indicatorAnalysis = { sessionCvd: { points: this.cvdHistory } };
           const previousCenterTick = Number(this.renderer.layout?.centerTick);
           const previousEndFrame = this.renderer.layout?.history?.[this.renderer.layout?.end];
           const previousPixelsPerTick = Number(this.renderer.layout?.plotHeight)

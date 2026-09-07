@@ -1,4 +1,4 @@
-import { websiteThemeColors } from './ui-themes.js?v=20260907-bubble-anchors';
+import { websiteThemeColors } from './ui-themes.js?v=20260907-frame-pacing';
 
 export const DEFAULT_PALETTE = 'auto';
 

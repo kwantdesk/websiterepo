@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { RollingDepthEngine } from "../public/heatmap-app/src/depth-engine.js";
-import { resolveTradeClusterAnchorIndex } from "../public/heatmap-app/src/renderer.js";
+import {
+  planIncrementalTradeClusterRefresh,
+  resolveTradeClusterAnchorIndex,
+} from "../public/heatmap-app/src/renderer.js";
 
 const frame = (id, timestamp, trades = []) => ({
   id,
@@ -68,4 +71,29 @@ test("a cached bubble resolves the same frame after the rolling window shifts", 
   engine.append(frame(6, 1_250));
   assert.equal(resolveTradeClusterAnchorIndex(engine.frames, surviving), 1,
     "the same market frame is remapped to its current rolling-array index");
+});
+
+test("live refresh retains settled clusters and rebuilds only the overlapping tail", () => {
+  const engine = new RollingDepthEngine(400);
+  for (let index = 0; index < 200; index += 1) {
+    engine.append(frame(index, index * 50, [trade(index, index * 50, 100 + index % 4, 2)]));
+  }
+  const cached = engine.clusterTrades({ ...clusterOptions, end: 199, smartClustering: 0 });
+  const previousEndFrame = engine.frames[199];
+  for (let index = 200; index < 205; index += 1) {
+    engine.append(frame(index, index * 50, [trade(index, index * 50, 100 + index % 4, 2)]));
+  }
+
+  const plan = planIncrementalTradeClusterRefresh(
+    engine.frames,
+    cached,
+    0,
+    204,
+    previousEndFrame,
+    32,
+  );
+  assert.ok(plan);
+  assert.ok(plan.rebuildStart >= 168 && plan.rebuildStart < 200);
+  assert.ok(plan.retained.length >= 80, "settled bubbles are not rescanned on every live frame");
+  assert.ok(plan.retained.every(cluster => engine.frames.indexOf(cluster.maximumFrame) < plan.rebuildStart));
 });

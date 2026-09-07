@@ -1,5 +1,5 @@
-import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20260907-bubble-anchors';
-import { canvasUiTheme } from './ui-themes.js?v=20260907-bubble-anchors';
+import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20260907-frame-pacing';
+import { canvasUiTheme } from './ui-themes.js?v=20260907-frame-pacing';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1
@@ -140,6 +140,31 @@ export function resolveTradeClusterAnchorIndex(history, cluster) {
     : -1;
 }
 
+export function planIncrementalTradeClusterRefresh(
+  history,
+  clusters,
+  start,
+  end,
+  previousEndFrame,
+  overlapFrames = 128,
+) {
+  const previousEnd = history.indexOf(previousEndFrame);
+  if (previousEnd < start || previousEnd > end || end - previousEnd > 64) return null;
+  const candidateStart = Math.max(start, previousEnd - Math.max(1, overlapFrames) + 1);
+  let rebuildStart = candidateStart;
+  for (const cluster of clusters || []) {
+    const maximumIndex = history.indexOf(cluster.maximumFrame);
+    if (maximumIndex < candidateStart) continue;
+    const minimumIndex = history.indexOf(cluster.minimumFrame);
+    if (minimumIndex >= start) rebuildStart = Math.min(rebuildStart, minimumIndex);
+  }
+  const retained = (clusters || []).filter(cluster => {
+    const maximumIndex = history.indexOf(cluster.maximumFrame);
+    return maximumIndex >= start && maximumIndex < rebuildStart;
+  });
+  return { rebuildStart, retained };
+}
+
 export class DepthRenderer {
   constructor(canvas, cvdCanvas, depthEngine) {
     this.canvas = canvas;
@@ -156,7 +181,9 @@ export class DepthRenderer {
     this.cameraCenterTick = null;
     this.cameraFrameAt = 0;
     this.cameraInMotion = false;
-    this.tradeClusterCache = { key: '', settingsKey: '', value: [], builtAt: 0, ready: false };
+    this.tradeClusterCache = {
+      key: '', settingsKey: '', value: [], builtAt: 0, ready: false, endFrame: null,
+    };
     this.executionProfileCache = { history: null, startFrame: null, endFrame: null, totals: new Map() };
     this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
     this.lastFontStyleSyncAt = 0;
@@ -624,12 +651,31 @@ export class DepthRenderer {
         && clusterNow - this.tradeClusterCache.builtAt >= TRADE_CLUSTER_REFRESH_MS
       )
     ) {
+      const overlapFrames = Math.max(
+        32,
+        Math.ceil((Math.max(6, Number(settings.circleSize) * 2) + 12) / Math.max(.12, layout.columnPixels)),
+      );
+      const incremental = !settingsChanged && this.tradeClusterCache.ready
+        ? planIncrementalTradeClusterRefresh(
+          history,
+          this.tradeClusterCache.value,
+          clusterOptions.start,
+          clusterOptions.end,
+          this.tradeClusterCache.endFrame,
+          overlapFrames,
+        )
+        : null;
+      const rebuilt = this.depthEngine.clusterTrades({
+        ...clusterOptions,
+        start: incremental?.rebuildStart ?? clusterOptions.start,
+      });
       this.tradeClusterCache = {
         key: clusterKey,
         settingsKey: clusterSettingsKey,
-        value: this.depthEngine.clusterTrades(clusterOptions),
+        value: incremental ? [...incremental.retained, ...rebuilt] : rebuilt,
         builtAt: clusterNow,
         ready: true,
+        endFrame: history[clusterOptions.end] || null,
       };
     }
     const clusters = this.tradeClusterCache.value;

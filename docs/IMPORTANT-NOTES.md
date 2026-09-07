@@ -1,5 +1,14 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Liquidity-map frame-pacing follow-up
+
+- The recurring full-tape Signals and trade-cluster rebuilds were removed from
+  ordinary map paints; dense live cluster work now rebuilds only its overlapped
+  tail and preserves exact accumulated trade totals/anchors.
+- **Still open:** active-market visual soak on NQ/ES with Trades, DOM, SVP and
+  CVD enabled, including several minutes across the 1,800-frame rollover. The
+  deterministic dense-open benchmark and all focused regressions pass.
+
 ## 2026-09-07 — Liquidity-map bubble-anchor follow-up
 
 - Trade bubbles are now fixed to their first actual execution price/time while
