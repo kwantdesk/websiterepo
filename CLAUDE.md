@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Volume profiles keep their last-good frame at candle boundaries
+
+- Rolling Composite Volume Profile requests change range identity when a new
+  candle opens. The workspace now retains the currently painted exact profile
+  until the next exact execution-backed response is ready, then replaces it
+  atomically instead of clearing the chart in between.
+- This continuity rule also covers Daily, Weekly, Monthly, Session and Visible
+  Range profile recalculations. It remains strict about symbol, contract,
+  active trading dates, selected sessions and removed studies, so continuity
+  cannot leak stale data into another scope.
+- Prompt/outcome:
+  `docs/prompt-log/2026-09-07-volume-profile-candle-boundary-continuity.md`.
+
 ## 2026-09-07 — Weekly and composite profiles no longer wait on the warmer clock
 
 - A cold exact profile now wakes the serialized archive worker immediately;

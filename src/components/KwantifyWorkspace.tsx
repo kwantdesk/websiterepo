@@ -29,6 +29,7 @@ import {
 } from "@/lib/liveCandleAuthority";
 import { groupByNewYorkDate } from "@/lib/newYorkTradingDay";
 import { resolveCompositeVolumeProfileRange } from "@/lib/compositeVolumeProfile";
+import { shouldRetainLastGoodVolumeProfile } from "@/lib/volumeProfileContinuity";
 import { clearChartViewportGroup } from "@/lib/chartViewportSync";
 import { saveChartCrosshairSyncEnabled } from "@/lib/chartCrosshairSync";
 import {
@@ -9007,6 +9008,17 @@ function WorkspaceChartPaneComponent({
       /^\d{4}-\d{2}-\d{2}$/.test(profile.tradingDate ?? "")
         ? profile.tradingDate!
         : chicagoTradingDate(profile.startMs);
+    const requestedDailySessions = requestedSessionIds(dailyProfileSettings);
+    const requestedDailySessionIds = requestedDailySessions ?? new Set([""]);
+    const continuityScope = {
+      root: activeRoot,
+      contractSymbol: resolvedContractSymbol,
+      dailyEnabled: Boolean(dailyProfileInstance),
+      weeklyEnabled: Boolean(weeklyProfileInstance),
+      compositeEnabled: Boolean(compositeProfileInstance && compositeProfileRange),
+      dailyTradingDates: activeTradingDates,
+      dailySessionIds: requestedDailySessionIds,
+    };
     const matchesRequestedProfile = (profile: InstitutionalVolumeProfile) => {
       if (!isExecutionBackedVolumeProfile(profile) || profile.root !== activeRoot) return false;
       if (profile.contractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "") !== normalizedContractSymbol) return false;
@@ -9066,11 +9078,20 @@ function WorkspaceChartPaneComponent({
 
     // A volume profile is an execution-tape surface. OHLCV cannot recover the
     // traded-at-price distribution or aggressor-side delta, so it is never an
-    // acceptable visual fallback. Retain the last exact snapshot while the
-    // gateway refreshes and otherwise leave the profile clean until it arrives.
+    // acceptable visual fallback. Keep the last exact snapshot painted while
+    // its replacement is calculated. In particular, a rolling composite's
+    // start/end changes at every candle boundary; that is replacement identity,
+    // not permission to blank the currently visible profile.
     setVolumeProfiles((current) => {
       return current
-        .filter(matchesRequestedProfile)
+        .filter((profile) => (
+          isExecutionBackedVolumeProfile(profile)
+          && shouldRetainLastGoodVolumeProfile(
+            profile,
+            continuityScope,
+            profileTradingDateFor(profile),
+          )
+        ))
         .sort((left, right) => left.startMs - right.startMs);
     });
 

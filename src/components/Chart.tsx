@@ -251,6 +251,7 @@ import {
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
 import { loadOwnedVolumeProfiles } from "@/lib/ownedVolumeProfiles";
+import { shouldRetainLastGoodOwnedVolumeProfile } from "@/lib/volumeProfileContinuity";
 import { planVolumeProfileVariantJobs } from "@/lib/volumeProfileVariants";
 import {
   NativeVolumeProfilePrimitive,
@@ -16777,8 +16778,13 @@ function Chart({
         symbol: instrument,
         contractSymbol,
       });
-      const requested = new Set(jobs.map((job) => job.key));
-      setOwnedVariantProfiles((profiles) => Object.fromEntries(Object.entries(profiles).filter(([key]) => requested.has(key))));
+      const activeOwnerIds = new Set(jobs.map((job) => job.ownerId));
+      setOwnedVariantProfiles((profiles) => Object.fromEntries(
+        Object.entries(profiles).filter(([, profile]) => shouldRetainLastGoodOwnedVolumeProfile(
+          profile,
+          { root: instrument, contractSymbol, ownerInstanceIds: activeOwnerIds },
+        )),
+      ));
       void loadOwnedVolumeProfiles({
         jobs,
         isCurrent: () => current,
@@ -16786,7 +16792,12 @@ function Chart({
         readExact: (job) => fetchInstitutionalVolumeProfile(job.request),
         publish: (result) => {
           if (!current || result.status !== "ready") return;
-          setOwnedVariantProfiles((profiles) => ({ ...profiles, [result.job.key]: result.profile }));
+          setOwnedVariantProfiles((profiles) => ({
+            ...Object.fromEntries(Object.entries(profiles).filter(([, profile]) => (
+              profile.ownerInstanceId !== result.job.ownerId
+            ))),
+            [result.job.key]: result.profile,
+          }));
         },
       });
     }, 250);

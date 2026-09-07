@@ -1,5 +1,20 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Volume-profile candle-boundary continuity follow-up
+
+- Async indicator recalculation must be last-good-frame authoritative: a new
+  request identity is not permission to clear the currently painted result.
+  This is especially important for rolling Composite profiles because their
+  requested start/end changes whenever a new chart candle opens.
+- Retention is calculation-agnostic but scope-strict across Daily, Weekly,
+  Composite, Monthly, Session and Visible Range profiles. A symbol/contract
+  change, removed study, expired Daily date, or unticked Daily session still
+  removes the old frame immediately.
+- **Still open:** authenticated live-chart soak through several one-minute
+  boundaries with Composite, Daily and Weekly profiles enabled together. The
+  deterministic tests cover retention and isolation; the live soak verifies
+  the full gateway/render timing under an active execution stream.
+
 ## 2026-09-07 — Weekly/composite profile latency follow-up
 
 - Cold session-profile work is kicked immediately and drained serially in the
