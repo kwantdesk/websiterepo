@@ -43,6 +43,66 @@ export type DatabentoLiveTick = {
 };
 
 /**
+ * Retain the first, extrema and last observation from a browser-frame burst,
+ * but return them in their true arrival order. Sorting them as first/low/high/
+ * last invents a price path and makes a fast wick appear to teleport.
+ */
+export function compactChronologicalLiveTicks<T extends { timestamp: number; mid: number }>(
+  ticks: T[],
+  bucketForTimestamp: (timestamp: number) => number,
+) {
+  if (ticks.length <= 4) return ticks;
+  const buckets = new Map<number, {
+    first: number;
+    low: number;
+    high: number;
+    last: number;
+  }>();
+
+  ticks.forEach((tick, index) => {
+    const bucket = bucketForTimestamp(tick.timestamp);
+    const current = buckets.get(bucket);
+    if (!current) {
+      buckets.set(bucket, { first: index, low: index, high: index, last: index });
+      return;
+    }
+    if (tick.mid < ticks[current.low].mid) current.low = index;
+    if (tick.mid > ticks[current.high].mid) current.high = index;
+    current.last = index;
+  });
+
+  const retained = new Set<number>();
+  for (const bucket of buckets.values()) {
+    retained.add(bucket.first);
+    retained.add(bucket.low);
+    retained.add(bucket.high);
+    retained.add(bucket.last);
+  }
+  return ticks.filter((_, index) => retained.has(index));
+}
+
+/** Keep a very short truthful visual path without allowing burst backlog. */
+export function enqueueLiveCandleSnapshot(
+  queue: Candle[],
+  candle: Candle,
+  limit = 4,
+) {
+  const last = queue.at(-1);
+  if (last
+    && last.timestamp === candle.timestamp
+    && last.open === candle.open
+    && last.high === candle.high
+    && last.low === candle.low
+    && last.close === candle.close) {
+    return queue;
+  }
+  const next = [...queue, candle];
+  const boundedLimit = Math.max(2, Math.floor(limit));
+  if (next.length <= boundedLimit) return next;
+  return [next[0], ...next.slice(-(boundedLimit - 1))];
+}
+
+/**
  * Applies the newest forming candle to an indicator snapshot without allowing
  * an older React sample to make the active Volume bar shrink. Completed bars
  * remain immutable; a later bucket is appended and starts from its own volume.

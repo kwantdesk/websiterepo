@@ -2862,3 +2862,16 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   Event bars keep their execution-boundary authority and do not use this rule.
 - Prompt, diagnosis, fix and outcome:
   `docs/prompt-log/2026-09-07-live-candle-open-authority.md`.
+
+## 2026-09-07 — Live wick visual path
+
+- Paper/broker protection consumes every authoritative packet immediately.
+  Rendering may never be placed in that execution path or delay an SL/TP hit.
+- Browser-frame candle compaction retains first/extrema/last in actual arrival
+  order. Never reorder a burst as first/low/high/last because that invents a
+  market path.
+- Clock candles publish the retained real states and the chart paints a
+  bounded four-state frame queue. Never interpolate fictional prices merely
+  to make a move look smooth; a genuine exchange gap must still jump.
+- Prompt, diagnosis, fix and outcome:
+  `docs/prompt-log/2026-09-07-live-wick-visual-path.md`.

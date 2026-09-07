@@ -330,6 +330,7 @@ import {
   LIVE_CHART_EXECUTION_EVENT,
   WORKSPACE_LAYOUT_SETTLED_EVENT,
   publishDatabentoLiveStatus,
+  compactChronologicalLiveTicks,
   readDatabentoLiveTail,
   recordDatabentoLiveTick,
   type DatabentoLiveStatus,
@@ -2987,35 +2988,10 @@ function newYorkCashSessionIsOpen(timestamp = Date.now()) {
 }
 
 function compactTimeBasedTicks(ticks: QueuedLiveTick[], timeframe: string) {
-  if (ticks.length <= 4) return ticks;
-  const buckets = new Map<number, {
-    first: QueuedLiveTick;
-    low: QueuedLiveTick;
-    high: QueuedLiveTick;
-    last: QueuedLiveTick;
-  }>();
-
-  for (const tick of ticks) {
-    const bucket = getTimeframeBucketStart(tick.timestamp, timeframe);
-    const current = buckets.get(bucket);
-    if (!current) {
-      buckets.set(bucket, { first: tick, low: tick, high: tick, last: tick });
-      continue;
-    }
-    if (tick.mid < current.low.mid) current.low = tick;
-    if (tick.mid > current.high.mid) current.high = tick;
-    current.last = tick;
-  }
-
-  return [...buckets.entries()]
-    .sort(([left], [right]) => left - right)
-    .flatMap(([, bucket]) => {
-      const unique = new Map<string, QueuedLiveTick>();
-      for (const tick of [bucket.first, bucket.low, bucket.high, bucket.last]) {
-        unique.set(`${tick.timestamp}:${tick.mid}`, tick);
-      }
-      return [...unique.values()];
-    });
+  return compactChronologicalLiveTicks(
+    ticks,
+    (timestamp) => getTimeframeBucketStart(timestamp, timeframe),
+  );
 }
 
 function formatPrice(price: number, symbol: string): string {
@@ -3356,6 +3332,37 @@ function mergeLiveMidIntoCandles(
   };
 
   return updated;
+}
+
+function mergeTimeBasedLiveTickPath(
+  candles: Candle[],
+  ticks: QueuedLiveTick[],
+  symbol: string,
+  timeframe: string,
+  includeExecutionFlow: boolean,
+) {
+  let next = [...candles];
+  const path: Array<{ candle: Candle; sourceTimestampMs: number }> = [];
+  for (const tick of ticks) {
+    next = mergeLiveMidIntoCandles(
+      next,
+      tick.mid,
+      symbol,
+      timeframe,
+      tick.timestamp,
+      includeExecutionFlow ? tick : undefined,
+      true,
+    );
+    const candle = next.at(-1);
+    if (!candle) continue;
+    path.push({
+      candle,
+      sourceTimestampMs: Number.isFinite(tick.sourceTimestamp)
+        ? Number(tick.sourceTimestamp)
+        : tick.timestamp,
+    });
+  }
+  return { candles: next, path };
 }
 
 function hasFiveDayHistory(candles: Candle[], timeframe: string) {
@@ -8360,15 +8367,14 @@ function WorkspaceChartPaneComponent({
           const tailRows = retained?.source === previous
             ? retained.rows
             : previous.slice(tailStart);
-          const mergedTail = ticks.reduce((current, tick) => mergeLiveMidIntoCandles(
-            current,
-            tick.mid,
+          const liveTickPath = mergeTimeBasedLiveTickPath(
+            tailRows,
+            ticks,
             pane.symbol,
             pane.timeframe,
-            tick.timestamp,
-            rithmicConnectedRef.current ? undefined : tick,
-            true,
-          ), [...tailRows]);
+            !rithmicConnectedRef.current,
+          );
+          const mergedTail = liveTickPath.candles;
           if (!mergedTail.length) return;
           lightweightLiveTailRef.current = {
             source: previous,
@@ -8376,9 +8382,11 @@ function WorkspaceChartPaneComponent({
             rows: mergedTail,
           };
           const latest = mergedTail.at(-1)!;
-          window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
-            detail: { key: pane.id, candle: latest, sourceTimestampMs: newestSourceTimestamp },
-          }));
+          for (const point of liveTickPath.path) {
+            window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+              detail: { key: pane.id, ...point },
+            }));
+          }
           const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
           if (newBar) {
             const committed = [
@@ -8394,6 +8402,15 @@ function WorkspaceChartPaneComponent({
           return;
         }
 
+        const timeBasedPath = usingDatabentoPaneFeed && !isEventBasedChartInterval(pane.timeframe)
+          ? mergeTimeBasedLiveTickPath(
+              previous,
+              ticks,
+              pane.symbol,
+              pane.timeframe,
+              !rithmicConnectedRef.current,
+            )
+          : null;
         const next = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
           ? (() => {
               // Rithmic is the authoritative execution source whenever it is
@@ -8413,23 +8430,21 @@ function WorkspaceChartPaneComponent({
                 ? applyMarketTradesToEventBars(previous, trades, pane.timeframe, pane.symbol)
                 : previous;
             })()
-          : ticks.reduce((current, tick) => mergeLiveMidIntoCandles(
-              current,
-              tick.mid,
-              pane.symbol,
-              pane.timeframe,
-              tick.timestamp,
-              // Keep Databento as the uninterrupted price source, but do not
-              // count its execution fields on top of the Rithmic prints.
-              rithmicConnectedRef.current ? undefined : tick,
-              true,
-            ), [...previous]);
+          : timeBasedPath?.candles ?? previous;
         if (next === previous || !next.length) return;
         latestCandlesRef.current = next;
         const latest = next.at(-1)!;
-        window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
-          detail: { key: pane.id, candle: latest, sourceTimestampMs: newestSourceTimestamp },
-        }));
+        if (timeBasedPath?.path.length) {
+          for (const point of timeBasedPath.path) {
+            window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+              detail: { key: pane.id, ...point },
+            }));
+          }
+        } else {
+          window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+            detail: { key: pane.id, candle: latest, sourceTimestampMs: newestSourceTimestamp },
+          }));
+        }
         const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
         if (newBar) {
           lastCandleStateSyncRef.current = Date.now();

@@ -122,6 +122,7 @@ import {
   LIVE_CHART_CANDLE_EVENT,
   LIVE_CHART_EXECUTION_EVENT,
   WORKSPACE_LAYOUT_SETTLED_EVENT,
+  enqueueLiveCandleSnapshot,
   mergeLiveIndicatorCandle,
   type DatabentoLiveTick,
   type LiveChartCandleDetail,
@@ -4498,13 +4499,20 @@ function Chart({
 
   useEffect(() => {
     if (!liveCandleEventKey) return;
-    let pendingCandle: Candle | null = null;
+    let pendingCandles: Candle[] = [];
     let frame: number | null = null;
-    const flush = () => {
+    function scheduleNext() {
+      if (pendingCandles.length && frame === null) {
+        frame = window.requestAnimationFrame(flush);
+      }
+    }
+    function flush() {
       frame = null;
-      const candle = pendingCandle;
-      pendingCandle = null;
-      if (!candle || !candleSeriesRef.current) return;
+      const candle = pendingCandles.shift() ?? null;
+      if (!candle || !candleSeriesRef.current) {
+        scheduleNext();
+        return;
+      }
       const eventBased = timeframeToMs(timeframe) === null;
       const naturalTime = Math.floor(candle.timestamp / 1_000);
       const sameSourceBar = lastRenderedSourceTimestampRef.current === candle.timestamp;
@@ -4516,14 +4524,20 @@ function Chart({
       if (
         lastRenderedCandleTimeRef.current !== null
         && candleTime < lastRenderedCandleTimeRef.current
-      ) return;
+      ) {
+        scheduleNext();
+        return;
+      }
       /*
        * A Heikin Ashi bar is an average of the one before it, so a single
        * updated bar cannot be computed from the tick alone. The redraw effect
        * recomputes the whole series instead; pushing the raw bar here would
        * paint one true candle in the middle of a smoothed series.
        */
-      if (heikinAshiActiveRef.current) return;
+      if (heikinAshiActiveRef.current) {
+        scheduleNext();
+        return;
+      }
       try {
         candleSeriesRef.current.update({
           time: candleTime as Time,
@@ -4563,12 +4577,13 @@ function Chart({
       } catch {
         // A late tick from a cancelled timeframe must never take down the chart.
       }
-    };
+      scheduleNext();
+    }
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
       if (!detail || detail.key !== liveCandleEventKey) return;
       if (liveReplayActiveRef.current) return;
-      pendingCandle = detail.candle;
+      pendingCandles = enqueueLiveCandleSnapshot(pendingCandles, detail.candle);
       latestDirectLiveCandleRef.current = {
         key: liveCandleEventKey,
         instrument,
