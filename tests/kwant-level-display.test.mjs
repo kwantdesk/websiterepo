@@ -4,17 +4,20 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("ranked proprietary levels use KWANT names without conversion suffixes", async () => {
-  const [workspace, quantData, nativeGamma] = await Promise.all([
+test("GEX structures use accurate names and generic ranks become support or resistance", async () => {
+  const [workspace, quantData, nativeGamma, settings] = await Promise.all([
     read("../src/components/KwantifyWorkspace.tsx"),
     read("../src/lib/quantData.server.ts"),
     read("../src/lib/databentoGamma.server.ts"),
+    read("../src/lib/kwantLevels.ts"),
   ]);
 
-  assert.match(quantData, /label: `KWANT \$\{index \+ 1\}`/);
-  assert.match(nativeGamma, /level\(kind, `KWANT \$\{i \+ 1\}`/);
-  assert.match(quantData, /label: "KWANT center"/);
-  assert.match(workspace, /label: level\.label,/);
+  assert.match(quantData, /label: `GEX \$\{index \+ 1\}`/);
+  assert.match(nativeGamma, /level\(kind, `GEX \$\{i \+ 1\}`/);
+  assert.match(quantData, /label: "GEX Centre"/);
+  assert.match(settings, /label = `GEX Resistance \$\{\+\+resistance\}`/);
+  assert.match(settings, /label = `GEX Support \$\{\+\+support\}`/);
+  assert.match(workspace, /labelGexLevels\(selectKwantLevels\(filterGexLevels/);
   assert.doesNotMatch(workspace, /label: `\$\{level\.label\}[^`]*conversion\.(?:source|target)/);
 });
 
@@ -31,13 +34,15 @@ test("accelerators omit grease and no-fades language", async () => {
   assert.doesNotMatch(`${gammaCage}\n${hedgeLevels}\n${quantData}`, /grease|no fades/i);
 });
 
-test("Kwant levels stay stale outside the New York options session", async () => {
+test("GEX levels freeze at New York EOD and wake for the next session", async () => {
   const [workspace, classicProfile] = await Promise.all([
     read("../src/components/KwantifyWorkspace.tsx"),
     read("../src/lib/classicGexProfile.ts"),
   ]);
 
   assert.match(workspace, /stale: !payload\.marketOpen/);
-  assert.match(workspace, /payload\.marketOpen \? "LIVE NY OPTIONS" : "STALE"/);
+  assert.match(workspace, /payload\.marketOpen \? "LIVE" : "NEW YORK EOD"/);
+  assert.match(workspace, /finalEndOfDaySnapshot/);
+  assert.match(workspace, /millisecondsUntilNextNewYorkOptionsOpen\(\)/);
   assert.match(classicProfile, /if \(!args\.marketOpen\) return "STALE"/);
 });

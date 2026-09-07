@@ -6343,7 +6343,7 @@ export default function ChartIndicatorsControl({
                           settings: { ...(current.settings ?? {}), conversion: event.target.value },
                         }))}
                         className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
-                        menuLabel="Kwant Levels options source"
+                        menuLabel="GEX Levels options source"
                       >
                         <option value="AUTO">Automatic</option>
                         {conversions.map((conversion) => (
@@ -6357,7 +6357,7 @@ export default function ChartIndicatorsControl({
                         value="GEX_CALL_MINUS_PUT"
                         onChange={() => undefined}
                         className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
-                        menuLabel="Kwant Levels input data"
+                        menuLabel="GEX Levels input data"
                       >
                         <option value="GEX_CALL_MINUS_PUT">GEX · Call − Put</option>
                       </KwantSelect>
@@ -6371,15 +6371,50 @@ export default function ChartIndicatorsControl({
                           settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
                         }))}
                         className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
-                        menuLabel="Kwant Levels line style"
+                        menuLabel="GEX Levels line style"
                       >
                         <option value="solid">Solid</option>
                         <option value="dashed">Dashed</option>
                         <option value="dotted">Dotted</option>
                       </KwantSelect>
                     </label>
+                    <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2">
+                      {([
+                        ["Call wall", "showCallWall", true],
+                        ["Put wall", "showPutWall", true],
+                        ["Zero gamma", "showZeroGamma", true],
+                        ["Gamma magnet", "showGammaMagnet", true],
+                        ["Gamma accelerator", "showGammaAccelerator", true],
+                        ["High volatility level", "showHighVolatilityLevel", true],
+                        ["Major GEX levels", "showMajorLevels", true],
+                        ["Ranked support / resistance", "showRankedLevels", true],
+                        ["GEX centre", "showGammaCentre", false],
+                        ["Expected move", "showExpectedMove", false],
+                        ["Level labels", "showLabels", true],
+                        ["Gamma environment", "showEnvironment", true],
+                      ] as const).map(([label, key, fallback]) => {
+                        const enabled = settingsInstance.settings?.[key] === undefined
+                          ? fallback
+                          : settingsInstance.settings?.[key] === true;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            aria-pressed={enabled}
+                            onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: { ...(current.settings ?? {}), [key]: !enabled },
+                            }))}
+                            className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"
+                          >
+                            <span>{label}</span>
+                            <span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                     <p className="text-[8px] leading-4 text-muted sm:col-span-2">
-                      QuantData supplies the signed Call − Put gamma surface; live Rithmic futures prices calibrate its strikes onto the chart. DeepCharts&apos; Call/Put volume and proprietary OI (R.T.) inputs stay unavailable until the licensed feed provides complete equivalent data—partial flow or dated open interest is never presented as real-time OI.
+                      Uses the live signed Call − Put Gamma exposure surface and calibrates its strikes onto the active futures chart. Incomplete order flow or dated open interest is never presented as live positioning.
                     </p>
                   </div>
                 );
@@ -6457,7 +6492,7 @@ export default function ChartIndicatorsControl({
                     </>
                   ) : null}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
-                    Uses the same authoritative gamma-environment frame as Kwant Levels and keeps the latest good snapshot visible between refreshes.
+                    Uses the same authoritative gamma-environment frame as GEX Levels and keeps the latest good snapshot visible between refreshes.
                   </p>
                 </div>
               ) : null}

@@ -1829,7 +1829,7 @@ function chartGammaSourceLevels(
     key.gammaCenter === null ? null : {
       id: "gamma-centre",
       kind: "GAMMA_CENTRE",
-      label: "KWANT center",
+      label: "GEX Centre",
       price: key.gammaCenter,
       value: null,
       rank: 1,
@@ -1853,7 +1853,7 @@ function chartGammaSourceLevels(
     ...rankedGex.map((row, index) => ({
       id: `gex-${index + 1}`,
       kind: row.net > 0 ? "POSITIVE_GEX" as const : "NEGATIVE_GEX" as const,
-      label: `KWANT ${index + 1}`,
+      label: `GEX ${index + 1}`,
       price: row.strike,
       value: row.net,
       rank: index + 1,
@@ -2078,7 +2078,7 @@ function createKeyLevels(args: {
     args.fullLevels.gammaCenter === null ? null : {
       id: "gamma-centre",
       kind: "GAMMA_CENTRE",
-      label: "KWANT center",
+      label: "GEX Centre",
       price: args.fullLevels.gammaCenter,
       scope: "NEAR_TERM_7D",
       metric: "GEX",

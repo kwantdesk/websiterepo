@@ -67,6 +67,7 @@ export const CHART_INDICATOR_CATEGORIES: ChartIndicatorCategory[] = [
 
 export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Gamma Environment", "Options Flow", "Compact live gamma-regime status box with configurable chart-corner placement.", false, "Kwantify"),
+  indicator("GEX Levels", "Options Flow", "Live call wall, put wall, zero gamma and ranked Gamma-exposure support and resistance, frozen at the New York options close.", false, "Kwantify", "Gamma Levels"),
   indicator("VIX Environment", "Volatility", "Compact VIX/VXN implied-volatility regime with daily move, session range and trailing 52-week rank and percentile.", false, "Kwantify"),
   indicator("Zero Gamma Line", "Options Flow", "True scenario-repriced dealer Gamma zero crossing with live updates and five completed trading sessions of no-lookahead history.", false, "Kwantify"),
   indicator("Options Delta", "Options Flow", "Net dealer Delta exposure of the chart's own options family through the session, drawn as signed bars beneath price like CVD.", false, "Kwantify"),
@@ -154,7 +155,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Sessions", "Market Structure", "DST-aware Tokyo, London, New York and Sydney session boxes, levels and labels.", false, "Kwantify"),
   indicator("Session Highs & Lows", "Market Structure", "Extends the latest completed Globex, Asia, London and New York highs and lows to the live edge.", false, "Kwantify"),
   indicator("IB Levels", "Market Structure", "Developing initial-balance high and low for each enabled session, frozen after 15, 30, 45 or 60 minutes.", false, "Kwantify"),
-  indicator("Kwant Levels", "Market Structure", "Session-anchored QuantData option levels calibrated onto live Rithmic NQ/MNQ and ES/MES prices.", false, "Kwantify", "Gamma Levels"),
   indicator("Classic GEX Profile", "Market Structure", "Live call and put gamma exposure ladder anchored to the NQ/MNQ chart price scale.", false, "Kwantify"),
   indicator("Session Marker", "Market Structure", "Marks configurable market sessions."),
   indicator("Shift Candle", "Market Structure", "Execution-confirmed reversal markers with POC, delta, imbalance and fresh-zone filters.", true),

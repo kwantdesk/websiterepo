@@ -1,5 +1,20 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — GEX Levels lifecycle and accuracy follow-up
+
+- The chart study formerly shown as Kwant Levels is now GEX Levels. Its saved
+  `gamma-levels` ID is intentionally unchanged so existing layouts/templates
+  migrate without disappearing.
+- Ranked levels are signed exposure, not an above/below-spot proxy. Named walls,
+  zero Gamma and related structures retain their meaning; generic ranks become
+  futures-relative GEX Support/Resistance labels.
+- A confirmed New York end-of-day snapshot is immutable on the chart until the
+  next regular-session wake-up. Do not restore a closed-market refresh loop.
+- **Still open:** authenticated market-open comparison of Call Wall, Put Wall,
+  Zero Gamma and the highest-ranked supports/resistances against the raw source
+  snapshot on NQ and ES. This is required to verify live timing and mapping; no
+  protected third-party positioning formula parity is claimed.
+
 ## 2026-09-07 — Volume-profile candle-boundary continuity follow-up
 
 - Async indicator recalculation must be last-good-frame authoritative: a new

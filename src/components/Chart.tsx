@@ -20150,7 +20150,7 @@ function Chart({
       {(gammaLevelsError || historicalStructureError) ? (
         <div className="pointer-events-none absolute right-[70px] top-[138px] z-[15] flex max-w-[430px] flex-col items-end gap-1">
           {[
-            gammaLevelsError ? `Kwant Levels · ${gammaLevelsError}` : null,
+            gammaLevelsError ? `GEX Levels · ${gammaLevelsError}` : null,
             // Value-area refresh failures stay silent here. The workspace keeps
             // retrying in the background and restores the next completed CME
             // profile without covering the chart with an expected window notice.
