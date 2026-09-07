@@ -17,12 +17,20 @@ connected and authenticated.
   `f3f1858df118880dc3bbf4d3eb46313484500ed6`.
 - The gateway remained connected/authenticated throughout, isolating the event
   to the recent web client release rather than the live feed.
+- When the owner reported the first rollback had not restored Charts, the two
+  immediately preceding Speed of Tape Instant releases were identified as the
+  remaining recent saved-chart startup changes. `e3ed22eb` had moved the
+  overlay into a new chart flex rail and `f37eb324` had changed its meter-frame
+  contract/rendering. Both were reverted, newest first, by `939108fc` and
+  `d5312869`.
+- Production was then verified on exact SHA
+  `d53128690711acfc8df76d249b55aa93722aa82b`; gateway connectivity and
+  authentication remained healthy.
 
 ## Required before retrying
 
-Do not reapply the reverted GEX patch as one batch. Reintroduce it in isolated
-increments and require a production-like browser startup test with an existing
-saved `gamma-levels` indicator, multiple chart panes and restored settings
+Do not reapply the reverted GEX or Speed of Tape patches as batches. Reintroduce
+them in isolated increments and require a production-like browser startup test
+with existing saved indicators, multiple chart panes and restored settings
 before any new production push. The precise client exception was not captured,
-so no root-cause claim is made beyond the release-level isolation and successful
-rollback.
+so no root-cause claim is made beyond release-level isolation and rollback.

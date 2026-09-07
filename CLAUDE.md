@@ -3,11 +3,13 @@
 ## 2026-09-07 — GEX Levels production incident and rollback
 
 - `be186dfc` caused production Charts to spin/crash during startup and was
-  completely reverted by `f3f1858d`. The public diagnostics endpoint verified
-  the rollback SHA live; the gateway stayed connected/authenticated.
-- Do not reapply that batch. Capture the client exception and reintroduce the
-  GEX rename/calculation/UI pieces separately with an existing saved-workspace
-  browser startup test before release.
+  completely reverted by `f3f1858d`. Because Charts still failed, the two
+  immediately preceding Speed of Tape Instant releases (`e3ed22eb`, `f37eb324`)
+  were also reverted. Production was verified on exact SHA `d5312869`; the
+  gateway stayed connected/authenticated.
+- Do not reapply those batches. Capture the client exception and reintroduce
+  GEX/Instant Tape pieces separately with an existing saved-workspace browser
+  startup test before release.
 - Incident record:
   `docs/prompt-log/2026-09-07-gex-levels-production-rollback.md`.
 
