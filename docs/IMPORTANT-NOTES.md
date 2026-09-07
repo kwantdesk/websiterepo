@@ -13,6 +13,9 @@
   data/settings results and must be cached across pan/zoom repaints.
 - A primitive with no render model must return no pane view. This applies across
   footprint, TPO, gamma, DOM, POC, session, profile and order-flow studies.
+- A forming-bar Big Block that qualifies on the direct live path must remain
+  latched while sampled state is still on that same bar. It may only be removed
+  once the sampled model advances to a newer bar and becomes authoritative.
 
 ## 2026-09-07 — Empty overlays must have zero viewport cost
 

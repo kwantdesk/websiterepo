@@ -11633,6 +11633,10 @@ function Chart({
   const deepEffortLiveCandlesRef = useRef<Candle[]>([]);
   const pendingDeepEffortCandleRef = useRef<Candle | null>(null);
   const deepEffortFrameRef = useRef<number | null>(null);
+  const provisionalBigBlockZonesRef = useRef(new Map<
+    string,
+    { sourceTimestamp: number; zone: BigBlockRenderZone }
+  >());
   const bigBlocksPrimitiveOptionsRef = useRef<BigBlocksPrimitiveOptions | null>(null);
   const bigBlocksCommittedZonesRef = useRef<BigBlockRenderZone[]>([]);
   const bigTradesIndicator = useMemo(
@@ -12241,8 +12245,21 @@ function Chart({
     deepEffortLiveCandlesRef.current = indicatorCandles;
     bigBlocksPrimitiveOptionsRef.current = options;
     const zones = deepEffortIndicator ? bigBlockRenderZones : [];
+    const committedThrough = Number(indicatorCandles.at(-1)?.timestamp ?? 0);
+    // A live forming bar can qualify between sampled React snapshots. Keep its
+    // zone latched until a NEWER bar reaches the authoritative snapshot; an
+    // older snapshot must never erase and then re-add the same block.
+    for (const [id, provisional] of provisionalBigBlockZonesRef.current) {
+      if (!deepEffortIndicator || provisional.sourceTimestamp < committedThrough) {
+        provisionalBigBlockZonesRef.current.delete(id);
+      }
+    }
+    const displayedZones = new Map(zones.map((zone) => [zone.id, zone]));
+    for (const provisional of provisionalBigBlockZonesRef.current.values()) {
+      displayedZones.set(provisional.zone.id, provisional.zone);
+    }
     bigBlocksCommittedZonesRef.current = zones;
-    bigBlocksPrimitiveRef.current?.update(zones, options);
+    bigBlocksPrimitiveRef.current?.update([...displayedZones.values()], options);
   }, [
     bigBlockRenderZones,
     chartReadyRevision,
@@ -12284,19 +12301,31 @@ function Chart({
         const end = source[Math.min(zone.endIndex, source.length - 1)];
         if (!start || !end) return [];
         return [{
-          id: zone.id,
-          startTime: (eventChartTimeBySourceTimeRef.current.get(start.timestamp)
-            ?? Math.floor(start.timestamp / 1_000)) as Time,
-          endTime: (eventChartTimeBySourceTimeRef.current.get(end.timestamp)
-            ?? Math.floor(end.timestamp / 1_000)) as Time,
-          top: zone.top,
-          bottom: zone.bottom,
-          side: zone.side,
-          extensionBars: Math.max(0, zone.endIndex - Math.min(zone.endIndex, source.length - 1)),
+          sourceTimestamp: zone.startTimestamp,
+          zone: {
+            id: zone.id,
+            startTime: (eventChartTimeBySourceTimeRef.current.get(start.timestamp)
+              ?? Math.floor(start.timestamp / 1_000)) as Time,
+            endTime: (eventChartTimeBySourceTimeRef.current.get(end.timestamp)
+              ?? Math.floor(end.timestamp / 1_000)) as Time,
+            top: zone.top,
+            bottom: zone.bottom,
+            side: zone.side,
+            extensionBars: Math.max(0, zone.endIndex - Math.min(zone.endIndex, source.length - 1)),
+          },
         }];
       });
+      for (const provisional of liveZones) {
+        // Historical zones belong to the sampled model. Only latch a signal
+        // born on the forming bar, where snapshot races can occur.
+        if (provisional.sourceTimestamp === candle.timestamp) {
+          provisionalBigBlockZonesRef.current.set(provisional.zone.id, provisional);
+        }
+      }
       const merged = new Map(bigBlocksCommittedZonesRef.current.map((zone) => [zone.id, zone]));
-      for (const zone of liveZones) merged.set(zone.id, zone);
+      for (const provisional of provisionalBigBlockZonesRef.current.values()) {
+        merged.set(provisional.zone.id, provisional.zone);
+      }
       primitive.update([...merged.values()], options);
     };
     const receive = (event: Event) => {
@@ -12313,6 +12342,7 @@ function Chart({
       if (deepEffortFrameRef.current !== null) window.cancelAnimationFrame(deepEffortFrameRef.current);
       deepEffortFrameRef.current = null;
       pendingDeepEffortCandleRef.current = null;
+      provisionalBigBlockZonesRef.current.clear();
     };
   }, [deepEffortIndicator, instrument, liveCandleEventKey, priceFormat.minMove]);
   const imbalanceTracker = useMemo(() => {

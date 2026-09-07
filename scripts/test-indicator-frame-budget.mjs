@@ -26,6 +26,8 @@ assert.match(chart, /bigTradeFullPassKey/, "Big Contracts must use a bounded aut
 assert.match(chart, /recentExecutionTail\(indicatorMarketTrades, 15 \* 60_000\)/, "Big Contracts must not rescan unreachable historical tape on every reconciliation");
 assert.match(chart, /pendingDeepEffortCandleRef/, "Big Blocks must coalesce forming-candle work");
 assert.match(chart, /requestAnimationFrame\(paintLatest\)/, "Big Blocks must run no more than once per display frame");
+assert.match(chart, /provisionalBigBlockZonesRef/, "Big Blocks must latch forming-bar zones across sampled updates");
+assert.match(chart, /provisional\.sourceTimestamp < committedThrough/, "Big Blocks may only release a provisional zone after a newer sampled bar arrives");
 
 const inactiveGuardFiles = [
   "src/lib/absorptionDetectorPrimitive.ts",

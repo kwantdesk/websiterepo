@@ -14,6 +14,9 @@
 - Production build, TypeScript, scoped lint, targeted live-edge tests and the
   new frame-budget regression gate pass. Prompt/outcome:
   `docs/prompt-log/2026-09-07-indicator-frame-budget.md`.
+- Follow-up: forming-bar Big Blocks are now latched until a newer sampled bar
+  can authoritatively accept or reject them. This removes the live/sampled
+  writer race that made individual blocks flash off and back on.
 
 ## 2026-09-07 — Second-pass chart frame budget cleanup
 

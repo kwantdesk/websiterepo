@@ -62,3 +62,22 @@ Expected outcome: the named indicator stack no longer scales navigation cost
 with all retained zones/markers or schedules full Big Contracts history work on
 each candle movement. Final perceived FPS must still be confirmed in the live
 multi-chart workspace after production deployment.
+
+## Follow-up — flashing Big Blocks
+
+### User prompt
+
+Some Big Blocks were flashing on and off on the chart.
+
+### Diagnosis and fix
+
+The direct forming-candle path could discover a block between the 1.5-second
+React samples. The next sampled effect then replaced the primitive with an older
+zone set, temporarily erasing the live block before another tick restored it.
+Live forming-bar zones are now latched by stable zone ID and source timestamp.
+Same-bar sampled updates merge rather than erase them; only a sampled snapshot
+that has advanced to a newer bar may release the provisional zone and decide its
+final state. The latch is cleared when the indicator is disabled or detached.
+
+The frame-budget regression gate now asserts this ownership rule in addition to
+the performance constraints above.
