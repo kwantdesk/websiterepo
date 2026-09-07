@@ -1,5 +1,19 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Journal deletion follow-up
+
+- Journal account deletion is a full cascade: account, trades, imports,
+  evidence/screenshots, quantitative analysis, archive metadata and linked
+  trade posts. The database foreign key owns trade/import deletion; the route
+  explicitly removes social-object records first.
+- Browser deletion tombstones are required because paper journals and stale
+  local snapshots can otherwise recreate a cloud-deleted account. An explicit
+  create/import of the same account clears its tombstone.
+- **Still open:** authenticated production smoke test deleting one empty manual
+  Journal, one imported Journal, and one demo Journal, followed by refresh and
+  workspace navigation. Automated coverage verifies the cascade contract and
+  anti-resurrection state logic without touching the owner's real journal.
+
 ## 2026-09-07 — New-candle render continuity follow-up
 
 - A normal `previous.length + 1` live bucket append must stay on the low-

@@ -126,6 +126,60 @@ async function syncLinkedTradePosts(
   return { count: linked.rows.length, error: updates.find((result) => result.error)?.error ?? null };
 }
 
+async function deleteLinkedTradePostsForAccount(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string,
+  accountId: string,
+) {
+  const tradeIds: string[] = [];
+  const pageSize = 1_000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data: tradeRows, error: tradeError } = await supabase
+      .from("journal_trades")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("account_id", accountId)
+      .range(offset, offset + pageSize - 1);
+    if (tradeError) return { count: 0, error: tradeError };
+    tradeIds.push(...(tradeRows ?? []).map((row) => String(row.id ?? "")).filter(Boolean));
+    if ((tradeRows ?? []).length < pageSize) break;
+  }
+  if (!tradeIds.length) return { count: 0, error: null };
+
+  let deleted = 0;
+  for (let offset = 0; offset < tradeIds.length; offset += 200) {
+    const batch = tradeIds.slice(offset, offset + 200);
+    for (;;) {
+      const { data: posts, error: postReadError } = await supabase
+        .from("social_objects")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("object_type", "post")
+        .eq("payload->>kind", "TRADE")
+        .in("payload->trade->>journalTradeId", batch)
+        .limit(pageSize);
+      if (postReadError) return { count: deleted, error: postReadError };
+      const postIds = (posts ?? []).map((row) => String(row.id ?? "")).filter(Boolean);
+      if (!postIds.length) break;
+      const childDelete = await supabase
+        .from("social_objects")
+        .delete()
+        .eq("user_id", userId)
+        .in("parent_id", postIds);
+      if (childDelete.error) return { count: deleted, error: childDelete.error };
+      const postDelete = await supabase
+        .from("social_objects")
+        .delete()
+        .eq("user_id", userId)
+        .in("id", postIds);
+      if (postDelete.error) return { count: deleted, error: postDelete.error };
+      deleted += postIds.length;
+      if (postIds.length < pageSize) break;
+    }
+  }
+  return { count: deleted, error: null };
+}
+
 function tableUnavailable(code?: string) {
   return code === "42P01" || code === "PGRST205";
 }
@@ -551,6 +605,35 @@ export async function POST(request: NextRequest) {
       .eq("id", id)
       .maybeSingle();
     if (accountError) return NextResponse.json({ error: "The Journal account could not be checked." }, { status: 502 });
+    // Deletion is deliberately idempotent. Paper journals can exist only in
+    // IndexedDB until their first closed trade syncs, and a repeated delete
+    // must not make the client restore an account that is already gone.
+    if (!accountRow && action === "delete-account") {
+      const deletedName = account;
+      if (deletedName) {
+        const evidenceDelete = await supabase
+          .from("social_objects")
+          .delete()
+          .eq("user_id", actor.userId)
+          .eq("payload->>kind", JOURNAL_EVIDENCE_KIND)
+          .eq("payload->>account", deletedName);
+        if (evidenceDelete.error) return NextResponse.json({ error: "Journal evidence could not be removed." }, { status: 502 });
+        const analysisDelete = await supabase
+          .from("social_objects")
+          .delete()
+          .eq("user_id", actor.userId)
+          .eq("payload->>kind", JOURNAL_ANALYSIS_KIND)
+          .eq("payload->>account", deletedName);
+        if (analysisDelete.error) return NextResponse.json({ error: "Journal analysis could not be removed." }, { status: 502 });
+      }
+      const stateDelete = await supabase
+        .from("social_objects")
+        .delete()
+        .eq("user_id", actor.userId)
+        .eq("id", `journal-account-state:${id}`);
+      if (stateDelete.error) return NextResponse.json({ error: "Journal archive state could not be removed." }, { status: 502 });
+      return NextResponse.json({ cloud: true, deleted: deletedName || id, alreadyAbsent: true });
+    }
     if (!accountRow) return NextResponse.json({ error: "That Journal account no longer exists." }, { status: 404 });
     const storedAccount = accountRow as AccountRow;
     const stateId = `journal-account-state:${id}`;
@@ -608,6 +691,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ cloud: true, account: fromAccountRow(storedAccount, { ...accountStateFromPayload(existingPayload), archivedAt: null }) });
     }
 
+    const linkedPostDelete = await deleteLinkedTradePostsForAccount(supabase, actor.userId, id);
+    if (linkedPostDelete.error) return NextResponse.json({ error: "Linked Journal posts could not be removed." }, { status: 502 });
     const evidenceDelete = await supabase
       .from("social_objects")
       .delete()
@@ -634,7 +719,7 @@ export async function POST(request: NextRequest) {
       .eq("user_id", actor.userId)
       .eq("id", id);
     if (accountDelete.error) return NextResponse.json({ error: "The Journal could not be deleted." }, { status: 502 });
-    return NextResponse.json({ cloud: true, deleted: storedAccount.name });
+    return NextResponse.json({ cloud: true, deleted: storedAccount.name, linkedPostsDeleted: linkedPostDelete.count });
   }
 
   if (action === "create-account") {

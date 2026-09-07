@@ -78,7 +78,14 @@ import {
   type JournalTrade,
   type JournalTradingAccountType,
 } from "@/lib/journal";
-import { loadJournalState, saveJournalState } from "@/lib/journalStore";
+import {
+  clearJournalAccountDeletion,
+  loadJournalAccountDeletions,
+  loadJournalState,
+  markJournalAccountDeleted,
+  purgeDeletedJournalAccounts,
+  saveJournalState,
+} from "@/lib/journalStore";
 import { PAPER_JOURNAL_UPDATED_EVENT } from "@/lib/paperJournal";
 import {
   buildJournalAnalysisEvidence,
@@ -1021,7 +1028,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     let active = true;
     const memory = JOURNAL_MEMORY_CACHE.get(resolvedAccountKey);
     if (memory) {
-      setState(memory.state);
+      setState(purgeDeletedJournalAccounts(
+        memory.state,
+        loadJournalAccountDeletions(resolvedAccountKey),
+      ));
       setZyonTrades(memory.zyonTrades);
       setZyonLoading(false);
       setCloudState(memory.cloudState);
@@ -1038,23 +1048,33 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       fetch("/api/journal", { cache: "no-store" })
         .then(async (response): Promise<CloudJournalResponse> => response.ok ? response.json() as Promise<CloudJournalResponse> : { cloud: false })
         .catch((): CloudJournalResponse => ({ cloud: false })),
-    ]).then(([stored, cloud]) => {
+    ]).then(([rawStored, cloud]) => {
       if (!active) return;
-      const cloudAccounts = Array.isArray(cloud.accounts) ? cloud.accounts : [];
-      const cloudTrades = Array.isArray(cloud.trades) ? cloud.trades : [];
-      const cloudImports = Array.isArray(cloud.imports) ? cloud.imports : [];
-      const cloudEvidence = Array.isArray(cloud.evidence) ? cloud.evidence : [];
+      const deletions = loadJournalAccountDeletions(resolvedAccountKey);
+      const stored = purgeDeletedJournalAccounts(rawStored, deletions);
+      const remembered = memory ? purgeDeletedJournalAccounts(memory.state, deletions) : null;
+      const filteredCloud = purgeDeletedJournalAccounts({
+        version: 1,
+        accounts: Array.isArray(cloud.accounts) ? cloud.accounts : [],
+        trades: Array.isArray(cloud.trades) ? cloud.trades : [],
+        imports: Array.isArray(cloud.imports) ? cloud.imports : [],
+        evidence: Array.isArray(cloud.evidence) ? cloud.evidence : [],
+      }, deletions);
+      const cloudAccounts = filteredCloud.accounts;
+      const cloudTrades = filteredCloud.trades;
+      const cloudImports = filteredCloud.imports;
+      const cloudEvidence = filteredCloud.evidence;
       const accounts = new Map(stored.accounts.map((account) => [account.id, account]));
-      memory?.state.accounts.forEach((account) => accounts.set(account.id, account));
+      remembered?.accounts.forEach((account) => accounts.set(account.id, account));
       cloudAccounts.forEach((account) => accounts.set(account.id, account));
       const trades = new Map(stored.trades.map((trade) => [trade.id, trade]));
-      memory?.state.trades.forEach((trade) => trades.set(trade.id, trade));
+      remembered?.trades.forEach((trade) => trades.set(trade.id, trade));
       cloudTrades.forEach((trade) => trades.set(trade.id, trade));
       const imports = new Map(stored.imports.map((batch) => [batch.id, batch]));
-      memory?.state.imports.forEach((batch) => imports.set(batch.id, batch));
+      remembered?.imports.forEach((batch) => imports.set(batch.id, batch));
       cloudImports.forEach((batch) => imports.set(batch.id, batch));
       const evidence = new Map(stored.evidence.map((item) => [item.id, item]));
-      memory?.state.evidence.forEach((item) => evidence.set(item.id, item));
+      remembered?.evidence.forEach((item) => evidence.set(item.id, item));
       cloudEvidence.forEach((item) => evidence.set(item.id, item));
       const merged = {
         ...stored,
@@ -1164,7 +1184,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
    */
   useEffect(() => {
     const mergeStoredTrades = () => {
-      void loadJournalState(resolvedAccountKey).then((stored) => {
+      void loadJournalState(resolvedAccountKey).then((rawStored) => {
+        const stored = purgeDeletedJournalAccounts(
+          rawStored,
+          loadJournalAccountDeletions(resolvedAccountKey),
+        );
         setState((current) => {
           const knownTrades = new Set(current.trades.map((trade) => trade.id));
           const knownAccounts = new Set(current.accounts.map((account) => account.id));
@@ -1511,6 +1535,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           return false;
         }
         if (result.accountId) {
+          clearJournalAccountDeletion(resolvedAccountKey, { id: result.accountId, name: account });
           setState((current) => current.accounts.some((candidate) => candidate.id === result.accountId)
             ? current
             : {
@@ -1533,7 +1558,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       setCloudState("error");
       return false;
     }
-  }, [accountRecord]);
+  }, [accountRecord, resolvedAccountKey]);
 
   const createNativeJournal = async () => {
     const account = importAccount.trim().slice(0, 80);
@@ -1556,6 +1581,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       });
       const result = await response.json() as { cloud?: boolean; account?: JournalAccount; error?: string };
       if (!response.ok || !result.account) throw new Error(result.error || "The KwantDesk Journal could not be created.");
+      clearJournalAccountDeletion(resolvedAccountKey, result.account);
       setState((current) => ({
         ...current,
         accounts: [...current.accounts.filter((candidate) => candidate.id !== result.account?.id), result.account as JournalAccount],
@@ -2246,22 +2272,25 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const deleteJournalForever = async (account: string) => {
     if (isZyonJournalAccountName(account) || journalLifecycleBusy) return;
     const snapshot = state;
+    const target = accountRecord.get(account) ?? { id: "", name: account };
+    const nextState = purgeDeletedJournalAccounts(snapshot, [{
+      id: target.id,
+      name: target.name,
+      deletedAt: new Date().toISOString(),
+    }]);
+    markJournalAccountDeleted(resolvedAccountKey, target);
     setDeleteJournalTarget(null);
     setAccountMenu(null);
     setJournalLifecycleBusy(account);
     setJournalLifecycleMessage("");
-    setState((current) => ({
-      ...current,
-      accounts: current.accounts.filter((candidate) => candidate.name !== account),
-      trades: current.trades.filter((trade) => trade.account !== account),
-      evidence: current.evidence.filter((item) => item.account !== account),
-      imports: current.imports.filter((item) => item.account !== account),
-    }));
+    setState(nextState);
     if (accountFilter === account) setAccountFilter("all");
     try {
       await runJournalLifecycle("delete-account", account);
+      await saveJournalState(resolvedAccountKey, nextState);
       setJournalLifecycleMessage(`${account} was permanently deleted.`);
     } catch (error) {
+      clearJournalAccountDeletion(resolvedAccountKey, target);
       setState(snapshot);
       setJournalLifecycleMessage(error instanceof Error ? error.message : "The Journal could not be deleted.");
     } finally {

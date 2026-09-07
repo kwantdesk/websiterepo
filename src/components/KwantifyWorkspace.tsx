@@ -133,8 +133,13 @@ import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { PREFERENCES_HYDRATED_EVENT, compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
-import { loadJournalState, saveJournalState } from "@/lib/journalStore";
-import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal } from "@/lib/paperJournal";
+import {
+  loadJournalAccountDeletions,
+  loadJournalState,
+  purgeDeletedJournalAccounts,
+  saveJournalState,
+} from "@/lib/journalStore";
+import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, paperJournalAccountName } from "@/lib/paperJournal";
 import {
   dailyPaperTradeRows,
   paperDailyExportFileName,
@@ -10574,11 +10579,19 @@ export default function KwantifyWorkspace({
     paperJournalTimerRef.current = window.setTimeout(() => {
       paperJournalTimerRef.current = null;
       void (async () => {
-        const records = paperJournalAccountsRef.current;
-        if (!records.length) return;
         const key = paperJournalKeyRef.current;
+        const deletions = loadJournalAccountDeletions(key);
+        const deletedNames = new Set(deletions.map((row) => row.name.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase()));
+        const records = paperJournalAccountsRef.current.filter((record) => !deletedNames.has(
+          paperJournalAccountName(record).normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase(),
+        ));
         try {
-          const state = await loadJournalState(key);
+          const storedState = await loadJournalState(key);
+          const state = purgeDeletedJournalAccounts(storedState, deletions);
+          if (!records.length) {
+            if (state !== storedState) await saveJournalState(key, state);
+            return;
+          }
           const next = appendPaperTradesToJournal(state, records, paperLedgerRef.current);
           // Same object back means there was nothing new to record.
           if (next === state) return;

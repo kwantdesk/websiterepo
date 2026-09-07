@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Journal account deletion is a permanent cascade
+
+- Deleting a Journal now immediately purges its account, trades, imports,
+  evidence and analysis from the visible state and durable browser store.
+- Persistent local tombstones prevent stale IndexedDB/memory snapshots and
+  the automatic paper-journal writer from recreating an explicitly deleted
+  account. Explicitly creating/importing that account again clears the marker.
+- Cloud deletion is idempotent for local-only/already-absent accounts and also
+  removes linked Socials trade posts before the database account cascade.
+  Prompt/outcome: `docs/prompt-log/2026-09-07-journal-account-deletion.md`.
+
 ## 2026-09-07 — New candles no longer flash the chart surface
 
 - A one-bar live append is no longer misclassified as a historical hydration.
