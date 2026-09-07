@@ -1,5 +1,14 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — GEX Levels release reverted after chart startup incident
+
+- The entire `be186dfc` GEX Levels release was reverted by `f3f1858d` after
+  production Charts spun/crashed on load. Production was verified on the exact
+  rollback SHA while the gateway remained connected/authenticated.
+- **Still open:** capture the client exception and reintroduce the rename,
+  semantics and controls incrementally behind production-like saved-workspace
+  startup QA. Do not cherry-pick or repeat the failed batch.
+
 ## 2026-09-07 — Volume-profile candle-boundary continuity follow-up
 
 - Async indicator recalculation must be last-good-frame authoritative: a new

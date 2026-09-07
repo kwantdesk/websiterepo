@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — GEX Levels production incident and rollback
+
+- `be186dfc` caused production Charts to spin/crash during startup and was
+  completely reverted by `f3f1858d`. The public diagnostics endpoint verified
+  the rollback SHA live; the gateway stayed connected/authenticated.
+- Do not reapply that batch. Capture the client exception and reintroduce the
+  GEX rename/calculation/UI pieces separately with an existing saved-workspace
+  browser startup test before release.
+- Incident record:
+  `docs/prompt-log/2026-09-07-gex-levels-production-rollback.md`.
+
 ## 2026-09-07 — Volume profiles keep their last-good frame at candle boundaries
 
 - Rolling Composite Volume Profile requests change range identity when a new
