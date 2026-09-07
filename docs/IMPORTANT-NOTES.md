@@ -1,5 +1,14 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Empty overlays must have zero viewport cost
+
+- A mounted drawing system with no drawings must not subscribe to chart repaint
+  events or allocate/repaint a backing canvas.
+- Native repaint and time-scale notifications can describe the same visual
+  frame. SVG and precision-canvas work must be animation-frame coalesced.
+- Do not query/update the native price-rail width or format live P&L merely
+  because the trader pans or zooms; neither value is changed by navigation.
+
 ## 2026-09-07 — Chart interaction performance invariant
 
 - Never use continuous pan/zoom events to reconcile the full `Chart` React

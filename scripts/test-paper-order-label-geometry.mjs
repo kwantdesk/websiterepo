@@ -118,8 +118,8 @@ check("position is imperative, not left to React's transition", () => {
   // Off-scale levels hide rather than pinning to an edge, which would read as a
   // stop sitting somewhere it is not.
   assert.match(source, /node\.style\.visibility = "hidden";/);
-  // Same frame as the drawing layer, so drawings and labels agree.
-  assert.match(source, /reprojectDrawingLayer\(\);\s*\n\s*repositionPaperOverlays\(\);/);
+  // Same frame as the drawing layer, but zero DOM work when no order labels exist.
+  assert.match(source, /reprojectDrawingLayer\(\);\s*\n\s*if \(paperOverlayNodesRef\.current\.size > 0\) repositionPaperOverlays\(\);/);
 });
 
 check("the previews the canvas used to own came across", () => {
@@ -185,11 +185,15 @@ check("a resting order keeps its own label", () => {
     "and only an open position enters the live map");
 });
 
-check("the figure refreshes on commits and pan frames too", () => {
+check("the figure refreshes from quote and position commits, not viewport motion", () => {
   // A quote that stops arriving must not leave a number that is silently wrong
   // after the position changes underneath it.
   assert.match(source, /paperLivePositionsRef\.current = live;\s*\n\s*refreshPaperLivePnl\(\);/);
-  assert.match(source, /repositionPaperOverlays\(\);\s*\n\s*refreshPaperLivePnl\(\);/);
+  const viewportSchedule = source.slice(
+    source.indexOf("const scheduleViewportRefresh = () =>"),
+    source.indexOf("const handlePriceScaleWheel", source.indexOf("const scheduleViewportRefresh = () =>")),
+  );
+  assert.doesNotMatch(viewportSchedule, /refreshPaperLivePnl\(\)/);
 });
 
 check("the X on a resting order cancels it instead of closing nothing", () => {

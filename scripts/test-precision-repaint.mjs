@@ -14,20 +14,21 @@ assert.match(chart, /const subscribePrecisionViewport = useCallback\(/);
 assert.match(chart, /repaintNotifierRef\.current\?\.subscribe\(listener\)/);
 assert.match(chart, /subscribeViewport: subscribePrecisionViewport,/);
 
-// 3. The layer redraws on that signal, not only on React state. This is the
-//    fix: a state-driven redraw sits behind a throttle, a transition and a very
-//    large component, so the canvas was always behind the candles.
+// 3. The layer redraws from the native signal, but coalesces duplicate chart
+//    paint notifications into one drawing pass per browser frame.
 assert.match(layer, /const subscribe = adapter\.subscribeViewport;/);
-assert.match(layer, /subscribe\(\(\) => paintRef\.current\(\)\)/);
+assert.match(layer, /viewportPaintFrameRef\.current = requestAnimationFrame/);
+assert.match(layer, /paintRef\.current\(\);/);
 
 // 4. The paint body lives in a ref so the subscription never re-binds.
 assert.match(layer, /const paintRef = useRef<\(\) => void>/);
 assert.match(layer, /paintRef\.current = \(\) => \{/);
 
-// 5. Repaints run in the chart's own paint beat. Deferring this subscription
-//    through another rAF leaves drawings one frame behind the bars.
+// 5. Empty drawing layers do not subscribe, and repeated native notifications
+//    cannot synchronously repaint the full overlay canvas more than once.
 const subscription = layer.slice(layer.indexOf("const subscribe = adapter.subscribeViewport;"));
-assert.match(subscription, /const unsubscribe = subscribe\(\(\) => paintRef\.current\(\)\);/);
+assert.match(subscription, /if \(!subscribe \|\| !hasViewportContent\) return;/);
+assert.match(subscription, /if \(viewportPaintFrameRef\.current != null\) return;/);
 
 // 6. The viewport subscription is cleaned up.
 assert.match(subscription, /unsubscribe\(\);/);

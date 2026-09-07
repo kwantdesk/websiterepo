@@ -4050,7 +4050,7 @@ function Chart({
     const basis = drawingProjectionRef.current;
     const chart = chartRef.current;
     const series = candleSeriesRef.current;
-    if (!layer || !basis || !chart || !series) return;
+    if (!layer || layer.childElementCount === 0 || !basis || !chart || !series) return;
     const fromX = logicalToX(chart.timeScale(), basis.fromLogical);
     const toX = logicalToX(chart.timeScale(), basis.toLogical);
     const topY = series.priceToCoordinate(basis.topPrice);
@@ -15617,11 +15617,9 @@ function Chart({
       if (viewportFrameRef.current != null) return;
       viewportFrameRef.current = window.requestAnimationFrame(() => {
         viewportFrameRef.current = null;
-        syncNativePriceScaleWidth();
         // Every frame of the pan, not every React commit.
         reprojectDrawingLayer();
-        repositionPaperOverlays();
-        refreshPaperLivePnl();
+        if (paperOverlayNodesRef.current.size > 0) repositionPaperOverlays();
         // Never reconcile the full React chart tree while the native canvas is
         // processing a continuous drag/wheel burst. Keep replacing one short
         // trailing timer; it commits the final coordinates after interaction.

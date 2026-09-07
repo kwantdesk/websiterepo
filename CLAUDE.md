@@ -1,5 +1,14 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Second-pass chart frame budget cleanup
+
+- Follow-up after the first navigation fix: removed price-rail state work and
+  P&L text formatting from viewport frames, made empty drawing layers cost
+  nothing, and coalesced duplicate SVG/precision-canvas repaint notifications
+  to one job per browser frame.
+- No feed, candle, order or indicator calculation cadence changed. Prompt and
+  outcome: `docs/prompt-log/2026-09-07-chart-navigation-frame-budget.md`.
+
 ## 2026-09-07 — Chart navigation regression removed
 
 - Panning and zooming no longer force a reconciliation of the full React chart

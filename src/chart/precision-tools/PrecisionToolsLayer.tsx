@@ -149,6 +149,7 @@ export default function PrecisionToolsLayer({
   const [engaged, setEngaged] = useState(false);
   const pointerRef = useRef<PrecisionScreenPoint | null>(null);
   const interactionFrameRef = useRef<number | null>(null);
+  const viewportPaintFrameRef = useRef<number | null>(null);
   const snapDisabledRef = useRef(false);
   const [objectsOpen, setObjectsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -301,6 +302,7 @@ export default function PrecisionToolsLayer({
 
   useEffect(() => () => {
     if (interactionFrameRef.current != null) cancelAnimationFrame(interactionFrameRef.current);
+    if (viewportPaintFrameRef.current != null) cancelAnimationFrame(viewportPaintFrameRef.current);
     releaseCanvasBackingStore(canvasRef.current);
     releaseCanvasBackingStore(interactionCanvasRef.current);
   }, []);
@@ -360,18 +362,29 @@ export default function PrecisionToolsLayer({
   // drawing floated behind them. This redraws in the same beat as the chart.
   useEffect(() => {
     const subscribe = adapter.subscribeViewport;
-    if (!subscribe) return;
-    // Paint SYNCHRONOUSLY, inside the chart's own paint pass.
-    //
-    // This signal fires while the chart is drawing its candles. Deferring the
-    // repaint to requestAnimationFrame pushes it into the NEXT frame, so the
-    // drawings land one frame behind the bars — invisible when the chart is
-    // still, and exactly the wobble that shows up when the chart is grabbed
-    // and thrown. Drawing straight into this callback puts the two surfaces in
-    // the same frame, which is the only arrangement that cannot wobble.
-    const unsubscribe = subscribe(() => paintRef.current());
-    return () => unsubscribe();
-  }, [adapter.subscribeViewport]);
+    const hasViewportContent = !snapshot.toolbar.hidden
+      && (snapshot.objects.length > 0 || snapshot.draft != null);
+    if (!subscribe || !hasViewportContent) return;
+    // A chart repaint may notify more than once inside one browser frame. A
+    // full drawing-canvas clear and repaint inside that native paint callback
+    // lengthened the chart's critical frame and made panning visibly stutter.
+    // Coalesce it onto one animation-frame job and never subscribe at all for
+    // the common empty-layer case.
+    const unsubscribe = subscribe(() => {
+      if (viewportPaintFrameRef.current != null) return;
+      viewportPaintFrameRef.current = requestAnimationFrame(() => {
+        viewportPaintFrameRef.current = null;
+        paintRef.current();
+      });
+    });
+    return () => {
+      unsubscribe();
+      if (viewportPaintFrameRef.current != null) {
+        cancelAnimationFrame(viewportPaintFrameRef.current);
+        viewportPaintFrameRef.current = null;
+      }
+    };
+  }, [adapter.subscribeViewport, snapshot.draft, snapshot.objects.length, snapshot.toolbar.hidden]);
 
   useEffect(() => {
     const latest = adapter.candles.at(-1)?.close ?? null;

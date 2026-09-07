@@ -534,7 +534,12 @@ export default function ChartDrawLayer({
   });
 
   useEffect(() => {
+    // An empty drawing surface must add zero work to the native chart's paint
+    // path. Most charts have no legacy drawings, but this component is mounted
+    // in every pane.
+    if (drawings.length === 0 && pending === null) return;
     let settleTimer: number | null = null;
+    let viewportFrame: number | null = null;
     /**
      * Re-render at the real projection once the chart stops moving.
      *
@@ -592,12 +597,23 @@ export default function ChartDrawLayer({
       // distorting it, so it can hold the transform indefinitely.
       if (scaleX !== 1 || scaleY !== 1) settle();
     };
-    const unsubscribe = subscribeViewport(onViewport);
+    // The chart can announce one viewport change through both its time-scale
+    // event and repaint primitive. Coalesce those duplicate notifications so
+    // one browser frame performs at most one projection.
+    const scheduleViewport = () => {
+      if (viewportFrame !== null) return;
+      viewportFrame = window.requestAnimationFrame(() => {
+        viewportFrame = null;
+        onViewport();
+      });
+    };
+    const unsubscribe = subscribeViewport(scheduleViewport);
     return () => {
       unsubscribe();
+      if (viewportFrame !== null) window.cancelAnimationFrame(viewportFrame);
       if (settleTimer !== null) window.clearTimeout(settleTimer);
     };
-  }, [subscribeViewport, chartReady]);
+  }, [subscribeViewport, chartReady, drawings.length, pending]);
   // Volume-profile histograms and anchored-VWAP series live in price/time space
   // — they do NOT change when the user pans or zooms, only the pixel projection
   // does. Computing them inside renderDrawing meant a full candle scan per

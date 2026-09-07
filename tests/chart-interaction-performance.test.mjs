@@ -19,6 +19,8 @@ test("chart pan and zoom keep native canvas input ahead of React overlays", () =
     chart.indexOf("const handlePriceScaleWheel", chart.indexOf("const scheduleViewportRefresh = () =>")),
   );
   assert.doesNotMatch(scheduleBlock, /elapsed >=|setViewportVersion/);
+  assert.doesNotMatch(scheduleBlock, /syncNativePriceScaleWidth\(\)|refreshPaperLivePnl\(\)/);
+  assert.match(scheduleBlock, /paperOverlayNodesRef\.current\.size > 0/);
 });
 
 test("profile calculations do not rebuild during ordinary viewport gestures", () => {

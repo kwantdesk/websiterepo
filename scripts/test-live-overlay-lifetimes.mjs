@@ -48,13 +48,13 @@ assert.match(dormantGrab, /\}, \[\]\);\s*$/,
 
 const drawingViewport = between(
   drawings,
-  "const unsubscribe = subscribeViewport(onViewport);",
+  "const unsubscribe = subscribeViewport(scheduleViewport);",
   "// Volume-profile histograms",
   "drawing viewport lifecycle",
 );
 assert.match(drawingViewport, /unsubscribe\(\)/);
 const viewportDependencies = drawingViewport.match(/\}, \[([^\]]*)\]\);\s*$/)?.[1] ?? "";
-assert.equal(viewportDependencies.replaceAll(/\s/g, ""), "subscribeViewport,chartReady",
+assert.equal(viewportDependencies.replaceAll(/\s/g, ""), "subscribeViewport,chartReady,drawings.length,pending",
   "drawing viewport subscription must not rebind for live projector callback identities");
 assert.doesNotMatch(viewportDependencies, /\b(toX|toY|candles|adapter|viewportVersion)\b/,
   "live chart projection changes must be read through refs, not effect dependencies");

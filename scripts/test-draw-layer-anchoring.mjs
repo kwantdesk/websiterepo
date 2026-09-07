@@ -72,8 +72,12 @@ check("the viewport subscription does not churn on live ticks", () => {
   // Chart.tsx passes the projectors as inline callbacks, so their identity
   // changes every live render. Depending on them would unsubscribe and
   // resubscribe continuously and leak listener closures during a session.
-  assert.match(layer, /\}, \[subscribeViewport, chartReady\]\);/);
+  assert.match(layer, /\}, \[subscribeViewport, chartReady, drawings\.length, pending\]\);/);
   assert.match(layer, /viewportProjectionRef\.current = \{ toX, toY \};/);
+  assert.match(layer, /if \(drawings\.length === 0 && pending === null\) return;/,
+    "an empty drawing layer must not subscribe to chart repaint events");
+  assert.match(layer, /if \(viewportFrame !== null\) return;/,
+    "duplicate native notifications must coalesce into one projection per frame");
 });
 
 check("drawings are clipped to the PRICE pane, not the whole chart", () => {
