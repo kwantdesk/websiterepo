@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Panel layout switches preserve live charts
+
+- Workspace layout templates no longer render heavyweight charts directly in
+  the recursive split tree. Each visible chart owns a stable portal host that
+  is moved into the new geometry, so single/two/three/quad layout changes do
+  not unmount and reconstruct existing canvases, history or indicators.
+- A newly exposed pane still hydrates independently through the existing
+  staggered loader; it cannot blank or block the chart already on screen.
+- Pane activation continues at the portal boundary and deleted pane hosts are
+  cleaned up. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-instant-workspace-layout-switches.md`.
+
 ## 2026-09-07 — Aggressive-flow CVD continuity
 
 - Removed two silent 25,000-execution overflow paths between the market worker

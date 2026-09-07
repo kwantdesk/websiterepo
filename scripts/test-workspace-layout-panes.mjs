@@ -77,4 +77,16 @@ check("the workspace uses the helper rather than its own ordering", () => {
   );
 });
 
+check("layout templates preserve live chart hosts instead of remounting charts", () => {
+  const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /workspacePanePortalHostsRef = useRef<Map<string, HTMLDivElement>>/);
+  assert.match(workspace, /data-workspace-pane-slot=\{node\.paneId\}/);
+  assert.match(workspace, /createPortal\([\s\S]*?`workspace-pane-\$\{paneId\}`/);
+  assert.doesNotMatch(
+    workspace,
+    /\{workspacePaneIsMounted\(node\.paneId\) \? renderWorkspacePane\(node\.paneId\)/,
+    "a chart rendered inside the recursive layout tree remounts when the tree shape changes",
+  );
+});
+
 console.log(`\nworkspace layout panes: ${passed}/${passed} checks passed`);

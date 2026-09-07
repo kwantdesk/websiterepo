@@ -10238,6 +10238,30 @@ export default function KwantifyWorkspace({
   const workspacePresetMenuRef = useRef<HTMLDivElement>(null);
   const workspaceImportInputRef = useRef<HTMLInputElement>(null);
   const workspaceAreaRef = useRef<HTMLDivElement>(null);
+  // A layout template changes the nesting of workspace dividers. Rendering a
+  // chart directly inside that recursive tree made React unmount it whenever
+  // the root changed from a pane to a split (for example single -> two-up).
+  // Keep the expensive chart/canvas subtree in a stable DOM host and move only
+  // that host into the new layout slot.
+  const workspacePanePortalHostsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const workspacePanePortalHost = useCallback((paneId: string) => {
+    if (typeof document === "undefined") return null;
+    const existing = workspacePanePortalHostsRef.current.get(paneId);
+    if (existing) return existing;
+    const host = document.createElement("div");
+    host.dataset.workspacePanePortalHost = paneId;
+    host.className = "h-full w-full min-h-0 min-w-0 overflow-hidden";
+    workspacePanePortalHostsRef.current.set(paneId, host);
+    return host;
+  }, []);
+  useEffect(() => {
+    const livePaneIds = new Set(workspacePanes.map((pane) => pane.id));
+    for (const [paneId, host] of workspacePanePortalHostsRef.current) {
+      if (livePaneIds.has(paneId)) continue;
+      host.remove();
+      workspacePanePortalHostsRef.current.delete(paneId);
+    }
+  }, [workspacePanes]);
   const workspaceDragGhostRef = useRef<HTMLDivElement>(null);
   const workspaceHeaderDragConsumedRef = useRef(false);
   const [activePaneId, setActivePaneId] = useState<string>(initialChartWorkspaceRuntime.activePaneId);
@@ -18880,13 +18904,15 @@ export default function KwantifyWorkspace({
                   : "opacity-[0.94]"
           }`}
         >
-          {workspacePaneIsMounted(node.paneId) ? renderWorkspacePane(node.paneId) : (
-            <KwantLoader
-              title="Loading workspace"
-              detail="Starting this live panel without blocking the others."
-              className="h-full w-full bg-chart-background"
-            />
-          )}
+          <div
+            ref={(slot) => {
+              if (!slot) return;
+              const host = workspacePanePortalHost(node.paneId);
+              if (host && host.parentElement !== slot) slot.appendChild(host);
+            }}
+            data-workspace-pane-slot={node.paneId}
+            className="h-full min-h-0 w-full min-w-0 overflow-hidden"
+          />
           {nodePane && isWorkspaceChartKind(nodePane.content) && workspacePanelPickerPaneId === node.paneId
             ? renderWorkspacePanelPicker(nodePane, true)
             : null}
@@ -20063,6 +20089,31 @@ export default function KwantifyWorkspace({
             className="relative min-h-0 min-w-0 flex-1"
           >
             {renderWorkspaceNode(workspaceTree)}
+            {typeof document !== "undefined"
+              ? visibleWorkspacePaneIds.map((paneId) => {
+                  if (workspaceFloatingWindows.some((entry) => entry.paneId === paneId)) return null;
+                  const host = workspacePanePortalHost(paneId);
+                  if (!host) return null;
+                  return createPortal(
+                    <div
+                      className="h-full min-h-0 w-full min-w-0 overflow-hidden"
+                      onPointerDownCapture={() => {
+                        if (activePaneId !== paneId) activateWorkspacePane(paneId);
+                      }}
+                    >
+                      {workspacePaneIsMounted(paneId) ? renderWorkspacePane(paneId) : (
+                        <KwantLoader
+                          title="Loading workspace"
+                          detail="Starting this live panel without blocking the others."
+                          className="h-full w-full bg-chart-background"
+                        />
+                      )}
+                    </div>,
+                    host,
+                    `workspace-pane-${paneId}`,
+                  );
+                })
+              : null}
             {workspaceFloatingWindows.map((floating, index) =>
               renderFloatingWorkspaceWindow(floating, index))}
           </div>

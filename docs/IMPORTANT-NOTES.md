@@ -1,5 +1,18 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Workspace layout-switch follow-up
+
+- Existing chart panes now retain their component, canvas, history and
+  indicator state while a layout template changes the split-tree geometry.
+  Do not move chart rendering back inside recursive layout nodes; a change in
+  ancestry makes React remount the chart and recreates the reported 10-second
+  calculation wait.
+- **Still open:** visually soak single ↔ two-up ↔ quad with a heavy footprint,
+  daily/weekly profiles, CVD and large-trade indicators during an active
+  session. The deterministic preservation test, TypeScript and production
+  build cover the code path, but only an interactive soak can quantify the
+  final browser-frame timing on the trader's hardware.
+
 ## 2026-09-07 — Aggressive-flow CVD follow-up
 
 - Worker and pane delivery are now lossless and FIFO during aggressive trade
