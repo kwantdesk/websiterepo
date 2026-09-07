@@ -82,8 +82,8 @@ export default function DesktopAuthorizeConsent({
         </ul>
       </div>
       <p className="mb-5 text-[10px] leading-5 text-white/45">
-        Access tickets expire after five minutes. The renewable session can be revoked by signing out. Rithmic,
-        Databento, QuantData and Massive credentials remain on the KwantDesk VPS.
+        Access tickets expire after five minutes. The renewable session can be revoked by signing out. Private
+        market-data and analytics credentials remain on the KwantDesk VPS.
       </p>
       {error ? <p className="login-error">{error}</p> : null}
       <div className="grid grid-cols-2 gap-2">

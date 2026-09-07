@@ -1156,7 +1156,7 @@ class DepthForgeApp {
       if (Number(status.historyFrames) > 0) {
         this.#setSymbolLoadProgress(58, `Restoring ${Number(status.historyFrames).toLocaleString()} depth frames`);
       } else if (status.connected) {
-        this.#setSymbolLoadProgress(32, 'Rithmic depth stream connected');
+        this.#setSymbolLoadProgress(32, 'Live depth stream connected');
       }
     }
     this.#updateSymbolUi();

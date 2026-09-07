@@ -8409,13 +8409,13 @@ function Chart({
       if (previous === undefined || latest.time <= previous || marketIsActive !== true || replayTimestampMs != null) continue;
       const latestBarTime = indicatorCandles.at(-1)?.timestamp;
       if (latestBarTime == null || Math.abs(latestBarTime / 1_000 - latest.time) > 1) continue;
-      const title = String(instance.settings?.alertName ?? "Trinity Trigger");
+      const title = String(instance.settings?.alertName ?? "Signal Trigger");
       if (instance.settings?.alertEnabled === true) window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
         indicatorId: "shift-candle", instanceId: instance.instanceId, instrument,
         title: `${title} · ${latest.direction.toUpperCase()}`, event: latest,
       } }));
       if (instance.settings?.popupEnabled === true && typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(title, { body: `${String(instance.settings?.popupMessage ?? "Trinity Trigger")} · ${instrument} ${latest.direction.toUpperCase()}` });
+        new Notification(title, { body: `${String(instance.settings?.popupMessage ?? "Signal Trigger")} · ${instrument} ${latest.direction.toUpperCase()}` });
       }
     }
   }, [baseCalculatedIndicatorSeries, indicatorCandles, indicatorSignature, indicators, instrument, marketIsActive, replayTimestampMs]);

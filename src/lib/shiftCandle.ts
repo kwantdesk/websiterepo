@@ -2,6 +2,7 @@ import type { Candle } from "@/lib/backtester";
 import type { CalculatedIndicatorSeries, IndicatorTheme } from "@/lib/chartIndicatorEngine";
 import type { GapZone } from "@/lib/gapDetector";
 import type { FootprintBarModel, FootprintPriceLevel } from "@/lib/footprintTypes";
+import { publicFacingTerminology } from "@/lib/privateTerminology";
 
 export const SHIFT_CANDLE_SETTINGS_VERSION = 1;
 
@@ -23,9 +24,9 @@ export const SHIFT_CANDLE_DEFAULTS = {
   markerLineWidth: 2,
   autoCenter: true,
   alertEnabled: false,
-  alertName: "Trinity Trigger",
+  alertName: "Signal Trigger",
   popupEnabled: false,
-  popupMessage: "Trinity Trigger",
+  popupMessage: "Signal Trigger",
   useThemeColors: true,
   buyMarkerColor: "#22C55E",
   sellMarkerColor: "#EF4444",
@@ -120,9 +121,9 @@ export function normalizeShiftCandleSettings(raw: Record<string, unknown> = {}):
     markerLineWidth: bounded(raw.markerLineWidth, 2, 0.5, 8),
     autoCenter: raw.autoCenter !== false,
     alertEnabled: raw.alertEnabled === true,
-    alertName: String(raw.alertName ?? "Trinity Trigger").trim() || "Trinity Trigger",
+    alertName: publicFacingTerminology(String(raw.alertName ?? "Signal Trigger").trim()) || "Signal Trigger",
     popupEnabled: raw.popupEnabled === true,
-    popupMessage: String(raw.popupMessage ?? "Trinity Trigger").trim() || "Trinity Trigger",
+    popupMessage: publicFacingTerminology(String(raw.popupMessage ?? "Signal Trigger").trim()) || "Signal Trigger",
     useThemeColors: raw.useThemeColors !== false,
     buyMarkerColor: String(raw.buyMarkerColor ?? "#22C55E"),
     sellMarkerColor: String(raw.sellMarkerColor ?? "#EF4444"),

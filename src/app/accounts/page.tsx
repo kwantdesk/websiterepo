@@ -67,7 +67,7 @@ const brokers: Array<{
   connected?: boolean;
 }> = [
   { name: "Tradovate", logo: "T", desc: "CME futures accounts and order routing", soon: true, info: "Connector scaffold ready" },
-  { name: "Rithmic Direct", logo: "R", desc: "CME futures through an approved Rithmic API connection", soon: true, info: "Requires broker and API approval" },
+  { name: "Futures Feed Direct", logo: "F", desc: "CME futures through an approved market-data connection", soon: true, info: "Requires broker and API approval" },
   { name: "Interactive Brokers", logo: "IB", desc: "Futures and multi-asset accounts", soon: true, info: "Connector scaffold ready" },
   { name: "NinjaTrader", logo: "NT", desc: "Futures accounts and execution", soon: true, info: "Connector scaffold ready" },
 ];

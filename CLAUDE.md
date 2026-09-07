@@ -3041,3 +3041,14 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Preserve explicit user-saved current and previous widths during normalization
   and schema migration. Prompt/outcome:
   `docs/prompt-log/2026-09-07-volume-profile-stock-width.md`.
+
+## 2026-09-07 — Public terminology privacy boundary
+
+- The following implementation/provider names are private and must never be
+  visible in the product UI: Menthroq, Trinity, Bookmap, QuantData, Databento,
+  Rithmic and Skylit.
+- Preserve internal provider identifiers and transport/API contracts. Route
+  all rendered static/dynamic copy through the root terminology guard, and use
+  whole-word replacement so `logarithmic` and similar legitimate words are not
+  corrupted. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-private-terminology-scrub.md`.

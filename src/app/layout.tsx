@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import ThemeProvider from "@/components/ThemeProvider";
 import ViewportLock from "@/components/ViewportLock";
+import PrivateTerminologyGuard from "@/components/PrivateTerminologyGuard";
 import { themeBootstrapScript } from "@/lib/theme";
 import "./globals.css";
 
@@ -44,12 +45,13 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="kwant-private-copy-pending" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content="#303238" />
+        <style>{`.kwant-private-copy-pending body { visibility: hidden; }`}</style>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />
       </head>
-      <body><ViewportLock /><ThemeProvider>{children}</ThemeProvider></body>
+      <body><PrivateTerminologyGuard /><ViewportLock /><ThemeProvider>{children}</ThemeProvider></body>
     </html>
   );
 }

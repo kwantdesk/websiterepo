@@ -770,3 +770,14 @@ recap of the open items below and update this file when their state changes.
 - Explicit saved widths belong to the user and must survive normalization and
   settings migrations. Prompt/outcome:
   `docs/prompt-log/2026-09-07-volume-profile-stock-width.md`.
+
+## 2026-09-07 — Public terminology privacy boundary
+
+- Never expose Menthroq, Trinity, Bookmap, QuantData, Databento, Rithmic or
+  Skylit in rendered site copy, dynamic status/error messages, tooltips,
+  accessibility labels or same-origin embedded applications.
+- Keep internal provider enums, API paths and transport contracts intact; the
+  root presentation guard is the final privacy boundary. Whole-word matching
+  is mandatory so ordinary words such as `logarithmic` remain unchanged.
+- Prompt/outcome:
+  `docs/prompt-log/2026-09-07-private-terminology-scrub.md`.
