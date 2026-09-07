@@ -1,5 +1,13 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Liquidity-map bubble-anchor follow-up
+
+- Trade bubbles are now fixed to their first actual execution price/time while
+  their displayed volume may continue growing through smart clustering.
+- **Still open:** visually soak the map during the next active futures session
+  while the 1,800-frame window is rolling, with auto-centre both on and off.
+  Deterministic cluster, rollover, performance and cache tests pass.
+
 ## 2026-09-07 — Forming-wick retention follow-up
 
 - The renderer now prevents a later same-bar snapshot from shrinking an

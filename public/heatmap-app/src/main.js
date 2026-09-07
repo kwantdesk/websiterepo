@@ -1,6 +1,6 @@
-import { SYMBOLS } from './market-simulator.js?v=20260828-trade-frames';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260828-trade-frames';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260904-liq-contrast';
+import { SYMBOLS } from './market-simulator.js?v=20260907-bubble-anchors';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260907-bubble-anchors';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260907-bubble-anchors';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -13,22 +13,22 @@ import {
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20260828-trade-frames';
-import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20260904-liq-contrast';
+} from './live-market.js?v=20260907-bubble-anchors';
+import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20260907-bubble-anchors';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
   computeOrderbookImbalance,
   computeVolumeImbalance,
   mergeLiveCvdHistory,
-} from './order-flow-indicators.js?v=20260828-trade-frames';
-import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20260828-trade-frames';
+} from './order-flow-indicators.js?v=20260907-bubble-anchors';
+import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20260907-bubble-anchors';
 import {
   DEFAULT_UI_THEME,
   WEBSITE_THEME_STORAGE_KEY,
   applyUiTheme,
   setWebsiteThemeColors,
-} from './ui-themes.js?v=20260904-liq-contrast';
+} from './ui-themes.js?v=20260907-bubble-anchors';
 
 // Retain genuine Rithmic book frames, not monitor presentation frames. The
 // gateway emits full books at 20 FPS; 1,800 frames therefore preserves the

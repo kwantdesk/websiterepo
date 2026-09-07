@@ -1,5 +1,5 @@
-import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20260904-liq-contrast';
-import { canvasUiTheme } from './ui-themes.js?v=20260904-liq-contrast';
+import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20260907-bubble-anchors';
+import { canvasUiTheme } from './ui-themes.js?v=20260907-bubble-anchors';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1
@@ -130,6 +130,15 @@ function niceTickStep(totalTicks) {
 }
 
 const TRADE_CLUSTER_REFRESH_MS = 100;
+
+export function resolveTradeClusterAnchorIndex(history, cluster) {
+  if (!Array.isArray(history) || !history.length || !cluster) return -1;
+  if (cluster.anchorFrame) return history.indexOf(cluster.anchorFrame);
+  const fallback = Number(cluster.index);
+  return Number.isInteger(fallback) && fallback >= 0 && fallback < history.length
+    ? fallback
+    : -1;
+}
 
 export class DepthRenderer {
   constructor(canvas, cvdCanvas, depthEngine) {
@@ -626,7 +635,12 @@ export class DepthRenderer {
     const clusters = this.tradeClusterCache.value;
     ctx.save();
     for (const cluster of clusters) {
-      const x = layout.xForIndex(cluster.index);
+      // Cached clusters outlive individual rolling-window shifts. Resolve the
+      // retained frame object against today's array index on every paint so a
+      // bubble never jumps one column while the 100 ms cache catches up.
+      const anchorIndex = resolveTradeClusterAnchorIndex(history, cluster);
+      if (anchorIndex < layout.start || anchorIndex > layout.end) continue;
+      const x = layout.xForIndex(anchorIndex);
       const y = layout.yForTick(cluster.tick);
       if (y < -22 || y > layout.plotHeight + 22) continue;
       this.#drawSphereDot(ctx, x, y, cluster, accents);

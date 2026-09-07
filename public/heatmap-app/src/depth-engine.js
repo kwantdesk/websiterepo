@@ -63,6 +63,17 @@ function smartMergeScore(left, right, parameter, columnPixels, rowTicks, rowPixe
 function mergeTradeGroups(left, right, differential) {
   const gross = groupWeight(left) + groupWeight(right);
   const roundedIndex = Math.round((left.indexTotal + right.indexTotal) / gross);
+  // Clustering may make a bubble grow as nearby executions arrive, but it
+  // must never move the execution the trader already saw. Keep the earliest
+  // real trade as the immutable market anchor while retaining weighted totals
+  // for clustering decisions and volume sizing.
+  const anchor = left.anchorTimestamp < right.anchorTimestamp
+    || (
+      left.anchorTimestamp === right.anchorTimestamp
+      && left.anchorIndex <= right.anchorIndex
+    )
+    ? left
+    : right;
   let buyVolume = left.buyVolume + right.buyVolume;
   let sellVolume = left.sellVolume + right.sellVolume;
   const cancelled = differential ? Math.min(buyVolume, sellVolume) : 0;
@@ -81,6 +92,10 @@ function mergeTradeGroups(left, right, differential) {
     maximumIndex: Math.max(left.maximumIndex, right.maximumIndex),
     key: left.key < right.key ? left.key : right.key,
     count: left.count + right.count,
+    anchorFrame: anchor.anchorFrame,
+    anchorIndex: anchor.anchorIndex,
+    anchorTick: anchor.anchorTick,
+    anchorTimestamp: anchor.anchorTimestamp,
   };
 }
 
@@ -640,6 +655,10 @@ export class RollingDepthEngine {
           maximumIndex: index,
           key: String(trade.id ?? `${trade.timestamp}:${index}:${trade.tick}:${trade.side}:${tradeIndex}`),
           count: 0,
+          anchorFrame: frame,
+          anchorIndex: index,
+          anchorTick: trade.tick,
+          anchorTimestamp: trade.timestamp,
         };
         group.total += trade.size;
         group[trade.side === 'buy' ? 'buyVolume' : 'sellVolume'] += trade.size;
@@ -689,8 +708,10 @@ export class RollingDepthEngine {
         }));
         return ({
           key: group.key,
-          index: Math.round(groupIndex(group)),
-          tick: groupTick(group),
+          index: group.anchorIndex,
+          tick: group.anchorTick,
+          anchorFrame: group.anchorFrame,
+          anchorTimestamp: group.anchorTimestamp,
           buyVolume: group.buyVolume,
           sellVolume: group.sellVolume,
           total: group.total,

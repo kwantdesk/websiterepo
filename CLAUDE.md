@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Liquidity-map bubbles keep their execution anchor
+
+- Smart-cluster bubbles now retain the timestamp, price and frame of their
+  first real execution. Later nearby trades can grow the bubble but cannot
+  drag an already displayed bubble to another market point.
+- Cached clusters resolve their retained frame against the current rolling
+  history array on every paint. When an anchor rolls out it disappears instead
+  of briefly jumping onto another column while the 100 ms cache refreshes.
+- The static module graph was cache-busted as one version so production clients
+  cannot mix the old renderer with the new cluster contract. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-liquidity-map-bubble-anchors.md`.
+
 ## 2026-09-07 — Forming candle wicks cannot shrink
 
 - The final direct-render boundary now owns monotonic same-bar OHLC authority.

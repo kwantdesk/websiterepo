@@ -1,4 +1,4 @@
-import { websiteThemeColors } from './ui-themes.js?v=20260904-liq-contrast';
+import { websiteThemeColors } from './ui-themes.js?v=20260907-bubble-anchors';
 
 export const DEFAULT_PALETTE = 'auto';
 
