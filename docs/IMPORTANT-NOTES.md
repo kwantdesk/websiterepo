@@ -1,5 +1,18 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Weekly/composite profile latency follow-up
+
+- Cold session-profile work is kicked immediately and drained serially in the
+  shared archive worker. The 20-second interval is now only a recovery/safety
+  tick, not the normal start mechanism.
+- The volume-profile endpoint waits at most eight seconds for requested cold
+  session folds. The work stays off the event loop so quote, options and GEX
+  traffic are not blocked.
+- **Still open:** authenticated production timing on a cold weekly and loaded-
+  range composite profile for NQ and ES after the gateway deployment. The
+  deterministic test proves first-request delivery without waiting for the
+  safety interval; live archive size determines the actual milliseconds.
+
 ## 2026-09-07 — Journal deletion follow-up
 
 - Journal account deletion is a full cascade: account, trades, imports,

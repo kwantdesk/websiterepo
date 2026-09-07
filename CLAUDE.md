@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Weekly and composite profiles no longer wait on the warmer clock
+
+- A cold exact profile now wakes the serialized archive worker immediately;
+  each missing session follows the previous fold without another 20-second
+  interval gap.
+- The gateway may wait up to eight seconds for that off-thread fold and answer
+  the original request, avoiding the browser's additional 15-second retry.
+- Heavy tape folding remains outside the quote/Rithmic event loop and pauses
+  when the loop-load guard reports overload. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-volume-profile-load-latency.md`.
+
 ## 2026-09-07 — Journal account deletion is a permanent cascade
 
 - Deleting a Journal now immediately purges its account, trades, imports,

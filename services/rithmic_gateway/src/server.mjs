@@ -2527,6 +2527,11 @@ const server = createServer(async (request, response) => {
           toMs: endMs,
           minTradeVolume,
           maxTradeVolume,
+          // Session folds run in a worker, so waiting here does not stall
+          // quotes or Rithmic packet handling. It removes the deterministic
+          // 20s warmer tick + 15s browser retry that made a cold weekly or
+          // composite profile appear roughly thirty seconds after selection.
+          waitForWarmMs: 8_000,
         });
       const tailTrades = volumeProfileTailTrades(profileTrades, foldedProfile);
       const { coverageStartMs, coverageEndMs } = combinedVolumeProfileCoverage(

@@ -162,6 +162,36 @@ test("a request never folds a session itself; the warmer does", async () => {
   }
 });
 
+test("a cold profile wakes its worker immediately and answers the first request", async () => {
+  const { dir } = withTape([
+    [T0, 29000, 4, 1],
+    [T0 + 60_000, 29001, 2, -1],
+  ]);
+  try {
+    const archive = new SessionProfileArchive({ dir });
+    // A long safety interval makes the regression explicit: the result must
+    // come from the immediate kick, not from waiting for the interval tick.
+    const stop = archive.startWarming(60_000);
+    const startedAt = Date.now();
+    const profile = await archive.load({
+      exchange: "CME",
+      symbol: "NQU6",
+      tickSize: TICK,
+      fromMs: T0 - 1,
+      toMs: T0 + 300_000,
+      waitForWarmMs: 2_000,
+    });
+    stop();
+
+    assert.ok(profile, "the first request returned before its queued fold completed");
+    assert.equal(profile.levels.length, 2);
+    assert.ok(Date.now() - startedAt < 5_000, "the profile waited for the safety interval");
+    assert.equal(archive.status().pending, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("the scheduled profile warmer pauses throughout the protected live session", async () => {
   const { dir } = withTape([[T0, 29000, 4, 1]]);
   try {

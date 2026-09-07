@@ -237,6 +237,9 @@ export class SessionProfileArchive {
     this.memory = new Map();
     this.pending = new Set();
     this.warmTimer = null;
+    this.warmKickTimer = null;
+    this.warmTick = null;
+    this.warmingKey = null;
     this.lastError = null;
     this.maintenanceAllowed = options.maintenanceAllowed || (() => !optionsSessionOpen());
   }
@@ -247,9 +250,36 @@ export class SessionProfileArchive {
       dir: this.dir,
       cached: this.memory.size,
       pending: this.pending.size,
+      warming: this.warmingKey,
       maintenancePaused: !this.maintenanceAllowed(),
       lastError: this.lastError,
     };
+  }
+
+  queueWarm(key) {
+    if (key !== this.warmingKey) this.pending.add(key);
+    this.scheduleWarm();
+  }
+
+  scheduleWarm(delayMs = 0) {
+    if (!this.warmTick || this.warmKickTimer || !this.pending.size) return;
+    this.warmKickTimer = setTimeout(() => {
+      this.warmKickTimer = null;
+      void this.warmTick();
+    }, Math.max(0, delayMs));
+    if (typeof this.warmKickTimer.unref === "function") this.warmKickTimer.unref();
+  }
+
+  async waitForWarmKeys(keys, timeoutMs) {
+    if (!this.warmTick || !keys.length || timeoutMs <= 0) return;
+    const wanted = new Set(keys);
+    const deadline = Date.now() + timeoutMs;
+    while (
+      Date.now() < deadline
+      && (wanted.has(this.warmingKey) || [...wanted].some((key) => this.pending.has(key)))
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
   }
 
   /**
@@ -260,22 +290,34 @@ export class SessionProfileArchive {
   startWarming(intervalMs = 20_000) {
     if (!this.enabled || this.warmTimer) return () => {};
     const tick = async () => {
-      if (!this.maintenanceAllowed()) return;
+      if (this.warmingKey || !this.maintenanceAllowed()) return;
       const next = this.pending.values().next();
       if (next.done) return;
       this.pending.delete(next.value);
+      this.warmingKey = next.value;
       const [exchange, symbol, tradingDate, tick_] = String(next.value).split(":");
       try {
         await this.sessionLevels(tradingDate, exchange, symbol, Number(tick_), true);
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
+      } finally {
+        this.warmingKey = null;
+        // The worker queue serialises disk-heavy folds. Start its next item
+        // promptly instead of making every missing trading day pay another
+        // full 20-second timer interval.
+        this.scheduleWarm(25);
       }
     };
+    this.warmTick = tick;
     this.warmTimer = setInterval(() => { void tick(); }, intervalMs);
     if (typeof this.warmTimer.unref === "function") this.warmTimer.unref();
+    this.scheduleWarm();
     return () => {
       if (this.warmTimer) clearInterval(this.warmTimer);
+      if (this.warmKickTimer) clearTimeout(this.warmKickTimer);
       this.warmTimer = null;
+      this.warmKickTimer = null;
+      this.warmTick = null;
     };
   }
 
@@ -300,7 +342,7 @@ export class SessionProfileArchive {
     if (cached && live && !foldIfMissing) {
       // Stale by a minute is fine; re-folding a growing live session inside a
       // request is not.
-      this.pending.add(key);
+      this.queueWarm(key);
       return cached;
     }
 
@@ -328,7 +370,7 @@ export class SessionProfileArchive {
     }
 
     if (!foldIfMissing) {
-      this.pending.add(key);
+      this.queueWarm(key);
       return null;
     }
 
@@ -371,7 +413,16 @@ export class SessionProfileArchive {
    * volume traded here" have to stay distinguishable, or a chart draws an
    * empty profile over a session that was actually busy.
    */
-  async load({ exchange, symbol, tickSize, fromMs, toMs, minTradeVolume = 0, maxTradeVolume = 0 }) {
+  async load({
+    exchange,
+    symbol,
+    tickSize,
+    fromMs,
+    toMs,
+    minTradeVolume = 0,
+    maxTradeVolume = 0,
+    waitForWarmMs = 0,
+  }) {
     if (!this.enabled) return null;
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
@@ -381,12 +432,32 @@ export class SessionProfileArchive {
 
     // Restore independent completed days concurrently. The old serial awaits
     // made a cold weekly request pay five gzip+JSON restore times in sequence.
+    const availableDates = tradingDatesBetween(start, end).filter(
+      (tradingDate) => this.#tapeFiles(tradingDate, upper, upperSymbol).length,
+    );
+    const keys = availableDates.map((tradingDate) => `${upper}:${upperSymbol}:${tradingDate}:${tick}`);
     const sessions = (await Promise.all(
-      tradingDatesBetween(start, end).map(async (tradingDate) => {
-        if (!this.#tapeFiles(tradingDate, upper, upperSymbol).length) return null;
+      availableDates.map(async (tradingDate) => {
         return this.sessionLevels(tradingDate, upper, upperSymbol, tick, false);
       }),
     )).filter(Boolean);
+    if (sessions.length < availableDates.length && waitForWarmMs > 0) {
+      // Folding remains outside the gateway event loop in the shared worker.
+      // Hold this one profile request briefly so the chart receives the result
+      // from that first request instead of waiting for the browser's next
+      // 15-second reconciliation cycle.
+      await this.waitForWarmKeys(keys, waitForWarmMs);
+      return this.load({
+        exchange,
+        symbol,
+        tickSize,
+        fromMs,
+        toMs,
+        minTradeVolume,
+        maxTradeVolume,
+        waitForWarmMs: 0,
+      });
+    }
     if (!sessions.length) return null;
 
     const filtered = minTradeVolume > 0 || maxTradeVolume > 0;
