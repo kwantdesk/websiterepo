@@ -187,10 +187,17 @@ Health semantics, so nobody misreads a dead feed as a live one:
 | `connected:true`, `lastMessageAt` frozen | **dead feed, live label** — outage |
 | `instruments: []` | subscriptions have not populated yet |
 
-The container is marked unhealthy after roughly 10 minutes of a genuinely
-down session, and `autoheal` then restarts it. That window is deliberate: the
-client's own backoff should win first, and restarting during Rithmic
-maintenance only causes login thrash.
+The container healthcheck distinguishes two failures. A responsive but
+disconnected session keeps roughly ten minutes for the client's own backoff,
+so routine Rithmic maintenance does not cause login thrash. An HTTP/event-loop
+hang fails immediately and becomes unhealthy after three probes; `autoheal`
+can then recover the wedged process in roughly two minutes instead of waiting
+through the full reconnect window.
+
+Raw L3 recording is also memory-bounded per instrument by
+`RITHMIC_RECORD_MAX_PENDING_BYTES` (16 MiB in production). If disk/compression
+cannot keep pace, the recorder counts and writes a `DROPPED` marker instead of
+letting gzip queues consume the collector and stall the live HTTP service.
 
 ## Recording (on by default)
 

@@ -37,6 +37,13 @@ function directKey(provider: VendorMarketDataProvider) {
  * stack two of them into most of a minute.
  */
 const VENDOR_GATEWAY_TIMEOUT_MS = 10_000;
+const QUANTDATA_INTERVAL_GATEWAY_TIMEOUT_MS = 25_000;
+
+function gatewayTimeoutMs(provider: VendorMarketDataProvider, path: string) {
+  return provider === "quantdata" && path.endsWith("/interval-map")
+    ? QUANTDATA_INTERVAL_GATEWAY_TIMEOUT_MS
+    : VENDOR_GATEWAY_TIMEOUT_MS;
+}
 
 export function directVendorFallbackAllowed() {
   return process.env.KWANTDESK_ALLOW_DIRECT_VENDOR_FALLBACK === "1"
@@ -108,7 +115,7 @@ export async function vendorMarketDataFetch(
       continue;
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), VENDOR_GATEWAY_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), gatewayTimeoutMs(provider, normalizedPath));
     try {
       const response = await fetch(
         `${origin}/v1/vendors/${provider}${normalizedPath}`,

@@ -30,6 +30,9 @@ services:
       # depth-by-order replay, so a lost recording cannot be re-pulled.
       RITHMIC_RECORD_ENABLED: "true"
       RITHMIC_RECORD_DIR: /recordings
+      # Per instrument. When compression cannot keep up, record an explicit
+      # gap instead of letting eleven gzip queues consume the whole VM.
+      RITHMIC_RECORD_MAX_PENDING_BYTES: "16777216"
       # zlib compression runs on the libuv threadpool, not the main thread.
       # The default of 4 workers is the archive's real ceiling during NQ
       # bursts; raising it lets compression keep pace instead of backing up
@@ -51,23 +54,17 @@ services:
       # Opt this container in to autoheal restarts.
       autoheal: "true"
     healthcheck:
-      # Unhealthy means the Rithmic session is genuinely down, not merely
-      # that the HTTP server is up. start_period + retries give the client's
-      # own exponential backoff ~10 minutes to recover before we bounce the
-      # process, so Rithmic's daily maintenance window never triggers a
-      # restart storm.
+      # The script distinguishes a responsive disconnected session from a
+      # frozen Node event loop. Disconnects retain the client's roughly
+      # ten-minute reconnect window; an HTTP hang fails immediately and three
+      # probes let autoheal recover the process in about two minutes.
       test:
         - CMD
         - node
-        - -e
-        - >-
-          fetch('http://127.0.0.1:8793/health')
-          .then(r=>r.json())
-          .then(h=>process.exit(h.connected&&h.authenticated?0:1))
-          .catch(()=>process.exit(1))
+        - src/container-healthcheck.mjs
       interval: 30s
       timeout: 10s
-      retries: 20
+      retries: 3
       start_period: 120s
     logging:
       driver: json-file

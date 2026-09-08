@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { gzipSync } from "node:zlib";
 
-import { replayArchiveIntoBook } from "../src/archive-replay.mjs";
+import { replayArchiveIntoBook, replayCompactTradeTapeIntoBook } from "../src/archive-replay.mjs";
 import { RithmicBookStore } from "../src/book-store.mjs";
 import { chicagoTradingDate } from "../src/trading-session.mjs";
 
@@ -102,4 +102,27 @@ test("historical replay merges without overwriting the live quote or sequence", 
   assert.equal(after.lastPrice, 30125, "archive price cannot replace the live quote");
   assert.equal(after.sequence, before.sequence, "archive sequence cannot advance the live cursor");
   assert.deepEqual(live.trades("CME", "NQU6").map((trade) => trade.price), [29500, 30125]);
+});
+
+test("startup restores the bounded compact tape instead of scanning raw L3", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kwantify-compact-replay-"));
+  const dayDir = join(dir, "trades", chicagoTradingDate(NOW));
+  mkdirSync(dayDir, { recursive: true });
+  const rows = [
+    [NOW - 3_000, 29500, 4, 1],
+    [NOW - 2_000, 29500.25, 2, -1],
+    [NOW - 1_000, 29500.5, 7, 0],
+  ];
+  writeFileSync(
+    join(dayDir, "CME-NQU6.trades.ndjson.gz"),
+    gzipSync(`${rows.map((row) => JSON.stringify(row)).join("\n")}\n`),
+  );
+  const book = new RithmicBookStore({ maxTrades: 2 });
+
+  const result = await replayCompactTradeTapeIntoBook({ dir, book, now: NOW });
+
+  assert.equal(result.files, 1);
+  assert.equal(result.replayed, 2, "only the configured execution-ring tail is restored");
+  assert.deepEqual(book.trades("CME", "NQU6").map((trade) => trade.price), [29500.25, 29500.5]);
+  assert.deepEqual(book.trades("CME", "NQU6").map((trade) => trade.aggressor), ["SELL", "UNKNOWN"]);
 });

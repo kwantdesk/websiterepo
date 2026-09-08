@@ -3,7 +3,7 @@ import { URL } from "node:url";
 
 import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
 import { buildHistoryValueAreaProfile } from "./history-value-area.mjs";
-import { replayArchiveIntoBook } from "./archive-replay.mjs";
+import { replayCompactTradeTapeIntoBook } from "./archive-replay.mjs";
 import { CashIndexArchiver } from "./cash-index-archiver.mjs";
 import { HeatmapReplayStore } from "./heatmap-replay.mjs";
 import { LabRepositoryStore } from "./lab-repository.mjs";
@@ -88,6 +88,7 @@ const client = config.sourceMode === "rtrader-excel"
 const recorder = new MarketDataRecorder({
   dir: config.recordDir,
   enabled: config.recordEnabled,
+  maxPendingBytes: config.recordMaxPendingBytes,
 });
 recorder.attach(client);
 // Session LIQ MAP replay served from the recorder's own archive — the only
@@ -2828,8 +2829,13 @@ server.listen(config.port, config.host, () => {
     client.start().catch((error) => {
       process.stderr.write(`[rithmic] initial connection failed: ${error.message}\n`);
     });
-    const archiveBook = new RithmicBookStore({ maxTrades: client.book?.maxTrades || 250_000 });
-    replayArchiveIntoBook({
+    // The browser's largest execution-stream seed is 25k. Restore that exact
+    // tail and leave deeper history in the compact tape instead of briefly
+    // duplicating every contract's full live ring during process startup.
+    const archiveBook = new RithmicBookStore({
+      maxTrades: Math.min(client.book?.maxTrades || 100_000, 25_000),
+    });
+    replayCompactTradeTapeIntoBook({
       dir: config.recordDir,
       book: archiveBook,
       log: (line) => process.stdout.write(`${line}\n`),

@@ -142,7 +142,11 @@ export function loadConfig(env = process.env) {
     enableDepthByOrder:
       String(env.RITHMIC_ENABLE_DEPTH_BY_ORDER || "true").toLowerCase() !==
       "false",
-    maxTrades: positiveInteger(env.RITHMIC_MAX_TRADES, 250_000),
+    // Browser streams seed at most 25k prints. Older exact prints live in the
+    // compact trade tape and historical requests read that source directly;
+    // retaining 250k for every enabled contract consumed most of the 4 GB
+    // collector and drove it into GC stalls that also froze the options proxy.
+    maxTrades: positiveInteger(env.RITHMIC_MAX_TRADES, 25_000),
     // Append-only capture of the raw stream. Rithmic can replay bars but has
     // no depth-by-order replay, so unrecorded L3 is lost permanently — this
     // is on by default and should stay on.
@@ -151,6 +155,12 @@ export function loadConfig(env = process.env) {
     recordDir: String(
       env.RITHMIC_RECORD_DIR || join(SERVICE_ROOT, "recordings"),
     ).trim(),
+    // Per-instrument gzip backlog. Eleven active L3 contracts at the former
+    // 384 MiB recorder default could retain more than the VM's total RAM.
+    recordMaxPendingBytes: positiveInteger(
+      env.RITHMIC_RECORD_MAX_PENDING_BYTES,
+      16 * 1024 * 1024,
+    ),
     // Durable capture of the options exposure surfaces. Futures have the raw
     // tape; options had no archive at all, so gamma history never accumulated
     // and yesterday's surface could not be redrawn at any price. On by default

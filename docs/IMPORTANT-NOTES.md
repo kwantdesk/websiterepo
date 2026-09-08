@@ -1,5 +1,33 @@
 # KWANTDESK important notes
 
+## 2026-09-09 — Multi-screen options/GEX gateway freeze recovery
+
+- The production outage was server-side, not a browser or monitor fault. On
+  restart the gateway scanned the current multi-gigabyte raw L3 archive on its
+  HTTP event loop. It reached 2.4 GB RSS, stopped answering `/health`, and made
+  every QuantData-backed options/GEX request fail or wait behind the freeze.
+- Production now restores the exact execution tail from the existing compact
+  trade tape instead. The verified restart read 11 files and merged 273,077
+  historical trades in about 18 seconds while `/health` remained responsive;
+  RSS settled near 340 MB. The live execution ring is capped at 25,000 per
+  contract and trims in batches so a full ring cannot shift 100,000 objects on
+  every new print.
+- Container health now treats an event-loop/HTTP hang separately from a normal
+  disconnected session: a hang reaches autoheal in roughly two minutes, while
+  a responsive Rithmic reconnect retains its deliberate ten-minute grace.
+- The raw L3 recorder's former 384 MiB backlog allowance was per instrument;
+  with 11 subscribed contracts it could retain more than the VM's total RAM.
+  Production now caps each gzip queue at 16 MiB and reports pending bytes plus
+  explicit dropped-message counts in `/health` rather than freezing the desk.
+- Options positioning and GEX Map structural refreshes are limited to 15
+  seconds, with a 25-second budget only for the measured large interval-map
+  response. The separate live-price pulse keeps sub-second quote cadence.
+- **Still open:** run a production-authenticated three-screen soak with OBS and
+  the capture card active through several structural refreshes. Confirm RSS,
+  event-loop lag, provider quota, all four SPX/SPY/QQQ/NDX panels and advancing
+  recorder counters; the deterministic and direct endpoint checks do not
+  reproduce the user's full GPU/display workload.
+
 ## 2026-09-07 — GEX Levels release reverted after chart startup incident
 
 - The entire `be186dfc` GEX Levels release was reverted by `f3f1858d` after

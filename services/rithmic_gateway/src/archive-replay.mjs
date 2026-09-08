@@ -3,6 +3,8 @@ import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { createGunzip } from "node:zlib";
 
+import { readArchiveRecords } from "./archive-reader.mjs";
+import { decodeTrade } from "./trade-tape-archive.mjs";
 import { chicagoTradingDate } from "./trading-session.mjs";
 
 // Rebuild the session from our own archive on startup.
@@ -21,6 +23,7 @@ import { chicagoTradingDate } from "./trading-session.mjs";
 // stay true.
 
 const TRADE_TEMPLATE_ID = 150;
+const COMPACT_TRADE_FILE = /^([A-Z0-9]+)-(.+)\.trades(?:\.backfill)?\.ndjson(?:\.gz)?$/;
 
 function tradeFilesFor(dir, tradingDate) {
   const dayDir = join(dir, tradingDate);
@@ -102,5 +105,92 @@ export async function replayArchiveIntoBook(args) {
       log(`[replay] ${path}: FAILED ${error instanceof Error ? error.message : error}`);
     }
   }
+  return { tradingDate, files: files.length, replayed, skipped, reason: null };
+}
+
+/**
+ * Restore the live execution ring from the compact trade tape.
+ *
+ * The raw L3 session is deliberately not a startup source. A normal session
+ * is multiple gigabytes and mostly depth messages; scanning it on the gateway
+ * event loop made /health and every vendor proxy stop responding for minutes.
+ * The compact tape contains the exact same prints in four fields and is about
+ * one hundredth of the size, so restoring it preserves the data without
+ * taking the live desk down.
+ */
+export async function replayCompactTradeTapeIntoBook(args) {
+  const { dir, book, now = Date.now(), log = () => {} } = args;
+  const tradingDate = chicagoTradingDate(now);
+  const dayDir = join(String(dir || ""), "trades", tradingDate);
+  if (!dir || !existsSync(dayDir)) {
+    return {
+      tradingDate,
+      files: 0,
+      replayed: 0,
+      skipped: 0,
+      reason: "no compact trade tape for this session yet",
+    };
+  }
+
+  const files = readdirSync(dayDir)
+    .filter((name) => COMPACT_TRADE_FILE.test(name))
+    // Backfill is older than the live tape by construction.
+    .sort((left, right) => Number(right.includes(".backfill.")) - Number(left.includes(".backfill.")));
+  if (!files.length) {
+    return {
+      tradingDate,
+      files: 0,
+      replayed: 0,
+      skipped: 0,
+      reason: "no compact trade tape for this session yet",
+    };
+  }
+
+  const byInstrument = new Map();
+  let skipped = 0;
+  for (const name of files) {
+    const match = name.match(COMPACT_TRADE_FILE);
+    if (!match) continue;
+    const [, exchange, symbol] = match;
+    const key = `${exchange}:${symbol}`;
+    const entry = byInstrument.get(key) || { exchange, symbol, trades: [] };
+    byInstrument.set(key, entry);
+    const summary = await readArchiveRecords(join(dayDir, name), (row) => {
+      const trade = decodeTrade(row);
+      if (!trade || !Number.isFinite(Number(trade.timestamp)) || !Number.isFinite(Number(trade.price))
+        || !Number.isFinite(Number(trade.size)) || Number(trade.size) <= 0) {
+        skipped += 1;
+        return;
+      }
+      entry.trades.push(trade);
+      // Bound memory while reading an unusually busy contract. Trimming in a
+      // batch avoids Array.shift/splice on every print after the cap.
+      if (entry.trades.length > book.maxTrades + 4_096) {
+        entry.trades.splice(0, entry.trades.length - book.maxTrades);
+      }
+    });
+    skipped += summary.malformed;
+    log(`[replay] ${name}: ${summary.records} compact trades${summary.breaks ? ` (${summary.breaks} damaged member(s) recovered)` : ""}`);
+  }
+
+  let replayed = 0;
+  for (const entry of byInstrument.values()) {
+    const trades = entry.trades
+      .sort((left, right) => Number(left.timestamp) - Number(right.timestamp))
+      .slice(-book.maxTrades);
+    for (const trade of trades) {
+      const timestamp = Number(trade.timestamp);
+      if (book.applyTrade({
+        exchange: entry.exchange,
+        symbol: entry.symbol,
+        tradePrice: Number(trade.price),
+        tradeSize: Number(trade.size),
+        aggressor: Number(trade.side) > 0 ? 1 : Number(trade.side) < 0 ? 2 : 0,
+        ssboe: Math.floor(timestamp / 1_000),
+        usecs: (timestamp % 1_000) * 1_000,
+      })) replayed += 1;
+    }
+  }
+
   return { tradingDate, files: files.length, replayed, skipped, reason: null };
 }

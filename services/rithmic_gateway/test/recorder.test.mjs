@@ -207,6 +207,15 @@ test("writer saturation is counted and marked, never silent", async () => {
   assert.ok(manifest.dropped["CME:NQU6"] > 0, "the manifest records the loss");
 });
 
+test("the default backpressure budget is safe when many instruments are active", () => {
+  const { recorder } = newRecorder();
+  const status = recorder.status();
+
+  assert.equal(status.maxPendingBytes, 16 * 1024 * 1024);
+  assert.equal(status.totalPendingBytes, 0);
+  assert.deepEqual(status.pendingBytes, {});
+});
+
 test("disabled recorder writes nothing and says so", async () => {
   const dir = mkdtempSync(join(tmpdir(), "kwantify-rec-off-"));
   const recorder = new MarketDataRecorder({ dir, enabled: false });

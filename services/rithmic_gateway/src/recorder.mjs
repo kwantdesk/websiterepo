@@ -20,12 +20,11 @@ import { chicagoTradingDate } from "./trading-session.mjs";
 // rather than silently losing data or exhausting memory.
 
 const DEFAULT_FLUSH_MS = 250;
-// Headroom for the gzip transform to absorb bursts before the drop guard
-// engages. NQ arrives in bursts an order of magnitude above its average, so
-// this needs to cover a burst rather than the mean. On a 4 GB box a few
-// hundred MB of transient buffer is far cheaper than losing depth messages
-// that cannot be re-requested from Rithmic.
-const DEFAULT_MAX_PENDING_BYTES = 384 * 1024 * 1024;
+// This limit is PER instrument. The production collector keeps eleven L3
+// contracts open, so the old 384 MiB default permitted more than the VM's
+// entire memory to sit behind gzip. Prefer an explicit, counted archive gap to
+// taking the live gateway and every options/chart request down with it.
+const DEFAULT_MAX_PENDING_BYTES = 16 * 1024 * 1024;
 
 function instrumentFileName(exchange, symbol, compress) {
   const base = `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.ndjson`;
@@ -99,10 +98,19 @@ export class MarketDataRecorder {
   }
 
   status() {
+    const pendingBytes = Object.fromEntries(
+      [...this.streams].map(([key, stream]) => [key, Number(stream.writableLength) || 0]),
+    );
     return {
       enabled: this.enabled,
       dir: this.dir,
       compress: this.compress,
+      maxPendingBytes: this.maxPendingBytes,
+      pendingBytes,
+      totalPendingBytes: Object.values(pendingBytes).reduce((sum, value) => sum + value, 0),
+      bufferedRecords: Object.fromEntries(
+        [...this.buffers].map(([key, rows]) => [key, rows.length]),
+      ),
       tradingDate: this.tradingDate,
       startedAt: this.startedAt,
       recorded: Object.fromEntries(this.counts),

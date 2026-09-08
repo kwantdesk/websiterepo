@@ -132,6 +132,8 @@ const CACHE_TTL_MS = 4_000;
 // allowance when NQ and ES are both visible, while detecting revisions quickly.
 const CHART_GAMMA_CACHE_TTL_MS = 2_500;
 const REQUEST_TIMEOUT_MS = 10_000;
+const INTERVAL_MAP_REQUEST_TIMEOUT_MS = 25_000;
+const OPTIONS_SURFACE_REFRESH_MS = 15_000;
 const API_KEY_NAME_PATTERN = /^qd_[A-Za-z0-9]{20,80}$/;
 
 type JsonRecord = Record<string, unknown>;
@@ -345,7 +347,15 @@ async function quantDataNetworkAttempts(
   for (let attempt = 0; ; attempt += 1) {
     await qdSchedule(lane);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    // A live interval-map response is materially larger than the other
+    // surfaces (SPX measured 1.3 MB / 15.5s under a four-symbol cold load).
+    // Giving only this endpoint the generic ten-second budget aborted it just
+    // before completion, retried it, and doubled the queue that made GEX Map
+    // report "temporarily unavailable" in the first place.
+    const requestTimeoutMs = path.endsWith("/interval-map")
+      ? INTERVAL_MAP_REQUEST_TIMEOUT_MS
+      : REQUEST_TIMEOUT_MS;
+    const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
     try {
       const response = await vendorMarketDataFetch("quantdata", `/v1${path}`, {
         method: "POST",
@@ -1330,7 +1340,11 @@ export async function getOptionsPositioningPulse(
     symbol,
     source: "KwantData",
     asOf: new Date(latestTimestamp).toISOString(),
-    refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
+    // The live price pulse is a separate sub-second path. These structural
+    // options surfaces update on minute-shaped provider frames, so polling a
+    // full six-to-seventeen-call workspace every five seconds only creates a
+    // cross-screen request queue without making the displayed data fresher.
+    refreshAfterMs: session.marketOpen ? OPTIONS_SURFACE_REFRESH_MS : 60_000,
     status,
     session,
     mode,
@@ -2586,7 +2600,10 @@ async function buildOptionsFlowPayload(
     asOf: session.marketOpen
       ? new Date().toISOString()
       : newYorkCashCloseIso(session.sessionDate),
-    refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
+    // The live price pulse is a separate sub-second path. Reissuing a full
+    // six-to-seventeen-call structural workspace every five seconds across
+    // three screens created a permanent provider queue without fresher data.
+    refreshAfterMs: session.marketOpen ? OPTIONS_SURFACE_REFRESH_MS : 60_000,
     snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
     session,
     stockPrice,
@@ -2746,7 +2763,7 @@ async function buildGexMapPanel(
   const currentSession = getUsOptionsSession();
   const sessionDate = requestedSessionDate || currentSession.sessionDate;
   const historical = sessionDate !== currentSession.sessionDate;
-  const endpointTtl = historical ? 300_000 : 5_000;
+  const endpointTtl = historical ? 300_000 : OPTIONS_SURFACE_REFRESH_MS;
 
   const [exposureResult, candleResult] = await Promise.all([
     quantDataPost("/options/tool/exposure-by-strike", {
@@ -2831,7 +2848,7 @@ async function buildGexMapPanel(
     sourceTimeZone: "America/New_York",
     asOf: new Date(frameAsOf).toISOString(),
     status: historical || !currentSession.marketOpen ? "LAST_SESSION" : stale ? "DELAYED" : "LIVE",
-    refreshAfterMs: marketIsLive ? 5_000 : 60_000,
+    refreshAfterMs: marketIsLive ? OPTIONS_SURFACE_REFRESH_MS : 60_000,
     stockPrice,
     sessionChangePercent,
     latestStrikes,

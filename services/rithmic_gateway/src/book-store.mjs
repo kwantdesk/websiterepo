@@ -77,6 +77,16 @@ function makeInstrument(exchange, symbol, maxTrades) {
 
 const FLOW_BUCKET_MS = 60_000;
 const MAX_FLOW_CANDLES = 20_000;
+const TRADE_TRIM_BATCH = 4_096;
+
+function trimTrades(instrument) {
+  // Shifting a 250k-element array for every new print turns the hot market
+  // data callback into O(n) work after the ring fills. Keep a tiny bounded
+  // overflow and trim it in one batch; small test/dev stores remain exact.
+  const slack = instrument.maxTrades >= TRADE_TRIM_BATCH * 2 ? TRADE_TRIM_BATCH : 0;
+  if (instrument.trades.length <= instrument.maxTrades + slack) return;
+  instrument.trades.splice(0, instrument.trades.length - instrument.maxTrades);
+}
 
 function tradeDelta(trade) {
   if (trade.aggressor === "BUY") return trade.size;
@@ -314,9 +324,7 @@ export class RithmicBookStore {
     };
     instrument.trades.push(trade);
     recordTradeFlow(instrument, trade);
-    if (instrument.trades.length > instrument.maxTrades) {
-      instrument.trades.splice(0, instrument.trades.length - instrument.maxTrades);
-    }
+    trimTrades(instrument);
     return { type: "trade", instrument: instrumentKey(instrument.exchange, instrument.symbol), trade };
   }
 
@@ -447,9 +455,7 @@ export class RithmicBookStore {
       recordTradeFlow(instrument, trade);
       inferredTrades.push(trade);
     }
-    if (instrument.trades.length > instrument.maxTrades) {
-      instrument.trades.splice(0, instrument.trades.length - instrument.maxTrades);
-    }
+    trimTrades(instrument);
 
     instrument.bids = nextBids;
     instrument.asks = nextAsks;
@@ -647,6 +653,9 @@ export class RithmicBookStore {
             : "NOT_OPEN",
       depthMode: instrument.depthMode,
       bookValid: instrument.bookValid,
+      orderCount: instrument.orders.size,
+      pendingOrderCount: instrument.pendingDepthSnapshot?.orders?.size ?? 0,
+      retainedTrades: instrument.trades.length,
     }));
   }
 
