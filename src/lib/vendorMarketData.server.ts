@@ -100,6 +100,11 @@ export async function vendorMarketDataFetch(
   let lastGatewayError: unknown = null;
 
   for (const origin of gatewayOrigins) {
+    // Breakers are failure-domain specific. A missing Massive entitlement is
+    // not evidence that the same VPS origin (or its QuantData route) is down.
+    // Sharing one origin key let an optional Massive 503 poison SPX history,
+    // snapshots and every other provider for fifteen seconds.
+    const breakerKey = `${origin}::vendor:${provider}`;
     /*
      * An origin the breaker is holding open is skipped outright.
      *
@@ -110,7 +115,7 @@ export async function vendorMarketDataFetch(
      * honest unavailable state; the second is what a frozen workspace and an
      * error spike are made of.
      */
-    if (originIsCoolingDown(origin)) {
+    if (originIsCoolingDown(breakerKey)) {
       lastGatewayError = new Error(`${provider} gateway is cooling down after repeated failures.`);
       continue;
     }
@@ -122,16 +127,16 @@ export async function vendorMarketDataFetch(
         { ...init, headers: gatewayHeaders(token, init.headers), signal: controller.signal },
       );
       if (![502, 503, 504].includes(response.status)) {
-        recordOriginSuccess(origin);
+        recordOriginSuccess(breakerKey);
         return response;
       }
       lastGatewayError = new Error(`${provider} gateway returned ${response.status}.`);
       // Definitive: the edge told us the collector behind it is not answering.
-      recordOriginFailure(origin, true);
+      recordOriginFailure(breakerKey, true);
       await response.body?.cancel().catch(() => undefined);
     } catch (error) {
       lastGatewayError = error;
-      recordOriginFailure(origin);
+      recordOriginFailure(breakerKey);
     } finally {
       clearTimeout(timeout);
     }

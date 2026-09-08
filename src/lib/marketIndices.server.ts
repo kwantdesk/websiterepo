@@ -384,12 +384,15 @@ export async function fetchMarketIndexCandles(options: {
   // to burn the full Massive timeout before falling back, which made 1m/5m
   // charts appear frozen even though valid KwantData candles were available.
   if (canUseKwantDataHistory) {
-    try {
-      const candles = await getOptionsUnderlyingHistory(options);
-      if (candles.length) return candles;
-    } catch (error) {
-      if (!vendorMarketDataConfigured("massive")) throw error;
-    }
+    // SPX/SPXW/NDX/SPY/QQQ belong to the options surface. Their authoritative
+    // history is already on the shared KwantData adapter; falling through to
+    // Massive after a transient miss both changes provenance and, on the VPS
+    // without a Massive key, returns a definitive 503 that trips a breaker.
+    // Surface the real KwantData failure instead of manufacturing a misleading
+    // "Massive gateway is cooling down" error.
+    const candles = await getOptionsUnderlyingHistory(options);
+    if (candles.length) return candles;
+    return [];
   }
   if (!vendorMarketDataConfigured("massive")) {
     if (definition.symbol !== "VIX") {

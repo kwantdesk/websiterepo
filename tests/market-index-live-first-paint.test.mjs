@@ -6,6 +6,10 @@ const workspace = readFileSync(
   new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url),
   "utf8",
 );
+const liveClient = readFileSync(
+  new URL("../src/lib/marketIndexLiveClient.ts", import.meta.url),
+  "utf8",
+);
 
 test("a verified market-index quote clears the pane spinner before history finishes", () => {
   const subscriptionStart = workspace.indexOf("if (usingMarketIndexPaneFeed) {");
@@ -37,6 +41,13 @@ test("a verified market-index quote clears the pane spinner before history finis
     /if \(historyHydratedRef\.current\) \{\s*setLoading\(false\)/,
     "live first paint must not be gated on historical hydration",
   );
+});
+
+test("a remounted index pane immediately receives the retained shared frame", () => {
+  assert.match(liveClient, /new Map<string, MarketIndexLiveSnapshot>\(\)/);
+  assert.match(liveClient, /const retained = lastDeliveredFrame\.get\(normalized\)/);
+  assert.match(liveClient, /subscribers\.get\(normalized\)\?\.has\(subscriber\)/);
+  assert.match(liveClient, /onSnapshot\(retained\)/);
 });
 
 test("market-index history failure cannot schedule the Databento-only reconciler", () => {

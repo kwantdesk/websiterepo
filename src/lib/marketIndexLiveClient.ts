@@ -24,7 +24,13 @@ let indexEventSourceKey = "";
 let streamConnected = false;
 const lastStreamFrameAt = new Map<string, number>();
 export type MarketIndexFrameIdentity = Pick<MarketIndexLiveSnapshot, "timestamp" | "lastPrice">;
-const lastDeliveredFrame = new Map<string, MarketIndexFrameIdentity>();
+// Keep the complete retained frame, not only its ordering identity. A chart
+// pane can remount while sibling panes keep this shared stream alive (manual
+// refresh does exactly that). The upstream quite correctly deduplicates an
+// unchanged SPX minute snapshot, so without the complete retained frame the
+// new subscriber received nothing and sat on "restoring candles" until SPX
+// next changed price or timestamp.
+const lastDeliveredFrame = new Map<string, MarketIndexLiveSnapshot>();
 
 // Index quotes now come from the KwantData session tape (per-minute bars with
 // a short server cache) after the Massive subscription ended, so polling
@@ -89,10 +95,7 @@ function deliverSnapshot(snapshot: MarketIndexLiveSnapshot, streamed = false) {
   // A slower route fallback must never rewind a chart after a newer VPS frame
   // has already painted it. Equal timestamps remain valid when price changed.
   if (!shouldAcceptMarketIndexFrame(previous, snapshot)) return;
-  lastDeliveredFrame.set(symbol, {
-    timestamp: snapshot.timestamp,
-    lastPrice: snapshot.lastPrice,
-  });
+  lastDeliveredFrame.set(symbol, { ...snapshot, symbol });
   if (streamed) lastStreamFrameAt.set(symbol, Date.now());
   subscribers.get(symbol)?.forEach((subscriber) => subscriber.onSnapshot(snapshot));
 }
@@ -234,6 +237,16 @@ export function subscribeMarketIndexSnapshot(
   const rows = subscribers.get(normalized) ?? new Set<Subscriber>();
   rows.add(subscriber);
   subscribers.set(normalized, rows);
+  const retained = lastDeliveredFrame.get(normalized);
+  if (retained) {
+    // Effects subscribe after the pane has mounted, so replaying the latest
+    // verified shared frame is safe. Queue it so subscription setup completes
+    // before React state is updated, and re-check membership in case the pane
+    // was synchronously replaced again.
+    queueMicrotask(() => {
+      if (subscribers.get(normalized)?.has(subscriber)) onSnapshot(retained);
+    });
+  }
   restartIndexStream();
   schedulePoll(0);
 
