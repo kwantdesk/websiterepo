@@ -1994,6 +1994,10 @@ function GexMapWorkspace({
       const forceRefresh = forceRefreshRef.current;
       forceRefreshRef.current = false;
       let nextRefreshDelay = 60_000;
+      // React may eagerly execute a functional state updater during dispatch.
+      // Keep this out of the updater's temporal dead zone: the old ordering
+      // could throw before the first three panel requests even started.
+      const expectedModel = exposureModel === "DEALER_INVENTORY" ? "DEALER_INVENTORY" : "STRUCTURAL_OI";
       const cachedPanels = Object.fromEntries(panels.map((panel) => {
         const cached = readWorkspaceData<GexMapPanelPayload>(
           panelCacheKey(panel),
@@ -2015,7 +2019,6 @@ function GexMapWorkspace({
         }
         return next;
       });
-      const expectedModel = exposureModel === "DEALER_INVENTORY" ? "DEALER_INVENTORY" : "STRUCTURAL_OI";
       setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
       try {
         const loadPanel = async (panel: PanelConfig) => {
@@ -2088,6 +2091,18 @@ function GexMapWorkspace({
         const firstSuccess = results.find((result) => result.status === "fulfilled");
         if (!replayMode && firstSuccess?.status === "fulfilled") {
           setLatestSessionDate(firstSuccess.value.payload.sessionDate);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const message = error instanceof Error ? error.message : "GEX Map is unavailable.";
+          nextRefreshDelay = 5_000;
+          setPanelErrors((current) => ({
+            ...current,
+            ...Object.fromEntries(panels.map((panel) => [panel.id, message])),
+          }));
+          // Every attempt must terminate visibly. Never preserve an opaque
+          // loader when setup or request orchestration itself throws.
+          setLoading(Object.fromEntries(panels.map((panel) => [panel.id, false])));
         }
       } finally {
         requestInFlight = false;

@@ -7119,7 +7119,12 @@ function WorkspaceChartPaneComponent({
          * ever ran again. It span for as long as the tab stayed open, with the
          * real reason already in hand and never shown.
          */
-        const willRetry = tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe);
+        // reconcileTail is a Databento-only repair path. Market-index panes
+        // previously claimed they would retry, kept the cover up, and then
+        // invoked a reconciler that immediately returned for their broker.
+        const willRetry = pane.broker === "Databento"
+          && tailNeedsReconciliation
+          && !isEventBasedChartInterval(pane.timeframe);
         if (visibleHistoryReady) {
           setLoading(false);
           return;
@@ -8529,6 +8534,9 @@ function WorkspaceChartPaneComponent({
           // hydration continues independently and will merge the older bars
           // when it completes, but it must never leave a live symbol hidden
           // behind a spinner when the shared history queue is congested.
+          // The cover also guards on request identity, so clearing `loading`
+          // alone does not release it.
+          setSettledChartRequestKey(requestedChartHydrationKey);
           setLoading(false);
           setError(null);
           const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
@@ -8601,7 +8609,7 @@ function WorkspaceChartPaneComponent({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [markMarketActive, pane.broker, pane.symbol, pane.timeframe]);
+  }, [markMarketActive, pane.broker, pane.symbol, pane.timeframe, requestedChartHydrationKey]);
 
   // Options-family index charts (NDX/QQQ/SPX/SPY) have no execution tape and
   // the cash provider publishes no volume at all (verified against the live
