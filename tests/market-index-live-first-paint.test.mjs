@@ -18,6 +18,16 @@ test("a verified market-index quote clears the pane spinner before history finis
   assert.match(marketIndexSubscription, /mergeLiveMidIntoCandles/);
   assert.match(
     marketIndexSubscription,
+    /markMarketActive\(Date\.now\(\)\)/,
+    "accepted index frames must use receipt time for feed liveness",
+  );
+  assert.doesNotMatch(
+    marketIndexSubscription,
+    /markMarketActive\(chartSourceTimestamp\(snapshot\.timestamp\)\)/,
+    "the provider's candle-bucket timestamp must not stop the activity clock",
+  );
+  assert.match(
+    marketIndexSubscription,
     /setSettledChartRequestKey\(requestedChartHydrationKey\);\s*setLoading\(false\);/,
     "the request-identity guard must settle before the loading flag is cleared",
   );

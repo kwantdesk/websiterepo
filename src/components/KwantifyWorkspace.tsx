@@ -8500,7 +8500,11 @@ function WorkspaceChartPaneComponent({
             price: snapshot.lastPrice,
             asOfMs: tickTimestamp,
           };
-          markMarketActive(chartSourceTimestamp(snapshot.timestamp));
+          // Index snapshots can carry the exchange minute bucket for candle
+          // placement (not the HTTP/SSE receipt instant). Receiving an
+          // accepted, market-open frame is the liveness proof; using the
+          // bucket timestamp here made SPX/NDX look dead between boundaries.
+          markMarketActive(Date.now());
 
           const previous = latestCandlesRef.current;
           const retained = lightweightLiveTailRef.current;

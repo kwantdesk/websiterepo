@@ -1994,6 +1994,7 @@ function GexMapWorkspace({
       const forceRefresh = forceRefreshRef.current;
       forceRefreshRef.current = false;
       let nextRefreshDelay = 60_000;
+      try {
       // React may eagerly execute a functional state updater during dispatch.
       // Keep this out of the updater's temporal dead zone: the old ordering
       // could throw before the first three panel requests even started.
@@ -2020,7 +2021,6 @@ function GexMapWorkspace({
         return next;
       });
       setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
-      try {
         const loadPanel = async (panel: PanelConfig) => {
           // v2 is gamma only, and the route rejects any other greek on it, so
           // a panel showing DELTA or VEX stays structural whatever the toggle

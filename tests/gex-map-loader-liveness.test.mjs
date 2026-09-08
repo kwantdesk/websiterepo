@@ -20,7 +20,10 @@ test("every thrown initial GEX load clears the loaders and exposes the error", (
   const loadStart = source.indexOf("const load = async () => {");
   const loadEnd = source.indexOf("const syncWhenVisible", loadStart);
   const load = source.slice(loadStart, loadEnd);
+  const tryStart = load.indexOf("try {");
+  const cacheRead = load.indexOf("const cachedPanels =");
 
+  assert.ok(tryStart >= 0 && tryStart < cacheRead, "cache/setup failures must reach the terminal catch");
   assert.match(load, /catch \(error\) \{/);
   assert.match(load, /setPanelErrors\(/);
   assert.match(
