@@ -3784,6 +3784,10 @@ function Chart({
       if (event instanceof StorageEvent && event.key !== CHART_QUICK_EMOJI_STORAGE_KEY) return;
       try {
         setDrawQuickEmojis(normalizeChartQuickEmojis(JSON.parse(window.localStorage.getItem(CHART_QUICK_EMOJI_STORAGE_KEY) ?? "[]")));
+        // Every chart pane owns its toolbar state, but the last-used emoji is
+        // a workspace preference. Keep sibling panes in sync so their visible
+        // emoji tool changes immediately instead of only after a reload.
+        setDrawEmoji(window.localStorage.getItem("kwantdesk:chart-emoji:v1") || "🧲");
       } catch {
         setDrawQuickEmojis(normalizeChartQuickEmojis([]));
       }

@@ -234,7 +234,13 @@ export default function ChartDrawToolbar({
               className={`${chip} ${groupActive ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
               title={emojiGroup ? `Emoji · ${emoji}` : DRAW_TOOL_SPECS[shown].label}
             >
-              <Icon className="h-4 w-4" />
+              {emojiGroup ? (
+                <span className="flex h-4 w-4 items-center justify-center text-[15px] leading-none" aria-hidden="true">
+                  {emoji}
+                </span>
+              ) : (
+                <Icon className="h-4 w-4" />
+              )}
             </button>
             {multi ? (
               <button

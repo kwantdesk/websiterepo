@@ -40,6 +40,14 @@ test("toolbar exposes a scrollable picker including the magnet", () => {
   assert.match(toolbar, /onSelectEmoji\(value\); selectTool\("emoji"\)/);
 });
 
+test("toolbar button displays the last selected emoji instead of a fixed icon", () => {
+  assert.match(toolbar, /emojiGroup \? \(/);
+  assert.match(toolbar, /\{emoji\}/);
+  assert.doesNotMatch(toolbar, /<Icon className="h-4 w-4" \/>\s*<\/button>/);
+  assert.match(chart, /setDrawEmoji\(window\.localStorage\.getItem\("kwantdesk:chart-emoji:v1"\) \|\| "🧲"\)/);
+  assert.match(chart, /window\.addEventListener\(CHART_QUICK_EMOJI_EVENT, syncQuickEmojis\)/);
+});
+
 test("emoji paints at chart coordinates and has a bounded resize handle", () => {
   assert.match(layer, /case "emoji"/);
   assert.match(layer, /x=\{a\.x\}/);
