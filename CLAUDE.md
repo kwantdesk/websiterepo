@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Profile calling-card quick picker
+
+- Own profiles expose Change calling card with unlocked-only artwork choices,
+  Active state and one-click account activation. The full collection reuses the
+  same guarded save; failed writes retain the previous banner and show errors.
+- POST friends calling-card checks the account's earned card (starter exempt),
+  preserves the existing complete profile/row privacy, and changes only its card
+  code and updated_at. No schema change, polling or market-data traffic.
+- Seven new regressions / 27 combined pass. Signed-in browser/cross-device
+  roundtrip remains open. Record:
+  `docs/prompt-log/2026-10-17-profile-calling-card-picker.md`.
+
 ## 2026-10-17 — Account display-name consistency
 
 - Profile-save events previously changed only the avatar in the workspace shell.

@@ -603,6 +603,9 @@ export default function SocialsWorkspace({
   const [profileDraft, setProfileDraft] = useState<SocialProfilePayload>(() => buildDefaultProfile(resolvedLabel));
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileSaveState, setProfileSaveState] = useState<"idle" | "saving" | "error">("idle");
+  const [callingCardSavingCode, setCallingCardSavingCode] = useState<string | null>(null);
+  const [callingCardError, setCallingCardError] = useState("");
+  const callingCardSaveRef = useRef(false);
   const [selectedProfileRecord, setSelectedProfileRecord] = useState<SocialObject | null>(null);
   const [requestedProfileState, setRequestedProfileState] = useState<RequestedProfileState>(
     initialProfileHandle ? "loading" : "idle",
@@ -2305,6 +2308,7 @@ export default function SocialsWorkspace({
   };
 
   const equipCallingCard = async (definition: (typeof CALLING_CARD_CATALOG)[number]) => {
+    if (callingCardSaveRef.current || definition.code === currentProfile.callingCardCode) return;
     const earned = definition.starter || cards.some((card) =>
       card.userId === resolvedAccountKey
       && typedPayload<SocialCardPayload>(card)?.code === definition.code);
@@ -2312,17 +2316,29 @@ export default function SocialsWorkspace({
       setNotice(definition.requirement);
       return;
     }
-    const profile = { ...currentProfile, callingCardCode: definition.code };
-    setProfileDraft(profile);
-    const saved = await saveObject(buildLocalObject({
-      id: "profile",
-      userId: resolvedAccountKey,
-      authorLabel: profile.displayName,
-      objectType: "profile",
-      scope: profile.visibility.profile,
-      payload: profile,
-    }));
-    setNotice(saved.cloudSaved ? `${definition.name} is now your profile banner.` : "The banner is selected locally and will sync when account storage reconnects.");
+    callingCardSaveRef.current = true;
+    setCallingCardSavingCode(definition.code);
+    setCallingCardError("");
+    try {
+      const response = await fetch("/api/friends", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "calling-card", code: definition.code }),
+      });
+      const result = await response.json() as { object?: SocialObject; error?: string };
+      if (!response.ok || !result.object || result.object.userId !== resolvedAccountKey || result.object.objectType !== "profile") {
+        throw new Error(result.error || "Your calling card could not be saved. Try again.");
+      }
+      upsertObject({ ...result.object, cloudSaved: true });
+      setProfileDraft(current => ({ ...current, callingCardCode: definition.code }));
+      setNotice(`${definition.name} is now your profile banner.`);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Your calling card could not be saved. Try again.";
+      setCallingCardError(message);
+      setNotice(message);
+    } finally {
+      callingCardSaveRef.current = false;
+      setCallingCardSavingCode(null);
+    }
   };
 
   const openNewPost = (kind: SocialPostPayload["kind"] = "POST") => {
@@ -4145,7 +4161,7 @@ export default function SocialsWorkspace({
                 return (
                   <Card key={definition.code} className={`overflow-hidden p-3 ${selected ? "border-primary/35 shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : unlocked ? "border-primary/20" : ""}`}>
                     <CallingCardVisual definition={definition} ownerName={currentProfile.displayName} locked={!unlocked} earnedLabel={earned ? `EARNED ${formatDate(earned.earnedAt).toUpperCase()}` : definition.starter ? "FOUNDING ISSUE" : ""} />
-                    <div className="flex items-center gap-3 px-1 pb-1 pt-3"><div className="min-w-0 flex-1"><div className="text-[9px] font-semibold text-foreground">{definition.name}</div><div className="mt-1 text-[7px] leading-4 text-muted">{unlocked ? definition.description : definition.requirement}</div></div>{unlocked ? <button type="button" onClick={() => void equipCallingCard(definition)} disabled={selected} className={`h-8 shrink-0 rounded-lg px-3 text-[7px] font-semibold ${selected ? "border border-primary/25 bg-primary/10 text-primary" : "bg-primary text-on-primary hover:brightness-110"}`}>{selected ? "On profile" : "Use banner"}</button> : <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[7px] font-semibold text-muted"><LockKeyhole className="h-3 w-3" />Locked</span>}</div>
+                    <div className="flex items-center gap-3 px-1 pb-1 pt-3"><div className="min-w-0 flex-1"><div className="text-[9px] font-semibold text-foreground">{definition.name}</div><div className="mt-1 text-[7px] leading-4 text-muted">{unlocked ? definition.description : definition.requirement}</div></div>{unlocked ? <button type="button" onClick={() => void equipCallingCard(definition)} disabled={selected || callingCardSavingCode !== null} className={`h-8 shrink-0 rounded-lg px-3 text-[7px] font-semibold disabled:cursor-default ${selected ? "border border-primary/25 bg-primary/10 text-primary" : "bg-primary text-on-primary hover:brightness-110"}`}>{callingCardSavingCode === definition.code ? "Saving…" : selected ? "On profile" : "Use banner"}</button> : <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[7px] font-semibold text-muted"><LockKeyhole className="h-3 w-3" />Locked</span>}</div>
                   </Card>
                 );
               })}
@@ -4372,6 +4388,9 @@ export default function SocialsWorkspace({
                 : undefined}
               backLabel={viewingOwnProfile ? "Back to Socials" : "Back to profile"}
               onEdit={() => setProfileEditing(true)}
+              onEquipCallingCard={equipCallingCard}
+              callingCardSavingCode={callingCardSavingCode}
+              callingCardError={callingCardError}
               onMessage={() => onMessageProfile?.(viewedProfileObject.userId)}
               onOpenGameplan={setSelectedProfileRecord}
               onSave={(record) => void toggleGameplanSave(record)}

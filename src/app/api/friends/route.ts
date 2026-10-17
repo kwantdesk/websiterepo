@@ -21,7 +21,7 @@ import {
   calculateActivityStreakUpdate,
 } from "@/lib/activityStreak";
 import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
-import { normalizeSocialProfile } from "@/lib/socials";
+import { CALLING_CARD_CATALOG, normalizeSocialProfile } from "@/lib/socials";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -632,6 +632,30 @@ export async function POST(request: NextRequest) {
   const groupId = cleanIdentifier(body.groupId, 80);
   const now = new Date().toISOString();
   let responseGroupId = groupId;
+
+  if (action === "calling-card") {
+    const definition = CALLING_CARD_CATALOG.find(card => card.code === body.code);
+    if (!definition) return NextResponse.json({ error: "Choose a valid calling card." }, { status: 400 });
+    if (!definition.starter) {
+      const { data: earned, error } = await supabase.from("social_objects").select("id")
+        .eq("user_id", actor.userId).eq("object_type", "card").eq("payload->>code", definition.code).limit(1).maybeSingle();
+      if (error) return NextResponse.json({ error: "Your unlocked cards could not be checked. Try again." }, { status: 502 });
+      if (!earned) return NextResponse.json({ error: "This calling card has not been unlocked." }, { status: 403 });
+    }
+    const { data: existing, error: loadError } = await supabase.from("social_objects")
+      .select("*").eq("user_id", actor.userId).eq("id", "profile").eq("object_type", "profile").maybeSingle();
+    if (loadError) return NextResponse.json({ error: "Your profile could not be loaded. Nothing was changed." }, { status: 502 });
+    if (!existing) return NextResponse.json({ error: "Save your account identity before changing its calling card." }, { status: 409 });
+    const { data: saved, error: saveError } = await supabase.from("social_objects")
+      .update({ payload: { ...existing.payload, callingCardCode: definition.code }, updated_at: now })
+      .eq("user_id", actor.userId).eq("id", "profile").eq("object_type", "profile").select("*").single();
+    if (saveError || !saved) return NextResponse.json({ error: "Your calling card could not be saved. Try again." }, { status: 502 });
+    return NextResponse.json({ object: {
+      id: saved.id, userId: saved.user_id, authorLabel: saved.author_label, objectType: saved.object_type,
+      scope: saved.scope, deskId: saved.desk_id, parentId: saved.parent_id, payload: saved.payload,
+      createdAt: saved.created_at, updatedAt: saved.updated_at, cloudSaved: true,
+    } }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+  }
 
   if (action === "avatar") {
     const avatar = normalizeSocialProfile({ avatarUrl: body.avatarUrl, avatarAppearance: body.avatarAppearance });

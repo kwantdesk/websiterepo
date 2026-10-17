@@ -45,6 +45,7 @@ import type {
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import CallingCardVisual from "@/components/socials/CallingCardVisual";
+import ProfileCallingCardPicker from "@/components/socials/ProfileCallingCardPicker";
 import UserAvatar from "@/components/socials/UserAvatar";
 import ProfileItemMenu, { type ManageProfileItem } from "@/components/socials/ProfileItemMenu";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -86,6 +87,9 @@ type SocialProfileViewProps = {
   onBack?: () => void;
   backLabel?: string;
   onEdit: () => void;
+  onEquipCallingCard: (definition: (typeof CALLING_CARD_CATALOG)[number]) => Promise<void>;
+  callingCardSavingCode: string | null;
+  callingCardError: string;
   onMessage: () => void;
   onOpenGameplan: (record: SocialObject) => void;
   onSave: (record: SocialObject) => void;
@@ -154,6 +158,9 @@ export default function SocialProfileView({
   onBack,
   backLabel = "Back to Socials",
   onEdit,
+  onEquipCallingCard,
+  callingCardSavingCode,
+  callingCardError,
   onMessage,
   onOpenGameplan,
   onSave,
@@ -587,6 +594,10 @@ export default function SocialProfileView({
             </div>
           </div>
           {followError ? <div className="mt-3 text-[7px] text-danger">{followError}</div> : null}
+          {isOwnProfile ? <ProfileCallingCardPicker key={profileObject.userId}
+            userId={profileObject.userId} ownerName={profile.displayName} cards={cards}
+            activeCode={cardDefinition.code} savingCode={callingCardSavingCode} error={callingCardError}
+            onEquip={onEquipCallingCard} /> : null}
 
           <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div>
