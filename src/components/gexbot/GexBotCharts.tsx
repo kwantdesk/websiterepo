@@ -89,8 +89,8 @@ type ChartEvent = {
   value?: unknown[];
 };
 
-const MONO = "'JetBrains Mono', 'SFMono-Regular', Consolas, monospace";
-const UI = "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const MONO = "'Aleph', 'Aleph', Aleph, monospace";
+const UI = "Aleph, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Aleph', sans-serif";
 const TEXT = "#dce2eb";
 const MUTED = "#737c8b";
 const GRID = "rgba(121, 132, 151, 0.12)";

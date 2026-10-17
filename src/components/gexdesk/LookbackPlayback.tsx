@@ -549,7 +549,7 @@ export default function LookbackPlayback({
                       );
                     })}
                     <rect x={ZERO_X - 40} y={y - 7} width="80" height="14" rx="4" fill="var(--background)" stroke="var(--border)" strokeOpacity="0.72" />
-                    <text x={ZERO_X} y={y + 3} textAnchor="middle" fill="var(--foreground)" fontSize="7" fontFamily="monospace">{formatPrice(row.price)}</text>
+                    <text x={ZERO_X} y={y + 3} textAnchor="middle" fill="var(--foreground)" fontSize="7" fontFamily="Aleph, monospace">{formatPrice(row.price)}</text>
                     {isFiveBuild ? (
                       <g filter="url(#lookback-glow)">
                         <rect x="866" y={y - 8} width="110" height="16" rx="5" fill="var(--primary)" fillOpacity="0.13" stroke="var(--primary)" strokeOpacity="0.65" />
@@ -585,7 +585,7 @@ export default function LookbackPlayback({
                   strokeDasharray="4 4"
                 />
                 <rect x="449" y={yForPrice(referencePrice) - 10} width="152" height="20" rx="6" fill="var(--foreground)" />
-                <text x="525" y={yForPrice(referencePrice) + 3} textAnchor="middle" fill="var(--background)" fontSize="7" fontFamily="monospace" fontWeight="700">
+                <text x="525" y={yForPrice(referencePrice) + 3} textAnchor="middle" fill="var(--background)" fontSize="7" fontFamily="Aleph, monospace" fontWeight="700">
                   NQ {formatPrice(referencePrice, 2)} {playback ? "REPLAY" : "CURRENT"}
                 </text>
               </g>

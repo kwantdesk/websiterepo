@@ -104,7 +104,7 @@ class FibChannelPaneRenderer implements IPrimitivePaneRenderer {
         const labelX = end.x + 5;
         const labelY = end.y;
         const text = `${(level * 100).toFixed(1)}%`;
-        drawText(ctx, text, { x: labelX, y: labelY }, '10px sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
+        drawText(ctx, text, { x: labelX, y: labelY }, '10px Aleph, sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
       }
     }
 

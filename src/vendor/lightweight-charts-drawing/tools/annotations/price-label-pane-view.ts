@@ -72,7 +72,7 @@ class PriceLabelPaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw price label on the right
     const priceText = `$${formatPrice(anchor.price, decimals)}`;
-    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.font = `bold ${fontSize}px Aleph, sans-serif`;
     const textMetrics = ctx.measureText(priceText);
     const textWidth = textMetrics.width;
     const labelWidth = textWidth + padding * 2;

@@ -108,7 +108,7 @@ class FibExtensionPaneRenderer implements IPrimitivePaneRenderer {
           labelParts.join(' - '),
           { x: viewport.width - 5, y },
           {
-            font: '11px sans-serif',
+            font: '11px Aleph, sans-serif',
             textColor: '#ffffff',
             backgroundColor: color + 'CC',
             padding: 3,

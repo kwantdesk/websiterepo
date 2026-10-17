@@ -115,7 +115,7 @@ function drawDom(args: {
   ctx.fillStyle = palette.surface;
   ctx.fillRect(xStart, 0, totalWidth, headerHeight);
   ctx.textBaseline = "middle";
-  ctx.font = `600 ${Math.max(8, settings.fontSize - 1)}px monospace`;
+  ctx.font = `600 ${Math.max(8, settings.fontSize - 1)}px Aleph, monospace`;
   let x = xStart;
   columns.forEach((column, index) => {
     const columnWidth = widths[index];
@@ -168,7 +168,7 @@ function drawDom(args: {
         ctx.fillRect(rightAligned ? x + columnWidth - barWidth - 2 : x + 2, y + 2, barWidth, settings.rowHeight - 4);
       }
       if (value) {
-        ctx.font = `${column.id === "price" ? 650 : 560} ${settings.fontSize}px monospace`;
+        ctx.font = `${column.id === "price" ? 650 : 560} ${settings.fontSize}px Aleph, monospace`;
         ctx.fillStyle = color; ctx.textAlign = "center";
         ctx.fillText(value, x + columnWidth / 2, y + settings.rowHeight / 2 + 0.5, columnWidth - 6);
       }

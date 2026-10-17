@@ -25,7 +25,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         context.globalAlpha = 1;
         if (pattern.kind !== "acceleration") {
           context.fillStyle = color;
-          context.font = `${data.settings.textSize}px ui-monospace, monospace`;
+          context.font = `${data.settings.textSize}px Aleph, ui-monospace, monospace`;
           context.textAlign = "center";
           context.fillText(pattern.kind === "exhaustion" ? "E" : "S", Number(x), pattern.side === "buy" ? Math.min(Number(y1), Number(y2)) - 3 : Math.max(Number(y1), Number(y2)) + data.settings.textSize);
         }
@@ -45,7 +45,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           if (width <= 0) continue;
           context.lineWidth = width; context.setLineDash(lineDash(kind)); context.beginPath(); context.moveTo(Number(startX), y); context.lineTo(Number(endX), y); context.stroke();
         }
-        context.setLineDash([]); context.font = `${data.settings.textSize}px ui-monospace, monospace`; context.textAlign = "left";
+        context.setLineDash([]); context.font = `${data.settings.textSize}px Aleph, ui-monospace, monospace`; context.textAlign = "left";
         context.fillText(`${label}C`, Number(startX) + 3, Number(controlY) - 3);
         context.fillText(`${label}E`, Number(startX) + 3, Number(extremeY) - 3);
       }

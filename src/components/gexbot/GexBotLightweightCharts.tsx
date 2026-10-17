@@ -196,7 +196,7 @@ function ProfileCanvas({
           if (!finite(value)) return;
           const y = priceSeries.priceToCoordinate(value);
           if (y === null || y < 12 || y > rect.height - 30) return;
-          const label = value.toFixed(2); ctx.font = "700 9px JetBrains Mono, monospace";
+          const label = value.toFixed(2); ctx.font = "700 9px Aleph, monospace";
           const width = ctx.measureText(label).width + 12; const x = side === "left" ? 2 : rect.width - width - 2;
           ctx.globalAlpha = .96; ctx.fillStyle = color; ctx.fillRect(x, y - 9, width, 18);
           ctx.fillStyle = "#050607"; ctx.textBaseline = "middle"; ctx.fillText(label, x + 6, y);
@@ -211,7 +211,7 @@ function ProfileCanvas({
         if (appearance.showZero && zeroGamma.enabled) chip(frame.zero_gamma, zeroGamma.color, "right");
         if (appearance.showSpot && spotHistory.enabled) chip(frame.spot, spotHistory.color, "right");
 
-        ctx.globalAlpha = .65; ctx.fillStyle = TEXT; ctx.font = "8px JetBrains Mono, monospace"; ctx.textBaseline = "top";
+        ctx.globalAlpha = .65; ctx.fillStyle = TEXT; ctx.font = "8px Aleph, monospace"; ctx.textBaseline = "top";
         ctx.fillText(`${(-max / profileScale).toFixed(0)}.00`, Math.max(4, origin - available), 4);
         ctx.fillText("0.00", origin - 10, 4);
         ctx.fillText(`${(max / profileScale).toFixed(0)}.00`, Math.min(rect.width - 76, origin + available - 48), 4);
@@ -270,7 +270,7 @@ function LightweightProfile({
     const host = hostRef.current;
     if (!host) return;
     const chart = createChart(host, {
-      autoSize: true, layout: { background: { color: BG }, textColor: TEXT, fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
+      autoSize: true, layout: { background: { color: BG }, textColor: TEXT, fontFamily: "Aleph, monospace", fontSize: 10 },
       grid: { vertLines: { color: GRID }, horzLines: { color: GRID } },
       crosshair: { mode: 0, vertLine: { color: "rgba(235,240,248,.5)", style: LineStyle.Dashed }, horzLine: { color: "rgba(235,240,248,.5)", style: LineStyle.Dashed } },
       leftPriceScale: { visible: true, borderColor: "rgba(121,132,151,.28)", autoScale: true },
@@ -381,7 +381,7 @@ function OrderflowPanel({ panel, points }: { panel: OrderflowPanelConfig; points
   useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const chart = createChart(host, { autoSize: true, layout: { background: { color: BG }, textColor: TEXT, fontFamily: "JetBrains Mono, monospace", fontSize: 9 }, grid: { vertLines: { color: GRID }, horzLines: { color: GRID } }, crosshair: { mode: 0 }, rightPriceScale: { borderColor: GRID }, timeScale: { timeVisible: true, secondsVisible: true, borderColor: GRID, barSpacing: 6 }, handleScroll: true, handleScale: true });
+    const chart = createChart(host, { autoSize: true, layout: { background: { color: BG }, textColor: TEXT, fontFamily: "Aleph, monospace", fontSize: 9 }, grid: { vertLines: { color: GRID }, horzLines: { color: GRID } }, crosshair: { mode: 0 }, rightPriceScale: { borderColor: GRID }, timeScale: { timeVisible: true, secondsVisible: true, borderColor: GRID, barSpacing: 6 }, handleScroll: true, handleScale: true });
     const exposure = chart.addLineSeries({ color: panel.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: panel.label });
     const spot = chart.addLineSeries({ color: "rgba(245,247,250,.78)", lineWidth: 1, priceScaleId: "spot", priceLineVisible: false, lastValueVisible: false });
     const value = (point: GexBotOrderflowFrame, field: string) => finite(point[field as keyof GexBotOrderflowFrame]) ? point[field as keyof GexBotOrderflowFrame] as number : null;

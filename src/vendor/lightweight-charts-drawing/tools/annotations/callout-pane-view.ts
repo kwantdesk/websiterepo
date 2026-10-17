@@ -51,7 +51,7 @@ class CalloutPaneRenderer implements IPrimitivePaneRenderer {
     const options = this._drawing.calloutOptions;
     const text = options.text ?? '';
     const fontSize = (options.fontSize ?? 12) * pixelRatio;
-    const fontFamily = options.fontFamily ?? 'sans-serif';
+    const fontFamily = options.fontFamily ?? 'Aleph, sans-serif';
     const padding = (options.padding ?? 8) * pixelRatio;
 
     // Set up font

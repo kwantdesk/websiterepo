@@ -1,4 +1,5 @@
 import type { Time } from "lightweight-charts";
+import { siteCanvasFont, SITE_FONT_FAMILY } from "./siteFont";
 
 import {
   DrawingManager,
@@ -219,7 +220,7 @@ function normalizeNativeRecord(value: unknown): SerializedDrawing | null {
       fillColor: candidate.style?.fillColor ?? "rgba(139,92,246,0.12)",
       fillOpacity: candidate.style?.fillOpacity ?? 0.12,
       showLabels: candidate.style?.showLabels ?? true,
-      labelFont: candidate.style?.labelFont ?? "12px 'JetBrains Mono', monospace",
+      labelFont: siteCanvasFont(candidate.style?.labelFont),
       labelColor: candidate.style?.labelColor ?? candidate.style?.lineColor ?? "#8B5CF6",
     },
     options: {
@@ -235,7 +236,7 @@ function normalizeNativeRecord(value: unknown): SerializedDrawing | null {
       templateId: typeof candidate.options?.templateId === "string" ? candidate.options.templateId : undefined,
       text: typeof candidate.options?.text === "string" ? candidate.options.text : undefined,
       fontSize: finiteNumber(candidate.options?.fontSize) ?? undefined,
-      fontFamily: typeof candidate.options?.fontFamily === "string" ? candidate.options.fontFamily : undefined,
+      fontFamily: SITE_FONT_FAMILY,
       fontWeight: typeof candidate.options?.fontWeight === "string" ? candidate.options.fontWeight : undefined,
       textAlign: candidate.options?.textAlign,
       backgroundColor: typeof candidate.options?.backgroundColor === "string" ? candidate.options.backgroundColor : undefined,
@@ -300,7 +301,7 @@ function migrateLegacyRecord(value: unknown): SerializedDrawing | null {
       fillColor: "rgba(139,92,246,0.12)",
       fillOpacity: 0.12,
       showLabels: true,
-      labelFont: "12px 'JetBrains Mono', monospace",
+      labelFont: "12px 'Aleph', monospace",
       labelColor: color,
     },
     options: { visible: true, baseVisible: true, locked: false, zIndex: 0 },

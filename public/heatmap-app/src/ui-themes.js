@@ -102,8 +102,8 @@ function websiteUiTheme() {
       '--ui-warn': '#eab308',
       '--ui-accent-rgb': primaryRgb.join(', '),
       '--ui-danger-rgb': dangerRgb.join(', '),
-      '--font-ui': '"Rajdhani", "Inter", system-ui, -apple-system, sans-serif',
-      '--font-mono': '"JetBrains Mono", monospace',
+      '--font-ui': '"Aleph", "Aleph", system-ui, -apple-system, sans-serif',
+      '--font-mono': '"Aleph", monospace',
     },
     canvas: {
       axis: site.chartBackground,

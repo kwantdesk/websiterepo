@@ -105,7 +105,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
             settings.showRepeatCount && event.repeatCount > 0 ? `×${event.repeatCount + 1}` : "",
           ].filter(Boolean).join(" · ");
           if (label) {
-            context.font = "600 8px JetBrains Mono, monospace";
+            context.font = "600 8px Aleph, monospace";
             context.textAlign = "left";
             context.textBaseline = event.side === "BID" ? "top" : "bottom";
             context.fillStyle = rgba(color, opacity * 0.92);
@@ -132,7 +132,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           const y = priceToY(zone.weightedCentreTick); if (y === null) continue;
           const width = settings.activeProfileWidth * Math.sqrt(zone.aggressiveQuantity / maximum); const color = colorFor(zone, settings);
           context.fillStyle = rgba(color, opacity * 0.52); context.fillRect(right - width, Number(y) - tickHeight / 2, width, tickHeight);
-          if (width > 52) { context.fillStyle = rgba("#FFFFFF", 0.88); context.font = "600 9px JetBrains Mono, monospace"; context.textAlign = "right"; context.textBaseline = "middle"; context.fillText(`${zone.side} ${zone.score}`, right - 4, Number(y)); }
+          if (width > 52) { context.fillStyle = rgba("#FFFFFF", 0.88); context.font = "600 9px Aleph, monospace"; context.textAlign = "right"; context.textBaseline = "middle"; context.fillText(`${zone.side} ${zone.score}`, right - 4, Number(y)); }
         }
       }
 

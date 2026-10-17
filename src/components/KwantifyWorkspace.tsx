@@ -4138,7 +4138,7 @@ function EquityChart({
       {yIntervals.map((value) => (
         <g key={value}>
           <line x1={padding.left} y1={yScale(value)} x2={chartWidth - padding.right} y2={yScale(value)} stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
-          <text x={chartWidth - padding.right + 8} y={yScale(value) + 3.5} fill="#666" fontSize="9" fontFamily="monospace" textAnchor="start">
+          <text x={chartWidth - padding.right + 8} y={yScale(value) + 3.5} fill="#666" fontSize="9" fontFamily="Aleph, monospace" textAnchor="start">
             {value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </text>
         </g>
@@ -4166,13 +4166,13 @@ function EquityChart({
       ))}
 
       {dateLabels.map((dateLabel, i) => (
-        <text key={i} x={dateLabel.x} y={chartHeight - 5} fill="#555" fontSize="9" fontFamily="monospace" textAnchor="middle">
+        <text key={i} x={dateLabel.x} y={chartHeight - 5} fill="#555" fontSize="9" fontFamily="Aleph, monospace" textAnchor="middle">
           {dateLabel.label}
         </text>
       ))}
 
       <rect x={chartWidth - padding.right + 4} y={finalLabelY - 7} width={finalBadgeWidth} height="14" rx="7" fill={finalColor} />
-      <text x={chartWidth - padding.right + 9} y={finalLabelY + 3.5} fill="white" fontSize="9" fontFamily="monospace" fontWeight="bold">
+      <text x={chartWidth - padding.right + 9} y={finalLabelY + 3.5} fill="white" fontSize="9" fontFamily="Aleph, monospace" fontWeight="bold">
         {finalLabel}
       </text>
     </svg>

@@ -1129,7 +1129,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
             ? level.label
             : `${level.label} ${level.price.toFixed(level.precision)}`;
           context.setLineDash([]);
-          context.font = `700 ${level.fontSize}px 'JetBrains Mono', monospace`;
+          context.font = `700 ${level.fontSize}px 'Aleph', monospace`;
           // Keep the label attached to the wick that created the level. If the
           // wick has moved fully outside the viewport, leave its forward line
           // visible but do not clamp every historical label onto the same left
@@ -1221,7 +1221,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
           context.save();
           context.globalAlpha = label.opacity;
           context.fillStyle = label.color;
-          context.font = `700 ${label.fontSize}px 'JetBrains Mono', monospace`;
+          context.font = `700 ${label.fontSize}px 'Aleph', monospace`;
           context.fillText(label.text, placed.x, placed.y);
           context.restore();
           occupied.push(placed.bounds);
@@ -1390,7 +1390,7 @@ class SessionWindowRenderer implements ISeriesPrimitivePaneRenderer {
           context.globalAlpha = Math.max(session.lineOpacity, 0.72);
           context.setLineDash([]);
           context.fillStyle = session.color;
-          context.font = `700 ${session.fontSize}px 'JetBrains Mono', monospace`;
+          context.font = `700 ${session.fontSize}px 'Aleph', monospace`;
           context.textBaseline = "alphabetic";
           context.fillText(
             session.label,
@@ -1560,7 +1560,7 @@ class HedgeLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           12,
         );
         const labelY = new Map(labelRows.map((row) => [row.id, Math.max(7, Math.min(mediaSize.height - 6, row.labelY))]));
-        context.font = "700 7px 'JetBrains Mono', monospace";
+        context.font = "700 7px 'Aleph', monospace";
         context.textBaseline = "middle";
         for (const item of positioned) {
           const color = HEDGE_LEVEL_COLORS[item.level.kind];
@@ -1730,7 +1730,7 @@ class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
         if (y < 9 || y > mediaSize.height - 9) continue;
 
         const label = level.label;
-        context.font = "700 8px 'JetBrains Mono', monospace";
+        context.font = "700 8px 'Aleph', monospace";
         const labelWidth = Math.min(220, Math.max(70, context.measureText(label).width + 14));
         const labelTop = y - 9;
         // Chips anchor to the left edge of the pane; on the right they sat on
@@ -1824,7 +1824,7 @@ class FixedPriceLevelLabelsRenderer implements ISeriesPrimitivePaneRenderer {
 
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       context.save();
-      context.font = "700 8px 'JetBrains Mono', monospace";
+      context.font = "700 8px 'Aleph', monospace";
       context.textBaseline = "middle";
 
       for (const level of this.primitive.levels()) {
@@ -2329,7 +2329,7 @@ function createKwantFibTemplate(): DrawingTemplate {
       fillColor: accent,
       fillOpacity: 0.06,
       showLabels: true,
-      labelFont: "11px 'JetBrains Mono', monospace",
+      labelFont: "11px 'Aleph', monospace",
       labelColor: accent,
     },
     options: {
@@ -14436,7 +14436,7 @@ function Chart({
             y={labelY + 3}
             fill={zone.color}
             fontSize="8"
-            fontFamily="'JetBrains Mono', monospace"
+            fontFamily="'Aleph', monospace"
             fontWeight="700"
             textAnchor="start"
           >
@@ -14493,10 +14493,10 @@ function Chart({
               fill="rgba(24,24,27,0.92)"
               stroke="rgba(255,255,255,0.14)"
             />
-            <text x={(ax + bx) / 2} y={(ay + by) / 2 - 10} fill="#F4F4F5" fontSize="10" fontFamily="'JetBrains Mono', monospace" textAnchor="middle">
+            <text x={(ax + bx) / 2} y={(ay + by) / 2 - 10} fill="#F4F4F5" fontSize="10" fontFamily="'Aleph', monospace" textAnchor="middle">
               {formatPriceDistance(a.price, b.price, priceFormat.precision)}
             </text>
-            <text x={(ax + bx) / 2} y={(ay + by) / 2 + 6} fill="#A1A1AA" fontSize="10" fontFamily="'JetBrains Mono', monospace" textAnchor="middle">
+            <text x={(ax + bx) / 2} y={(ay + by) / 2 + 6} fill="#A1A1AA" fontSize="10" fontFamily="'Aleph', monospace" textAnchor="middle">
               {formatDateRangeLabel(a.time, b.time)}
             </text>
           </g>
@@ -14551,10 +14551,10 @@ function Chart({
               />
               {measurement && (
                 <>
-                  <text x={x + 8} y={y + 18} fill={isQuickMeasurement ? color : "#E4E4E7"} fontSize="11" fontFamily="'JetBrains Mono', monospace" fontWeight={isQuickMeasurement ? 700 : undefined}>
+                  <text x={x + 8} y={y + 18} fill={isQuickMeasurement ? color : "#E4E4E7"} fontSize="11" fontFamily="'Aleph', monospace" fontWeight={isQuickMeasurement ? 700 : undefined}>
                     {formatPriceDistance(a.price, b.price, priceFormat.precision)}
                   </text>
-                  <text x={x + 8} y={y + 34} fill={isQuickMeasurement ? readableTextOn(settings.backgroundColor) : "#A1A1AA"} fontSize="10" fontFamily="'JetBrains Mono', monospace">
+                  <text x={x + 8} y={y + 34} fill={isQuickMeasurement ? readableTextOn(settings.backgroundColor) : "#A1A1AA"} fontSize="10" fontFamily="'Aleph', monospace">
                     {formatDateRangeLabel(a.time, b.time)}
                   </text>
                 </>
@@ -14611,7 +14611,7 @@ function Chart({
                 return (
                   <g key={level}>
                     <line x1={x1} y1={y} x2={x2} y2={y} stroke={level === 0.5 ? "#FBBF24" : color} strokeWidth={level === 0.5 ? 1.8 : 1.2} strokeDasharray={level === 0.5 ? "3 2" : undefined} />
-                    <text x={x2 + 6} y={y + 3} fill="#E4E4E7" fontSize="10" fontFamily="'JetBrains Mono', monospace">
+                    <text x={x2 + 6} y={y + 3} fill="#E4E4E7" fontSize="10" fontFamily="'Aleph', monospace">
                       {level.toFixed(level === 0 || level === 1 ? 0 : 3)}
                     </text>
                   </g>
@@ -14646,7 +14646,7 @@ function Chart({
               {drawing.tool === "callout" || drawing.tool === "comment" ? (
                 <path d={`M ${ax + 10} ${boxY + height} L ${ax + 18} ${boxY + height + 10} L ${ax + 26} ${boxY + height}`} fill={chrome.fill} stroke={chrome.stroke} />
               ) : null}
-              <text x={ax + 8} y={boxY + (height > 30 ? 18 : 17)} fill={chrome.text} fontSize="12" fontFamily="'Inter', sans-serif">
+              <text x={ax + 8} y={boxY + (height > 30 ? 18 : 17)} fill={chrome.text} fontSize="12" fontFamily="'Aleph', sans-serif">
                 {text}
               </text>
             </g>
@@ -14689,7 +14689,7 @@ function Chart({
               <line x1={ax} y1={y1} x2={ax} y2={y2} {...commonStroke} />
               <line x1={ax - 10} y1={y1} x2={ax + 10} y2={y1} {...commonStroke} />
               <line x1={ax - 10} y1={y2} x2={ax + 10} y2={y2} {...commonStroke} />
-              <text x={ax + 14} y={(y1 + y2) / 2} fill="#E4E4E7" fontSize="11" fontFamily="'JetBrains Mono', monospace">
+              <text x={ax + 14} y={(y1 + y2) / 2} fill="#E4E4E7" fontSize="11" fontFamily="'Aleph', monospace">
                 {formatPriceDistance(a.price, b.price, priceFormat.precision)}
               </text>
             </g>
@@ -14703,7 +14703,7 @@ function Chart({
               <line x1={ax} y1={ay} x2={bx} y2={ay} {...commonStroke} />
               <line x1={ax} y1={ay - 10} x2={ax} y2={ay + 10} {...commonStroke} />
               <line x1={bx} y1={ay - 10} x2={bx} y2={ay + 10} {...commonStroke} />
-              <text x={(ax + bx) / 2} y={ay - 10} fill="#E4E4E7" fontSize="11" fontFamily="'JetBrains Mono', monospace" textAnchor="middle">
+              <text x={(ax + bx) / 2} y={ay - 10} fill="#E4E4E7" fontSize="11" fontFamily="'Aleph', monospace" textAnchor="middle">
                 {formatDateRangeLabel(a.time, b.time)}
               </text>
             </g>
@@ -14950,7 +14950,7 @@ function Chart({
         background: { color: settings.backgroundColor },
         textColor: "#9CA3AF",
         fontSize: 11,
-        fontFamily: "'JetBrains Mono', monospace",
+        fontFamily: "'Aleph', monospace",
         attributionLogo: false,
       },
       localization: {
@@ -15340,7 +15340,7 @@ function Chart({
       fillColor: withAlpha(drawingColor, 0.12),
       fillOpacity: 0.12,
       showLabels: true,
-      labelFont: "12px 'JetBrains Mono', monospace",
+      labelFont: "12px 'Aleph', monospace",
       labelColor: drawingColor,
     };
     const drawingManager = new DrawingManager();
@@ -19117,7 +19117,7 @@ function Chart({
               return <g key={zone.id}>
                 <rect x={clampedStartX} y={top} width={Math.max(0, right - clampedStartX)} height={height} fill={zone.color} opacity={confluenceIdentifierSettings.zoneOpacity / 100} />
                 <line x1={clampedStartX} x2={right} y1={top + height / 2} y2={top + height / 2} stroke={zone.color} strokeWidth={confluenceIdentifierSettings.lineWidth} />
-                {confluenceIdentifierSettings.showLabels ? <text x={right - 4} y={top + height / 2 - 3} textAnchor="end" fill={zone.color} fontSize="9" fontFamily="monospace">{`${zone.side.toUpperCase()} ${zone.confluences} · ${zone.centre.toFixed(priceFormat.precision)}`}</text> : null}
+                {confluenceIdentifierSettings.showLabels ? <text x={right - 4} y={top + height / 2 - 3} textAnchor="end" fill={zone.color} fontSize="9" fontFamily="Aleph, monospace">{`${zone.side.toUpperCase()} ${zone.confluences} · ${zone.centre.toFixed(priceFormat.precision)}`}</text> : null}
               </g>;
             })}
             {confluenceIdentifierSettings.showSourceLines ? confluenceIdentifierFrame.sourceLevels.map((level) => {
@@ -19986,7 +19986,7 @@ function Chart({
           backgroundColor: "var(--surface)",
           color: "var(--muted)",
           fontSize: "11px",
-          fontFamily: "monospace",
+          fontFamily: "Aleph, monospace",
           textAlign: "center",
           lineHeight: "20px",
           pointerEvents: "none",
@@ -20250,7 +20250,7 @@ function Chart({
                   textAnchor="end"
                   fill={expectedMoveOverlay.color}
                   fillOpacity={rail.sigma === 2 ? 0.7 : 1}
-                  fontFamily="'JetBrains Mono', monospace"
+                  fontFamily="'Aleph', monospace"
                   fontSize={8}
                   fontWeight={800}
                   paintOrder="stroke"
@@ -20334,7 +20334,7 @@ function Chart({
                   y={tpoOverlay.labelY.get(item.zone.id) ?? item.centreY}
                   textAnchor="end"
                   fill={item.color}
-                  fontFamily="'JetBrains Mono', monospace"
+                  fontFamily="'Aleph', monospace"
                   fontSize={8}
                   fontWeight={800}
                   paintOrder="stroke"
@@ -20418,7 +20418,7 @@ function Chart({
                   x={classicGexOverlay.right ? 7 : classicGexOverlay.plotWidth - 7}
                   y={Math.max(10, line.y - 4)}
                   fill={line.color}
-                  fontFamily="'JetBrains Mono', monospace"
+                  fontFamily="'Aleph', monospace"
                   fontSize={8}
                   fontWeight={800}
                   textAnchor={classicGexOverlay.right ? "start" : "end"}
@@ -21016,7 +21016,7 @@ function Chart({
                     fillColor: withAlpha(chrome.stroke, 0.12),
                     fillOpacity: 0.12,
                     showLabels: true,
-                    labelFont: "12px 'JetBrains Mono', monospace",
+                    labelFont: "12px 'Aleph', monospace",
                     labelColor: chrome.stroke,
                   },
                   options: { text: textEditor.value.trim() },
@@ -21232,7 +21232,7 @@ function Chart({
               <circle cx={Number(x1)} cy={Number(y1)} r={2.5} fill={color} />
               <circle cx={Number(x2)} cy={Number(y2)} r={2.5} fill={color} />
               <rect x={midX - 17} y={midY - 19} width={34} height={13} rx={3} fill="var(--panel)" stroke={color} strokeWidth={1} />
-              <text x={midX} y={midY - 9.5} textAnchor="middle" fill={color} fontSize="8" fontWeight="700" fontFamily="'JetBrains Mono', monospace">
+              <text x={midX} y={midY - 9.5} textAnchor="middle" fill={color} fontSize="8" fontWeight="700" fontFamily="'Aleph', monospace">
                 CVD
               </text>
             </g>

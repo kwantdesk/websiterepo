@@ -1,3 +1,4 @@
+import { siteCanvasFont } from '../../../lib/siteFont';
 import type {
   IPrimitivePaneView,
   IPrimitivePaneRenderer,
@@ -227,7 +228,7 @@ class DrawingPaneRenderer implements IPrimitivePaneRenderer {
   ): void {
     ctx.save();
 
-    if (text.font) ctx.font = text.font;
+    if (text.font) ctx.font = siteCanvasFont(text.font);
     if (text.color) ctx.fillStyle = text.color;
     if (text.align) ctx.textAlign = text.align;
     if (text.baseline) ctx.textBaseline = text.baseline;

@@ -95,7 +95,7 @@ class FibSpeedFanPaneRenderer implements IPrimitivePaneRenderer {
           y: (p1.y + end.y) / 2,
         };
         const text = ratio === 1 ? '1:1' : `${ratio}`;
-        drawText(ctx, text, labelPos, '10px sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
+        drawText(ctx, text, labelPos, '10px Aleph, sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
       }
     }
 

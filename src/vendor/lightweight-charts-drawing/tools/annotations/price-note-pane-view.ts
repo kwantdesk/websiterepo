@@ -75,7 +75,7 @@ class PriceNotePaneRenderer implements IPrimitivePaneRenderer {
     }
 
     // Measure content
-    ctx.font = `${fontSize}px sans-serif`;
+    ctx.font = `${fontSize}px Aleph, sans-serif`;
     let maxWidth = 0;
     for (const line of lines) {
       const metrics = ctx.measureText(line.text);
@@ -119,7 +119,7 @@ class PriceNotePaneRenderer implements IPrimitivePaneRenderer {
 
     for (let i = 0; i < lines.length; i++) {
       ctx.fillStyle = lines[i].color;
-      ctx.font = i === 0 ? `bold ${fontSize}px sans-serif` : `${fontSize}px sans-serif`;
+      ctx.font = i === 0 ? `bold ${fontSize}px Aleph, sans-serif` : `${fontSize}px Aleph, sans-serif`;
       ctx.fillText(
         lines[i].text,
         boxX + padding,

@@ -143,7 +143,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           context.beginPath(); context.arc(Number(x), Number(y), radius, 0, Math.PI * 2); context.fill(); context.stroke();
           if (settings.showLabels && (event.wallBuild || event.wallCollapse || event.liquidityVacuum || event.pullRepost)) {
             const label = event.wallBuild ? "WALL" : event.wallCollapse ? "COLLAPSE" : event.liquidityVacuum ? "VACUUM" : "REPOST";
-            context.font = "8px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+            context.font = "8px Aleph, ui-monospace, Aleph, Aleph, Aleph, Aleph, monospace";
             context.fillStyle = rgba(color, opacity * 0.92);
             context.fillText(label, Number(x) + radius + 3, Number(y) + 3);
           }

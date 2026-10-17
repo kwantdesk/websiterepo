@@ -89,7 +89,7 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
     const chart = createChart(container, {
       width: container.clientWidth,
       height,
-      layout: { background: { color: "transparent" }, textColor: muted, fontSize: 9, attributionLogo: false },
+      layout: { background: { color: "transparent" }, textColor: muted, fontFamily: "Aleph, sans-serif", fontSize: 9, attributionLogo: false },
       grid: { vertLines: { color: border }, horzLines: { color: border } },
       rightPriceScale: { borderColor: border, minimumWidth: 68 },
       timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 4 },

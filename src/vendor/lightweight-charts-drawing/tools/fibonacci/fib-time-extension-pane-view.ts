@@ -91,7 +91,7 @@ class FibTimeExtensionPaneRenderer implements IPrimitivePaneRenderer {
       // Draw label
       if (options.showLabels) {
         const text = `${(level * 100).toFixed(1)}%`;
-        drawText(ctx, text, { x: x + 3, y: 15 }, '10px sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
+        drawText(ctx, text, { x: x + 3, y: 15 }, '10px Aleph, sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
       }
     }
 

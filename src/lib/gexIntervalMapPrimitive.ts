@@ -212,7 +212,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
             context.strokeStyle = rgba(data.neutralColor, 0.9); context.lineWidth = 1; context.stroke();
           }
           if (data.showValues && radius >= 8) {
-            context.fillStyle = "#fff"; context.font = "600 8px 'JetBrains Mono', monospace";
+            context.fillStyle = "#fff"; context.font = "600 8px 'Aleph', monospace";
             context.textAlign = "center"; context.textBaseline = "middle";
             context.fillText(Math.abs(point.value) >= 1e9 ? `${(point.value / 1e9).toFixed(1)}B` : Math.abs(point.value) >= 1e6 ? `${(point.value / 1e6).toFixed(1)}M` : `${Math.round(point.value / 1e3)}K`, x, y);
           }
@@ -289,7 +289,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
       while (occupied.some((value) => Math.abs(value - labelY) < 11)) labelY += 11;
       occupied.push(labelY);
       const label = `${level.labels.join(" · ")} ${level.price.toFixed(data.precision)}`;
-      context.font = "600 8px 'JetBrains Mono', monospace";
+      context.font = "600 8px 'Aleph', monospace";
       const labelWidth = context.measureText(label).width + 10;
       context.fillStyle = rgba(data.backgroundColor, 0.9); context.fillRect(width - labelWidth - 4, labelY - 7, labelWidth, 14);
       context.fillStyle = color; context.textAlign = "right"; context.textBaseline = "middle"; context.fillText(label, width - 9, labelY);

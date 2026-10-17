@@ -410,7 +410,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
               const fontSize = clamp(size * 0.82, 4, settings.maximumTextSize);
               context.globalAlpha = 0.96;
               context.fillStyle = theme.foreground;
-              context.font = `600 ${fontSize}px 'JetBrains Mono', monospace`;
+              context.font = `600 ${fontSize}px 'Aleph', monospace`;
               context.textAlign = "center";
               context.textBaseline = "middle";
               context.fillText(row.markers[cell] ?? "", x + cellWidth / 2, rowTop + rowHeight / 2);
@@ -503,7 +503,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           if (cellWidth >= 4 && showLabel) {
             context.globalAlpha = 0.9;
             context.fillStyle = color;
-            context.font = "600 7px 'JetBrains Mono', monospace";
+            context.font = "600 7px 'Aleph', monospace";
             context.textAlign = facesLeft ? "left" : "right";
             context.textBaseline = "bottom";
             context.fillText(label, clamp(lineEnd + (facesLeft ? 4 : -4), 18, mediaSize.width - 18), y - 2);
@@ -652,7 +652,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           ].filter(Boolean);
           const lines = settings.summaryLayout === "full" ? detail : [title, compact];
           const fontSize = settings.summaryFontSize;
-          context.font = `600 ${fontSize}px 'JetBrains Mono', monospace`;
+          context.font = `600 ${fontSize}px 'Aleph', monospace`;
           const boxWidth = Math.min(mediaSize.width - 8, Math.max(...lines.map((line) => context.measureText(line).width)) + 12);
           const boxHeight = lines.length * (fontSize + 4) + 8;
           const rightAligned = settings.summaryLocation.endsWith("right");

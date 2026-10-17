@@ -118,7 +118,7 @@ class DatePriceRangePaneRenderer implements IPrimitivePaneRenderer {
     }
 
     if (lines.length > 0) {
-      ctx.font = `${fontSize * pixelRatio}px sans-serif`;
+      ctx.font = `${fontSize * pixelRatio}px Aleph, sans-serif`;
 
       // Calculate panel dimensions
       let maxWidth = 0;

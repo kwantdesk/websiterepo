@@ -47,7 +47,7 @@ export default function KstPanePlot({ series, points, bounds, vertical = false, 
     const labelY = Math.max(top + 10, Math.min(bottom - 2, y));
     return <g key={key} data-kst-label={key}>
       {background ? <rect x={labelX} y={labelY - 10} width={width} height={13} fill={labels?.chartMarker ? "var(--chart-background)" : "var(--panel)"} stroke={ink} strokeWidth={0.5} /> : null}
-      <text x={labelX + 4} y={labelY} fill={ink} fontSize={9} fontFamily="var(--font-mono), monospace">{text}</text>
+      <text x={labelX + 4} y={labelY} fill={ink} fontSize={9} fontFamily="var(--font-mono), Aleph, monospace">{text}</text>
     </g>;
   };
   return <svg x={left} y={top} width={right - left} height={bottom - top} viewBox={`${left} ${top} ${right - left} ${bottom - top}`} overflow="hidden" data-kst-plot={series.key}>

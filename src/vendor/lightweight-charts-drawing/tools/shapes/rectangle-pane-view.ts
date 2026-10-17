@@ -92,7 +92,7 @@ class RectanglePaneRenderer implements IPrimitivePaneRenderer {
         labelText,
         { x: centerX, y: centerY },
         {
-          font: this._drawing.style.labelFont || '12px sans-serif',
+          font: this._drawing.style.labelFont || '12px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'CC',
           padding: 4,

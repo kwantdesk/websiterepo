@@ -87,7 +87,7 @@ class FibArcsPaneRenderer implements IPrimitivePaneRenderer {
           y: p1.y + radius * Math.sin(labelAngle),
         };
         const text = `${(level * 100).toFixed(1)}%`;
-        drawText(ctx, text, labelPos, '10px sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
+        drawText(ctx, text, labelPos, '10px Aleph, sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
       }
     }
 

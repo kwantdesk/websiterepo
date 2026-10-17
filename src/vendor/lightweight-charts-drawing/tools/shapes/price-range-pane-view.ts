@@ -86,7 +86,7 @@ class PriceRangePaneRenderer implements IPrimitivePaneRenderer {
         labelParts.join(' | '),
         { x: viewport.width / 2, y: centerY },
         {
-          font: this._drawing.style.labelFont || '12px sans-serif',
+          font: this._drawing.style.labelFont || '12px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'CC',
           padding: 6,
@@ -103,7 +103,7 @@ class PriceRangePaneRenderer implements IPrimitivePaneRenderer {
         formatPrice(rangeInfo.max),
         { x: viewport.width - 10, y: top },
         {
-          font: '11px sans-serif',
+          font: '11px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'AA',
           padding: 3,
@@ -117,7 +117,7 @@ class PriceRangePaneRenderer implements IPrimitivePaneRenderer {
         formatPrice(rangeInfo.min),
         { x: viewport.width - 10, y: bottom },
         {
-          font: '11px sans-serif',
+          font: '11px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'AA',
           padding: 3,

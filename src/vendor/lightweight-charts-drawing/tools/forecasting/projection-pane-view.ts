@@ -103,7 +103,7 @@ class ProjectionPaneRenderer implements IPrimitivePaneRenderer {
     ];
 
     const fontSize = 11;
-    ctx.font = `bold ${fontSize * pixelRatio}px sans-serif`;
+    ctx.font = `bold ${fontSize * pixelRatio}px Aleph, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -138,7 +138,7 @@ class ProjectionPaneRenderer implements IPrimitivePaneRenderer {
       }
 
       if (lines.length > 0) {
-        ctx.font = `${fontSize * pixelRatio}px sans-serif`;
+        ctx.font = `${fontSize * pixelRatio}px Aleph, sans-serif`;
 
         let maxWidth = 0;
         for (const line of lines) {

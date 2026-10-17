@@ -93,7 +93,7 @@ class LongPositionPaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw labels
     const fontSize = 11;
-    ctx.font = `${fontSize * pixelRatio}px sans-serif`;
+    ctx.font = `${fontSize * pixelRatio}px Aleph, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
@@ -139,7 +139,7 @@ class LongPositionPaneRenderer implements IPrimitivePaneRenderer {
 
     // Position type indicator
     ctx.fillStyle = '#26a69a';
-    ctx.font = `bold ${14 * pixelRatio}px sans-serif`;
+    ctx.font = `bold ${14 * pixelRatio}px Aleph, sans-serif`;
     ctx.fillText('LONG', (entry.x + 10) * pixelRatio, (entry.y - 15) * pixelRatio);
 
     // Draw control points if selected

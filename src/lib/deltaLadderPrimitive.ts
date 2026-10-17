@@ -234,7 +234,7 @@ export class DeltaLadderPrimitive implements ISeriesPrimitive<Time> {
       context.lineTo(Math.round(layout.spineX) + 0.5, mediaSize.height);
       context.stroke();
 
-      context.font = `600 ${options.fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+      context.font = `600 ${options.fontSize}px 'Aleph', ui-monospace, monospace`;
       context.textBaseline = "middle";
 
       const first = Math.ceil(bottomTick / profile.step) * profile.step;

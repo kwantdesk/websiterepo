@@ -176,7 +176,7 @@ function drawSpoofingChart(
   context.lineTo(contractsLeft - 10.5, height);
   context.stroke();
 
-  context.font = "500 10px var(--font-mono, ui-monospace, SFMono-Regular, monospace)";
+  context.font = "500 10px var(--font-mono, Aleph, ui-monospace, Aleph, monospace)";
   context.textBaseline = "middle";
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
@@ -222,7 +222,7 @@ function drawSpoofingChart(
 
     if (row.state !== "QUIET") {
       const label = row.state + (row.score > 0 ? ` ${row.score}` : "");
-      context.font = "700 9px var(--font-mono, ui-monospace, monospace)";
+      context.font = "700 9px var(--font-mono, Aleph, ui-monospace, monospace)";
       const labelWidth = context.measureText(label).width + 12;
       context.fillStyle = row.state === "SUSPECT"
         ? alpha(palette.warning, 0.18)
@@ -234,7 +234,7 @@ function drawSpoofingChart(
       context.fillText(label, Math.max(12, railLeft - labelWidth - 2), center);
     }
 
-    context.font = "600 9px var(--font-mono, ui-monospace, monospace)";
+    context.font = "600 9px var(--font-mono, Aleph, ui-monospace, monospace)";
     if (row.cancelledContracts > 0) {
       context.fillStyle = palette.danger;
       context.textAlign = "right";
@@ -246,7 +246,7 @@ function drawSpoofingChart(
       context.fillText(`(+${Math.round(row.aggressiveContracts)})`, railLeft - 84, center);
     }
     context.textAlign = "left";
-    context.font = "500 10px var(--font-mono, ui-monospace, monospace)";
+    context.font = "500 10px var(--font-mono, Aleph, ui-monospace, monospace)";
     context.fillStyle = rowTick === currentTick ? palette.foreground : palette.muted;
     context.fillText(row.price.toFixed(decimals), priceLeft, center);
     context.textAlign = "right";
@@ -288,7 +288,7 @@ function drawSpoofingChart(
 
   context.fillStyle = alpha(palette.panel, 0.94);
   context.fillRect(railLeft, 0, width - railLeft, Math.min(22, height));
-  context.font = "700 8px var(--font-mono, ui-monospace, monospace)";
+  context.font = "700 8px var(--font-mono, Aleph, ui-monospace, monospace)";
   context.fillStyle = palette.muted;
   context.fillText("PRICE", priceLeft, 11);
   context.textAlign = "right";

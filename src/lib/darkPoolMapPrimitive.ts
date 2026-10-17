@@ -122,7 +122,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           while (occupied.some((used) => Math.abs(used - labelY) < 14)) labelY += 14;
           occupied.push(labelY);
           const label = `DP ${zone.weightedPrice.toFixed(data.precision)} · ${compactMoney(zone.totalNotional)} · ${Math.round(zone.strengthScore)}`;
-          context.font = "600 9px 'JetBrains Mono', monospace";
+          context.font = "600 9px 'Aleph', monospace";
           const labelWidth = context.measureText(label).width + 10;
           const labelX = Math.max(4, mediaSize.width - labelWidth - 7);
           context.fillStyle = alpha(data.backgroundColor, 0.94);

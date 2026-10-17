@@ -1793,9 +1793,9 @@ export default function ZyonWorkspace({
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>${escapeArchiveHtml(folder.name)} · ZYON archive</title>
 <style>
-body{margin:0;background:#090909;color:#f5f5f5;font:14px Inter,Arial,sans-serif}main{max-width:900px;margin:auto;padding:48px 24px}
+body{margin:0;background:#090909;color:#f5f5f5;font:14px Aleph,Aleph,sans-serif}main{max-width:900px;margin:auto;padding:48px 24px}
 h1{font-size:28px;margin:0 0 8px}.lead,.meta{color:#999}.lead{margin-bottom:32px}article{border-top:1px solid #292929;padding:26px 0}
-h2{font-size:17px;margin:7px 0}.summary{color:#d7bd70}pre{white-space:pre-wrap;font:13px/1.7 Inter,Arial,sans-serif;color:#ddd}
+h2{font-size:17px;margin:7px 0}.summary{color:#d7bd70}pre{white-space:pre-wrap;font:13px/1.7 Aleph,Aleph,sans-serif;color:#ddd}
 figure{margin:18px 0;padding:12px;border:1px solid #292929;border-radius:14px}img{display:block;max-width:100%;max-height:720px;margin:auto;border-radius:9px}
 figcaption{margin-top:9px;color:#999;font-size:12px}a{color:#d7bd70}
 </style></head><body><main><h1>${escapeArchiveHtml(folder.name)}</h1>

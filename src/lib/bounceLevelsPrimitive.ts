@@ -698,7 +698,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         ].filter(Boolean);
         if (!parts.length) continue;
         const label = parts.join(" · ");
-        context.font = "10px JetBrains Mono, monospace";
+        context.font = "10px Aleph, monospace";
         const width = context.measureText(label).width + 8;
         const x = clamp(point.right + 10, 4, mediaSize.width - width - 4);
         context.fillStyle = rgba("#000000", 0.78);
@@ -709,7 +709,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
 
       if (data.showHeader) {
         const title = `${data.snapshot.displayInstrument} ${data.snapshot.greekMode} BOUNCE · ${data.snapshot.levels.length} ACTIVE`;
-        context.font = "10px JetBrains Mono, monospace";
+        context.font = "10px Aleph, monospace";
         const width = context.measureText(title).width + 12;
         context.fillStyle = rgba("#000000", 0.78);
         context.fillRect(8, 8, width, 20);

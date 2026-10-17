@@ -63,7 +63,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           context.strokeStyle = colors.low; context.beginPath(); context.moveTo(targetStart, lowY); context.lineTo(x2, lowY); context.stroke();
           context.setLineDash([]);
           if (settings.showTargetText) {
-            context.font = `700 ${settings.textSize}px 'JetBrains Mono', monospace`; context.textBaseline = "bottom";
+            context.font = `700 ${settings.textSize}px 'Aleph', monospace`; context.textBaseline = "bottom";
             context.fillStyle = colors.text; context.fillText("HTF High", Math.max(2, x2 - context.measureText("HTF High").width - 3), highY - 2);
             context.textBaseline = "top"; context.fillText("HTF Low", Math.max(2, x2 - context.measureText("HTF Low").width - 3), lowY + 2);
           }
@@ -74,7 +74,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           if (settings.volumeSummary) rows.push(`V ${compact(bucket.volume)}`);
           if (settings.tradeSummary) rows.push(`T ${compact(bucket.trades)}`);
           if (bucket.askVolume + bucket.bidVolume > 0) rows.push(`A ${compact(bucket.askVolume)}  B ${compact(bucket.bidVolume)}`);
-          context.font = `600 ${settings.summaryTextSize}px 'JetBrains Mono', monospace`; context.textBaseline = "top";
+          context.font = `600 ${settings.summaryTextSize}px 'Aleph', monospace`; context.textBaseline = "top";
           rows.forEach((row, rowIndex) => {
             const y = Math.min(mediaSize.height - settings.summaryTextSize - 2, Number(low) + 4 + rowIndex * (settings.summaryTextSize + 2));
             if (row.startsWith("A ")) {

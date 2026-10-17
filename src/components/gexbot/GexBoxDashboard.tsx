@@ -525,7 +525,7 @@ function IntervalCanvas({ payload, settings }: { payload: unknown; settings: Pan
       const priceByBucket = new Map<number, number>();
       rows.forEach((entry) => { if (entry.price !== null && !priceByBucket.has(entry.bucketIndex)) priceByBucket.set(entry.bucketIndex, entry.price); });
       const prices = [...priceByBucket].map(([bucketIndex, bucketPrice]) => ({ bucketIndex, price: bucketPrice })); if (prices.length > 1) { const p = prices.map((entry) => entry.price); const pMin = Math.min(...p), pMax = Math.max(...p), pSpan = Math.max(.01, pMax - pMin); ctx.beginPath(); prices.forEach((entry, index) => { const x = left + entry.bucketIndex * (rect.width - left - right) / Math.max(1, buckets.length - 1); const y = top + (pMax - entry.price) / pSpan * (rect.height - top - bottom); index ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = foreground; ctx.lineWidth = 1.2; ctx.stroke(); }
-      ctx.fillStyle = muted; ctx.font = "10px JetBrains Mono"; ctx.fillText(max.toFixed(0), rect.width - right + 7, top + 4); ctx.fillText(min.toFixed(0), rect.width - right + 7, rect.height - bottom);
+      ctx.fillStyle = muted; ctx.font = "10px Aleph"; ctx.fillText(max.toFixed(0), rect.width - right + 7, top + 4); ctx.fillText(min.toFixed(0), rect.width - right + 7, rect.height - bottom);
     };
     let frame = 0;
     const scheduleDraw = () => { window.cancelAnimationFrame(frame); frame = window.requestAnimationFrame(draw); };
@@ -607,7 +607,7 @@ function ProfessionalIntervalMap({ payload, settings }: { payload: unknown; sett
       const strikeCentre = viewport.strikeCentre ?? (model.maxStrike + model.minStrike) / 2;
       const viewHigh = strikeCentre + strikeSpan / 2;
       const yFor = (strike: number) => top + (viewHigh - strike) / strikeSpan * plotHeight;
-      ctx.save(); ctx.strokeStyle = grid; ctx.globalAlpha = .7; ctx.lineWidth = .5; ctx.font = "9px JetBrains Mono"; ctx.fillStyle = muted;
+      ctx.save(); ctx.strokeStyle = grid; ctx.globalAlpha = .7; ctx.lineWidth = .5; ctx.font = "9px Aleph"; ctx.fillStyle = muted;
       for (let i = 0; i <= 6; i++) { const y = top + i * plotHeight / 6; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke(); const strike = viewHigh - i * strikeSpan / 6; ctx.fillText(strike.toFixed(strike < 1000 ? 1 : 0), left + plotWidth + 7, y + 3); }
       for (let i = 0; i <= 6; i++) { const x = left + i * plotWidth / 6; ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + plotHeight); ctx.stroke(); const bucket = Math.round(start + i * visibleBuckets / 6); const point = model.points.find((item) => item.bucketIndex >= bucket); if (point) ctx.fillText(timeCell(point.timestamp), Math.max(left, x - 23), rect.height - 7); } ctx.restore();
       const visible = model.points.filter((point) => point.bucketIndex >= start && point.bucketIndex <= end); const cellWidth = Math.max(2, plotWidth / visibleBuckets); const strikeStep = span / Math.max(1, Math.min(80, new Set(visible.map((point) => point.strike)).size)); const cellHeight = Math.max(2, plotHeight * strikeStep / strikeSpan); const screen: Array<IntervalPoint & { x: number; y: number; radius: number }> = [];
@@ -1088,7 +1088,7 @@ function SeriesPanel({ toolId, payload, settings, onSettings }: { toolId: string
       const border = color("--border", "#333"), left = 12, right = 56, top = 16, bottom = 28, width = Math.max(1, rect.width - left - right), height = Math.max(1, rect.height - top - bottom);
       const all = series.flatMap((item) => item.values.map((value) => value.value)); const min = Math.min(...all, 0), max = Math.max(...all, 0), span = Math.max(1e-9, max - min), maxIndex = Math.max(1, rows.length - 1);
       ctx.strokeStyle = border; ctx.globalAlpha = .7; ctx.lineWidth = .5;
-      for (let i = 0; i <= 5; i++) { const y = top + i * height / 5; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + width, y); ctx.stroke(); ctx.fillStyle = palette.muted; ctx.font = "9px JetBrains Mono"; ctx.fillText(compact(max - i * span / 5), left + width + 6, y + 3); }
+      for (let i = 0; i <= 5; i++) { const y = top + i * height / 5; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + width, y); ctx.stroke(); ctx.fillStyle = palette.muted; ctx.font = "9px Aleph"; ctx.fillText(compact(max - i * span / 5), left + width + 6, y + 3); }
       const zero = top + (max / span) * height; ctx.strokeStyle = palette.muted; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(left, zero); ctx.lineTo(left + width, zero); ctx.stroke(); ctx.setLineDash([]);
       series.forEach((item) => { ctx.beginPath(); item.values.forEach((point, index) => { const x = left + point.index / maxIndex * width, y = top + (max - point.value) / span * height; index ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = palette[item.color]; ctx.globalAlpha = .9; ctx.lineWidth = item.color === "foreground" ? 1.5 : 1.15; ctx.stroke(); });
     };

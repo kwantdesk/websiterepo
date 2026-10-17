@@ -1,0 +1,12 @@
+Aleph (Regular, Bold)
+Lowercase redrawn from the Aleph / kesaleph wordmark (2026).
+Uppercase, figures and punctuation derived from Urbanist, Copyright 2021 The Urbanist Project Authors
+(https://github.com/coreyhu/Urbanist).
+
+IBM Plex Mono, Copyright IBM Corp.
+
+Both are licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
+Aleph is a modified version distributed under the same licence. It may be used, embedded and
+shared freely, but it may not be sold on its own.
+
+INSTALL (Windows): select all .ttf files, right-click, then "Install for all users". Restart PowerPoint.

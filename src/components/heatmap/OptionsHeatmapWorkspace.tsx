@@ -304,7 +304,7 @@ function OptionsHeatmapCanvas({
       context.lineWidth = 1;
       context.strokeStyle = alpha(border, 0.88);
       context.setLineDash([2, 6]);
-      context.font = "500 10px 'JetBrains Mono', monospace";
+      context.font = "500 10px 'Aleph', monospace";
       context.fillStyle = muted;
       for (let index = 0; index <= 8; index += 1) {
         const ratioY = index / 8;
@@ -448,7 +448,7 @@ function OptionsHeatmapCanvas({
         context.stroke();
         context.setLineDash([]);
         context.fillStyle = warning;
-        context.font = "700 9px 'JetBrains Mono', monospace";
+        context.font = "700 9px 'Aleph', monospace";
         context.fillText(`ZERO GAMMA ${formatPrice(model.zeroGamma, 0)}`, 10, Math.max(12, y - 6));
       }
 
@@ -487,10 +487,10 @@ function OptionsHeatmapCanvas({
         context.fill();
         context.stroke();
         context.fillStyle = foreground;
-        context.font = "600 10px 'JetBrains Mono', monospace";
+        context.font = "600 10px 'Aleph', monospace";
         context.fillText(formatPrice(tooltipPrice), boxX + 10, boxY + 16);
         context.fillStyle = muted;
-        context.font = "500 9px 'JetBrains Mono', monospace";
+        context.font = "500 9px 'Aleph', monospace";
         context.fillText(`${timeLabel(tooltipTime)} ET`, boxX + 10, boxY + 31);
       }
       context.restore();
@@ -505,7 +505,7 @@ function OptionsHeatmapCanvas({
       context.moveTo(0, plotBottom + 0.5);
       context.lineTo(width, plotBottom + 0.5);
       context.stroke();
-      context.font = "500 10px 'JetBrains Mono', monospace";
+      context.font = "500 10px 'Aleph', monospace";
       context.fillStyle = muted;
       context.textBaseline = "middle";
       for (let index = 0; index <= 8; index += 1) {
@@ -527,7 +527,7 @@ function OptionsHeatmapCanvas({
         context.roundRect(plotRight + 3, y - 11, width - plotRight - 6, 22, 5);
         context.fill();
         context.fillStyle = background;
-        context.font = "700 10px 'JetBrains Mono', monospace";
+        context.font = "700 10px 'Aleph', monospace";
         context.textAlign = "center";
         context.textBaseline = "middle";
         context.fillText(formatPrice(displayPrice), plotRight + (width - plotRight) / 2, y);

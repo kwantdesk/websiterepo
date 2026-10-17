@@ -84,7 +84,7 @@ class GannBoxPaneRenderer implements IPrimitivePaneRenderer {
         `${(level * 100).toFixed(0)}%`,
         { x: right + 5, y },
         {
-          font: '10px sans-serif',
+          font: '10px Aleph, sans-serif',
           textColor: this._drawing.style.lineColor,
           backgroundColor: 'transparent',
           padding: 2,

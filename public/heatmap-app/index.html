@@ -1,6 +1,9 @@
 <!doctype html>
 <html lang="en" data-ui-theme="kwantify" data-embed="true">
 <head>
+  <link rel="stylesheet" href="/fonts/aleph/aleph.css">
+  <link rel="preload" href="/fonts/aleph/Aleph-Regular.ttf" as="font" type="font/ttf" crossorigin="anonymous">
+  <link rel="preload" href="/fonts/aleph/Aleph-Bold.ttf" as="font" type="font/ttf" crossorigin="anonymous">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171b26">
@@ -50,8 +53,8 @@
           '--ui-danger': danger,
           '--ui-accent-rgb': hexRgb(primary, '0, 245, 160'),
           '--ui-danger-rgb': hexRgb(danger, '239, 68, 68'),
-          '--font-ui': '"Rajdhani", "Inter", system-ui, -apple-system, sans-serif',
-          '--font-mono': '"JetBrains Mono", monospace',
+          '--font-ui': '"Aleph", sans-serif',
+          '--font-mono': '"Aleph", sans-serif',
         };
 
         for (const [property, value] of Object.entries(properties)) {
@@ -132,16 +135,16 @@
   </script>
   <link
     rel="stylesheet"
-    href="/heatmap-app/styles.css?v=20260814-square-instruments"
-    data-source="/heatmap-app/styles.css?v=20260814-square-instruments"
+    href="/heatmap-app/styles.css?v=20261017-aleph-font"
+    data-source="/heatmap-app/styles.css?v=20261017-aleph-font"
     data-liquidity-style="base"
     onload="window.__kwantLiquidityStyleLoaded('base')"
     onerror="window.__kwantLiquidityStyleFailed('base', this)"
   >
   <link
     rel="stylesheet"
-    href="/heatmap-app/embed.css?v=20260814-workspace-controls"
-    data-source="/heatmap-app/embed.css?v=20260814-workspace-controls"
+    href="/heatmap-app/embed.css?v=20261017-aleph-font"
+    data-source="/heatmap-app/embed.css?v=20261017-aleph-font"
     data-liquidity-style="embed"
     onload="window.__kwantLiquidityStyleLoaded('embed')"
     onerror="window.__kwantLiquidityStyleFailed('embed', this)"
@@ -400,6 +403,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=20260907-frame-pacing"></script>
+  <script type="module" src="src/main.js?v=20261017-aleph-font"></script>
 </body>
 </html>

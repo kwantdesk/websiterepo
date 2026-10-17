@@ -31,7 +31,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         if (marker.contracts !== null) labels.push(`${marker.contracts} contracts`);
         if (labels.length) {
           const text = labels.join(" · ");
-          context.font = `${marker.contracts !== null ? data.settings.contractFontSize : 9}px monospace`;
+          context.font = `${marker.contracts !== null ? data.settings.contractFontSize : 9}px Aleph, monospace`;
           context.textAlign = "center";
           context.textBaseline = marker.side === "buy" ? "bottom" : "top";
           const labelY = cy + (marker.side === "buy" ? -size : size);

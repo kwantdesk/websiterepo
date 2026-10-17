@@ -94,7 +94,7 @@ class FibTimeZonePaneRenderer implements IPrimitivePaneRenderer {
       // Draw label at top
       if (options.showLabels) {
         const text = String(interval);
-        drawText(ctx, text, { x: x + 3, y: 15 }, '10px sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
+        drawText(ctx, text, { x: x + 3, y: 15 }, '10px Aleph, sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
       }
     }
 

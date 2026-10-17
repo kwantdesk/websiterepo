@@ -35,7 +35,7 @@ export default function SuperTrendPaneLabels({ series, points, bounds, rightInse
       return <g key={label.key} data-super-trend-label={label.key}>
         {label.background ? <rect x={x} y={y - 11} width={width} height={15}
           fill={s.chartColorForMarker ? "var(--chart-background, var(--background))" : color} stroke={color} /> : null}
-        <text x={x + 4} y={y} fontSize={10} fontFamily="monospace"
+        <text x={x + 4} y={y} fontSize={10} fontFamily="Aleph, monospace"
           fill={label.background && !s.chartColorForMarker ? "var(--chart-background, var(--background))" : color}>{label.text}</text>
       </g>;
     })}

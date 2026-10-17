@@ -104,7 +104,7 @@ export default function LabSessionChart({
       layout: {
         background: { color: "transparent" },
         textColor: muted,
-        fontFamily: "JetBrains Mono, monospace",
+        fontFamily: "Aleph, monospace",
         fontSize: 9,
         attributionLogo: false,
       },

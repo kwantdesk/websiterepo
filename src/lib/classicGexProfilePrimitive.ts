@@ -100,7 +100,7 @@ class ClassicGexProfileRenderer implements ISeriesPrimitivePaneRenderer {
           const label = `${line.label} ${line.mappedPrice.toFixed(data.precision)}`;
           context.globalAlpha = 1;
           context.setLineDash([]);
-          context.font = "800 8px 'JetBrains Mono', monospace";
+          context.font = "800 8px 'Aleph', monospace";
           context.textBaseline = "alphabetic";
           context.textAlign = data.right ? "left" : "right";
           context.lineJoin = "round";

@@ -109,7 +109,7 @@ class BarsPatternPaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw point markers
     const fontSize = 11;
-    ctx.font = `bold ${fontSize * pixelRatio}px sans-serif`;
+    ctx.font = `bold ${fontSize * pixelRatio}px Aleph, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -132,7 +132,7 @@ class BarsPatternPaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw labels
     if (options.showLabels) {
-      ctx.font = `${fontSize * pixelRatio}px sans-serif`;
+      ctx.font = `${fontSize * pixelRatio}px Aleph, sans-serif`;
       ctx.fillStyle = lineColor;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';

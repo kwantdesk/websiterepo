@@ -965,7 +965,7 @@ export default function ClassifiedGexLadder({
                         );
                       })}
                       <rect x={ZERO_X - 38} y={y - 8} width="76" height="16" rx="4" fill="var(--background)" stroke={nearAtm ? "var(--primary)" : "var(--border)"} strokeOpacity={nearAtm ? 0.8 : 0.65} />
-                      <text x={ZERO_X} y={y + 3} textAnchor="middle" fill={nearAtm ? "var(--primary)" : "var(--foreground)"} fontSize="6.8" fontFamily="monospace" fontWeight={nearAtm ? 700 : 500}>
+                      <text x={ZERO_X} y={y + 3} textAnchor="middle" fill={nearAtm ? "var(--primary)" : "var(--foreground)"} fontSize="6.8" fontFamily="Aleph, monospace" fontWeight={nearAtm ? 700 : 500}>
                         {formatPrice(level.price)}{nearAtm ? " ATM" : ""}
                       </text>
                       {majorCall?.price === level.price ? <text x="730" y={y - 7} fill={CALL_COLOR} fontSize="5.4" fontWeight="700">MAJOR CALL GEX</text> : null}
@@ -996,7 +996,7 @@ export default function ClassifiedGexLadder({
                 <g className={!replaying && payload.marketOpen ? "gexdesk-live-price" : ""} filter="url(#classified-gex-glow)">
                   <line x1="32" x2="1_048" y1={yForPrice(referencePrice)} y2={yForPrice(referencePrice)} stroke="var(--foreground)" strokeWidth="1.15" strokeDasharray="4 4" />
                   <rect x="394" y={yForPrice(referencePrice) - 10} width="142" height="20" rx="6" fill="var(--foreground)" />
-                  <text x="465" y={yForPrice(referencePrice) + 3} textAnchor="middle" fill="var(--background)" fontSize="7" fontFamily="monospace" fontWeight="700">
+                  <text x="465" y={yForPrice(referencePrice) + 3} textAnchor="middle" fill="var(--background)" fontSize="7" fontFamily="Aleph, monospace" fontWeight="700">
                     NQ {formatPrice(referencePrice, 2)}
                   </text>
                 </g>

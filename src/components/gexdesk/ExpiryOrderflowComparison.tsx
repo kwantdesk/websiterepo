@@ -541,7 +541,7 @@ export default function ExpiryOrderflowComparison({
 
           <rect x={PRICE_LEFT} y={PRICE_TOP} width={PRICE_RIGHT - PRICE_LEFT} height={PRICE_BOTTOM - PRICE_TOP} rx="12" fill="var(--panel)" fillOpacity="0.36" />
           <text x={PRICE_LEFT + 12} y={PRICE_TOP + 18} fill="var(--muted)" fontSize="7" letterSpacing="1.2">SHARED NQ PRICE CONTEXT</text>
-          <text x={PRICE_RIGHT - 12} y={PRICE_TOP + 18} textAnchor="end" fill="var(--foreground)" fontSize="9" fontFamily="monospace">
+          <text x={PRICE_RIGHT - 12} y={PRICE_TOP + 18} textAnchor="end" fill="var(--foreground)" fontSize="9" fontFamily="Aleph, monospace">
             {priceLabel(livePrice ?? selected.price ?? payload.nqPrice)}
           </text>
           {majorLevels.map((level) => {
@@ -588,7 +588,7 @@ export default function ExpiryOrderflowComparison({
                 <text x={left + 10} y={top + 15} fill="var(--muted)" fontSize="6.5" letterSpacing="1.1">
                   {expiry === "zero" ? "0DTE" : "1DTE"} {metric.label}
                 </text>
-                <text x={left + COLUMN_WIDTH - 10} y={top + 15} textAnchor="end" fill={currentValue >= 0 ? "var(--primary)" : "var(--accent)"} fontSize="7.5" fontFamily="monospace">
+                <text x={left + COLUMN_WIDTH - 10} y={top + 15} textAnchor="end" fill={currentValue >= 0 ? "var(--primary)" : "var(--accent)"} fontSize="7.5" fontFamily="Aleph, monospace">
                   {compact(currentValue)}
                 </text>
                 <line x1={left + 8} x2={left + COLUMN_WIDTH - 8} y1={zeroY} y2={zeroY} stroke="var(--foreground)" strokeOpacity="0.35" />

@@ -328,7 +328,7 @@ export default function ZeroGamma({
               return (
                 <g key={index}>
                   <line x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={y} y2={y} stroke="var(--border)" strokeOpacity="0.48" />
-                  <text x={PLOT_LEFT - 8} y={y + 3} textAnchor="end" fill="var(--muted)" fontSize="8" fontFamily="monospace">{formatPrice(price, 0)}</text>
+                  <text x={PLOT_LEFT - 8} y={y + 3} textAnchor="end" fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPrice(price, 0)}</text>
                 </g>
               );
             })}
@@ -338,7 +338,7 @@ export default function ZeroGamma({
               <g filter="url(#zero-gamma-glow)">
                 <line x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={flipY} y2={flipY} stroke="var(--foreground)" strokeWidth="1.5" strokeDasharray="8 5" />
                 <rect x={PLOT_RIGHT - 236} y={flipY - 13} width="236" height="26" rx="7" fill="var(--foreground)" />
-                <text x={PLOT_RIGHT - 118} y={flipY + 3.5} textAnchor="middle" fill="var(--background)" fontSize="8" fontFamily="monospace" fontWeight="700">
+                <text x={PLOT_RIGHT - 118} y={flipY + 3.5} textAnchor="middle" fill="var(--background)" fontSize="8" fontFamily="Aleph, monospace" fontWeight="700">
                   TRUE GAMMA FLIP · {formatPrice(flip)}
                 </text>
               </g>
@@ -353,7 +353,7 @@ export default function ZeroGamma({
               <g className={zeroGamma.marketOpen ? "gexdesk-live-price" : ""}>
                 <circle cx={PLOT_RIGHT} cy={yForPrice(spot)} r="4.5" fill="var(--primary)" stroke="var(--background)" strokeWidth="2" />
                 <rect x={PLOT_RIGHT - 118} y={yForPrice(spot) - 10} width="108" height="20" rx="6" fill="var(--primary)" />
-                <text x={PLOT_RIGHT - 64} y={yForPrice(spot) + 3} textAnchor="middle" fill="var(--background)" fontSize="8" fontFamily="monospace" fontWeight="700">
+                <text x={PLOT_RIGHT - 64} y={yForPrice(spot) + 3} textAnchor="middle" fill="var(--background)" fontSize="8" fontFamily="Aleph, monospace" fontWeight="700">
                   NQ {formatPrice(spot)}
                 </text>
               </g>
@@ -419,7 +419,7 @@ export default function ZeroGamma({
                 <g>
                   <line x1="18" x2="282" y1={curveY(flip)} y2={curveY(flip)} stroke="var(--foreground)" strokeOpacity="0.6" strokeDasharray="3 4" />
                   <circle cx="150" cy={curveY(flip)} r="5" fill="var(--foreground)" stroke="var(--background)" strokeWidth="2" />
-                  <text x="158" y={curveY(flip) - 7} fill="var(--foreground)" fontSize="7" fontFamily="monospace">X {formatPrice(flip)}</text>
+                  <text x="158" y={curveY(flip) - 7} fill="var(--foreground)" fontSize="7" fontFamily="Aleph, monospace">X {formatPrice(flip)}</text>
                 </g>
               ) : null}
             </svg>

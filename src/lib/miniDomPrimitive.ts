@@ -347,7 +347,7 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
         context.fillStyle = options.backgroundColor;
         context.fillRect(layout.left, 0, layout.width, mediaSize.height);
       }
-      context.font = `600 ${options.fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+      context.font = `600 ${options.fontSize}px 'Aleph', ui-monospace, monospace`;
       context.textBaseline = "middle";
 
       const first = Math.ceil(bottomTick / book.step) * book.step;

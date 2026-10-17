@@ -1053,7 +1053,7 @@ export default function DexWeightedOrderflow({
           })}
 
           <text x={PLOT_LEFT + 10} y="49" fill="var(--muted)" fontSize="7" letterSpacing="1.2">NQ PRICE CONTEXT</text>
-          <text x={PLOT_RIGHT - 10} y="49" textAnchor="end" fill="var(--foreground)" fontSize="8" fontFamily="monospace">
+          <text x={PLOT_RIGHT - 10} y="49" textAnchor="end" fill="var(--foreground)" fontSize="8" fontFamily="Aleph, monospace">
             {formatPrice(livePrice ?? buckets.at(-1)?.price ?? payload.nqPrice)}
           </text>
           {nearestZones.map((zone) => {
@@ -1190,7 +1190,7 @@ export default function DexWeightedOrderflow({
 
           <g transform={`translate(${SIDE_LEFT + 16},42)`}>
             <text fill="var(--muted)" fontSize="7" letterSpacing="1.2">CURRENT STATE</text>
-            <text y="27" fill={latestActive.net >= 0 ? "var(--primary)" : "var(--accent)"} fontSize="19" fontFamily="monospace" fontWeight="700">
+            <text y="27" fill={latestActive.net >= 0 ? "var(--primary)" : "var(--accent)"} fontSize="19" fontFamily="Aleph, monospace" fontWeight="700">
               {signedCompact(latestActive.net)}
             </text>
             <text y="43" fill="var(--muted)" fontSize="6">latest active {AGGREGATIONS.find((row) => row.value === aggregation)?.label} window</text>
@@ -1198,16 +1198,16 @@ export default function DexWeightedOrderflow({
 
             <text y="72" fill="var(--muted)" fontSize="6">1M {metricName}</text>
             <text x="104" y="72" fill="var(--muted)" fontSize="6">5M {metricName}</text>
-            <text y="88" fill="var(--foreground)" fontSize="10" fontFamily="monospace">{signedCompact(currentOneMinute)}</text>
-            <text x="104" y="88" fill="var(--foreground)" fontSize="10" fontFamily="monospace">{signedCompact(currentFiveMinutes)}</text>
+            <text y="88" fill="var(--foreground)" fontSize="10" fontFamily="Aleph, monospace">{signedCompact(currentOneMinute)}</text>
+            <text x="104" y="88" fill="var(--foreground)" fontSize="10" fontFamily="Aleph, monospace">{signedCompact(currentFiveMinutes)}</text>
 
             <line x1="0" x2="234" y1="108" y2="108" stroke="var(--border)" />
             <text y="128" fill="var(--muted)" fontSize="6">SESSION NET {metricName}</text>
-            <text x="234" y="128" textAnchor="end" fill={sessionNet >= 0 ? "var(--primary)" : "var(--accent)"} fontSize="9" fontFamily="monospace">{signedCompact(sessionNet)}</text>
+            <text x="234" y="128" textAnchor="end" fill={sessionNet >= 0 ? "var(--primary)" : "var(--accent)"} fontSize="9" fontFamily="Aleph, monospace">{signedCompact(sessionNet)}</text>
             <text y="148" fill="var(--muted)" fontSize="6">
               {weighting === "CONVEXITY" ? "LONG GAMMA SHARE" : "BULLISH SHARE"}
             </text>
-            <text x="234" y="148" textAnchor="end" fill="var(--foreground)" fontSize="9" fontFamily="monospace">{(bullishShare * 100).toFixed(0)}%</text>
+            <text x="234" y="148" textAnchor="end" fill="var(--foreground)" fontSize="9" fontFamily="Aleph, monospace">{(bullishShare * 100).toFixed(0)}%</text>
             <rect y="158" width="234" height="5" rx="2.5" fill="var(--surface)" />
             <rect y="158" width={234 * bullishShare} height="5" rx="2.5" fill="var(--primary)" />
 

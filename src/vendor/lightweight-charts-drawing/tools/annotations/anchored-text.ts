@@ -47,7 +47,7 @@ export class AnchoredText extends Drawing {
       ...this._options,
       text: text ?? 'Anchored Text',
       fontSize: fontSize ?? 12,
-      fontFamily: fontFamily ?? 'sans-serif',
+      fontFamily: fontFamily ?? 'Aleph, sans-serif',
       fontWeight: fontWeight ?? 'normal',
       textAlign: textAlign ?? 'left',
       showConnector: showConnector ?? true,

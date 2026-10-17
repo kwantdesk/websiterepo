@@ -827,7 +827,7 @@ export default function ClassifiedVolumeLadder({
                       )}
 
                       <rect x={ZERO_X - 38} y={y - 8} width="76" height="16" rx="4" fill="var(--background)" stroke={nearAtm ? "var(--primary)" : "var(--border)"} strokeOpacity={nearAtm ? 0.8 : 0.65} />
-                      <text x={ZERO_X} y={y + 3} textAnchor="middle" fill={nearAtm ? "var(--primary)" : "var(--foreground)"} fontSize="6.8" fontFamily="monospace" fontWeight={nearAtm ? 700 : 500}>
+                      <text x={ZERO_X} y={y + 3} textAnchor="middle" fill={nearAtm ? "var(--primary)" : "var(--foreground)"} fontSize="6.8" fontFamily="Aleph, monospace" fontWeight={nearAtm ? 700 : 500}>
                         {formatPrice(level.price)}{nearAtm ? " ATM" : ""}
                       </text>
                       {displayMode === "GROSS" ? (
@@ -874,7 +874,7 @@ export default function ClassifiedVolumeLadder({
                 <g className={!replaying && payload.marketOpen ? "gexdesk-live-price" : ""} filter="url(#classified-spot-glow)">
                   <line x1="34" x2="1_070" y1={yForPrice(referencePrice)} y2={yForPrice(referencePrice)} stroke="var(--foreground)" strokeWidth="1.15" strokeDasharray="4 4" />
                   <rect x="400" y={yForPrice(referencePrice) - 10} width="140" height="20" rx="6" fill="var(--foreground)" />
-                  <text x="470" y={yForPrice(referencePrice) + 3} textAnchor="middle" fill="var(--background)" fontSize="7" fontFamily="monospace" fontWeight="700">
+                  <text x="470" y={yForPrice(referencePrice) + 3} textAnchor="middle" fill="var(--background)" fontSize="7" fontFamily="Aleph, monospace" fontWeight="700">
                     NQ {formatPrice(referencePrice, 2)}
                   </text>
                 </g>

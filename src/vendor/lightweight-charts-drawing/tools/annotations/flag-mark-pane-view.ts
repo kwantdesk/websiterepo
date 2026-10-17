@@ -84,7 +84,7 @@ class FlagMarkPaneRenderer implements IPrimitivePaneRenderer {
     const label = options.label;
     if (label) {
       const fontSize = 10 * pixelRatio;
-      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.font = `bold ${fontSize}px Aleph, sans-serif`;
       ctx.fillStyle = '#FFFFFF';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';

@@ -61,7 +61,7 @@ class CommentPaneRenderer implements IPrimitivePaneRenderer {
     ctx.save();
 
     // Measure text
-    ctx.font = `${fontSize}px sans-serif`;
+    ctx.font = `${fontSize}px Aleph, sans-serif`;
     const lines = this.wrapText(ctx, text, 120 * pixelRatio);
     const lineHeight = fontSize * 1.3;
     const contentHeight = lines.length * lineHeight;
@@ -89,7 +89,7 @@ class CommentPaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw text
     ctx.fillStyle = textColor;
-    ctx.font = `${fontSize}px sans-serif`;
+    ctx.font = `${fontSize}px Aleph, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 

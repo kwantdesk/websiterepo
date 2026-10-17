@@ -73,7 +73,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         if (x === null || top === null || bottom === null) continue;
         const color = sideColor(group.side); const bracketX = Number(x) + (group.side === "ASK" ? 7 : -7);
         context.strokeStyle = rgba(color, opacity); context.lineWidth = 1.5; context.beginPath(); context.moveTo(bracketX, Number(top)); context.lineTo(bracketX, Number(bottom)); context.lineTo(bracketX + (group.side === "ASK" ? -5 : 5), Number(bottom)); context.moveTo(bracketX, Number(top)); context.lineTo(bracketX + (group.side === "ASK" ? -5 : 5), Number(top)); context.stroke();
-        if (settings.showLabels) { context.font = "600 8px JetBrains Mono, monospace"; context.textAlign = group.side === "ASK" ? "left" : "right"; context.textBaseline = "middle"; context.fillStyle = rgba(color, opacity); context.fillText(`${group.side} ×${group.levelCount} S${group.score}`, bracketX + (group.side === "ASK" ? 4 : -4), (Number(top) + Number(bottom)) / 2); }
+        if (settings.showLabels) { context.font = "600 8px Aleph, monospace"; context.textAlign = group.side === "ASK" ? "left" : "right"; context.textBaseline = "middle"; context.fillStyle = rgba(color, opacity); context.fillText(`${group.side} ×${group.levelCount} S${group.score}`, bracketX + (group.side === "ASK" ? 4 : -4), (Number(top) + Number(bottom)) / 2); }
       }
 
       if (settings.showActiveLane) {
@@ -82,7 +82,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         context.fillStyle = rgba(data.backgroundColor, 0.82); context.fillRect(laneLeft, 0, settings.activeLaneWidth + 3, mediaSize.height);
         context.strokeStyle = rgba(settings.neutralColor, 0.2); context.beginPath(); context.moveTo(laneLeft, 0); context.lineTo(laneLeft, mediaSize.height); context.stroke();
         const max = Math.max(1, ...active.map((zone) => zone.totalNumerator));
-        for (const zone of active) { const y = priceToY(zone.centreTick); if (y === null) continue; const width = Math.max(8, (settings.activeLaneWidth - 8) * Math.sqrt(zone.totalNumerator / max)); const color = sideColor(zone.side); context.fillStyle = rgba(color, opacity * 0.62); context.fillRect(right - width, Number(y) - rowHeight / 2, width, rowHeight); if (width > 46) { context.fillStyle = rgba("#FFFFFF", 0.92); context.font = "600 8px JetBrains Mono, monospace"; context.textAlign = "right"; context.textBaseline = "middle"; context.fillText(`${zone.levelCount}L · ${zone.score}`, right - 3, Number(y)); } }
+        for (const zone of active) { const y = priceToY(zone.centreTick); if (y === null) continue; const width = Math.max(8, (settings.activeLaneWidth - 8) * Math.sqrt(zone.totalNumerator / max)); const color = sideColor(zone.side); context.fillStyle = rgba(color, opacity * 0.62); context.fillRect(right - width, Number(y) - rowHeight / 2, width, rowHeight); if (width > 46) { context.fillStyle = rgba("#FFFFFF", 0.92); context.font = "600 8px Aleph, monospace"; context.textAlign = "right"; context.textBaseline = "middle"; context.fillText(`${zone.levelCount}L · ${zone.score}`, right - 3, Number(y)); } }
       }
 
       if (settings.showSessionProfile) {

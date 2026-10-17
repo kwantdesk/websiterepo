@@ -364,11 +364,11 @@ function ChartIndicatorPaneSurface({
             <rect x="0" y={top} width={width} height={paneHeight} fill="var(--chart-background)" fillOpacity="0.97" />
             <line x1="0" y1={top + 0.5} x2={width} y2={top + 0.5} stroke="var(--grid-color)" strokeWidth="1" />
             <line x1={plotWidth + 0.5} y1={top} x2={plotWidth + 0.5} y2={top + paneHeight} stroke="var(--grid-color)" strokeWidth="1" />
-            {group.showHeader !== false ? <text x={group.percentageAxis ? leftAxisWidth + 8 : 10} y={top + 16} fill="var(--foreground)" fontSize="11" fontWeight="600" fontFamily="var(--font-mono), monospace">
+            {group.showHeader !== false ? <text x={group.percentageAxis ? leftAxisWidth + 8 : 10} y={top + 16} fill="var(--foreground)" fontSize="11" fontWeight="600" fontFamily="var(--font-mono), Aleph, monospace">
               {group.title.length > (width < 620 ? 45 : 100) ? `${group.title.slice(0, width < 620 ? 42 : 97)}…` : group.title}
             </text> : null}
             {group.statusLabel && group.showHeader !== false ? (
-              <text x={Math.max(170, plotWidth - 118)} y={top + 15} fill="var(--muted)" fontSize="8" fontFamily="monospace" textAnchor="end">
+              <text x={Math.max(170, plotWidth - 118)} y={top + 15} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace" textAnchor="end">
                 {group.statusLabel}
               </text>
             ) : null}
@@ -388,7 +388,7 @@ function ChartIndicatorPaneSurface({
                   y={top + 34}
                   fill="var(--muted)"
                   fontSize="9"
-                  fontFamily="monospace"
+                  fontFamily="Aleph, monospace"
                 >
                   {group.unavailableReason}
                 </text>
@@ -454,7 +454,7 @@ function ChartIndicatorPaneSurface({
                           y={rowTop + statsRowHeight * 0.68}
                           fill={stats.textColor}
                           fontSize={Math.max(7, Math.min(9, statsRowHeight * 0.58))}
-                          fontFamily="monospace"
+                          fontFamily="Aleph, monospace"
                           textAnchor="middle"
                         >
                           {formatStatValue(cell.value, metric.format, stats.autoFormat)}
@@ -487,7 +487,7 @@ function ChartIndicatorPaneSurface({
                         y={statsInnerTop + metricIndex * statsRowHeight + statsRowHeight * 0.68}
                         fill={stats.textColor}
                         fontSize={Math.max(7, Math.min(9, statsRowHeight * 0.56))}
-                        fontFamily="monospace"
+                        fontFamily="Aleph, monospace"
                         textAnchor="end"
                       >
                         {metric.label}
@@ -518,11 +518,11 @@ function ChartIndicatorPaneSurface({
                   return (
                     <g key={`${group.key}-percentage-tick-${tick}`}>
                       <line x1={leftAxisWidth} y1={Math.round(y) + 0.5} x2={plotWidth} y2={Math.round(y) + 0.5} stroke="var(--grid-color)" strokeOpacity="0.18" vectorEffect="non-scaling-stroke" />
-                      <text x={leftAxisWidth - 7} y={y + 3} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), monospace" textAnchor="end">{tick}%</text>
+                      <text x={leftAxisWidth - 7} y={y + 3} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace" textAnchor="end">{tick}%</text>
                     </g>
                   );
                 })}
-                <text x={leftAxisWidth - 7} y={innerTop + 4} fill="var(--muted)" fontSize="7" fontFamily="var(--font-mono), monospace" textAnchor="end">IVR %</text>
+                <text x={leftAxisWidth - 7} y={innerTop + 4} fill="var(--muted)" fontSize="7" fontFamily="var(--font-mono), Aleph, monospace" textAnchor="end">IVR %</text>
               </g>
             ) : null}
             {!collapsed && !stats ? <g clipPath={`url(#${clipId})`}>
@@ -674,21 +674,21 @@ function ChartIndicatorPaneSurface({
                 bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                 points={sampledPanePoints(definition, xForTime, plotWidth).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
             )) : null}
-            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.max)}</text> : null}
-            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.min)}</text> : null}
+            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{compact(sharedDomain.max)}</text> : null}
+            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{compact(sharedDomain.min)}</text> : null}
             {!collapsed && secondaryDomain && group.secondaryAxisLabel ? (
               <g aria-label={`${group.secondaryAxisLabel} price scale`}>
-                <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), monospace">{secondaryDomain.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
-                <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), monospace">{secondaryDomain.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
-                <text x={plotWidth + 6} y={top + 16} fill="var(--muted)" fontSize="7" fontFamily="var(--font-mono), monospace">{group.secondaryAxisLabel}</text>
+                <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace">{secondaryDomain.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
+                <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace">{secondaryDomain.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
+                <text x={plotWidth + 6} y={top + 16} fill="var(--muted)" fontSize="7" fontFamily="var(--font-mono), Aleph, monospace">{group.secondaryAxisLabel}</text>
               </g>
             ) : null}
             {!collapsed && independentCvdTape && tapeTimes.length ? (
               <>
-                <text x="8" y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">
+                <text x="8" y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">
                   {new Date(tapeStart * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </text>
-                <text x={Math.max(8, plotWidth - 42)} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">
+                <text x={Math.max(8, plotWidth - 42)} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">
                   live
                 </text>
               </>
@@ -697,7 +697,7 @@ function ChartIndicatorPaneSurface({
               {group.series.slice(group.indicatorId === "cumulative-volume-delta" ? 1 : 0).map((definition, index) => (
                 <g key={definition.key} transform={`translate(${index * 88}, 0)`}>
                   <line x1="0" y1="3" x2="12" y2="3" stroke={definition.color} strokeWidth={definition.lineWidth ?? 2} />
-                  <text x="16" y="6" fill="var(--muted)" fontSize="8" fontFamily="monospace">
+                  <text x="16" y="6" fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">
                     {definition.label}
                   </text>
                 </g>
@@ -710,7 +710,7 @@ function ChartIndicatorPaneSurface({
               return (
                 <g aria-label={group.currentBadge}>
                   <rect x={plotWidth - badgeWidth - 4} y={badgeY - 9} width={badgeWidth} height="18" rx="2" fill="var(--panel)" stroke="var(--primary)" strokeOpacity="0.7" />
-                  <text x={plotWidth - 10} y={badgeY + 3} fill="var(--primary)" fontSize="8" fontWeight="700" fontFamily="var(--font-mono), monospace" textAnchor="end">{group.currentBadge}</text>
+                  <text x={plotWidth - 10} y={badgeY + 3} fill="var(--primary)" fontSize="8" fontWeight="700" fontFamily="var(--font-mono), Aleph, monospace" textAnchor="end">{group.currentBadge}</text>
                 </g>
               );
             })() : null}
@@ -1127,11 +1127,11 @@ function ChartVerticalIndicatorPaneSurface({
                 <line x1={columnLeft + 0.5} x2={columnLeft + 0.5} y1="0" y2={height} stroke="var(--grid-color)" />
               ) : null}
               <line x1={columnLeft} x2={columnLeft + columnWidth} y1={headerHeight - 0.5} y2={headerHeight - 0.5} stroke="var(--grid-color)" />
-              <text x={columnLeft + 7} y="16" fill="var(--foreground)" fontSize="9" fontWeight="600" fontFamily="monospace">
+              <text x={columnLeft + 7} y="16" fill="var(--foreground)" fontSize="9" fontWeight="600" fontFamily="Aleph, monospace">
                 {group.title}
               </text>
               {!collapsed && group.unavailableReason ? (
-                <text x={columnLeft + 7} y={plotTop + 16} fill="var(--muted)" fontSize="8" fontFamily="monospace">
+                <text x={columnLeft + 7} y={plotTop + 16} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">
                   Waiting for data
                 </text>
               ) : null}
@@ -1239,10 +1239,10 @@ function ChartVerticalIndicatorPaneSurface({
                       bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
                       points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(point => ({ ...point, x: xForValue(point.value, definition), y: point.y + plotTop }))} />
                   )) : null}
-                  <text x={innerLeft} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="monospace">{compact(domain.min)}</text>
-                  <text x={innerRight} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="monospace" textAnchor="end">{compact(domain.max)}</text>
+                  <text x={innerLeft} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace">{compact(domain.min)}</text>
+                  <text x={innerRight} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace" textAnchor="end">{compact(domain.max)}</text>
                   {secondaryDomain && group.secondaryAxisLabel ? (
-                    <text x={columnLeft + columnWidth / 2} y={headerHeight - 3} fill="var(--muted)" fontSize="7" fontFamily="monospace" textAnchor="middle">
+                    <text x={columnLeft + columnWidth / 2} y={headerHeight - 3} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace" textAnchor="middle">
                       {group.secondaryAxisLabel} {compact(secondaryDomain.min)}..{compact(secondaryDomain.max)}
                     </text>
                   ) : null}

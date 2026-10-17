@@ -72,7 +72,7 @@ class RayPaneRenderer implements IPrimitivePaneRenderer {
         `${angle.toFixed(1)}°`,
         { x: labelPos.x, y: labelPos.y - 15 },
         {
-          font: this._drawing.style.labelFont || '12px sans-serif',
+          font: this._drawing.style.labelFont || '12px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'CC',
           padding: 4,

@@ -166,7 +166,7 @@ class GannSquarePaneRenderer implements IPrimitivePaneRenderer {
     const cellSize = radius / divisions;
     const fontSize = Math.max(8, Math.min(12, cellSize * 0.4));
 
-    ctx.font = `${fontSize * pixelRatio}px sans-serif`;
+    ctx.font = `${fontSize * pixelRatio}px Aleph, sans-serif`;
     ctx.fillStyle = this._drawing.style.lineColor || '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

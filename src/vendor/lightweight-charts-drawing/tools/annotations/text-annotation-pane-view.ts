@@ -49,7 +49,7 @@ class TextAnnotationPaneRenderer implements IPrimitivePaneRenderer {
     const options = this._drawing.textOptions;
     const text = options.text ?? '';
     const fontSize = (options.fontSize ?? 14) * pixelRatio;
-    const fontFamily = options.fontFamily ?? 'sans-serif';
+    const fontFamily = options.fontFamily ?? 'Aleph, sans-serif';
     const fontWeight = options.fontWeight ?? 'normal';
     const padding = (options.padding ?? 8) * pixelRatio;
 

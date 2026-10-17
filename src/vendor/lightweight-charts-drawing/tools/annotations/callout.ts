@@ -47,7 +47,7 @@ export class Callout extends Drawing {
       ...this._options,
       text: text ?? 'Callout',
       fontSize: fontSize ?? 12,
-      fontFamily: fontFamily ?? 'sans-serif',
+      fontFamily: fontFamily ?? 'Aleph, sans-serif',
       backgroundColor: backgroundColor ?? 'rgba(255, 255, 200, 0.95)',
       borderColor: borderColor ?? '#FFC107',
       padding: padding ?? 8,

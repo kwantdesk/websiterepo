@@ -61,7 +61,7 @@ class NotePaneRenderer implements IPrimitivePaneRenderer {
     ctx.save();
 
     // Calculate text wrapping
-    ctx.font = `${fontSize}px sans-serif`;
+    ctx.font = `${fontSize}px Aleph, sans-serif`;
     const lines = this.wrapText(ctx, text, width - padding * 2 - (options.showIcon ? iconSize + padding : 0));
     const lineHeight = fontSize * 1.3;
     const contentHeight = Math.max(lines.length * lineHeight, iconSize);
@@ -103,7 +103,7 @@ class NotePaneRenderer implements IPrimitivePaneRenderer {
     let textX = x + padding;
     if (options.showIcon) {
       ctx.fillStyle = iconColor;
-      ctx.font = `bold ${iconSize}px sans-serif`;
+      ctx.font = `bold ${iconSize}px Aleph, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText('📝', x + padding, y + padding);
@@ -112,7 +112,7 @@ class NotePaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw text
     ctx.fillStyle = iconColor;
-    ctx.font = `${fontSize}px sans-serif`;
+    ctx.font = `${fontSize}px Aleph, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 

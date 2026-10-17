@@ -63,7 +63,7 @@ class SignpostPaneRenderer implements IPrimitivePaneRenderer {
     ctx.save();
 
     // Measure text
-    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.font = `bold ${fontSize}px Aleph, sans-serif`;
     const textWidth = ctx.measureText(text).width;
     const bodyWidth = textWidth + padding * 2;
 
@@ -100,7 +100,7 @@ class SignpostPaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw text
     ctx.fillStyle = textColor;
-    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.font = `bold ${fontSize}px Aleph, sans-serif`;
     ctx.textBaseline = 'middle';
 
     if (isRight) {

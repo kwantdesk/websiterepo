@@ -33,7 +33,7 @@ export class ZigZagRetracementPrimitive implements ISeriesPrimitive<Time> {
       try {
         context.beginPath(); context.rect(0, 0, mediaSize.width, mediaSize.height); context.clip();
         context.strokeStyle = options.lineColor; context.lineWidth = Math.max(1, Math.min(4, options.lineWidth));
-        context.setLineDash([]); context.font = `600 ${Math.max(6, Math.min(40, options.fontSize))}px monospace`;
+        context.setLineDash([]); context.font = `600 ${Math.max(6, Math.min(40, options.fontSize))}px Aleph, monospace`;
         context.textBaseline = "bottom";
         for (const level of options.levels) {
           const y = attachment.series.priceToCoordinate(level.value);

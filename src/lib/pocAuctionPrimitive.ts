@@ -123,7 +123,7 @@ class PocAuctionRenderer implements ISeriesPrimitivePaneRenderer {
         context.stroke();
         context.setLineDash([]);
         if (settings.showLabels && plotRight - Number(x) > 55) {
-          context.font = "600 8px JetBrains Mono, monospace";
+          context.font = "600 8px Aleph, monospace";
           context.fillStyle = rgba(color, opacity);
           context.textAlign = "right";
           context.textBaseline = "bottom";
@@ -181,7 +181,7 @@ class PocAuctionRenderer implements ISeriesPrimitivePaneRenderer {
           context.fillStyle = rgba(item.color, opacity * 0.62);
           context.fillRect(mediaSize.width - width - 3, Number(y) - 4, width, 8);
           if (settings.showLabels && width > 58) {
-            context.font = "600 7px JetBrains Mono, monospace";
+            context.font = "600 7px Aleph, monospace";
             context.textAlign = "right"; context.textBaseline = "middle"; context.fillStyle = rgba("#FFFFFF", 0.92);
             context.fillText(item.label, mediaSize.width - 5, Number(y));
           }

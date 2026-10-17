@@ -1,4 +1,5 @@
 import type { Point, DrawingStyle, ControlPoint } from '../core/types';
+import { siteCanvasFont } from '../../../lib/siteFont';
 
 /**
  * Set up canvas context with drawing style
@@ -214,14 +215,14 @@ export function drawText(
   ctx: CanvasRenderingContext2D,
   text: string,
   position: Point,
-  font: string = '12px sans-serif',
+  font: string = '12px Aleph, sans-serif',
   color: string = '#000000',
   align: CanvasTextAlign = 'left',
   baseline: CanvasTextBaseline = 'middle',
   pixelRatio: number = 1
 ): void {
   ctx.save();
-  ctx.font = font;
+  ctx.font = siteCanvasFont(font);
   ctx.fillStyle = color;
   ctx.textAlign = align;
   ctx.textBaseline = baseline;
@@ -246,7 +247,7 @@ export function drawLabel(
   pixelRatio: number = 1
 ): void {
   const {
-    font = '12px sans-serif',
+    font = '12px Aleph, sans-serif',
     textColor = '#ffffff',
     backgroundColor = 'rgba(0, 0, 0, 0.7)',
     padding = 4,
@@ -254,7 +255,7 @@ export function drawLabel(
   } = style;
 
   ctx.save();
-  ctx.font = font;
+  ctx.font = siteCanvasFont(font);
 
   const metrics = ctx.measureText(text);
   const textWidth = metrics.width;

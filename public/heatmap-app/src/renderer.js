@@ -1,5 +1,5 @@
-import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20260907-frame-pacing';
-import { canvasUiTheme } from './ui-themes.js?v=20260907-frame-pacing';
+import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261017-aleph-font';
+import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1
@@ -185,7 +185,7 @@ export class DepthRenderer {
       key: '', settingsKey: '', value: [], builtAt: 0, ready: false, endFrame: null,
     };
     this.executionProfileCache = { history: null, startFrame: null, endFrame: null, totals: new Map() };
-    this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
+    this.fontFamilies = { mono: 'Aleph, monospace', ui: '"Aleph", sans-serif' };
     this.lastFontStyleSyncAt = 0;
   }
 
@@ -263,8 +263,8 @@ export class DepthRenderer {
     if (now - this.lastFontStyleSyncAt >= 1_000) {
       const canvasStyles = getComputedStyle(this.canvas);
       this.fontFamilies = {
-        mono: canvasStyles.getPropertyValue('--font-mono').trim() || 'Consolas, monospace',
-        ui: canvasStyles.getPropertyValue('--font-ui').trim() || '"Arial Narrow", sans-serif',
+        mono: canvasStyles.getPropertyValue('--font-mono').trim() || 'Aleph, monospace',
+        ui: canvasStyles.getPropertyValue('--font-ui').trim() || '"Aleph", sans-serif',
       };
       this.lastFontStyleSyncAt = now;
     }

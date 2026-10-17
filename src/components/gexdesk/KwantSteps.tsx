@@ -542,7 +542,7 @@ export default function KwantSteps({
                     );
                   })}
                   <rect x="555" y={y - rowHeight * 0.4} width="90" height={Math.max(8, rowHeight * 0.8)} rx="4" fill={major ? "var(--surface)" : "var(--background)"} stroke={major ? "var(--primary)" : "var(--border)"} strokeOpacity={major ? 0.55 : 0.35} />
-                  <text x="600" y={y + 3} textAnchor="middle" fill={major ? "var(--foreground)" : "var(--muted)"} fontSize="9" fontFamily="monospace" fontWeight={major ? "700" : "500"}>{formatPrice(row.price)}</text>
+                  <text x="600" y={y + 3} textAnchor="middle" fill={major ? "var(--foreground)" : "var(--muted)"} fontSize="9" fontFamily="Aleph, monospace" fontWeight={major ? "700" : "500"}>{formatPrice(row.price)}</text>
                   <title>{`${formatPrice(row.price)} · Call OI GEX ${compact(row.callOi)} · Put OI GEX ${compact(row.putOi)} · Call volume GEX ${compact(row.callVolume)} · Put volume GEX ${compact(row.putVolume)}`}</title>
                 </g>
               );
@@ -558,7 +558,7 @@ export default function KwantSteps({
             <g className={status === "LIVE" ? "gexdesk-live-price" : ""}>
               <line x1="46" x2="1154" y1={yForPrice(referencePrice)} y2={yForPrice(referencePrice)} stroke="var(--foreground)" strokeWidth="1.3" />
               <rect x="1027" y={yForPrice(referencePrice) - 11} width="127" height="22" rx="6" fill="var(--primary)" />
-              <text x="1090" y={yForPrice(referencePrice) + 3.5} textAnchor="middle" fill="var(--background)" fontSize="9" fontFamily="monospace" fontWeight="700">NQ {formatPrice(referencePrice)}</text>
+              <text x="1090" y={yForPrice(referencePrice) + 3.5} textAnchor="middle" fill="var(--background)" fontSize="9" fontFamily="Aleph, monospace" fontWeight="700">NQ {formatPrice(referencePrice)}</text>
             </g>
           </svg>
         )}

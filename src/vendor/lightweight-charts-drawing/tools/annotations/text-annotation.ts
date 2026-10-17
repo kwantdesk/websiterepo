@@ -47,7 +47,7 @@ export class TextAnnotation extends Drawing {
       ...this._options,
       text: options.text ?? 'Text',
       fontSize: options.fontSize ?? 14,
-      fontFamily: options.fontFamily ?? 'sans-serif',
+      fontFamily: options.fontFamily ?? 'Aleph, sans-serif',
       fontWeight: options.fontWeight ?? 'normal',
       textAlign: options.textAlign ?? 'left',
       backgroundColor: options.backgroundColor ?? 'rgba(255, 255, 255, 0.9)',

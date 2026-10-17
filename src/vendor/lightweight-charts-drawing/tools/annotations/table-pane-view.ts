@@ -64,7 +64,7 @@ class TablePaneRenderer implements IPrimitivePaneRenderer {
     ctx.save();
 
     // Measure column widths
-    ctx.font = `${fontSize}px sans-serif`;
+    ctx.font = `${fontSize}px Aleph, sans-serif`;
     const cols = rows[0].length;
     const colWidths: number[] = new Array(cols).fill(0);
 
@@ -106,8 +106,8 @@ class TablePaneRenderer implements IPrimitivePaneRenderer {
         // Cell text
         ctx.fillStyle = textColor;
         ctx.font = (r === 0 && hasHeader)
-          ? `bold ${fontSize}px sans-serif`
-          : `${fontSize}px sans-serif`;
+          ? `bold ${fontSize}px Aleph, sans-serif`
+          : `${fontSize}px Aleph, sans-serif`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText(cellText, cellX + cellPadding, rowY + rowHeight / 2);

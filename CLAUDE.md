@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Aleph website typography
+
+- Owner supplied `Aleph_Fonts.zip` and requested every website text face be
+  replaced while retaining sizes/formatting. Regular/Bold originals and OFL
+  notices are self-hosted under `public/fonts/aleph`; no external font service.
+- DOM/Tailwind, SVG, canvas indicators, chart libraries, persisted drawing
+  paint and the static liquidity-map module graph use Aleph. Preserve emoji
+  glyph faces. Numeric font sizes, weights, spacing and layout classes did
+  not change; different glyph advances can naturally change text wrapping.
+- Rollback: pushed tag `codex/pre-aleph-font-2026-10-17` points to `c1767932`.
+  Revert the scoped font commit to undo it; do not reset unrelated local work.
+- Checks/limits: `docs/prompt-log/2026-10-17-aleph-font.md`. The old drawing
+  toolbar-size test already disagrees with baseline (57 vs expected 28.5);
+  do not resize the toolbar as part of a font-only task.
+
 ## 2026-10-17 — Weekly profile unavailable is not perpetual loading
 
 - Latest five-day NQ/ES weekly requests lack one/two execution sessions;

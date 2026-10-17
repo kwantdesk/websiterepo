@@ -1,6 +1,6 @@
-import { SYMBOLS } from './market-simulator.js?v=20260907-frame-pacing';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260907-frame-pacing';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260907-frame-pacing';
+import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261017-aleph-font';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261017-aleph-font';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -13,22 +13,22 @@ import {
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20260907-frame-pacing';
-import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20260907-frame-pacing';
+} from './live-market.js?v=20261017-aleph-font';
+import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20261017-aleph-font';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
   computeOrderbookImbalance,
   computeVolumeImbalance,
   mergeLiveCvdHistory,
-} from './order-flow-indicators.js?v=20260907-frame-pacing';
-import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20260907-frame-pacing';
+} from './order-flow-indicators.js?v=20261017-aleph-font';
+import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20261017-aleph-font';
 import {
   DEFAULT_UI_THEME,
   WEBSITE_THEME_STORAGE_KEY,
   applyUiTheme,
   setWebsiteThemeColors,
-} from './ui-themes.js?v=20260907-frame-pacing';
+} from './ui-themes.js?v=20261017-aleph-font';
 
 // Retain genuine Rithmic book frames, not monitor presentation frames. The
 // gateway emits full books at 20 FPS; 1,800 frames therefore preserves the

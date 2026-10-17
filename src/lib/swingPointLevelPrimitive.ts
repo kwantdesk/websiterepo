@@ -41,7 +41,7 @@ export class SwingPointLevelPrimitive implements ISeriesPrimitive<Time> {
         }
         if (options.displayMode !== "line") {
           const labelY = attachment.series.priceToCoordinate(first.value + (options.side === "high" ? options.textOffset : -options.textOffset));
-          context.fillStyle = options.textColor; context.font = `600 ${options.textSize}px monospace`;
+          context.fillStyle = options.textColor; context.font = `600 ${options.textSize}px Aleph, monospace`;
           context.textAlign = "left"; context.textBaseline = options.side === "high" ? "bottom" : "top";
           context.fillText(options.side === "high" ? "SH" : "SL", x1 + 3, labelY ?? y);
         }

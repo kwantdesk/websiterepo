@@ -102,7 +102,7 @@ class InfoLinePaneRenderer implements IPrimitivePaneRenderer {
         labelParts.join(' | '),
         { x: labelPos.x, y: labelPos.y - 20 },
         {
-          font: this._drawing.style.labelFont || '11px sans-serif',
+          font: this._drawing.style.labelFont || '11px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'DD',
           padding: 6,

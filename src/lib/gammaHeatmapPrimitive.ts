@@ -197,7 +197,7 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
           while (occupied.some((used) => Math.abs(used - labelY) < 12)) labelY += 12;
           occupied.push(labelY);
           const label = `${level.label} ${level.price.toFixed(data.precision)}`;
-          context.font = "600 9px 'JetBrains Mono', monospace";
+          context.font = "600 9px 'Aleph', monospace";
           context.textAlign = "right";
           context.textBaseline = "middle";
           const width = context.measureText(label).width + 10;

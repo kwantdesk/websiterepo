@@ -43,7 +43,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         if (settings.showAverage) { drawLine(frame.averageHigh, settings.positiveColor, [7, 3]); drawLine(frame.averageLow, settings.positiveColor, [7, 3]); }
         if (settings.showStandardDeviation) { drawLine(frame.deviationHigh, settings.neutralColor, [2, 3]); drawLine(frame.deviationLow, settings.neutralColor, [2, 3]); }
         if (settings.showSummary) {
-          context.fillStyle = alpha(stateColor, 0.95); context.font = "600 9px JetBrains Mono, monospace"; context.textAlign = "left"; context.textBaseline = "top";
+          context.fillStyle = alpha(stateColor, 0.95); context.font = "600 9px Aleph, monospace"; context.textAlign = "left"; context.textBaseline = "top";
           const y = series.priceToCoordinate(frame.high); if (y !== null) context.fillText(`IVB ${settings.openingRangeMinutes} · ${frame.state.toUpperCase()} · N=${frame.sampleSessions}`, Number(x1) + 4, Number(y) + 4);
         }
       }

@@ -113,7 +113,7 @@ class GannFanPaneRenderer implements IPrimitivePaneRenderer {
           angle.label,
           labelPos,
           {
-            font: '10px sans-serif',
+            font: '10px Aleph, sans-serif',
             textColor: '#ffffff',
             backgroundColor: color + 'CC',
             padding: 2,

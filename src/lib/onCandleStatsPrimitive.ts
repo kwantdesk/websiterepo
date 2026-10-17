@@ -68,7 +68,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
       context.beginPath();
       context.rect(0, 0, mediaSize.width, mediaSize.height);
       context.clip();
-      context.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      context.font = `600 ${fontSize}px Aleph, ui-monospace, Aleph, Aleph, monospace`;
       context.textAlign = "center";
       context.textBaseline = "middle";
       for (const point of points) {

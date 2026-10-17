@@ -25,7 +25,7 @@ export class PivotPointLabels implements ISeriesPrimitive<Time> {
         context.rect(0, 0, mediaSize.width, mediaSize.height);
         context.clip();
         context.fillStyle = options.color ?? this.color;
-        context.font = `600 ${Math.max(6, Math.min(40, options.fontSize))}px monospace`;
+        context.font = `600 ${Math.max(6, Math.min(40, options.fontSize))}px Aleph, monospace`;
         context.textBaseline = "bottom";
         context.textAlign = options.align;
         for (const segment of segments) {

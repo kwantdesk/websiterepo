@@ -3,6 +3,7 @@ import ThemeProvider from "@/components/ThemeProvider";
 import ViewportLock from "@/components/ViewportLock";
 import PrivateTerminologyGuard from "@/components/PrivateTerminologyGuard";
 import { themeBootstrapScript } from "@/lib/theme";
+import "../../public/fonts/aleph/aleph.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -47,6 +48,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className="kwant-private-copy-pending" suppressHydrationWarning>
       <head>
+        <link rel="preload" href="/fonts/aleph/Aleph-Regular.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/aleph/Aleph-Bold.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
         <meta name="theme-color" content="#303238" />
         <style>{`.kwant-private-copy-pending body { visibility: hidden; }`}</style>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />

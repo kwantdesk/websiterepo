@@ -76,7 +76,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         if (settings.showLabels) {
           const label = event.direction === "neutral" ? "CHURN" : `${event.direction.toUpperCase()} BURST`;
           context.fillStyle = rgba(color, alpha);
-          context.font = "600 8px JetBrains Mono, monospace";
+          context.font = "600 8px Aleph, monospace";
           context.textBaseline = "middle";
           context.textAlign = event.direction === "sell" ? "right" : "left";
           context.fillText(`${label} · ${compact(event.contractsPerSecond)}/s · ${event.score}`, cx + (event.direction === "sell" ? -size - 4 : size + 4), cy);

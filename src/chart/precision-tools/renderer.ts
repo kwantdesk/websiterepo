@@ -31,7 +31,7 @@ function line(ctx: CanvasRenderingContext2D, a: PrecisionScreenPoint, b: Precisi
 function label(ctx: CanvasRenderingContext2D, object: PrecisionObject, x: number, y: number, text: string, align: CanvasTextAlign = "left"): void {
   if (!object.labels.visible || !text) return;
   ctx.save();
-  ctx.font = `${object.style.fontWeight} ${object.style.fontSize}px ${object.style.fontFamily}`;
+  ctx.font = `${object.style.fontWeight} ${object.style.fontSize}px Aleph, sans-serif`;
   ctx.textAlign = align;
   ctx.textBaseline = "middle";
   const metrics = ctx.measureText(text);
@@ -59,7 +59,7 @@ function positionLabel(
   if (!object.labels.visible || !text) return;
   ctx.save();
   const fontSize = Math.max(8, Math.min(11, object.style.fontSize));
-  ctx.font = `${Math.max(600, object.style.fontWeight)} ${fontSize}px ${object.style.fontFamily}`;
+  ctx.font = `${Math.max(600, object.style.fontWeight)} ${fontSize}px Aleph, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const width = Math.ceil(ctx.measureText(text).width) + 16;

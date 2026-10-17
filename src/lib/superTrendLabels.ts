@@ -39,7 +39,7 @@ export class SuperTrendLabels implements ISeriesPrimitive<Time> {
         ];
         context.save();
         context.beginPath(); context.rect(0, 0, mediaSize.width, mediaSize.height); context.clip();
-        context.font = "600 10px monospace"; context.textBaseline = "middle";
+        context.font = "600 10px Aleph, monospace"; context.textBaseline = "middle";
         let y = Math.max(10, Math.min(mediaSize.height - labels.length * 18, anchor.y - labels.length * 18));
         for (const label of labels) {
           const width = Math.min(mediaSize.width - 4, context.measureText(label.text).width + 10);

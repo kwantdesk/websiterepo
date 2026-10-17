@@ -142,7 +142,7 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
           labelParts.join(' - '),
           { x: options.fibLabelPosition === 'left' ? minX + 5 : maxX - 5, y },
           {
-            font: '11px sans-serif',
+            font: '11px Aleph, sans-serif',
             textColor: '#ffffff',
             backgroundColor: color + 'CC',
             padding: 3,

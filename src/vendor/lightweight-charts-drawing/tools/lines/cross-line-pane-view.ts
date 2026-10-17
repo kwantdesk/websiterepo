@@ -65,7 +65,7 @@ class CrossLinePaneRenderer implements IPrimitivePaneRenderer {
         formatPrice(anchor.price),
         { x: viewport.width - 10, y },
         {
-          font: this._drawing.style.labelFont || '12px sans-serif',
+          font: this._drawing.style.labelFont || '12px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'CC',
           padding: 4,
@@ -81,7 +81,7 @@ class CrossLinePaneRenderer implements IPrimitivePaneRenderer {
         String(anchor.time),
         { x, y: viewport.height - 10 },
         {
-          font: this._drawing.style.labelFont || '12px sans-serif',
+          font: this._drawing.style.labelFont || '12px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'CC',
           padding: 4,

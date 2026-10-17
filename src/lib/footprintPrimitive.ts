@@ -786,7 +786,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
               context.save();
               context.globalAlpha = 0.76;
               context.fillStyle = values.ask >= values.bid ? options.askColor : options.bidColor;
-              context.font = `600 ${Math.max(7, Math.min(9, rowHeight * 0.55))}px 'JetBrains Mono', ui-monospace, monospace`;
+              context.font = `600 ${Math.max(7, Math.min(9, rowHeight * 0.55))}px 'Aleph', ui-monospace, monospace`;
               context.textAlign = "right";
               context.textBaseline = "middle";
               context.fillText(`${ratio.toFixed(1)}×`, left + barWidth - 2, top + rowHeight / 2);
@@ -820,7 +820,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             : clamp(options.fontSize, 7, 15);
           context.save();
           context.globalAlpha = 0.97;
-          context.font = `${row.isPoc ? 700 : options.fontWeight} ${fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+          context.font = `${row.isPoc ? 700 : options.fontWeight} ${fontSize}px 'Aleph', ui-monospace, monospace`;
           context.textBaseline = "middle";
           context.fillStyle = options.textColor;
           const rowY = top + rowHeight / 2;
@@ -837,7 +837,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             : values.total;
           const compactText = `${compactMetric > 0 && ["delta", "delta-histogram"].includes(contentMode) ? "+" : ""}${formatFootprintValue(compactMetric, format)}`;
           const compactFontSize = clamp(Math.min(fontSize, rowHeight * 0.58, 9), 7, 9);
-          context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+          context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'Aleph', ui-monospace, monospace`;
           // Bid × Ask is a pair. Replacing it with an unlabelled total as the
           // candle narrows changes the meaning of the number under the
           // trader's cursor. Those cells now stay visual-only until both sides
@@ -850,7 +850,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             context.restore();
             continue;
           }
-          context.font = `${row.isPoc ? 700 : options.fontWeight} ${fullBidAskFits || detailed ? fontSize : compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+          context.font = `${row.isPoc ? 700 : options.fontWeight} ${fullBidAskFits || detailed ? fontSize : compactFontSize}px 'Aleph', ui-monospace, monospace`;
           if (bidAskContent) {
             if (fullBidAskFits && (options.showZeros || values.bid > 0)) {
               context.textAlign = "right";
@@ -877,7 +877,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             if (completeTextFits || compactFits) {
               context.textAlign = "center";
               if (!completeTextFits) {
-                context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+                context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'Aleph', ui-monospace, monospace`;
               }
               context.fillText(completeTextFits ? text : compactText, x, rowY);
             }
@@ -925,7 +925,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             ? `${summaryPrefix} ${formatFootprintValue(summaryTotal, options.numberFormat)}  Δ ${summaryDelta >= 0 ? "+" : ""}${formatFootprintValue(summaryDelta, options.numberFormat)}`
             : `${summaryPrefix} ${formatFootprintValue(summaryTotal, options.numberFormat)}`;
           context.save();
-          context.font = `500 9px 'JetBrains Mono', ui-monospace, monospace`;
+          context.font = `500 9px 'Aleph', ui-monospace, monospace`;
           context.textAlign = "center";
           context.textBaseline = "top";
           context.fillStyle = options.textColor;

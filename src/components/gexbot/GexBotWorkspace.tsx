@@ -411,7 +411,7 @@ function ProfileChart({
         return (
           <g key={strike} onMouseEnter={() => onHover(entry)} onMouseLeave={() => onHover(null)} className="cursor-crosshair">
             <rect x="0" y={rowY - 7} width="1200" height="14" fill="transparent" />
-            <text x="10" y={rowY + 4} fill="var(--muted)" fontSize="10" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace">{price(strike)}</text>
+            <text x="10" y={rowY + 4} fill="var(--muted)" fontSize="10" fontFamily="Aleph, ui-monospace, Aleph, Aleph, monospace">{price(strike)}</text>
             {values.map(({ value, opacity, height }, index) => {
               if (value >= 0 && !appearance.showPositive) return null;
               if (value < 0 && !appearance.showNegative) return null;

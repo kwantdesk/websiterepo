@@ -425,7 +425,7 @@ export default function MajorGamma({
                       />
                     ) : null}
                     <rect x={ZERO_X - 39} y={y - 7} width="78" height="14" rx="4" fill="var(--background)" stroke="var(--border)" strokeOpacity="0.55" />
-                    <text x={ZERO_X} y={y + 3} textAnchor="middle" fill="var(--muted)" fontSize="7" fontFamily="monospace">{formatPrice(row.price, 0)}</text>
+                    <text x={ZERO_X} y={y + 3} textAnchor="middle" fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace">{formatPrice(row.price, 0)}</text>
                     <title>{`${formatPrice(row.price)} · OI GEX ${compactSigned(row.oiNet)} · Session-volume GEX estimate ${compactSigned(row.volumeNet)}`}</title>
                   </g>
                 );
@@ -471,7 +471,7 @@ export default function MajorGamma({
                       textAnchor="middle"
                       fill={volume ? "var(--background)" : positive ? "var(--primary)" : "var(--danger)"}
                       fontSize="7"
-                      fontFamily="monospace"
+                      fontFamily="Aleph, monospace"
                       fontWeight="700"
                     >
                       {kindLabel(level.kind)}{overlap && volume ? " · OI OVERLAP" : ""} · {formatPrice(level.price, 0)} · {compactSigned(level.value)}
@@ -483,7 +483,7 @@ export default function MajorGamma({
               <g className={payload.marketOpen ? "gexdesk-live-price" : ""}>
                 <line x1="42" x2="888" y1={yForPrice(spot)} y2={yForPrice(spot)} stroke="var(--foreground)" strokeWidth="1.2" />
                 <rect x="391" y={yForPrice(spot) - 11} width="148" height="22" rx="6" fill="var(--foreground)" />
-                <text x="465" y={yForPrice(spot) + 3} textAnchor="middle" fill="var(--background)" fontSize="8" fontFamily="monospace" fontWeight="700">NQ · {formatPrice(spot)}</text>
+                <text x="465" y={yForPrice(spot) + 3} textAnchor="middle" fill="var(--background)" fontSize="8" fontFamily="Aleph, monospace" fontWeight="700">NQ · {formatPrice(spot)}</text>
               </g>
             </svg>
           )}

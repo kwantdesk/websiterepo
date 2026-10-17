@@ -19,7 +19,7 @@ export class TextOnChartPrimitive implements ISeriesPrimitive<Time> {
       const lines = options.text.replace(/\r/g, "").split("\n").slice(0, 20);
       context.save();
       try {
-        context.font = `400 ${size}px sans-serif`; context.textBaseline = "top";
+        context.font = `400 ${size}px Aleph, sans-serif`; context.textBaseline = "top";
         const width = Math.min(mediaSize.width - 16, Math.max(...lines.map(line => context.measureText(line).width)) + 10);
         const height = lines.length * size * 1.2 + 8;
         context.fillStyle = options.backgroundColor; context.fillRect(8, 8, Math.max(0, width), height);

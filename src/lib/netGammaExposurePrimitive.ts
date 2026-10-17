@@ -292,14 +292,14 @@ class NetGammaExposureRenderer implements ISeriesPrimitivePaneRenderer {
           context.fillRect(putX, y + height / 2 - Math.min(2, height / 2), detailPutWidth, Math.min(2, height / 2));
         }
         if (data.showValues && width > 70) {
-          context.font = "500 9px 'JetBrains Mono', monospace";
+          context.font = "500 9px 'Aleph', monospace";
           context.textBaseline = "middle";
           context.textAlign = growsRight ? "right" : "left";
           context.fillStyle = data.textColor;
           context.fillText(this.primitive.formatValue(value, data.snapshot.representation), growsRight ? x + width - 4 : x + 4, y);
         }
         if (data.showMappedPrice && width > 105) {
-          context.font = "500 8px 'JetBrains Mono', monospace";
+          context.font = "500 8px 'Aleph', monospace";
           context.textBaseline = "middle";
           context.textAlign = growsRight ? "left" : "right";
           context.fillStyle = data.mutedTextColor;
@@ -349,7 +349,7 @@ class NetGammaExposureRenderer implements ISeriesPrimitivePaneRenderer {
         const labelY = Number(rawY);
         const labels = group.map((item) => item.label).join(" + ");
         const label = `${labels} ${level.row.mappedDisplayPrice.toFixed(data.precision)} · ${this.primitive.formatValue(level.row.netExposure, data.snapshot.representation)}`;
-        context.font = "600 8px 'JetBrains Mono', monospace";
+        context.font = "600 8px 'Aleph', monospace";
         context.textAlign = "right";
         context.textBaseline = "middle";
         const labelWidth = Math.min(laneWidth - 8, context.measureText(label).width + 8);

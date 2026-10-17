@@ -73,7 +73,7 @@ class BarPocRenderer implements ISeriesPrimitivePaneRenderer {
         context.setLineDash([]);
         if (settings.showDuration && lineRight - right > 26) {
           context.fillStyle = rgba(settings.durationTextColor, 0.95);
-          context.font = `600 ${settings.durationFontSize}px JetBrains Mono, monospace`;
+          context.font = `600 ${settings.durationFontSize}px Aleph, monospace`;
           context.textAlign = "right";
           context.textBaseline = "bottom";
           context.fillText(durationLabel(level.extensionEndMs - level.barEndMs), Math.min(mediaSize.width - 3, lineRight - 3), Number(y) - 2);

@@ -1,4 +1,4 @@
-import { websiteThemeColors } from './ui-themes.js?v=20260907-frame-pacing';
+import { websiteThemeColors } from './ui-themes.js?v=20261017-aleph-font';
 
 export const DEFAULT_PALETTE = 'auto';
 

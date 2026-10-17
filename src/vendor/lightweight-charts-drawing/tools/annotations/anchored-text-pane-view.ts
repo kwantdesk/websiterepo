@@ -52,7 +52,7 @@ class AnchoredTextPaneRenderer implements IPrimitivePaneRenderer {
     const style = this._drawing.style;
     const text = options.text ?? '';
     const fontSize = (options.fontSize ?? 12) * pixelRatio;
-    const fontFamily = options.fontFamily ?? 'sans-serif';
+    const fontFamily = options.fontFamily ?? 'Aleph, sans-serif';
     const fontWeight = options.fontWeight ?? 'normal';
     const padding = 6 * pixelRatio;
 

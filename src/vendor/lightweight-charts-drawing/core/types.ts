@@ -52,7 +52,7 @@ export const DEFAULT_DRAWING_STYLE: DrawingStyle = {
   fillColor: 'rgba(41, 98, 255, 0.1)',
   fillOpacity: 0.1,
   showLabels: true,
-  labelFont: '12px sans-serif',
+  labelFont: '12px Aleph, sans-serif',
   labelColor: '#2962FF',
 };
 

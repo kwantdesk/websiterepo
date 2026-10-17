@@ -96,7 +96,7 @@ class HorizontalRayPaneRenderer implements IPrimitivePaneRenderer {
         formatPrice(anchor.price),
         { x: labelX, y },
         {
-          font: this._drawing.style.labelFont || '12px sans-serif',
+          font: this._drawing.style.labelFont || '12px Aleph, sans-serif',
           textColor: '#ffffff',
           backgroundColor: this._drawing.style.lineColor + 'CC',
           padding: 4,

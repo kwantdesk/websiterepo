@@ -1520,7 +1520,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           && profileTop < mediaSize.height;
         if (sessionLabelVisible && profile.sessionLabel && top != null && bottom != null) {
           const sessionLabel = profile.sessionLabel;
-          context.font = "600 9px 'JetBrains Mono', monospace";
+          context.font = "600 9px 'Aleph', monospace";
           const measured = context.measureText(sessionLabel).width;
           deferredProfileText.push({
             box: {
@@ -1532,7 +1532,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             },
             draw: (left, labelTop) => {
               context.globalAlpha = 0.92;
-              context.font = "600 9px 'JetBrains Mono', monospace";
+              context.font = "600 9px 'Aleph', monospace";
               context.textAlign = "left";
               context.textBaseline = "top";
               context.fillStyle = style.pocColor;
@@ -1601,7 +1601,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             const labelText = style.showLevelLabelPrice === false
               ? label
               : `${label} ${price.toFixed(pricePrecision)}`;
-            context.font = "700 9px 'JetBrains Mono', monospace";
+            context.font = "700 9px 'Aleph', monospace";
             const measured = context.measureText(labelText).width;
             const labelY = Math.max(11, Math.min(mediaSize.height - 3, y - 3));
             const labelOnLeft = (style.levelLabelSide ?? "right") === "left";
@@ -1620,7 +1620,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               draw: (left, top) => {
                 context.globalAlpha = 0.9;
                 context.fillStyle = color;
-                context.font = "700 9px 'JetBrains Mono', monospace";
+                context.font = "700 9px 'Aleph', monospace";
                 context.textAlign = "left";
                 context.textBaseline = "top";
                 context.fillText(labelText, left, top);
@@ -1858,7 +1858,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               color: style.summaryTextColor ?? style.pocColor,
             });
           }
-          context.font = "600 8px 'JetBrains Mono', monospace";
+          context.font = "600 8px 'Aleph', monospace";
           const summaryWidth = Math.max(1, ...lines.map((line) => context.measureText(line.text).width));
           const summaryLeft = Math.min(anchorX, endX) + 4;
           const summaryTop = (profileTop ?? 0) + 4;
@@ -1872,7 +1872,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             },
             draw: (left, top) => {
               context.globalAlpha = 0.9;
-              context.font = "600 8px 'JetBrains Mono', monospace";
+              context.font = "600 8px 'Aleph', monospace";
               context.textAlign = "left";
               context.textBaseline = "top";
               lines.forEach((line, index) => {

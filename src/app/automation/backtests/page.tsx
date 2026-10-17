@@ -245,7 +245,7 @@ function BacktestEquityCurve({ equityCurve }: { equityCurve: { timestamp: number
         y={yScale(finalPoint.equity) + 4}
         fill={finalColor}
         fontSize="10"
-        fontFamily="monospace"
+        fontFamily="Aleph, monospace"
       >
         {finalPoint.equity.toFixed(2)}
       </text>

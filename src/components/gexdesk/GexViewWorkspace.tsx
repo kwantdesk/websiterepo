@@ -210,7 +210,7 @@ function GexViewChart({
       layout: {
         background: { color: background },
         textColor: muted,
-        fontFamily: "var(--font-sans)",
+        fontFamily: "Aleph, sans-serif",
         fontSize: 10,
         attributionLogo: false,
       },

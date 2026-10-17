@@ -1,15 +1,4 @@
 @import "tailwindcss";
-@import "@fontsource/inter/400.css";
-@import "@fontsource/inter/500.css";
-@import "@fontsource/inter/600.css";
-@import "@fontsource/inter/700.css";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
-@import "@fontsource/jetbrains-mono/600.css";
-@import "@fontsource/rajdhani/400.css";
-@import "@fontsource/rajdhani/500.css";
-@import "@fontsource/rajdhani/600.css";
-@import "@fontsource/rajdhani/700.css";
 
 :root {
   /* The CHARTS workspace header is the shell's vertical rhythm reference. */
@@ -141,8 +130,8 @@
   --color-crosshair-color: var(--crosshair-color);
   --color-candle-up: var(--candle-up);
   --color-candle-down: var(--candle-down);
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+  --font-sans: "Aleph", system-ui, -apple-system, sans-serif;
+  --font-mono: "Aleph", "Aleph", "Aleph", monospace;
 }
 
 html {
@@ -163,7 +152,7 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Aleph", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -1169,7 +1158,7 @@ table,
 
 .calling-card__orbit--two { inset: 21px; animation-duration: 5s; animation-direction: reverse; }
 .calling-card__orbit--three { inset: 33px; border-style: dashed; animation-duration: 11s; }
-.calling-card__core-code { font-family: var(--font-jetbrains-mono), monospace; font-size: 18px; font-weight: 700; letter-spacing: -.04em; text-shadow: 0 0 16px var(--calling-primary); }
+.calling-card__core-code { font-family: var(--font-jetbrains-mono), Aleph, monospace; font-size: 18px; font-weight: 700; letter-spacing: -.04em; text-shadow: 0 0 16px var(--calling-primary); }
 
 .calling-card__circuit {
   position: absolute;
@@ -1345,7 +1334,7 @@ body.kwant-cockpit-ui {
   --kwant-profit: #7ee65c;
   --kwant-seam: color-mix(in srgb, var(--border) 84%, #000);
   --kwant-recessed: color-mix(in srgb, var(--background) 86%, #111820);
-  font-family: "Rajdhani", "Inter", system-ui, sans-serif;
+  font-family: "Aleph", "Aleph", system-ui, sans-serif;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: .012em;
@@ -1360,7 +1349,7 @@ body:has(.kwant-command-rail) {
   --kwant-profit: #7ee65c;
   --kwant-seam: color-mix(in srgb, var(--border) 84%, #000);
   --kwant-recessed: color-mix(in srgb, var(--background) 86%, #111820);
-  font-family: "Rajdhani", "Inter", system-ui, sans-serif;
+  font-family: "Aleph", "Aleph", system-ui, sans-serif;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: .012em;
@@ -1368,7 +1357,7 @@ body:has(.kwant-command-rail) {
 
 body:has(.kwant-command-rail) .kwant-command-rail,
 body:has(.kwant-command-rail) .kwant-chart-command-deck {
-  font-family: "Rajdhani", "Inter", sans-serif;
+  font-family: "Aleph", "Aleph", sans-serif;
 }
 
 /* One compact vertical rhythm for the primary navigation, both chart command
@@ -1401,7 +1390,7 @@ header.kwant-command-rail {
    * variable, so all three can never disagree.
    */
   color: var(--brand-mark);
-  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  font-family: "Aleph", "Aleph", Aleph, sans-serif;
   font-size: 18px;
   font-weight: 400;
   line-height: 1;
@@ -1433,7 +1422,7 @@ header.kwant-command-rail .kwant-primary-nav-control {
   margin: 0;
   padding-block: 0;
   padding-inline: 10px;
-  font-family: "Rajdhani", "Inter", sans-serif;
+  font-family: "Aleph", "Aleph", sans-serif;
   font-size: 10px;
   font-weight: 600;
   line-height: 1;
@@ -1564,7 +1553,7 @@ body.kwant-cockpit-ui code,
 body.kwant-cockpit-ui pre,
 body.kwant-cockpit-ui kbd,
 body.kwant-cockpit-ui [data-numeric="true"] {
-  font-family: "JetBrains Mono", "SF Mono", monospace !important;
+  font-family: "Aleph", "Aleph", monospace !important;
   font-variant-numeric: tabular-nums slashed-zero;
   letter-spacing: -.025em;
 }
@@ -1577,7 +1566,7 @@ body.kwant-cockpit-ui [data-numeric="true"] {
 .kwant-gamma-workspace input,
 .kwant-gamma-workspace select,
 .kwant-gamma-workspace textarea {
-  font-family: "Rajdhani", "Inter", system-ui, sans-serif;
+  font-family: "Aleph", "Aleph", system-ui, sans-serif;
 }
 
 .kwant-gamma-workspace .font-mono,
@@ -1587,7 +1576,7 @@ body.kwant-cockpit-ui [data-numeric="true"] {
 .kwant-gamma-workspace [data-gamma-number="true"],
 .kwant-gamma-workspace [data-gamma-time="true"],
 .kwant-gamma-workspace svg text {
-  font-family: "JetBrains Mono", "SF Mono", monospace !important;
+  font-family: "Aleph", "Aleph", monospace !important;
   font-variant-numeric: tabular-nums slashed-zero;
   letter-spacing: -.025em;
 }
@@ -1596,7 +1585,7 @@ body.kwant-cockpit-ui h1,
 body.kwant-cockpit-ui h2,
 body.kwant-cockpit-ui h3,
 body.kwant-cockpit-ui h4 {
-  font-family: "Rajdhani", "Inter", sans-serif;
+  font-family: "Aleph", "Aleph", sans-serif;
   font-weight: 600;
   letter-spacing: .025em;
 }
@@ -1609,7 +1598,7 @@ body.kwant-cockpit-ui .kwant-command-rail {
 
 body.kwant-cockpit-ui .kwant-command-rail a,
 body.kwant-cockpit-ui .kwant-command-rail button {
-  font-family: "Rajdhani", sans-serif;
+  font-family: "Aleph", sans-serif;
 }
 
 body.kwant-cockpit-ui .kwant-chart-command-deck {
@@ -1620,7 +1609,7 @@ body.kwant-cockpit-ui .kwant-chart-command-deck {
 body.kwant-cockpit-ui .kwant-chart-command-deck button {
   min-height: 27px;
   border-radius: 3px !important;
-  font-family: "Rajdhani", sans-serif;
+  font-family: "Aleph", sans-serif;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: .045em;
@@ -1632,7 +1621,7 @@ body.kwant-cockpit-ui .kwant-chart-command-deck .kwant-chart-row-control {
   height: 28px;
   min-height: 28px;
   border-radius: 3px !important;
-  font-family: "Rajdhani", sans-serif;
+  font-family: "Aleph", sans-serif;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: .075em;
@@ -1751,7 +1740,7 @@ body.kwant-cockpit-ui table {
 body.kwant-cockpit-ui th {
   height: 27px;
   color: var(--muted);
-  font-family: "Rajdhani", sans-serif;
+  font-family: "Aleph", sans-serif;
   font-size: 9px;
   font-weight: 600;
   letter-spacing: .095em;

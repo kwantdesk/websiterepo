@@ -154,11 +154,11 @@ export class PositionCalculatorPrimitive implements ISeriesPrimitive<Time> {
         if (model.selected && model.showLabels) {
           context.globalAlpha = 1;
           context.setLineDash([]);
-          context.font = "650 10px 'JetBrains Mono', monospace";
+          context.font = "650 10px 'Aleph', monospace";
           context.textAlign = "center";
           context.textBaseline = "middle";
           const pill = (y: number, text: string, background: string, bold: boolean) => {
-            context.font = `${bold ? 700 : 650} 10px 'JetBrains Mono', monospace`;
+            context.font = `${bold ? 700 : 650} 10px 'Aleph', monospace`;
             const width = Math.max(76, context.measureText(text).width + 18);
             const left = clamp(
               x + boxWidth / 2 - width / 2,

@@ -85,7 +85,7 @@ class ForecastPaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw point markers
     const fontSize = 11;
-    ctx.font = `bold ${fontSize * pixelRatio}px sans-serif`;
+    ctx.font = `bold ${fontSize * pixelRatio}px Aleph, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -120,7 +120,7 @@ class ForecastPaneRenderer implements IPrimitivePaneRenderer {
         const padding = 6;
         const lineHeight = fontSize + 3;
 
-        ctx.font = `${fontSize * pixelRatio}px sans-serif`;
+        ctx.font = `${fontSize * pixelRatio}px Aleph, sans-serif`;
 
         let maxWidth = 0;
         for (const line of lines) {

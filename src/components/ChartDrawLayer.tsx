@@ -1149,7 +1149,7 @@ export default function ChartDrawLayer({
     const line = (x1: number, y1: number, x2: number, y2: number, color = stroke, sw = w) =>
       <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={sw} strokeDasharray={dash} />;
     const label = (x: number, y: number, text: string, color = stroke) =>
-      <text x={x} y={y} fill={color} fontSize={10} fontFamily="monospace">{text}</text>;
+      <text x={x} y={y} fill={color} fontSize={10} fontFamily="Aleph, monospace">{text}</text>;
 
     const a = coords[0]; const b = coords[1]; const c = coords[2];
     const isPositionTool = drawing.tool === "longPosition" || drawing.tool === "shortPosition";
@@ -1327,7 +1327,7 @@ export default function ChartDrawLayer({
             return (
               <g>
                 <rect x={cx - wd / 2} y={cy - 9} width={wd} height={18} rx={3} fill={bg} fillOpacity={0.92} />
-                <text x={cx} y={cy + 3.5} fill="#FFFFFF" fontSize={10} fontFamily="monospace" textAnchor="middle">{text}</text>
+                <text x={cx} y={cy + 3.5} fill="#FFFFFF" fontSize={10} fontFamily="Aleph, monospace" textAnchor="middle">{text}</text>
               </g>
             );
           };
@@ -1427,7 +1427,7 @@ export default function ChartDrawLayer({
                     y={a.y + 3}
                     fill={stroke}
                     fontSize={10}
-                    fontFamily="monospace"
+                    fontFamily="Aleph, monospace"
                     textAnchor={entry ? "end" : "start"}
                   >{drawing.text}</text>}
             </g>
@@ -1445,7 +1445,7 @@ export default function ChartDrawLayer({
         }
         case "priceLabel": {
           if (a.x == null) return null;
-          return <g><rect x={a.x} y={a.y! - 9} width={Math.max(46, (drawing.text?.length ?? 6) * 7)} height={16} rx={2} fill={stroke} /><text x={a.x + 4} y={a.y! + 3} fill="#fff" fontSize={11} fontFamily="monospace">{drawing.text || pr[0].price.toFixed(2)}</text></g>;
+          return <g><rect x={a.x} y={a.y! - 9} width={Math.max(46, (drawing.text?.length ?? 6) * 7)} height={16} rx={2} fill={stroke} /><text x={a.x + 4} y={a.y! + 3} fill="#fff" fontSize={11} fontFamily="Aleph, monospace">{drawing.text || pr[0].price.toFixed(2)}</text></g>;
         }
         case "signpost": {
           if (!b || a.x == null) return null;
@@ -1460,7 +1460,7 @@ export default function ChartDrawLayer({
           return <g><circle cx={a.x} cy={a.y!} r={7} fill={stroke} /><text x={a.x - 2} y={a.y! + 3} fill="#fff" fontSize={9}>N</text>{drawing.text ? label(a.x + 10, a.y! + 3, drawing.text) : null}</g>;
         }
         case "text":
-          return a.x == null ? null : <text x={a.x} y={a.y!} fill={stroke} fontSize={style.fontSize ?? 13} fontFamily="Inter, sans-serif">{drawing.text ?? ""}</text>;
+          return a.x == null ? null : <text x={a.x} y={a.y!} fill={stroke} fontSize={style.fontSize ?? 13} fontFamily="Aleph, sans-serif">{drawing.text ?? ""}</text>;
         case "regressionTrend": {
           if (!b || a.x == null || b.x == null) return null;
           const t0 = Math.min(pr[0].time, pr[1].time); const t1 = Math.max(pr[0].time, pr[1].time);

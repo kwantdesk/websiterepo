@@ -1,5 +1,15 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — Font rollback checkpoint
+
+- Website typography now uses the supplied Aleph Regular/Bold. Font sizes,
+  weights, tracking and layout classes remain unchanged. Emoji/icon glyphs
+  retain their appropriate rendering. Check wrapping on the signed-in dense
+  workspace: Aleph is not the old monospaced face and glyph advances differ.
+- Pre-font production is saved at tag `codex/pre-aleph-font-2026-10-17`
+  (`c1767932`). Weekly history/provider recovery, browser-memory soak and VPS
+  migration remain open; this typography change does not fix those blockers.
+
 ## 2026-10-17 — Missing execution-backed indicators
 
 - Weekly follow-up: the requested five-day NQ/ES profiles are unavailable,

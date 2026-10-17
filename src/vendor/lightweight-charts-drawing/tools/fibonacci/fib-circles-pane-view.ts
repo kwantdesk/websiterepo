@@ -82,7 +82,7 @@ class FibCirclesPaneRenderer implements IPrimitivePaneRenderer {
       if (options.showLabels) {
         const text = `${(level * 100).toFixed(1)}%`;
         const labelPos = { x: p1.x + radius, y: p1.y };
-        drawText(ctx, text, labelPos, '10px sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
+        drawText(ctx, text, labelPos, '10px Aleph, sans-serif', this._drawing.style.lineColor || '#fff', 'left', 'middle', pixelRatio);
       }
     }
 

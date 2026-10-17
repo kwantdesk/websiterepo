@@ -79,7 +79,7 @@ function drawPinnedDarkPoolLabels(
   context.beginPath();
   context.rect(0, 0, width, height);
   context.clip();
-  context.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  context.font = "10px Aleph, ui-monospace, Aleph, Aleph, monospace";
   context.textBaseline = "middle";
   for (const event of data.frame.rawEvents) {
     const y = series.priceToCoordinate(event.price);

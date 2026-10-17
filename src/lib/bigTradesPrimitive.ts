@@ -273,7 +273,7 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
             this.labelCache.set(labelKey, text);
           }
           context.globalAlpha = marker.opacity;
-          context.font = `800 ${fontSize}px 'JetBrains Mono', monospace`;
+          context.font = `800 ${fontSize}px 'Aleph', monospace`;
           context.textAlign = "center";
           context.textBaseline = "middle";
           context.lineJoin = "round";

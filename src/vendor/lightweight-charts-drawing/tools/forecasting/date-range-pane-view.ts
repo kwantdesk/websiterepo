@@ -102,7 +102,7 @@ class DateRangePaneRenderer implements IPrimitivePaneRenderer {
     // Draw info label
     const centerX = (left + right) / 2;
     const fontSize = 12;
-    ctx.font = `${fontSize * pixelRatio}px sans-serif`;
+    ctx.font = `${fontSize * pixelRatio}px Aleph, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
 
@@ -148,7 +148,7 @@ class DateRangePaneRenderer implements IPrimitivePaneRenderer {
 
     // Draw date labels if enabled
     if (options.showDates) {
-      ctx.font = `${10 * pixelRatio}px sans-serif`;
+      ctx.font = `${10 * pixelRatio}px Aleph, sans-serif`;
       ctx.fillStyle = lineColor;
 
       // Start date

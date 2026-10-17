@@ -46,7 +46,7 @@ class SmtDivergenceRenderer implements ISeriesPrimitivePaneRenderer {
       context.globalAlpha = Math.max(0.08, Math.min(1, options.opacity));
       context.lineCap = "round";
       context.lineJoin = "round";
-      context.font = `${Math.max(8, options.labelFontSize)}px 'JetBrains Mono', monospace`;
+      context.font = `${Math.max(8, options.labelFontSize)}px 'Aleph', monospace`;
 
       for (const signal of this.primitive.visibleSignals()) {
         const startX = timeScale.timeToCoordinate(Math.floor(signal.startTime / 1_000) as Time);

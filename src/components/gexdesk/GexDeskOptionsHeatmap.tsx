@@ -668,7 +668,7 @@ export default function GexDeskOptionsHeatmap({
                     return (
                       <g key={`price-grid-${index}`}>
                         <line x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={y} y2={y} stroke="var(--border)" strokeOpacity="0.36" strokeDasharray="2 5" vectorEffect="non-scaling-stroke" />
-                        <text x="930" y={y + 3} fill="var(--muted)" fontSize="9" fontFamily="monospace">{price.toFixed(0)}</text>
+                        <text x="930" y={y + 3} fill="var(--muted)" fontSize="9" fontFamily="Aleph, monospace">{price.toFixed(0)}</text>
                       </g>
                     );
                   })}
@@ -679,7 +679,7 @@ export default function GexDeskOptionsHeatmap({
                     return (
                       <g key={`time-grid-${index}`}>
                         <line x1={x} x2={x} y1={PLOT_TOP} y2={PLOT_BOTTOM} stroke="var(--border)" strokeOpacity="0.24" strokeDasharray="2 6" vectorEffect="non-scaling-stroke" />
-                        <text x={x} y="546" textAnchor={index === 0 ? "start" : index === 6 ? "end" : "middle"} fill="var(--muted)" fontSize="8" fontFamily="monospace">{timeLabel(timestamp)}</text>
+                        <text x={x} y="546" textAnchor={index === 0 ? "start" : index === 6 ? "end" : "middle"} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{timeLabel(timestamp)}</text>
                       </g>
                     );
                   })}
@@ -712,12 +712,12 @@ export default function GexDeskOptionsHeatmap({
                     <g className="gexdesk-live-price">
                       <line x1={PLOT_LEFT} x2="956" y1={model.yForPrice(currentPrice)} y2={model.yForPrice(currentPrice)} stroke="var(--foreground)" strokeOpacity="0.72" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
                       <rect x="922" y={model.yForPrice(currentPrice) - 10} width="70" height="20" rx="5" fill="var(--primary)" />
-                      <text x="957" y={model.yForPrice(currentPrice) + 3.5} textAnchor="middle" fill="var(--background)" fontSize="8.5" fontFamily="monospace" fontWeight="700">{formatPrice(currentPrice)}</text>
+                      <text x="957" y={model.yForPrice(currentPrice) + 3.5} textAnchor="middle" fill="var(--background)" fontSize="8.5" fontFamily="Aleph, monospace" fontWeight="700">{formatPrice(currentPrice)}</text>
                     </g>
                   ) : null}
                   <rect x={PLOT_LEFT} y={PLOT_TOP} width="84" height={PLOT_BOTTOM - PLOT_TOP} fill="url(#gexdesk-heat-fade)" />
-                  <text x="34" y="38" fill="var(--primary)" fontSize="8" fontFamily="monospace">CALL {view === "REPLAY" ? "GEX" : "HEAT"}</text>
-                  <text x="34" y="52" fill="var(--accent)" fontSize="8" fontFamily="monospace">PUT {view === "REPLAY" ? "GEX" : "HEAT"}</text>
+                  <text x="34" y="38" fill="var(--primary)" fontSize="8" fontFamily="Aleph, monospace">CALL {view === "REPLAY" ? "GEX" : "HEAT"}</text>
+                  <text x="34" y="52" fill="var(--accent)" fontSize="8" fontFamily="Aleph, monospace">PUT {view === "REPLAY" ? "GEX" : "HEAT"}</text>
                 </svg>
                 {(view === "REPLAY" ? replayLoading : historyLoading && !history) ? (
                   <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 rounded-xl border border-border bg-background/85 px-3 py-2 text-[6px] text-muted backdrop-blur">
