@@ -173,6 +173,7 @@ const volumeProfileRequests = new Map<string, Promise<InstitutionalVolumeProfile
 const volumeProfileFailures = new Map<string, {
   attempts: number;
   retryAfter: number;
+  message: string;
 }>();
 const VOLUME_PROFILE_RESPONSE_CACHE_MS = 10_000;
 const VOLUME_PROFILE_FAILURE_BACKOFF_BASE_MS = 15_000;
@@ -1047,6 +1048,7 @@ export async function fetchInstitutionalVolumeProfile(
     try {
       const response = await fetch(`${LOCAL_GATEWAY_ORIGIN}/v1/market-data/volume-profile?${query}`, {
         cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) {
         rememberVolumeProfileFailure(cacheKey);
@@ -1068,7 +1070,9 @@ export async function fetchInstitutionalVolumeProfile(
         || !Number.isFinite(payload.endMs)
         || payload.endMs <= payload.startMs
       ) {
-        rememberVolumeProfileFailure(cacheKey);
+        rememberVolumeProfileFailure(cacheKey, payload.complete === false
+          ? "Required session history is missing or incomplete. The profile cannot be calculated accurately yet."
+          : "The profile response was invalid. Please retry.");
         console.warn(
           `Exact volume profile response was incomplete: ${payload.provider ?? "unknown"}`
           + ` · ${args.symbol} · ${args.contractSymbol ?? "continuous"}`
@@ -1134,7 +1138,11 @@ export async function fetchInstitutionalVolumeProfile(
   return request;
 }
 
-function rememberVolumeProfileFailure(cacheKey: string) {
+export function volumeProfileFailureMessage(args: InstitutionalVolumeProfileRequest): string | null {
+  return volumeProfileFailures.get(institutionalVolumeProfileRequest(args).cacheKey)?.message ?? null;
+}
+
+function rememberVolumeProfileFailure(cacheKey: string, message = "Profile data could not load. Please retry.") {
   const previousAttempts = volumeProfileFailures.get(cacheKey)?.attempts ?? 0;
   const attempts = Math.min(previousAttempts + 1, 6);
   const retryAfter = Date.now() + Math.min(
@@ -1142,7 +1150,7 @@ function rememberVolumeProfileFailure(cacheKey: string) {
     VOLUME_PROFILE_FAILURE_BACKOFF_BASE_MS * 2 ** (attempts - 1),
   );
   volumeProfileFailures.delete(cacheKey);
-  volumeProfileFailures.set(cacheKey, { attempts, retryAfter });
+  volumeProfileFailures.set(cacheKey, { attempts, retryAfter, message });
   while (volumeProfileFailures.size > VOLUME_PROFILE_FAILURE_CACHE_MAX) {
     const oldest = volumeProfileFailures.keys().next().value;
     if (oldest === undefined) break;

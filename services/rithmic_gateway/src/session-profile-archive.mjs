@@ -438,9 +438,11 @@ export class SessionProfileArchive {
     );
     const keys = availableDates.map((tradingDate) => `${upper}:${upperSymbol}:${tradingDate}:${tick}`);
     const authoritativeIntervals = [];
+    const readyDates = new Set();
     const sessions = (await Promise.all(
       availableDates.map(async (tradingDate) => {
         const session = await this.sessionLevels(tradingDate, upper, upperSymbol, tick, false);
+        if (session) readyDates.add(tradingDate);
         if (session?.historyPlant) authoritativeIntervals.push(cmeSessionBounds(tradingDate));
         return session;
       }),
@@ -520,6 +522,12 @@ export class SessionProfileArchive {
       tickSize: tick,
       coverageStartMs,
       coverageEndMs,
+      // CME session-start dates run Sunday through Thursday. Do not report
+      // a complete week merely because its first/last available days exist.
+      missingSessionDates: tradingDatesBetween(start, end - 1).filter(date => {
+        const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+        return weekday !== 5 && weekday !== 6 && !readyDates.has(date);
+      }),
       // Completed, reconciled provider replay owns the ENTIRE session,
       // including its empty maintenance hour. A stale live-ring print must
       // not be appended merely because it is newer than the last real trade.

@@ -794,6 +794,7 @@ interface ChartProps {
   classicGexError?: string | null;
   expectedMoveCalibration?: ChartGammaCalibration | null;
   volumeProfiles?: InstitutionalVolumeProfile[];
+  volumeProfileError?: string | null;
   onUpdateIndicatorSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenIndicatorSettings?: (instanceId: string) => void;
   settings?: ChartSettings;
@@ -3260,6 +3261,7 @@ function Chart({
   classicGexError = null,
   expectedMoveCalibration = null,
   volumeProfiles = EMPTY_CHART_ITEMS,
+  volumeProfileError = null,
   onUpdateIndicatorSetting,
   onOpenIndicatorSettings,
   settings = defaultChartSettings,
@@ -19935,6 +19937,11 @@ function Chart({
         >
           <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
           <span>Syncing {instrument} Gamma</span>
+        </div>
+      ) : null}
+      {volumeProfileError ? (
+        <div className="pointer-events-none absolute left-3 top-10 z-[19] max-w-[420px] border border-border bg-background px-3 py-2 font-mono text-[10px] text-foreground" role="status">
+          {volumeProfileError}
         </div>
       ) : null}
       {footprintIndicator && exactFootprintHistory.error ? (

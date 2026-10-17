@@ -183,6 +183,7 @@ import {
   fetchInstitutionalSnapshot,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
+  volumeProfileFailureMessage,
   isExecutionBackedVolumeProfile,
   readCachedInstitutionalVolumeProfile,
   repairInstitutionalCandleSeries,
@@ -5557,6 +5558,7 @@ function WorkspaceChartPaneComponent({
   }, [active, onLiveExecutionQuote, pane.id, pane.symbol, replayActive, replayDisplayCandles, replayTimestampMs]);
   const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
+  const [weeklyProfileFailure, setWeeklyProfileFailure] = useState<{ key: string; message: string } | null>(null);
   /**
    * A one-minute series for the Initial Balance study, independent of the
    * chart's own timeframe.
@@ -9300,7 +9302,12 @@ function WorkspaceChartPaneComponent({
         } as const;
         requests.push((async () => {
           replaceExactProfile(await readCachedInstitutionalVolumeProfile(weeklyRequestArgs));
-          replaceExactProfile(await fetchInstitutionalVolumeProfile(weeklyRequestArgs));
+          const profile = await fetchInstitutionalVolumeProfile(weeklyRequestArgs);
+          replaceExactProfile(profile);
+          if (!cancelled) setWeeklyProfileFailure(profile ? null : {
+            key: `${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`,
+            message: volumeProfileFailureMessage(weeklyRequestArgs) ?? "Required session history is unavailable.",
+          });
         })());
       }
       if (compositeProfileInstance && compositeProfileRange && includeCompletedProfiles) {
@@ -9563,6 +9570,8 @@ function WorkspaceChartPaneComponent({
           classicGexError={classicGexError}
           expectedMoveCalibration={expectedMoveCalibration}
           volumeProfiles={volumeProfiles}
+          volumeProfileError={weeklyProfileInstance && weeklyProfileFailure?.key === `${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`
+            ? `Weekly Volume Profile: ${weeklyProfileFailure.message}` : null}
           armedOrder={armedOrder}
           paperWorkingOrders={paperWorkingOrders}
           onArmedOrderPick={onArmedOrderPick}

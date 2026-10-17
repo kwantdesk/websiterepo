@@ -2,6 +2,12 @@
 
 ## 2026-10-17 — Missing execution-backed indicators
 
+- Weekly follow-up: the requested five-day NQ/ES profiles are unavailable,
+  not still calculating: one/two source sessions are missing. Recovery retry
+  still failed at TLS connection. Explicit chart errors and a 15-second
+  request deadline replace silent waiting; missing interior sessions now
+  prevent a false complete profile. Full weekly data recovery remains open.
+
 - Temporary candle history alone was insufficient: restored exact NQ/ES
   executions now feed profiles, minute delta and bounded Footprint history.
   Fixed stale source caches, completed-session snapshot overwrites and exact

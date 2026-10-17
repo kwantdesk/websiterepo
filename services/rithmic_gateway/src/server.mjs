@@ -2643,6 +2643,7 @@ const server = createServer(async (request, response) => {
         endMs,
         coverageStartMs,
         coverageEndMs,
+        missingSessionDates: foldedProfile?.missingSessionDates ?? [],
         /*
          * Whether the window asked for was actually covered.
          *
@@ -2662,6 +2663,7 @@ const server = createServer(async (request, response) => {
           ? coverageStartMs !== null
             && coverageStartMs <= startMs + 5 * 60_000
             && !coverageHasGap
+            && !(foldedProfile?.missingSessionDates?.length)
           : null,
         tickSize: priceTick,
         groupTicks,

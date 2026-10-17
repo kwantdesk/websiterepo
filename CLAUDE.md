@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Weekly profile unavailable is not perpetual loading
+
+- Latest five-day NQ/ES weekly requests lack one/two execution sessions;
+  the provider still resets the History Plant recovery connection. A fast
+  incomplete result was being rejected silently. Do not call this repaired
+  history or reduce the requested five-day window to make a profile appear.
+- Profiles now identify missing interior CME session dates as well as their
+  endpoints. Requests have a 15-second browser deadline, and weekly failure
+  reaches the chart with scoped missing-history/unavailable text. Valid
+  cached profiles remain painted; existing bounded retry backoff is unchanged.
+- Tests/evidence: `docs/prompt-log/2026-10-17-weekly-profile-unavailable.md`.
+
 ## 2026-10-17 — Indicator history after temporary-backend recovery
 
 - Candle-only backfill did not restore executions. The temporary gateway had
