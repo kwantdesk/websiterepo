@@ -49,6 +49,23 @@ test("Socials retains explicit profile-save flow, local uploads and circular mas
   assert.doesNotMatch(component, /Profile photo prepared at 1080/);
 });
 
+test("selected avatar tick paints above the image without circular-button clipping", () => {
+  const text = readFileSync(new URL("../src/components/socials/useProfileAvatarEditor.tsx", import.meta.url), "utf8");
+  const ast = ts.createSourceFile("editor.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let pickerButton;
+  const visit = node => {
+    if (ts.isJsxElement(node) && node.openingElement.tagName.getText(ast) === "button"
+      && node.openingElement.attributes.getText(ast).includes("key={avatar.id}")) pickerButton = node;
+    ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  assert.ok(pickerButton);
+  assert.match(pickerButton.openingElement.getText(ast), /overflow-visible/);
+  assert.doesNotMatch(pickerButton.openingElement.getText(ast), /overflow-hidden/);
+  assert.match(pickerButton.getText(ast), /data-avatar-selected-badge className="[^"]*z-10/);
+  assert.match(pickerButton.getText(ast), /className="h-full w-full rounded-full object-cover"/);
+});
+
 function handlers() {
   const text = readFileSync(new URL("../src/components/socials/useProfileAvatarEditor.tsx", import.meta.url), "utf8");
   const ast = ts.createSourceFile("socials.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

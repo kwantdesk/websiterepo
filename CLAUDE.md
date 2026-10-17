@@ -1,5 +1,13 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Avatar selection tick foreground
+
+- Shared Settings/Socials avatar buttons must allow overflow. Round only the
+  image; keep the selected 20px tick badge on z-10 with a panel-colour ring.
+  Clipping the button cuts the badge off against the circular edge.
+- Twenty-eight focused avatar/profile tests pass, including actual picker JSX
+  regression. Record: `docs/prompt-log/2026-10-17-avatar-selection-tick.md`.
+
 ## 2026-10-17 — Profile record and collection management
 
 - Owner profile cards now expose Options for posts, Gameplans, liked, reposted
@@ -13,9 +21,10 @@
 - Gameplan profile notes are separate from locked trading fields. Migration
   `supabase/migrations/202610170001_social_profile_management.sql` permits only
   publication scope plus archive/profile-note metadata to change on locked rows;
-  all thesis/prices/hash/timestamps/scores remain immutable. Owner requested SQL
-  to run themselves. APPLICATION OF THIS MIGRATION IS NOT YET CONFIRMED.
-  Gameplan archive/privacy/note writes fail explicitly until it is applied.
+  all thesis/prices/hash/timestamps/scores remain immutable. Owner confirmed
+  running this migration on 2026-10-17. Recorded as owner-confirmed applied;
+  independent database/function inspection and signed-in action checks are not
+  yet verified. Website runtime remains verified at a5df0f884a667700d129083370627fadd44d90d2.
 - Twenty-seven focused management/avatar tests pass; authenticated multi-user
   browser checks and live SQL migration verification remain open. Prompt record:
   `docs/prompt-log/2026-10-17-profile-item-management.md`.

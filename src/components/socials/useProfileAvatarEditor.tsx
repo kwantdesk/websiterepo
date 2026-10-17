@@ -211,10 +211,10 @@ export function useProfileAvatarEditor({ profileDraft, setProfileDraft, setNotic
                     <p className="mt-1 text-[8px] leading-4 text-muted">Choose an avatar, or upload your own. Save your profile to publish.</p>
                     <div className="mt-3 grid grid-cols-5 gap-2 max-w-sm" aria-label="Profile avatar choices">
                       {SOCIAL_AVATAR_PRESETS.map((avatar) => (
-                        <button key={avatar.id} type="button" disabled={disabled} aria-label={`Choose ${avatar.name} avatar`} title={avatar.name} aria-pressed={selectedPalettePreset?.id === avatar.id} onClick={() => selectPresetAvatar(avatar.url, avatar.name)} className={`relative aspect-square overflow-hidden rounded-full border-2 transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${selectedPalettePreset?.id === avatar.id ? "border-primary ring-2 ring-primary/25" : "border-border hover:border-primary/50"}`}>
+                        <button key={avatar.id} type="button" disabled={disabled} aria-label={`Choose ${avatar.name} avatar`} title={avatar.name} aria-pressed={selectedPalettePreset?.id === avatar.id} onClick={() => selectPresetAvatar(avatar.url, avatar.name)} className={`relative aspect-square overflow-visible rounded-full border-2 transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${selectedPalettePreset?.id === avatar.id ? "border-primary ring-2 ring-primary/25" : "border-border hover:border-primary/50"}`}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={avatar.path} alt="" loading="lazy" decoding="async" width={500} height={500} className="h-full w-full object-cover" />
-                          {selectedPalettePreset?.id === avatar.id ? <span className="absolute bottom-0 right-0 rounded-full bg-primary p-0.5 text-on-primary"><Check className="h-3 w-3" /></span> : null}
+                          <img src={avatar.path} alt="" loading="lazy" decoding="async" width={500} height={500} className="h-full w-full rounded-full object-cover" />
+                          {selectedPalettePreset?.id === avatar.id ? <span aria-hidden="true" data-avatar-selected-badge className="pointer-events-none absolute bottom-0 right-0 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-on-primary ring-2 ring-panel"><Check className="h-3 w-3" /></span> : null}
                         </button>
                       ))}
                     </div>

@@ -28,9 +28,11 @@ followers. No market-data requests, infrastructure purchase or feed changes.
 Database dependency: locked precord rows currently reject every UPDATE. The
 provided migration replaces that trigger with a comparison allowing only scope,
 updated_at and three presentation metadata fields; all other fields stay locked.
-Owner explicitly chose to run the SQL themselves. The migration has NOT been
-confirmed applied. Archive/privacy/profile-note actions on Gameplans remain
-blocked with an honest error until then. Deleting an owned Socials copy and
+Owner explicitly chose to run the SQL themselves and subsequently confirmed
+completion on 2026-10-17. Recorded as owner-confirmed applied; no independent
+database function inspection or signed-in mutation was performed. Public runtime
+was rechecked at a5df0f884a667700d129083370627fadd44d90d2. No additional website
+deployment is needed for the SQL change. Deleting an owned Socials copy and
 post/reaction actions do not require that trigger change.
 
 Verification: 27 focused tests pass, including real PATCH-handler execution
