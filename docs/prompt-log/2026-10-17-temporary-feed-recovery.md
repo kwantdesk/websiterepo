@@ -46,6 +46,22 @@ Move the gateway back to a VPS after support responds.
   gateway. No direct provider fallback was enabled on Vercel. A Vercel spending
   cap has not yet been independently confirmed; do not promise a zero bill.
 
+## Recovery verification update
+
+- The renewed key was installed in a private owner-only backend file outside
+  the repository. QuantData snapshot polling now reports connected/configured
+  and no authentication error. No key value is recorded in this log.
+- All 65 requested options-underlying sessions completed successfully: 13
+  physical tickers across October 12–16, including VIX. These are underlying
+  chart candles, not a historical archive of individual option contracts.
+- The first Cloudflare HTTP/2 relay repeatedly lost its control stream and
+  produced stalls/530 responses. It was replaced by a detached QUIC relay.
+  Three full public NQ/ES history responses passed, returning 6,901 bars in
+  0.95–1.55 seconds, before the final production environment cutover.
+- Production health and the actual chart-history API must be checked after
+  the final Git deployment. This is a temporary weekend recovery, not evidence
+  of a market-open load test or a permanent uptime guarantee.
+
 ## Limits and handback
 
 This computer must stay awake and online for the temporary gateway. Last week's

@@ -21,6 +21,11 @@
   and endpoint verification are recorded in the prompt log. No live RTH claim.
 - Prompt, data limits and VPS return procedure:
   `docs/prompt-log/2026-10-17-temporary-feed-recovery.md`.
+- Follow-up: the renewed QuantData key is installed privately on the temporary
+  backend and options snapshots authenticate. All 65 underlying sessions and
+  49 of 53 futures roots imported. A detached QUIC relay replaced the unstable
+  HTTP/2 relay; full public NQ/ES history reads pass in roughly 1–1.5 seconds.
+  Return new recordings and these minute archives to the VPS before cutover.
 
 ## 2026-09-07 — GEX Levels production incident and rollback
 

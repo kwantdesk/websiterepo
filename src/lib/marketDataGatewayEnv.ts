@@ -14,6 +14,8 @@
 // Environment updates require a new production build to reach existing functions.
 // Check reachability from Vercel itself: a relay reachable on the owner's VPN
 // can still be unreachable from the hosted application's network.
+// Validate complete history responses before cutover, not just a small health
+// response: the emergency relay's transport must survive those larger reads.
 
 const GATEWAY_URL_KEYS = [
   "KWANTDESK_MARKET_DATA_GATEWAY_URL",

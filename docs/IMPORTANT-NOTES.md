@@ -362,8 +362,11 @@ recap of the open items below and update this file when their state changes.
   before restoring the same Rithmic login to a VPS. New recordings are under
   `%LOCALAPPDATA%/KwantDesk/temporary-market-gateway/services/rithmic_gateway/recordings`.
   Last week's minute-bar import is separate from unavailable exact tick/L3
-  history. QuantData's saved key currently returns 403 / API subscription
-  required; renewed entitlement/key verification is still blocking options.
+  history. The renewed QuantData key is now installed on the temporary backend;
+  all 65 last-week underlying sessions imported successfully. Futures history
+  passed for 49 roots; QM, UB, 10Y and SR3 remain provider-reference blocked.
+  A detached QUIC HTTPS relay replaced the unstable HTTP/2 relay. Vercel's
+  duplicate project is disconnected; the overall spend cap remains unconfirmed.
   See `docs/prompt-log/2026-10-17-temporary-feed-recovery.md`.
 
 - Preserve the live-feed priority rule: no bulk history, archive compaction or
