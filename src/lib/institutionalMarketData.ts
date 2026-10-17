@@ -1,6 +1,6 @@
 import type { Candle } from "@/lib/backtester";
 import { auctionGapHistorySource } from "./auctionGapHistorySource.ts";
-import { cmeEventTailCutoffMs, cmeSessionDateKey } from "@/lib/chartHistoryWindow";
+import { cmeEventTailCutoffMs, cmeSessionDateKey, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 import { futuresTickSize } from "@/lib/eventBars";
 import {
   calculateVolumeProfileValueArea,
@@ -979,7 +979,7 @@ export type InstitutionalVolumeProfileRequest = {
   useEndSessionAsStartDay?: boolean;
 };
 
-function institutionalVolumeProfileRequest(args: InstitutionalVolumeProfileRequest) {
+export function institutionalVolumeProfileRequest(args: InstitutionalVolumeProfileRequest) {
   const requestedValueArea = Number(args.valueAreaPercent);
   // The trader's own % Value Area. This was previously pinned to the 70%
   // convention here as well as on the route, so the setting never arrived.
@@ -1008,6 +1008,16 @@ function institutionalVolumeProfileRequest(args: InstitutionalVolumeProfileReque
   if (/^\d{4}-\d{2}-\d{2}$/.test(args.tradingDate ?? "")) query.set("tradingDate", args.tradingDate!);
   if (Number.isFinite(args.startMs)) query.set("startMs", String(args.startMs));
   if (Number.isFinite(args.endMs)) query.set("endMs", String(args.endMs));
+  // Browser labels are the business-date CLOSE; gateway archive keys name
+  // the preceding session OPEN. Send the actual window rather than letting
+  // the same date label silently select the following (often empty) session.
+  if (args.period === "daily" && args.tradingDate && !Number.isFinite(args.startMs) && !Number.isFinite(args.endMs)) {
+    const session = cmeSessionWindowForDate(args.tradingDate);
+    if (session) {
+      query.set("startMs", String(session.startMs));
+      query.set("endMs", String(session.endMs));
+    }
+  }
   return { askedValueAreaPercent, query, cacheKey: query.toString() };
 }
 

@@ -58,6 +58,11 @@ test("continuity never leaks a profile across symbol, contract, or removed-study
   assert.equal(shouldRetainLastGoodVolumeProfile(previousFrame, scope({ compositeEnabled: false }), "2026-09-07"), false);
 });
 
+test("offline profile continuity may use its exact archived root without a live front month", () => {
+  assert.equal(shouldRetainLastGoodVolumeProfile(profile("daily"), scope({ contractSymbol: null }), "2026-09-07"), true);
+  assert.equal(shouldRetainLastGoodVolumeProfile(profile("daily", { contractSymbol: "MNQZ6" }), scope({ contractSymbol: null }), "2026-09-07"), false);
+});
+
 test("daily session removal is immediate but recalculation settings do not blank the frame", () => {
   const asia = profile("daily", { sessionId: "asia" });
   assert.equal(

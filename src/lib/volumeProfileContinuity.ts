@@ -2,7 +2,7 @@ import type { InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
 
 export type VolumeProfileContinuityScope = {
   root: string;
-  contractSymbol: string;
+  contractSymbol: string | null;
   dailyEnabled: boolean;
   weeklyEnabled: boolean;
   compositeEnabled: boolean;
@@ -32,7 +32,8 @@ export function shouldRetainLastGoodVolumeProfile(
   dailyTradingDate: string,
 ) {
   if (profile.root !== scope.root) return false;
-  if (normalizeSymbol(profile.contractSymbol) !== normalizeSymbol(scope.contractSymbol)) return false;
+  if (scope.contractSymbol && normalizeSymbol(profile.contractSymbol) !== normalizeSymbol(scope.contractSymbol)) return false;
+  if (normalizeSymbol(profile.contractSymbol).replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "") !== normalizeSymbol(scope.root)) return false;
 
   if (profile.period === "daily") {
     return scope.dailyEnabled

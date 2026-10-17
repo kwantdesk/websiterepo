@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — Profiles enabled but invisible on all instruments
+
+- Fixed shared daily session-boundary mismatch and removed the live-feed
+  connection prerequisite for archived profiles. Exact archived identity is
+  required; no mini/micro substitution or guessed rollover contract.
+- Verified complete Friday NQ/ES daily profiles against the real gateway using
+  the browser request builder. This does not prove all instruments have history.
+- Still open: missing NQ session-start Oct11 and ES Oct11/12, exact tape for
+  other futures, authenticated chart/memory soak and VPS migration. Weekly
+  profiles cannot be called restored until all required history is recovered.
+- Evidence: `docs/prompt-log/2026-10-17-profile-display-session-routing.md`.
+
 ## 2026-10-17 — Font rollback checkpoint
 
 - Website typography now uses the supplied Aleph Regular/Bold. Font sizes,

@@ -5559,6 +5559,7 @@ function WorkspaceChartPaneComponent({
   const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
   const [weeklyProfileFailure, setWeeklyProfileFailure] = useState<{ key: string; message: string } | null>(null);
+  const [dailyProfileFailure, setDailyProfileFailure] = useState<{ key: string; message: string } | null>(null);
   /**
    * A one-minute series for the Initial Balance study, independent of the
    * chart's own timeframe.
@@ -8965,12 +8966,13 @@ function WorkspaceChartPaneComponent({
       setVolumeProfiles([]);
       return;
     }
+    // Cash/options panes have their own projection/source effects above.
+    if (pane.broker !== "Databento") return;
     // Daily profiles are execution-tape driven and must be allowed to load at
     // Globex open even while candle restoration is still in flight. Weekly
     // profiles still require candles to define their visible five-day window.
     if (
-      !resolvedContractSymbol
-      || (!dailyProfileInstance && Boolean(weeklyProfileInstance || compositeProfileInstance) && candles.length === 0)
+      !dailyProfileInstance && Boolean(weeklyProfileInstance || compositeProfileInstance) && candles.length === 0
     ) return;
 
     let cancelled = false;
@@ -8982,7 +8984,7 @@ function WorkspaceChartPaneComponent({
       : [];
     const activeRoot = displayCmeSymbol(pane.symbol);
     const activeTradingDates = new Set(tradingDates);
-    const normalizedContractSymbol = resolvedContractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const normalizedContractSymbol = resolvedContractSymbol?.toUpperCase().replace(/[^A-Z0-9]/g, "") ?? null;
     /*
      * Always fetched at TICK resolution, in BOTH grouping modes.
      *
@@ -9024,7 +9026,8 @@ function WorkspaceChartPaneComponent({
     };
     const matchesRequestedProfile = (profile: InstitutionalVolumeProfile) => {
       if (!isExecutionBackedVolumeProfile(profile) || profile.root !== activeRoot) return false;
-      if (profile.contractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "") !== normalizedContractSymbol) return false;
+      if (normalizedContractSymbol && profile.contractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "") !== normalizedContractSymbol) return false;
+      if (profile.contractSymbol.toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "") !== activeRoot) return false;
       const expectedGroupTicks = profile.period === "weekly"
         ? requestedWeeklyGroupTicks
         : profile.period === "custom"
@@ -9226,7 +9229,7 @@ function WorkspaceChartPaneComponent({
           jobs.forEach((job) => {
             const requestArgs = {
               symbol: displayCmeSymbol(pane.symbol),
-              contractSymbol: resolvedContractSymbol,
+              contractSymbol: resolvedContractSymbol ?? undefined,
               period: "daily",
               tradingDate: job.tradingDate,
               startMs: job.startMs,
@@ -9278,7 +9281,7 @@ function WorkspaceChartPaneComponent({
         );
         const weeklyRequestArgs = {
           symbol: displayCmeSymbol(pane.symbol),
-          contractSymbol: resolvedContractSymbol,
+          contractSymbol: resolvedContractSymbol ?? undefined,
           period: "weekly",
           startMs: weekStartMs,
           // A finished week is bounded at this week's open so no part of the
@@ -9305,7 +9308,7 @@ function WorkspaceChartPaneComponent({
           const profile = await fetchInstitutionalVolumeProfile(weeklyRequestArgs);
           replaceExactProfile(profile);
           if (!cancelled) setWeeklyProfileFailure(profile ? null : {
-            key: `${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`,
+            key: `${activeRoot}:${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`,
             message: volumeProfileFailureMessage(weeklyRequestArgs) ?? "Required session history is unavailable.",
           });
         })());
@@ -9313,7 +9316,7 @@ function WorkspaceChartPaneComponent({
       if (compositeProfileInstance && compositeProfileRange && includeCompletedProfiles) {
         const compositeRequestArgs = {
           symbol: displayCmeSymbol(pane.symbol),
-          contractSymbol: resolvedContractSymbol,
+          contractSymbol: resolvedContractSymbol ?? undefined,
           period: "custom",
           startMs: compositeProfileRange.startMs,
           endMs: compositeProfileRange.endMs,
@@ -9334,6 +9337,10 @@ function WorkspaceChartPaneComponent({
       }
       await Promise.allSettled(requests);
       if (!cancelled) {
+        setDailyProfileFailure(!dailyProfileInstance || currentDailyProfileLoaded ? null : {
+          key: `${activeRoot}:${resolvedContractSymbol}:${dailyProfileInstance.instanceId}`,
+          message: "Latest session history is unavailable; the daily profile cannot be calculated yet.",
+        });
         consecutiveCurrentProfileFailures = currentDailyProfileLoaded
           ? 0
           : consecutiveCurrentProfileFailures + 1;
@@ -9384,6 +9391,7 @@ function WorkspaceChartPaneComponent({
     dailyProfileSettings.minTradeVolume,
     dailyTradingDateSignature,
     currentDailyTradingDate,
+    pane.broker,
     pane.symbol,
     resolvedContractSymbol,
     weeklyProfileInstance?.instanceId,
@@ -9570,8 +9578,10 @@ function WorkspaceChartPaneComponent({
           classicGexError={classicGexError}
           expectedMoveCalibration={expectedMoveCalibration}
           volumeProfiles={volumeProfiles}
-          volumeProfileError={weeklyProfileInstance && weeklyProfileFailure?.key === `${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`
-            ? `Weekly Volume Profile: ${weeklyProfileFailure.message}` : null}
+          volumeProfileError={weeklyProfileInstance && weeklyProfileFailure?.key === `${displayCmeSymbol(pane.symbol)}:${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`
+              ? `Weekly Volume Profile: ${weeklyProfileFailure.message}`
+              : dailyProfileInstance && dailyProfileFailure?.key === `${displayCmeSymbol(pane.symbol)}:${resolvedContractSymbol}:${dailyProfileInstance.instanceId}`
+                ? `Daily Volume Profile: ${dailyProfileFailure.message}` : null}
           armedOrder={armedOrder}
           paperWorkingOrders={paperWorkingOrders}
           onArmedOrderPick={onArmedOrderPick}

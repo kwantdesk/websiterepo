@@ -15,6 +15,7 @@ import { FuturesBarArchive, HistoryRequestError, parseIntervalMs } from "./futur
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
 import { loadExactTapeWindow } from "./exact-tape-window.mjs";
+import { archivedProfileContract } from "./archived-profile-contract.mjs";
 import {
   completeTradeSseSeed,
   createTradeSseSubscriber,
@@ -2484,11 +2485,15 @@ const server = createServer(async (request, response) => {
       });
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/volume-profile") {
-      const instrument = requestedInstrument(url, {}, { exactRoot: true });
-      client.subscribe(instrument.exchange, instrument.symbol);
-      const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1);
-      if (!snapshot) return json(response, 404, { error: "Instrument is not subscribed." });
       const { tradingDate, startMs, endMs } = resolveVolumeProfileRange(url.searchParams);
+      const instrument = requestedInstrument(url, {}, { exactRoot: true });
+      const asked = String(url.searchParams.get("contractSymbol") || url.searchParams.get("symbol") || "").toUpperCase();
+      if (!/[FGHJKMNQUVXZ]\d{1,2}$/.test(asked)) {
+        const recorded = archivedProfileContract(config.recordDir, instrument.exchange, contractRoot(asked), startMs, endMs);
+        if (recorded) instrument.symbol = recorded;
+      }
+      // Historical profiles are tape-backed and must not require a live
+      // snapshot/subscription during a provider outage or the weekend.
       const groupTicks = Math.max(1, Number(url.searchParams.get("groupTicks") || 1));
       const valueAreaPercent = Math.max(
         1,

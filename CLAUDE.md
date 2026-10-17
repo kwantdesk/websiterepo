@@ -1,5 +1,22 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Invisible daily/weekly profiles across instruments
+
+- Browser daily dates label the closing business date; archive sessions use
+  the opening date. Daily requests now include explicit CME session boundaries
+  while retaining the browser label for live-flow ownership. Do not repair this
+  by changing every browser date label or guessing an exchange offset.
+- Archived profiles no longer depend on a connected live contract resolver or
+  book snapshot. Root-only requests select an unambiguous exact recorded
+  contract in the requested window; mini/micro roots remain separate and
+  ambiguous rollover identity is rejected. This is not a live front-month rule.
+- Existing same-root valid profiles survive disconnected startup. Cash/options
+  projection effects remain separate. Missing daily history now reports an error.
+- Actual browser query builder through public gateway verified complete NQZ6
+  and ESZ6 Friday daily profiles (3826/535 price levels). Weekly source sessions
+  and other roots remain missing; authenticated UI soak is still unverified.
+- Evidence: `docs/prompt-log/2026-10-17-profile-display-session-routing.md`.
+
 ## 2026-10-17 — Aleph website typography
 
 - Owner supplied `Aleph_Fonts.zip` and requested every website text face be
