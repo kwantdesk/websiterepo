@@ -367,6 +367,9 @@ recap of the open items below and update this file when their state changes.
   passed for 49 roots; QM, UB, 10Y and SR3 remain provider-reference blocked.
   A detached QUIC HTTPS relay replaced the unstable HTTP/2 relay. Vercel's
   duplicate project is disconnected; the overall spend cap remains unconfirmed.
+  Quick-tunnel HTTP history passed, but its SSE initial-frame probe timed out:
+  restore the VPS streaming origin before live trading. Vercel billing reports
+  overdue; no payment or spending-limit mutation was made by this recovery.
   See `docs/prompt-log/2026-10-17-temporary-feed-recovery.md`.
 
 - Preserve the live-feed priority rule: no bulk history, archive compaction or

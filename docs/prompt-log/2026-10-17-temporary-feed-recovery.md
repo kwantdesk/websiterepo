@@ -61,8 +61,27 @@ Move the gateway back to a VPS after support responds.
 - Production health and the actual chart-history API must be checked after
   the final Git deployment. This is a temporary weekend recovery, not evidence
   of a market-open load test or a permanent uptime guarantee.
+- Five-day HTTP history checks passed for all 13 options-underlying tickers:
+  all had five dates and zero invalid OHLC. Four concurrent public requests
+  for NQ, ES, QQQ and SPX returned complete payloads in 1.1–2.4 seconds.
+- Provider-edge request-coalescing/quota tests passed 8/8, in addition to the
+  volume-profile cost-containment tests. No new paid infrastructure was created.
+- The public quick-tunnel SSE probe did not deliver its initial frame within
+  six seconds. This relay is suitable only for the temporary weekend historical
+  access that has been verified. Restore a proper VPS/direct streaming origin
+  before live trading; do not claim the quick tunnel's live feed is verified.
 
 ## Limits and handback
+
+Final production verification: runtime SHA
+`d3c6a816d91735f898fd5e65e20bbbcbd413a7d6` is deployed. Public diagnostics
+returned HTTP 200, gateway HTTP 200, connected/authenticated true, and archived
+SPX October 16 history with 1,015 bars. SPX, NDX and QQQ gamma exposure requests
+each returned HTTP 200 from the backend. Unauthenticated website history routes
+still return 401 as intended; no signed-in browser/market-open claim is made.
+The failed HTTP/2 relay was stopped; the detached QUIC relay and gateway remain
+running. No paid replacement VPS was provisioned. Documentation-only follow-up
+is pushed through the existing ignored-build gate.
 
 This computer must stay awake and online for the temporary gateway. Last week's
 minute bars support minute-and-higher timeframes; they do not prove historical
