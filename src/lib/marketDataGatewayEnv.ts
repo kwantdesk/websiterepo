@@ -9,6 +9,9 @@
 // of remembering a name.
 //
 // Order is precedence: the first name that carries a value wins.
+// During a temporary relay cutover, update every production URL alias together:
+// the production ordering below deliberately prefers any configured VPS origin.
+// Environment updates require a new production build to reach existing functions.
 
 const GATEWAY_URL_KEYS = [
   "KWANTDESK_MARKET_DATA_GATEWAY_URL",

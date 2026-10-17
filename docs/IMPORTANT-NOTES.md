@@ -356,6 +356,16 @@ recap of the open items below and update this file when their state changes.
 
 ## P0 — Launch reliability
 
+- **2026-10-17 temporary recovery:** Vultr account closure has made the old
+  collector unreachable. The temporary committed gateway runs on the owner's
+  Windows computer through Tailscale Funnel; keep it awake/online and stop it
+  before restoring the same Rithmic login to a VPS. New recordings are under
+  `%LOCALAPPDATA%/KwantDesk/temporary-market-gateway/services/rithmic_gateway/recordings`.
+  Last week's minute-bar import is separate from unavailable exact tick/L3
+  history. QuantData's saved key currently returns 403 / API subscription
+  required; renewed entitlement/key verification is still blocking options.
+  See `docs/prompt-log/2026-10-17-temporary-feed-recovery.md`.
+
 - Preserve the live-feed priority rule: no bulk history, archive compaction or
   analytics work may compete with Rithmic or QuantData during the US market
   open. A healthy HTTP process is not sufficient; live timestamps and recorder

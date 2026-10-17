@@ -1,5 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Temporary gateway after Vultr account closure
+
+- The old feed VPS is unreachable. The owner requested a temporary recovery
+  until Vultr responds, with the latest five futures/options sessions.
+- A committed-HEAD gateway runs at
+  `%LOCALAPPDATA%/KwantDesk/temporary-market-gateway`, through the existing
+  Tailscale Funnel. This computer must stay awake and online. Stop this owner
+  before starting the same Rithmic login on a replacement VPS.
+- Rithmic Ticker and History Plant logins are authenticated. Five-session
+  NQZ6/ESZ6 minute imports each returned 6,900 valid bars. The offered-root
+  import continues with checkpointing; provider-rejected roots remain explicit.
+- Production gateway URL/token/provider aliases were updated on only
+  `websiterepo-yfmi`. The scoped runtime-source comment commit intentionally
+  applies those environment updates through the normal main-only Git build.
+- QuantData's saved key returns 403 / active API subscription required. Owner
+  verification of the renewed API entitlement/key is pending. Do not claim
+  options are restored or enable retired providers as a substitute.
+- Ten gateway environment-resolution tests pass. Final production deployment
+  and endpoint verification are recorded in the prompt log. No live RTH claim.
+- Prompt, data limits and VPS return procedure:
+  `docs/prompt-log/2026-10-17-temporary-feed-recovery.md`.
+
 ## 2026-09-07 — GEX Levels production incident and rollback
 
 - `be186dfc` caused production Charts to spin/crash during startup and was
