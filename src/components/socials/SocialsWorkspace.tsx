@@ -70,6 +70,7 @@ import TradePostChart from "@/components/socials/TradePostChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { useProfileAvatarEditor } from "@/components/socials/useProfileAvatarEditor";
+import { isProfileArchived, resolveProfileManagedItem, type ProfileCollection, type ProfileItemAction, type ProfileAudience } from "@/lib/socialProfileManagement";
 import type { PreparedAvatar } from "@/lib/avatarPalette";
 import { cacheProfileIdentity } from "@/lib/profileIdentityCache";
 import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
@@ -1197,15 +1198,16 @@ export default function SocialsWorkspace({
   };
   const viewedProfileLiked = viewedReactionCollection("LIKE");
   const viewedProfileSaved = viewedReactionCollection("SAVED");
+  const profileManagedItem = (object: SocialObject, collection: ProfileCollection) => resolveProfileManagedItem(object, collection, resolvedAccountKey, reactions);
   const savedGameplanIds = new Set(
     reactions
-      .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED")
+      .filter((reaction) => reaction.userId === resolvedAccountKey && !isProfileArchived(reaction) && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED")
       .map((reaction) => reaction.parentId)
       .filter((id): id is string => Boolean(id)),
   );
   const repostedGameplanIds = new Set(
     posts
-      .filter((post) => post.userId === resolvedAccountKey && typedPayload<SocialPostPayload>(post)?.isRepost)
+      .filter((post) => post.userId === resolvedAccountKey && !isProfileArchived(post) && typedPayload<SocialPostPayload>(post)?.isRepost)
       .map((post) => typedPayload<SocialPostPayload>(post)?.relatedPrecordId)
       .filter((id): id is string => Boolean(id)),
   );
@@ -1635,6 +1637,7 @@ export default function SocialsWorkspace({
     const normalizedQuery = query.trim().toLowerCase();
     return precords.filter((object) => {
       const payload = typedPayload<SocialPrecordPayload>(object);
+      if (isProfileArchived(object)) return false;
       if (!payload) return false;
       const receipt = receipts.find((candidate) => candidate.parentId === object.id);
       if (!receipt) return false;
@@ -1659,7 +1662,7 @@ export default function SocialsWorkspace({
   const socialFeedObjects = useMemo(() => {
     const completedGameplans = precords.filter((record) =>
       receipts.some((receipt) => receipt.parentId === record.id));
-    const availableObjects = [...posts, ...completedGameplans];
+    const availableObjects = [...posts, ...completedGameplans].filter(object => !isProfileArchived(object));
     if (socialFeedCollection === "posts") {
       return availableObjects
         .filter((object) => object.userId === resolvedAccountKey && (object.objectType !== "post" || !typedPayload<SocialPostPayload>(object)?.isRepost))
@@ -1667,13 +1670,13 @@ export default function SocialsWorkspace({
     }
     if (socialFeedCollection === "reposts") {
       return posts
-        .filter((post) => post.userId === resolvedAccountKey && typedPayload<SocialPostPayload>(post)?.isRepost)
+        .filter((post) => post.userId === resolvedAccountKey && !isProfileArchived(post) && typedPayload<SocialPostPayload>(post)?.isRepost)
         .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
     }
     if (socialFeedCollection === "liked" || socialFeedCollection === "saved") {
       const reactionKind = socialFeedCollection === "liked" ? "LIKE" : "SAVED";
       const selectedIds = new Set(reactions
-        .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === reactionKind)
+        .filter((reaction) => reaction.userId === resolvedAccountKey && !isProfileArchived(reaction) && typedPayload<SocialReactionPayload>(reaction)?.kind === reactionKind)
         .map((reaction) => reaction.parentId)
         .filter((id): id is string => Boolean(id)));
       return availableObjects
@@ -2246,10 +2249,18 @@ export default function SocialsWorkspace({
       setNotice("Profile not saved. Account storage is unavailable, so your editor has stayed open.");
       return;
     }
-    if (profile.visibility.saves !== currentProfile.visibility.saves) {
-      await Promise.all(reactions
-        .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED")
-        .map((reaction) => saveObject({ ...reaction, scope: profile.visibility.saves, updatedAt: new Date().toISOString() })));
+    for (const collection of ["likes", "reposts", "saves"] as const) {
+      if (profile.visibility[collection] === currentProfile.visibility[collection]) continue;
+      try {
+        const response = await fetch("/api/socials", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collection, scope: profile.visibility[collection] }) });
+        const result = await response.json() as { objects?: SocialObject[]; error?: string };
+        if (!response.ok || !result.objects) throw new Error(result.error || "Collection privacy could not be saved.");
+        const updated = result.objects;
+        const keys = new Set(updated.map(objectKey));
+        setState(current => ({ ...current, objects: [...updated, ...current.objects.filter(object => !keys.has(objectKey(object)))].slice(0, 5_000) }));
+      } catch (reason) {
+        setProfileSaveState("error"); setNotice(reason instanceof Error ? reason.message : "Collection privacy could not be saved."); return;
+      }
     }
     const remainingFeedbackTime = Math.max(0, 420 - (Date.now() - saveStartedAt));
     if (remainingFeedbackTime) {
@@ -2487,11 +2498,15 @@ export default function SocialsWorkspace({
           updatedAt: new Date().toISOString(),
         };
       }
-      await saveObject(object);
+      const savedPost = await saveObject(object);
+      if (!savedPost.cloudSaved) {
+        if (existingPost) upsertObject(existingPost);
+        setNotice("Post changes were not saved to your account. Your editor has stayed open."); return;
+      }
       setShowOneLinerModal(false);
       setEditingPostId(null);
       setOneLinerDraft({ body: "", scope: "community" });
-      setTab("feed");
+      if (!existingPost) setTab("feed");
       setNotice(existingPost ? "One-liner updated." : "One-liner posted to your feed.");
     } finally {
       setOneLinerPublishing(false);
@@ -2627,12 +2642,16 @@ export default function SocialsWorkspace({
         updatedAt: new Date().toISOString(),
       };
     }
-    await saveObject(object);
+    const savedPost = await saveObject(object);
+    if (!savedPost.cloudSaved) {
+      if (existingPost) upsertObject(existingPost);
+      setNotice("Post changes were not saved to your account. Your editor has stayed open."); return;
+    }
     await saveProgressPatch(postDraft.kind === "MAP" ? { map: true } : postDraft.kind === "LIVE OBSERVATION" ? { observe: true } : {});
     setPostDraft(EMPTY_POST);
     setEditingPostId(null);
     setShowPostModal(false);
-    setTab("feed");
+    if (!existingPost) setTab("feed");
     setNotice(existingPost ? "Post updated." : `${typedPayload<SocialPostPayload>(object)?.kind ?? "Update"} published to your feed.`);
   };
 
@@ -2650,7 +2669,7 @@ export default function SocialsWorkspace({
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
       objectType: "reaction",
-      scope: precord.scope,
+      scope: kind === "LIKE" ? currentProfile.visibility.likes : precord.scope,
       deskId: precord.deskId,
       parentId: precord.id,
       payload: { kind } satisfies SocialReactionPayload,
@@ -2882,7 +2901,7 @@ export default function SocialsWorkspace({
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
       objectType: "reaction",
-      scope: "private",
+      scope: currentProfile.visibility.saves,
       parentId: record.id,
       payload: { kind: "SAVED" } satisfies SocialReactionPayload,
     }));
@@ -2911,30 +2930,27 @@ export default function SocialsWorkspace({
     setNotice(currentProfile.visibility.saves === "community" ? "Post saved to your public profile collection." : "Post saved privately to your account.");
   };
 
-  const updateCollectionVisibility = async (
-    key: "likes" | "reposts" | "saves",
-    visibility: "private" | "community",
-  ) => {
-    const nextProfile: SocialProfilePayload = {
-      ...currentProfile,
-      visibility: { ...currentProfile.visibility, [key]: visibility },
-    };
-    setProfileDraft(nextProfile);
-    await saveObject(buildLocalObject({
-      id: "profile",
-      userId: resolvedAccountKey,
-      authorLabel: nextProfile.displayName,
-      objectType: "profile",
-      scope: nextProfile.visibility.profile,
-      payload: nextProfile,
-    }));
-    if (key === "saves") {
-      await Promise.all(reactions
-        .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED")
-        .map((reaction) => saveObject({ ...reaction, scope: visibility, updatedAt: new Date().toISOString() })));
-    }
-    const label = key === "likes" ? "Liked posts" : key === "reposts" ? "Reposts" : "Saved posts";
-    setNotice(`${label} are now ${visibility === "community" ? "visible on your profile" : "private"}.`);
+  const manageProfileItem = async (object: SocialObject, collection: ProfileCollection, action: ProfileItemAction, scope?: ProfileAudience, caption?: string) => {
+    const target = profileManagedItem(object, collection);
+    if (!target || target.userId !== resolvedAccountKey) throw new Error("This item is not in your collection.");
+    const response = await fetch("/api/socials", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: target.id, action, scope, caption }) });
+    const result = await response.json() as { object?: SocialObject; deleted?: string; error?: string };
+    if (!response.ok || (!result.object && !result.deleted)) throw new Error(result.error || "This profile action could not be saved.");
+    if (result.object) upsertObject(result.object);
+    else setState(current => ({ ...current, objects: current.objects.filter(candidate => objectKey(candidate) !== objectKey(target)) }));
+    setNotice(action === "delete" ? "Removed from your profile." : action === "archive" ? "Archived privately. Use Archived to restore it." : action === "restore" ? "Restored from archive." : "Profile item saved.");
+  };
+
+  const updateCollectionVisibility = async (key: "likes" | "reposts" | "saves", visibility: ProfileAudience) => {
+    try {
+      const response = await fetch("/api/socials", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collection: key, scope: visibility }) });
+      const result = await response.json() as { objects?: SocialObject[]; error?: string };
+      if (!response.ok || !result.objects) throw new Error(result.error || "Collection privacy could not be saved.");
+      const updated = result.objects;
+      const keys = new Set(updated.map(objectKey));
+      setState(current => ({ ...current, objects: [...updated, ...current.objects.filter(object => !keys.has(objectKey(object)))].slice(0, 5_000) }));
+      setNotice("Collection audience saved: " + (visibility === "community" ? "Public" : visibility === "friends" ? "Friends only" : "Only me") + ".");
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Collection privacy could not be saved."); }
   };
 
   const toggleGameplanRepost = async (record: SocialObject) => {
@@ -2954,7 +2970,7 @@ export default function SocialsWorkspace({
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
       objectType: "post",
-      scope: record.scope === "private" ? "friends" : record.scope,
+      scope: record.userId === resolvedAccountKey || record.scope === "community" ? currentProfile.visibility.reposts : "private",
       deskId: record.deskId,
       parentId: record.id,
       payload: {
@@ -3030,7 +3046,7 @@ export default function SocialsWorkspace({
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
       objectType: "post",
-      scope: post.scope === "private" ? "friends" : post.scope,
+      scope: post.userId === resolvedAccountKey || post.scope === "community" ? currentProfile.visibility.reposts : "private",
       deskId: post.deskId,
       parentId: post.id,
       payload: {
@@ -4240,11 +4256,12 @@ export default function SocialsWorkspace({
                           value={profileDraft.visibility[key]}
                           onChange={(event) => setProfileDraft((current) => ({
                             ...current,
-                            visibility: { ...current.visibility, [key]: event.target.value === "community" ? "community" : "private" },
+                            visibility: { ...current.visibility, [key]: event.target.value as ProfileAudience },
                           }))}
                           className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] outline-none"
                         >
                           <option value="community">Public</option>
+                          <option value="friends">Friends only</option>
                           <option value="private">Only me</option>
                         </KwantSelect>
                       </div>
@@ -4345,6 +4362,9 @@ export default function SocialsWorkspace({
               onShareProfile={shareProfile}
               onOpenProfile={onOpenProfile}
               onCollectionVisibilityChange={(key, visibility) => void updateCollectionVisibility(key, visibility)}
+              getManagedItem={profileManagedItem}
+              onManageItem={manageProfileItem}
+              onEditPost={openPostEditor}
               initialPostId={requestedProfilePostId}
             />
           ) : requestedProfileHandle && requestedProfileState === "error" ? (

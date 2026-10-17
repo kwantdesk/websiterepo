@@ -46,6 +46,9 @@ import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import CallingCardVisual from "@/components/socials/CallingCardVisual";
 import UserAvatar from "@/components/socials/UserAvatar";
+import ProfileItemMenu, { type ManageProfileItem } from "@/components/socials/ProfileItemMenu";
+import KwantSelect from "@/components/ui/KwantSelect";
+import { isProfileArchived, PROFILE_AUDIENCES, type ProfileCollection, type ProfileAudience } from "@/lib/socialProfileManagement";
 import { effectivePresenceStatus, presenceOption, type FriendsPayload } from "@/lib/friends";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -90,7 +93,10 @@ type SocialProfileViewProps = {
   onShareGameplan: (record: SocialObject) => void;
   onShareProfile: () => void;
   onOpenProfile?: (handle: string) => void;
-  onCollectionVisibilityChange: (key: "likes" | "reposts" | "saves", visibility: "private" | "community") => void;
+  onCollectionVisibilityChange: (key: "likes" | "reposts" | "saves", visibility: ProfileAudience) => void;
+  getManagedItem: (object: SocialObject, collection: ProfileCollection) => SocialObject | undefined;
+  onManageItem: ManageProfileItem;
+  onEditPost: (post: SocialObject) => void;
   initialPostId?: string;
 };
 
@@ -156,9 +162,13 @@ export default function SocialProfileView({
   onShareProfile,
   onOpenProfile,
   onCollectionVisibilityChange,
+  getManagedItem,
+  onManageItem,
+  onEditPost,
   initialPostId = "",
 }: SocialProfileViewProps) {
   const [profileCollectionTab, setProfileCollectionTab] = useState<ProfileCollectionTab>("gameplans");
+  const [showArchived, setShowArchived] = useState(false);
   const [followSummary, setFollowSummary] = useState<SocialFollowSummary | null>(null);
   const [followLoading, setFollowLoading] = useState(true);
   const [followError, setFollowError] = useState("");
@@ -460,14 +470,21 @@ export default function SocialProfileView({
       : reasoningScore < 65
         ? "var(--warning)"
         : "var(--accent)";
-  const selectedCollection = profileCollectionTab === "gameplans" ? gameplans : collections[profileCollectionTab];
+  const selectedCollection = (profileCollectionTab === "gameplans" ? gameplans : collections[profileCollectionTab])
+    .filter(object => isProfileArchived((isOwnProfile ? getManagedItem(object, profileCollectionTab) : undefined) ?? object) === (isOwnProfile && showArchived));
+  const itemMenu = (object: SocialObject) => {
+    const managedObject = isOwnProfile ? getManagedItem(object, profileCollectionTab) : undefined;
+    return managedObject ? <ProfileItemMenu object={object} managedObject={managedObject} collection={profileCollectionTab}
+      archived={isProfileArchived(managedObject)} onManage={onManageItem} onEditPost={onEditPost} /> : null;
+  };
   const selectedPrivacyKey = profileCollectionTab === "liked"
     ? "likes"
     : profileCollectionTab === "reposts"
       ? "reposts"
       : profileCollectionTab === "saved" ? "saves" : null;
   const selectedCollectionIsPrivate = selectedPrivacyKey ? profile.visibility[selectedPrivacyKey] === "private" : false;
-  const canSeeSelectedCollection = isOwnProfile || !selectedCollectionIsPrivate;
+  const canSeeSelectedCollection = isOwnProfile || (!selectedCollectionIsPrivate &&
+    (!selectedPrivacyKey || profile.visibility[selectedPrivacyKey] !== "friends" || friendState === "friend"));
 
   return (
     <div className="mx-auto w-full max-w-6xl p-3 sm:p-4">
@@ -618,22 +635,19 @@ export default function SocialProfileView({
           ))}
         </div>
 
-        <div className="flex items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
-          <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
+          <div className="min-w-[140px] flex-1">
             <h2 className="text-[11px] font-semibold capitalize text-foreground">{profileCollectionTab === "gameplans" ? "Gameplan record" : profileCollectionTab}</h2>
             <p className="mt-0.5 text-[7px] text-muted">{profileCollectionTab === "gameplans" ? "Only timestamped Gameplans appear on the profile grid." : selectedCollectionIsPrivate ? "This collection is visible only to its owner." : `@${profile.handle}'s ${profileCollectionTab} collection.`}</p>
           </div>
-          {isOwnProfile && selectedPrivacyKey ? (
-            <button type="button" onClick={() => onCollectionVisibilityChange(selectedPrivacyKey, selectedCollectionIsPrivate ? "community" : "private")} className={`flex h-8 items-center gap-2 rounded-lg border px-3 text-[7px] font-semibold ${selectedCollectionIsPrivate ? "border-border bg-surface text-muted" : "border-primary/25 bg-primary/10 text-primary"}`}>
-              {selectedCollectionIsPrivate ? <LockKeyhole className="h-3 w-3" /> : <UsersRound className="h-3 w-3" />}{selectedCollectionIsPrivate ? "Only me" : "Public"}
-            </button>
-          ) : null}
+          {isOwnProfile ? <button type="button" onClick={() => setShowArchived(value => !value)} aria-pressed={showArchived} className="h-8 rounded-lg border border-border bg-surface px-3 text-[8px] text-muted hover:text-primary">{showArchived ? "Back to active" : "Archived"}</button> : null}
+          {isOwnProfile && selectedPrivacyKey ? <KwantSelect aria-label="Collection audience" value={profile.visibility[selectedPrivacyKey]} onChange={event => onCollectionVisibilityChange(selectedPrivacyKey, event.target.value as ProfileAudience)} className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px]">{PROFILE_AUDIENCES.map(audience => <option key={audience.value} value={audience.value}>{audience.label}</option>)}</KwantSelect> : null}
           <span className="rounded-lg border border-border bg-surface px-2 py-1 font-mono text-[7px] text-muted">{canSeeSelectedCollection ? selectedCollection.length : 0}</span>
         </div>
 
-        {profileCollectionTab === "gameplans" ? (gameplans.length ? (
+        {profileCollectionTab === "gameplans" ? (selectedCollection.length ? (
           <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
-            {gameplans.map((record) => {
+            {selectedCollection.map((record) => {
               const payload = payloadOf<SocialPrecordPayload>(record);
               if (!payload) return null;
               const commentCount = comments.filter((comment) => comment.parentId === record.id).length;
@@ -655,6 +669,7 @@ export default function SocialProfileView({
                     <div className="text-[7px] font-semibold uppercase tracking-[0.16em] text-muted">{payload.session} · {payload.direction}</div>
                     <div className="mt-2 font-mono text-[24px] font-semibold tracking-[-0.04em] text-foreground">{zoneLabel(payload)}</div>
                     <p className="mt-3 line-clamp-3 text-[9px] leading-5 text-muted">{payload.marketContext}</p>
+                    {typeof record.payload.profileCaption === "string" && record.payload.profileCaption ? <p className="mt-2 text-[9px] leading-5 text-foreground">{record.payload.profileCaption}</p> : null}
                   </div>
                   <div className="relative z-10 mt-3">
                     <ReasoningOutcomeChart
@@ -673,6 +688,7 @@ export default function SocialProfileView({
                     <button type="button" onClick={() => onSave(record)} className={`ml-auto flex h-7 w-7 items-center justify-center rounded-lg hover:bg-surface ${saved ? "text-primary" : "text-muted hover:text-foreground"}`} title={saved ? "Saved" : "Save Gameplan"}><Bookmark className={`h-3.5 w-3.5 ${saved ? "fill-current" : ""}`} /></button>
                     <button type="button" onClick={() => onShareGameplan(record)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" title="Share Gameplan"><Share2 className="h-3.5 w-3.5" /></button>
                   </div>
+                  {itemMenu(record)}
                 </article>
               );
             })}
@@ -680,7 +696,7 @@ export default function SocialProfileView({
         ) : (
           <div className="flex min-h-[260px] flex-col items-center justify-center p-8 text-center">
             <Grid3X3 className="h-7 w-7 text-muted" />
-            <div className="mt-3 text-[10px] font-semibold text-foreground">No public Gameplans yet</div>
+            <div className="mt-3 text-[10px] font-semibold text-foreground">{showArchived ? "No archived Gameplans" : "No Gameplans yet"}</div>
             <p className="mt-2 max-w-sm text-[8px] leading-4 text-muted">When this trader places a Gameplan on the Social record, it will appear here automatically.</p>
           </div>
         )) : !canSeeSelectedCollection ? (
@@ -722,6 +738,7 @@ export default function SocialProfileView({
                       <p className={`${isOneLiner ? "text-[13px] font-medium leading-6 text-foreground" : "mt-2 text-[8px] leading-4 text-muted"}`}>{post?.body || "Social post"}</p>
                     </div>
                   )}
+                  {itemMenu(object)}
                 </article>
               );
             })}

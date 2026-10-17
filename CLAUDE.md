@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Profile record and collection management
+
+- Owner profile cards now expose Options for posts, Gameplans, liked, reposted
+  and saved items. Unlike/Unsave resolve the viewer's reaction, never the source
+  post. Delete asks confirmation; archives become private, leave the normal feed
+  and can be restored from each section's Archived view with their saved audience.
+- PATCH /api/socials is authenticated and owner-scoped. Audience writes use real
+  row scopes (Public/Friends only/Only me), not cosmetic hiding. Collection audience
+  updates are bounded bulk writes, not one Vercel request per reaction. Failures
+  remain explicit; post editors do not close/report success on failed cloud saves.
+- Gameplan profile notes are separate from locked trading fields. Migration
+  `supabase/migrations/202610170001_social_profile_management.sql` permits only
+  publication scope plus archive/profile-note metadata to change on locked rows;
+  all thesis/prices/hash/timestamps/scores remain immutable. Owner requested SQL
+  to run themselves. APPLICATION OF THIS MIGRATION IS NOT YET CONFIRMED.
+  Gameplan archive/privacy/note writes fail explicitly until it is applied.
+- Twenty-seven focused management/avatar tests pass; authenticated multi-user
+  browser checks and live SQL migration verification remain open. Prompt record:
+  `docs/prompt-log/2026-10-17-profile-item-management.md`.
+
 ## 2026-10-17 — Normal Settings shares the Socials avatar
 
 - Settings → Public profile now embeds the same avatar/palette/upload/crop

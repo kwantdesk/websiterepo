@@ -17,6 +17,7 @@ import {
 import { SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 import { normalizeZyonTradingAccount } from "@/lib/zyon";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
+import { isProfileAudience, profileItemPatch, type ProfileItemAction } from "@/lib/socialProfileManagement";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -749,6 +750,68 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ object: fromRow(data as SocialRow), cloud: true }, { status: 201 });
+}
+
+export async function PATCH(request: NextRequest) {
+  const { actor, supabase } = await socialClient(request);
+  if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  if (!supabase) return NextResponse.json({ error: "Account storage is unavailable." }, { status: 503 });
+  let body: { id?: unknown; action?: unknown; scope?: unknown; caption?: unknown; collection?: unknown };
+  try { body = await request.json(); } catch { return NextResponse.json({ error: "Choose a profile action." }, { status: 400 }); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Choose a valid profile action." }, { status: 400 });
+  if (body.collection !== undefined) {
+    const collection = body.collection;
+    if (!["likes", "reposts", "saves"].includes(String(collection)) || !isProfileAudience(body.scope)) return NextResponse.json({ error: "Choose a collection and valid audience." }, { status: 400 });
+    const { data: profile, error: profileError } = await supabase.from("social_objects")
+      .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
+      .eq("user_id", actor.userId).eq("id", "profile").eq("object_type", "profile").single();
+    if (profileError || !profile) return NextResponse.json({ error: "Your profile could not be loaded." }, { status: 502 });
+    let query = supabase.from("social_objects").update({ scope: body.scope, updated_at: new Date().toISOString() })
+      .eq("user_id", actor.userId).is("payload->>profileArchivedAt", null);
+    query = collection === "reposts" ? query.eq("object_type", "post").eq("payload->>isRepost", "true")
+      : query.eq("object_type", "reaction").eq("payload->>kind", collection === "likes" ? "LIKE" : "SAVED");
+    const { data: items, error: itemsError } = await query.select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at");
+    if (itemsError) return NextResponse.json({ error: "The collection audience could not be updated." }, { status: 502 });
+    const visibility = normalizeSocialProfile(profile.payload).visibility;
+    const { data: saved, error } = await supabase.from("social_objects")
+      .update({ payload: { ...profile.payload, visibility: { ...visibility, [String(collection)]: body.scope } }, updated_at: new Date().toISOString() })
+      .eq("user_id", actor.userId).eq("id", "profile").select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at").single();
+    if (error || !saved) return NextResponse.json({ error: "Item audiences changed, but the collection default could not be saved. Retry to finish." }, { status: 502 });
+    return NextResponse.json({ objects: [...(items ?? []), saved].map(row => fromRow(row as SocialRow)), cloud: true });
+  }
+  const id = cleanIdentifier(body.id), action = body.action as ProfileItemAction;
+  if (!id || !["delete", "archive", "restore", "visibility", "edit"].includes(action)) return NextResponse.json({ error: "Choose a valid profile action." }, { status: 400 });
+  if (action === "visibility" && !isProfileAudience(body.scope)) return NextResponse.json({ error: "Choose a valid audience." }, { status: 400 });
+  const { data: existing, error: loadError } = await supabase.from("social_objects")
+    .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
+    .eq("user_id", actor.userId).eq("id", id).maybeSingle();
+  if (loadError) return NextResponse.json({ error: "This profile item could not be loaded." }, { status: 502 });
+  if (!existing) return NextResponse.json({ error: "This item no longer exists or is not yours." }, { status: 404 });
+  const object = fromRow(existing as SocialRow);
+  if (!["precord", "post", "reaction"].includes(object.objectType)
+    || (object.objectType === "reaction" && !["LIKE", "SAVED"].includes(String(object.payload.kind)))) {
+    return NextResponse.json({ error: "This item cannot be managed here." }, { status: 403 });
+  }
+  if (action === "delete") {
+    const { error } = await supabase.from("social_objects").delete().eq("user_id", actor.userId).eq("id", id);
+    return error ? NextResponse.json({ error: "This item could not be deleted." }, { status: 502 }) : NextResponse.json({ deleted: id });
+  }
+  let patch;
+  if (action === "edit") {
+    if (object.objectType === "reaction" || typeof body.caption !== "string") return NextResponse.json({ error: "This item cannot be edited here." }, { status: 400 });
+    const caption = body.caption.replace(/\u0000/g, "").trim().slice(0, 4_000);
+    patch = { payload: { ...object.payload, [object.objectType === "precord" ? "profileCaption" : "body"]: caption }, updated_at: new Date().toISOString() };
+  } else {
+    const next = profileItemPatch(object, action, body.scope);
+    patch = { payload: next.payload, scope: next.scope, updated_at: next.updatedAt };
+  }
+  const { data, error } = await supabase.from("social_objects").update(patch)
+    .eq("user_id", actor.userId).eq("id", id)
+    .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at").single();
+  if (error || !data) return NextResponse.json({ error: object.objectType === "precord" && /Locked Precords are immutable/i.test(error?.message ?? "")
+    ? "Gameplan profile controls need the account database update. Your locked record is unchanged."
+    : "Your profile item could not be saved. Try again." }, { status: 502 });
+  return NextResponse.json({ object: fromRow(data as SocialRow), cloud: true });
 }
 
 export async function DELETE(request: NextRequest) {

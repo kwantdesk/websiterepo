@@ -101,9 +101,9 @@ export type SocialProfilePayload = {
     cards: SocialScope;
     followers: "private" | "community";
     following: "private" | "community";
-    likes: "private" | "community";
-    reposts: "private" | "community";
-    saves: "private" | "community";
+    likes: "private" | "friends" | "community";
+    reposts: "private" | "friends" | "community";
+    saves: "private" | "friends" | "community";
   };
   avatarUrl?: string;
   avatarAppearance?: { version: 1; presetId: string; colors: string[] };
@@ -735,9 +735,9 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
       cards: profileScope(visibility.cards, fallback.visibility.cards),
       followers: visibility.followers === "private" ? "private" : "community",
       following: visibility.following === "private" ? "private" : "community",
-      likes: visibility.likes === "community" ? "community" : "private",
-      reposts: visibility.reposts === "private" ? "private" : "community",
-      saves: visibility.saves === "community" ? "community" : "private",
+      likes: visibility.likes === "friends" ? "friends" : visibility.likes === "community" ? "community" : "private",
+      reposts: visibility.reposts === "friends" ? "friends" : visibility.reposts === "private" ? "private" : "community",
+      saves: visibility.saves === "friends" ? "friends" : visibility.saves === "community" ? "community" : "private",
     },
     avatarUrl: typeof candidate.avatarUrl === "string" && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(candidate.avatarUrl)
       ? candidate.avatarUrl.slice(0, 1_600_000)

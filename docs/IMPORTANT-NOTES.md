@@ -1,5 +1,15 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — Profile management database prerequisite
+
+- Owner chose to run `supabase/migrations/202610170001_social_profile_management.sql`
+  themselves. Application is NOT confirmed. It permits archive/audience/profile
+  notes on locked Gameplan Socials records while keeping trading data immutable.
+- Until applied, those Gameplan updates return an explicit database-update error;
+  post/reaction actions and deleting an owned Socials copy do not need it.
+- Confirm SQL success and perform signed-in owner/friend/stranger UI checks before
+  marking the complete profile-management workflow verified.
+
 ## 2026-10-17 — SPY/QQQ blank on wide history request
 
 - Fixed entire-chart rejection when a 3M request has valid recent candles but
