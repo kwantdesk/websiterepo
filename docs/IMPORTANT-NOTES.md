@@ -2,6 +2,12 @@
 
 ## 2026-10-17 — Recurring browser freeze / last chart viewport
 
+- Follow-up precise stall columns identified gamma cash-close calibration's
+  full-history scan at 73–78% of sampled CPU. It now uses bounded binary
+  lookups and skips work for a still-valid calibration. Owner observed ~1 GB
+  Chrome footprint / 94.4% CPU. Sustained memory and CPU recovery on the
+  authenticated workspace is not yet verified; keep the incident open.
+
 - Removed per-candle native timezone-formatter construction in gamma,
   sweep references and profile calendar calculations after production
   telemetry captured 14–20s stalls in their bundle. Clock allocation,

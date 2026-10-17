@@ -56,3 +56,25 @@ sometimes crashes. This takes priority over restoring the last chart zoom.
 - Authenticated multi-pane startup/soak, including any remaining browser/GPU
   resource growth. Existing important-notes items remain open.
 - Proper VPS/SSE restoration before live trading and verified billing cap.
+
+## Follow-up — exact post-release hotspot found
+
+- Owner supplied Chrome Task Manager evidence: KwantDesk PID 37228 at
+  518,968K and 94.4% CPU, reportedly rising beyond 1,000,000K (~1 GB).
+  Memory footprint alone does not establish which allocation is leaking.
+- Post-release production stall profiles at 06:37 UTC now include columns:
+  `0dxfzvbz_v-m8.js:1:312046` owns 73–78% of samples during 7.6s/2.4s stalls.
+  Reading those exact deployed bytes identifies `findCashCloseFuturesCandle`'s
+  per-candle `formatToParts` scan. This is precise attribution, superseding
+  the previous bundle-only evidence.
+- Replaced the complete-history scan with timestamp binary searches for the
+  two candidate civil minutes around New York 15:59. Preserved date, DST,
+  ten-minute tolerance and first-bar tie semantics. Inputs are the workspace's
+  already sanitized/ordered authoritative candle array.
+- Workspace now skips the lookup entirely while its same-contract/session
+  saved calibration is still valid. No gamma prices or candle data are altered.
+- Seven runtime tests pass, including direct parity against the old scan and
+  a 120,000-bar access-count gate (<100 indexed reads). 1,000 lookups through
+  that history took 16ms locally. TypeScript and scoped helper/test lint pass.
+- The CPU hotspot is proven; authenticated post-deploy memory/CPU soak is
+  still required before declaring the recurring out-of-memory incident closed.

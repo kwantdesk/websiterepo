@@ -191,9 +191,37 @@ export function findCashCloseFuturesCandle(
   candles: Candle[],
   sessionDate: string,
 ): Candle | null {
+  if (!candles.length || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) return null;
+  const nominal = Date.parse(`${sessionDate}T15:59:00.000Z`);
+  if (!Number.isFinite(nominal) || new Date(nominal).toISOString().slice(0, 10) !== sessionDate) return null;
+  // Resolve the NY offset at afternoon civil time (away from DST transitions).
+  // Chart history is timestamp ordered. Search it, never format every candle
+  // again each time a quote or indicator snapshot re-renders the workspace.
+  const nominalClock = newYorkClock(nominal);
+  const offset = Date.parse(`${nominalClock.date}T00:00:00.000Z`)
+    + nominalClock.minute * 60_000 - nominal;
+  const target = nominal - offset;
+  const lowerBound = (timestamp: number) => {
+    let low = 0;
+    let high = candles.length;
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2);
+      if (candles[middle].timestamp < timestamp) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  const after = lowerBound(target);
+  // The former scan compared civil MINUTES, not milliseconds, and selected
+  // the first bar on a tie. Preserve that rule on sub-minute/event charts.
+  const before = after > 0
+    ? lowerBound(Math.floor(candles[after - 1].timestamp / 60_000) * 60_000)
+    : -1;
   let nearest: Candle | null = null;
   let nearestDistance = Number.POSITIVE_INFINITY;
-  for (const candle of candles) {
+  for (const index of [before, after]) {
+    const candle = candles[index];
+    if (!candle) continue;
     const clock = newYorkClock(candle.timestamp);
     if (clock.date !== sessionDate) continue;
     const distance = Math.abs(clock.minute - (15 * 60 + 59));

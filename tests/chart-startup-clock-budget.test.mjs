@@ -52,6 +52,40 @@ test("session clocks retain exact DST, date and overnight-end semantics", () => 
   assert.equal(constructions, before);
 });
 
+test("cash-close lookup matches the former scan, including minute ties and DST", () => {
+  const formatter = new OriginalFormatter("en-CA", { timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const scan = (bars, date) => {
+    let nearest = null, distance = Infinity;
+    for (const bar of bars) {
+      const p = Object.fromEntries(formatter.formatToParts(bar.timestamp).map(p => [p.type, p.value]));
+      if (`${p.year}-${p.month}-${p.day}` !== date) continue;
+      const d = Math.abs(Number(p.hour) * 60 + Number(p.minute) - 959);
+      if (d < distance) { distance = d; nearest = bar; }
+    }
+    return distance <= 10 ? nearest : null;
+  };
+  for (const date of ["2026-03-06", "2026-03-09", "2026-10-30", "2026-11-02"]) {
+    for (const step of [1000, 15000, 60000, 300000, 3600000]) {
+      const bars = Array.from({ length: 180 }, (_, i) => ({ timestamp: Date.parse(`${date}T14:30:15Z`) + i * step }));
+      assert.equal(gamma.findCashCloseFuturesCandle(bars, date), scan(bars, date));
+    }
+  }
+  assert.equal(gamma.findCashCloseFuturesCandle([], "bad-date"), null);
+});
+
+test("large history uses logarithmic lookups, not a per-bar calendar scan", () => {
+  const start = Date.parse("2026-01-01T00:00:00Z");
+  const history = Array.from({ length: 120000 }, (_, i) => ({ timestamp: start + i * 60000 }));
+  let reads = 0;
+  const measured = new Proxy(history, { get(target, key, receiver) {
+    if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+    return Reflect.get(target, key, receiver);
+  } });
+  assert.ok(gamma.findCashCloseFuturesCandle(measured, "2026-03-09"));
+  assert.ok(reads < 100, `Read ${reads} of 120,000 candles`);
+});
+
 test("sweep reference restoration never constructs a formatter per candle", () => {
   const candles = Array.from({ length: 4000 }, (_, index) => ({
     timestamp: Date.parse("2026-10-12T00:00:00Z") + index * 60_000,

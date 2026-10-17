@@ -2,6 +2,13 @@
 
 ## 2026-10-17 — Browser startup formatter churn
 
+- Follow-up exact production profile column `0dxfzvbz_v-m8.js:1:312046`
+  identifies the remaining full-history cash-close scan (73–78% CPU samples).
+  `findCashCloseFuturesCandle` now binary-searches ordered history, preserving
+  NY date/minute/tie semantics; workspace skips it while calibration is valid.
+  Seven tests pass; 1,000 lookups through 120k bars measured 16ms. Do not
+  restore a per-candle clock scan here. Post-deploy memory soak remains due.
+
 - Production telemetry captured 14–20s Charts stalls, with 94–96% of samples
   in the indicator/configuration bundle. Gamma, sweep and profile clocks in
   that bundle constructed native ICU formatters per candle. Reuse module

@@ -5005,12 +5005,12 @@ function buildGammaChartOverlay(args: {
     if (contractRolled) calibration = null;
 
     const quoteIsFresh = args.futuresAsOfMs !== null && Date.now() - args.futuresAsOfMs <= 60_000;
-    const cashCloseCandle = payload.marketOpen
-      ? null
-      : findCashCloseFuturesCandle(args.candles, payload.sessionDate);
     const calibrationDue = !calibration
       || calibration.sessionDate !== payload.sessionDate
       || Date.now() - calibration.calibratedAtMs >= 10 * 60_000;
+    const cashCloseCandle = !payload.marketOpen && calibrationDue
+      ? findCashCloseFuturesCandle(args.candles, payload.sessionDate)
+      : null;
     const calibrationFuturePrice = payload.marketOpen && quoteIsFresh
       ? args.futuresPrice
       : cashCloseCandle?.close ?? null;
