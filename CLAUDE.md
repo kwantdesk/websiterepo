@@ -1,5 +1,21 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Levels workspace controls
+
+- Levels now uses a compact GEX VUE-style toolbar: five layout choices, +Panel,
+  lock, matching-instrument/timeframe viewport link and named Workspaces with
+  Save As/Quick Save/delete. Preserve the per-panel level-family dropdown and
+  existing level calculations; this is a workspace-shell change, not a data fix.
+- Panel grip supports drag/drop swaps and keyboard movement; panels can be
+  maximized, duplicated and closed. Up to eight panels; column resizing updates
+  a CSS variable during drag and commits state once at release. Stable panel IDs
+  own chart/drawing identity. Do not add per-panel provider streams.
+- `kwantdesk:levelz-workspaces:v1` participates in existing account preferences;
+  restore on hydration/storage events and migrate old local layout once only.
+  Persisted current desk is separate from named saved snapshots. Do not report
+  success before a protected save succeeds or claim verified cloud roundtrip
+  from local tests alone. Record: `docs/prompt-log/2026-10-17-levels-workspaces.md`.
+
 ## 2026-10-17 — GEX VUE screenshot workspace template
 
 - Follow-up: the main layout toolbar now also offers `gexmap-quad`, with an

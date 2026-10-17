@@ -7,14 +7,15 @@ import {
   CircleDot,
   ChevronLeft,
   ChevronRight,
-  Crosshair,
   Layers3,
   Radio,
   RefreshCw,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import LevelzDesk from "./LevelzDesk";
+import type { LevelPanel as PanelConfig, LevelFamily } from "@/lib/levelzWorkspaceLayout";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -59,16 +60,9 @@ const Chart = dynamic(() => import("@/components/Chart"), {
   ),
 });
 
-type LevelFamily = "gamma" | "gameplan" | "structure" | "value-area";
 type LevelInstrument = "NQ" | "MNQ" | "ES" | "MES";
 type LevelTimeframe = "1m" | "5m" | "15m";
 
-type PanelConfig = {
-  id: string;
-  instrument: LevelInstrument;
-  family: LevelFamily;
-  timeframe: LevelTimeframe;
-};
 
 type LevelEvidence = "OBSERVED" | "CALCULATED" | "LIVE_L3" | "UNAVAILABLE";
 
@@ -150,19 +144,11 @@ type ValueAreaPayload = {
   error?: string;
 };
 
-const LEVELZ_LAYOUT_STORAGE_KEY = "kwantdesk:levelz-layout:v1";
 const LEVELZ_SNAPSHOT_STORAGE_KEY = "kwantdesk:levelz-snapshots:v1";
-const LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY = "kwantdesk:levelz-intelligence-collapsed:v1";
 const VALUE_AREA_SESSION_CACHE_PREFIX = "kwantdesk:value-area:last-good:v1:";
 const FIVE_DAY_HISTORY_DAYS = 8;
 const MARKET_CACHE_MS = 15_000;
 
-const DEFAULT_PANELS: PanelConfig[] = [
-  { id: "levelz-1", instrument: "NQ", family: "gamma", timeframe: "5m" },
-  { id: "levelz-2", instrument: "NQ", family: "gameplan", timeframe: "5m" },
-  { id: "levelz-3", instrument: "NQ", family: "value-area", timeframe: "5m" },
-  { id: "levelz-4", instrument: "NQ", family: "structure", timeframe: "5m" },
-];
 
 const FAMILY_LABELS: Record<LevelFamily, string> = {
   gamma: "Gamma levels",
@@ -1236,6 +1222,8 @@ function LevelChartCard({
   onChange,
   onRuntime,
   flowPayload,
+  controls,
+  linked,
 }: {
   config: PanelConfig;
   index: number;
@@ -1243,8 +1231,10 @@ function LevelChartCard({
   active: boolean;
   onActivate: () => void;
   onChange: (patch: Partial<PanelConfig>) => void;
-  onRuntime: (panelId: string, runtime: PanelRuntime) => void;
+  onRuntime: (panelId: string, runtime: PanelRuntime | null) => void;
   flowPayload: GexBotFlowPayload | null;
+  controls: ReactNode;
+  linked: boolean;
 }) {
   const market = useMarketSeries(config);
   const levels = useLevelSnapshot(config, settings);
@@ -1269,6 +1259,8 @@ function LevelChartCard({
     : levels;
   const price = market.candles.at(-1)?.close ?? null;
 
+  useEffect(() => () => onRuntime(config.id, null), [config.id, onRuntime]);
+
   useEffect(() => {
     onRuntime(config.id, {
       candles: market.candles,
@@ -1278,14 +1270,14 @@ function LevelChartCard({
       liveStatus: market.liveStatus,
       snapshot: resolvedLevels.snapshot,
     });
-  }, [market.candles, market.error, market.liveStatus, market.loading, onRuntime, price, resolvedLevels.error, resolvedLevels.loading, resolvedLevels.snapshot]);
+  }, [config.id, market.candles, market.error, market.liveStatus, market.loading, onRuntime, price, resolvedLevels.error, resolvedLevels.loading, resolvedLevels.snapshot]);
 
   return (
     <section
-      className={`group relative flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-panel transition-all ${active ? "border-primary/45 shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_28%,transparent),0_0_24px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-border hover:border-primary/20"}`}
+      className={`group relative flex h-full min-h-0 flex-col overflow-hidden rounded-[3px] border bg-panel ${active ? "border-primary/45" : "border-border hover:border-primary/20"}`}
       onMouseDown={onActivate}
     >
-      <div className="flex min-h-[68px] shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border bg-panel px-2.5 py-1.5">
+      <div className="flex min-h-[40px] shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border bg-panel px-2 py-1">
         <span className={`flex h-6 w-6 items-center justify-center rounded-lg border text-[9px] font-semibold ${active ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>{index + 1}</span>
         <KwantSelect
           value={config.instrument}
@@ -1311,6 +1303,7 @@ function LevelChartCard({
         >
           <RefreshCw className={`h-3 w-3 ${resolvedLevels.loading ? "animate-spin" : ""}`} />
         </button>
+        {controls}
         <KwantSelect
           value={config.family}
           onChange={(event) => onChange({ family: event.target.value as LevelFamily })}
@@ -1328,6 +1321,7 @@ function LevelChartCard({
           <div className="flex h-full items-center justify-center px-5 text-center text-[9px] leading-5 text-danger">{market.error}</div>
         ) : (
           <Chart
+            chartInstanceId={config.id}
             candles={market.candles}
             levels={config.family === "gameplan" ? [] : resolvedLevels.snapshot.levels}
             zones={config.family === "structure" || config.family === "gamma" ? resolvedLevels.snapshot.zones : []}
@@ -1338,6 +1332,8 @@ function LevelChartCard({
             marketIsActive={market.liveStatus === "live"}
             settings={settings}
             toolbarEnabled={false}
+            viewportSyncGroup={linked ? `levelz:${config.instrument}:${config.timeframe}` : ""}
+            viewportSyncRole={linked ? "peer" : "independent"}
             gexBotFlow={levelRoot(config.instrument) === "NQ" ? flowPayload : null}
           />
         )}
@@ -1406,7 +1402,7 @@ function LevelEducationRail({
           <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/25 bg-primary/[0.08] text-primary"><BookOpenCheck className="h-4 w-4" /></span>
           <div className="min-w-0">
             <div className="text-[11px] font-semibold">Level Intelligence</div>
-            <div className="mt-0.5 truncate text-[8px] text-muted">Chart {Number(config.id.split("-").at(-1) ?? 1)} · {config.instrument} · {FAMILY_LABELS[config.family]}</div>
+            <div className="mt-0.5 truncate text-[8px] text-muted">{config.instrument} · {FAMILY_LABELS[config.family]}</div>
           </div>
           <span className="ml-auto flex items-center gap-1 rounded-full border border-border bg-background px-2 py-1 text-[7px] font-semibold text-muted">
             <Radio className={`h-2.5 w-2.5 ${runtime?.liveStatus === "live" ? "animate-pulse text-primary" : ""}`} />
@@ -1496,24 +1492,12 @@ function LevelEducationRail({
 }
 
 export default function LevelzWorkspace() {
-  const [panels, setPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
-  const [activePanelId, setActivePanelId] = useState(DEFAULT_PANELS[0].id);
   const [runtimes, setRuntimes] = useState<Record<string, PanelRuntime>>({});
   const [settings, setSettings] = useState<ChartSettings>(defaultChartSettings);
-  const [layoutReady, setLayoutReady] = useState(false);
-  const [intelligenceCollapsed, setIntelligenceCollapsed] = useState(false);
   const gexBotFlow = useGexBotFlow(true).payload;
 
   useEffect(() => {
     setSettings(loadStoredChartSettings());
-    try {
-      const stored = JSON.parse(window.localStorage.getItem(LEVELZ_LAYOUT_STORAGE_KEY) ?? "null") as PanelConfig[] | null;
-      if (Array.isArray(stored) && stored.length === 4) {
-        setPanels(DEFAULT_PANELS.map((fallback, index) => ({ ...fallback, ...stored[index], id: fallback.id })));
-      }
-      setIntelligenceCollapsed(window.localStorage.getItem(LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY) === "true");
-    } catch {}
-    setLayoutReady(true);
     const syncSettings = (event?: Event) => {
       const next = chartSettingsFromChangeEvent(event);
       setSettings((current) => chartSettingsEqual(current, next) ? current : next);
@@ -1529,60 +1513,36 @@ export default function LevelzWorkspace() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!layoutReady) return;
-    writeProtectedItem(LEVELZ_LAYOUT_STORAGE_KEY, JSON.stringify(panels));
-  }, [layoutReady, panels]);
-
-  useEffect(() => {
-    if (!layoutReady) return;
-    writeProtectedItem(LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY, String(intelligenceCollapsed));
-  }, [intelligenceCollapsed, layoutReady]);
-
-  const updatePanel = (id: string, patch: Partial<PanelConfig>) => {
-    setPanels((current) => current.map((panel) => panel.id === id ? { ...panel, ...patch } : panel));
-  };
-  const updateRuntime = useCallback((id: string, runtime: PanelRuntime) => {
-    setRuntimes((current) => current[id] === runtime ? current : { ...current, [id]: runtime });
+  const updateRuntime = useCallback((id: string, runtime: PanelRuntime | null) => {
+    setRuntimes((current) => {
+      if (runtime) return current[id] === runtime ? current : { ...current, [id]: runtime };
+      if (!(id in current)) return current;
+      const next = { ...current }; delete next[id]; return next;
+    });
   }, []);
-  const activeConfig = panels.find((panel) => panel.id === activePanelId) ?? panels[0];
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <div className="flex min-h-[54px] shrink-0 items-center gap-3 border-b border-border bg-panel px-4 py-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/25 bg-primary/[0.08] text-primary"><Crosshair className="h-4 w-4" /></span>
-        <div>
-          <div className="text-[12px] font-semibold tracking-[0.12em]">LEVELZ</div>
-          <div className="mt-0.5 text-[8px] text-muted">Four clean views · one level family per chart · live role intelligence</div>
-        </div>
-        <div className="ml-auto flex items-center gap-2 text-[8px] text-muted">
-          <span className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />Shared CME stream</span>
-          <span className="rounded-full border border-border bg-background px-2.5 py-1">5-day history</span>
-          <span className="rounded-full border border-border bg-background px-2.5 py-1">Evidence-labelled</span>
-        </div>
-      </div>
-
-      <div className={`grid min-h-0 flex-1 gap-3 p-3 transition-[grid-template-columns] duration-300 ease-out ${intelligenceCollapsed ? "grid-cols-[minmax(0,1fr)_46px]" : "grid-cols-[minmax(0,1fr)_340px]"}`}>
-        <div className="grid min-h-0 grid-cols-2 grid-rows-2 gap-2.5">
-          {panels.map((panel, index) => (
+    <LevelzDesk
+      renderPanel={(panel, index, actions) => (
             <LevelChartCard
               key={panel.id}
               config={panel}
               index={index}
               settings={settings}
-              active={panel.id === activePanelId}
-              onActivate={() => setActivePanelId(panel.id)}
-              onChange={(patch) => updatePanel(panel.id, patch)}
+              active={actions.active}
+              onActivate={actions.activate}
+              onChange={actions.change}
+              controls={actions.controls}
+              linked={actions.linked}
               onRuntime={updateRuntime}
               flowPayload={gexBotFlow}
             />
-          ))}
-        </div>
-        {intelligenceCollapsed ? (
+      )}
+      renderEducation={(activeConfig, intelligenceCollapsed, toggle) => intelligenceCollapsed ? (
           <aside className="flex min-h-0 overflow-hidden rounded-2xl border border-border bg-panel">
             <button
               type="button"
-              onClick={() => setIntelligenceCollapsed(false)}
+              onClick={toggle}
               className="group flex h-full w-full flex-col items-center gap-3 px-1 py-3 text-muted transition-colors hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary"
               title="Show level intelligence"
               aria-label="Show level intelligence"
@@ -1600,10 +1560,9 @@ export default function LevelzWorkspace() {
           <LevelEducationRail
             config={activeConfig}
             runtime={runtimes[activeConfig.id] ?? null}
-            onCollapse={() => setIntelligenceCollapsed(true)}
+            onCollapse={toggle}
           />
         )}
-      </div>
-    </div>
+    />
   );
 }

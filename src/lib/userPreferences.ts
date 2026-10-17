@@ -38,6 +38,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "olisa-right-panel-width",
   "olisa-bottom-panel-height",
   "kwantdesk-chart-workspace-presets",
+  "kwantdesk:levelz-workspaces:v1",
   "kwantdesk-chart-workspace-active-preset",
   "kwantdesk-chart-indicators",
   "kwantdesk-chart-indicator-favourites",
