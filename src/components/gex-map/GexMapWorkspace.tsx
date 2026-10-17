@@ -2390,13 +2390,6 @@ function GexMapWorkspace({
             ))}
           </div>
 
-          <span
-            className="ml-1 shrink-0 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted"
-            title="Structural open-interest exposure. A proprietary inferred dealer-flow inventory model may produce different signed values."
-          >
-            OI model
-          </span>
-
           <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
             <button
               type="button"

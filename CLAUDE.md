@@ -15,6 +15,8 @@
 
 ## 2026-10-17 — GEX Map toolbar spacing
 
+- Owner requested removal of the visible "OI model" label; it and its tooltip
+  are removed. Structural/Dealer controls and all calculations are unchanged.
 - Internal GEX Map rail now has 6px top/bottom padding and intrinsic height
   with a 48px minimum. Do not restore fixed 36px height: 28px controls plus
   a horizontal scrollbar consumed the content area and clipped the buttons.

@@ -6,6 +6,7 @@ test("GEX Map toolbar reserves vertical padding without a fixed height that clip
   const source = readFileSync(new URL("../src/components/gex-map/GexMapWorkspace.tsx", import.meta.url), "utf8");
   const classes = source.match(/<header className="(gex-map-header[^\"]+)"/)?.[1];
   assert.ok(classes);
+  assert.doesNotMatch(source, />\s*OI model\s*</i);
   assert.match(classes, /\bpy-1\.5\b/);
   assert.match(classes, /min-h-\[48px\]/);
   assert.match(classes, /\boverflow-x-auto\b/);
