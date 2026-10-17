@@ -52,6 +52,15 @@ retain the changes for the return to the VPS.
 
 ## Operations and limits
 
+Production verification: commit `e950531c925f09fc5071508ab6a00c3dea8e333e`
+is deployed and serves the live website. Vercel's final build passed. Production
+diagnostics return gateway HTTP 200, connected/authenticated true, and the
+completed SPX archive. All 49 restored futures roots still return history.
+The final 14 targeted runtime/HTTP tests and scoped ESLint pass; the isolated
+80-page Turbopack build passed with a local filesystem-root override solely
+to permit its dependency junction. Unrelated dirty files were not deployed.
+This follow-up changes only documentation and uses the ignored-build gate.
+
 Ship these gateway changes to the restored VPS together with the new archives;
 switch off the temporary Rithmic owner before starting the VPS session. The
 temporary relay remains a weekend-history arrangement with unverified SSE.
