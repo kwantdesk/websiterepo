@@ -149,6 +149,16 @@ export function backfillFileName(exchange, symbol) {
   return `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.trades.backfill.ndjson.gz`;
 }
 
+export function sessionTradeFiles(tapeDir, tradingDate, exchange, symbol) {
+  const day = join(tapeDir, tradingDate);
+  const history = join(day, `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.trades.history.ndjson.gz`);
+  // Atomic completed-session replay replaces, rather than duplicates, any
+  // partial live recording. Original recordings stay untouched on disk.
+  if (existsSync(history)) return [history];
+  return [backfillFileName(exchange, symbol), instrumentFileName(exchange, symbol)]
+    .map(name => join(day, name)).filter(file => existsSync(file));
+}
+
 export class TradeTapeArchive {
   constructor(options = {}) {
     this.dir = join(String(options.dir || "recordings"), DIR_NAME);
@@ -352,15 +362,9 @@ export class TradeTapeArchive {
         this.dir, tradingDate, coverageFileName(upper, upperSymbol),
       ));
       if (receipt) coverageReceipts.push(receipt);
-      // Recorded live and backfilled from the raw archive, in that order. A
-      // session recorded before the tape existed has only the sidecar; the one
-      // in progress has both, meeting at the live tape's first print.
-      for (const name of [
-        instrumentFileName(upper, upperSymbol),
-        backfillFileName(upper, upperSymbol),
-      ]) {
-        const file = join(this.dir, tradingDate, name);
-        if (!existsSync(file)) continue;
+      // Prefer a completed provider replay. Otherwise the older backfill
+      // meets the live recording at its first print.
+      for (const file of sessionTradeFiles(this.dir, tradingDate, upper, upperSymbol)) {
         await readArchiveRecords(file, (row) => {
           const trade = decodeTrade(row);
           if (!trade || trade.timestamp < start || trade.timestamp > end) return;
@@ -547,11 +551,7 @@ export class TradeTapeArchive {
           if (receipt) coverageReceipts.push(receipt);
         }
         // Backfill is older than the first live print by construction.
-        for (const name of [
-          backfillFileName(upper, upperSymbol),
-          instrumentFileName(upper, upperSymbol),
-        ]) {
-          const file = join(this.dir, tradingDate, name);
+        for (const file of sessionTradeFiles(this.dir, tradingDate, upper, upperSymbol)) {
           if (existsSync(file)) await readArchiveRecords(file, accept);
         }
       }
@@ -656,12 +656,7 @@ export class TradeTapeArchive {
         ));
         if (receipt) coverageReceipts.push(receipt);
       }
-      for (const name of [
-        backfillFileName(upper, upperSymbol),
-        instrumentFileName(upper, upperSymbol),
-      ]) {
-        const file = join(this.dir, tradingDate, name);
-        if (!existsSync(file)) continue;
+      for (const file of sessionTradeFiles(this.dir, tradingDate, upper, upperSymbol)) {
         await readArchiveRecords(file, (row) => {
           const trade = decodeTrade(row);
           if (!trade || trade.timestamp < start || trade.timestamp > end) return;

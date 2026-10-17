@@ -45,3 +45,11 @@ test("without a fold the entire ring remains eligible", () => {
     coverageEndMs: 20,
   });
 });
+
+test("a completed provider session excludes stale prints in its maintenance hour", () => {
+  const folded = { coverageStartMs: 100, coverageEndMs: 300,
+    authoritativeIntervals: [{ startMs: 100, endMs: 1000 }] };
+  assert.deepEqual(volumeProfileTailTrades([{ timestampMs: 450 }, { timestampMs: 1000 }], folded),
+    [{ timestampMs: 1000 }]);
+  assert.equal(volumeProfileSourcesHaveGap(folded, volumeProfileTailTrades([{ timestampMs: 450 }], folded)), false);
+});

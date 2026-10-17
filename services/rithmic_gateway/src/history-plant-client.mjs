@@ -95,7 +95,8 @@ export class RithmicHistoryPlantClient {
       }
       return;
     }
-    this.pending.onRow(payload);
+    try { this.pending.onRow(payload); }
+    catch (error) { this.failPending(error); }
   }
 
   failPending(error) {
@@ -165,6 +166,25 @@ export class RithmicHistoryPlantClient {
         startIndex: startSec,
         finishIndex: finishSec,
         resumeBars: true,
+      }));
+    });
+    return { bytesReceived: this.bytesReceived - before };
+  }
+
+  async replayIndividualTrades({ exchange, symbol, startSec, finishSec, onTrade }) {
+    if (this.pending) throw new Error("Only one History Plant replay may run at a time.");
+    await this.connect();
+    const id = `kwantdesk-exact-trades-${Date.now()}-${++this.requestSequence}`;
+    const before = this.bytesReceived;
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => this.failPending(new Error(`Trade replay timed out for ${exchange}:${symbol}.`)), this.requestTimeoutMs);
+      this.pending = { id, responseTemplateId: TEMPLATE_IDS.TICK_BAR_REPLAY_RESPONSE,
+        onRow: onTrade, resolve, reject, timer };
+      this.socket.send(this.protocol.encode("RequestTickBarReplay", {
+        templateId: TEMPLATE_IDS.TICK_BAR_REPLAY_REQUEST, userMsg: [id],
+        symbol, exchange, barType: 1, barSubType: 1, barTypeSpecifier: "1",
+        startIndex: startSec, finishIndex: finishSec,
+        direction: 1, timeOrder: 1, resumeBars: true,
       }));
     });
     return { bytesReceived: this.bytesReceived - before };

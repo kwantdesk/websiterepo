@@ -1,5 +1,22 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — Missing execution-backed indicators
+
+- Temporary candle history alone was insufficient: restored exact NQ/ES
+  executions now feed profiles, minute delta and bounded Footprint history.
+  Fixed stale source caches, completed-session snapshot overwrites and exact
+  contract routing during a disconnected/root-only live-book startup.
+- **Still open:** finish ES session-start Oct12 and both Oct11 imports; the
+  provider began refusing/resetting connections. Seven sessions completed and
+  checkpoints preserved. Other offered futures lack recovered exact tape.
+- **Still open:** wide Footprint windows above 100,000 prints require zoom-in;
+  event-chart Footprint remains on its separate path. No claim of complete
+  L3 recovery, continuous-stream receipt coverage or all-indicator parity.
+- **Still open:** authenticated chart/browser-memory soak and live-session
+  feed verification. The temporary laptop gateway must remain awake; migrate
+  code, minute folds and raw recovered tapes to the replacement VPS.
+- Record: `docs/prompt-log/2026-10-17-indicator-history-recovery.md`.
+
 ## 2026-10-17 — Recurring browser freeze / last chart viewport
 
 - Follow-up precise stall columns identified gamma cash-close calibration's

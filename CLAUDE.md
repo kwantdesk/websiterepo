@@ -1,5 +1,29 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Indicator history after temporary-backend recovery
+
+- Candle-only backfill did not restore executions. The temporary gateway had
+  almost no tape, so execution-backed profiles, CVD and Footprint were missing.
+- Reconciled History Plant one-tick replay now restores exact prints, candles,
+  minute flow and price-level folds. Completed replay replaces partial tapes;
+  source-aware caches refresh rather than retaining the empty old reductions.
+- Completed exact sessions reject stale root/live padding, including delayed
+  snapshots during archive flush. Explicit contracts remain exact even when
+  the live book is empty/root-only. Profiles never substitute mini for micro.
+- Footprint gets a bounded, coalesced viewport execution window, not the
+  strongest-trades sample. It validates candle volume, preserves unknown side
+  and duplicate real prints, and fails closed above 100,000 prints. No per-tick
+  Vercel polling was added. Broad windows still require zooming in.
+- Seven NQ/ES sessions recovered (NQ session starts Oct12–15; ES Oct13–15).
+  The remaining imports stopped on provider connection/permission failures;
+  checkpoints and a conservative cumulative 36 GiB transfer ledger survive.
+  Do not claim five complete sessions or all instruments restored yet.
+- Latest-session public backend checks: NQ/ES each 1,380 candles with full
+  flow coverage; exact Footprint windows reconcile. Authenticated UI/memory
+  soak and next live-session verification remain open. Carry these changes
+  and recovered archives to the replacement VPS before cutover.
+- Evidence and limits: `docs/prompt-log/2026-10-17-indicator-history-recovery.md`.
+
 ## 2026-10-17 — Browser startup formatter churn
 
 - Follow-up exact production profile column `0dxfzvbz_v-m8.js:1:312046`

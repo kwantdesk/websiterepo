@@ -24,6 +24,20 @@ async function readSession(files, tradingDate, ceiling) {
 }
 
 async function run() {
+  if (workerData?.kind === "exact-tape-window") {
+    const rows = [];
+    const limit = Math.min(100000, Math.max(1, Number(workerData.limit) || 100000));
+    let sourceRecordCount = 0;
+    for (const file of workerData.files ?? []) await readArchiveRecords(file, row => {
+      const trade = decodeTrade(row);
+      if (!trade || trade.timestamp < workerData.fromMs || trade.timestamp >= workerData.toMs) return;
+      sourceRecordCount++;
+      if (rows.length < limit) rows.push(row);
+    });
+    const truncated = sourceRecordCount > limit;
+    if (!truncated) rows.sort((a, b) => a[0] - b[0]);
+    return { records: truncated ? [] : rows, truncated, sourceRecordCount };
+  }
   const trades = await readSession(
     Array.isArray(workerData?.files) ? workerData.files : [],
     String(workerData?.tradingDate || ""),

@@ -9,7 +9,7 @@ import { optionsSessionOpen } from "./live-session-guard.mjs";
 import { chicagoTradingDate } from "./trading-session.mjs";
 import { parseIntervalMs, tradingDatesBetween } from "./futures-bar-archive.mjs";
 import {
-  backfillFileName, instrumentFileName,
+  sessionTradeFiles,
 } from "./trade-tape-archive.mjs";
 
 const gzipAsync = promisify(gzip);
@@ -197,10 +197,7 @@ export class BarFlowArchive {
   }
 
   #tapeFiles(tradingDate, exchange, symbol) {
-    const dayDir = join(this.tapeDir, tradingDate);
-    return [instrumentFileName(exchange, symbol), backfillFileName(exchange, symbol)]
-      .map((name) => join(dayDir, name))
-      .filter((file) => existsSync(file));
+    return sessionTradeFiles(this.tapeDir, tradingDate, exchange, symbol);
   }
 
   /**
@@ -216,8 +213,10 @@ export class BarFlowArchive {
     const key = `${exchange}:${symbol}:${tradingDate}`;
     const live = tradingDate === chicagoTradingDate(Date.now());
     const cached = this.memory.get(key);
-    if (cached && (!live || Date.now() - cached.builtAt < LIVE_REBUILD_MS)) return cached;
-    if (cached && live && !foldIfMissing) {
+    const historyPlant = this.#tapeFiles(tradingDate, exchange, symbol).some(file => file.endsWith(".history.ndjson.gz"));
+    const sameSource = Boolean(cached?.historyPlant) === historyPlant;
+    if (cached && sameSource && (!live || Date.now() - cached.builtAt < LIVE_REBUILD_MS)) return cached;
+    if (cached && sameSource && live && !foldIfMissing) {
       // Stale by a minute is fine; re-folding a growing live session inside a
       // request is not. The warmer refreshes it.
       this.pending.add(key);
@@ -228,7 +227,7 @@ export class BarFlowArchive {
     if (!live && !cached && existsSync(file)) {
       try {
         const parsed = JSON.parse((await gunzipAsync(await readFile(file))).toString("utf8"));
-        if (Array.isArray(parsed?.minutes)) {
+        if (Array.isArray(parsed?.minutes) && Boolean(parsed.historyPlant) === historyPlant) {
           const restored = { ...parsed, builtAt: Date.now() };
           this.memory.set(key, restored);
           return restored;
@@ -251,6 +250,7 @@ export class BarFlowArchive {
       tradingDate,
       ceiling: SESSION_PRINT_CEILING,
     });
+    built.historyPlant = historyPlant;
     const entry = { ...built, builtAt: Date.now() };
     this.memory.set(key, entry);
 

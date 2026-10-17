@@ -24,6 +24,8 @@ const ALLOWED_PATHS = new Set([
   "v1/market-data/instruments",
   "v1/market-data/snapshot",
   "v1/market-data/order-flow-levels",
+  // Bounded, viewport-only historical executions; never a continuous stream.
+  "v1/market-data/trade-tape",
   "v1/market-data/volume-profile",
   "v1/market-data/trades",
   "v1/market-data/index-stream",

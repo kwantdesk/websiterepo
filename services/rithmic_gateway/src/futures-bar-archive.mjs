@@ -374,7 +374,12 @@ export class FuturesBarArchive {
         const file = join(dayDir, instrumentFileName(exchange, symbol));
         try {
           const merged = new Map();
-          for (const bar of await this.readFile(file)) merged.set(bar.t, bar);
+          const metadata = {};
+          const archived = await this.readFile(file, metadata);
+          // A delayed snapshot after restart cannot reopen a completed,
+          // reconciled session or strip its source/marker receipt.
+          if (metadata.authoritativeSession) continue;
+          for (const bar of archived) merged.set(bar.t, bar);
           // The live bar wins: it is the one still receiving prints.
           for (const bar of live.values()) merged.set(bar.t, bar);
           const rows = [...merged.values()].sort((a, b) => a.t - b.t).map(encodeBar);
@@ -391,10 +396,12 @@ export class FuturesBarArchive {
     }
   }
 
-  async readFile(file) {
+  async readFile(file, metadata) {
     try {
       const text = await readFile(file, "utf8");
       const parsed = JSON.parse(text);
+      if (metadata) metadata.authoritativeSession = parsed?.source === "Rithmic History Plant individual trades"
+        && parsed?.markerConvention === "bar-open";
       const rows = Array.isArray(parsed) ? parsed : parsed?.bars;
       if (!Array.isArray(rows)) return [];
       return rows
@@ -454,7 +461,15 @@ export class FuturesBarArchive {
       const openDay = this.open.get(tradingDate);
       const dayDir = this.dayDir(tradingDate);
       const file = join(dayDir, instrumentFileName(upper, upperSymbol));
-      const exactBars = await this.readFile(file);
+      const metadata = {};
+      const exactBars = await this.readFile(file, metadata);
+      if (metadata.authoritativeSession && exactBars.length) {
+        // This file was rebuilt from a reconciled, completed exact-contract
+        // replay. Do not fill its genuine empty minutes with a stale root
+        // archive or an old live snapshot from the maintenance break.
+        for (const bar of exactBars) merged.set(bar.t, bar);
+        continue;
+      }
       // History Plant bars are stored by product root (NQ), while live capture
       // is stored by exact active contract (NQU6). Read BOTH. The old all-or-
       // nothing fallback discarded the complete History Plant session as soon

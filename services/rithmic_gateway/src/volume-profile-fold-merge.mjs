@@ -7,7 +7,9 @@ export function volumeProfileTailTrades(profileTrades, foldedProfile) {
   if (!foldedProfile) return profileTrades;
   const foldedEnd = Number(foldedProfile.coverageEndMs);
   if (!Number.isFinite(foldedEnd)) return profileTrades;
-  return profileTrades.filter((trade) => Number(trade.timestampMs) > foldedEnd);
+  return profileTrades.filter((trade) => Number(trade.timestampMs) > foldedEnd
+    && !(foldedProfile.authoritativeIntervals ?? []).some(range =>
+      trade.timestampMs >= range.startMs && trade.timestampMs < range.endMs));
 }
 
 export function combinedVolumeProfileCoverage(foldedProfile, tailTrades) {

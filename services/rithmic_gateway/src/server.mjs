@@ -14,6 +14,7 @@ import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { FuturesBarArchive, HistoryRequestError, parseIntervalMs } from "./futures-bar-archive.mjs";
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
+import { loadExactTapeWindow } from "./exact-tape-window.mjs";
 import {
   completeTradeSseSeed,
   createTradeSseSubscriber,
@@ -367,11 +368,11 @@ function requestedInstrument(url, body = {}, options = {}) {
   const requestedIsAliased = contractRoot(requestedSymbol) !== requestedRoot;
   return {
     exchange: fallbackExchange,
-    symbol: resolved?.symbol || (
-      requestedSymbol && requestedSymbol !== requestedRoot && !requestedIsAliased
-        ? requestedSymbol
-        : providerResolved?.contractSymbol || requestedOwnRoot
-    ),
+    // An explicitly requested contract stays exact even while the live book
+    // is empty or contains a root-only/stale-contract snapshot after restart.
+    symbol: requestedSymbol && requestedSymbol !== requestedRoot && !requestedIsAliased
+      ? requestedSymbol
+      : resolved?.symbol || providerResolved?.contractSymbol || requestedOwnRoot,
   };
 }
 
@@ -1550,6 +1551,13 @@ const server = createServer(async (request, response) => {
        */
       const instrument = requestedInstrument(url, {}, { exactRoot: true });
       try {
+        if (url.searchParams.get("exactWindow") === "1") {
+          const result = await loadExactTapeWindow({ dir: config.recordDir, exchange: instrument.exchange,
+            symbol: instrument.symbol, fromMs: Number(url.searchParams.get("fromMs")), toMs: Number(url.searchParams.get("toMs")) });
+          return json(response, result.truncated ? 422 : 200, result.truncated
+            ? { ...result, error: "Zoom in to load exact Footprint executions for this window." }
+            : result);
+        }
         return json(response, 200, await tradeTape.load({
           exchange: instrument.exchange,
           symbol: instrument.symbol,
@@ -2476,7 +2484,7 @@ const server = createServer(async (request, response) => {
       });
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/volume-profile") {
-      const instrument = requestedInstrument(url);
+      const instrument = requestedInstrument(url, {}, { exactRoot: true });
       client.subscribe(instrument.exchange, instrument.symbol);
       const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1);
       if (!snapshot) return json(response, 404, { error: "Instrument is not subscribed." });

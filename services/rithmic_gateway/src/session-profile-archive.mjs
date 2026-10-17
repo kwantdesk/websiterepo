@@ -6,10 +6,10 @@ import { promisify } from "node:util";
 
 import { runArchiveFold } from "./archive-fold-worker-client.mjs";
 import { optionsSessionOpen } from "./live-session-guard.mjs";
-import { chicagoTradingDate } from "./trading-session.mjs";
+import { chicagoTradingDate, cmeSessionBounds } from "./trading-session.mjs";
 import { tradingDatesBetween } from "./futures-bar-archive.mjs";
 import {
-  backfillFileName, instrumentFileName,
+  sessionTradeFiles,
 } from "./trade-tape-archive.mjs";
 
 const gzipAsync = promisify(gzip);
@@ -322,10 +322,7 @@ export class SessionProfileArchive {
   }
 
   #tapeFiles(tradingDate, exchange, symbol) {
-    const dayDir = join(this.tapeDir, tradingDate);
-    return [instrumentFileName(exchange, symbol), backfillFileName(exchange, symbol)]
-      .map((name) => join(dayDir, name))
-      .filter((file) => existsSync(file));
+    return sessionTradeFiles(this.tapeDir, tradingDate, exchange, symbol);
   }
 
   /**
@@ -338,8 +335,10 @@ export class SessionProfileArchive {
     const key = `${exchange}:${symbol}:${tradingDate}:${tickSize}`;
     const live = tradingDate === chicagoTradingDate(Date.now());
     const cached = this.memory.get(key);
-    if (cached && (!live || Date.now() - cached.builtAt < LIVE_REBUILD_MS)) return cached;
-    if (cached && live && !foldIfMissing) {
+    const historyPlant = this.#tapeFiles(tradingDate, exchange, symbol).some(file => file.endsWith(".history.ndjson.gz"));
+    const sameSource = Boolean(cached?.historyPlant) === historyPlant;
+    if (cached && sameSource && (!live || Date.now() - cached.builtAt < LIVE_REBUILD_MS)) return cached;
+    if (cached && sameSource && live && !foldIfMissing) {
       // Stale by a minute is fine; re-folding a growing live session inside a
       // request is not.
       this.queueWarm(key);
@@ -352,6 +351,7 @@ export class SessionProfileArchive {
         const parsed = JSON.parse((await gunzipAsync(await readFile(file))).toString("utf8"));
         if (
           parsed?.schemaVersion === PROFILE_FOLD_SCHEMA
+          && Boolean(parsed.historyPlant) === historyPlant
           && Array.isArray(parsed?.minutes)
           && parsed.tickSize === tickSize
         ) {
@@ -381,6 +381,7 @@ export class SessionProfileArchive {
       tickSize,
       ceiling: SESSION_PRINT_CEILING,
     });
+    built.historyPlant = historyPlant;
     const entry = { ...built, schemaVersion: PROFILE_FOLD_SCHEMA, builtAt: Date.now() };
     sessionAggregate(entry);
     this.memory.set(key, entry);
@@ -436,9 +437,12 @@ export class SessionProfileArchive {
       (tradingDate) => this.#tapeFiles(tradingDate, upper, upperSymbol).length,
     );
     const keys = availableDates.map((tradingDate) => `${upper}:${upperSymbol}:${tradingDate}:${tick}`);
+    const authoritativeIntervals = [];
     const sessions = (await Promise.all(
       availableDates.map(async (tradingDate) => {
-        return this.sessionLevels(tradingDate, upper, upperSymbol, tick, false);
+        const session = await this.sessionLevels(tradingDate, upper, upperSymbol, tick, false);
+        if (session?.historyPlant) authoritativeIntervals.push(cmeSessionBounds(tradingDate));
+        return session;
       }),
     )).filter(Boolean);
     if (sessions.length < availableDates.length && waitForWarmMs > 0) {
@@ -516,6 +520,10 @@ export class SessionProfileArchive {
       tickSize: tick,
       coverageStartMs,
       coverageEndMs,
+      // Completed, reconciled provider replay owns the ENTIRE session,
+      // including its empty maintenance hour. A stale live-ring print must
+      // not be appended merely because it is newer than the last real trade.
+      authoritativeIntervals: authoritativeIntervals.sort((a, b) => a.startMs - b.startMs),
       levels: [...totals.entries()]
         .sort((left, right) => left[0] - right[0])
         .map(([priceTicks, row]) => ({

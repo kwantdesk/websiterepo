@@ -13,6 +13,7 @@ import { ShiftCandlePrimitive } from "@/lib/shiftCandlePrimitive";
 import { publishChartAnnotations, readChartAnnotations, removeChartAnnotations, subscribeChartAnnotations } from "@/lib/chartAnnotationRegistry";
 import { buildSpeedOfTapeFrame as buildSimpleSpeedOfTapeFrame, normalizeSpeedOfTapeSettings as normalizeSimpleSpeedOfTapeSettings, speedOfTapeSeries as simpleSpeedOfTapeSeries } from "@/lib/speedOfTape";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
+import { useExactFootprintHistory } from "@/components/useExactFootprintHistory";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
 
@@ -6590,7 +6591,15 @@ function Chart({
     if (!footprintDataConsumer) return [];
     return footprintVisibleCandles;
   }, [footprintDataConsumer, footprintVisibleCandles]);
+  const exactFootprintHistory = useExactFootprintHistory(contractSymbol,
+    footprintSourceCandles, timeframeToMs(timeframe), Boolean(footprintDataConsumer) && replayTimestampMs === null,
+    marketIsActive === true);
   const footprintMarketTrades = useMemo(() => {
+    if (exactFootprintHistory.active) {
+      const end = (footprintSourceCandles.at(-1)?.timestamp ?? 0) + (timeframeToMs(timeframe) ?? 0);
+      return [...exactFootprintHistory.records, ...sampledIndicatorMarketTrades.filter(record =>
+        !record.flowOnly && record.timestamp >= exactFootprintHistory.boundary && record.timestamp < end)];
+    }
     if (!footprintSourceCandles.length || !sampledIndicatorMarketTrades.length) return [];
     const start = footprintSourceCandles[0].timestamp;
     const finalCandle = footprintSourceCandles.at(-1)!;
@@ -6609,7 +6618,7 @@ function Chart({
       return low;
     };
     return sampledIndicatorMarketTrades.slice(lowerBound(start), end === null ? sampledIndicatorMarketTrades.length : lowerBound(end));
-  }, [footprintSourceCandles, sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion, timeframe]);
+  }, [exactFootprintHistory.active, exactFootprintHistory.records, exactFootprintHistory.boundary, footprintSourceCandles, sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion, timeframe]);
   const resolvedFootprintGroupTicks = useMemo(() => {
     const manual = Math.max(1, Math.round(Number(footprintSettings.manualTicks ?? 1)));
     if (footprintSettings.groupingMode === "manual") return manual;
@@ -19926,6 +19935,11 @@ function Chart({
         >
           <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
           <span>Syncing {instrument} Gamma</span>
+        </div>
+      ) : null}
+      {footprintIndicator && exactFootprintHistory.error ? (
+        <div className="pointer-events-none absolute right-[76px] top-3 z-[19] max-w-[390px] border border-border bg-background px-3 py-2 font-mono text-[10px] text-foreground" role="status">
+          {exactFootprintHistory.error}
         </div>
       ) : null}
       {footprintIndicator && footprintHasPriceLevelFlow && !footprintHasClassifiedFlow ? (
