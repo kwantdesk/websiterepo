@@ -13,6 +13,16 @@ function loadFunction(path, name, globals) {
   return vm.runInNewContext(`${code}; ${name}`, { AbortSignal, URLSearchParams, ...globals });
 }
 
+test("partial underlying history reaches a scoped non-blocking chart notice", () => {
+  const route = readFileSync(new URL("../src/app/api/market-indices/route.ts", import.meta.url), "utf8");
+  const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+  assert.match(route, /historyCoverage: candles.historyCoverage/);
+  assert.match(workspace, /historyCoverage: payload.historyCoverage/);
+  assert.match(workspace, /setHistoryCoverageWarning\(historyCoverage\?\.partial/);
+  assert.match(workspace, /Showing available history only/);
+  assert.match(workspace, /!chartIsLoading && historyCoverageWarning\?\.key/);
+});
+
 test("real candle loader returns while optional flow and browser persistence remain blocked", async () => {
   const candle = { timestamp: 1000, open: 100, high: 102, low: 98, close: 101, volume: 20 };
   const never = new Promise(() => {});
@@ -57,7 +67,13 @@ test("underlying history uses one bounded archive request and rejects wrong symb
   payload = { ...payload, symbol: "QQQ" };
   await assert.rejects(load(input), /invalid instrument/);
   payload = { symbol: "SPX", candles: [], truncated: true };
-  await assert.rejects(load(input), /available archive window/);
+  await assert.rejects(load(input), /No underlying chart history/);
+  payload = { symbol: "SPX", truncated: true, candles: [{ timestamp: 1000, open: 100, high: 102, low: 98, close: 101, volume: 20 }] };
+  const partial = await load(input);
+  assert.equal(partial.length, 1, "a bounded recent archive must not blank the whole chart");
+  assert.equal(partial.historyCoverage.partial, true);
+  assert.equal(partial.historyCoverage.requestedFrom, 0);
+  assert.equal(partial.historyCoverage.availableFrom, 1000);
   payload = { symbol: "SPX", candles: [{ timestamp: 1000, open: 100, high: 99, low: 98, close: 101, volume: 20 }] };
   await assert.rejects(load(input), /geometry/);
 });

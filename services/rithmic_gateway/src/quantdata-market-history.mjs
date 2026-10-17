@@ -93,6 +93,7 @@ export class QuantDataMarketHistoryService {
     if (plan.sessionScoped) {
       const dates = weekdaySessionDates(request.from, request.to);
       let providerDates = dates;
+      const archivedDates = [];
       if (this.archiveReadSession) {
         providerDates = [];
         for (let offset = 0; offset < dates.length; offset += 50) {
@@ -103,6 +104,7 @@ export class QuantDataMarketHistoryService {
           })));
           for (const row of archived) {
             if (row.value?.complete === true && Array.isArray(row.value.candles) && row.value.candles.length) {
+              archivedDates.push(row.sessionDate);
               payloads.push({
                 payload: row.value,
                 sourceAggregation: String(row.value.aggregationPeriod || "1m"),
@@ -112,6 +114,14 @@ export class QuantDataMarketHistoryService {
             }
           }
         }
+      }
+      // Older missing sessions belong to the checkpointed backfill, not a
+      // per-user startup fan-out. Return the real available archive promptly.
+      if (archivedDates.length) {
+        const oldestArchived = archivedDates.sort()[0];
+        const recentMissing = providerDates.filter(date => date >= oldestArchived);
+        if (recentMissing.length < providerDates.length) truncated = true;
+        providerDates = recentMissing;
       }
       if (providerDates.length > MAX_PROVIDER_SESSION_REQUESTS) {
         providerDates = providerDates.slice(-MAX_PROVIDER_SESSION_REQUESTS);

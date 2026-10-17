@@ -1,5 +1,21 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Partial options-underlying history must not blank charts
+
+- A 3M SPY/QQQ request returned valid recent candles with `truncated: true`;
+  the Next adapter threw away the entire result. Nonempty validated OHLC now
+  loads with explicit coverage metadata and a scoped non-blocking chart notice.
+  Empty, wrong-symbol and impossible OHLC responses still fail closed.
+- Gateway serves available completed archives without synchronously fetching
+  older missing days before its oldest archive. Preserve bounded provider
+  fallback for recent gaps/live tail; older history belongs to the backfill.
+  No unbounded per-user provider fan-out to satisfy a wide period selector.
+- Local real 90-day requests: SPY 4,050 / QQQ 4,052 archived candles, Oct5–16,
+  15/11ms and zero provider calls. This is partial history, not 3M or the required
+  month restored. Tests: 12 focused frontend cases, 394 gateway tests, scoped
+  lint and isolated build. Record:
+  `docs/prompt-log/2026-10-17-underlying-partial-history.md`.
+
 ## 2026-10-17 — Footprint mode survives zoom/history hydration
 
 - Native candle visibility and Footprint primitive publication must follow the

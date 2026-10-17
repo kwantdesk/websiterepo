@@ -280,8 +280,13 @@ export async function GET(request: Request) {
             // itself fails.
           }
         }
+        const availableCandles = indexHistoryCandles(responsePayload);
+        if (isRecord(responsePayload)) responsePayload = { ...responsePayload, historyCoverage: {
+          partial: responsePayload.truncated === true, requestedFrom: from, requestedTo: to,
+          availableFrom: availableCandles[0]?.timestamp ?? null, availableTo: availableCandles.at(-1)?.timestamp ?? null,
+        } };
         return conditionalJson(request, responsePayload, {
-          identity: historyIdentity(indexHistoryCandles(responsePayload)),
+          identity: `${historyIdentity(availableCandles)}::${isRecord(responsePayload) && responsePayload.truncated === true}`,
           maxAgeMs: INDEX_HISTORY_MAX_AGE_MS,
         });
       } catch {
@@ -296,6 +301,7 @@ export async function GET(request: Request) {
       request,
       {
         candles,
+        historyCoverage: candles.historyCoverage,
         symbol,
         source: symbol === "VIX" && !hasIntradayMarketIndexHistoryAccess()
           ? "CBOE EOD"
@@ -304,7 +310,7 @@ export async function GET(request: Request) {
         to,
       },
       {
-        identity: historyIdentity(candles),
+        identity: `${historyIdentity(candles)}::${Boolean(candles.historyCoverage?.partial)}`,
         maxAgeMs: INDEX_HISTORY_MAX_AGE_MS,
       },
     );

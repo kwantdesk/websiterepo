@@ -1,4 +1,5 @@
 import "server-only";
+import type { UnderlyingHistoryCoverage } from "@/lib/underlyingHistoryCoverage";
 import { unstable_cache } from "next/cache";
 import { fetchInstitutionalMarketData, isInstitutionalMarketDataConfigured } from "@/lib/institutionalMarketData.server";
 
@@ -1083,7 +1084,7 @@ export async function getOptionsUnderlyingHistory(input: {
   timeframe: string;
   from: number;
   to: number;
-}): Promise<OptionsCandle[]> {
+}): Promise<OptionsCandle[] & { historyCoverage?: UnderlyingHistoryCoverage }> {
   const symbol = input.symbol.trim().toUpperCase();
   // SPXW is an option-class root, not a separate cash index. Its chart and
   // live underlying must use the canonical SPX cash tape while all option
@@ -1106,10 +1107,8 @@ export async function getOptionsUnderlyingHistory(input: {
     if (!isRecord(payload) || payload.symbol !== cashTicker || !Array.isArray(payload.candles)) {
       throw new QuantDataError("Underlying chart history returned an invalid instrument response.", 502, null);
     }
-    if (payload.truncated === true) {
-      throw new QuantDataError("The requested underlying history exceeds the available archive window.", 422, null);
-    }
-    return payload.candles.map((row): OptionsCandle => {
+    if (!payload.candles.length) throw new QuantDataError("No underlying chart history is available for this range yet.", 422, null);
+    const candles = payload.candles.map((row): OptionsCandle => {
       if (!isRecord(row)) throw new QuantDataError("Invalid underlying candle.", 502, null);
       const candle = { timestamp: Number(row.timestamp), open: Number(row.open), high: Number(row.high), low: Number(row.low), close: Number(row.close), volume: Number(row.volume ?? 0) };
       if (!Object.values(candle).every(Number.isFinite) || candle.timestamp < from || candle.timestamp > to
@@ -1119,6 +1118,10 @@ export async function getOptionsUnderlyingHistory(input: {
       }
       return candle;
     });
+    return Object.assign(candles, { historyCoverage: {
+      partial: payload.truncated === true, requestedFrom: from, requestedTo: to,
+      availableFrom: candles[0]?.timestamp ?? null, availableTo: candles.at(-1)?.timestamp ?? null,
+    } });
   }
   let payloads: unknown[];
   if (sessionScoped) {

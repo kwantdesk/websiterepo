@@ -1,4 +1,5 @@
 import "server-only";
+import type { UnderlyingHistoryCoverage } from "@/lib/underlyingHistoryCoverage";
 
 import type { Candle } from "@/lib/backtester";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
@@ -371,7 +372,7 @@ export async function fetchMarketIndexCandles(options: {
   timeframe: string;
   from: number;
   to: number;
-}): Promise<Candle[]> {
+}): Promise<Candle[] & { historyCoverage?: UnderlyingHistoryCoverage }> {
   const definition = getMarketIndexDefinition(options.symbol);
   if (!definition) throw new Error(`${options.symbol} is not a supported market instrument.`);
   const canUseOfficialVixArchive = definition.symbol === "VIX"

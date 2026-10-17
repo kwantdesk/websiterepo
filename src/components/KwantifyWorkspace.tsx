@@ -3919,7 +3919,9 @@ async function fetchWorkspaceCandles(
         );
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? `${symbol} index history is unavailable.`);
-        return sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
+        return Object.assign(sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe), {
+          historyCoverage: payload.historyCoverage,
+        });
       } finally {
         window.clearTimeout(timer);
       }
@@ -5575,6 +5577,7 @@ function WorkspaceChartPaneComponent({
    */
   const [initialBalanceStudyCandles, setInitialBalanceStudyCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [historyCoverageWarning, setHistoryCoverageWarning] = useState<{ key: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settledChartRequestKey, setSettledChartRequestKey] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
@@ -6988,6 +6991,11 @@ function WorkspaceChartPaneComponent({
           needsAuctionGapHistory ? resolvedContractSymbol : null,
         );
         if (cancelled) return;
+        const historyCoverage = (nextCandles as Candle[] & { historyCoverage?: { partial?: boolean } }).historyCoverage;
+        setHistoryCoverageWarning(historyCoverage?.partial ? {
+          key: `${pane.broker}:${pane.symbol}:${pane.timeframe}:${period}`,
+          message: "Showing available history only; part of the requested range is not available yet.",
+        } : null);
         const downloadedMarketTrades = needsOrderFlowHistory
           ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? []
           : [];
@@ -9522,6 +9530,11 @@ function WorkspaceChartPaneComponent({
             <X className="h-3.5 w-3.5" />
           </button>
           )}
+        </div>
+      )}
+      {!chartIsLoading && historyCoverageWarning?.key === `${pane.broker}:${pane.symbol}:${pane.timeframe}:${period}` && (
+        <div role="status" className="pointer-events-none absolute bottom-3 left-3 z-[65] max-w-[75%] rounded border border-border bg-panel/95 px-3 py-2 text-[11px] text-muted">
+          {historyCoverageWarning.message}
         </div>
       )}
       {chartIsLoading ? (

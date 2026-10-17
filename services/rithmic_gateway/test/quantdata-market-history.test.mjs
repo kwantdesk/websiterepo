@@ -9,6 +9,21 @@ import {
 
 const NOW = Date.UTC(2026, 7, 29, 12);
 
+test("a wide chart request serves recent archived sessions without provider fan-out for older gaps", async () => {
+  let calls = 0;
+  const service = new QuantDataMarketHistoryService({ apiKey: "qd-test", now: () => NOW,
+    fetchImpl: async () => { calls++; throw new Error("Startup must not backfill old sessions."); },
+    archiveReadSession: async (_ticker, date) => date < "2026-08-27" ? null : {
+      complete: true, aggregationPeriod: "1m", candles: [{ timestamp: Date.parse(`${date}T14:00:00Z`),
+        open: 100, high: 102, low: 99, close: 101, volume: 20 }],
+    },
+  });
+  const result = await service.load({ symbol: "SPY", timeframe: "1m", from: Date.UTC(2026, 4, 29), to: NOW });
+  assert.equal(calls, 0);
+  assert.equal(result.truncated, true, "missing older history must remain explicit");
+  assert.equal(result.candles.length, 2);
+});
+
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,

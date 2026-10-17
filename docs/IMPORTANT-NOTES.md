@@ -1,5 +1,16 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — SPY/QQQ blank on wide history request
+
+- Fixed entire-chart rejection when a 3M request has valid recent candles but
+  incomplete older coverage. Show verified available bars plus an explicit
+  partial-history notice; do not silently present them as the full range.
+- Chart startup no longer fans out to the provider for old gaps before its
+  available archive. Recent gap/live-tail fallback remains bounded.
+- One-month history requirement is still OPEN: current SPY/QQQ archives cover
+  Oct5–16 only. This repair does not import the missing month/three months.
+- Record: `docs/prompt-log/2026-10-17-underlying-partial-history.md`.
+
 ## 2026-10-17 — Footprint zoom mode
 
 - Fixed coverage-dependent fallback to native candlesticks during zoom/history
