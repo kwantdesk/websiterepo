@@ -108,6 +108,7 @@ type GexMapMarket = "NQ" | "ES";
 /** Serializable snapshot of an embedded map's user configuration, owned by
  * the host workspace pane so it saves and restores with the workspace. */
 export type GexMapEmbedState = {
+  timeHorizon?: "present" | "future";
   surfaceVersion: 2;
   panels: PanelConfig[];
   viewMode: GexMapViewMode;
@@ -287,6 +288,8 @@ function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
     // the trader actually chose is theirs and is kept exactly as saved.
     panels: isLegacyDefaultPanels(panels) ? DEFAULT_PANELS.map((panel) => ({ ...panel })) : panels,
     viewMode: normalizeGexMapViewMode(parsed.viewMode),
+    timeHorizon: parsed.timeHorizon === "present" || parsed.timeHorizon === "future" ? parsed.timeHorizon : undefined,
+    exposureModel: parsed.exposureModel === "DEALER_INVENTORY" ? "DEALER_INVENTORY" : "STRUCTURAL_OI",
     stepMinutes: (FRAME_STEPS as readonly number[]).includes(Number(parsed.stepMinutes))
       ? Number(parsed.stepMinutes) as (typeof FRAME_STEPS)[number]
       : 1,
@@ -1776,6 +1779,7 @@ function GexMapWorkspace({
   // PRESENT (live per-strike ladders) vs FUTURE (forward expiry×strike
   // matrix). Persisted so the map reopens on the horizon last worked in.
   const [storedTimeHorizon, setTimeHorizon] = useState<"present" | "future">(() => {
+    if (initialEmbedStateRef.current?.timeHorizon) return initialEmbedStateRef.current.timeHorizon;
     if (typeof window === "undefined") return "present";
     return window.localStorage.getItem(GEX_MAP_TIME_HORIZON_KEY) === "future" ? "future" : "present";
   });
@@ -1980,8 +1984,9 @@ function GexMapWorkspace({
       expiryScope,
       representation,
       exposureModel,
+      timeHorizon,
     });
-  }, [expiryScope, exposureModel, panels, representation, stepMinutes, viewMode]);
+  }, [expiryScope, exposureModel, panels, representation, stepMinutes, timeHorizon, viewMode]);
 
   useEffect(() => {
     let cancelled = false;

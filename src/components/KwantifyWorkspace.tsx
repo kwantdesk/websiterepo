@@ -1327,16 +1327,49 @@ function createGexStandardPreset(chartSettings: ChartSettings): WorkspacePreset 
   };
 }
 
+function createGexQuadMapPreset(chartSettings: ChartSettings): WorkspacePreset {
+  // Screenshot order: SPXW / NDX above QQQ / SPY, with the map at right.
+  const symbols = ["SPXW", "NDX", "QQQ", "SPY"];
+  const panes: WorkspacePane[] = symbols.map(symbol => ({
+    id: `gex-quad-map-${symbol.toLowerCase()}`, symbol, broker: "Market Index",
+    timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey(symbol, "Market Index"),
+    content: "charts", locked: false,
+  }));
+  const mapPane: WorkspacePane = {
+    ...panes[0], id: "gex-quad-map-ladder", content: "gexmap",
+    gexMapState: { surfaceVersion: 2, panels: GEX_MAP_AUTO_MAP_PANELS.map(panel => ({ ...panel })),
+      viewMode: "star", stepMinutes: 1, expiryScope: "FRONT_EXPIRY",
+      representation: DEFAULT_GEX_MAP_REPRESENTATION, exposureModel: "STRUCTURAL_OI", timeHorizon: "present" },
+  };
+  const pane = (index: number): WorkspaceLayoutNode => ({ type: "pane", paneId: panes[index].id });
+  return {
+    id: "gex-quad-map", name: "GEX QUAD + MAP",
+    layout: { type: "split", id: "gex-quad-map-root", axis: "x", ratio: 65,
+      first: { type: "split", id: "gex-quad-map-charts", axis: "x", ratio: 50,
+        first: { type: "split", id: "gex-quad-map-left", axis: "y", ratio: 50, first: pane(0), second: pane(2) },
+        second: { type: "split", id: "gex-quad-map-right", axis: "y", ratio: 50, first: pane(1), second: pane(3) } },
+      second: { type: "pane", paneId: mapPane.id } },
+    panes: [...panes, mapPane], chartSettings: normalizeChartSettings(chartSettings),
+    indicators: Object.fromEntries([
+      ...panes.map(chart => [chart.id, ["bounce-levels", "dark-pool-gex"].map(indicatorId => ({
+        instanceId: `${chart.id}-${indicatorId}`, indicatorId, enabled: true,
+        settings: defaultIndicatorSettings(indicatorId, chartSettings),
+      }))]), [mapPane.id, []],
+    ]),
+    levelVisibility: {}, floatingWindows: [], linkedPaneIds: panes.map(chart => chart.id),
+    updatedAt: "2026-10-17T00:00:00.000Z",
+  };
+}
+
 function includeGexStandardPreset(
   presets: WorkspacePreset[],
   chartSettings: ChartSettings,
 ) {
-  if (presets.some((preset) =>
-    preset.id === GEX_STANDARD_WORKSPACE_ID
-    || preset.name.trim().toUpperCase() === GEX_STANDARD_WORKSPACE_NAME)) {
-    return presets;
-  }
-  return [...presets, createGexStandardPreset(chartSettings)]
+  const missing = [createGexStandardPreset(chartSettings), createGexQuadMapPreset(chartSettings)]
+    .filter(builtIn => !presets.some(preset => preset.id === builtIn.id
+      || preset.name.trim().toUpperCase() === builtIn.name));
+  if (!missing.length) return presets;
+  return [...presets, ...missing]
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

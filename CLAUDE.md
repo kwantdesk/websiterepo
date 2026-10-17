@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — GEX VUE screenshot workspace template
+
+- New built-in workspace `GEX QUAD + MAP` (`gex-quad-map`), available alongside
+  GEX STANDARD only in the gamma/GEX VUE workspace picker. Do not replace the
+  owner's active layout or overwrite an existing saved preset of that identity.
+- Left65% is a 2x2 grid: SPXW/NDX above QQQ/SPY; right35% full-height GEX Map
+  has SPXW/NDX/SPY/QQQ gamma columns. Charts use Market Index, 5m/5D, standard
+  bounce-levels + dark-pool-gex overlays, theme-derived settings and linked views.
+- Map starts Present/Structural/Front0DTE, one-minute step. Embedded map state
+  now preserves horizon and exposure model through normalization/save/restore;
+  old presets without a horizon retain their existing fallback behaviour.
+- Record: `docs/prompt-log/2026-10-17-gex-vue-quad-map-template.md`.
+
 ## 2026-10-17 — GEX Map toolbar spacing
 
 - Internal GEX Map rail now has 6px top/bottom padding and intrinsic height
