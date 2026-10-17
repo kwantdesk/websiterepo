@@ -961,7 +961,7 @@ type StrategyItem = {
   totalPnl?: number;
 };
 
-type WorkspaceLayout = "single" | "split-vertical" | "columns-3" | "split-horizontal" | "quad" | "columns" | "gexmap-columns" | "gexmap-columns-4" | "custom";
+type WorkspaceLayout = "single" | "split-vertical" | "columns-3" | "split-horizontal" | "quad" | "columns" | "gexmap-columns" | "gexmap-columns-4" | "gexmap-quad" | "custom";
 type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
 type WorkspaceToolKind =
   | "tool-gamma-heatmap"
@@ -1881,6 +1881,17 @@ function createWorkspaceLayoutTree(
       second: pane(4),
     };
   }
+  if (layout === "gexmap-quad") {
+    return {
+      type: "split", id: "gexmap-quad-root", axis: "x", ratio: 65,
+      first: {
+        type: "split", id: "gexmap-quad-charts", axis: "x", ratio: 50,
+        first: { type: "split", id: "gexmap-quad-left", axis: "y", ratio: 50, first: pane(0), second: pane(2) },
+        second: { type: "split", id: "gexmap-quad-right", axis: "y", ratio: 50, first: pane(1), second: pane(3) },
+      },
+      second: pane(4),
+    };
+  }
   if (layout === "quad") {
     return {
       type: "split",
@@ -2508,7 +2519,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
     panes: fallbackPanes,
     tree: gexStandardPreset?.layout ?? createWorkspaceLayoutTree("single", fallbackPanes),
     floatingWindows: [],
-    presets: gexStandardPreset ? [gexStandardPreset] : [],
+    presets: gexStandardPreset ? includeGexStandardPreset([gexStandardPreset], scopedChartSettings) : [],
     activePresetId: gexStandardPreset?.id ?? null,
     activePaneId: fallbackPanes[0].id,
     indicators: gexStandardPreset?.indicators ?? {},
@@ -2538,6 +2549,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
     || layoutValue === "columns"
     || layoutValue === "gexmap-columns"
     || layoutValue === "gexmap-columns-4"
+    || layoutValue === "gexmap-quad"
     || layoutValue === "custom"
     || layoutValue === "single"
     ? layoutValue
@@ -14624,6 +14636,7 @@ export default function KwantifyWorkspace({
             || nextLayoutValue === "columns"
             || nextLayoutValue === "gexmap-columns"
             || nextLayoutValue === "gexmap-columns-4"
+            || nextLayoutValue === "gexmap-quad"
             || nextLayoutValue === "custom"
             || nextLayoutValue === "single"
             ? nextLayoutValue
@@ -15691,7 +15704,7 @@ export default function KwantifyWorkspace({
   const applyWorkspaceLayoutTemplate = (layout: Exclude<WorkspaceLayout, "custom">) => {
     // Auto layouts pin the embedded GEX Map to the right 35% behind this many
     // evenly split charts.
-    const gexMapAutoChartCount = layout === "gexmap-columns" ? 3 : layout === "gexmap-columns-4" ? 4 : 0;
+    const gexMapAutoChartCount = layout === "gexmap-columns" ? 3 : layout === "gexmap-columns-4" || layout === "gexmap-quad" ? 4 : 0;
     const requiredPaneCount = gexMapAutoChartCount
       ? gexMapAutoChartCount + 1
       : layout === "quad" || layout === "columns" ? 4
@@ -15736,7 +15749,7 @@ export default function KwantifyWorkspace({
       // right 35% carrying the matching exposure columns.
       orderedPanes = orderedPanes.map((pane, index): WorkspacePane => {
         if (index < gexMapAutoChartCount) {
-          const symbol = GEX_MAP_AUTO_CHART_SYMBOLS[index]
+          const symbol = (layout === "gexmap-quad" ? ["SPXW", "NDX", "QQQ", "SPY"] : GEX_MAP_AUTO_CHART_SYMBOLS)[index]
             ?? GEX_MAP_AUTO_CHART_SYMBOLS[GEX_MAP_AUTO_CHART_SYMBOLS.length - 1];
           return {
             ...pane,
@@ -15755,10 +15768,11 @@ export default function KwantifyWorkspace({
             ...pane,
             content: "gexmap" as WorkspacePanelKind,
             gexMapState: {
+              ...pane.gexMapState,
               panels: GEX_MAP_AUTO_MAP_PANELS.map((panel) => ({ ...panel })),
               viewMode: pane.gexMapState?.viewMode ?? "star",
               stepMinutes: pane.gexMapState?.stepMinutes ?? 1,
-              expiryScope: pane.gexMapState?.expiryScope ?? "ALL_EXPIRIES",
+              expiryScope: pane.gexMapState?.expiryScope ?? (layout === "gexmap-quad" ? "FRONT_EXPIRY" : "ALL_EXPIRIES"),
               // Carried through rather than dropped: an auto layout sets the
               // columns, not how their exposure is expressed.
               representation: pane.gexMapState?.representation ?? DEFAULT_GEX_MAP_REPRESENTATION,
@@ -19576,6 +19590,18 @@ export default function KwantifyWorkspace({
                     <span className="rounded-[1px] border border-current/70 bg-current/15" />
                     <span className="rounded-[1px] border border-current/70 bg-current/15" />
                     <span className="rounded-[1px] border border-current/70 bg-current/45" />
+                  </span>
+                ),
+              }, {
+                layout: "gexmap-quad" as Exclude<WorkspaceLayout, "custom">,
+                title: "Four-chart grid + full-height GEX Map on right",
+                icon: (
+                  <span className="grid h-4 w-4 grid-cols-[1fr_1fr_1.1fr] grid-rows-2 gap-px">
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="row-span-2 rounded-[1px] border border-current/70 bg-current/45" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
                   </span>
                 ),
               }] : []),

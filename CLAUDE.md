@@ -2,6 +2,10 @@
 
 ## 2026-10-17 — GEX VUE screenshot workspace template
 
+- Follow-up: the main layout toolbar now also offers `gexmap-quad`, with an
+  explicit 2x2 + full-height right-map glyph. It uses the same 65/35 geometry,
+  SPXW/NDX above QQQ/SPY, and persists/restores the layout key. First-run runtime
+  now includes GEX QUAD + MAP too (previous early defaults returned only STANDARD).
 - New built-in workspace `GEX QUAD + MAP` (`gex-quad-map`), available alongside
   GEX STANDARD only in the gamma/GEX VUE workspace picker. Do not replace the
   owner's active layout or overwrite an existing saved preset of that identity.

@@ -6,14 +6,30 @@ import ts from "typescript";
 const text = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 const source = ts.createSourceFile("workspace.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const declarations = source.statements.filter(node =>
-  (ts.isFunctionDeclaration(node) && ["createGexQuadMapPreset", "includeGexStandardPreset"].includes(node.name?.text))
+  (ts.isFunctionDeclaration(node) && ["createGexQuadMapPreset", "includeGexStandardPreset", "createWorkspaceLayoutTree"].includes(node.name?.text))
   || (ts.isVariableStatement(node) && node.declarationList.declarations.some(d => d.name.getText(source) === "GEX_MAP_AUTO_MAP_PANELS")));
 const js = ts.transpileModule(declarations.map(n => n.getText(source)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-const api = vm.runInNewContext(js + ";({createGexQuadMapPreset,includeGexStandardPreset})", {
+const api = vm.runInNewContext(js + ";({createGexQuadMapPreset,includeGexStandardPreset,createWorkspaceLayoutTree})", {
   makeWatchlistKey: (s, b) => `${b}:${s}`, normalizeChartSettings: s => ({ ...s }),
   defaultIndicatorSettings: (id, s) => ({ indicator: id, color: s.color }),
   DEFAULT_GEX_MAP_REPRESENTATION: "PER_ONE_DOLLAR_MOVE",
   createGexStandardPreset: () => ({ id: "gex-standard", name: "GEX STANDARD" }),
+});
+
+test("layout toolbar offers the quad plus full-height right map and restores its geometry", () => {
+  const preset = api.createGexQuadMapPreset({});
+  const tree = plain(api.createWorkspaceLayoutTree("gexmap-quad", preset.panes));
+  const expected = plain(preset.layout);
+  function geometry(node) {
+    if (node.type === "pane") return node.paneId;
+    return { axis: node.axis, ratio: node.ratio, first: geometry(node.first), second: geometry(node.second) };
+  }
+  assert.deepEqual(geometry(tree), geometry(expected));
+  assert.match(text, /layout: "gexmap-quad" as Exclude<WorkspaceLayout, "custom">,\s+title: "Four-chart grid \+ full-height GEX Map on right"/);
+  assert.match(text, /layout === "gexmap-columns-4" \|\| layout === "gexmap-quad" \? 4/);
+  assert.match(text, /layoutValue === "gexmap-quad"/);
+  assert.match(text, /nextLayoutValue === "gexmap-quad"/);
+  assert.match(text, /presets: gexStandardPreset \? includeGexStandardPreset\(\[gexStandardPreset\], scopedChartSettings\)/);
 });
 const plain = value => JSON.parse(JSON.stringify(value));
 
