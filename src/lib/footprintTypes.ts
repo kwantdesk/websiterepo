@@ -30,6 +30,7 @@ export type FootprintNumberFormat = "full" | "compact" | "automatic";
 export type FootprintComparisonMode = "diagonal" | "same-row" | "delta-percent";
 
 export interface FootprintTrade {
+  footprintSummary?: { minimumTradeVolume: number; maximumTradeVolume: number; deltaHigh?: number; deltaLow?: number };
   instrument: string;
   timestamp: number;
   sequence?: number | string;

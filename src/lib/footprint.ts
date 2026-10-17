@@ -168,12 +168,19 @@ export function buildFootprintBars(
     .map((record, index) => institutionalTradeToFootprintTrade(record, instrument, tickSize, index))
     .filter((trade): trade is NonNullable<typeof trade> => trade !== null);
   const ordered = orderFootprintTrades(adapted);
+  const exactDeltaExtrema = new Map<number, { high: number; low: number }>();
 
   for (const trade of ordered) {
-    if (trade.size < minimumTradeVolume || (maximumTradeVolume > 0 && trade.size > maximumTradeVolume)) continue;
+    if (trade.footprintSummary) {
+      if (trade.footprintSummary.minimumTradeVolume !== minimumTradeVolume
+        || trade.footprintSummary.maximumTradeVolume !== maximumTradeVolume) continue;
+    } else if (trade.size < minimumTradeVolume || (maximumTradeVolume > 0 && trade.size > maximumTradeVolume)) continue;
     const candleIndex = lowerBoundCandle(candles, trade.timestamp);
     if (candleIndex < 0 || trade.timestamp >= approximateBarEnd(candles, candleIndex)) continue;
     const bar = mutableBars[candleIndex];
+    if (trade.footprintSummary?.deltaHigh !== undefined && trade.footprintSummary.deltaLow !== undefined) {
+      exactDeltaExtrema.set(candleIndex, { high: trade.footprintSummary.deltaHigh, low: trade.footprintSummary.deltaLow });
+    }
     const rawTick = priceToTickIndex(trade.price, tickSize);
     const groupedTick = Math.floor(rawTick / groupTicks) * groupTicks;
     const level = bar.levels.get(groupedTick) ?? createEmptyFootprintLevel(groupedTick, tickSize);
@@ -203,6 +210,8 @@ export function buildFootprintBars(
   }
 
   return mutableBars.map((mutable, index) => {
+    const exactExtrema = exactDeltaExtrema.get(index);
+    if (exactExtrema) { mutable.deltaHigh = exactExtrema.high; mutable.deltaLow = exactExtrema.low; }
     if (settings.showEmptyPriceRows) {
       const firstTick = Math.floor(priceToTickIndex(mutable.candle.low, tickSize) / groupTicks) * groupTicks;
       const lastTick = Math.floor(priceToTickIndex(mutable.candle.high, tickSize) / groupTicks) * groupTicks;
@@ -311,6 +320,7 @@ export function buildFootprintBars(
 }
 
 export type FootprintBuildCache = {
+  exactHistoryHead?: InstitutionalTrade;
   key: string;
   bars: FootprintBar[];
   builtAt: number;
@@ -429,7 +439,11 @@ export function buildFootprintBarsCached(
   const windowKey = footprintWindowKey(settings);
   const now = Date.now();
   const entry = cache.current;
-  if (entry && entry.key === windowKey) {
+  // One completed history response hydrates every closed bar atomically.
+  // Live appends reuse these same summary objects, so this is not a per-tick
+  // full rebuild. The old rolling correction cursor left initial bars empty.
+  const exactHistoryHead = records.find(record => record.footprintSummary);
+  if (entry && entry.key === windowKey && entry.exactHistoryHead === exactHistoryHead) {
     const timestampsAligned = entry.bars.length === candlesInput.length
       && entry.bars[0]?.timestamp === candlesInput[0]?.timestamp
       && entry.bars.at(-1)?.timestamp === lastCandle.timestamp;
@@ -486,6 +500,7 @@ export function buildFootprintBarsCached(
   const bars = buildFootprintBars(candlesInput, records, settings);
   const phase = (footprintCacheSequence++ % 8) * 125;
   cache.current = {
+    exactHistoryHead,
     key: windowKey,
     bars,
     builtAt: now,

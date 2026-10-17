@@ -1,5 +1,30 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Footprint normal views must not require raw browser tapes
+
+- A normal 160-minute NQ view contained 281,744 prints. The prior exact-window
+  route rejected above 100,000 and returned no rows. Do not raise the browser
+  tape ceiling or sample away trades to repair this.
+- Clock Footprint history now POSTs candle boundaries and print-size filters
+  to the existing tape route. The serialized archive worker produces exact
+  per-candle/per-price bid/ask/unknown volume and integer trade counts plus
+  filtered chronological delta extrema. The client verifies full OHLCV before
+  accepting summaries, applies grouping/analytics locally and keeps live prints
+  separate. Summaries are Footprint-only/flowOnly, never block-trade executions.
+- Shared source-aware bounded cache/coalescing and at most eight pending compact
+  jobs protect multi-user backend load. Limits: 1,000 bars, ten days, five million
+  source prints and 30,000 price levels; overflow is explicit, never sampled.
+- The render cache must atomically hydrate every closed bar when a new compact
+  history generation arrives. Ordinary live updates retain incremental rebuilds.
+  Failed refreshes preserve overlapping last-good same-contract rows.
+- Public backend verified 160 NQ bars / 281,744 prints / 416,946-byte response
+  and 160 ES bars / 553,424 prints / 93,445 bytes, with candle volume validation.
+  Footprint 53/53, gateway 393/393, scoped lint and isolated production build pass.
+- Broad indicator sweep: 143/153 pass. Ten existing Daily/Profile/TPO tests fail
+  against the prior Chart source too; keep them open, do not call the whole
+  library cleared. Event/sub-minute history and authenticated/live soak remain
+  separate. Record: `docs/prompt-log/2026-10-17-footprint-loading-capacity.md`.
+
 ## 2026-10-17 — Provider transport and failed history-recovery checkpoints
 
 - The configured provider hostname returns multiple IPs: some reset TLS before

@@ -8,6 +8,7 @@ import {
 } from "./session-profile-archive.mjs";
 import { chicagoTradingDate } from "./trading-session.mjs";
 import { decodeTrade } from "./trade-tape-archive.mjs";
+import { createExactFootprintFold } from "./exact-footprint-fold.mjs";
 
 async function readSession(files, tradingDate, ceiling) {
   const trades = [];
@@ -24,6 +25,14 @@ async function readSession(files, tradingDate, ceiling) {
 }
 
 async function run() {
+  if (workerData?.kind === "exact-footprint") {
+    const fold = createExactFootprintFold(workerData);
+    for (const file of workerData.files ?? []) await readArchiveRecords(file, row => {
+      const trade = decodeTrade(row);
+      if (trade) fold.add(trade);
+    });
+    return fold.result();
+  }
   if (workerData?.kind === "exact-tape-window") {
     const rows = [];
     const limit = Math.min(100000, Math.max(1, Number(workerData.limit) || 100000));

@@ -1,5 +1,19 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — Footprint loading regression
+
+- Fixed normal clock-chart views being rejected at the 100,000 raw-print cap:
+  the backend now sends exact compact price-level/count/delta-path reductions,
+  validated against actual candle OHLCV. No trade sampling or increased raw
+  browser tape cap. New history hydrates all closed bars immediately.
+- Real public NQ/ES 160-minute views validate; Footprint 53/53 and gateway
+  393/393 tests pass, plus scoped lint and isolated production build.
+- Still open: ten pre-existing profile/TPO test failures in the wider indicator
+  sweep (143/153 pass), missing weekly source sessions, other futures' missing
+  tape, event/sub-minute history, authenticated UI/memory/live-session soak and
+  VPS migration. Do not claim every indicator is verified working.
+- Evidence: `docs/prompt-log/2026-10-17-footprint-loading-capacity.md`.
+
 ## 2026-10-17 — Login reliability / missing weekly history follow-up
 
 - Fixed pre-login TLS failure on individual provider DNS addresses with bounded,

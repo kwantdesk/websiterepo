@@ -6595,7 +6595,7 @@ function Chart({
   }, [footprintDataConsumer, footprintVisibleCandles]);
   const exactFootprintHistory = useExactFootprintHistory(contractSymbol,
     footprintSourceCandles, timeframeToMs(timeframe), Boolean(footprintDataConsumer) && replayTimestampMs === null,
-    marketIsActive === true);
+    marketIsActive === true, Number(footprintSettings.minimumTradeVolume ?? 0), Number(footprintSettings.maximumTradeVolume ?? 0));
   const footprintMarketTrades = useMemo(() => {
     if (exactFootprintHistory.active) {
       const end = (footprintSourceCandles.at(-1)?.timestamp ?? 0) + (timeframeToMs(timeframe) ?? 0);

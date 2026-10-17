@@ -38,6 +38,7 @@ export function institutionalTradeToFootprintTrade(
   const tradeCount = Math.max(1, finite(record.trades, 1));
 
   return {
+    footprintSummary: record.footprintSummary,
     instrument,
     timestamp: finite(record.timestamp),
     sequence: record.eventId ?? record.recordIndex,

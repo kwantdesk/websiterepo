@@ -54,6 +54,8 @@ export type InstitutionalSnapshot = {
 };
 
 export type InstitutionalTrade = {
+  /** Footprint-only exact price reduction; never an individual block trade. */
+  footprintSummary?: { minimumTradeVolume: number; maximumTradeVolume: number; deltaHigh?: number; deltaLow?: number };
   eventId?: string;
   recordIndex: number;
   timestamp: number;

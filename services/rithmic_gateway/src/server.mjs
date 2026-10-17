@@ -14,7 +14,7 @@ import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { FuturesBarArchive, HistoryRequestError, parseIntervalMs } from "./futures-bar-archive.mjs";
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
-import { loadExactTapeWindow } from "./exact-tape-window.mjs";
+import { loadExactTapeWindow, loadExactFootprintWindow } from "./exact-tape-window.mjs";
 import { archivedProfileContract } from "./archived-profile-contract.mjs";
 import {
   completeTradeSseSeed,
@@ -1536,6 +1536,17 @@ const server = createServer(async (request, response) => {
             ? error.code
             : "options_catalog_unavailable",
         });
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/v1/market-data/trade-tape") {
+      const body = await bodyJson(request);
+      const instrument = requestedInstrument(url, body, { exactRoot: true });
+      try {
+        return json(response, 200, await loadExactFootprintWindow({ dir: config.recordDir,
+          exchange: instrument.exchange, symbol: instrument.symbol, starts: body.starts, toMs: body.toMs,
+          minimumTradeVolume: body.minimumTradeVolume ?? 0, maximumTradeVolume: body.maximumTradeVolume ?? 0 }));
+      } catch (error) {
+        return json(response, 422, { error: error instanceof Error ? error.message : "Footprint history is unavailable." });
       }
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/trade-tape") {

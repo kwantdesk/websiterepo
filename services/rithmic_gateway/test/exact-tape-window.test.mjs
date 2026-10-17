@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { loadExactTapeWindow } from "../src/exact-tape-window.mjs";
+import { loadExactTapeWindow, loadExactFootprintWindow } from "../src/exact-tape-window.mjs";
 
 test("exact viewport archive is window bounded, coalesced and never samples over capacity", async () => {
   const dir = await mkdtemp(join(tmpdir(), "kd-exact-window-"));
@@ -23,6 +23,16 @@ test("exact viewport archive is window bounded, coalesced and never samples over
     assert.equal(oversized.truncated, true);
     assert.equal(oversized.sourceRecordCount, 100001);
     assert.deepEqual(oversized.records, []);
+    const compactArgs = { dir, exchange: "CME", symbol: "NQZ6", starts: [t], toMs: t + 100002 };
+    const compactRequest = loadExactFootprintWindow(compactArgs);
+    assert.equal(loadExactFootprintWindow(compactArgs), compactRequest, "shared users coalesce one archive fold");
+    const compact = await compactRequest;
+    assert.equal(compact.sourceRecordCount, 100001);
+    assert.equal(compact.bars[0].volume, 100001);
+    assert.deepEqual(compact.bars[0].levels, [[100, 50001, 50000, 0, 50001, 50000, 0]]);
+    assert.equal(compact.bars[0].deltaHigh, 0);
+    assert.equal(compact.bars[0].deltaLow, -1);
+    assert.throws(() => loadExactFootprintWindow({ ...compactArgs, starts: [t, t - 1] }), /Invalid/);
     assert.throws(() => loadExactTapeWindow({ ...args, toMs: t - 1 }), /Invalid/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
