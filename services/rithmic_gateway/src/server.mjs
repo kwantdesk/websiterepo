@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { sendBufferedResponse } from "./buffered-response.mjs";
 import { URL } from "node:url";
 
 import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
@@ -282,11 +283,14 @@ const liveQuoteCache = new Map();
 const quoteBatchesByInstrument = new Map();
 
 function json(response, status, body) {
-  response.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
+  return sendBufferedResponse(response.req, response, {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+    body: Buffer.from(JSON.stringify(body)),
   });
-  response.end(JSON.stringify(body));
 }
 
 async function bodyJson(request) {

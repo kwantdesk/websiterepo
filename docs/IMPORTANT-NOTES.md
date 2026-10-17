@@ -356,6 +356,14 @@ recap of the open items below and update this file when their state changes.
 
 ## P0 — Launch reliability
 
+- **2026-10-17 chart loading:** gateway buffered history/options surfaces use
+  async cached gzip, and completed-session options responses cache five minutes.
+  Futures first paint is independent of the optional execution archive and
+  IndexedDB writes; options history uses one normalized window request. Deploy
+  the same response helper/server/vendor changes when returning to the VPS.
+  Backend timings improved to roughly 0.4–1.1 seconds in the measured probes;
+  signed-in browser load and market-open streaming remain separate checks.
+
 - **2026-10-17 temporary recovery:** Vultr account closure has made the old
   collector unreachable. The temporary committed gateway runs on the owner's
   Windows computer through Tailscale Funnel; keep it awake/online and stop it

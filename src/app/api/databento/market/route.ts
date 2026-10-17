@@ -164,9 +164,8 @@ async function getDurableTimeHistory(
       const history = await getDatabentoOrderFlowHistory(
         symbol, timeframe, start, end, { auctionGap: includeAuctionGap },
       );
-      if (!history.candles.some((candle) =>
-        Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)) {
-        throw new Error("CME timed flow returned no aggressor history.");
+      if (!history.candles.length) {
+        throw new Error("CME timed history returned no candles.");
       }
       return encodeHistory(history);
     },

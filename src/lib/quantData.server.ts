@@ -1,5 +1,6 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
+import { fetchInstitutionalMarketData, isInstitutionalMarketDataConfigured } from "@/lib/institutionalMarketData.server";
 
 import { providerErrorMessage, logProviderError } from "@/lib/providerErrorMessage";
 
@@ -1095,6 +1096,30 @@ export async function getOptionsUnderlyingHistory(input: {
   const { aggregationPeriod, sessionScoped } = plan;
   const from = Math.min(input.from, input.to);
   const to = Math.max(input.from, input.to);
+  // The backend already owns the multi-session archive and resampling. One
+  // bounded request avoids a separate relay/health/cache round trip per day.
+  if (isInstitutionalMarketDataConfigured()) {
+    const query = new URLSearchParams({ symbol: cashTicker, timeframe: input.timeframe, from: String(from), to: String(to) });
+    const response = await fetchInstitutionalMarketData(`v1/market-data/index-history?${query}`);
+    if (!response.ok) throw new QuantDataError("Underlying chart history is unavailable from the market-data gateway.", response.status, null);
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || payload.symbol !== cashTicker || !Array.isArray(payload.candles)) {
+      throw new QuantDataError("Underlying chart history returned an invalid instrument response.", 502, null);
+    }
+    if (payload.truncated === true) {
+      throw new QuantDataError("The requested underlying history exceeds the available archive window.", 422, null);
+    }
+    return payload.candles.map((row): OptionsCandle => {
+      if (!isRecord(row)) throw new QuantDataError("Invalid underlying candle.", 502, null);
+      const candle = { timestamp: Number(row.timestamp), open: Number(row.open), high: Number(row.high), low: Number(row.low), close: Number(row.close), volume: Number(row.volume ?? 0) };
+      if (!Object.values(candle).every(Number.isFinite) || candle.timestamp < from || candle.timestamp > to
+        || candle.high < Math.max(candle.open, candle.close) || candle.low > Math.min(candle.open, candle.close)
+        || candle.low <= 0 || candle.volume < 0) {
+        throw new QuantDataError("Invalid underlying candle geometry.", 502, null);
+      }
+      return candle;
+    });
+  }
   let payloads: unknown[];
   if (sessionScoped) {
     const sessionResults = await Promise.allSettled(

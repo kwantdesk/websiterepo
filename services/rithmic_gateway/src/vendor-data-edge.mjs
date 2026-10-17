@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import { sendBufferedResponse } from "./buffered-response.mjs";
 
 const DATABENTO_ORIGIN = "https://api.databento.com";
 const QUANTDATA_ORIGIN = "https://api.quantdata.us";
@@ -59,6 +60,20 @@ function bufferedResponseHeaders(upstream, extra = {}) {
 /** Identical path AND identical body, so one ticker never serves another. */
 export function quantDataCacheKey(path, body) {
   return createHash("sha256").update(path).update(body).digest("hex");
+}
+
+export function quantDataResponseCacheMs(body, liveCacheMs, now = Date.now()) {
+  try {
+    const { sessionDate } = JSON.parse(body.toString("utf8"));
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date(now));
+    if (typeof sessionDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sessionDate)
+      && Number.isFinite(Date.parse(`${sessionDate}T12:00:00Z`)) && sessionDate < today) {
+      return Math.max(liveCacheMs, 5 * 60_000);
+    }
+  } catch { /* Non-session requests retain their live cache contract. */ }
+  return liveCacheMs;
 }
 
 // The provider names its own retry window. Bounded either way: never long
@@ -273,9 +288,7 @@ export class VendorDataEdge {
     const cached = this.quantDataCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       this.metrics.quantDataCacheHits += 1;
-      response.writeHead(cached.status, cached.headers);
-      response.end(cached.body);
-      return;
+      return sendBufferedResponse(request, response, cached);
     }
 
     /*
@@ -300,8 +313,7 @@ export class VendorDataEdge {
       this.metrics.quantDataCoalescedRequests += 1;
     }
     const entry = await pending;
-    response.writeHead(entry.status, entry.headers);
-    response.end(entry.body);
+    return sendBufferedResponse(request, response, entry);
   }
 
   async #fetchBufferedQuantData(path, requestHeaders, body, cacheKey) {
@@ -346,7 +358,7 @@ export class VendorDataEdge {
       // the archiver would only have to discard it again.
       this.exposureArchiver?.archive({ path, requestBody: body, payload });
       this.quantDataCache.set(cacheKey, {
-        expiresAt: Date.now() + this.config.quantDataCacheMs,
+        expiresAt: Date.now() + quantDataResponseCacheMs(body, this.config.quantDataCacheMs),
         status: upstream.status,
         headers,
         body: payload,

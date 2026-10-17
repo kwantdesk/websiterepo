@@ -363,6 +363,7 @@ import {
   compressNewYorkClosedSessionCandles,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
+  isCmeClosedSessionTimestamp,
   timeframeDurationMs,
   trimToRecentChartSessions,
 } from "@/lib/chartHistoryWindow";
@@ -3492,7 +3493,9 @@ function fetchWorkspaceLiveSeam(
   timeframe: string,
   contractSymbol: string,
 ) {
-  if (isEventBasedChartInterval(timeframe)) return Promise.resolve([] as Candle[]);
+  if (isEventBasedChartInterval(timeframe) || isCmeClosedSessionTimestamp(Date.now())) {
+    return Promise.resolve([] as Candle[]);
+  }
   const key = `${symbol}::${contractSymbol}::${timeframe}`;
   const pending = workspaceLiveSeamRequests.get(key);
   if (pending) return pending;
@@ -3794,14 +3797,8 @@ async function fetchWorkspaceCandles(
 
     const request = (async () => {
       const eventBased = isEventBasedChartInterval(timeframe);
-      const contractSymbol = currentCmeContract(symbol);
-      // Event history already returns its compact recent execution tail from
-      // the recorder in the same response as the bars. Opening the separate
-      // live-book archive as well duplicated tens of hours of prints and made
-      // the chart wait for the slower of two equivalent requests.
-      const orderFlowRequest = includeOrderFlow && !eventBased && contractSymbol && !healOnly && !historicalRange
-        ? fetchWorkspaceOrderFlow(symbol, timeframe, contractSymbol)
-        : Promise.resolve(null);
+      // The independent pane effect hydrates the supplemental execution tape.
+      // Candle readiness must not wait for its potentially two-minute request.
       const response = await fetch(
         `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${auctionGapExpectedContract ? "&auctionGap=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
         {
@@ -3816,10 +3813,7 @@ async function fetchWorkspaceCandles(
             : AbortSignal.timeout(isEventBasedChartInterval(timeframe) ? 285_000 : 45_000),
         },
       );
-      const [payload, institutionalOrderFlow] = await Promise.all([
-        response.json(),
-        orderFlowRequest,
-      ]);
+      const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
       const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
       if (auctionGapExpectedContract) {
@@ -3842,14 +3836,9 @@ async function fetchWorkspaceCandles(
       const providerExecutionTape = includeOrderFlow
         ? decodeExecutionTape(payload.executions)
         : [];
-      const privateExecutionTape = institutionalOrderFlow
-        ? institutionalOrderFlow.records.length
-          ? institutionalOrderFlow.records
-          : institutionalOrderFlow.trades
-        : [];
       const executionTape = mergeInstitutionalTradeTape(
         providerExecutionTape,
-        compactIndicatorExecutionHistory(privateExecutionTape),
+        workspaceExecutionTape.get(workspaceOrderFlowKey(symbol, timeframe, historicalRange?.key)) ?? [],
       );
       if (includeOrderFlow && !healOnly) {
         storeWorkspaceExecutionTape(
@@ -3864,14 +3853,14 @@ async function fetchWorkspaceCandles(
       // to its scoped in-memory/server cache; writing it under the live key
       // made the next normal chart open on a three-month-old final candle.
       if (!historicalRange && !healOnly) {
-        await Promise.all([
+        void Promise.all([
           downloaded.length
             ? writeChartHistoryCache(symbol, timeframe, downloaded)
             : Promise.resolve(null),
           executionTape.length && !healOnly
             ? writeExecutionTapeCache(symbol, timeframe, executionTape)
             : Promise.resolve(null),
-        ]);
+        ]).catch(() => undefined);
       }
       return downloaded;
     })();

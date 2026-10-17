@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Chart-history startup latency
+
+- Buffered gateway JSON/provider responses now negotiate asynchronous cached
+  gzip; streams remain untouched. Historical dated options surfaces cache five
+  minutes; live/current-session cadence remains unchanged.
+- Ordinary futures candles no longer await the optional 120-second execution
+  archive or IndexedDB writes; the independent flow hydrator remains active.
+  Closed CME sessions skip live-seam requests. Valid OHLC can be cached without
+  claiming missing aggressor fields exist; event geometry is unchanged.
+- Options-underlying candles request the entire archived window once from the
+  gateway and validate symbol/range/OHLC/truncation before accepting it.
+- Public five-day backend reads measured roughly 0.4–1.1 seconds after the
+  temporary gateway deployment. Carry these source changes to the restored VPS.
+- Evidence/tests/limitations: `docs/prompt-log/2026-10-17-chart-loading-latency.md`.
+
 ## 2026-10-17 — Temporary gateway after Vultr account closure
 
 - The old feed VPS is unreachable. The owner requested a temporary recovery
