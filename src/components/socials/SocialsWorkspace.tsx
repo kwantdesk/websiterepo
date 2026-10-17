@@ -72,7 +72,8 @@ import UserAvatar from "@/components/socials/UserAvatar";
 import { useProfileAvatarEditor } from "@/components/socials/useProfileAvatarEditor";
 import { isProfileArchived, resolveProfileManagedItem, type ProfileCollection, type ProfileItemAction, type ProfileAudience } from "@/lib/socialProfileManagement";
 import type { PreparedAvatar } from "@/lib/avatarPalette";
-import { cacheProfileIdentity } from "@/lib/profileIdentityCache";
+import { cacheProfileIdentity, readProfileIdentityCache, subscribeProfileIdentity } from "@/lib/profileIdentityCache";
+import { applySocialIdentityUpdate, projectSocialAuthorIdentity } from "@/lib/socialAuthorIdentity";
 import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import {
@@ -515,6 +516,8 @@ export default function SocialsWorkspace({
   const router = useRouter();
   const resolvedAccountKey = accountKey || "local";
   const resolvedLabel = accountLabel || "Kwant Trader";
+  const accountLabelRef = useRef(resolvedLabel);
+  accountLabelRef.current = resolvedLabel;
   const [state, setState] = useState<SocialState>(() => ({
     version: 1,
     objects: [
@@ -810,6 +813,8 @@ export default function SocialsWorkspace({
 
   useEffect(() => {
     let active = true;
+    const resolvedLabel = accountLabelRef.current;
+    const identityAtRequest = readProfileIdentityCache(resolvedAccountKey);
     setState({
       version: 1,
       objects: [
@@ -871,14 +876,16 @@ export default function SocialsWorkspace({
           ],
         };
       }
-      setState(next);
+      const latestIdentity = readProfileIdentityCache(resolvedAccountKey);
+      setState(latestIdentity && latestIdentity !== identityAtRequest
+        ? { ...next, objects: applySocialIdentityUpdate(next.objects, resolvedAccountKey, latestIdentity) } : next);
       setReady(true);
       setSaveState(next.cloud ? "saved" : "local");
     })();
     return () => {
       active = false;
     };
-  }, [resolvedAccountKey, resolvedLabel]);
+  }, [resolvedAccountKey]);
 
   const loadFollowingUsers = useCallback(async (quiet = false) => {
     if (!quiet) setFollowingState("loading");
@@ -1115,10 +1122,20 @@ export default function SocialsWorkspace({
     return () => window.removeEventListener("kwantdesk:activity-streak-changed", receiveStreak);
   }, [resolvedAccountKey]);
 
+  useEffect(() => subscribeProfileIdentity(resolvedAccountKey, identity => {
+    const update = (profile: SocialProfilePayload): SocialProfilePayload => ({
+      ...profile, displayName: identity.displayName || profile.displayName,
+      handle: identity.handle || profile.handle, avatarUrl: identity.avatarUrl,
+    });
+    setState(current => ({ ...current, objects: applySocialIdentityUpdate(current.objects, resolvedAccountKey, identity) }));
+    setProfileDraft(update);
+  }), [resolvedAccountKey]);
+
   const profiles = useMemo(() => state.objects.filter((object) => object.objectType === "profile"), [state.objects]);
-  const posts = useMemo(() => state.objects.filter((object) => object.objectType === "post").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [state.objects]);
-  const precords = useMemo(() => state.objects.filter((object) => object.objectType === "precord").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [state.objects]);
-  const receipts = useMemo(() => state.objects.filter((object) => object.objectType === "receipt"), [state.objects]);
+  const displayObjects = useMemo(() => projectSocialAuthorIdentity(state.objects), [state.objects]);
+  const posts = useMemo(() => displayObjects.filter((object) => object.objectType === "post").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [displayObjects]);
+  const precords = useMemo(() => displayObjects.filter((object) => object.objectType === "precord").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [displayObjects]);
+  const receipts = useMemo(() => displayObjects.filter((object) => object.objectType === "receipt"), [displayObjects]);
   const myReasoningRecords = useMemo(
     () => precords.filter((object) => object.userId === resolvedAccountKey),
     [precords, resolvedAccountKey],
@@ -1127,10 +1144,10 @@ export default function SocialsWorkspace({
     () => reasoningScoreFromReceipts(receipts, resolvedAccountKey),
     [receipts, resolvedAccountKey],
   );
-  const desks = useMemo(() => state.objects.filter((object) => object.objectType === "desk"), [state.objects]);
-  const memberships = useMemo(() => state.objects.filter((object) => object.objectType === "desk-member"), [state.objects]);
-  const comments = useMemo(() => state.objects.filter((object) => object.objectType === "comment"), [state.objects]);
-  const reactions = useMemo(() => state.objects.filter((object) => object.objectType === "reaction"), [state.objects]);
+  const desks = useMemo(() => displayObjects.filter((object) => object.objectType === "desk"), [displayObjects]);
+  const memberships = useMemo(() => displayObjects.filter((object) => object.objectType === "desk-member"), [displayObjects]);
+  const comments = useMemo(() => displayObjects.filter((object) => object.objectType === "comment"), [displayObjects]);
+  const reactions = useMemo(() => displayObjects.filter((object) => object.objectType === "reaction"), [displayObjects]);
   const commentPanelPost = useMemo(
     () => posts.find((post) => post.id === commentPanelPostId) ?? null,
     [commentPanelPostId, posts],
@@ -1146,7 +1163,7 @@ export default function SocialsWorkspace({
         return Date.parse(left.createdAt) - Date.parse(right.createdAt);
       });
   }, [commentPanelPost, comments]);
-  const cards = useMemo(() => state.objects.filter((object) => object.objectType === "card"), [state.objects]);
+  const cards = useMemo(() => displayObjects.filter((object) => object.objectType === "card"), [displayObjects]);
   const earnedCardCodes = useMemo(() => new Set([
     "origin-signal",
     ...cards
@@ -1154,7 +1171,7 @@ export default function SocialsWorkspace({
       .map((card) => typedPayload<SocialCardPayload>(card)?.code)
       .filter((code): code is string => Boolean(code)),
   ]), [cards, resolvedAccountKey]);
-  const consensus = useMemo(() => state.objects.filter((object) => object.objectType === "consensus"), [state.objects]);
+  const consensus = useMemo(() => displayObjects.filter((object) => object.objectType === "consensus"), [displayObjects]);
   const profileByUserId = useMemo(() => new Map(
     profiles.map((profile) => [
       profile.userId,
@@ -2275,9 +2292,10 @@ export default function SocialsWorkspace({
       avatarUrl: profile.avatarUrl,
       displayName: profile.displayName,
       handle: profile.handle,
-    });
+    }, true);
     window.dispatchEvent(new CustomEvent("kwantdesk:profile-updated", {
       detail: {
+        userId: resolvedAccountKey,
         avatarUrl: profile.avatarUrl,
         displayName: profile.displayName,
         handle: profile.handle,

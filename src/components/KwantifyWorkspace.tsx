@@ -131,7 +131,7 @@ import {
 } from "@/lib/auctionGapCompactRows";
 import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
-import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
+import { cacheProfileIdentity, readProfileIdentityCache, subscribeProfileIdentity } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { PREFERENCES_HYDRATED_EVENT, compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import {
@@ -14768,13 +14768,15 @@ export default function KwantifyWorkspace({
       if (cachedIdentity.handle) setCurrentUsername(cachedIdentity.handle);
     }
     const loadAvatar = async () => {
+      const identityAtRequest = readProfileIdentityCache(preferenceUserId);
       try {
         const response = await fetch("/api/friends", { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json() as FriendsPayload;
-        if (active) {
+        if (active && readProfileIdentityCache(preferenceUserId) === identityAtRequest) {
           setCurrentAvatarUrl(payload.viewer?.avatarUrl ?? "");
           if (payload.viewer?.displayName) setCurrentDisplayName(payload.viewer.displayName);
+          if (payload.viewer?.handle) setCurrentUsername(payload.viewer.handle);
           cacheProfileIdentity(preferenceUserId, {
             avatarUrl: payload.viewer?.avatarUrl ?? "",
             displayName: payload.viewer?.displayName ?? "",
@@ -14786,16 +14788,20 @@ export default function KwantifyWorkspace({
       }
     };
     const handleProfileUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ avatarUrl?: string; displayName?: string; handle?: string }>).detail;
-      setCurrentAvatarUrl(detail?.avatarUrl ?? "");
+      const detail = (event as CustomEvent<{ userId?: string; avatarUrl?: string; displayName?: string; handle?: string }>).detail;
+      if (detail?.userId && detail.userId !== preferenceUserId) return;
+      if (detail?.avatarUrl !== undefined) setCurrentAvatarUrl(detail.avatarUrl);
+      if (detail?.displayName) setCurrentDisplayName(detail.displayName);
+      if (detail?.handle) setCurrentUsername(detail.handle);
       cacheProfileIdentity(preferenceUserId, {
-        avatarUrl: detail?.avatarUrl ?? "",
+        avatarUrl: detail?.avatarUrl,
         displayName: detail?.displayName,
         handle: detail?.handle,
       });
     };
     const handleIdentityUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ displayName?: string; handle?: string }>).detail;
+      const detail = (event as CustomEvent<{ userId?: string; displayName?: string; handle?: string }>).detail;
+      if (detail?.userId && detail.userId !== preferenceUserId) return;
       if (detail?.displayName) setCurrentDisplayName(detail.displayName);
       if (detail?.handle) setCurrentUsername(detail.handle);
       cacheProfileIdentity(preferenceUserId, {
@@ -14803,11 +14809,17 @@ export default function KwantifyWorkspace({
         handle: detail?.handle,
       });
     };
+    const unsubscribeIdentity = subscribeProfileIdentity(preferenceUserId, identity => {
+      setCurrentAvatarUrl(identity.avatarUrl);
+      if (identity.displayName) setCurrentDisplayName(identity.displayName);
+      if (identity.handle) setCurrentUsername(identity.handle);
+    });
     void loadAvatar();
     window.addEventListener("kwantdesk:profile-updated", handleProfileUpdated);
     window.addEventListener("kwantdesk:identity-updated", handleIdentityUpdated);
     return () => {
       active = false;
+      unsubscribeIdentity();
       window.removeEventListener("kwantdesk:profile-updated", handleProfileUpdated);
       window.removeEventListener("kwantdesk:identity-updated", handleIdentityUpdated);
     };
@@ -18385,7 +18397,7 @@ export default function KwantifyWorkspace({
           <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-socials`} label="Socials">
             <SocialsWorkspace
               accountKey={preferenceUserId || currentUsername || "local"}
-              accountLabel={currentUsername || "Kwant Trader"}
+              accountLabel={currentDisplayName || currentUsername || "Kwant Trader"}
               initialProfileHandle={socialProfileHandle}
               onOpenProfile={(handle) => router.push(`/socials/${encodeURIComponent(handle)}`)}
               onMessageProfile={(userId) => { setFriendsInitialFriendId(userId); setRightPanel("messages"); }}
@@ -19144,7 +19156,7 @@ export default function KwantifyWorkspace({
         <AppSidebar
           activeItem={bottomWorkspaceSection}
           accountLabel="Account"
-          accountTitle={currentUsername ? `@${currentUsername} · your profile` : "Your profile"}
+          accountTitle={currentDisplayName ? `${currentDisplayName} · your profile` : currentUsername ? `@${currentUsername} · your profile` : "Your profile"}
           navigationMode="persistent"
           accountAvatarUrl={currentAvatarUrl || ""}
           onAccountClick={() => router.push(currentUsername ? `/socials/${encodeURIComponent(currentUsername)}` : "/socials")}
@@ -20607,7 +20619,7 @@ export default function KwantifyWorkspace({
               <WorkspaceFailureBoundary resetKey="socials" label="Socials">
               <SocialsWorkspace
                 accountKey={preferenceUserId || currentUsername || "local"}
-                accountLabel={currentUsername || "Kwant Trader"}
+                accountLabel={currentDisplayName || currentUsername || "Kwant Trader"}
                 initialProfileHandle={socialProfileHandle}
                 onOpenProfile={(handle) => router.push(`/socials/${encodeURIComponent(handle)}`)}
                 onCloseProfile={() => router.push("/socials")}

@@ -46,7 +46,7 @@ import {
   type FriendsPayload,
   type PresenceStatus,
 } from "@/lib/friends";
-import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
+import { cacheProfileIdentity, readProfileIdentityCache, subscribeProfileIdentity } from "@/lib/profileIdentityCache";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import { themePresets } from "@/lib/themePresets";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
@@ -235,14 +235,6 @@ export default function SettingsPage() {
   const [profileEmail, setProfileEmail] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
   const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
-  useEffect(() => {
-    const update = (event: Event) => {
-      const detail = (event as CustomEvent<{ avatarUrl?: string }>).detail;
-      if (typeof detail?.avatarUrl === "string") setProfileAvatarUrl(detail.avatarUrl);
-    };
-    window.addEventListener("kwantdesk:profile-updated", update);
-    return () => window.removeEventListener("kwantdesk:profile-updated", update);
-  }, []);
   const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>("online");
   const [presenceMessage, setPresenceMessage] = useState("");
   const [presenceLoading, setPresenceLoading] = useState(true);
@@ -261,6 +253,11 @@ export default function SettingsPage() {
   const [savedHandle, setSavedHandle] = useState("");
   const [handleCheck, setHandleCheck] = useState<HandleCheckState>({ state: "idle", message: "" });
   const [preferenceUserId, setPreferenceUserId] = useState("");
+  useEffect(() => subscribeProfileIdentity(preferenceUserId, identity => {
+    setProfileAvatarUrl(identity.avatarUrl);
+    if (identity.displayName) setProfileName(identity.displayName);
+    if (identity.handle) { setProfileUsername(identity.handle); setSavedHandle(identity.handle); }
+  }), [preferenceUserId]);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [toggles, setToggles] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return defaultSettingsToggles;
@@ -350,10 +347,12 @@ export default function SettingsPage() {
       const profileLoadPresenceRevision = presenceRevisionRef.current;
       void (async () => {
         try {
+          const identityAtRequest = readProfileIdentityCache(user.id);
           const friendsResponse = await fetch("/api/friends", { cache: "no-store" });
           if (!friendsResponse.ok) return;
           const friendsPayload = await friendsResponse.json() as FriendsPayload;
           if (!active || !friendsPayload.viewer) return;
+          if (readProfileIdentityCache(user.id) !== identityAtRequest) return;
           const storedName = friendsPayload.viewer.displayName || authDisplayName;
           const storedHandle = normalizeProfileHandle(friendsPayload.viewer.handle || authHandle);
           if (presenceRevisionRef.current === profileLoadPresenceRevision) {
@@ -532,8 +531,12 @@ export default function SettingsPage() {
       setPresenceStatus(confirmedPresenceRef.current);
       setPresenceMessage(savedViewer?.presenceMessage ?? presenceMessage);
       setHandleCheck({ state: "available", message: "This is your current handle." });
+      cacheProfileIdentity(preferenceUserId, {
+        displayName: savedViewer?.displayName || displayName,
+        handle: savedViewer?.handle || handle,
+      }, true);
       window.dispatchEvent(new CustomEvent("kwantdesk:identity-updated", {
-        detail: { displayName, handle },
+        detail: { userId: preferenceUserId, displayName: savedViewer?.displayName || displayName, handle: savedViewer?.handle || handle },
       }));
       setPresenceNotice("Identity saved across your Kwant Desk account.");
       window.setTimeout(() => setPresenceNotice(""), 2_600);

@@ -1,5 +1,28 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Account display-name consistency
+
+- Profile-save events previously changed only the avatar in the workspace shell.
+  Root now applies name/handle/avatar together. Settings and Socials successful
+  saves publish an account-scoped identity snapshot; local subscribers plus an
+  optional BroadcastChannel keep open sections/tabs aligned without polling.
+- Cache equality preserves snapshot identity; stale startup reads cannot rewind
+  a newer saved identity. Subscribers clean up on account changes/unmount and
+  rehydrate cached identity when a hidden workspace's effects resume. Unsupported
+  cross-tab transport cannot fail saving. Avatar-only writes preserve names.
+- Render old Socials author labels from the matching current profile ID, never
+  global string replacement or rewriting locked data. Filtered Gameplan/history
+  GETs batch missing profile lookups (500 IDs/batch, existing RLS retained). Home
+  reads the canonical account profile too. Display names and @handles stay distinct.
+- Socials name changes must not reset/reload its complete workspace: its bootstrap
+  effect depends on account ID, not the display-label prop. Trading payloads,
+  content hashes, author IDs, user-written text and account/storage keys stay intact.
+- Renaming also preserves existing profile privacy; the identity/presence upsert
+  no longer resets an existing private/friends profile to community visibility.
+- Thirty-eight identity/avatar/profile/Home regressions pass. Signed-in multi-device/browser
+  verification remains open; prompt record:
+  `docs/prompt-log/2026-10-17-account-name-consistency.md`.
+
 ## 2026-10-17 — Avatar selection tick foreground
 
 - Shared Settings/Socials avatar buttons must allow overflow. Round only the

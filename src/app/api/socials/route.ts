@@ -18,6 +18,7 @@ import { SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 import { normalizeZyonTradingAccount } from "@/lib/zyon";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import { isProfileAudience, profileItemPatch, type ProfileItemAction } from "@/lib/socialProfileManagement";
+import { projectSocialAuthorIdentity } from "@/lib/socialAuthorIdentity";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -123,6 +124,23 @@ function unavailableResponse() {
     { objects: [], cloud: false },
     { headers: { "Cache-Control": "private, no-store, max-age=0" } },
   );
+}
+
+async function currentAuthorObjects(rows: SocialRow[], supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
+  const profiles = rows.filter(row => row.object_type === "profile")
+    .map(row => ({ userId: row.user_id, objectType: "profile" as const, payload: row.payload }));
+  const known = new Set(profiles.map(row => row.userId));
+  const missing = [...new Set(rows.map(row => row.user_id))].filter(id => !known.has(id)).slice(0, 2_000);
+  // One bounded identity lookup per batch, never a request per post/record.
+  for (let offset = 0; offset < missing.length; offset += 500) {
+    const { data, error } = await supabase.from("social_objects")
+      .select("user_id,display_name:payload->>displayName")
+      .eq("object_type", "profile").in("user_id", missing.slice(offset, offset + 500));
+    if (!error && data) profiles.push(...data.map(row => ({
+      userId: row.user_id, objectType: "profile" as const, payload: { displayName: row.display_name },
+    })));
+  }
+  return projectSocialAuthorIdentity(rows.map(fromRow), profiles);
 }
 
 async function socialClient(request: NextRequest) {
@@ -252,7 +270,7 @@ export async function GET(request: NextRequest) {
     if (!rows.some((row) => row.object_type === "profile")) rows.unshift(profileRow);
     return NextResponse.json(
       {
-        objects: rows.map(fromRow),
+        objects: await currentAuthorObjects(rows, supabase),
         cloud: true,
         viewerId: actor.userId,
         profileFound: true,
@@ -281,7 +299,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { objects: rows.map(fromRow), cloud: true, viewerId: actor.userId },
+    { objects: await currentAuthorObjects(rows, supabase), cloud: true, viewerId: actor.userId },
     { headers: { "Cache-Control": "private, no-store, max-age=0" } },
   );
 }

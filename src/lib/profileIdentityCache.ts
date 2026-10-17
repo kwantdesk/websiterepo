@@ -7,6 +7,8 @@ export type CachedProfileIdentity = {
 
 const CACHE_PREFIX = "kwantdesk:profile-identity:v1:";
 const memoryCache = new Map<string, CachedProfileIdentity>();
+const IDENTITY_EVENT = "kwantdesk:profile-identity-cache";
+const IDENTITY_CHANNEL = "kwantdesk-profile-identity";
 
 function cacheKey(userId: string) {
   return `${CACHE_PREFIX}${encodeURIComponent(userId)}`;
@@ -40,6 +42,7 @@ export function readProfileIdentityCache(userId: string) {
 export function cacheProfileIdentity(
   userId: string,
   update: Partial<Omit<CachedProfileIdentity, "updatedAt">>,
+  broadcast = false,
 ) {
   if (!userId) return null;
   const current = readProfileIdentityCache(userId);
@@ -49,6 +52,8 @@ export function cacheProfileIdentity(
     handle: update.handle ?? current?.handle ?? "",
     updatedAt: Date.now(),
   };
+  const changed = !current || next.displayName !== current.displayName || next.handle !== current.handle || next.avatarUrl !== current.avatarUrl;
+  if (!changed && !broadcast) return current;
   memoryCache.set(userId, next);
   if (typeof window !== "undefined") {
     try {
@@ -56,6 +61,35 @@ export function cacheProfileIdentity(
     } catch {
       // Large, high-quality data URLs remain available in memory for this app session.
     }
+    window.dispatchEvent(new CustomEvent(IDENTITY_EVENT, { detail: { userId, identity: next } }));
+    if (broadcast && typeof BroadcastChannel !== "undefined") {
+      try {
+        const channel = new BroadcastChannel(IDENTITY_CHANNEL);
+        channel.postMessage({ userId, identity: next });
+        channel.close();
+      } catch { /* Optional cross-tab transport must not fail a saved identity. */ }
+    }
   }
   return next;
+}
+
+/** Account-scoped local and cross-tab updates; no polling or extra provider requests. */
+export function subscribeProfileIdentity(userId: string, receive: (identity: CachedProfileIdentity) => void) {
+  if (!userId || typeof window === "undefined") return () => {};
+  const local = (event: Event) => {
+    const detail = (event as CustomEvent<{ userId?: string; identity?: CachedProfileIdentity }>).detail;
+    if (detail?.userId === userId && detail.identity) receive(detail.identity);
+  };
+  window.addEventListener(IDENTITY_EVENT, local);
+  const cached = readProfileIdentityCache(userId);
+  if (cached) receive(cached);
+  let channel: BroadcastChannel | null = null;
+  try { if (typeof BroadcastChannel !== "undefined") channel = new BroadcastChannel(IDENTITY_CHANNEL); } catch { /* Local updates still work. */ }
+  if (channel) channel.onmessage = event => {
+    if (event.data?.userId !== userId) return;
+    const incoming = cleanIdentity(event.data.identity), current = readProfileIdentityCache(userId);
+    if (!incoming || (current && incoming.updatedAt < current.updatedAt)) return;
+    cacheProfileIdentity(userId, incoming);
+  };
+  return () => { window.removeEventListener(IDENTITY_EVENT, local); channel?.close(); };
 }

@@ -531,7 +531,7 @@ async function upsertProfile(
 ) {
   const { data: existing } = await supabase
     .from("social_objects")
-    .select("payload")
+    .select("payload,scope")
     .eq("user_id", actor.userId)
     .eq("id", "profile")
     .maybeSingle();
@@ -557,9 +557,9 @@ async function upsertProfile(
   return supabase.from("social_objects").upsert({
     user_id: actor.userId,
     id: "profile",
-    author_label: authorLabel(actor),
+    author_label: cleanText(changes.displayName, 60) || identityDefaults.displayName,
     object_type: "profile",
-    scope: "community",
+    scope: existing?.scope ?? "community",
     desk_id: null,
     parent_id: null,
     payload: { ...payload, ...identityDefaults, ...changes },

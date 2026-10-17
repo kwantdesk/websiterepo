@@ -56,7 +56,7 @@ export default function AccountAvatarSettings({ userId }: { userId: string }) {
       const profile = normalizeSocialProfile(result.object.payload, result.object.authorLabel);
       setProfileDraft(profile);
       const identity = { avatarUrl: profile.avatarUrl ?? "", displayName: profile.displayName, handle: profile.handle };
-      cacheProfileIdentity(userId, identity);
+      cacheProfileIdentity(userId, identity, true);
       window.dispatchEvent(new CustomEvent("kwantdesk:profile-updated", { detail: { ...identity, userId, profileObject: result.object } }));
       setNotice("Profile picture saved across your account, including Socials.");
     } catch (reason) {

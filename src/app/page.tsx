@@ -36,10 +36,22 @@ export default async function HomePage() {
   if (!user) redirect("/login");
   if (!isAllowedEmail(user.email)) redirect("/login?error=restricted");
 
-  const username =
+  let username =
     typeof user.user_metadata?.username === "string"
       ? user.user_metadata.username
       : user.email ?? "";
 
-  return <WorkspaceHome username={username} />;
+  let displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || username;
+  let avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || "";
+  let identityConfirmed = false;
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.from("social_objects").select("payload")
+      .eq("user_id", user.id).eq("id", "profile").eq("object_type", "profile").maybeSingle();
+    identityConfirmed = Boolean(data?.payload);
+    if (typeof data?.payload?.displayName === "string") displayName = data.payload.displayName;
+    if (typeof data?.payload?.handle === "string") username = data.payload.handle;
+    if (typeof data?.payload?.avatarUrl === "string") avatarUrl = data.payload.avatarUrl;
+  } catch { /* Authentication metadata remains the offline identity fallback. */ }
+  return <WorkspaceHome username={username} userId={user.id} displayName={String(displayName)} avatarUrl={String(avatarUrl)} identityConfirmed={identityConfirmed} />;
 }

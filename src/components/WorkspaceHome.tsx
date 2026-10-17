@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { memo, useCallback, useState, type ComponentType } from "react";
+import { memo, useCallback, useEffect, useState, type ComponentType } from "react";
+import { cacheProfileIdentity, readProfileIdentityCache, subscribeProfileIdentity } from "@/lib/profileIdentityCache";
 import {
   ArrowUpRight,
   BarChart3,
@@ -102,7 +103,15 @@ const LaunchCard = memo(function LaunchCard({
 
 const EMPTY_LIVE_INDICES: HomeLiveIndices = {};
 
-export default function WorkspaceHome({ username = "" }: { username?: string }) {
+export default function WorkspaceHome({ username = "", userId = "", displayName = "", avatarUrl = "", identityConfirmed = false }: { username?: string; userId?: string; displayName?: string; avatarUrl?: string; identityConfirmed?: boolean }) {
+  const [identity, setIdentity] = useState({ handle: username, displayName, avatarUrl });
+  useEffect(() => {
+    const cached = readProfileIdentityCache(userId);
+    const initial = identityConfirmed ? { handle: username, displayName, avatarUrl } : cached ?? { handle: username, displayName, avatarUrl };
+    setIdentity(initial);
+    if (identityConfirmed || !cached) cacheProfileIdentity(userId, initial);
+    return subscribeProfileIdentity(userId, setIdentity);
+  }, [userId, username, displayName, avatarUrl, identityConfirmed]);
   const [heroReady, setHeroReady] = useState(false);
   const revealHero = useCallback(() => setHeroReady(true), []);
   const liveIndices = useHomeLiveIndices();
@@ -113,8 +122,9 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
       <AppSidebar
         activeItem="home"
         accountLabel="Profile"
-        accountTitle={username ? `@${username} · your profile` : "Your profile"}
-        onAccountClick={() => { window.location.href = username ? `/socials/${encodeURIComponent(username)}` : "/socials"; }}
+        accountTitle={identity.displayName ? `${identity.displayName} · your profile` : identity.handle ? `@${identity.handle} · your profile` : "Your profile"}
+        accountAvatarUrl={identity.avatarUrl}
+        onAccountClick={() => { window.location.href = identity.handle ? `/socials/${encodeURIComponent(identity.handle)}` : "/socials"; }}
         orientation="horizontal"
       />
       <main
