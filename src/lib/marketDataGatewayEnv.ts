@@ -12,6 +12,8 @@
 // During a temporary relay cutover, update every production URL alias together:
 // the production ordering below deliberately prefers any configured VPS origin.
 // Environment updates require a new production build to reach existing functions.
+// Check reachability from Vercel itself: a relay reachable on the owner's VPN
+// can still be unreachable from the hosted application's network.
 
 const GATEWAY_URL_KEYS = [
   "KWANTDESK_MARKET_DATA_GATEWAY_URL",
