@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
 import UserAvatar from "@/components/socials/UserAvatar";
+import AccountAvatarSettings from "@/components/socials/AccountAvatarSettings";
 import {
   BarChart3,
   Bell,
@@ -234,6 +235,14 @@ export default function SettingsPage() {
   const [profileEmail, setProfileEmail] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
   const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
+  useEffect(() => {
+    const update = (event: Event) => {
+      const detail = (event as CustomEvent<{ avatarUrl?: string }>).detail;
+      if (typeof detail?.avatarUrl === "string") setProfileAvatarUrl(detail.avatarUrl);
+    };
+    window.addEventListener("kwantdesk:profile-updated", update);
+    return () => window.removeEventListener("kwantdesk:profile-updated", update);
+  }, []);
   const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>("online");
   const [presenceMessage, setPresenceMessage] = useState("");
   const [presenceLoading, setPresenceLoading] = useState(true);
@@ -740,6 +749,7 @@ export default function SettingsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="text-[17px] font-semibold">{profileName || profileUsername || "Kwant Trader"}</div>
                     <div className="mt-0.5 text-[12px] text-muted">@{profileUsername || profileEmail.split("@")[0] || "trader"}</div>
+                    <button type="button" onClick={() => selectSettingsTab("Public profile")} className="mt-2 text-[12px] text-primary hover:underline">Change profile picture</button>
                     <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border bg-surface px-2.5 py-1 text-[10px]">
                       <span className={`h-2 w-2 rounded-full ${presenceOption(presenceStatus).dotClassName}`} />
                       {presenceOption(presenceStatus).label}
@@ -880,7 +890,7 @@ export default function SettingsPage() {
             <div className="mt-8 space-y-8">
               <section className="rounded-2xl border border-border bg-panel p-6">
                 <h2 className="mb-5 text-lg font-semibold">Picture and username</h2>
-                <div className="flex items-center gap-4"><UserAvatar label={profileName || profileUsername || "Kwant Trader"} avatarUrl={profileAvatarUrl} size="lg" /><div><Link href={profileUsername ? `/socials/${encodeURIComponent(profileUsername)}` : "/socials"} className={secondaryButton}>Edit profile photo</Link><p className="mt-2 text-[12px] text-muted">Crop and save your account photo from your Socials profile.</p></div></div>
+                {preferenceUserId ? <AccountAvatarSettings key={preferenceUserId} userId={preferenceUserId} /> : <p className="text-[12px] text-muted">Sign in to change your account picture.</p>}
                 <div className="mt-6 space-y-2 border-t border-border pt-5">
                   <div className="text-[13px] text-muted">Unique handle</div>
                   <div className="relative">

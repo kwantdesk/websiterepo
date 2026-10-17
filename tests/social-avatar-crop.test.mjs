@@ -38,7 +38,7 @@ test("drag/zoom cannot expose empty edges and circular thumbnail represents the 
 });
 
 test("Socials retains explicit profile-save flow, local uploads and circular masking", () => {
-  const component = readFileSync(new URL("../src/components/socials/SocialsWorkspace.tsx", import.meta.url), "utf8");
+  const component = readFileSync(new URL("../src/components/socials/useProfileAvatarEditor.tsx", import.meta.url), "utf8");
   assert.match(component, /canvas.width = AVATAR_OUTPUT_SIZE/);
   assert.match(component, /canvas.height = AVATAR_OUTPUT_SIZE/);
   assert.match(component, /const source = avatarSourceRect\(crop\)/);
@@ -50,7 +50,7 @@ test("Socials retains explicit profile-save flow, local uploads and circular mas
 });
 
 function handlers() {
-  const text = readFileSync(new URL("../src/components/socials/SocialsWorkspace.tsx", import.meta.url), "utf8");
+  const text = readFileSync(new URL("../src/components/socials/useProfileAvatarEditor.tsx", import.meta.url), "utf8");
   const ast = ts.createSourceFile("socials.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const names = ["closeAvatarCrop", "selectPresetAvatar", "handleAvatar", "saveCroppedAvatar"];
   const snippets = [];

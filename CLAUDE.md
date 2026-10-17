@@ -1,5 +1,21 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Normal Settings shares the Socials avatar
+
+- Settings → Public profile now embeds the same avatar/palette/upload/crop
+  editor as Socials; Identity has a direct Change profile picture shortcut.
+  Keep one implementation in `useProfileAvatarEditor`, not two divergent pickers.
+- Settings loads the authenticated account's canonical Socials profile. Explicit
+  Save picture uses the avatar-only friends action, preserving names, bio,
+  unknown profile fields, visibility and presence. Store both rendered avatarUrl
+  and editable avatarAppearance; uploaded photos explicitly clear old metadata.
+- Successful writes update the account identity cache and profile-updated event.
+  Already-mounted Socials receives the saved account-scoped profile object.
+  Failed saves retain the editor; stale prepares and duplicate submits are guarded.
+- Twenty focused avatar/settings tests pass. Signed-in browser/cross-device
+  roundtrip remains unverified. Record:
+  `docs/prompt-log/2026-10-17-settings-linked-avatar.md`.
+
 ## 2026-10-17 — Per-colour avatar customisation
 
 - Every console avatar now owns a curated/extracted palette and offline colour

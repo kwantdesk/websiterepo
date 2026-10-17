@@ -21,6 +21,7 @@ import {
   calculateActivityStreakUpdate,
 } from "@/lib/activityStreak";
 import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
+import { normalizeSocialProfile } from "@/lib/socials";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -631,6 +632,27 @@ export async function POST(request: NextRequest) {
   const groupId = cleanIdentifier(body.groupId, 80);
   const now = new Date().toISOString();
   let responseGroupId = groupId;
+
+  if (action === "avatar") {
+    const avatar = normalizeSocialProfile({ avatarUrl: body.avatarUrl, avatarAppearance: body.avatarAppearance });
+    if (!avatar.avatarUrl || (body.avatarAppearance != null && !avatar.avatarAppearance)) {
+      return NextResponse.json({ error: "Choose a valid profile picture and colours." }, { status: 400 });
+    }
+    // Avatar-only writes preserve names, presence, visibility and all other profile fields.
+    const { data: existing, error: loadError } = await supabase.from("social_objects")
+      .select("*").eq("user_id", actor.userId).eq("id", "profile").eq("object_type", "profile").maybeSingle();
+    if (loadError) return NextResponse.json({ error: "Your profile could not be loaded. Nothing was changed." }, { status: 502 });
+    if (!existing) return NextResponse.json({ error: "Save your account identity before changing its picture." }, { status: 409 });
+    const { data: saved, error: saveError } = await supabase.from("social_objects")
+      .update({ payload: { ...existing.payload, avatarUrl: avatar.avatarUrl, avatarAppearance: avatar.avatarAppearance ?? null }, updated_at: now })
+      .eq("user_id", actor.userId).eq("id", "profile").eq("object_type", "profile").select("*").single();
+    if (saveError || !saved) return NextResponse.json({ error: "Your profile picture could not be saved. Try again." }, { status: 502 });
+    return NextResponse.json({ object: {
+      id: saved.id, userId: saved.user_id, authorLabel: saved.author_label, objectType: saved.object_type,
+      scope: saved.scope, deskId: saved.desk_id, parentId: saved.parent_id, payload: saved.payload,
+      createdAt: saved.created_at, updatedAt: saved.updated_at, cloudSaved: true,
+    } }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+  }
 
   if (action === "presence" || action === "identity" || action === "status" || action === "heartbeat") {
     const changes: Record<string, unknown> = { lastSeenAt: now };

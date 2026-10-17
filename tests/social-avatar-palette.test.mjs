@@ -57,7 +57,7 @@ test("editor/export use the same pixels, prepare before saving, and retain stock
   assert.match(editor,/olisa-recent-colors/);assert.match(editor,/kwantdesk:preferences-changed/);
   assert.match(editor,/encodeCanvasImage\(canvas,\{maxBytes:350000/);
   assert.ok(page.indexOf("await avatarPaletteEditorRef.current?.prepare()")<page.indexOf("...(preparedAvatar ?"));
-  assert.match(page,/avatarAppearance: undefined/);
+  assert.match(read("../src/components/socials/useProfileAvatarEditor.tsx"),/avatarAppearance: undefined/);
 });
 
 test("real profile Save prepares and persists both rendered image and editable settings before reporting success",async()=>{
