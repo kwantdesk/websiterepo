@@ -285,7 +285,8 @@ export class LiquidityStopSweepDetectorEngine {
   }
 }
 
-function nyParts(timestamp: number) { const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(timestamp)); const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "00"; return { date: `${get("year")}-${get("month")}-${get("day")}`, hour: Number(get("hour")), minute: Number(get("minute")) }; }
+const sweepClockFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+function nyParts(timestamp: number) { const parts = sweepClockFormatter.formatToParts(new Date(timestamp)); const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "00"; return { date: `${get("year")}-${get("month")}-${get("day")}`, hour: Number(get("hour")), minute: Number(get("minute")) }; }
 export function buildSweepReferencesFromCandles(candles: Candle[], tickSize: number): SweepReferenceLevel[] {
   if (!candles.length || tickSize <= 0) return [];
   const sorted = [...candles].sort((a, b) => a.timestamp - b.timestamp);

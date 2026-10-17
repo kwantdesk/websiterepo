@@ -1,5 +1,18 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — Recurring browser freeze / last chart viewport
+
+- Removed per-candle native timezone-formatter construction in gamma,
+  sweep references and profile calendar calculations after production
+  telemetry captured 14–20s stalls in their bundle. Clock allocation,
+  DST and real calculation regressions pass. No user data was reset.
+- **Still open:** authenticated saved-workspace startup/soak on the new
+  deployment; bundle-only attribution does not establish every crash's cause.
+  Source columns are now retained in opt-in stall profiles.
+- **Still open:** restore each account/pane's last chart viewport rather
+  than opening too zoomed in. The browser-freeze incident superseded that task.
+- Evidence: `docs/prompt-log/2026-10-17-browser-startup-freeze.md`.
+
 ## 2026-09-09 — Multi-screen options/GEX gateway freeze recovery
 
 - The production outage was server-side, not a browser or monitor fault. On

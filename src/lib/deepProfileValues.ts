@@ -213,15 +213,18 @@ function barEnd(bar: FootprintBar) {
   return Number.isFinite(bar.endTime) && bar.endTime > barStart(bar) ? bar.endTime : bar.timestamp + 1;
 }
 
+const profileWeekdayFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "short" });
+const profileMonthFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit" });
+
 function exchangeWeekStart(timestamp: number) {
   const midnight = exchangeMidnightMs(timestamp);
-  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "short" }).format(new Date(timestamp));
+  const weekday = profileWeekdayFormatter.format(new Date(timestamp));
   const offset = ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 } as Record<string, number>)[weekday] ?? 0;
   return midnight - offset * DAY_MS;
 }
 
 function exchangeMonthKey(timestamp: number) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit" }).format(new Date(timestamp));
+  return profileMonthFormatter.format(new Date(timestamp));
 }
 
 function baseRanges(bars: readonly FootprintBar[], settings: DeepProfileValuesSettings, visible?: { startMs: number; endMs: number } | null): Range[] {

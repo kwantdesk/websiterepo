@@ -54,7 +54,9 @@ function summarize(trace: ProfilerTrace, sinceMs: number) {
     const name = frame.name && frame.name.length ? frame.name : "(anonymous)";
     const resource = frame.resourceId !== undefined ? trace.resources[frame.resourceId] : undefined;
     const file = resource ? resource.split("/").pop() : undefined;
-    return file ? `${name} @ ${file}:${frame.line ?? 0}` : name;
+    // Production chunks are minified onto one line. Without the column every
+    // anonymous function in a 500KB indicator bundle becomes indistinguishable.
+    return file ? `${name} @ ${file}:${frame.line ?? 0}:${frame.column ?? 0}` : name;
   };
 
   const selfSamples = new Map<string, number>();

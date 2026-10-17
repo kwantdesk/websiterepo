@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Browser startup formatter churn
+
+- Production telemetry captured 14–20s Charts stalls, with 94–96% of samples
+  in the indicator/configuration bundle. Gamma, sweep and profile clocks in
+  that bundle constructed native ICU formatters per candle. Reuse module
+  clocks; keep all timezones, DST rules and calculations unchanged.
+- Three 6,900-bar cash-close scans: 20,700 constructors / 1,583ms before,
+  zero constructors / 83ms after. Five runtime regression cases plus existing
+  profile/sweep/exchange-clock/history checks pass. These are not signed-in
+  browser startup measurements. Source columns now survive stall profiles
+  so another anonymous/minified hotspot can be attributed precisely.
+- Prompt/evidence/limits: `docs/prompt-log/2026-10-17-browser-startup-freeze.md`.
+  Authenticated saved-workspace soak and last-used viewport restore remain open.
+
 ## 2026-10-17 — Chart-history startup latency
 
 - Buffered gateway JSON/provider responses now negotiate asynchronous cached

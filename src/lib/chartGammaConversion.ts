@@ -154,8 +154,9 @@ export function identityGammaCalibration(
   };
 }
 
-function newYorkClock(timestamp: number) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+// ICU formatter construction is expensive and retains native resources. This
+// clock runs across every historical candle during closed-session calibration.
+const newYorkClockFormatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
@@ -163,7 +164,10 @@ function newYorkClock(timestamp: number) {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-  }).formatToParts(new Date(timestamp));
+});
+
+function newYorkClock(timestamp: number) {
+  const parts = newYorkClockFormatter.formatToParts(new Date(timestamp));
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((item) => item.type === type)?.value ?? "";
   return {

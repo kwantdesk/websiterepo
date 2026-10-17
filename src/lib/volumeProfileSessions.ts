@@ -217,14 +217,16 @@ export function isWithinSessionSegments(timestampMs: number, segments: readonly 
  * attributed to the date it finished on, so an Asia profile that opened at
  * 17:00 on Monday reports as Tuesday — the convention a futures desk uses.
  */
-export function sessionTradingDate(segment: SessionSegment, useEndSessionAsStartDay: boolean): string {
-  const reference = useEndSessionAsStartDay ? segment.endMs - 1 : segment.startMs;
-  return new Intl.DateTimeFormat("en-CA", {
+const sessionDateFormatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: CHICAGO_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date(reference));
+});
+
+export function sessionTradingDate(segment: SessionSegment, useEndSessionAsStartDay: boolean): string {
+  const reference = useEndSessionAsStartDay ? segment.endMs - 1 : segment.startMs;
+  return sessionDateFormatter.format(new Date(reference));
 }
 
 /**
