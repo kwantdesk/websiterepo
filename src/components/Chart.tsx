@@ -7713,14 +7713,18 @@ function Chart({
     return () => { container.removeEventListener("pointermove", move); container.removeEventListener("pointerleave", leave); if (frameId !== null) window.cancelAnimationFrame(frameId); };
   }, [stackedImbalanceIndicator]);
 
+  const footprintPresentationScopeRef = useRef<string | null>(null);
   useEffect(() => {
     const primitive = footprintPrimitiveRef.current;
     const series = candleSeriesRef.current;
     const chart = chartRef.current;
     if (!primitive || !series || !chart) return;
-    const stableFootprintBars = footprintIndicator && footprintHasPriceLevelFlow
-      ? retainLiveFootprintRows(liveFootprintRenderBars, liveFootprintRenderBarsRef.current)
+    const presentationScope = `${footprintDataKey}:${contractSymbol}`;
+    const stableFootprintBars = footprintIndicator && liveFootprintRenderBars.length
+      ? retainLiveFootprintRows(liveFootprintRenderBars,
+        footprintPresentationScopeRef.current === presentationScope ? liveFootprintRenderBarsRef.current : [])
       : [];
+    footprintPresentationScopeRef.current = presentationScope;
     liveFootprintRenderBarsRef.current = stableFootprintBars;
     primitive.update(stableFootprintBars, footprintPrimitiveOptions);
 
@@ -7729,7 +7733,10 @@ function Chart({
     // point: switching candles off must leave profiles, levels and drawings
     // sitting where they were, as if a candle were still there. Marking the
     // series invisible would drop it out of autoscale and move everything.
-    const replaceCandles = Boolean(footprintIndicator && footprintHasPriceLevelFlow) || !candlesVisible;
+    // Footprint is a chart mode, not a verdict on the current history window.
+    // Zoom/history hydration may change coverage but must never reveal native
+    // candlesticks or discard the proven Footprint rows during that transition.
+    const replaceCandles = Boolean(footprintIndicator) || !candlesVisible;
     series.applyOptions(replaceCandles ? {
       upColor: "rgba(0,0,0,0)",
       downColor: "rgba(0,0,0,0)",
@@ -7808,7 +7815,8 @@ function Chart({
     livePriceLineColor,
     resolvedCandleColors,
     chartReadyRevision,
-    footprintHasPriceLevelFlow,
+    footprintDataKey,
+    contractSymbol,
     footprintIndicator,
     footprintPrimitiveOptions,
     liveFootprintRenderBars,
@@ -15025,6 +15033,11 @@ function Chart({
 
     const candleSeries = chart.addCandlestickSeries({
       ...resolvedCandleColors,
+      ...(footprintIndicator || !candlesVisible ? {
+        upColor: "rgba(0,0,0,0)", downColor: "rgba(0,0,0,0)",
+        borderUpColor: "rgba(0,0,0,0)", borderDownColor: "rgba(0,0,0,0)",
+        wickUpColor: "rgba(0,0,0,0)", wickDownColor: "rgba(0,0,0,0)",
+      } : {}),
       priceLineColor: legibleOn(settings.upColor, settings.backgroundColor, 4.5),
       priceFormat,
       crosshairMarkerVisible: false,

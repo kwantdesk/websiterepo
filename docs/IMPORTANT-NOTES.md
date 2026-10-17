@@ -1,5 +1,39 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — Footprint zoom mode
+
+- Fixed coverage-dependent fallback to native candlesticks during zoom/history
+  expansion. Footprint stays the selected mode, retaining proven rows and real
+  OHLC geometry; native candle colours also start transparent on first paint.
+- 55 Footprint tests pass. Missing source history and the broader unresolved
+  indicator/provider/recording issues remain open; this is a presentation fix.
+- Record: `docs/prompt-log/2026-10-17-footprint-zoom-mode.md`.
+
+## Launch requirement — At least one rolling month of real history
+
+- Owner's 2026-10-17 requirement: at least one full rolling calendar month of
+  futures and options history, with continuing unattended recording/backfill.
+  Underlying candles, option-contract trades/quotes/chains, exact futures tape
+  and raw depth/L3 are distinct coverage contracts; do not equate their presence.
+- Current read-only audit: temporary gateway runs on the laptop, raw recorder
+  enabled but provider disconnected (configured Paper Trading system absent
+  from discovery). Zero futures records since the latest process start.
+  Configured startup subscriptions are only NQZ6/ESZ6, not the whole catalogue.
+- Options response archiver is enabled and has saved successful current-process
+  payloads. Automatic full-surface polling is OFF intentionally for quota safety;
+  request-driven payload capture is not unattended comprehensive options capture.
+  Cash-underlying automatic completed-session archiving remains wired to start.
+- File inventory only, not full candle/receipt validation: futures bars cover
+  Oct10–16; cash-underlying files Oct5–16; exposure files Oct16 only. Reconciled
+  exact completed tapes: NQ session-start Oct12–15, ES Oct13–15. Some other roots
+  have partial tapes; this is NOT a month or full L3 coverage.
+- Required next work: recover old VPS disk/backups if available; resolve current
+  provider discovery/history access; checkpoint/backfill one month per offered
+  instrument under existing budgets; verify Theta distribution historical rights,
+  coverage and credentials; build quota-shared unattended options collection;
+  migrate verified archives to always-on VPS plus off-box backup. A VPS alone
+  cannot repair source entitlements or recreate unrecorded historical depth.
+
 ## 2026-10-17 — Footprint loading regression
 
 - Fixed normal clock-chart views being rejected at the 100,000 raw-print cap:

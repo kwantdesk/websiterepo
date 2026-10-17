@@ -1,5 +1,37 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Footprint mode survives zoom/history hydration
+
+- Native candle visibility and Footprint primitive publication must follow the
+  selected Footprint indicator, not the 85% execution-coverage threshold. Zoom
+  widens the candle window before its history arrives; using coverage as a mode
+  switch flashed native candlesticks and discarded valid Footprint rows.
+- Keep native OHLC series transparent (not invisible, preserving autoscale and
+  attached overlays) while Footprint is enabled, including initial creation.
+  Continue publishing known rows/real OHLC geometry during hydration. Retention
+  is scoped by instrument/timeframe/contract, never another chart's old rows.
+- Footprint tests 55/55 pass. Record:
+  `docs/prompt-log/2026-10-17-footprint-zoom-mode.md`.
+
+## Standing owner requirement — Historical coverage and unattended capture
+
+- Explicitly reaffirmed for persistent memory on 2026-10-17: maintain at least
+  one full rolling calendar month of futures and options history for every
+  offered instrument, with unattended forward recording and gap backfill.
+- Candle history, classified futures executions, option-contract trades/quotes/
+  chains and raw depth/L3 are distinct requirements. Never claim coverage of
+  one proves another, or that recorder-enabled proves connected and recording.
+- Recover and verify old VPS archives/backups where possible, resolve provider
+  access, and import real history rather than waiting a month or fabricating it.
+  Verify upcoming Theta distribution rights and historical coverage first.
+- Permanent collection belongs on the always-on VPS, with off-box backups,
+  shared provider request budgets and live-feed priority. Temporary laptop
+  capture is not a public-launch uptime solution. VPS restoration alone cannot
+  repair entitlements or recreate unrecorded historical depth.
+- Detailed current gaps and status: `docs/IMPORTANT-NOTES.md`, section
+  "Launch requirement — At least one rolling month of real history". Preserve
+  this constraint alongside the November multi-user launch requirement.
+
 ## 2026-10-17 — Footprint normal views must not require raw browser tapes
 
 - A normal 160-minute NQ view contained 281,744 prints. The prior exact-window
