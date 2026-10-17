@@ -56,6 +56,7 @@ export default function UserAvatar({
         {source ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
+            key={source}
             src={source}
             alt={`${label} profile`}
             className={`absolute inset-0 h-full w-full object-cover object-center ${imageClassName}`}

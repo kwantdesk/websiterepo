@@ -70,6 +70,8 @@ import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import TradePostChart from "@/components/socials/TradePostChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
+import { SOCIAL_AVATAR_PRESETS } from "@/lib/socialAvatarPresets";
+import { AVATAR_CROP_SIZE, AVATAR_OUTPUT_SIZE, MAX_AVATAR_SOURCE_BYTES, avatarCropScale, avatarSourceRect, clampAvatarOffset, type AvatarCropDraft } from "@/lib/avatarCrop";
 import { cacheProfileIdentity } from "@/lib/profileIdentityCache";
 import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
@@ -157,14 +159,6 @@ type FeedFilter = "all" | "proven" | "mine";
 type SocialFeedMode = "following" | "recommended" | "latest";
 type SocialFeedCollection = "feed" | "posts" | "liked" | "reposts" | "saved";
 type RankingScope = "desk" | "friends" | "season";
-type AvatarCropDraft = {
-  sourceUrl: string;
-  naturalWidth: number;
-  naturalHeight: number;
-  zoom: number;
-  offsetX: number;
-  offsetY: number;
-};
 type DeskNameCheckState = {
   state: "idle" | "checking" | "available" | "taken" | "invalid" | "error";
   message: string;
@@ -241,27 +235,6 @@ function ProfileOpeningState({
       </section>
     </div>
   );
-}
-
-const AVATAR_CROP_SIZE = 288;
-const AVATAR_OUTPUT_SIZE = 1080;
-const MAX_AVATAR_SOURCE_BYTES = 20_000_000;
-
-function avatarCropScale(draft: AvatarCropDraft, zoom = draft.zoom) {
-  return Math.max(
-    AVATAR_CROP_SIZE / draft.naturalWidth,
-    AVATAR_CROP_SIZE / draft.naturalHeight,
-  ) * zoom;
-}
-
-function clampAvatarOffset(draft: AvatarCropDraft, offsetX: number, offsetY: number, zoom = draft.zoom) {
-  const scale = avatarCropScale(draft, zoom);
-  const maxX = Math.max(0, (draft.naturalWidth * scale - AVATAR_CROP_SIZE) / 2);
-  const maxY = Math.max(0, (draft.naturalHeight * scale - AVATAR_CROP_SIZE) / 2);
-  return {
-    offsetX: Math.max(-maxX, Math.min(maxX, offsetX)),
-    offsetY: Math.max(-maxY, Math.min(maxY, offsetY)),
-  };
 }
 
 const SOCIAL_TABS: Array<{ id: SocialTab; label: string; description: string; icon: typeof Activity }> = [
@@ -663,6 +636,8 @@ export default function SocialsWorkspace({
   const postGifInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const avatarCropSourceRef = useRef<string | null>(null);
+  const avatarLoadSequenceRef = useRef(0);
+  const avatarCropDialogRef = useRef<HTMLDivElement>(null);
   const avatarDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -3063,6 +3038,7 @@ export default function SocialsWorkspace({
   };
 
   const closeAvatarCrop = useCallback(() => {
+    avatarLoadSequenceRef.current += 1;
     if (avatarCropSourceRef.current) {
       URL.revokeObjectURL(avatarCropSourceRef.current);
       avatarCropSourceRef.current = null;
@@ -3073,12 +3049,28 @@ export default function SocialsWorkspace({
   }, []);
 
   useEffect(() => () => {
+    avatarLoadSequenceRef.current += 1;
     if (avatarCropSourceRef.current) URL.revokeObjectURL(avatarCropSourceRef.current);
+    avatarCropSourceRef.current = null;
   }, []);
+
+  const avatarCropSource = avatarCrop?.sourceUrl;
+  useEffect(() => {
+    if (!avatarCropSource) return;
+    const previous = document.activeElement as HTMLElement | null;
+    avatarCropDialogRef.current?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, [avatarCropSource]);
+
+  const selectPresetAvatar = (url: string, name: string) => {
+    closeAvatarCrop();
+    setProfileDraft(current => ({ ...current, avatarUrl: url }));
+    setNotice(`${name} selected. Save your profile to publish it.`);
+  };
 
   const handleAvatar = (file: File | null) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
       setNotice("Choose a PNG, JPG, WEBP, or GIF profile image.");
       return;
     }
@@ -3087,11 +3079,13 @@ export default function SocialsWorkspace({
       return;
     }
     const sourceUrl = URL.createObjectURL(file);
+    const sequence = ++avatarLoadSequenceRef.current;
     const image = new window.Image();
     image.onload = () => {
-      if (!image.naturalWidth || !image.naturalHeight) {
+      if (sequence !== avatarLoadSequenceRef.current) { URL.revokeObjectURL(sourceUrl); return; }
+      if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 40_000_000) {
         URL.revokeObjectURL(sourceUrl);
-        setNotice("That profile photo has no usable image data.");
+        setNotice("Choose a readable profile photo no larger than 40 megapixels.");
         return;
       }
       if (avatarCropSourceRef.current) URL.revokeObjectURL(avatarCropSourceRef.current);
@@ -3108,6 +3102,7 @@ export default function SocialsWorkspace({
     };
     image.onerror = () => {
       URL.revokeObjectURL(sourceUrl);
+      if (sequence !== avatarLoadSequenceRef.current) return;
       setNotice("That profile photo could not be read.");
     };
     image.src = sourceUrl;
@@ -3123,7 +3118,7 @@ export default function SocialsWorkspace({
   };
 
   const beginAvatarDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!avatarCrop) return;
+    if (!avatarCrop || avatarCropSaving) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     avatarDragRef.current = {
       pointerId: event.pointerId,
@@ -3135,6 +3130,7 @@ export default function SocialsWorkspace({
   };
 
   const moveAvatarDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (avatarCropSaving) return;
     const drag = avatarDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     setAvatarCrop((current) => {
@@ -3158,17 +3154,15 @@ export default function SocialsWorkspace({
 
   const saveCroppedAvatar = async () => {
     const crop = avatarCrop;
-    if (!crop) return;
+    if (!crop || avatarCropSaving) return;
+    const sequence = avatarLoadSequenceRef.current;
     setAvatarCropSaving(true);
     try {
       const image = new window.Image();
       image.src = crop.sourceUrl;
       await image.decode();
 
-      const scale = avatarCropScale(crop);
-      const sourceSize = AVATAR_CROP_SIZE / scale;
-      const sourceX = crop.naturalWidth / 2 - (AVATAR_CROP_SIZE / 2 + crop.offsetX) / scale;
-      const sourceY = crop.naturalHeight / 2 - (AVATAR_CROP_SIZE / 2 + crop.offsetY) / scale;
+      const source = avatarSourceRect(crop);
       const canvas = document.createElement("canvas");
       canvas.width = AVATAR_OUTPUT_SIZE;
       canvas.height = AVATAR_OUTPUT_SIZE;
@@ -3180,24 +3174,26 @@ export default function SocialsWorkspace({
       context.fillRect(0, 0, AVATAR_OUTPUT_SIZE, AVATAR_OUTPUT_SIZE);
       context.drawImage(
         image,
-        sourceX,
-        sourceY,
-        sourceSize,
-        sourceSize,
+        source.x,
+        source.y,
+        source.size,
+        source.size,
         0,
         0,
         AVATAR_OUTPUT_SIZE,
         AVATAR_OUTPUT_SIZE,
       );
       const prepared = await encodeCanvasImage(canvas, {
-        maxBytes: 1_100_000,
+        maxBytes: 350_000,
         initialQuality: 0.94,
         minimumQuality: 0.78,
       });
+      if (sequence !== avatarLoadSequenceRef.current) return;
       setProfileDraft((current) => ({ ...current, avatarUrl: prepared.dataUrl }));
       closeAvatarCrop();
-      setNotice("Profile photo prepared at 1080 × 1080. Save your profile to publish it.");
+      setNotice("Profile photo prepared at 500 × 500. Save your profile to publish it.");
     } catch {
+      if (sequence !== avatarLoadSequenceRef.current) return;
       setAvatarCropSaving(false);
       setNotice("That photo could not be cropped. Try another image.");
     }
@@ -4291,7 +4287,20 @@ export default function SocialsWorkspace({
                       <span className="absolute inset-0 flex items-center justify-center bg-black/65 opacity-0 transition-opacity group-hover:opacity-100"><Camera className="h-4 w-4 text-white" /></span>
                     </button>
                     <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(event) => { handleAvatar(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
-                    <div className="min-w-0"><h2 className="truncate text-[18px] font-semibold">{profileDraft.displayName}</h2><div className="mt-1 text-[9px] text-primary">@{profileDraft.handle}</div><button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 text-[7px] font-semibold text-muted hover:text-primary">Change profile photo</button><div className="mt-1 text-[7px] text-muted">Cropped and published at 1080 × 1080.</div><div className="mt-2 flex flex-wrap gap-1">{profileDraft.markets.map((market) => <span key={market} className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">{market}</span>)}</div></div>
+                    <div className="min-w-0"><h2 className="truncate text-[18px] font-semibold">{profileDraft.displayName}</h2><div className="mt-1 text-[9px] text-primary">@{profileDraft.handle}</div><button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 flex items-center gap-1.5 text-[9px] font-semibold text-muted hover:text-primary"><Upload className="h-3 w-3" />Upload your own</button><div className="mt-1 text-[8px] text-muted">500 × 500 · crop with a circular preview</div><div className="mt-2 flex flex-wrap gap-1">{profileDraft.markets.map((market) => <span key={market} className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">{market}</span>)}</div></div>
+                  </div>
+                  <div className="mt-5 border-t border-border pt-4">
+                    <h3 className="text-[10px] font-semibold text-foreground">Choose an avatar</h3>
+                    <p className="mt-1 text-[8px] leading-4 text-muted">Choose an avatar, or upload your own. Save your profile to publish.</p>
+                    <div className="mt-3 grid grid-cols-5 gap-2" aria-label="Profile avatar choices">
+                      {SOCIAL_AVATAR_PRESETS.map((avatar) => (
+                        <button key={avatar.id} type="button" aria-label={`Choose ${avatar.name} avatar`} title={avatar.name} aria-pressed={profileDraft.avatarUrl === avatar.url} onClick={() => selectPresetAvatar(avatar.url, avatar.name)} className={`relative aspect-square overflow-hidden rounded-full border-2 transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${profileDraft.avatarUrl === avatar.url ? "border-primary ring-2 ring-primary/25" : "border-border hover:border-primary/50"}`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={avatar.path} alt="" loading="lazy" decoding="async" width={500} height={500} className="h-full w-full object-cover" />
+                          {profileDraft.avatarUrl === avatar.url ? <span className="absolute bottom-0 right-0 rounded-full bg-primary p-0.5 text-on-primary"><Check className="h-3 w-3" /></span> : null}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <p className="mt-5 text-[9px] leading-5 text-muted">{profileDraft.bio || `${profileDraft.session} · ${profileDraft.style}`}</p>
                   <div className="mt-4 rounded-xl border border-border bg-background/30 p-3"><div className="text-[7px] uppercase tracking-[0.13em] text-muted">Current focus</div><div className="mt-2 text-[9px] leading-4 text-foreground">{profileDraft.improvementObjective}</div></div>
@@ -4580,19 +4589,27 @@ export default function SocialsWorkspace({
 
       {avatarCrop ? (
         <div
-          className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+          className="fixed inset-0 z-[1200] flex items-center justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-md"
+          onKeyDown={(event) => { if (event.key === "Escape" && !avatarCropSaving) { event.stopPropagation(); closeAvatarCrop(); } }}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget && !avatarCropSaving) closeAvatarCrop();
           }}
         >
-          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
+          <div ref={avatarCropDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Crop profile photo" className="my-auto max-h-[95dvh] w-full max-w-lg overflow-y-auto rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70" onKeyDown={event => {
+            if (event.key !== "Tab") return;
+            const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex="0"]'));
+            const first = controls[0], last = controls.at(-1);
+            if (!first || !last) { event.preventDefault(); return; }
+            if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+          }}>
             <div className="flex items-start gap-3 border-b border-border p-5">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
                 <Camera className="h-4 w-4" />
               </span>
               <div>
                 <h2 className="text-[14px] font-semibold text-foreground">Crop profile photo</h2>
-                <p className="mt-1 text-[8px] leading-4 text-muted">Drag to reposition, then use the slider to resize your photo.</p>
+                <p className="mt-1 text-[9px] leading-4 text-muted">Drag and zoom to frame your photo. Saved at 500 × 500; the circle shows what appears on your profile.</p>
               </div>
               <button
                 type="button"
@@ -4607,7 +4624,18 @@ export default function SocialsWorkspace({
 
             <div className="flex flex-col items-center px-5 py-6">
               <div
-                className="relative h-72 w-72 touch-none select-none overflow-hidden rounded-full border border-primary/35 bg-black shadow-[0_0_42px_color-mix(in_srgb,var(--primary)_14%,transparent)] cursor-grab active:cursor-grabbing"
+                className="relative shrink-0 touch-none select-none overflow-hidden ring-1 ring-primary/35 bg-black cursor-grab active:cursor-grabbing"
+                style={{ width: AVATAR_CROP_SIZE, height: AVATAR_CROP_SIZE }}
+                tabIndex={0}
+                role="group"
+                aria-label="Move profile photo with arrow keys or drag"
+                onKeyDown={(event) => {
+                  if (avatarCropSaving) return;
+                  const step = event.shiftKey ? 16 : 4;
+                  const x = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+                  const y = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+                  if (x || y) { event.preventDefault(); setAvatarCrop(current => current ? { ...current, ...clampAvatarOffset(current, current.offsetX + x, current.offsetY + y) } : current); }
+                }}
                 onPointerDown={beginAvatarDrag}
                 onPointerMove={moveAvatarDrag}
                 onPointerUp={endAvatarDrag}
@@ -4627,12 +4655,19 @@ export default function SocialsWorkspace({
                     transform: "translate(-50%, -50%)",
                   }}
                 />
-                <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-inset ring-white/25" />
+                <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-inset ring-white/50 shadow-[0_0_0_100px_rgba(0,0,0,0.65)]" />
                 <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-white/[0.08]" />
                 <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/[0.08]" />
               </div>
 
-              <div className="mt-6 flex w-full max-w-sm items-center gap-3">
+              <div className="mt-4 flex items-center gap-3">
+                <div className="relative h-16 w-16 overflow-hidden rounded-full ring-1 ring-primary/35 bg-black" aria-label="Actual circular profile preview">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={avatarCrop.sourceUrl} alt="Circular profile preview" draggable={false} className="absolute max-w-none" style={{ width: avatarCrop.naturalWidth * avatarCropScale(avatarCrop) * 64 / AVATAR_CROP_SIZE, height: avatarCrop.naturalHeight * avatarCropScale(avatarCrop) * 64 / AVATAR_CROP_SIZE, left: `calc(50% + ${avatarCrop.offsetX * 64 / AVATAR_CROP_SIZE}px)`, top: `calc(50% + ${avatarCrop.offsetY * 64 / AVATAR_CROP_SIZE}px)`, transform: "translate(-50%, -50%)" }} />
+                </div>
+                <span className="text-[9px] text-muted">Your profile preview</span>
+              </div>
+              <div className="mt-4 flex w-full max-w-sm items-center gap-3">
                 <span className="text-[16px] leading-none text-muted">−</span>
                 <input
                   type="range"
@@ -4642,6 +4677,7 @@ export default function SocialsWorkspace({
                   value={avatarCrop.zoom}
                   onChange={(event) => updateAvatarZoom(Number(event.target.value))}
                   aria-label="Resize profile photo"
+                  disabled={avatarCropSaving}
                   className="h-1.5 min-w-0 flex-1 cursor-pointer accent-[var(--primary)]"
                 />
                 <Plus className="h-4 w-4 text-muted" />
@@ -4651,6 +4687,7 @@ export default function SocialsWorkspace({
                 <button
                   type="button"
                   onClick={() => setAvatarCrop((current) => current ? { ...current, zoom: 1, offsetX: 0, offsetY: 0 } : current)}
+                  disabled={avatarCropSaving}
                   className="font-semibold text-muted transition-colors hover:text-primary"
                 >
                   Reset position

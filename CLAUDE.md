@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Social avatar picker and 500px crop
+
+- Owner approved SIMPLE console-style non-human icons/mascots, not people.
+  Thirty distinct image_gen avatars are in `public/images/avatars/console-v1`,
+  500x500 WebP, 310,558 bytes total. Keep immutable artwork under existing
+  middleware-excluded images path, not per-image authenticated/API processing.
+- Picker stages the HTTPS avatar URL and preserves explicit Save Profile.
+  Custom uploads output 500x500 with square editor/circle mask plus identical
+  circular thumbnail, drag/zoom/reset/keyboard controls and focus containment.
+  Guard stale decodes/encodes, revoke object URLs, cap source/encoded sizes.
+- Eight focused crop/handler/asset/normalization tests pass; full isolated build
+  and scoped lint (two existing unrelated img warnings) pass. Signed-in browser
+  crop/save and cross-device roundtrip remain unverified. Record/prompts:
+  `docs/prompt-log/2026-10-17-social-avatar-picker.md`, `docs/avatar-art/`.
+
 ## 2026-10-17 — Levels workspace controls
 
 - Levels now uses a compact GEX VUE-style toolbar: five layout choices, +Panel,

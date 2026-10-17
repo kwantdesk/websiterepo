@@ -1,0 +1,216 @@
+{
+  "mode": "Built-in image_gen",
+  "status": "Approved console-style collection: 30 original non-human avatars.",
+  "assets": [
+    {
+      "id": "robot",
+      "name": "Robot",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Extremely SIMPLE graphic icon mascot, reminiscent of classic console account avatar selection screens, but wholly original. A tiny square-headed gaming robot mascot, flat muted cobalt blue helmet, two simple deadpan rectangular ivory eyes and a short straight mouth, small orange antenna; warm off-white background. Bold clean flat graphic shapes, thick consistent outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, no human or humanoid human face, no human skin, hair, clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. One central mascot head with clear breathing room for a circular crop, compact and memorable silhouette. Dry playful attitude, not babyish. No text, letters, numbers, symbols, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-170609b1-4cee-4f97-8b74-b585ae7216a7.png",
+      "output": "public/images/avatars/console-v1/robot.webp"
+    },
+    {
+      "id": "fox",
+      "name": "Fox",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Extremely SIMPLE graphic icon mascot, reminiscent of classic console account avatar selection screens, but wholly original. A simplified burnt-orange fox head mascot, angular ears, half-lidded mischievous eyes, cream muzzle and black tiny triangular nose; deep navy background. Bold clean flat graphic shapes, thick consistent outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, no human or humanoid human face, no human skin, hair, clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. One central mascot head with clear breathing room for a circular crop, compact and memorable silhouette. Dry playful attitude, not babyish. No text, letters, numbers, symbols, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-95152cdb-ed8a-420d-8fc1-11600ac8b806.png",
+      "output": "public/images/avatars/console-v1/fox.webp"
+    },
+    {
+      "id": "ghost",
+      "name": "Ghost",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Extremely SIMPLE graphic icon mascot, reminiscent of classic console account avatar selection screens, but wholly original. A simple mint-green ghost/blob creature, rounded silhouette, two small black oval eyes and a subtle unimpressed flat mouth; dusty purple background. Bold clean flat graphic shapes, thick consistent outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, no human or humanoid human face, no human skin, hair, clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. One central mascot head with clear breathing room for a circular crop, compact and memorable silhouette. Dry playful attitude, not babyish. No text, letters, numbers, symbols, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-0b27ac33-6cff-48a2-8495-d4cf6daa0d75.png",
+      "output": "public/images/avatars/console-v1/ghost.webp"
+    },
+    {
+      "id": "cat",
+      "name": "Cat",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A charcoal-black cat head, pointed ears, bright lime half-lidded eyes and tiny straight mouth; burnt-orange background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-6d76113f-f52d-4b02-889e-552267fa2446.png",
+      "output": "public/images/avatars/console-v1/cat.webp"
+    },
+    {
+      "id": "shark",
+      "name": "Shark",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A steel-blue cartoon shark head, clean rounded silhouette, simple white lower jaw, confident small toothy grin; bright coral background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-e55aeaa6-d927-46ff-ba44-8862d3b06512.png",
+      "output": "public/images/avatars/console-v1/shark.webp"
+    },
+    {
+      "id": "frog",
+      "name": "Frog",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. An emerald-green frog head, two prominent round eyes, one eyebrow slightly raised and an unimpressed straight mouth; warm cream background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-c6f2df89-c577-436a-9ce3-5ab87330ebb0.png",
+      "output": "public/images/avatars/console-v1/frog.webp"
+    },
+    {
+      "id": "dino",
+      "name": "Dino",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A simple moss-green dinosaur head in slight three-quarter view, three small triangular back spikes, calm small dot eye, closed smirk; pale yellow background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-ecbbd38a-3aaf-4d02-af61-67ce502a90e6.png",
+      "output": "public/images/avatars/console-v1/dino.webp"
+    },
+    {
+      "id": "alien",
+      "name": "Alien",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A lime-green alien head, simple oval silhouette, large slanted black eyes, tiny flat mouth; dark purple background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-23af3bcf-9c63-48bc-aeac-222d3b482933.png",
+      "output": "public/images/avatars/console-v1/alien.webp"
+    },
+    {
+      "id": "dragon",
+      "name": "Dragon",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A simplified crimson dragon head, two small horns, angular snout, golden narrow eyes and smug grin; deep navy background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-664ef52b-5e09-4e05-8f3d-8f11ef0f0935.png",
+      "output": "public/images/avatars/console-v1/dragon.webp"
+    },
+    {
+      "id": "skull",
+      "name": "Skull",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. An ivory cartoon skull mascot, rounded silhouette, two black eye sockets, one slightly squinting, simple chunky teeth; cobalt blue background. Playful not horror. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-6b060f03-0b49-4605-85cd-b165f0dbbdb8.png",
+      "output": "public/images/avatars/console-v1/skull.webp"
+    },
+    {
+      "id": "bat",
+      "name": "Bat",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A midnight-purple bat mascot head, enormous pointed ears, simple yellow eyes and two tiny fangs; muted lavender background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-58bd2602-137d-4aac-af06-76407f1bf1ab.png",
+      "output": "public/images/avatars/console-v1/bat.webp"
+    },
+    {
+      "id": "panda",
+      "name": "Panda",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A minimal black-and-ivory panda head, small round ears, droopy tired eyes and tiny neutral mouth; muted mint background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-1cffe3ec-7b2d-41a0-8925-f06cf2fc4e1d.png",
+      "output": "public/images/avatars/console-v1/panda.webp"
+    },
+    {
+      "id": "dog",
+      "name": "Dog",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A tan cartoon dog head, one floppy ear and one upright ear, cream muzzle, mildly confused raised brow; muted cobalt background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-8cf69784-226a-461a-af80-14ba16614d4e.png",
+      "output": "public/images/avatars/console-v1/dog.webp"
+    },
+    {
+      "id": "mushroom",
+      "name": "Mushroom",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A single cartoon mushroom creature, broad red cap with three ivory spots, short cream stalk face, two black eyes and small straight mouth; dark forest background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-a502fc56-bbb0-43c6-88d1-d6c400c466d5.png",
+      "output": "public/images/avatars/console-v1/mushroom.webp"
+    },
+    {
+      "id": "bear",
+      "name": "Bear",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A chunky warm-brown bear head, round ears, cream muzzle, flat unimpressed eyes; muted mustard background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-2db30e3a-007c-479c-8abb-f820eb351484.png",
+      "output": "public/images/avatars/console-v1/bear.webp"
+    },
+    {
+      "id": "cloud",
+      "name": "Cloud",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A puffy ivory cloud mascot face, clean lobed silhouette, two sleepy dark eyes and a tiny flat mouth; vivid sky-blue background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-9d91e083-30c0-4907-9294-4766bfd57597.png",
+      "output": "public/images/avatars/console-v1/cloud.webp"
+    },
+    {
+      "id": "duck",
+      "name": "Duck",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A round ivory duck head, flat golden-orange beak, half-lidded bored eyes; warm emerald background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-629ab344-fe17-41cd-851d-fafc17c6cd27.png",
+      "output": "public/images/avatars/console-v1/duck.webp"
+    },
+    {
+      "id": "raccoon",
+      "name": "Raccoon",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A slate-grey raccoon head with black eye mask, pointed ears, one raised brow and tiny nose; soft teal background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-53f3e083-477b-4b03-baa4-df9cf0785011.png",
+      "output": "public/images/avatars/console-v1/raccoon.webp"
+    },
+    {
+      "id": "jellyfish",
+      "name": "Jellyfish",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A simple lilac jellyfish mascot, rounded cap head with two bored oval eyes and four short thick tentacles; dark petrol blue background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-37da0514-5e0e-4450-bc56-234434a522d3.png",
+      "output": "public/images/avatars/console-v1/jellyfish.webp"
+    },
+    {
+      "id": "flame",
+      "name": "Flame",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A simple golden-orange flame mascot, three pointed flame lobes, confident narrowed dark eyes and mischievous smirk; deep plum background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-bcf93f6e-f5fb-4804-89a5-4637e7d95d01.png",
+      "output": "public/images/avatars/console-v1/flame.webp"
+    },
+    {
+      "id": "penguin",
+      "name": "Penguin",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A black-and-ivory penguin head with simple yellow beak, deadpan small round eyes; muted coral background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-865ac712-f35b-49a8-8cd0-40911ce346ee.png",
+      "output": "public/images/avatars/console-v1/penguin.webp"
+    },
+    {
+      "id": "owl",
+      "name": "Owl",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A compact dark-purple owl head, two huge circular amber eyes with half-lidded skeptical expression, small orange beak; ivory background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-7c648ab5-e2a1-42bc-9491-b74aa34cdb55.png",
+      "output": "public/images/avatars/console-v1/owl.webp"
+    },
+    {
+      "id": "axolotl",
+      "name": "Axolotl",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A flat dusty-pink axolotl mascot head with three simple coral gill tufts on each side, tiny black eyes and straight mouth; deep navy background. Not babyish. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-02be140a-84ac-42b7-9e53-899c59a0a958.png",
+      "output": "public/images/avatars/console-v1/axolotl.webp"
+    },
+    {
+      "id": "crab",
+      "name": "Crab",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A simplified brick-red crab mascot, two small raised claws and two eye stalks, unamused black eyes; warm ivory background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-d449f788-7a1b-4af3-a87a-51e2c418c97c.png",
+      "output": "public/images/avatars/console-v1/crab.webp"
+    },
+    {
+      "id": "cactus",
+      "name": "Cactus",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A simple moss-green cactus creature with two short raised arms, three tiny black spine marks, two round deadpan eyes; sandy peach background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-0806735b-e1a1-4466-9d4f-c8ff2c04007d.png",
+      "output": "public/images/avatars/console-v1/cactus.webp"
+    },
+    {
+      "id": "slime",
+      "name": "Slime",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A squishy cobalt-blue slime blob mascot, irregular rounded silhouette, two uneven eyes and a sideways neutral mouth; pale lime background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-d44f01be-fad3-467a-9bf1-97554bb1c511.png",
+      "output": "public/images/avatars/console-v1/slime.webp"
+    },
+    {
+      "id": "satellite-bot",
+      "name": "Satellite Bot",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A small teal round robot mascot head with two short side antennas, orange rectangular visor eye and straight small mouth; warm mustard background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-12908e4e-91af-4dc8-84b4-b1d7dbd85529.png",
+      "output": "public/images/avatars/console-v1/satellite-bot.webp"
+    },
+    {
+      "id": "toaster",
+      "name": "Toaster",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A simple silver-grey toaster mascot, rounded rectangular body, one bread slice on top, two black rectangular eyes and flat mouth; muted burnt-orange background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-ec074c89-1594-41b1-a1ef-2655cf50b30c.png",
+      "output": "public/images/avatars/console-v1/toaster.webp"
+    },
+    {
+      "id": "cyclops",
+      "name": "Cyclops",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A compact purple cyclops monster head, one huge cream eye with black pupil, two short horn nubs and a small skeptical mouth; mustard yellow background. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-acae10c6-4f02-4469-b447-cb98e0e02621.png",
+      "output": "public/images/avatars/console-v1/cyclops.webp"
+    },
+    {
+      "id": "gamepad",
+      "name": "Gamepad",
+      "prompt": "Use case: stylized-concept. Finished original square console gamer-profile avatar. Match the approved simple bold robot/fox/ghost icon collection: Extremely SIMPLE flat graphic mascot, reminiscent of classic console account avatar selection screens but wholly original. A chunky dark-purple game controller mascot, two round ivory stick shapes like eyes, minimal cross button and three simple buttons, subtle flat mouth; mint background. No brand logos. Bold clean flat graphic shapes, thick consistent dark outlines, maximum 4 colors, no texture, no gradients, no realism, no glossy 3D, NO HUMAN OR HUMAN PORTRAIT, no human skin, hair or clothing, no detailed illustration. Icon needs to read instantly at 32 pixels. Exactly one central mascot with clear breathing room: keep its entire silhouette inside the central 65 percent of the square so ears and tips survive a circular crop. Compact memorable silhouette, dry playful attitude, not babyish. No text, letters, numbers, logo, watermark, borders, UI or multi-panel sheet. Exactly one standalone icon, square 1:1.",
+      "source": "C:\\Users\\Karen\\.codex\\generated_images\\01a06418-e374-7a73-bf53-3d3583cb166e\\exec-09748ed4-2a5f-4880-9e54-d5c84e73fa65.png",
+      "output": "public/images/avatars/console-v1/gamepad.webp"
+    }
+  ]
+}
