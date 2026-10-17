@@ -2258,7 +2258,7 @@ function GexMapWorkspace({
   return (
     <div className="gex-map-workspace relative flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="gex-map-header sticky top-0 z-40 flex h-9 min-h-9 shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border bg-panel px-2">
+        <header className="gex-map-header sticky top-0 z-40 flex min-h-[48px] shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border bg-panel px-2 py-1.5">
 
           <button
             type="button"

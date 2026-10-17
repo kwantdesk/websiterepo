@@ -1,5 +1,13 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — GEX Map toolbar spacing
+
+- Internal GEX Map rail now has 6px top/bottom padding and intrinsic height
+  with a 48px minimum. Do not restore fixed 36px height: 28px controls plus
+  a horizontal scrollbar consumed the content area and clipped the buttons.
+- Preserve button/font sizes, horizontal scrolling and data behaviour. Record:
+  `docs/prompt-log/2026-10-17-gex-map-toolbar-spacing.md`.
+
 ## 2026-10-17 — Partial options-underlying history must not blank charts
 
 - A 3M SPY/QQQ request returned valid recent candles with `truncated: true`;

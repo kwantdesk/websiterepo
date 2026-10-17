@@ -18,8 +18,9 @@ test("embedded liquidity map rows follow the shared 36px workspace rhythm", () =
   assert.match(liquidityEmbedCss, /\.tool-rail\s*\{[\s\S]*?height:\s*35px;/);
 });
 
-test("GEX map internal control rail uses the shared 36px workspace height", () => {
-  assert.match(gexMapSource, /gex-map-header[^\n]*h-9 min-h-9/);
-  assert.doesNotMatch(gexMapSource, /gex-map-header[^\n]*min-h-\[48px\]/);
+test("GEX map internal control rail leaves room for buttons, padding and horizontal scrollbar", () => {
+  assert.match(gexMapSource, /gex-map-header[^\n]*min-h-\[48px\]/);
+  assert.match(gexMapSource, /gex-map-header[^\n]*py-1\.5/);
+  assert.doesNotMatch(gexMapSource, /gex-map-header[^\n]* h-9 /);
   assert.match(gexMapSource, /gex-map-frame-steps[^\n]*h-7/);
 });
