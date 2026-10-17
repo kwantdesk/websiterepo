@@ -1,0 +1,506 @@
+{
+  "alien": {
+    "colors": [
+      "#3C0960",
+      "#0D0611",
+      "#ADFB41",
+      "#27083C",
+      "#99C459"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/alien.png"
+  },
+  "axolotl": {
+    "colors": [
+      "#041C48",
+      "#080918",
+      "#FCB1B2",
+      "#F76B6C"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/axolotl.png"
+  },
+  "bat": {
+    "colors": [
+      "#9C87C0",
+      "#211230",
+      "#8169A6",
+      "#FBCE38"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/bat.png"
+  },
+  "bear": {
+    "colors": [
+      "#E5B637",
+      "#27120C",
+      "#834726",
+      "#FCE7C2",
+      "#E3BB56"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/bear.png"
+  },
+  "cactus": {
+    "colors": [
+      "#FDC795",
+      "#18140F",
+      "#789A4A",
+      "#F7D2AD"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/cactus.png"
+  },
+  "cat": {
+    "colors": [
+      "#F46408",
+      "#1B1A1A",
+      "#535252",
+      "#C1ED5C",
+      "#D76B24",
+      "#833E11"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3",
+      "Colour 4"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/cat.png"
+  },
+  "cloud": {
+    "colors": [
+      "#1399FD",
+      "#13151E",
+      "#FCF7E9",
+      "#2B95E0",
+      "#09426D"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/cloud.png"
+  },
+  "crab": {
+    "colors": [
+      "#FEF9EB",
+      "#1E0E0A",
+      "#CE4223",
+      "#FBF3E8"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/crab.png"
+  },
+  "cyclops": {
+    "colors": [
+      "#FDC603",
+      "#1A1115",
+      "#833AB3",
+      "#FAEFCD",
+      "#EEC52B"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/cyclops.png"
+  },
+  "dino": {
+    "colors": [
+      "#FEF18A",
+      "#231B14",
+      "#8D9F46",
+      "#E0DE92"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/dino.png"
+  },
+  "dog": {
+    "colors": [
+      "#3460BF",
+      "#15151D",
+      "#DB9E60",
+      "#F9EDD3",
+      "#3B5A9E"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/dog.png"
+  },
+  "dragon": {
+    "colors": [
+      "#0B1B49",
+      "#190518",
+      "#D91E2F",
+      "#FADDAD",
+      "#F5AD22"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/dragon.png"
+  },
+  "duck": {
+    "colors": [
+      "#028351",
+      "#151515",
+      "#FBF4DE",
+      "#FD9805",
+      "#16684A"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/duck.png"
+  },
+  "flame": {
+    "colors": [
+      "#390641",
+      "#1E021F",
+      "#FCB11E",
+      "#F5641C",
+      "#A76235",
+      "#F9E8A2"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3",
+      "Colour 4"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/flame.png"
+  },
+  "fox": {
+    "colors": [
+      "#032251",
+      "#050D23",
+      "#DA4F13",
+      "#FBE6C9"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/fox.png"
+  },
+  "frog": {
+    "colors": [
+      "#FEF7E3",
+      "#0E1D17",
+      "#22A948",
+      "#B3DE7E",
+      "#FBF6DC"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/frog.png"
+  },
+  "gamepad": {
+    "colors": [
+      "#A1FBBA",
+      "#280E3D",
+      "#9464E4",
+      "#F7F2E1",
+      "#B6F0CE",
+      "#404D54"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3",
+      "Colour 4"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/gamepad.png"
+  },
+  "ghost": {
+    "colors": [
+      "#7C588D",
+      "#1A151B",
+      "#B9F6BD",
+      "#654F71"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/ghost.png"
+  },
+  "jellyfish": {
+    "colors": [
+      "#023E5B",
+      "#040F24",
+      "#C59BF6",
+      "#F6F2E9"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/jellyfish.png"
+  },
+  "mushroom": {
+    "colors": [
+      "#16341F",
+      "#0E0C0B",
+      "#FBF0D3",
+      "#D3211F"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/mushroom.png"
+  },
+  "owl": {
+    "colors": [
+      "#FEFBF1",
+      "#17091F",
+      "#452258",
+      "#F9B529",
+      "#FC841C",
+      "#583610",
+      "#DAD3D9"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3",
+      "Colour 4",
+      "Colour 5"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/owl.png"
+  },
+  "panda": {
+    "colors": [
+      "#90E3B5",
+      "#1D1D1C",
+      "#FCF6E9",
+      "#A6E6C4"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/panda.png"
+  },
+  "penguin": {
+    "colors": [
+      "#FC6E63",
+      "#202122",
+      "#FAF5E2",
+      "#FAD04F",
+      "#E17972"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/penguin.png"
+  },
+  "raccoon": {
+    "colors": [
+      "#5CC1BC",
+      "#19191D",
+      "#E7DFD3",
+      "#798086",
+      "#71BCB8"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/raccoon.png"
+  },
+  "robot": {
+    "colors": [
+      "#FEFAF1",
+      "#0F1526",
+      "#2B6BD1",
+      "#F8F4E2",
+      "#FA7B3B"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/robot.png"
+  },
+  "satellite-bot": {
+    "colors": [
+      "#FCBE0F",
+      "#0E191F",
+      "#1CC9BB",
+      "#FC6F0C",
+      "#EBC038",
+      "#392402"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3",
+      "Colour 4"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/satellite-bot.png"
+  },
+  "shark": {
+    "colors": [
+      "#FC564C",
+      "#0C162C",
+      "#3E7BB3",
+      "#F6F4ED",
+      "#DB6260"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/shark.png"
+  },
+  "skull": {
+    "colors": [
+      "#0051FC",
+      "#0D0C11",
+      "#FDF9E6",
+      "#1252D7",
+      "#02154A"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/skull.png"
+  },
+  "slime": {
+    "colors": [
+      "#D7FA6A",
+      "#03051B",
+      "#0751FD",
+      "#FAF5EB",
+      "#D8F189"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/slime.png"
+  },
+  "toaster": {
+    "colors": [
+      "#D25A1D",
+      "#1F1D1B",
+      "#B8B8B8",
+      "#F9D8A3",
+      "#DC9650",
+      "#AF5D31"
+    ],
+    "labels": [
+      "Background",
+      "Outline",
+      "Colour 1",
+      "Colour 2",
+      "Colour 3",
+      "Colour 4"
+    ],
+    "map": "/images/avatars/console-colour-maps-v1/toaster.png"
+  }
+}

@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Per-colour avatar customisation
+
+- Every console avatar now owns a curated/extracted palette and offline colour
+  map under `public/images/avatars/console-colour-maps-v1`. Keep source artwork
+  unchanged. Every pixel has a two-colour assignment; delta blending preserves
+  source shading/antialiasing and stock/reset is byte-identical across all 30.
+- AvatarPaletteEditor shows background, outline and each paint colour with live
+  circular canvas, stock swatch reset, recent swatches to the right and Reset All.
+  Use the existing account-tracked `olisa-recent-colors`; do not add server-side
+  image generation or per-swatch uploads. One selected source/map pair only.
+- Save Profile awaits the latest palette snapshot before identity/profile writes;
+  store a 500px WebP plus validated `avatarAppearance` version/presetId/hex colours
+  in the profile payload. Reopen restores editable values. Uploaded photos clear
+  this metadata, so old preset colours cannot replace a new photo accidentally.
+- 15 focused tests pass, including real Save handler order/failure paths, renderer
+  latest-state race, roundtrip/reset and all 30 maps. Local recolour kernel ~3–5ms
+  per 500px avatar, not a browser/production capacity measurement. Signed-in
+  cross-device save remains unverified. Record:
+  `docs/prompt-log/2026-10-17-avatar-colour-editor.md`.
+
 ## 2026-10-17 — Social avatar picker and 500px crop
 
 - Owner approved SIMPLE console-style non-human icons/mascots, not people.

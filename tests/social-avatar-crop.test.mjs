@@ -58,6 +58,7 @@ function handlers() {
   visit(ast);
   const state = { profile: { displayName: "Trader", avatarUrl: "old" }, notice: "", images: [], revoked: [], draws: [], canvas: null };
   const context = { ...exports, avatarCrop: draft(1600, 800), avatarCropSaving: false,
+    SOCIAL_AVATAR_PRESETS: ["robot", "fox"].map(id => ({ id, url: `https://kwantdesk.com/avatars/console-v1/${id}.webp` })),
     avatarLoadSequenceRef: { current: 0 }, avatarCropSourceRef: { current: "blob:test" }, avatarDragRef: { current: null },
     useCallback: fn => fn,
     setProfileDraft: update => { state.profile = update(state.profile); }, setNotice: value => { state.notice = value; },

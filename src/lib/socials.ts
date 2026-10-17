@@ -106,6 +106,7 @@ export type SocialProfilePayload = {
     saves: "private" | "community";
   };
   avatarUrl?: string;
+  avatarAppearance?: { version: 1; presetId: string; colors: string[] };
   presenceStatus?: "online" | "dnd" | "away" | "sleeping" | "offline";
   presenceMessage?: string;
   lastSeenAt?: string;
@@ -743,6 +744,14 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
       : typeof candidate.avatarUrl === "string" && /^https:\/\//i.test(candidate.avatarUrl)
         ? candidate.avatarUrl.slice(0, 2_000)
         : "",
+    avatarAppearance: candidate.avatarAppearance?.version === 1
+      && typeof candidate.avatarAppearance.presetId === "string"
+      && /^[a-z0-9-]{1,40}$/.test(candidate.avatarAppearance.presetId)
+      && Array.isArray(candidate.avatarAppearance.colors)
+      && candidate.avatarAppearance.colors.length >= 2 && candidate.avatarAppearance.colors.length <= 12
+      && candidate.avatarAppearance.colors.every(color => typeof color === "string" && /^#[a-f0-9]{6}$/i.test(color))
+        ? { version: 1, presetId: candidate.avatarAppearance.presetId, colors: candidate.avatarAppearance.colors.map(color => color.toUpperCase()) }
+        : undefined,
     presenceStatus,
     presenceMessage: profileText(candidate.presenceMessage, "", 120),
     lastSeenAt: candidateLastSeenAt,

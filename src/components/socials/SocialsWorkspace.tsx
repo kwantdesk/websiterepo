@@ -70,6 +70,8 @@ import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import TradePostChart from "@/components/socials/TradePostChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
+import AvatarPaletteEditor, { type AvatarPaletteEditorHandle } from "@/components/socials/AvatarPaletteEditor";
+import type { PreparedAvatar } from "@/lib/avatarPalette";
 import { SOCIAL_AVATAR_PRESETS } from "@/lib/socialAvatarPresets";
 import { AVATAR_CROP_SIZE, AVATAR_OUTPUT_SIZE, MAX_AVATAR_SOURCE_BYTES, avatarCropScale, avatarSourceRect, clampAvatarOffset, type AvatarCropDraft } from "@/lib/avatarCrop";
 import { cacheProfileIdentity } from "@/lib/profileIdentityCache";
@@ -638,6 +640,9 @@ export default function SocialsWorkspace({
   const avatarCropSourceRef = useRef<string | null>(null);
   const avatarLoadSequenceRef = useRef(0);
   const avatarCropDialogRef = useRef<HTMLDivElement>(null);
+  const avatarPaletteEditorRef = useRef<AvatarPaletteEditorHandle>(null);
+  const selectedPalettePreset = SOCIAL_AVATAR_PRESETS.find(preset => preset.id === profileDraft.avatarAppearance?.presetId)
+    ?? SOCIAL_AVATAR_PRESETS.find(preset => preset.url === profileDraft.avatarUrl);
   const avatarDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -2191,8 +2196,20 @@ export default function SocialsWorkspace({
 
   const saveProfile = async () => {
     if (profileSaveState === "saving") return;
+    setProfileSaveState("saving");
+    const avatarSequence = avatarLoadSequenceRef.current;
+    let preparedAvatar: PreparedAvatar | undefined;
+    try {
+      preparedAvatar = await avatarPaletteEditorRef.current?.prepare();
+      if (avatarSequence !== avatarLoadSequenceRef.current) { setProfileSaveState("idle"); return; }
+    } catch (reason) {
+      setProfileSaveState("error");
+      setNotice(reason instanceof Error ? reason.message : "Avatar colours could not be saved. Try again.");
+      return;
+    }
     const profile = normalizeSocialProfile({
       ...profileDraft,
+      ...(preparedAvatar ? { avatarUrl: preparedAvatar.avatarUrl, avatarAppearance: preparedAvatar.avatarAppearance } : {}),
       displayName: profileDraft.displayName.trim() || "Kwant Trader",
       handle: profileDraft.handle.trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) || "trader",
       markets: [...new Set(profileDraft.markets.map((market) => market.trim().toUpperCase()).filter(Boolean))].slice(0, 8),
@@ -3064,7 +3081,7 @@ export default function SocialsWorkspace({
 
   const selectPresetAvatar = (url: string, name: string) => {
     closeAvatarCrop();
-    setProfileDraft(current => ({ ...current, avatarUrl: url }));
+    setProfileDraft(current => current.avatarAppearance?.presetId === SOCIAL_AVATAR_PRESETS.find(preset => preset.url === url)?.id ? current : ({ ...current, avatarUrl: url, avatarAppearance: undefined }));
     setNotice(`${name} selected. Save your profile to publish it.`);
   };
 
@@ -3189,7 +3206,7 @@ export default function SocialsWorkspace({
         minimumQuality: 0.78,
       });
       if (sequence !== avatarLoadSequenceRef.current) return;
-      setProfileDraft((current) => ({ ...current, avatarUrl: prepared.dataUrl }));
+      setProfileDraft((current) => ({ ...current, avatarUrl: prepared.dataUrl, avatarAppearance: undefined }));
       closeAvatarCrop();
       setNotice("Profile photo prepared at 500 × 500. Save your profile to publish it.");
     } catch {
@@ -4294,13 +4311,14 @@ export default function SocialsWorkspace({
                     <p className="mt-1 text-[8px] leading-4 text-muted">Choose an avatar, or upload your own. Save your profile to publish.</p>
                     <div className="mt-3 grid grid-cols-5 gap-2" aria-label="Profile avatar choices">
                       {SOCIAL_AVATAR_PRESETS.map((avatar) => (
-                        <button key={avatar.id} type="button" aria-label={`Choose ${avatar.name} avatar`} title={avatar.name} aria-pressed={profileDraft.avatarUrl === avatar.url} onClick={() => selectPresetAvatar(avatar.url, avatar.name)} className={`relative aspect-square overflow-hidden rounded-full border-2 transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${profileDraft.avatarUrl === avatar.url ? "border-primary ring-2 ring-primary/25" : "border-border hover:border-primary/50"}`}>
+                        <button key={avatar.id} type="button" disabled={profileSaveState === "saving"} aria-label={`Choose ${avatar.name} avatar`} title={avatar.name} aria-pressed={selectedPalettePreset?.id === avatar.id} onClick={() => selectPresetAvatar(avatar.url, avatar.name)} className={`relative aspect-square overflow-hidden rounded-full border-2 transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${selectedPalettePreset?.id === avatar.id ? "border-primary ring-2 ring-primary/25" : "border-border hover:border-primary/50"}`}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={avatar.path} alt="" loading="lazy" decoding="async" width={500} height={500} className="h-full w-full object-cover" />
-                          {profileDraft.avatarUrl === avatar.url ? <span className="absolute bottom-0 right-0 rounded-full bg-primary p-0.5 text-on-primary"><Check className="h-3 w-3" /></span> : null}
+                          {selectedPalettePreset?.id === avatar.id ? <span className="absolute bottom-0 right-0 rounded-full bg-primary p-0.5 text-on-primary"><Check className="h-3 w-3" /></span> : null}
                         </button>
                       ))}
                     </div>
+                    {selectedPalettePreset ? <AvatarPaletteEditor key={selectedPalettePreset.id} ref={avatarPaletteEditorRef} preset={selectedPalettePreset} appearance={profileDraft.avatarAppearance} avatarUrl={profileDraft.avatarUrl ?? selectedPalettePreset.url} disabled={profileSaveState === "saving"} /> : null}
                   </div>
                   <p className="mt-5 text-[9px] leading-5 text-muted">{profileDraft.bio || `${profileDraft.session} · ${profileDraft.style}`}</p>
                   <div className="mt-4 rounded-xl border border-border bg-background/30 p-3"><div className="text-[7px] uppercase tracking-[0.13em] text-muted">Current focus</div><div className="mt-2 text-[9px] leading-4 text-foreground">{profileDraft.improvementObjective}</div></div>
