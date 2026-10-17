@@ -3434,19 +3434,6 @@ export default function SocialsWorkspace({
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
       <header className="shrink-0 bg-panel">
-        <div className="flex min-h-[64px] flex-wrap items-center gap-3 px-4 py-3">
-          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
-            <Network className="h-4 w-4" />
-            <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-panel bg-primary" />
-          </span>
-          <div>
-            <div className="flex items-center gap-2"><h1 className="text-[14px] font-semibold">{SOCIAL_RECORD_COPY.section}</h1><span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[6px] font-semibold uppercase tracking-[0.13em] text-muted">Working title</span></div>
-            <p className="mt-0.5 text-[9px] text-muted">{SOCIAL_RECORD_COPY.tagline} · Build a record that survives review.</p>
-          </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => { setTab("profile"); setProfileEditing(false); onOpenProfile?.(currentProfile.handle); }} className="flex h-8 items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><Avatar label={currentProfile.displayName} avatarUrl={currentProfile.avatarUrl} size="sm" />@{currentProfile.handle}</button>
-          </div>
-        </div>
         <WorkspaceSubnav
           items={SOCIAL_TABS.map((item) => {
             const count = item.id === "feed"

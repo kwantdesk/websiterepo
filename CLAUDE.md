@@ -1,5 +1,13 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Remove Socials identity banner
+
+- Removed the complete redundant top Socials / Working title / tagline row,
+  including icon/status dot and right-hand account badge. Preserve the existing
+  WorkspaceSubnav and profile tab; do not retain an empty header-height spacer.
+- JSX regression: `tests/socials-header.test.mjs`. Prompt record:
+  `docs/prompt-log/2026-10-17-socials-header-removal.md`.
+
 ## 2026-10-17 — Profile calling-card quick picker
 
 - Own profiles expose Change calling card with unlocked-only artwork choices,
