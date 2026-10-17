@@ -1,22 +1,11 @@
 import WebSocket from "ws";
+import { openProviderSocket } from "./provider-socket.mjs";
 
 import { loadProtocol, TEMPLATE_IDS } from "./protocol.mjs";
 
 const HISTORY_PLANT = 3;
 const OPEN_TIMEOUT_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 30 * 60_000;
-
-function openSocket(url) {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url, { handshakeTimeout: OPEN_TIMEOUT_MS, rejectUnauthorized: true });
-    const timer = setTimeout(() => {
-      socket.terminate();
-      reject(new Error("Timed out opening the Rithmic History Plant socket."));
-    }, OPEN_TIMEOUT_MS);
-    socket.once("open", () => { clearTimeout(timer); resolve(socket); });
-    socket.once("error", (error) => { clearTimeout(timer); reject(error); });
-  });
-}
 
 export class RithmicHistoryPlantClient {
   constructor(config, options = {}) {
@@ -32,7 +21,7 @@ export class RithmicHistoryPlantClient {
 
   async connect() {
     if (this.socket?.readyState === WebSocket.OPEN) return;
-    const socket = await openSocket(this.config.url);
+    const socket = await openProviderSocket(this.config.url, OPEN_TIMEOUT_MS);
     const login = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("History Plant login timed out.")), OPEN_TIMEOUT_MS);
       const onMessage = (data) => {

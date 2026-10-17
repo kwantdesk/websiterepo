@@ -50,7 +50,9 @@ export function decodeIndividualHistoryTrade(row, { exchange, symbol, fromMs, to
   return [timestamp, price, size, ask > 0 ? 1 : bid > 0 ? -1 : 0];
 }
 
-export async function importHistoryTrades(config, { dir, exchange, symbol, tradingDate, maxBytes = 512 * 1024 * 1024 }) {
+export async function importHistoryTrades(config, { dir, exchange, symbol, tradingDate, maxBytes = 512 * 1024 * 1024 }, {
+  createClient = (settings) => new RithmicHistoryPlantClient(settings, { requestTimeoutMs: 120_000 }),
+} = {}) {
   if (!/^[A-Z0-9]+$/.test(exchange) || !/^[A-Z0-9]+$/.test(symbol)) throw new Error("Invalid instrument.");
   const bounds = cmeSessionBounds(tradingDate);
   if (!bounds || bounds.endMs > Date.now()) throw new Error("Import requires a completed trading session.");
@@ -66,7 +68,7 @@ export async function importHistoryTrades(config, { dir, exchange, symbol, tradi
   // replenish the provider's shared weekly allowance during a recovery.
   const globalLimit = 36 * 1024 ** 3;
   if (previouslyUsed >= globalLimit) throw new Error("History transfer safety budget exhausted.");
-  const client = new RithmicHistoryPlantClient(config, { requestTimeoutMs: 120_000 });
+  const client = createClient(config);
   const chunks = [];
   const totals = { open: null, high: -Infinity, low: Infinity, close: null, volume: 0, bid: 0, ask: 0, trades: 0 };
   let count = 0, used = 0;
@@ -79,7 +81,11 @@ export async function importHistoryTrades(config, { dir, exchange, symbol, tradi
         // Checkpointed chunks are immutable, private provider imports.
         const { gunzip } = await import("node:zlib");
         rows = JSON.parse((await promisify(gunzip)(await readFile(file))).toString());
-      } else {
+      }
+      // An empty provider response is not a durable checkpoint: during an
+      // outage it can mean history is temporarily unavailable, not no trading.
+      // Revisit it on recovery; only a reconciled full session is published.
+      if (!rows?.length) {
         if (client.bytesReceived >= maxBytes || previouslyUsed + client.bytesReceived >= globalLimit) throw new Error("History trade import transfer safety budget reached.");
         rows = [];
         let previous = -Infinity;
@@ -98,8 +104,10 @@ export async function importHistoryTrades(config, { dir, exchange, symbol, tradi
             if (rows.length > 500000) throw new Error("History trade chunk exceeds bounded capacity.");
           } });
         used += client.bytesReceived - before;
-        await writeFile(`${file}.tmp`, await compress(JSON.stringify(rows), { level: 1 }));
-        await rename(`${file}.tmp`, file);
+        if (rows.length) {
+          await writeFile(`${file}.tmp`, await compress(JSON.stringify(rows), { level: 1 }));
+          await rename(`${file}.tmp`, file);
+        }
       }
       count += rows.length;
       for (const [, price, volume, side] of rows) {

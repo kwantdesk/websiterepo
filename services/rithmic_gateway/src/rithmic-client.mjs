@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import WebSocket from "ws";
+import { openProviderSocket } from "./provider-socket.mjs";
 
 import { loadProtocol, TEMPLATE_IDS } from "./protocol.mjs";
 import { RithmicBookStore, instrumentKey } from "./book-store.mjs";
@@ -85,24 +86,7 @@ function isExactContractForRoot(symbol, root) {
 }
 
 function openSocket(url, timeoutMs = 10_000) {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url, {
-      handshakeTimeout: timeoutMs,
-      rejectUnauthorized: true,
-    });
-    const timeout = setTimeout(() => {
-      socket.terminate();
-      reject(new Error("Rithmic WebSocket connection timed out."));
-    }, timeoutMs);
-    socket.once("open", () => {
-      clearTimeout(timeout);
-      resolve(socket);
-    });
-    socket.once("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-  });
+  return openProviderSocket(url, timeoutMs);
 }
 
 function waitForTemplate(socket, protocol, templateId, timeoutMs = 10_000) {

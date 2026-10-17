@@ -1,5 +1,49 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-17 — Provider transport and failed history-recovery checkpoints
+
+- The configured provider hostname returns multiple IPs: some reset TLS before
+  login while another completes certificate-verified TLS. Both live discovery/
+  Ticker and History Plant now use bounded pre-authentication address failover.
+  Keep the original URL/Host/SNI and certificate validation; never retry auth
+  failures through this mechanism. No static IP or unverified endpoint is used.
+- Up to eight fresh DNS candidates share the caller's total connection budget;
+  each attempt is capped at three seconds. Successful address preference is
+  memory-only, bounded, and must still be in fresh DNS before reuse.
+- Incomplete import checkpoints containing zero prints are retried rather than
+  cached forever. A full session still requires authoritative reconciliation
+  before publishing. Nonempty checkpoints and transfer budget are preserved.
+- Scoped backend modules deployed with a graceful temporary-gateway restart;
+  health now connected/authenticated. Daily NQ complete, weekly NQ still lacks
+  session-start Oct11. History Plant logged in but returned zero minute/VAP
+  rows for Oct12 and Oct16 probe hours; missing imports remain provider-blocked.
+  Do not claim that transport recovery restored missing data or all indicators.
+- 393 gateway tests pass. Record:
+  `docs/prompt-log/2026-10-17-indicator-recovery-transport.md`.
+
+## Standing constraint — November 2026 multi-user launch
+
+- Owner's 2026-10-17 direction: prepare for a few hundred platform users in
+  approximately one month (around 2026-11-17). Plan for at least 100 concurrent
+  users as a provisional validation target; total users and concurrency are
+  different and the final peak target still needs confirmation.
+- Make today's changes compatible with that direction; avoid disposable
+  single-user fixes and unnecessary rewrites. The laptop gateway is temporary,
+  not the launch architecture. Prefer shared provider ingestion/subscriptions,
+  cached reusable history/calculations and bounded authenticated client fan-out
+  over one vendor request/connection or full recalculation per user.
+- Theta Data distribution is upcoming according to the owner, not verified
+  active. Keep provider boundaries replaceable; confirm redistribution rights,
+  exchange/user entitlements, quotas and required data coverage before cutover.
+  Do not assume it supplies futures execution sides, depth or L3 needed by
+  existing studies. No provider purchase or migration is authorized by this note.
+- Before release, validate sustained concurrent chart/history/indicator load
+  and market-open bursts, per-user isolation, recovery, bounded memory/queues,
+  storage/retention/backups and provider/backend/Vercel cost limits. Do not claim
+  capacity from user count alone; record measured latency, errors and costs.
+- Carry this constraint into every backend/data/chart design decision without
+  expanding unrelated fixes into a speculative infrastructure overhaul.
+
 ## 2026-10-17 — Invisible daily/weekly profiles across instruments
 
 - Browser daily dates label the closing business date; archive sessions use

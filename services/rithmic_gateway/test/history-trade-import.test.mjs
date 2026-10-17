@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { decodeIndividualHistoryTrade, validateHistoryTradeChunk } from "../src/history-trade-import.mjs";
+import { decodeIndividualHistoryTrade, validateHistoryTradeChunk, importHistoryTrades } from "../src/history-trade-import.mjs";
 import { TradeTapeArchive, instrumentFileName, sessionTradeFiles } from "../src/trade-tape-archive.mjs";
 import { BarFlowArchive } from "../src/bar-flow-archive.mjs";
 import { SessionProfileArchive } from "../src/session-profile-archive.mjs";
@@ -16,6 +16,32 @@ const scope = { exchange: "CME", symbol: "NQZ6", fromMs: t, toMs: t + 60000 };
 const row = { exchange: "CME", symbol: "NQZ6", numTrades: "1", volume: "3",
   bidVolume: "0", askVolume: "3", openPrice: 100, highPrice: 100, lowPrice: 100, closePrice: 100,
   dataBarSsboe: [t / 1000, t / 1000 + 1], dataBarUsecs: [0, 123456] };
+
+test("empty failed-recovery checkpoints are retried, not permanently treated as missing history", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "kd-empty-history-"));
+  const stage = join(dir, "history-import", "trades", "CME-NQZ6-2026-10-15");
+  try {
+    await mkdir(stage, { recursive: true });
+    await writeFile(join(stage, `${t}.json.gz`), gzipSync("[]"));
+    let firstHourRetried = false;
+    const client = {
+      bytesReceived: 0,
+      async replayIndividualTrades({ startSec, onTrade }) {
+        if (startSec !== t / 1000) return;
+        firstHourRetried = true;
+        onTrade({ ...row, dataBarSsboe: [t / 1000], dataBarUsecs: [1000] });
+      },
+      async replayMinuteBars({ onBar }) {
+        onBar({ marker: t / 1000 + 60, openPrice: 100, highPrice: 100,
+          lowPrice: 100, closePrice: 100, volume: 3, bidVolume: 0, askVolume: 3, numTrades: 1 });
+      },
+      close() {},
+    };
+    const result = await importHistoryTrades({}, { dir, exchange: "CME", symbol: "NQZ6", tradingDate: "2026-10-15" }, { createClient: () => client });
+    assert.equal(firstHourRetried, true);
+    assert.equal(result.trades, 1);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 
 test("individual replay preserves end timestamp, explicit side, size and unknown classification", () => {
   assert.deepEqual(decodeIndividualHistoryTrade(row, scope), [t + 1123.456, 100, 3, 1]);

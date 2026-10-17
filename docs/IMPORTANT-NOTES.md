@@ -1,5 +1,35 @@
 # KWANTDESK important notes
 
+## 2026-10-17 — Login reliability / missing weekly history follow-up
+
+- Fixed pre-login TLS failure on individual provider DNS addresses with bounded,
+  certificate-verified failover shared by live/history connections. Backend is
+  connected/authenticated again. Empty failed-recovery chunks no longer remain
+  permanent negative checkpoints; exact reconciliation still gates publishing.
+- Not resolved: provider currently returns empty History Plant minute/VAP
+  responses, including a known previously recovered recent hour. Missing weekly
+  NQ Oct11 and ES Oct11/12 cannot yet be recovered. Provider availability/history
+  access needs confirmation; the cause of empty responses is not established.
+- Daily NQ remained complete after graceful restart; weekly remained explicitly
+  incomplete. 393 gateway tests pass. Do not promise all indicators work at every
+  login until data coverage and signed-in/live-session soak are verified.
+- Record: `docs/prompt-log/2026-10-17-indicator-recovery-transport.md`.
+
+## Priority — A few hundred users around November 2026
+
+- Recorded 2026-10-17: owner targets a few hundred users in roughly one month
+  (around November 17). Keep at least 100 concurrent users as a provisional
+  load-test target; confirm expected peak concurrency before sizing production.
+- Upcoming Theta Data distribution must inform provider/backend design, but
+  its activation, licensed redistribution, entitlements and exact coverage are
+  not verified. Do not assume it replaces futures tape/depth/L3.
+- Avoid throwaway single-user work: shared upstream ingestion, reusable cached
+  history/calculations, bounded client fan-out and a migration-safe provider
+  boundary. Temporary laptop hosting is not release-ready infrastructure.
+- Launch gates still required: concurrent/market-open load and memory tests,
+  isolation, reconnect/recovery, durable storage/backups and measured cost caps.
+  This is a standing constraint, not a claim that capacity is already achieved.
+
 ## 2026-10-17 — Profiles enabled but invisible on all instruments
 
 - Fixed shared daily session-boundary mismatch and removed the live-feed
