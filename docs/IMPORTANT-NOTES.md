@@ -1,6 +1,39 @@
 # KWANTDESK important notes
 
+## 2026-10-18 — Options gateway restored with process-exit supervision
+
+- Found the temporary gateway absent and its existing public tunnel returning
+  502. The private QuantData credential was valid; this was not a key renewal
+  failure. There is no durable exit record proving why the former process died.
+- Restored one hidden supervisor2988 / gateway22020 at 11:33 UTC. Local and
+  unchanged public tunnel returned HTTP200 with nonempty QQQ minute history and
+  SPX/QQQ/SPY/NDX gamma surfaces. Production diagnostics returned gateway200,
+  connected/authenticated true and SPX archived history1015 bars. This supersedes
+  the offline and CME permission-denied observations below; not a live-RTH soak.
+- New `services/rithmic_gateway/scripts/supervise-background.mjs` owns output
+  pipes, bounded rotating private logs, exclusive PID lock, port ownership check,
+  bounded exit-only restarts and a ten-start/hour ceiling. All412 gateway tests
+  pass, including four supervisor tests. No duplicate feed owner was launched.
+- Private launcher preflight now catches network failures instead of preventing
+  HTTP startup; known401/403 still disables unauthorized provider polling.
+  No keys were changed in Git/Vercel and no provider streams moved to Vercel.
+- Private state: `%LOCALAPPDATA%/KwantDesk/temporary-market-gateway/supervised-runtime`.
+  For a planned VPS cutover create its `STOP` file BEFORE stopping the laptop
+  gateway/supervisor; otherwise process-exit recovery may start it again. Stop
+  the old owner before starting a new Rithmic session. Never kill it just to test.
+- Laptop must remain awake/online. This is not boot startup, tunnel supervision
+  or VPS uptime. Autonomous QuantData surface polling reports disabled; requested
+  successful surfaces are archived, but continuous/month-complete capture is NOT
+  proven. Missing archives, execution-profile provider503, full-month history,
+  redistribution and VPS migration remain OPEN. Do not call all pages verified:
+  checks covered public API paths, not every signed-in UI surface.
+
 ## 2026-10-18 — Options expiration calendar
+
+- Post-push operational check: localhost8793 refused the health connection and
+  temporary gateway2164 was absent; tunnel20608 remained. This supersedes the
+  previous permission-denied-only status. No gateway restart was attempted by
+  the calendar task. Calendar source checks do not depend on that market feed.
 
 - KWANTY calendar uses Cboe's actual published date/colour markers, not inferred
   contract expirations. Opening it needs no market-data gateway. Six-hour shared
