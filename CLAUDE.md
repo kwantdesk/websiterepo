@@ -1,5 +1,30 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-18 — GEX DATA integration and history recovery verification
+
+- New `/gex-data` workspace sits between GEX VUE and GEX BOX. Owner's local
+  quantpage presentation/model source is integrated, not its server, credentials,
+  Inter font or purple skin. Shared Aleph/theme/account preferences and existing
+  authenticated gateway are the boundaries. GEX BOX calculations are untouched.
+- Six-pane latest-session overview, docking/tabs, tool library, filters, chart
+  navigators, named workspaces and versioned JSON import/export are preserved.
+  Account-scoped storage is one tracked preference key; request/cache/queue and
+  pane counts are bounded. Hidden workspace polling is paused.
+- Fixed startup date pinning, snapshot timestamp persistence, live refresh timer
+  starvation, zoom reset on append, single-strike extent, interval hover domain,
+  final drill-down bucket width and OSI underlying selection. IV is explicitly a
+  rolling series; unsupported forecast remains honestly unavailable.
+- Browser QA loaded actual exposure, interval and drift data, verified immediate
+  light/dark changes, tool chooser and saved template survival across reload.
+  84 model/integration tests pass; TypeScript and scoped lint pass. Full live
+  market-open parity/long soak and cross-device preference roundtrip remain open.
+  Record: `docs/prompt-log/2026-10-18-gex-data-integration.md`.
+- CME recovery deployment `42f5ffa699baacdb8c47c1b5fe26cfd0b790a19e` verified
+  READY and at the public runtime: gateway authenticated/connected, SPX archive
+  1,015 bars and public NQ history 6,900 bars. Execution-profile historical source
+  still reports unavailable/cooling down: restored candles are NOT proof that
+  exact footprint/CVD tape or full L3 history is restored.
+
 ## 2026-10-18 — Temporary laptop gateway recovery
 
 - Later same day both processes were absent again without a Windows reboot.

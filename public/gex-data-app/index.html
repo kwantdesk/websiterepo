@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#090015">
+  <title>GEX DATA · Kwant Desk</title>
+  <link rel="stylesheet" href="/gex-data-app/styles.css?v=1">
+  <link rel="stylesheet" href="/gex-data-app/workspace.css?v=1">
+  <link rel="stylesheet" href="/gex-data-app/filter-editor.css?v=1">
+<link rel="stylesheet" href="/gex-data-app/site.css?v=1">
+<script type="module" src="/gex-data-app/site-runtime.js?v=1"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/gex-data-app/index.html" aria-label="Kwant Desk GEX DATA">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>Kwant <b>Desk</b></span>
+      </a>
+      <div class="top-actions" aria-label="Page actions">
+        <button class="top-action purple" type="button" title="Dashboard layout">◇</button>
+        <span class="top-divider"></span>
+        <button class="top-action" id="openLibrary" type="button" title="Open pages" aria-label="Open pages" aria-expanded="false">▰</button>
+        <button class="top-action" id="addTool" type="button" title="Add tool" aria-label="Add tool">✦</button>
+        <button class="top-action filter-action" type="button" title="Filters">▽<sup>2</sup></button>
+        <button class="top-action" type="button" title="Market">◎</button>
+        <button class="top-action" type="button" title="Edit">⌁</button>
+        <button class="top-action" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+        <span class="top-divider"></span>
+        <button class="top-action wide" type="button" title="Help">?</button>
+        <button class="top-action wide" type="button" title="Settings">⚙</button>
+        <button class="top-action danger" type="button" title="Remove layout">♜</button>
+      </div>
+    </header>
+
+    <section class="status-strip" aria-live="polite">
+      <span class="page-name">GEX DATA</span>
+      <span class="source-badge" id="sourceBadge"><i></i><span>CONNECTING</span></span>
+      <span class="status-copy" id="statusCopy">Checking the licensed market-data connection…</span>
+      <button id="refreshAll" type="button">↻ Refresh all</button>
+    </section>
+
+    <aside class="tool-library" id="toolLibrary" aria-label="market-data tool library" aria-hidden="true">
+      <div class="library-head">
+        <div><span>GEX DATA</span><h2>Data tools</h2></div>
+        <button id="closeLibrary" type="button" aria-label="Close tool library">×</button>
+      </div>
+      <label class="library-search"><span>⌕</span><input id="toolSearch" type="search" placeholder="Search tools" autocomplete="off"></label>
+      <nav id="toolNav"></nav>
+      <div class="library-foot"><i></i><span>20 licensed endpoints</span></div>
+    </aside>
+    <button class="library-scrim" id="libraryScrim" type="button" aria-label="Close tool library"></button>
+
+    <main class="dashboard" id="dashboard">
+      <article class="panel exposure-panel" data-panel="exposure" data-ticker="QQQ">
+        <div class="tabs">
+          <span class="tab-symbol">QQQ</span><button class="dots" aria-label="QQQ tab menu">⋮</button>
+          <span class="tab active"><i></i>Exposure by Strike<button class="dots" aria-label="Exposure tab menu">⋮</button></span>
+          <span class="tab secondary">Exposure Forecast</span>
+          <span class="tab secondary">Volatility Drift</span>
+          <button class="add-tab" aria-label="Add tab">+</button>
+        </div>
+        <div class="toolbar">
+          <label class="pill symbol-pill">QQQ</label><span class="chevron">›</span>
+          <label class="pill date-pill"><input class="session-date" type="date" value="2026-10-08"><span>▣</span></label>
+          <span class="lock">▣</span><span class="chevron">›</span>
+          <label class="pill date-pill"><input class="snapshot-date" type="date" value="2026-10-08"><span>▣</span></label>
+          <span class="chevron">›</span>
+          <label class="pill select-pill"><span>▥</span><select class="greek-mode" aria-label="Exposure mode">
+            <option value="CHARM">Charm</option><option value="DELTA">Delta</option><option value="GAMMA" selected>Gamma</option><option value="VANNA">Vanna</option>
+          </select></label>
+          <span class="chevron">›</span>
+          <label class="pill select-pill"><span>⌁</span><select class="representation-mode" aria-label="Representation">
+            <option value="PER_ONE_DOLLAR_MOVE">Per $1 Move</option><option value="RAW">Per 1 Unit</option><option value="PER_ONE_PERCENT_MOVE" selected>Per 1% Move</option>
+          </select></label>
+        </div>
+        <div class="panel-accent"></div>
+        <div class="chart-heading">
+          <h2>Net Gamma Exposure By Strike - QQQ</h2>
+          <div class="legend"><span class="red-dot"></span><span class="exposure-label">Net GEX</span> <b class="exposure-total">—</b><span class="dot-sep">•</span>QQQ <b class="spot-price">—</b></div>
+        </div>
+        <div class="exposure-body">
+          <canvas class="chart-canvas" aria-label="QQQ exposure by strike chart"></canvas>
+          <div class="vertical-zoom"><i></i><div class="zoom-wave"></div><i></i></div>
+        </div>
+        <div class="time-control"><b>Time</b><input type="range" min="0" max="100" value="48"><div class="time-labels"><span>11:30 PM</span><span>1:30 AM</span><span>3:30 AM</span><span>5:30 AM</span></div></div>
+      </article>
+
+      <article class="panel interval-panel" data-panel="interval" data-ticker="SPX">
+        <div class="tabs"><span class="tab active"><i></i>Interval Map<button class="dots">⋮</button></span><span class="tab secondary">Interval Map</span><button class="add-tab">+</button></div>
+        <div class="toolbar">
+          <label class="pill symbol-pill">SPX</label><span class="chevron">›</span>
+          <label class="pill date-pill"><input class="session-date" type="date" value="2026-10-08"><span>▣</span></label><span class="lock">▣</span><span class="chevron">›</span>
+          <label class="pill date-pill"><input class="snapshot-date" type="date" value="2026-10-08"><span>▣</span></label><span class="chevron">›</span>
+          <label class="pill select-pill"><span>◷</span><select class="aggregation-period" aria-label="Aggregation period"></select></label><span class="chevron">›</span>
+          <label class="pill strike-pill"><span>⌁</span><input class="strike-padding" type="number" value="1" min="0" max="100"><em>Strike</em></label><span class="chevron">›</span>
+          <label class="pill select-pill"><span>▥</span><select class="greek-mode" aria-label="Data mode"><option value="CHARM">Charm (CHEX)</option><option value="DELTA">Delta (DEX)</option><option value="GAMMA" selected>Gamma (GEX)</option><option value="VANNA">Vanna (VEX)</option></select></label>
+        </div>
+        <div class="panel-accent"></div>
+        <div class="chart-heading"><h2>Interval Map (GEX) - SPX</h2><div class="legend"><span class="purple-dot"></span>SPX <b class="spot-price">—</b></div></div>
+        <div class="interval-body"><canvas class="chart-canvas" aria-label="SPX interval map chart"></canvas><div class="vertical-zoom"><i></i><div class="zoom-wave"></div><i></i></div></div>
+        <div class="horizontal-zoom"><i></i><canvas></canvas><i></i></div>
+      </article>
+
+      <article class="panel interval-panel" data-panel="interval" data-ticker="NDX">
+        <div class="tabs"><span class="tab active"><i></i>Interval Map<button class="dots">⋮</button></span><button class="add-tab">+</button></div>
+        <div class="toolbar">
+          <label class="pill symbol-pill">NDX</label><span class="chevron">›</span>
+          <label class="pill date-pill"><input class="session-date" type="date" value="2026-10-08"><span>▣</span></label><span class="lock">▣</span><span class="chevron">›</span>
+          <label class="pill date-pill"><input class="snapshot-date" type="date" value="2026-10-08"><span>▣</span></label><span class="chevron">›</span>
+          <label class="pill select-pill"><span>◷</span><select class="aggregation-period" aria-label="Aggregation period"></select></label><span class="chevron">›</span>
+          <label class="pill strike-pill"><span>⌁</span><input class="strike-padding" type="number" value="3" min="0" max="100"><em>Strikes</em></label><span class="chevron">›</span>
+          <label class="pill select-pill"><span>▥</span><select class="greek-mode" aria-label="Data mode"><option value="CHARM">Charm (CHEX)</option><option value="DELTA">Delta (DEX)</option><option value="GAMMA" selected>Gamma (GEX)</option><option value="VANNA">Vanna (VEX)</option></select></label>
+        </div>
+        <div class="panel-accent"></div>
+        <div class="chart-heading"><h2>Interval Map (GEX) - NDX</h2><div class="legend"><span class="purple-dot"></span>NDX <b class="spot-price">—</b></div></div>
+        <div class="interval-body"><canvas class="chart-canvas" aria-label="NDX interval map chart"></canvas><div class="vertical-zoom"><i></i><div class="zoom-wave"></div><i></i></div></div>
+        <div class="horizontal-zoom"><i></i><canvas></canvas><i></i></div>
+      </article>
+
+      <article class="panel drift-panel" data-panel="drift" data-ticker="QQQ">
+        <div class="tabs"><span class="tab active"><i></i>Net Drift QQQ<button class="dots">⋮</button></span><span class="tab secondary">Net Flow<button class="dots">⋮</button></span><button class="add-tab">+</button></div>
+        <div class="toolbar drift-toolbar"></div><div class="panel-accent"></div>
+        <div class="chart-heading"><h2>Net Drift (Premium) - QQQ</h2><div class="legend"><span class="green-dot"></span>Calls <b class="call-total">—</b><span class="orange-dot"></span>Puts <b class="put-total">—</b><span class="purple-dot"></span>QQQ <b class="spot-price">—</b></div></div>
+        <div class="drift-body"><canvas class="chart-canvas" aria-label="QQQ net drift chart"></canvas></div><div class="horizontal-zoom"><i></i><canvas></canvas><i></i></div>
+      </article>
+
+      <article class="panel drift-panel" data-panel="drift" data-ticker="SPX">
+        <div class="tabs"><span class="tab active"><i></i>Net Drift SPX<button class="dots">⋮</button></span><button class="add-tab">+</button></div>
+        <div class="toolbar drift-toolbar"></div><div class="panel-accent"></div>
+        <div class="chart-heading"><h2>Net Drift (Premium) - SPX</h2><div class="legend"><span class="green-dot"></span>Calls <b class="call-total">—</b><span class="orange-dot"></span>Puts <b class="put-total">—</b><span class="purple-dot"></span>SPX <b class="spot-price">—</b></div></div>
+        <div class="drift-body"><canvas class="chart-canvas" aria-label="SPX net drift chart"></canvas></div><div class="horizontal-zoom"><i></i><canvas></canvas><i></i></div>
+      </article>
+
+      <article class="panel drift-panel" data-panel="drift" data-ticker="NDX">
+        <div class="tabs"><span class="tab active"><i></i>Net Drift NDX<button class="dots">⋮</button></span><button class="add-tab">+</button></div>
+        <div class="toolbar drift-toolbar"></div><div class="panel-accent"></div>
+        <div class="chart-heading"><h2>Net Drift (Premium) - NDX</h2><div class="legend"><span class="green-dot"></span>Calls <b class="call-total">—</b><span class="orange-dot"></span>Puts <b class="put-total">—</b><span class="purple-dot"></span>NDX <b class="spot-price">—</b></div></div>
+        <div class="drift-body"><canvas class="chart-canvas" aria-label="NDX net drift chart"></canvas></div><div class="horizontal-zoom"><i></i><canvas></canvas><i></i></div>
+      </article>
+    </main>
+
+    <main class="tool-workspace" id="toolView" hidden>
+      <header class="tool-hero">
+        <div class="tool-title-row">
+          <button class="back-board" id="backBoard" type="button">‹ Overview</button>
+          <span class="tool-group" id="toolGroup">OPTIONS</span>
+          <span class="tool-live-state" id="toolLiveState"><i></i><b>FROZEN EOD</b></span>
+        </div>
+        <div class="tool-heading-row">
+          <div><h1 id="toolTitle">Dark Flow</h1><p id="toolDescription"></p></div>
+          <div class="tool-actions"><button id="toolRefresh" type="button">↻ Refresh</button><button id="toolExport" type="button">⇩ CSV</button></div>
+        </div>
+      </header>
+      <section class="tool-controls" id="toolControls" aria-label="Tool filters"></section>
+      <section class="tool-summary" id="toolSummary" aria-live="polite"></section>
+      <section class="tool-stage" id="toolStage">
+        <div class="tool-loading" id="toolLoading"><i></i><span>Loading licensed market-data…</span></div>
+        <div class="tool-error" id="toolError" hidden></div>
+        <div class="chart-toolbar" id="chartToolbar" hidden>
+          <span>Scroll to zoom · drag to inspect · double-click to reset</span>
+          <button id="resetZoom" type="button">Reset view</button>
+        </div>
+        <div class="tool-visual" id="toolVisual"></div>
+        <div class="tool-table-wrap" id="toolTableWrap" hidden>
+          <div class="table-tools"><label>⌕ <input id="tableSearch" type="search" placeholder="Filter loaded rows"></label><span id="tableColumnControls"></span><span id="tableCount"></span></div>
+          <div class="table-scroll"><table id="toolTable"><thead></thead><tbody></tbody></table></div>
+          <button id="loadMore" type="button" hidden>Load next 100</button>
+        </div>
+      </section>
+      <footer class="tool-footer"><span id="toolUpdated">Waiting for data</span><span>Source: market-data licensed REST API</span></footer>
+    </main>
+  </div>
+  <template id="driftToolbarTemplate">
+    <label class="pill symbol-pill"></label><span class="chevron">›</span>
+    <label class="pill date-pill"><input class="session-date" type="date" value="2026-10-08"><span>▣</span></label><span class="lock">▣</span><span class="chevron">›</span>
+    <label class="strike-filter"><input class="strike-price" type="number" min="0" placeholder="Strike Price"><span>⌃</span></label><span class="chevron">›</span>
+    <label class="pill date-pill"><input class="snapshot-date" type="date" value="2026-10-08"><span>▣</span></label><span class="chevron">›</span>
+    <label class="pill select-pill"><span>◩</span><select class="money-type" aria-label="Moneyness"><option value="ATM">ATM</option><option value="ITM">ITM</option><option value="OTM" selected>OTM</option></select></label>
+    <span class="filter-badge">1⌁</span>
+  </template>
+  <script type="module" src="/gex-data-app/app.js?v=1"></script>
+</body>
+</html>

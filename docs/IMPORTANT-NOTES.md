@@ -1,5 +1,23 @@
 # KWANTDESK important notes
 
+## 2026-10-18 — Current temporary data status and GEX DATA limitations
+
+- Laptop gateway and tunnel recovered again using detached hidden processes;
+  public production runtime verified authenticated/connected at recovery SHA
+  `42f5ffa699baacdb8c47c1b5fe26cfd0b790a19e`. NQ candle history and SPX archived
+  candles responded successfully. Keep the computer awake/online until the VPS
+  migration. Stop this login owner before starting its replacement.
+- Exact execution-profile source currently reports unavailable/cooling down.
+  Candle availability must not be described as restored footprint/CVD tape or
+  full L3. Month-long complete catalogue history, comprehensive options recording,
+  VPS/archive recovery and capacity/memory/cost validation remain OPEN below.
+- GEX DATA uses real licensed gateway responses, not the prototype server or
+  vendor credentials in the browser. Exposure Forecast is not supplied by this
+  API and stays explicitly unavailable. Net Drift vendor visual/math parity,
+  live market-open soak, every optional tool's full endpoint/filter matrix and
+  cloud cross-device workspace-save roundtrip are not certified by 84 passing
+  model/integration tests and six-panel weekend browser QA.
+
 ## 2026-10-17 — Profile management database prerequisite
 
 - Owner confirmed running `supabase/migrations/202610170001_social_profile_management.sql`

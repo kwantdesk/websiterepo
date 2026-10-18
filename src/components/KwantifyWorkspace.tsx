@@ -416,6 +416,7 @@ const loadSpoofingDetectorWorkspace = () => import("@/components/order-flow/Spoo
 const loadSingleProfileWorkspace = () => import("@/components/profile-workspaces/SingleProfileWorkspace");
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
 const loadGexBotWorkspace = () => import("@/components/gexbot/GexBoxDashboard");
+const loadGexDataWorkspace = () => import("@/components/gex-data/GexDataWorkspace");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
 const loadGameplanWorkspace = () => import("@/components/gameplan/GameplanWorkspace");
 const loadNewsWorkspace = () => import("@/components/news/NewsWorkspace");
@@ -439,6 +440,7 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   "tool-single-volume-profile": loadSingleProfileWorkspace,
   heatmap: loadOptionsHeatmapWorkspace,
   gexbot: loadGexBotWorkspace,
+  gexdata: loadGexDataWorkspace,
   gexdesk: loadGexDeskWorkspace,
   gameplan: loadGameplanWorkspace,
   news: loadNewsWorkspace,
@@ -493,6 +495,10 @@ const OptionsHeatmapWorkspace = dynamic(loadOptionsHeatmapWorkspace, {
 const GexBotWorkspace = dynamic(loadGexBotWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening GEX BOT", "Restoring the latest New York options frame."),
+});
+const GexDataWorkspace = dynamic(loadGexDataWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening GEX DATA", "Restoring your data workspace."),
 });
 const GexDeskWorkspace = dynamic(loadGexDeskWorkspace, {
   ssr: false,
@@ -1121,7 +1127,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexdata" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -1152,6 +1158,7 @@ const LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY = "kwantdesk:liquidity-map-instrument
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamvue" as const, label: "GEX Vue" },
+  { id: "gexdata" as const, label: "GEX DATA" },
   { id: "gexbot" as const, label: "GEX BOX" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
@@ -20541,6 +20548,13 @@ export default function KwantifyWorkspace({
               <ReactActivity mode={bottomWorkspaceSection === "gexbot" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="gexbot" label="GEX BOX">
                   <GexBotWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("gexdata") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "gexdata" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="gexdata" label="GEX DATA">
+                  <GexDataWorkspace key={preferenceUserId} accountKey={preferenceUserId} active={bottomWorkspaceSection === "gexdata"} />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}
