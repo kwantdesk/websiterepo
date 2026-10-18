@@ -18,6 +18,8 @@
 // response: the emergency relay's transport must survive those larger reads.
 // Quick-tunnel origins change on restart; revalidate history and update every
 // production alias before the normal Git deployment (recovery: 2026-10-18).
+// Temporary owner relaunched independently of terminal process jobs on Oct 18;
+// a new quick-tunnel address still needs the same verified alias cutover.
 
 const GATEWAY_URL_KEYS = [
   "KWANTDESK_MARKET_DATA_GATEWAY_URL",

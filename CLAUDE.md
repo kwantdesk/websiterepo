@@ -2,6 +2,11 @@
 
 ## 2026-10-18 — Temporary laptop gateway recovery
 
+- Later same day both processes were absent again without a Windows reboot.
+  Restarted via hidden WMI-created processes (gateway13288, tunnel20608), whose
+  parent is the Windows management host rather than the command runner. Public
+  full-history and production URL cutover must be rechecked; no new paid VM.
+
 - Blank futures/options charts traced to stopped laptop gateway and tunnel,
   not the Socials UI changes. Restarted existing private launch and QUIC tunnel
   hidden; connected/authenticated, recording enabled, no reported drops.
