@@ -48,6 +48,7 @@ import { archiveStorageHealth } from "./archive-storage-health.mjs";
 import { EventLoopLoadGuard, isDeferrableDuringOverload } from "./event-loop-load-guard.mjs";
 import { VendorDataEdge } from "./vendor-data-edge.mjs";
 import { createNativePositioningEdge } from "./native-positioning-edge.mjs";
+import { FinancialInfoService } from "./financial-info-service.mjs";
 import { ZyonServiceProxy, zyonServiceProblem } from "./zyon-service-proxy.mjs";
 import {
   ZyonTranscriptionService,
@@ -160,6 +161,11 @@ const cashIndexArchiver = new CashIndexArchiver({
 });
 const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver);
 const nativePositioningEdge = await createNativePositioningEdge();
+const financialInfo = new FinancialInfoService({
+  token: process.env.APIFY_API_TOKEN || "",
+  enabled: process.env.FINANCIAL_INFO_ENABLED === "1",
+  directory: config.recordDir ? `${config.recordDir}/financial-info` : "",
+});
 /*
  * Chart history comes from the desk's own recorded Rithmic prints.
  *
@@ -1262,6 +1268,7 @@ const server = createServer(async (request, response) => {
       zyon: zyonService.health(),
       zyonTranscription: zyonTranscription.health(),
       news: newsService.health(),
+      financialInfo: { status: financialInfo.snapshot().status, configured: financialInfo.enabled },
       socials: socialsService.health(),
       journal: journalService.health(),
       desktopRevocations: desktopRevocationSynchronizer?.status() ?? { configured: false },
@@ -1287,6 +1294,11 @@ const server = createServer(async (request, response) => {
     });
   }
   try {
+    if (url.pathname === "/v1/financial-info") {
+      if (request.method !== "GET") return json(response, 405, { error: "Method not allowed." });
+      if (url.search) return json(response, 400, { error: "Unsupported parameter." });
+      return json(response, 200, financialInfo.snapshot());
+    }
     if (zyonTranscription.canHandle(request.method, url.pathname)) {
       try {
         await zyonTranscription.handle(request, response, authorization.principal);
@@ -2851,6 +2863,7 @@ server.listen(config.port, config.host, () => {
   // Started here rather than at construction: it talks to this server, so the
   // socket has to be accepting connections first.
   quantDataSurfaces.start();
+  void financialInfo.start();
   desktopRevocationSynchronizer?.start();
   if (recorder.enabled) {
     process.stdout.write(`[recorder] capturing raw stream to ${config.recordDir}\n`);
@@ -2940,6 +2953,7 @@ async function shutdown() {
     () => optionTrades.stop(),
     () => quantDataMarketSnapshots.stop(),
     () => quantDataSurfaces.stop(),
+    () => financialInfo.stop(),
   ]) {
     try { stop(); } catch { /* ignore */ }
   }

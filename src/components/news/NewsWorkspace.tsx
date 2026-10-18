@@ -28,6 +28,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import MacroWorkspace, { type MacroNewsView } from "@/components/news/MacroWorkspace";
+import FinancialInfoWorkspace from "@/components/news/FinancialInfoWorkspace";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
@@ -898,12 +899,13 @@ function EconomicCalendarWorkspace() {
   );
 }
 
-type NewsView = "calendar" | MacroNewsView;
+type NewsView = "calendar" | "financial-info" | MacroNewsView;
 
 export default function NewsWorkspace() {
   const [view, setView] = useState<NewsView>("calendar");
   const sections: Array<{ id: NewsView; label: string; description: string; icon: typeof CalendarDays }> = [
     { id: "calendar", label: "Economic Calendar", description: "Scheduled catalysts", icon: CalendarDays },
+    { id: "financial-info", label: "Financial Info", description: "Financial headline wire", icon: Globe2 },
     { id: "macro", label: "Macroeconomics", description: "Causal event maps", icon: BrainCircuit },
     { id: "developments", label: "Live Macro Developments", description: "Policy and geopolitical shocks", icon: Radio },
   ];
@@ -911,7 +913,7 @@ export default function NewsWorkspace() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <WorkspaceSubnav items={sections} value={view} onChange={setView} ariaLabel="News sections" />
       <div className="min-h-0 flex-1">
-        {view === "calendar" ? <EconomicCalendarWorkspace /> : <MacroWorkspace view={view} />}
+        {view === "calendar" ? <EconomicCalendarWorkspace /> : view === "financial-info" ? <FinancialInfoWorkspace /> : <MacroWorkspace view={view} />}
       </div>
     </div>
   );

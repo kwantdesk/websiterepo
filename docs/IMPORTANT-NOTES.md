@@ -1,5 +1,25 @@
 # KWANTDESK important notes
 
+## 2026-10-18 — Financial Info in NEWS (connection pending)
+
+- Financial Info is a separate NEWS tab with original timestamped headlines,
+  timezone, source categories/search, details, pause/resume and scroll-safe
+  updates. Existing economic calendar and macro sections stay intact.
+- Specified Apify Actor scrapes RSS, not the premium instant FinancialJuice
+  stream. Owner has NOT set up Apify yet. No account, subscription, paid run or
+  schedule was created. Do not claim live 24/7 news is connected.
+- Shared read-only gateway adapter polls completed successful Actor datasets;
+  browser requests NEVER start paid runs. Requires private APIFY_API_TOKEN and
+  FINANCIAL_INFO_ENABLED=1, plus separately approved scheduled Actor runs,
+  actual pricing/spend cap and source redistribution permission. Vercel only
+  serves authenticated cached snapshots; this is not zero-cost hosting.
+- Current temporary market collector is left running unchanged: no needless
+  feed restart for an unconfigured news source. Carry new service/server wiring
+  to the VPS at the planned cutover, or deploy it once credentials are ready.
+- REA inspected the requested public page but found a Cloudflare blocked page;
+  no security bypass or exact-layout/parity claim. Setup, sources and evidence:
+  `docs/financial-info-setup.md`. Live ingestion and signed-in UI soak remain OPEN.
+
 ## 2026-10-18 — Options gateway restored with process-exit supervision
 
 - Found the temporary gateway absent and its existing public tunnel returning
