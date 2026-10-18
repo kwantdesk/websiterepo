@@ -2,6 +2,7 @@ import {themePaint} from './site-theme.js?v=1';
 import {gexStorage} from './site-runtime.js?v=1';
 import {createBoardWorkspace,createWorkspace,workspaceAction,workspaceTabsets,workspaceOrientation,workspaceDockLocation,workspaceDockRect,serializeWorkspace,validateTabName} from './workspace-model.js?v=1';
 import {TOOL_CONFIGURATION_OPTIONS,sanitizeToolConfiguration,setConfigurationVisibility} from './preferences-model.js?v=1';
+import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=1';
 
 const KEYS={layout:'gex-data:workspace:v1',configuration:'gex-data:configuration:v1',page:'gex-data:page-filters:v1',global:'gex-data:global-filters:v1',groups:'gex-data:filter-groups:v1'};
 const read=(key,fallback)=>{try{return JSON.parse(gexStorage.getItem(key))??fallback;}catch{return fallback;}};
@@ -49,10 +50,10 @@ function filterCount(filters){return (filters.tickers?.length||0)+(filters.expir
 export function showSharedFilters(anchor,scope='page'){
   const key=KEYS[scope],title=scope==='page'?'Page Tool Filters':'Global Tool Filters';
   popup(anchor,title,el=>{
-    const initial=read(key,{}),ticker=node('input'),expiry=node('input'),session=node('input');ticker.value=(initial.tickers||[]).join(', ');ticker.placeholder='Tickers · comma separated';ticker.setAttribute('aria-label',title+' tickers');expiry.type=session.type='date';expiry.value=initial.expirationDate||'';session.value=initial.sessionDate||'';
+    const initial=read(key,{}),ticker=multiChoiceDropdown({choices:instrumentChoices(),values:initial.tickers||[],label:title+' instruments'}),expiry=node('input'),session=node('input');expiry.type=session.type='date';expiry.value=initial.expirationDate||'';session.value=initial.sessionDate||'';
     const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const update=()=>{const next={tickers:[...new Set(ticker.value.toUpperCase().split(/[,\s]+/).filter(Boolean))],expirationDate:expiry.value,sessionDate:session.value};if(next.tickers.some(value=>! /^[A-Z0-9./^+-]{1,30}$/.test(value)))return;expiry.min=session.value||today;session.max=expiry.value&&expiry.value<today?expiry.value:today;write(key,next);};
-    for(const [label,input] of [['Tickers',ticker],['Expiration',expiry],['Session Date',session]]){const field=node('label','workspace-field');field.append(node('span','',label),input);el.append(field);input.addEventListener('change',update);}
+    for(const [label,input] of [['Instruments',ticker],['Expiration',expiry],['Session Date',session]]){const field=node(input===ticker?'div':'label','workspace-field');field.append(node('span','',label),input);el.append(field);input.addEventListener('change',update);}
     expiry.min=session.value||today;session.max=expiry.value&&expiry.value<today?expiry.value:today;
     el.append(button('Clear filters',()=>{ticker.value=expiry.value=session.value='';update();}));
     el.append(node('p','workspace-note','Page overrides Global; Global overrides individual tool settings. Empty fields fall through. Changes apply to this local GEX DATA only.'));
@@ -69,7 +70,7 @@ export function showFilterGroups(anchor,{activeIds=[],onChange=()=>{},toolId}={}
 }
 
 async function editFilterGroup(existing,onSaved,toolId){
-  const {mountFilterEditor}=await import('./filter-editor.js?v=1');
+  const {mountFilterEditor}=await import('./filter-editor.js?v=2');
   dialog(existing?'Edit Filter Group':'Create Filter Group',el=>{
     el.classList.add('filter-group-editor-dialog');const name=node('input'),description=node('textarea');name.maxLength=64;name.placeholder='Filter group name';name.value=existing?.name||'';description.maxLength=1024;description.placeholder='Description';description.value=existing?.description||'';
     for(const [label,input] of [['Name',name],['Description',description]]){const field=node('label','workspace-field');field.append(node('span','',label),input);el.append(field);}

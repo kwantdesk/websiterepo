@@ -1,5 +1,25 @@
 # KWANTDESK important notes
 
+## 2026-10-18 — GEX DATA instrument/time dropdowns
+
+- Instrument fields are selects backed by the site's offered options
+  underlyings (VIX included; SPXW alias/VXN are not invented API roots).
+  Existing saved/imported symbols remain visible as saved selections; no
+  account preferences, defaults or page/global precedence are discarded.
+- Page/global instrument filters and known Filter Group ticker/enumeration
+  values use checkbox dropdowns, preserving multi-value OR selections. Dates
+  have native calendar pickers (legacy multi-date expressions preserved),
+  numeric/custom fields remain editable. Unknown provider enums are not guessed.
+- Snapshot time has a dropdown built only from returned timeline timestamps,
+  synchronized with the existing slider/latest action. No extra feed, metadata
+  endpoint, polling or provider credential was introduced. Static entry points
+  are versioned so old cached text controls are not mixed with the new UI.
+- 81 GEX DATA model tests plus seven integration tests, scoped lint and the
+  optimized production build pass. Local browser verified SPY/5m selection and
+  reload, snapshot dropdown/slider sync, multi-symbol page filters and clear
+  restoring each panel's own instrument. Browser data was explicitly synthetic;
+  signed-in production data/market-open soak is not claimed by this UI change.
+
 ## 2026-10-18 — Expiration calendar date clarity
 
 - Today and the selected date now have separate full-date labels. Today has a

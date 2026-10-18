@@ -2,10 +2,10 @@ import {themePaint} from './site-theme.js?v=1';
 import {gexStorage} from './site-runtime.js?v=1';
 import { filterFieldsForTool, FILTER_OPERATORS, findFilterField, createFilterDraft, expressionToDraft, draftToExpression } from './filter-editor-model.js?v=1';
 import { normalizeAPIExpression } from './preferences-model.js?v=1';
+import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=1';
 
-let editorCounter = 0;
 export function mountFilterEditor(host, { expression, onChange = () => {}, toolId } = {}) {
-  const doc = host.ownerDocument, prefix = `qfe-${++editorCounter}`, fields = filterFieldsForTool(toolId);
+  const doc = host.ownerDocument, fields = filterFieldsForTool(toolId);
   let draft = expressionToDraft(expression,fields), destroyed = false, advancedDirty = false, advancedError = '';
   if(!Array.isArray(draft.filters))draft={conjunction:'OR',filters:[{conjunction:'AND',filters:[draft]}]};
   const root = doc.createElement('div'); root.className = 'qfe';
@@ -18,7 +18,7 @@ export function mountFilterEditor(host, { expression, onChange = () => {}, toolI
   const rawStatus=element('p','qfe-status');rawStatus.setAttribute('role','status');
   advanced.append(summary,raw,rawStatus);root.append(text,limit,tree,status,advanced);host.append(root);
   const button = (label,handler,cls='') => { const b=element('button',`qfe-button ${cls}`,label);b.type='button';b.addEventListener('click',handler);return b; };
-  const labelControl = (label,control) => { const wrap=element('label','qfe-field');wrap.append(element('span','qfe-label',label),control);return wrap; };
+  const labelControl = (label,control) => { const wrap=element(control.tagName==='DETAILS'?'div':'label','qfe-field');wrap.append(element('span','qfe-label',label),control);return wrap; };
   const select = (options,value,label) => { const el=element('select','qfe-select');el.setAttribute('aria-label',label);for(const [key,name,disabled]of options){const option=element('option','',name);option.value=key;option.disabled=!!disabled;el.append(option);}if(!options.some(([key])=>key===value)){const missing=element('option','',`${value} (unsupported)`);missing.value=value;el.prepend(missing);}el.value=value;return el; };
   function notify() {
     if(destroyed)return;
@@ -49,8 +49,9 @@ export function mountFilterEditor(host, { expression, onChange = () => {}, toolI
     const opSelect=select(operators,node.operation,`Filter ${path} operator`);opSelect.addEventListener('change',()=>{node.operation=opSelect.value;notify();});
     let input;
     if(metadata?.kind==='boolean')input=select([['','Choose…'],['true','True'],['false','False']],node.text,`Filter ${path} value`);
-    else{input=element('input','qfe-input');input.type='text';input.value=node.text;input.setAttribute('aria-label',`Filter ${path} value`);input.placeholder=metadata?.kind==='date'?'YYYY-MM-DD':metadata?.kind==='dollars'?'Dollars, e.g. 100000':metadata?.kind==='ticker'?'SPY, QQQ':'Value; comma-separated for multiple';if(['number','dollars','integer'].includes(metadata?.kind))input.inputMode='decimal';if(metadata?.choices){const list=element('datalist','');list.id=`${prefix}-${path}`;for(const choice of metadata.choices){const item=element('option','');item.value=choice;list.append(item);}input.setAttribute('list',list.id);row.append(list);}}
-    const change=()=>{node.text=input.value;advancedDirty=false;advancedError='';notify();};input.addEventListener(input.tagName==='SELECT'?'change':'input',change);
+    else if(metadata?.kind==='ticker'||metadata?.choices)input=multiChoiceDropdown({choices:metadata.kind==='ticker'?instrumentChoices():metadata.choices.map(value=>[value,value.replaceAll('_',' ')]),values:node.text.split(',').map(value=>value.trim()).filter(Boolean),label:`Filter ${path} value`,emptyLabel:'Choose values…'});
+    else{input=element('input','qfe-input');input.type=metadata?.kind==='date'&&!node.text.includes(',')?'date':'text';input.value=node.text;input.setAttribute('aria-label',`Filter ${path} value`);input.placeholder=metadata?.kind==='date'?'YYYY-MM-DD':metadata?.kind==='dollars'?'Dollars, e.g. 100000':'Value; comma-separated for multiple';if(['number','dollars','integer'].includes(metadata?.kind))input.inputMode='decimal';}
+    const change=()=>{node.text=input.value;advancedDirty=false;advancedError='';notify();};input.addEventListener(['SELECT','DETAILS'].includes(input.tagName)?'change':'input',change);
     row.append(labelControl('Field',fieldSelect),labelControl('Operator',opSelect),labelControl('Value',input));
     if(container){const remove=button('Remove Filter',()=>{container.filters.splice(index,1);rerender();},'qfe-danger');remove.disabled=container.filters.length===1;row.append(remove);}
     const unit=metadata?.kind==='dollars'?'Dollars, not cents.':metadata?.help;if(unit)row.append(element('small','qfe-value-help',unit));parent.append(row);

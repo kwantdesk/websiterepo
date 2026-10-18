@@ -17,4 +17,12 @@ body{min-width:0;overflow:hidden}
 .top-actions{overflow-x:auto;max-width:100%;white-space:nowrap}
 .top-actions{width:100%;min-width:0;flex:1}.top-action{flex:0 0 34px}.top-action.wide{width:auto!important;flex-basis:auto;padding:0 10px;font-size:12px}
 .tool-library{top:38px!important;height:calc(100vh - 38px)!important}
+.choice-dropdown{min-width:0;border:1px solid var(--site-border);border-radius:3px;background:var(--site-surface);color:var(--site-foreground)}
+.choice-dropdown summary{cursor:pointer;padding:7px 9px;overflow-wrap:anywhere;font-size:12px}
+.choice-dropdown-options{display:flex;flex-direction:column;gap:3px;max-height:240px;overflow:auto;border-top:1px solid var(--site-border);padding:6px}
+.choice-dropdown-options label{display:flex!important;align-items:center;gap:7px;padding:5px;font-size:12px;cursor:pointer}
+.choice-dropdown-options input[type=checkbox]{width:auto!important;min-width:0;height:auto;margin:0;accent-color:var(--site-primary)}
+.choice-dropdown-options button{background:var(--site-panel);color:var(--site-primary);padding:6px;border:0;text-align:left;cursor:pointer}
+.snapshot-time-select{max-width:180px;min-width:0;width:100%;border:1px solid var(--site-border);border-radius:3px;background:var(--site-surface);color:var(--site-foreground);padding:4px;font-size:11px}
+.tool-controls select option,.snapshot-time-select option{background:var(--site-panel);color:var(--site-foreground)}
 .gex-data-workspace .tool-library{min-height:0}

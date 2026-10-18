@@ -8,7 +8,8 @@ import { createTableView } from "./table-view.js?v=1";
 import { selectedSnapshotSpot, completedMinuteSnapshot, sessionMinuteTimestamp } from "./snapshot-model.js?v=1";
 import { timeDomain, timeX, timeTicks, nearestTimeIndex,timeAtIndex } from "./time-axis.js?v=1";
 import { abbreviate, currencyAbbreviated } from "./number-format.js?v=1";
-import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=1';
+import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=2';
+import {instrumentChoices,setChoiceValue,snapshotTimeOptions} from './choice-controls.js?v=1';
 import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} from './preferences-model.js?v=1';
 import {normalizeWheelDelta,wheelZoomWindow,panZoomWindow,heatMapPlainWheel,cursorTooltipPlacement,sliderBarWindow,sliderHandleWindow,sliderTrackClick,lerpZoomStep} from './chart-interaction-model.js?v=1';
 import {bindZoomNavigator} from './navigator-ui.js?v=1';
@@ -558,7 +559,7 @@ await boot();
 
   const CONTROL_META = {
     mode: ["Session", "select", [["latest", "Latest / live"], ["historical", "Historical snapshot"]]],
-    date: ["Session date", "date"], ticker: ["Ticker", "text", null, "QQQ"], tickerOptional: ["Ticker", "text", null, ""],
+    date: ["Session date", "date"], ticker: ["Instrument", "select", instrumentChoices(), "QQQ"], tickerOptional: ["Instrument", "select", [["", "All instruments"], ...instrumentChoices()], ""],
     period: ["Interval", "select"], greek: ["Exposure", "select"], representation: ["Units", "select"],
     moneyType: ["Moneyness", "select"], tradeType: ["Trade type", "select"], printType: ["Venue", "select"],
     notificationType: ["Event type", "select"], sector: ["Sector", "select"], industry:["Industry","text",null,""], chartType: ["Chart", "select"],
@@ -666,8 +667,8 @@ await boot();
       input = document.createElement("input"); input.type = type;
       if (type === "number") input.step = "any";
       if (type === "text") input.autocomplete = "off";
-      if (defaultValue != null) input.value = defaultValue;
     }
+    if (defaultValue != null) input.value = defaultValue;
     input.id = `control-${id}`; input.dataset.control = id;
     if (id === "ticker" || id === "tickerOptional") input.placeholder = id === "ticker" ? "QQQ" : "All tickers";
     if (id === "osi") input.placeholder = "Auto-discover recent contract";
@@ -689,11 +690,11 @@ await boot();
     const {page,global}=getFilterOverrides(),key=id==='ticker'||id==='tickerOptional'?'tickers':id==='expiry'?'expirationDate':'sessionDate',result=resolveFilterOverride({toolValue:null,pageValue:page[key],globalValue:global[key],isTicker:key==='tickers'});
     if(result.type==='NONE')return own;if(key==='tickers')return result.value[0];if(id==='mode')return 'historical';return result.value;
   }
-  function setControl(id, value) { const control = q(`[data-control="${id}"]`, q("#toolControls")); if (control) {if('overrideOwn' in control.dataset)control.dataset.overrideOwn=String(value);else control.value=value;} }
+  function setControl(id, value) { const control = q(`[data-control="${id}"]`, q("#toolControls")); if (control) {if('overrideOwn' in control.dataset)control.dataset.overrideOwn=String(value);else if(id==='ticker'||id==='tickerOptional')setChoiceValue(control,value);else control.value=value;} }
 
   function reflectFilterOverrides(){
     const {page,global}=getFilterOverrides();for(const control of qa('[data-control]',q('#toolControls'))){const id=control.dataset.control;if(!['ticker','tickerOptional','expiry','mode','date'].includes(id))continue;const key=id==='ticker'||id==='tickerOptional'?'tickers':id==='expiry'?'expirationDate':'sessionDate',result=resolveFilterOverride({toolValue:null,pageValue:page[key],globalValue:global[key],isTicker:key==='tickers'});
-      if(result.type==='NONE'){if('overrideOwn' in control.dataset){control.value=control.dataset.overrideOwn;delete control.dataset.overrideOwn;control.disabled=false;control.title='';control.closest('.control').classList.remove('filter-overridden');}}else{if(!('overrideOwn' in control.dataset))control.dataset.overrideOwn=control.value;control.value=key==='tickers'?result.value[0]:id==='mode'?'historical':result.value;control.disabled=true;control.title=`Controlled by ${result.type.toLowerCase()} tool filters`;control.closest('.control').classList.add('filter-overridden');}}
+      if(result.type==='NONE'){if('overrideOwn' in control.dataset){if(key==='tickers')setChoiceValue(control,control.dataset.overrideOwn);else control.value=control.dataset.overrideOwn;delete control.dataset.overrideOwn;control.disabled=false;control.title='';control.closest('.control').classList.remove('filter-overridden');}}else{if(!('overrideOwn' in control.dataset))control.dataset.overrideOwn=control.value;if(key==='tickers')setChoiceValue(control,result.value[0]);else control.value=id==='mode'?'historical':result.value;control.disabled=true;control.title=`Controlled by ${result.type.toLowerCase()} tool filters`;control.closest('.control').classList.add('filter-overridden');}}
   }
 
   function syncDateControl() {
@@ -717,7 +718,7 @@ await boot();
   function renderControls(tool) {
     const holder = q("#toolControls"); holder.replaceChildren();
     for (const id of tool.controls) { holder.append(makeControl(id)); if(id==="exposureDisplay")holder.append(makeControl("exposureOrientation")); }
-    for(const input of qa("[data-control]",holder)){const value=savedToolControls[tool.id]?.[input.dataset.control];if(value!=null)input.value=value;}
+    for(const input of qa("[data-control]",holder)){const value=savedToolControls[tool.id]?.[input.dataset.control];if(value!=null)setControl(input.dataset.control,value);}
     if(VIEW_PARAMETERS.get('instance')&&!savedToolControls[tool.id])for(const [key,value] of VIEW_PARAMETERS)if(key.startsWith('c_'))setControl(key.slice(2),value);
     if(EMBEDDED){const order=tool.id==='net-drift'?['ticker','tickerOptional','date','strike','expiry','moneyType','period']:tool.id==='interval-map'?['ticker','date','expiry','period','strikePadding','greek']:['ticker','tickerOptional','date','expiry','greek','representation'];for(const control of qa('.control',holder).sort((a,b)=>{const aId=q('[data-control]',a)?.dataset.control,bId=q('[data-control]',b)?.dataset.control;return (order.includes(aId)?order.indexOf(aId):100)-(order.includes(bId)?order.indexOf(bId):100);}))holder.append(control);}
     reflectFilterOverrides();syncDateControl();
@@ -914,11 +915,11 @@ await boot();
 
   function renderSnapshotControl(payload){
     const timeline=payload._timeline;if(!timeline?.length)return;
-    const holder=element("div","snapshot-control"),label=element("b","","Time"),range=document.createElement("input"),output=element("output");range.type="range";range.min="0";range.max=String(timeline.length-1);range.step="1";range.setAttribute("aria-label","One-minute exposure snapshot");
-    range.setAttribute('aria-label','One-minute session snapshot');let selected=timeline.findIndex(time=>time===payload._snapshotTime);if(selected<0)selected=timeline.length-1;range.value=String(selected);output.textContent=displayChartTime(timeline[selected]);
+    const holder=element("div","snapshot-control"),label=element("b","","Time"),range=document.createElement("input"),output=element("output"),timeSelect=document.createElement('select');timeSelect.className='snapshot-time-select';timeSelect.setAttribute('aria-label','Snapshot time');for(const [value,text]of snapshotTimeOptions(timeline,displayChartTime))timeSelect.add(new Option(text,value));range.type="range";range.min="0";range.max=String(timeline.length-1);range.step="1";range.setAttribute("aria-label","One-minute exposure snapshot");
+    range.setAttribute('aria-label','One-minute session snapshot');let selected=timeline.findIndex(time=>time===payload._snapshotTime);if(selected<0)selected=timeline.length-1;range.value=timeSelect.value=String(selected);output.textContent=displayChartTime(timeline[selected]);
     const start=element("span","",displayChartTime(timeline[0])),end=element("span","",displayChartTime(timeline.at(-1))),latest=element("button","","Latest");latest.type="button";latest.addEventListener("click",()=>{snapshotSelections.delete(snapshotKey(activeTool));if(EMBEDDED)parent.postMessage({type:'gex-data-minute',minute:null},location.origin);loadActiveTool();});
-    let timer;const select=()=>{output.textContent=displayChartTime(timeline[Number(range.value)]);if(EMBEDDED)parent.postMessage({type:'gex-data-minute',minute:Number(range.value)===timeline.length-1?null:timeline[Number(range.value)]},location.origin);clearTimeout(timer);const tool=activeTool,key=snapshotKey(tool);timer=setTimeout(()=>{if(activeTool!==tool)return;if(Number(range.value)===timeline.length-1)snapshotSelections.delete(key);else snapshotSelections.set(key,timeline[Number(range.value)]);loadActiveTool();},220);};range.addEventListener("input",select);range.addEventListener("change",select);
-    holder.append(label,range,output,latest);const ends=element("div","snapshot-labels");ends.append(start,end);holder.append(ends);q("#toolVisual").append(holder);
+    let timer;const select=()=>{timeSelect.value=range.value;output.textContent=displayChartTime(timeline[Number(range.value)]);if(EMBEDDED)parent.postMessage({type:'gex-data-minute',minute:Number(range.value)===timeline.length-1?null:timeline[Number(range.value)]},location.origin);clearTimeout(timer);const tool=activeTool,key=snapshotKey(tool);timer=setTimeout(()=>{if(activeTool!==tool)return;if(Number(range.value)===timeline.length-1)snapshotSelections.delete(key);else snapshotSelections.set(key,timeline[Number(range.value)]);loadActiveTool();},220);};range.addEventListener("input",select);range.addEventListener("change",select);timeSelect.addEventListener('change',()=>{range.value=timeSelect.value;select();});
+    holder.append(label,range,timeSelect,latest);const ends=element("div","snapshot-labels");ends.append(start,end);holder.append(ends);q("#toolVisual").append(holder);
   }
 
   function resetStage() {

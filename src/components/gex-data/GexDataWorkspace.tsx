@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { loadStoredChartSettings } from "@/lib/chartSettings";
+import { MARKET_INDEX_DEFINITIONS } from "@/lib/marketIndices";
 
 const STORAGE_KEY = "kwantdesk:gex-data:workspace:v1";
 type SiteHost = {
@@ -12,6 +13,7 @@ type SiteHost = {
   write: (key: string, value: string | null) => void;
   theme: () => Record<string, string>;
   timezone: () => string;
+  instruments: () => Array<[string, string]>;
   request: (url: string, options?: RequestInit) => Promise<Response>;
   snapshot: () => Record<string, string>;
   restore: (values: Record<string, string>) => void;
@@ -48,6 +50,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
     const host: SiteHost = {
       active: activeRef.current,
       timezone: () => loadStoredChartSettings().timezone,
+      instruments: () => MARKET_INDEX_DEFINITIONS.filter(item => item.symbol === "VIX" || item.group === "Options Underlyings" && item.symbol !== "SPXW").map(item => [item.symbol, `${item.symbol} — ${item.displayName}`]),
       read: key => readValues()[key] ?? null,
       write: (key, value) => {
         if (disposed || !key.startsWith("gex-data") || key.length > 200) return;
@@ -134,7 +137,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "1");
+  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "2");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
   return <section className="h-full min-h-0 flex-1 overflow-hidden bg-background" aria-label="GEX DATA workspace">
     {ready ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
