@@ -20,6 +20,8 @@
 // production alias before the normal Git deployment (recovery: 2026-10-18).
 // Temporary owner relaunched independently of terminal process jobs on Oct 18;
 // a new quick-tunnel address still needs the same verified alias cutover.
+// Laptop reboot recovery on Oct 19 repeats that cutover; do not pin relay URLs
+// in client bundles or replace the shared backend with per-user provider calls.
 
 const GATEWAY_URL_KEYS = [
   "KWANTDESK_MARKET_DATA_GATEWAY_URL",
