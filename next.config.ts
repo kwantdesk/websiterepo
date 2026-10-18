@@ -4,6 +4,8 @@ const deploymentId = process.env.VERCEL_DEPLOYMENT_ID?.replace(/[^a-zA-Z0-9_-]/g
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ["pdfjs-dist"],
+  outputFileTracingIncludes: {"/api/options-expiration-calendar":["./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"]},
   // Keep an open chart tab pinned to the assets and route payloads from the
   // deployment that created it. This prevents lazy panel imports from crossing
   // releases while a trader leaves the workspace open.

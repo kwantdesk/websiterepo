@@ -1,5 +1,20 @@
 # KWANTDESK important notes
 
+## 2026-10-18 — Options expiration calendar
+
+- KWANTY calendar uses Cboe's actual published date/colour markers, not inferred
+  contract expirations. Opening it needs no market-data gateway. Six-hour shared
+  source cache; source revision/time and explicit stale status are visible.
+- Unknown PDF layouts/colours must fail to the last verified calendar and flag
+  review. New annual links in the supported official format are discovered;
+  format redesigns are not silently guessed. Cached revalidation and outages can
+  delay a newly published revision; do not describe this as instantaneous push.
+- Calendar dates are New York dates even on a Brisbane device. Last trading days,
+  actual expiries, exchange holidays and LEAPS listing dates are distinct. It is
+  not a live options chain or proof every product lists every marked expiry.
+- Standing CME login, denied Orderflow history, full-month recording/archive,
+  redistribution licensing, VPS and capacity/cost issues remain OPEN below.
+
 ## 2026-10-18 — KWANTY and current CME authentication blocker
 
 - Owner chose KWANTY for the new Classic/State/Orderflow page, distinct from the

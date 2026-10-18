@@ -1,5 +1,32 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-18 — Cboe options expiration calendar in KWANTY
+
+- KWANTY now has Positioning / Options Expiration Calendar page buttons; deep
+  link `/kwanty?view=calendar`. Opening the calendar pauses positioning polling,
+  and a direct calendar load does not initialise its market-data frame.
+- Interactive year/month/agenda, product/search/legend filters, date details and
+  account-tracked preferences. Dates stay in New York exchange time. Cboe legend
+  colours intentionally remain fixed across themes, with readable themed chrome.
+- 2026 dates and visible vector marks were read from the official Cboe PDF,
+  visually checked, and compared to deterministic extraction tests. Do not replace
+  them with a weekday rule: June monthly expiry is18th, VIX has five exception
+  dates, September14 adds2029 LEAPS, and days can have several simultaneous marks.
+- Shared six-hour Next data cache discovers published annual PDF links on Cboe's
+  official hours page. SHA-based source revision, actual verification timestamp,
+  conditional responses, strict URL/year/size limits and coalescing. Cached source
+  revalidation/outages may keep an explicit stale state; retry15m, never pretend
+  a failed check was current. Known PDF layouts auto-parse dates/colours; unknown
+  geometry/legend/inks fail to the last verified snapshot rather than guessed data.
+- Small31KB verified snapshot paints immediately while checking latest source.
+  PDF.js5.6.205 is server-only, externalised with its worker traced; the browser
+  never parses a PDF. No VPS/market-provider/key, cron or paid service is added.
+- This annual schedule is not a live contract chain, broker cutoff service or
+  complete stream of new product announcements. Keep the source links/disclaimer.
+  Signed-in cross-device preference roundtrip and arbitrary future PDF redesigns
+  remain unverified. Existing CME/auth/history/licensing gates below remain open.
+- Record: `docs/prompt-log/2026-10-18-options-expiration-calendar.md`.
+
 ## 2026-10-18 — KWANTY integration (owner renamed new KWANT BOT request)
 
 - New `/kwanty` navigation/workspace integrates the owned port4318 gexpage UI,

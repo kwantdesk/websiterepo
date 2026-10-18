@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import {useSearchParams} from "next/navigation";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { loadStoredChartSettings } from "@/lib/chartSettings";
 
 const STORAGE_KEY = "kwantdesk:kwanty:workspace:v1";
+const OptionsExpirationCalendar=dynamic(()=>import('./OptionsExpirationCalendar'),{ssr:false,loading:()=> <div className="p-4 text-sm text-muted">Opening expiration calendar…</div>});
 type BotSiteHost = {
   active: boolean;
   read: (key: string) => string | null;
@@ -26,7 +29,11 @@ function broadcast(frame: Window | null, type: string, detail = {}) {
   } catch { /* Closed popouts and navigating frames need no notification. */ }
 }
 
-export default function KwantyWorkspace({ accountKey, active = true }: { accountKey: string; active?: boolean }) {
+export default function KwantyWorkspace({ accountKey, active: sectionActive = true }: { accountKey: string; active?: boolean }) {
+  const search=useSearchParams(),calendarOpen=search.get('view')==='calendar',active=sectionActive&&!calendarOpen;
+  const [positioningOpened,setPositioningOpened]=useState(!calendarOpen);
+  useEffect(()=>{if(!calendarOpen)setPositioningOpened(true);},[calendarOpen]);
+  const changeView=(calendar:boolean)=>{const url=new URL(window.location.href);if(calendar)url.searchParams.set('view','calendar');else url.searchParams.delete('view');window.history.pushState(null,'',url.pathname+url.search+url.hash);};
   const frame = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
   const [generation, setGeneration] = useState(0);
@@ -134,12 +141,19 @@ export default function KwantyWorkspace({ accountKey, active = true }: { account
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("botView"); params.delete("botView"); params.set("v", "1");
+  const requestedTool = params.get("botView"); params.delete("botView"); params.delete("view"); params.set("v", "1");
   const src = `/kwanty-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#${requestedTool}` : "#orderflow"}`;
-  return <section className="h-full min-h-0 flex-1 overflow-hidden bg-background" aria-label="KWANTY workspace">
-    {ready ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
+  return <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background" aria-label="KWANTY workspace">
+    <nav aria-label="KWANTY pages" className="flex shrink-0 gap-1 border-b border-border bg-panel px-3 py-1.5 text-xs">
+      <button aria-pressed={!calendarOpen} onClick={()=>changeView(false)} className={`rounded border px-3 py-1.5 ${!calendarOpen?'border-primary text-primary':'border-transparent text-muted'}`}>Positioning</button>
+      <button aria-pressed={calendarOpen} onClick={()=>changeView(true)} className={`rounded border px-3 py-1.5 ${calendarOpen?'border-primary text-primary':'border-transparent text-muted'}`}>Options Expiration Calendar</button>
+    </nav>
+    <div className={`${calendarOpen?'hidden':'flex'} min-h-0 flex-1`} aria-hidden={calendarOpen}>
+    {ready && positioningOpened ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
       title="KWANTY tools and workspace" className="h-full w-full border-0" allow="fullscreen"
       onLoad={() => broadcast(frame.current?.contentWindow ?? null, "kwanty-site-activity", { active: activeRef.current })} />
       : <div className="p-4 text-sm text-muted">Opening KWANTY…</div>}
+    </div>
+    {calendarOpen?<div className="min-h-0 flex-1"><OptionsExpirationCalendar key={accountKey} accountKey={accountKey} active={sectionActive}/></div>:null}
   </section>;
 }

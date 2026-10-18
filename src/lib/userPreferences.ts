@@ -41,6 +41,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:levelz-workspaces:v1",
   "kwantdesk:gex-data:workspace:v1",
   "kwantdesk:kwanty:workspace:v1",
+  "kwantdesk:options-expiration-calendar:v1",
   "kwantdesk-chart-workspace-active-preset",
   "kwantdesk-chart-indicators",
   "kwantdesk-chart-indicator-favourites",
