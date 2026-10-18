@@ -23,6 +23,8 @@ export type ExpirationCalendar = {
 export type ExpirationCalendarResponse = {calendar:ExpirationCalendar|null;availableYears:number[];checkedAt:string;nextCheckAt:string;status:'current'|'stale'|'unavailable';message:string|null};
 export function exchangeDate(now=new Date()){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);}
 export function dateLabel(date:string){return new Intl.DateTimeFormat('en-US',{timeZone:'UTC',weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(date+'T12:00:00Z'));}
+/** Compare exchange calendar dates, never the browser's local midnight. */
+export function calendarDateState(date:string,today:string,selected:string){return {past:date<today,today:date===today,selected:date===selected};}
 export function visibleCalendarTypes(day:CalendarDay,types:ExpirationType[],product:string,search:string){
   return day.types.filter(type=>types.includes(type)&&(product==='All'||(EXPIRATION_TYPES[type].products as readonly string[]).includes(product)||(product==='SPX / XSP'&&(EXPIRATION_TYPES[type].products as readonly string[]).includes('Equity index'))||(product==='Equity index'&&type==='spx-weekly')||type==='holiday')&&(!search||`${day.date} ${dateLabel(day.date)} ${EXPIRATION_TYPES[type].label} ${EXPIRATION_TYPES[type].short} ${EXPIRATION_TYPES[type].products.join(' ')}`.toLowerCase().includes(search.toLowerCase())));
 }

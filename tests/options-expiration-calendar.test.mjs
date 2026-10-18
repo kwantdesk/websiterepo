@@ -4,8 +4,12 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import {createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {createElement} from 'react';
 import {parseCboeCalendar} from '../src/lib/cboeExpirationPdf.server.ts';
-import {CALENDAR_CHECK_MS,EXPIRATION_TYPES,MONTHS,calendarMonthCells,exchangeDate,matchesCalendarDay} from '../src/lib/optionsExpirationCalendar.ts';
+import * as calendarHelpers from '../src/lib/optionsExpirationCalendar.ts';
+import {CALENDAR_CHECK_MS,EXPIRATION_TYPES,MONTHS,calendarDateState,calendarMonthCells,exchangeDate,matchesCalendarDay} from '../src/lib/optionsExpirationCalendar.ts';
 const root=new URL('../',import.meta.url),read=file=>fs.readFileSync(new URL(file,root),'utf8');
 const seed=JSON.parse(read('src/data/cboe-options-2026.json'));
 const dates=type=>seed.days.filter(day=>day.types.includes(type)).map(day=>day.date);
@@ -26,6 +30,34 @@ test('exchange-date timezone never moves an expiry into a Brisbane calendar date
  assert.equal(exchangeDate(new Date('2026-10-18T02:00:00Z')),'2026-10-17');assert.equal(exchangeDate(new Date('2026-12-25T04:30:00Z')),'2026-12-24');
  for(let month=0;month<12;month++){const cells=calendarMonthCells(2026,month);assert.equal(cells.length,42);assert.equal(cells.filter(Boolean).length,new Date(Date.UTC(2026,month+1,0)).getUTCDate());}
  assert.equal(calendarMonthCells(2028,1).filter(Boolean).length,29);
+});
+
+test('past/today/future styling follows the exchange date across month/year and midnight boundaries',()=>{
+ const today=exchangeDate(new Date('2026-10-18T02:00:00Z'));
+ assert.equal(today,'2026-10-17');
+ assert.deepEqual(calendarDateState('2026-10-16',today,'2026-10-16'),{past:true,today:false,selected:true});
+ assert.deepEqual(calendarDateState('2026-10-17',today,'2026-10-16'),{past:false,today:true,selected:false});
+ assert.deepEqual(calendarDateState('2026-10-18',today,'2026-10-16'),{past:false,today:false,selected:false});
+ assert.equal(calendarDateState('2025-12-31','2026-01-01','2026-01-01').past,true);
+});
+
+test('rendered month/year/agenda identify today and dim past dates without disabling selection',()=>{
+ const require=createRequire(import.meta.url);
+ for(const view of ['year','month','agenda']){
+  const context={exports:{},localStorage:{getItem:()=>JSON.stringify({accountKey:'qa',preferences:{year:2026,month:9,view,product:'All',enabled:Object.keys(EXPIRATION_TYPES)}})},Date};
+  context.require=name=>name.includes('cboe-options-2026')?{default:seed}:name.includes('optionsExpirationCalendar')?{...calendarHelpers,exchangeDate:()=> '2026-10-16'}:name.includes('browserStorageQuota')?{writeProtectedItem:()=>({ok:true})}:name.includes('userPreferences')?{PREFERENCES_HYDRATED_EVENT:'qa-hydrated'}:require(name);
+  vm.runInNewContext(ts.transpileModule(read('src/components/kwanty/OptionsExpirationCalendar.tsx'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,context);
+  const html=renderToStaticMarkup(createElement(context.exports.default,{accountKey:'qa'}));
+  assert.match(html,/Current and selected calendar dates/);assert.match(html,/Friday, October 16, 2026/);assert.match(html,/Today outlined/);
+  assert.match(html,/aria-current="date"/);assert.match(html,/Selected date/);
+  if(view!=='agenda'){
+   const past=html.match(/<button[^>]*aria-label="Thursday, October 15, 2026\.[^>]*>/)?.[0];
+   assert.ok(past);assert.match(past,/data-past="true"/);assert.match(past,/opacity-45/);assert.doesNotMatch(past,/disabled/);
+   const current=html.match(/<button[^>]*aria-label="Friday, October 16, 2026\.[^>]*>/)?.[0];
+   assert.match(current,/aria-current="date"/);assert.match(current,/ring-2/);assert.doesNotMatch(current,/opacity-45/);
+   assert.match(html,/>Sun<\/span>/);assert.match(html,/>Thu<\/span>/);
+  }
+ }
 });
 test('product/colour/search filters are coherent and do not imply ETF daily expirations',()=>{
  const daily=seed.days.find(day=>day.date==='2026-10-19'),monthly=seed.days.find(day=>day.date==='2026-10-16');assert.equal(matchesCalendarDay(daily,Object.keys(EXPIRATION_TYPES),'ETF / ETN',''),false);assert.equal(matchesCalendarDay(monthly,Object.keys(EXPIRATION_TYPES),'SPX / XSP','monthly'),true);assert.equal(matchesCalendarDay(monthly,[],'All',''),false);assert.equal(matchesCalendarDay(daily,Object.keys(EXPIRATION_TYPES),'All','2026-10-19'),true);

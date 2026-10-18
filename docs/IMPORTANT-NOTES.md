@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-10-18 — Expiration calendar date clarity
+
+- Today and the selected date now have separate full-date labels. Today has a
+  strong outline and TODAY caption; selection has a fill/marker. Weekday labels
+  are Sun–Sat, not ambiguous initials. Past dates are dimmed, never disabled,
+  in year/month grids and the unfiltered historical agenda. Selected past dates
+  stay easier to read; hover/keyboard focus restores contrast.
+- Past/today comparisons use America/New_York dates, not device midnight.
+  Source expiry dates, semantic colour values, filters and data requests are
+  unchanged. Fourteen calendar tests include actual server-rendered views and
+  New York midnight/year-boundary checks.
+
 ## 2026-10-18 — Financial Info in NEWS (connection pending)
 
 - Financial Info is a separate NEWS tab with original timestamped headlines,
