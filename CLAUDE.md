@@ -1,5 +1,31 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-18 — KWANTY integration (owner renamed new KWANT BOT request)
+
+- New `/kwanty` navigation/workspace integrates the owned port4318 gexpage UI,
+  defaulting to Orderflow; Classic and State remain selectable. This is NOT a
+  rename/replacement of the existing KwantBot AI assistant or GEX BOX math.
+- Aleph/live site palette, explicit custom colours, chart timezone, account-bound
+  tracked preferences, named templates and real JSON file controls replace the
+  prototype's independent skin/local server. Snapshot refresh is bounded30s,
+  errors60s, paused when hidden/inactive; buffers/caches/queues have byte/count caps.
+- New authenticated `/api/kwanty/{status,catalog,snapshot,history}` forwards only
+  fixed operations to the shared gateway's `/v1/native-positioning/*`. Provider
+  key exists only in private gateway environment/file, never browser/Vercel.
+  GEX BOX and GEX DATA remain on their original provider/calculation boundaries.
+- Live weekend REST checks return Friday19:59:59Z snapshots for all three views.
+  Orderflow history returns403; no invented session curve/OHLC/replay. Native WS
+  and web-only classified State splits are not implemented. Customer redistribution
+  permission, live-RTH parity, multi-user capacity/cost and cross-device saves are
+  OPEN launch gates, not implied by authenticated personal API access.
+- Current temporary gateway2164 replaced13288; tunnel20608/URL unchanged.
+  Private launcher uses `KWANTDESK_POSITIONING_KEY_FILE` pointing to private
+  `positioning.env`; migrate as server-only `GEXBOT_API_KEY` on VPS, not into Git.
+  IMPORTANT: after this one restart CME login returned13 permission denied and
+  entered bounded backoff. Earlier successful CME probes below are historical,
+  not current live-feed proof. Do not restart/hammer concurrent login owners.
+- Record: `docs/prompt-log/2026-10-18-kwanty-integration.md`.
+
 ## 2026-10-18 — GEX DATA integration and history recovery verification
 
 - New `/gex-data` workspace sits between GEX VUE and GEX BOX. Owner's local

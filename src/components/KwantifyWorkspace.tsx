@@ -417,6 +417,7 @@ const loadSingleProfileWorkspace = () => import("@/components/profile-workspaces
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
 const loadGexBotWorkspace = () => import("@/components/gexbot/GexBoxDashboard");
 const loadGexDataWorkspace = () => import("@/components/gex-data/GexDataWorkspace");
+const loadKwantyWorkspace = () => import("@/components/kwanty/KwantyWorkspace");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
 const loadGameplanWorkspace = () => import("@/components/gameplan/GameplanWorkspace");
 const loadNewsWorkspace = () => import("@/components/news/NewsWorkspace");
@@ -441,6 +442,7 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   heatmap: loadOptionsHeatmapWorkspace,
   gexbot: loadGexBotWorkspace,
   gexdata: loadGexDataWorkspace,
+  kwanty: loadKwantyWorkspace,
   gexdesk: loadGexDeskWorkspace,
   gameplan: loadGameplanWorkspace,
   news: loadNewsWorkspace,
@@ -499,6 +501,10 @@ const GexBotWorkspace = dynamic(loadGexBotWorkspace, {
 const GexDataWorkspace = dynamic(loadGexDataWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening GEX DATA", "Restoring your data workspace."),
+});
+const KwantyWorkspace = dynamic(loadKwantyWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening KWANTY", "Restoring your positioning workspace."),
 });
 const GexDeskWorkspace = dynamic(loadGexDeskWorkspace, {
   ssr: false,
@@ -1127,7 +1133,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexdata" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexdata" | "kwanty" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -1159,6 +1165,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamvue" as const, label: "GEX Vue" },
   { id: "gexdata" as const, label: "GEX DATA" },
+  { id: "kwanty" as const, label: "KWANTY" },
   { id: "gexbot" as const, label: "GEX BOX" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
@@ -20548,6 +20555,13 @@ export default function KwantifyWorkspace({
               <ReactActivity mode={bottomWorkspaceSection === "gexbot" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="gexbot" label="GEX BOX">
                   <GexBotWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("kwanty") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "kwanty" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="kwanty" label="KWANTY">
+                  <KwantyWorkspace key={preferenceUserId} accountKey={preferenceUserId} active={bottomWorkspaceSection === "kwanty"} />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

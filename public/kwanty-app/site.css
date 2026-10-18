@@ -1,0 +1,14 @@
+@font-face{font-family:Aleph;src:url('/fonts/aleph/Aleph-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+@font-face{font-family:Aleph;src:url('/fonts/aleph/Aleph-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
+*{font-family:Aleph,sans-serif!important;scrollbar-color:var(--site-muted) var(--site-background);scrollbar-width:thin}
+:root,body,body.light{--bg:var(--site-background);--panel:var(--site-panel);--border:var(--site-border);--text:var(--site-foreground);--muted:var(--site-muted);background:var(--site-background);color:var(--site-foreground)}
+header{height:38px;min-height:38px;background:var(--site-panel);border-color:var(--site-border)}
+header,body.light header{background:var(--site-panel)!important;color:var(--site-foreground)!important}.panel-title,body.light .panel-title{color:var(--site-muted)!important}
+body{height:100vh;overflow:hidden}main{height:calc(100vh - 38px)}
+#charts,aside{height:100%;min-height:0}.panel-title{left:112px}
+button,select,input,dialog{border-radius:3px!important;background:var(--site-surface)!important;color:var(--site-foreground)!important;border-color:var(--site-border)!important}
+button.selected,button[aria-pressed=true]{color:var(--site-primary)!important;border-color:var(--site-primary)!important}
+aside,dialog,.dialog-head,.side-heading{background:var(--site-panel)!important;color:var(--site-foreground)!important}
+#themeToggle{display:none!important}#historyNotice,#connection,#freshnessDetails{font-size:11px}
+.bot-template-actions{display:flex;gap:5px;margin-left:auto}.bot-template-actions button{font-size:11px}
+@media(max-width:700px){header{flex-wrap:nowrap;gap:4px;padding:4px}header nav{gap:3px}.bot-template-actions{overflow:auto;min-width:0}}

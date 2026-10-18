@@ -1,5 +1,21 @@
 # KWANTDESK important notes
 
+## 2026-10-18 — KWANTY and current CME authentication blocker
+
+- Owner chose KWANTY for the new Classic/State/Orderflow page, distinct from the
+  existing KwantBot assistant. Personal API authentication and actual Friday
+  snapshots work through the shared gateway. Orderflow historical access403,
+  native streaming, web-only classified splits, future customer redistribution
+  licensing and live-RTH/capacity/cost verification remain OPEN. No invented curve.
+- The single temporary gateway was restarted once to load its server-only
+  adapter. CME subsequently returned login13 permission denied and backed off;
+  this supersedes earlier connected/authenticated recovery evidence below.
+  Do not present gateway HTTP health or enabled recorder as capturing live tape
+  while CME is unauthenticated. Stop this laptop login owner before VPS takeover.
+- Private positioning credential is outside Git in temporary gateway storage;
+  VPS migration needs the same server-only credential/configuration and archives.
+  Month-long complete history/recording and archive recovery remain unresolved.
+
 ## 2026-10-18 — Current temporary data status and GEX DATA limitations
 
 - Laptop gateway and tunnel recovered again using detached hidden processes;

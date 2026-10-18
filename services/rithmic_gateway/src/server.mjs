@@ -47,6 +47,7 @@ import { ExposureArchiver } from "./exposure-archiver.mjs";
 import { archiveStorageHealth } from "./archive-storage-health.mjs";
 import { EventLoopLoadGuard, isDeferrableDuringOverload } from "./event-loop-load-guard.mjs";
 import { VendorDataEdge } from "./vendor-data-edge.mjs";
+import { createNativePositioningEdge } from "./native-positioning-edge.mjs";
 import { ZyonServiceProxy, zyonServiceProblem } from "./zyon-service-proxy.mjs";
 import {
   ZyonTranscriptionService,
@@ -158,6 +159,7 @@ const cashIndexArchiver = new CashIndexArchiver({
   log: (line) => process.stdout.write(`${line}\n`),
 });
 const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver);
+const nativePositioningEdge = await createNativePositioningEdge();
 /*
  * Chart history comes from the desk's own recorded Rithmic prints.
  *
@@ -1329,6 +1331,10 @@ const server = createServer(async (request, response) => {
         const failure = journalServiceProblem(error);
         return json(response, failure.status, { error: failure.message, code: failure.code });
       }
+    }
+    if (nativePositioningEdge.canHandle(url.pathname)) {
+      await nativePositioningEdge.handle(request, response, url);
+      return;
     }
     if (vendorDataEdge.canHandle(url.pathname)) {
       await vendorDataEdge.handle(request, response, url);

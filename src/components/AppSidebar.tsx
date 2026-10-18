@@ -6,6 +6,7 @@ import {
   BarChart3,
   Boxes,
   BookOpen,
+  Bot,
   CalendarDays,
   CalendarRange,
   Crosshair,
@@ -34,6 +35,7 @@ type SidebarKey =
   | "charts"
   | "gamvue"
   | "gexdata"
+  | "kwanty"
   | "gamma"
   | "levelz"
   | "gexmap"
@@ -100,6 +102,7 @@ const navItems: Array<{
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
   { key: "gamvue", href: "/gamvue", label: "GEX VUE", title: "GEX charting", icon: BarChart3 },
   { key: "gexdata", href: "/gex-data", label: "GEX DATA", title: "Options and equities data workspace", icon: BarChart3 },
+  { key: "kwanty", href: "/kwanty", label: "KWANTY", title: "Classic, State and Orderflow", icon: Bot },
   { key: "gexbot", href: "/gex-box", label: "GEX BOX", title: "Classic, state, order-flow and research exposure", icon: Boxes },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
@@ -119,6 +122,7 @@ const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "charts",
   "gamvue",
   "gexdata",
+  "kwanty",
   "zyon",
   "gameplan",
   "gamma",
