@@ -16,6 +16,8 @@
 // can still be unreachable from the hosted application's network.
 // Validate complete history responses before cutover, not just a small health
 // response: the emergency relay's transport must survive those larger reads.
+// Quick-tunnel origins change on restart; revalidate history and update every
+// production alias before the normal Git deployment (recovery: 2026-10-18).
 
 const GATEWAY_URL_KEYS = [
   "KWANTDESK_MARKET_DATA_GATEWAY_URL",

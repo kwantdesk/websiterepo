@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-18 — Temporary laptop gateway recovery
+
+- Blank futures/options charts traced to stopped laptop gateway and tunnel,
+  not the Socials UI changes. Restarted existing private launch and QUIC tunnel
+  hidden; connected/authenticated, recording enabled, no reported drops.
+- Quick-tunnel URL changed. Four URL aliases on websiterepo-yfmi updated after
+  full public NQ history (6,900 bars) and QQQ archive (406 bars) HTTP200 checks.
+  Normal single main Git build applies environment changes; no paid resources.
+- Computer must stay awake/online; stop laptop owner before VPS login resumes.
+  Live SSE/RTH soak and standing history/VPS/capacity gaps remain unverified.
+  Record: `docs/prompt-log/2026-10-18-temporary-gateway-recovery.md`.
+
 ## 2026-10-17 — Remove Socials identity banner
 
 - Removed the complete redundant top Socials / Working title / tagline row,
