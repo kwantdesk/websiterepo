@@ -1,0 +1,22 @@
+/* Shared, theme-token based popup chrome. */
+select.kwant-choice-source{display:none!important}
+.kwant-choice-trigger{display:inline-flex!important;align-items:center;justify-content:space-between;gap:8px;min-width:0;max-width:100%;padding:5px 9px;border:1px solid var(--site-border)!important;border-radius:3px;background:var(--site-surface)!important;color:var(--site-foreground)!important;font:inherit;cursor:pointer;text-align:left}
+.kwant-choice-trigger>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.kwant-choice-trigger>span:last-child{color:var(--site-muted)}
+.kwant-choice-trigger:hover,.kwant-choice-trigger:focus-visible,.kwant-choice-trigger[aria-expanded=true]{border-color:var(--site-primary)!important;outline:0;box-shadow:0 0 0 2px color-mix(in srgb,var(--site-primary) 10%,transparent)}
+.kwant-choice-trigger:disabled{opacity:.45;cursor:not-allowed}
+.kwant-choice-menu{position:fixed;z-index:12000;box-sizing:border-box;max-height:min(324px,calc(100vh - 16px));overflow:auto;padding:6px;border:1px solid var(--site-border);border-radius:16px!important;background:var(--site-panel)!important;color:var(--site-foreground);box-shadow:0 22px 70px #0009;font-size:12px}
+.kwant-choice-heading{padding:4px 10px 8px;color:var(--site-muted);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.16em}
+.kwant-choice-menu>button{display:flex!important;align-items:center;justify-content:space-between;width:100%;min-height:36px;margin:2px 0;padding:9px 12px;border:0!important;border-radius:12px!important;background:transparent!important;color:var(--site-foreground)!important;font:inherit;text-align:left;cursor:pointer}
+.kwant-choice-menu>button:hover,.kwant-choice-menu>button:focus-visible{background:var(--site-surface)!important;outline:0}
+.kwant-choice-menu>button[aria-selected=true]{background:color-mix(in srgb,var(--site-primary) 10%,transparent)!important;color:var(--site-primary)!important}
+.kwant-choice-menu>button[aria-selected=true]:after{content:'';width:6px;height:6px;margin-left:12px;border-radius:50%;background:var(--site-primary);box-shadow:0 0 8px var(--site-primary)}
+.kwant-choice-menu>button:disabled{opacity:.4;cursor:not-allowed}
+.select-pill .kwant-choice-trigger{border:0!important;padding:0;background:transparent!important}
+.select-pill .kwant-choice-trigger{max-width:125px;font-size:10px;font-weight:700}
+.embedded .tool-controls .kwant-choice-trigger{height:24px;min-width:50px;max-width:148px;padding:2px 8px;font-size:11px}
+.control .kwant-choice-trigger{height:30px;font-size:11px}
+.ticker-label>.kwant-choice-trigger{width:100%;height:37px;margin-top:1px;font-size:13px}
+.order-control .kwant-choice-trigger{width:100%;height:36px;margin:3px 0 6px}
+.chart-tools .kwant-choice-trigger{width:45px;font-size:10px;padding:7px 2px}
+.snapshot-time-select+.kwant-choice-trigger{max-width:180px;font-size:11px}

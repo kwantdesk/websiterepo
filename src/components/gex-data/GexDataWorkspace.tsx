@@ -137,7 +137,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "2");
+  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "3");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
   return <section className="h-full min-h-0 flex-1 overflow-hidden bg-background" aria-label="GEX DATA workspace">
     {ready ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}

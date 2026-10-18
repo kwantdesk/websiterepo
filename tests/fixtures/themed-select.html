@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>KwantDesk dropdown regression fixture</title>
+<link rel="stylesheet" href="/gex-data-app/themed-select.css?v=1">
+<style>
+:root{--site-background:#060a14;--site-panel:#0d1424;--site-surface:#172137;--site-border:#27354c;--site-primary:#54b5ff;--site-foreground:#e4eaf4;--site-muted:#8a9cb4;color-scheme:dark}
+body{background:var(--site-background);color:var(--site-foreground);font:14px Arial;padding:24px}label{display:inline-flex;gap:12px;align-items:center}button{font:inherit}dialog{background:var(--site-panel);color:var(--site-foreground);border:1px solid var(--site-border);padding:24px}
+</style>
+<h1>KwantDesk themed dropdowns</h1><p>Regression fixture — no market connection</p>
+<form><label>Instrument <select name="instrument" aria-label="Instrument"><option>SPX</option><option>QQQ</option><option disabled>Unavailable</option></select></label></form>
+<p><button id="restore">Restore saved QQQ</button> <button id="update">Replace choices</button> <button id="dialog">Open settings</button> <button id="theme">Light / dark theme</button></p>
+<output aria-label="Selection">SPX</output>
+<dialog><h2>Settings</h2><label>Time zone<select name="zone" aria-label="Time zone"><option>New York</option><option>Brisbane</option></select></label><p><button id="close">Close settings</button></p></dialog>
+<script type="module" src="/gex-data-app/themed-select.js?v=1"></script>
+<script type="module">
+const select=document.querySelector('select'),output=document.querySelector('output');
+select.addEventListener('change',()=>output.value=new FormData(document.querySelector('form')).get('instrument'));
+document.querySelector('#restore').onclick=()=>{select.value='QQQ';};
+document.querySelector('#update').onclick=()=>{select.replaceChildren(...['ES','NQ'].map(text=>new Option(text,text)));};
+document.querySelector('#dialog').onclick=()=>document.querySelector('dialog').showModal();
+document.querySelector('#close').onclick=()=>document.querySelector('dialog').close();
+let light=false;document.querySelector('#theme').onclick=()=>{light=!light;for(const [key,value]of Object.entries(light?{panel:'#ffffff',surface:'#edf3fc',background:'#f6f8fc',foreground:'#14213b',border:'#b8c7df',muted:'#5e7290',primary:'#1267bd'}:{panel:'#0d1424',surface:'#172137',background:'#060a14',foreground:'#e4eaf4',border:'#27354c',muted:'#8a9cb4',primary:'#54b5ff'}))document.documentElement.style.setProperty('--site-'+key,value);};
+</script>

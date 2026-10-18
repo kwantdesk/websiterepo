@@ -43,9 +43,11 @@ test('past/today/future styling follows the exchange date across month/year and 
 
 test('rendered month/year/agenda identify today and dim past dates without disabling selection',()=>{
  const require=createRequire(import.meta.url);
+ const selectModule={exports:{},require};
+ vm.runInNewContext(ts.transpileModule(read('src/components/ui/KwantSelect.tsx'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,selectModule);
  for(const view of ['year','month','agenda']){
   const context={exports:{},localStorage:{getItem:()=>JSON.stringify({accountKey:'qa',preferences:{year:2026,month:9,view,product:'All',enabled:Object.keys(EXPIRATION_TYPES)}})},Date};
-  context.require=name=>name.includes('cboe-options-2026')?{default:seed}:name.includes('optionsExpirationCalendar')?{...calendarHelpers,exchangeDate:()=> '2026-10-16'}:name.includes('browserStorageQuota')?{writeProtectedItem:()=>({ok:true})}:name.includes('userPreferences')?{PREFERENCES_HYDRATED_EVENT:'qa-hydrated'}:require(name);
+  context.require=name=>name.includes('ui/KwantSelect')?selectModule.exports:name.includes('cboe-options-2026')?{default:seed}:name.includes('optionsExpirationCalendar')?{...calendarHelpers,exchangeDate:()=> '2026-10-16'}:name.includes('browserStorageQuota')?{writeProtectedItem:()=>({ok:true})}:name.includes('userPreferences')?{PREFERENCES_HYDRATED_EVENT:'qa-hydrated'}:require(name);
   vm.runInNewContext(ts.transpileModule(read('src/components/kwanty/OptionsExpirationCalendar.tsx'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,context);
   const html=renderToStaticMarkup(createElement(context.exports.default,{accountKey:'qa'}));
   assert.match(html,/Current and selected calendar dates/);assert.match(html,/Friday, October 16, 2026/);assert.match(html,/Today outlined/);

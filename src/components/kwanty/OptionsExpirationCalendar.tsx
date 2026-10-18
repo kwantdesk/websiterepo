@@ -2,6 +2,7 @@
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {CalendarDays,ChevronLeft,ChevronRight,ExternalLink,RefreshCw} from 'lucide-react';
+import KwantSelect from '@/components/ui/KwantSelect';
 import {writeProtectedItem} from '@/lib/browserStorageQuota';
 import {PREFERENCES_HYDRATED_EVENT} from '@/lib/userPreferences';
 import verifiedSnapshot from '@/data/cboe-options-2026.json';
@@ -70,10 +71,10 @@ export default function OptionsExpirationCalendar({accountKey,active=true}:{acco
     <div className="flex min-h-0 flex-1 flex-col overflow-auto">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <button className="rounded border border-border px-3 py-1.5 text-sm hover:border-primary" onClick={goToday}>Today</button>
-        <select aria-label="Calendar year" value={year} onChange={event=>update({year:Number(event.target.value)})} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">{years.map(y=><option key={y}>{y}</option>)}</select>
-        {view==='month'?<><button aria-label="Previous month" onClick={()=>moveMonth(-1)} className="rounded border border-border p-1.5"><ChevronLeft size={16}/></button><select aria-label="Calendar month" className="rounded border border-border bg-panel p-1.5 text-sm" value={month} onChange={e=>update({month:Number(e.target.value)})}>{MONTHS.map((name,i)=><option key={name} value={i}>{name}</option>)}</select><button aria-label="Next month" onClick={()=>moveMonth(1)} className="rounded border border-border p-1.5"><ChevronRight size={16}/></button></>:null}
+        <KwantSelect aria-label="Calendar year" value={year} onChange={event=>update({year:Number(event.target.value)})} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">{years.map(y=><option key={y}>{y}</option>)}</KwantSelect>
+        {view==='month'?<><button aria-label="Previous month" onClick={()=>moveMonth(-1)} className="rounded border border-border p-1.5"><ChevronLeft size={16}/></button><KwantSelect aria-label="Calendar month" className="rounded border border-border bg-panel p-1.5 text-sm" value={month} onChange={e=>update({month:Number(e.target.value)})}>{MONTHS.map((name,i)=><option key={name} value={i}>{name}</option>)}</KwantSelect><button aria-label="Next month" onClick={()=>moveMonth(1)} className="rounded border border-border p-1.5"><ChevronRight size={16}/></button></>:null}
         <div className="flex rounded border border-border" aria-label="Calendar display">{(['year','month','agenda'] as const).map(mode=><button key={mode} aria-pressed={view===mode} className={`px-3 py-1.5 text-sm capitalize ${view===mode?'bg-primary/10 text-primary':''}`} onClick={()=>update({view:mode})}>{mode}</button>)}</div>
-        <select aria-label="Filter product" value={product} onChange={event=>update({product:event.target.value})} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">{products.map(p=><option key={p} value={p}>{p==='All'?'All products':p}</option>)}</select>
+        <KwantSelect aria-label="Filter product" value={product} onChange={event=>update({product:event.target.value})} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">{products.map(p=><option key={p} value={p}>{p==='All'?'All products':p}</option>)}</KwantSelect>
         <input aria-label="Search calendar events" placeholder="Search dates or events…" value={search} onChange={e=>setSearch(e.target.value.slice(0,100))} className="min-w-36 flex-1 rounded border border-border bg-panel px-3 py-1.5 text-sm"/>
         <button aria-label="Refresh calendar status" disabled={loading} title="Refresh status; shared Cboe source checks are cached for six hours" className="rounded border border-border p-2 disabled:opacity-40" onClick={()=>setRefresh(value=>value+1)}><RefreshCw size={15} className={loading?'animate-spin':''}/></button>
       </div>

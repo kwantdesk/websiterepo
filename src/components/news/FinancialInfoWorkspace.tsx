@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Newspaper, Pause, Play, Search } from "lucide-react";
 import { financialInfoUnavailable, parseFinancialInfo, type FinancialInfoPayload } from "@/lib/financialInfo";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
+import KwantSelect from "@/components/ui/KwantSelect";
 import { browserTimeZone } from "@/lib/timeZones";
 
 export default function FinancialInfoWorkspace() {
@@ -73,7 +74,7 @@ export default function FinancialInfoWorkspace() {
       </header>
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
         <label className="flex min-w-44 flex-1 items-center gap-2 border border-border bg-surface px-3 py-2"><Search className="h-3.5 w-3.5 text-muted" /><input aria-label="Search financial headlines" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search headlines or keywords…" className="w-full bg-transparent text-xs outline-none" /></label>
-        <label className="flex items-center gap-2 text-xs text-muted">Category<select aria-label="Headline category" value={category} onChange={event => setCategory(event.target.value)} className="max-w-48 border border-border bg-surface px-3 py-2 text-foreground">{categories.map(value => <option key={value}>{value}</option>)}</select></label>
+        <label className="flex items-center gap-2 text-xs text-muted">Category<KwantSelect aria-label="Headline category" value={category} onChange={event => setCategory(event.target.value)} className="max-w-48 border border-border bg-surface px-3 py-2 text-foreground">{categories.map(value => <option key={value}>{value}</option>)}</KwantSelect></label>
       </div>
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2 text-[10px] text-muted">
         <span>Newest first · original publication times · RSS is not an instant premium feed</span>
