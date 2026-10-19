@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Ten tonal theme additions
+
+- Added ten single-colour-family themes as requested,43 total. Existing33
+  themes remain byte-identical in resolved tokens/swatches. The earlier mixed
+  themes are not removed; this request adds cleaner tonal alternatives.
+- Molten Copper / Amber Vault / Acid Gold / Lime Obsidian / Emerald Depths /
+  Jade Current / Arctic Cyan / Indigo Night / Violet Noir / Magenta Ink.
+-27 focused tests plus14 candle/brand checks and scoped lint pass. Existing
+  historical coverage, public streaming, weekly completeness and footprint/
+  live-grid/cloud-save soak issues remain OPEN, unrelated to theme additions.
+  Record: `docs/prompt-log/2026-10-19-tonal-themes.md`.
+
 ## 2026-10-19 — Six sampled reference themes and ten mixed palettes
 
 - Owner's new request adds16 themes after the kept17; it does not remove or

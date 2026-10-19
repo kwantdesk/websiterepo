@@ -34,6 +34,31 @@ function mixedPalette(name: string, colors: Palette): ThemePreset {
   return palette(name, colors, [colors.background, colors.panel, colors.primary, colors.secondary, colors.foreground]);
 }
 
+/** One fixed hue per preset, from an inky shell to luminous accents. Resolved
+ * once at module load; applying a theme uses the existing saved hex tokens. */
+function tonalPalette(name: string, hue: number): ThemePreset {
+  const tone = (saturation: number, lightness: number): string => {
+    const s = saturation / 100;
+    const l = lightness / 100;
+    const a = s * Math.min(l, 1 - l);
+    const channel = (n: number) => {
+      const k = (n + hue / 30) % 12;
+      return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, "0");
+    };
+    return `#${channel(0)}${channel(8)}${channel(4)}`.toUpperCase();
+  };
+  const background = tone(70, 4);
+  const panel = tone(65, 8);
+  const primary = tone(95, 65);
+  const secondary = tone(80, 48);
+  return palette(name, {
+    background, panel, surface: tone(60, 12), card: tone(62, 10),
+    foreground: tone(45, 95), primary, secondary, accent: tone(85, 76),
+    muted: tone(30, 68), border: tone(55, 30), danger: secondary,
+    gridColor: tone(55, 15), candleUp: primary, candleDown: tone(50, 86),
+  }, [primary, secondary, tone(65, 28), panel, background]);
+}
+
 /** Owner-approved catalogue, in the requested order. Saved/custom colour
  * snapshots remain independent of which presets are offered here. */
 export const themePresets: ThemePreset[] = [
@@ -72,6 +97,17 @@ mixedPalette("Copper Current", { background: "#071E20", panel: "#0D2A2C", surfac
   mixedPalette("Rose Alloy", { background: "#1D1713", panel: "#2D241F", surface: "#42362E", card: "#342A24", foreground: "#F8ECE3", primary: "#FF799B", secondary: "#92D9A5", muted: "#B8A799", border: "#665346", danger: "#FA8264", candleUp: "#92D9A5", candleDown: "#FF799B" }),
   mixedPalette("Ultraviolet Mint", { background: "#170C1C", panel: "#26132D", surface: "#3B2043", card: "#2E1835", foreground: "#F8E9F5", primary: "#FA52C5", secondary: "#4DFFBE", muted: "#B89DB5", border: "#5A3663", danger: "#FF7D76", candleUp: "#4DFFBE", candleDown: "#FA52C5" }),
   mixedPalette("Terracotta Ice", { background: "#21130F", panel: "#321F19", surface: "#493028", card: "#3A251E", foreground: "#F7EDE6", primary: "#6EBEFF", secondary: "#EF997C", muted: "#BDA294", border: "#6C4B3F", danger: "#FF746C", candleUp: "#6EBEFF", candleDown: "#EF997C" }),
+  // Additional owner-requested single-family palettes. Keep prior themes intact.
+  tonalPalette("Molten Copper", 24),
+  tonalPalette("Amber Vault", 42),
+  tonalPalette("Acid Gold", 64),
+  tonalPalette("Lime Obsidian", 95),
+  tonalPalette("Emerald Depths", 146),
+  tonalPalette("Jade Current", 174),
+  tonalPalette("Arctic Cyan", 196),
+  tonalPalette("Indigo Night", 230),
+  tonalPalette("Violet Noir", 270),
+  tonalPalette("Magenta Ink", 314),
 ];
 
 export const RETAINED_THEME_NAMES = ["Midnight Cockpit", "Kwant Desk", "Mr. Quant"] as const;

@@ -16,7 +16,7 @@ const ratio=(a,b)=>contrastRatio(parseResolvedColor(a),parseResolvedColor(b));
 function hue(hex){const [r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255),high=Math.max(r,g,b),low=Math.min(r,g,b),d=high-low;return ((high===r?(g-b)/d:high===g?(b-r)/d+2:(r-g)/d+4)*60+360)%360;}
 
 test('six reference strips preserve exact sampled colours and left-to-right order',()=>{
-  assert.equal(themePresets.length,33);
+  assert.equal(themePresets.length,43);
   for(const [name,swatches] of Object.entries(references)){
     const preset=themePresets.find(p=>p.name===name);assert.ok(preset,name);
     assert.deepEqual(preset.swatches,swatches,name);
@@ -25,7 +25,7 @@ test('six reference strips preserve exact sampled colours and left-to-right orde
 });
 
 test('ten extra palettes use distinct cross-hue accent pairs rather than monochrome copies',()=>{
-  const extras=themePresets.slice(23);assert.equal(extras.length,10);
+  const extras=themePresets.slice(23,33);assert.equal(extras.length,10);
   assert.equal(new Set(extras.flatMap(p=>[p.colors.primary,p.colors.secondary])).size,20);
   assert.equal(new Set(extras.map(p=>p.colors.background)).size,10);
   for(const {name,colors} of extras){const difference=Math.abs(hue(colors.primary)-hue(colors.secondary));assert.ok(Math.min(difference,360-difference)>=35,name);}

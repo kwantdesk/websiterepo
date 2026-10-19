@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — Ten additional single-family tonal themes
+
+- Owner prefers Crimson Fade/Blue Lagoon's coherent hue families. Appended
+  ten tonal themes,43 total; all previous33 names/colours/swatches are unchanged.
+- Molten Copper, Amber Vault, Acid Gold, Lime Obsidian, Emerald Depths,
+  Jade Current, Arctic Cyan, Indigo Night, Violet Noir and Magenta Ink.
+  Each has one fixed hue across dark shell, controls, candles and five swatches.
+- Hex tokens resolve once at module load; normal apply/save/custom semantics
+  stay intact. No animation, polling, data-path or renderer changes.
+-27 focused theme regressions plus14 candle/brand checks pass; scoped lint
+  passes. Full build/release record:
+  `docs/prompt-log/2026-10-19-tonal-themes.md`.
+
 ## 2026-10-19 — Six reference themes plus ten distinct mixed-colour themes
 
 - Owner supplied six five-colour palette screenshots and requested matching
