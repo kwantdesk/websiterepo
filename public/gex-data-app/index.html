@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#090015">
   <title>GEX DATA · Kwant Desk</title>
   <script src="/gex-data-app/site-bootstrap.js?v=1"></script>
+  <link rel="stylesheet" href="/workspace-loading.css?v=1">
   <link rel="stylesheet" href="/gex-data-app/styles.css?v=1">
   <link rel="stylesheet" href="/gex-data-app/workspace.css?v=1">
   <link rel="stylesheet" href="/gex-data-app/filter-editor.css?v=1">
@@ -41,7 +42,7 @@
     <section class="status-strip" aria-live="polite">
       <span class="page-name">GEX DATA</span>
       <span class="source-badge" id="sourceBadge"><i></i><span>CONNECTING</span></span>
-      <span class="status-copy" id="statusCopy">Checking the licensed market-data connection…</span>
+      <span class="status-copy" id="statusCopy">Connecting…</span>
       <button id="refreshAll" type="button">↻ Refresh all</button>
     </section>
 
@@ -161,6 +162,7 @@
       <section class="tool-summary" id="toolSummary" aria-live="polite"></section>
       <section class="tool-stage" id="toolStage">
         <div class="tool-error" id="toolError" hidden></div>
+        <div id="initialToolLoading" hidden></div>
         <div class="chart-toolbar" id="chartToolbar" hidden>
           <span>Scroll to zoom · drag to inspect · double-click to reset</span>
           <button id="resetZoom" type="button">Reset view</button>

@@ -6,7 +6,7 @@
   let owner = window;
   for (let depth = 0; depth < 5; depth++) {
     try {
-      const host = hostId ? owner.__kwantOptionsToolHosts?.[hostId] : owner.__kwantGexDataHost;
+      const host = hostId ? owner.__kwantOptionsToolHosts?.[hostId] : location.pathname?.startsWith('/kwanty-app/') ? owner.__kwantyHost : owner.__kwantGexDataHost;
       if (host) {
         const theme = host.theme();
         for (const [key, value] of Object.entries(theme)) root.style.setProperty('--site-' + key, value);

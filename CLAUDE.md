@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Standard loading presentation for KWANTY and GEX DATA
+
+- Latest owner request supersedes GEX DATA's quiet-only startup presentation:
+  both pages use the normal themed KwantLoader at React startup. GEX VUE's
+  independently requested quiet startup is unchanged.
+- Embedded apps share public/workspace-loading.js/css, visually aligned with
+  compact KwantLoader (theme surface, sparkles emblem/halo/orbit, reduced motion).
+  GEX DATA only covers an empty first tool load, never existing-chart refresh
+  or pagination. KWANTY hides its loader for real data and shows actual errors.
+- Removed licensed-data loading copy from initial chart, trades and profile
+  pending states. Data/provider entitlement errors remain authoritative. No
+  transport, authentication, feed timing, calculations or saved layout changes.
+- Record: docs/prompt-log/2026-10-20-standard-workspace-loading.md.
+
 ## 2026-10-20 — GEX DATA toolbar matches the command rail
 
 - Replaced prototype symbol glyphs with labelled stroked SVG icons; the top

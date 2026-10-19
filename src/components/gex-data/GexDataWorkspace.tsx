@@ -170,6 +170,6 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
     {ready ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
       title="GEX DATA tools and workspace" className="h-full w-full border-0" allow="fullscreen"
       onLoad={() => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-activity", { active: activeRef.current })} />
-      : <KwantLoader quiet className="h-full w-full" title="Opening GEX DATA" />}
+      : <KwantLoader compact className="h-full w-full" title="Loading GEX DATA" />}
   </section>;
 }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KWANTY · Kwant Desk</title><link rel="stylesheet" href="/kwanty-app/styles.css"><link rel="stylesheet" href="/kwanty-app/site.css"><script type="module" src="/kwanty-app/site-runtime.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KWANTY · Kwant Desk</title><script src="/gex-data-app/site-bootstrap.js?v=2"></script><link rel="stylesheet" href="/workspace-loading.css?v=1"><link rel="stylesheet" href="/kwanty-app/styles.css"><link rel="stylesheet" href="/kwanty-app/site.css"><script type="module" src="/kwanty-app/site-runtime.js"></script></head>
 <body>
 <link rel="stylesheet" href="/gex-data-app/themed-select.css?v=1">
 <script type="module" src="/gex-data-app/themed-select.js?v=1"></script>
@@ -7,7 +7,8 @@
 <main>
  <section id="charts" aria-label="Market charts">
   <div class="chart-tools"><button id="toggleSidebar" aria-label="Toggle controls">❯</button><button id="fullscreen" aria-label="Fullscreen chart">⛶</button><button id="screenshot" aria-label="Download chart image">▣</button><select id="candleInterval" aria-label="Candle interval"><option value="60000">1m</option><option value="300000">5m</option><option value="900000">15m</option><option value="3600000">1h</option></select></div>
-  <div id="chartPanels"></div><div id="chartEmpty" role="status">Connecting to licensed positioning feed API…</div>
+  <div id="chartPanels"></div><div id="chartEmpty" role="status"></div>
+  <script type="module">import {showWorkspaceLoading} from '/workspace-loading.js?v=1';showWorkspaceLoading(document.querySelector('#chartEmpty'),'Loading KWANTY');</script>
   <div id="chartTooltip" role="tooltip" hidden></div>
   <div id="historyNotice" role="status">No full-session history loaded. Price curves use only actual snapshots collected here.</div>
  </section>

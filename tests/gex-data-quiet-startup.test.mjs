@@ -48,11 +48,11 @@ test('theme surface changes synchronously while one shared colour download is pe
   await context.install({background:'#001b20'});assert.equal(requests,1);
 });
 
-test('both React startup phases use the accessible quiet website surface',()=>{
+test('both React startup phases use the standard website loader requested by the owner',()=>{
   const workspace=read('src/components/KwantifyWorkspace.tsx');
   const host=read('src/components/gex-data/GexDataWorkspace.tsx');
-  assert.match(workspace,/workspaceLoader\("Opening GEX DATA",[^\n]+true\)/);
-  assert.match(host,/<KwantLoader quiet className="h-full w-full" title="Opening GEX DATA"/);
+  assert.match(workspace,/workspaceLoader\("Loading GEX DATA", "Restoring your data workspace\."\)/);
+  assert.match(host,/<KwantLoader compact className="h-full w-full" title="Loading GEX DATA"/);
   assert.doesNotMatch(host,/>Opening GEX DATA…</);
   assert.match(host,/overflow-hidden bg-background/);
 });

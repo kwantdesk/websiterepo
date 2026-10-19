@@ -6,9 +6,10 @@ import {useSearchParams} from "next/navigation";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { loadStoredChartSettings } from "@/lib/chartSettings";
+import KwantLoader from "@/components/KwantLoader";
 
 const STORAGE_KEY = "kwantdesk:kwanty:workspace:v1";
-const OptionsExpirationCalendar=dynamic(()=>import('./OptionsExpirationCalendar'),{ssr:false,loading:()=> <div className="p-4 text-sm text-muted">Opening expiration calendar…</div>});
+const OptionsExpirationCalendar=dynamic(()=>import('./OptionsExpirationCalendar'),{ssr:false,loading:()=> <KwantLoader compact className="h-full w-full" title="Loading calendar" />});
 type BotSiteHost = {
   active: boolean;
   read: (key: string) => string | null;
@@ -152,7 +153,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
     {ready && positioningOpened ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
       title="KWANTY tools and workspace" className="h-full w-full border-0" allow="fullscreen"
       onLoad={() => broadcast(frame.current?.contentWindow ?? null, "kwanty-site-activity", { active: activeRef.current })} />
-      : <div className="p-4 text-sm text-muted">Opening KWANTY…</div>}
+      : <KwantLoader compact className="h-full w-full" title="Loading KWANTY" />}
     </div>
     {calendarOpen?<div className="min-h-0 flex-1"><OptionsExpirationCalendar key={accountKey} accountKey={accountKey} active={sectionActive}/></div>:null}
   </section>;

@@ -1,4 +1,5 @@
 import {themePaint} from './site-theme.js?v=1';
+import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {gexStorage,gexTimeZone,gexFetch as fetch} from './site-runtime.js?v=1';
 import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, averagedIvRank, marketMapColor, squarifyTreemap, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=1";
 import { PRICE_CHART_TYPES, parsePriceRows, priceChartPresentation, drawPriceCandles, drawOptionVolume, drawDarkFlowArea, prepareDarkPoolLevels, DARK_POOL_LEVEL_COLUMNS, EQUITY_PRINT_COLUMNS, EXCHANGE_NOTIFICATION_COLUMNS, NOTIFICATION_TYPES, equitySideColorToken, equityPrintColorToken, notificationColorToken } from "./equity-renderers.js?v=2";
@@ -846,7 +847,7 @@ await boot();
     if(timeRange){delete request.sessionDate;request.timeRange=timeRange;}
     if(individual)request=optionTradeDetailRequest({base,filter,timeRange});
     showDataDialog(title,dialog=>{
-      dialog.classList.add('trade-detail-dialog');dialog.append(element('p','',preview));const status=element('p','workspace-note','Loading actual licensed trades…'),wrap=element('div','trade-detail-scroll'),table=document.createElement('table'),more=element('button','','Load next 100');more.type='button';more.hidden=true;wrap.append(table);dialog.append(status,wrap,more);let rows=[],cursor;
+      dialog.classList.add('trade-detail-dialog');dialog.append(element('p','',preview));const status=element('div','workspace-note'),wrap=element('div','trade-detail-scroll'),table=document.createElement('table'),more=element('button','','Load next 100');showWorkspaceLoading(status,'Loading trades');more.type='button';more.hidden=true;wrap.append(table);dialog.append(status,wrap,more);let rows=[],cursor;
       const view=createTableView({table,maxRows:1000});
       const load=async()=>{more.disabled=true;try{const response=await toolFetch(individual?OPTION_TRADE_DETAIL_ENDPOINT:'order-flow-consolidated',{...request,...(cursor?{searchAfter:cursor}:{})});rows.push(...(individual?unconsolidatedTradeRows(response):response.data||[]));cursor=response.nextSearchAfter;view.setRows(rows,{columns:individual?UNCONSOLIDATED_COLUMNS:CONSOLIDATED_COLUMNS,toolId:'detail',sortKey:'premium'});status.textContent=`${rows.length} actual ${individual?'individual prints':'trades'} · largest premium first · values are not inferred from chart buckets`;more.hidden=!cursor;}catch(error){status.textContent=error.message;}finally{more.disabled=false;}};more.addEventListener('click',load);dialog.addEventListener('close',()=>view.destroy());load();
     });
@@ -906,6 +907,7 @@ await boot();
     return toolFetch(tool.endpoint, body);
   }
 
+  function updateInitialToolLoading(busy){const target=q('#initialToolLoading');target.hidden=!busy;if(busy)showWorkspaceLoading(target,'Loading '+(activeTool?.title||'GEX DATA'));}
   async function loadActiveTool({append=false}={}) {
     if(!activeTool||window.__gexDataActive===false||!frameVisible)return;
     const tool=activeTool,requestId=++toolRequestId;
@@ -914,6 +916,7 @@ await boot();
     // Keep the existing chart/table usable during both automatic and manual
     // refreshes. Network activity must not cover it with a loading screen.
     toolView.setAttribute("aria-busy","true");q("#toolError").hidden=true;
+    updateInitialToolLoading(!toolPayload&&!append);
     try{
       const payload=await loadToolPayload(tool);
       if(requestId!==toolRequestId||activeTool!==tool)return;
@@ -930,7 +933,7 @@ await boot();
     }catch(error){
       if(requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){q("#toolError").textContent=error.message;q("#toolError").hidden=false;updateLiveState();if(EMBEDDED)parent.postMessage({type:'gex-data-status',failed:true,message:error.message},location.origin);}
     }finally{
-      if(requestId===toolRequestId&&activeTool===tool){toolView.setAttribute("aria-busy","false");schedulePoll();}
+      if(requestId===toolRequestId&&activeTool===tool){updateInitialToolLoading(false);toolView.setAttribute("aria-busy","false");schedulePoll();}
     }
   }
 

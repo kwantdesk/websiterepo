@@ -94,7 +94,7 @@ export async function createParityServer({ fetchImpl = fetch, token: testToken }
       if (request.method !== 'GET' && request.method !== 'HEAD') return json(response, 405, { error: 'Read-only assets.' });
       let asset;
       if (url.pathname === '/') asset = FIXTURE;
-      else if (/^\/gex-data-app\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || /^\/fonts\/aleph\/Aleph-(?:Regular|Bold)\.ttf$/.test(url.pathname)) asset = resolve(PUBLIC, `.${url.pathname}`);
+      else if (/^\/(?:gex-data-app|kwanty-app)\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || /^\/workspace-loading\.(?:js|css)$/.test(url.pathname) || /^\/fonts\/aleph\/Aleph-(?:Regular|Bold)\.ttf$/.test(url.pathname)) asset = resolve(PUBLIC, `.${url.pathname}`);
       else return json(response, 404, { error: 'QA asset not found.' });
       const actual = await realpath(asset), allowed = asset === FIXTURE ? resolve(ROOT, 'tests/fixtures') : PUBLIC;
       const inside = relative(allowed, actual);

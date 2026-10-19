@@ -49,3 +49,4 @@ body{min-width:0;overflow:hidden}
 .topbar .top-action sup{position:static;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:14px;width:auto;height:14px;margin:0;padding:0 3px;border-radius:3px;background:var(--site-surface);color:var(--site-primary);font-size:9px;letter-spacing:normal}
 .topbar .top-action sup[hidden]{display:none}
 .topbar .top-divider{height:18px;flex:0 0 1px;background:var(--site-border)}
+#initialToolLoading{position:absolute;inset:0;z-index:2}

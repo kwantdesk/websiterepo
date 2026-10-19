@@ -17,6 +17,7 @@ function harness() {
     toolView: {setAttribute: (key, value) => attrs.set(key, value)},
     q: selector => { assert.ok(nodes[selector], `Unexpected DOM access: ${selector}`); return nodes[selector]; },
     clearTimeout() {}, schedulePoll: () => context.scheduled++, scheduled: 0,
+    updateInitialToolLoading:busy=>context.initialLoading=busy,initialLoading:false,
     loadToolPayload: () => new Promise((resolve, reject) => requests.push({resolve, reject})),
     renderToolPayload: (_, payload) => renders.push(payload), renderSnapshotControl() {},
     snapshotSelections: new Map(), snapshotKey: () => 'current',
@@ -69,12 +70,15 @@ test('superseded requests cannot repaint data or clear the current request busy 
   assert.equal(h.attrs.get('aria-busy'), 'false');
 });
 
-test('initial load and pagination are also unobstructed; paused tools do not request', async () => {
+test('only an empty first load uses the standard loader; pagination and paused tools do not', async () => {
   const h = harness(); h.context.toolPayload = null;
   const initial = h.context.load();
+  assert.equal(h.context.initialLoading,true);
   h.requests[0].resolve({data: [{id: 1}]}); await initial;
+  assert.equal(h.context.initialLoading,false);
   h.context.tableRows = [{id: 1}];
   const next = h.context.load({append: true});
+  assert.equal(h.context.initialLoading,false);
   assert.equal(h.renders.length, 1);
   h.requests[1].resolve({data: [{id: 2}]}); await next;
   assert.deepEqual(Array.from(h.context.toolPayload.data, row => row.id), [1, 2]);
@@ -95,8 +99,8 @@ test('pagination retains first-page aggregate statistics rather than removing th
   assert.equal(h.context.toolPayload.statistics,replacement);
 });
 
-test('both legacy panels and tool frames remove loading screens, not error or freshness UI', () => {
-  assert.doesNotMatch(source, /toolLoading|classList\.(?:add|remove)\("loading"\)/);
+test('initial loading uses standard presentation without reintroducing legacy licensed-data refresh covers', () => {
+  assert.doesNotMatch(source, /classList\.(?:add|remove)\("loading"\)/);
   assert.doesNotMatch(read('../public/gex-data-app/index.html'), /toolLoading|Loading licensed market-data/);
   assert.doesNotMatch(read('../public/gex-data-app/styles.css'), /tool-loading|\.panel\.loading::after/);
   assert.match(read('../public/gex-data-app/index.html'), /id="toolError"/);

@@ -24,6 +24,9 @@ export function themePaint(color){
 }
 export async function installTheme(next){
   palette={...defaults,...next};if(typeof document==='undefined')return;
+  document.documentElement.style.backgroundColor=palette.background;
+  document.documentElement.style.color=palette.foreground;
+  for(const[key,value]of Object.entries(palette))document.documentElement.style.setProperty('--site-'+key,value);
   const colors=await fetch(new URL('./site-colors.json',import.meta.url)).then(r=>r.json());
   for(const color of colors){const suffix=[...new TextEncoder().encode(color)].map(n=>n.toString(16).padStart(2,'0')).join('');document.documentElement.style.setProperty('--gex-'+suffix,themePaint(color));}
   for(const[key,value]of Object.entries(palette))document.documentElement.style.setProperty('--site-'+key,value);

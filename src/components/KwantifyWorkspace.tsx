@@ -508,7 +508,7 @@ const GexBotWorkspace = dynamic(loadGexBotWorkspace, {
 });
 const GexDataWorkspace = dynamic(loadGexDataWorkspace, {
   ssr: false,
-  loading: () => workspaceLoader("Opening GEX DATA", "Restoring your data workspace.", true),
+  loading: () => workspaceLoader("Loading GEX DATA", "Restoring your data workspace."),
 });
 const KwantyWorkspace = dynamic(loadKwantyWorkspace, {
   ssr: false,
