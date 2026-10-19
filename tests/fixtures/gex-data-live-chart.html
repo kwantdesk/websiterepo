@@ -5,7 +5,7 @@
 <iframe title="Synthetic Net Drift" src="/gex-data-app/index.html?embed=1&instance=synthetic-refresh&c_ticker=SPY&c_period=1m#tool=net-drift" style="width:100%;height:850px;border:0"></iframe>
 <script>
 const saved=new Map();let revision=0;
-window.__kwantGexDataHost={active:true,timezone:()=> 'America/New_York',theme:()=>({primary:'#aaaaaa',bullish:'#45ed86',bearish:'#ff5970',accent:'#62b7ff'}),instruments:()=>[['SPY','SPY']],read:key=>saved.get(key)??null,write:(key,value)=>saved.set(key,value),snapshot:()=>Object.fromEntries(saved),restore(){},
+window.__kwantGexDataHost={active:true,timezone:()=> 'America/New_York',theme:()=>({primary:'#aaaaaa',bullish:'#45ed86',bearish:'#ff5970',accent:'#62b7ff'}),instruments:()=>[['SPY','SPY']],read:key=>saved.get(key)??null,write:(key,value)=>{saved.set(key,value);localStorage.setItem('gex-data-synthetic-prefs',JSON.stringify([...saved]));},snapshot:()=>Object.fromEntries(saved),restore(){},
 request:async url=>{
  const market={sessionDate:'2026-10-19',optionsSessionDate:'2026-10-19',open:true,optionsOpen:true,equitiesOpen:true};
  if(url.endsWith('/status'))return Response.json({connected:true,mode:'gateway',market});
@@ -19,6 +19,6 @@ document.querySelector('#revise').onclick=()=>{
  revision++;doc.querySelector('#toolControls [aria-label="Refresh"], #toolControls [title="Refresh"]')?.click();
  // Refresh is a resolved synthetic Response, not a remote data timing test.
  setTimeout(()=>{const current=doc.querySelector('.quant-detail-chart'),newSlider=doc.querySelector('.zoom-gesture-handle');
- document.querySelector('#result').textContent=current===canvas&&newSlider===slider&&Number(slider.getAttribute('aria-valuemax'))===oldMax+1?'PASS: canvas and navigator retained; interval appended':'FAIL: chart/navigator replaced or interval not appended';},150);
+ document.querySelector('#result').textContent=current===canvas&&newSlider===slider&&Number(slider.getAttribute('aria-valuemax'))===oldMax+1?'PASS: canvas and navigator retained; interval appended; storage echo settled':'FAIL: chart/navigator replaced or interval not appended';},750);
 };
 </script></body></html>

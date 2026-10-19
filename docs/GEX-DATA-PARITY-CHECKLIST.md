@@ -82,9 +82,19 @@ October 20 Brisbane. Reference https://v3.quantdata.us/ and production GEX DATA.
   scheduler checked only the hidden local mode. Scheduler now checks the
   effective requested session date and safely pauses invalid filter requests.
 - Net Drift underlying legend now uses the actual plotted price colour.
-- Added6 tests; focused/integration/reference suite **106/106 passes**.
+- Live production acceptance caught another rebuild path: host storage writes
+  echo into child frames. Preference handlers now skip unchanged filter and
+  presentation signatures, but still apply genuine theme/configuration/filter
+  changes. Isolated browser QA with real parent localStorage echo settled
+  confirms canvas and navigator identity remain unchanged after the save timer.
+- Added7 tests; focused/integration/reference suite **107/107 passes**.
 
 ## Confirmed live-cadence gap — NOT fixed
+
+- Measured visible legend values at1-second sampling,14:39:13.575–14:39:20.886
+  UTC October19: reference changed at samples15.698,17.776 and19.849 (~2s),
+  while our displayed values stayed unchanged through that7.3s window. This
+  confirms an observable mismatch; it does not establish a1ms source cadence.
 
 - Client floor30s; current response route cache15s; gateway default cache10s.
   Catalogue Net Drift12s and flow6s settings are overridden by that floor.
@@ -109,3 +119,8 @@ October 20 Brisbane. Reference https://v3.quantdata.us/ and production GEX DATA.
 Supported permanent transport (wait for Vultr); full rolling-month futures /
 options history; missing Asia opening tape; weekly/profile/footprint live soak.
 This audit does not close those or the remaining21 tool acceptance gates.
+
+Release: commit bbc99a10357cc2ae955a0b0ae0476f136dc9ce9d,
+production dpl_A1Rqvx9mKzjALJPir2AqYsSxh9H4 READY; uncached live diagnostics
+returns the same exact commit. This releases the scoped refresh fixes, not
+complete tool/data/live parity.

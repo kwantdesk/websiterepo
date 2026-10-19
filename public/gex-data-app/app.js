@@ -1645,8 +1645,16 @@ await boot();
   window.addEventListener('pagehide',()=>{clearInterval(statusTimer);clearTimeout(pollTimer);activeController?.abort();activeChartDispose?.();tableRuntime?.destroy();});
   window.addEventListener('gex-data-timezone',refreshTimeZonePresentation);
   const preferenceFilterSignature=()=>JSON.stringify({overrides:getFilterOverrides(),groups:getFilterGroups().map(group=>({id:group.id,expression:group.expression}))});
+  const preferencePresentationSignature=()=>JSON.stringify([toolConfiguration,document.documentElement.getAttribute('style'),document.documentElement.className]);
   let lastFilterSignature=preferenceFilterSignature();
-  const preferencesChanged=()=>{toolConfiguration=applyDocumentPreferences();reflectFilterOverrides();syncDateControl();const signature=preferenceFilterSignature();if(signature!==lastFilterSignature){lastFilterSignature=signature;if(activeTool)loadActiveTool();}else if(activeTool&&toolPayload){renderToolPayload(activeTool,toolPayload);renderSnapshotControl(toolPayload);}};
+  let lastPresentationSignature=preferencePresentationSignature();
+  const preferencesChanged=()=>{
+    toolConfiguration=applyDocumentPreferences();
+    const signature=preferenceFilterSignature(),presentation=preferencePresentationSignature(),presentationChanged=presentation!==lastPresentationSignature;
+    lastPresentationSignature=presentation;
+    if(signature!==lastFilterSignature){lastFilterSignature=signature;reflectFilterOverrides();syncDateControl();if(activeTool)loadActiveTool();}
+    else if(presentationChanged&&activeTool&&toolPayload){renderToolPayload(activeTool,toolPayload);renderSnapshotControl(toolPayload);}
+  };
   window.addEventListener('storage',preferencesChanged);window.addEventListener('gex-data-preferences',preferencesChanged);
   window.addEventListener('message',event=>{if(!EMBEDDED||event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='gex-data-preferences')preferencesChanged();if(event.data?.type==='gex-data-refresh')loadActiveTool();if(event.data?.type==='gex-data-save-state')saveToolControls();if(event.data?.type==='gex-data-visibility'){frameVisible=event.data.visible===true;if(frameVisible){if(activeTool&&!toolPayload)loadActiveTool();schedulePoll();}else{clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}}});
   window.addEventListener("hashchange", () => {

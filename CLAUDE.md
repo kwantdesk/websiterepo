@@ -12,7 +12,11 @@
 - Net Drift now updates compatible revisions/appended buckets in its existing
   canvas/navigator, preserving viewport; changed request/presentation or changed
   historical timeline rebuilds explicitly. Historical page/global overrides
-  now pause polling, not just tool-local historical mode.106 regressions pass.
+  now pause polling, not just tool-local historical mode.107 regressions pass.
+- Production acceptance caught a parent-storage echo after chart saves that
+  still rebuilt tools. Ignore unchanged filter/presentation signatures while
+  preserving real theme/configuration/filter updates. Synthetic browser QA with
+  actual parent localStorage echoes proves canvas/navigator identity retained.
 - Cadence remains OPEN:30s client/15s route/10s gateway caches. Official public
   API quota240/min shared; streaming listed Coming Soon. Do not increase
   per-tick polling through Vercel or promise website-private-stream parity.

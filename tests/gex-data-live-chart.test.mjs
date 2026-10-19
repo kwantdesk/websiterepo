@@ -74,3 +74,13 @@ test('real canvas updater retains nodes, revised rows, drag state and growing na
   assert.deepEqual(lengths,[3]);assert.equal(renders.at(-1),16);assert.equal(shell.children[0].lastChild.items[0].value,'16');
   assert.equal(chart.update([{time:5,call:99},{time:6,call:99}],[],[]),false);assert.equal(rows.at(-1).call,16);
 });
+test('chart/save storage echoes do not repaint; real theme/configuration and filter changes still apply',()=>{
+  let configuration={},style='theme-one',filters={},renders=0,loads=0,reflects=0;
+  const context={toolConfiguration:configuration,document:{documentElement:{getAttribute:()=>style,className:'embedded'}},getFilterOverrides:()=>filters,getFilterGroups:()=>[],applyDocumentPreferences:()=>configuration,activeTool:{id:'net-drift'},toolPayload:{data:{}},renderToolPayload(){renders++;},renderSnapshotControl(){},reflectFilterOverrides(){reflects++;},syncDateControl(){},loadActiveTool(){loads++;}};
+  vm.runInNewContext(source.slice(source.indexOf('  const preferenceFilterSignature='),source.indexOf("  window.addEventListener('storage',preferencesChanged)"))+'\nthis.changed=preferencesChanged;',context);
+  context.changed();context.changed();assert.equal(renders,0);assert.equal(loads,0);assert.equal(reflects,0);
+  configuration={hideTooltips:true};context.changed();assert.equal(renders,1);assert.equal(loads,0);
+  style='theme-two';context.changed();assert.equal(renders,2);
+  filters={page:{sessionDate:'2026-10-16'}};context.changed();assert.equal(loads,1);assert.equal(reflects,1);assert.equal(renders,2);
+  context.changed();assert.equal(loads,1);assert.equal(renders,2);
+});

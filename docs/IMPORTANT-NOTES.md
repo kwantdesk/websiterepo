@@ -5,8 +5,8 @@
 - Running22-tool checklist: docs/GEX-DATA-PARITY-CHECKLIST.md. First Net Drift
   completed-session SPY check matches rounded calls-16.41M/puts64.76M/spot762.74
   and curve/volume shape. Exact buckets/trades and live cadence NOT signed off.
-- Net Drift canvas/navigator reuse and historical override polling fixes have
- 106 passing regressions; no numerical-model or faster-polling change.
+- Net Drift canvas/navigator reuse, historical override polling and no-op save
+  echo guards have107 passing regressions; no math or faster-polling change.
 - Live parity still blocked by current30s refresh/cache policy and the shared
   public API240/min quota; private website stream entitlement not established.
   Do not promise1ms updates or spend quota/Vercel charges polling every panel.
