@@ -969,7 +969,9 @@ export default function SettingsPage() {
                   {themePresets.map((preset) => (
                     <button key={preset.name} onClick={() => applyThemePreset(preset.colors)} className="rounded-2xl border border-border bg-surface/40 p-4 text-left transition hover:border-primary/50">
                       <div className="mb-3 flex overflow-hidden rounded-lg border border-border">
-                        {[preset.colors.background, preset.colors.panel, preset.colors.surface, preset.colors.primary, preset.colors.danger].map((color, i) => <span key={i} className="h-6 flex-1" style={{ backgroundColor: color }} />)}
+                        {preset.profileGradient ? (
+                          <span className="h-6 flex-1" style={{ background: `linear-gradient(90deg, ${preset.profileGradient.from}, ${preset.profileGradient.to})` }} />
+                        ) : [preset.colors.background, preset.colors.panel, preset.colors.surface, preset.colors.primary, preset.colors.danger].map((color, i) => <span key={i} className="h-6 flex-1" style={{ backgroundColor: color }} />)}
                       </div>
                       <div className="text-[13px] font-medium">{preset.name}</div>
                     </button>

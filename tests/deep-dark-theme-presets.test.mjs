@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {themePresets, DEEP_DARK_THEME_NAMES, NEW_THEME_COUNT, RETAINED_THEME_NAMES} from "../src/lib/themePresets.ts";
+import {themePresets, DEEP_DARK_THEME_NAMES, PROFILE_GRADIENT_THEME_NAMES, NEW_THEME_COUNT, RETAINED_THEME_NAMES} from "../src/lib/themePresets.ts";
 import {contrastRatio, parseResolvedColor} from "../src/lib/readableContrast.ts";
 
 const added=themePresets.filter(p=>DEEP_DARK_THEME_NAMES.includes(p.name));
@@ -14,7 +14,7 @@ const hue=hex=>{
 test("exactly twenty additional selectable palettes retain the original collection",()=>{
   assert.equal(added.length,20);
   assert.equal(new Set(DEEP_DARK_THEME_NAMES).size,20);
-  assert.equal(themePresets.length,64);
+  assert.equal(themePresets.length,64+PROFILE_GRADIENT_THEME_NAMES.length-1);
   assert.equal(NEW_THEME_COUNT,themePresets.length-RETAINED_THEME_NAMES.length);
   assert.deepEqual(added.map(p=>p.name),[...DEEP_DARK_THEME_NAMES]);
   assert.deepEqual(themePresets.slice(0,3).map(p=>p.name),[...RETAINED_THEME_NAMES]);
@@ -61,6 +61,9 @@ test("new palettes are not duplicate or near-identical colour triples",()=>{
   const roles=["background","primary","secondary"];
   for(const preset of added){
     for(const other of themePresets){
+      // These explicitly requested endpoint mirrors are tested separately;
+      // keep the prior twenty-vs-original-collection distinctness guarantee.
+      if(other.profileGradient && other.name!=="Chromey Mono")continue;
       if(preset.name===other.name)continue;
       const left=roles.flatMap(k=>rgb(preset.colors[k]));
       const right=roles.flatMap(k=>rgb(other.colors[k]));

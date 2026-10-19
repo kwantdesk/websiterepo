@@ -1,15 +1,19 @@
 import { defaultTheme, type ThemeColors } from "@/lib/theme";
+import { legibleOn } from "./readableContrast.ts";
+import { VOLUME_PROFILE_GRADIENTS, mixHexColors, type VolumeProfileGradient } from "./volumeProfileGradients.ts";
 
 export type ThemePreset = {
   name: string;
   colors: ThemeColors;
+  profileGradient?: VolumeProfileGradient;
 };
 
 type Palette = Partial<ThemeColors> & Pick<ThemeColors, "background" | "panel" | "surface" | "card" | "foreground" | "primary" | "secondary" | "muted" | "border" | "danger">;
 
-function palette(name: string, colors: Palette): ThemePreset {
+function palette(name: string, colors: Palette, profileGradient?: VolumeProfileGradient): ThemePreset {
   return {
     name,
+    ...(profileGradient ? { profileGradient } : {}),
     colors: {
       ...defaultTheme,
       ...colors,
@@ -26,6 +30,26 @@ function palette(name: string, colors: Palette): ThemePreset {
       candleDownBorder: colors.candleDownBorder ?? colors.candleDown ?? colors.danger,
     },
   };
+}
+
+/** Share the profile's actual endpoints, not a second hand-copied catalogue.
+ * Keep raw candle/preview colours exact; lift only UI ink and candle outlines
+ * when a very dark endpoint (black/indigo) cannot be read on a dark surface. */
+function profileGradientTheme(gradient: VolumeProfileGradient): ThemePreset {
+  const {from, to, label} = gradient;
+  const tint = mixHexColors(from, to, .5);
+  const background = mixHexColors(tint, "#000000", .96);
+  const panel = mixHexColors(tint, "#000000", .93);
+  const surface = mixHexColors(tint, "#000000", .87);
+  const readable = (color: string) => legibleOn(color, surface, 4.5);
+  return palette(label, {
+    background, panel, surface, card: mixHexColors(tint, "#000000", .9),
+    foreground: "#F5F7FA", muted: "#ADB5C2", border: mixHexColors(tint, "#000000", .64),
+    primary: readable(to), secondary: readable(from), accent: from, danger: readable(from),
+    chartBackground: background, gridColor: mixHexColors(tint, "#000000", .88),
+    candleUp: to, candleDown: from,
+    candleUpBorder: legibleOn(to, surface, 3), candleDownBorder: legibleOn(from, surface, 3),
+  }, gradient);
 }
 
 /**
@@ -69,7 +93,11 @@ export const themePresets: ThemePreset[] = [
      */
     candleUp: "#00FF00", candleUpBorder: "#00FF00",
     candleDown: "#000000", candleDownBorder: "#B9C0B9",
-  }),
+  }, VOLUME_PROFILE_GRADIENTS.find(gradient => gradient.id === "chromey-mono")),
+
+  ...VOLUME_PROFILE_GRADIENTS
+    .filter(gradient => gradient.id !== "chromey-mono")
+    .map(profileGradientTheme),
 
   // Deep, ink-tinted shells and saturated accents. No animated glow/filter
   // layers: contrast supplies the luminous edge without repainting charts.
@@ -141,7 +169,8 @@ export const themePresets: ThemePreset[] = [
 ];
 
 export const RETAINED_THEME_NAMES = ["Midnight Cockpit", "Kwant Desk", "Mr. Quant"] as const;
-export const NEW_THEME_COUNT = 61;
+export const NEW_THEME_COUNT = themePresets.length - RETAINED_THEME_NAMES.length;
+export const PROFILE_GRADIENT_THEME_NAMES = VOLUME_PROFILE_GRADIENTS.map(gradient => gradient.label);
 
 export const DEEP_DARK_THEME_NAMES = [
   "Velvet Voltage", "Ruby Noir", "Cobalt Copper", "Arctic Chrome", "Tangerine Obsidian",

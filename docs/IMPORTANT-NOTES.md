@@ -1,5 +1,20 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Profile gradient colours available as themes
+
+- Every one of the12 Daily Volume Profile schemes now has a named theme:
+  existing Chromey Mono plus11 new exact-labelled pairs. Off stays a control.
+  Source endpoints and card gradients come from VOLUME_PROFILE_GRADIENTS,
+  not copied hex constants.75 total themes; previous64 colour palettes intact.
+- Raw chart candle colours retain the pair; UI ink/outline contrast may be
+  lifted for dark endpoints. Black→White has visible outlined dark candles.
+  Profile gradient selections/custom colours and current theme are not reset.
+-29 focused checks pass; scoped lint passes; all12 local token previews
+  visually checked. Signed-in Settings/cloud roundtrip remains unverified.
+- Existing history/streaming/footprint acceptance/weekly completeness and
+  workspace source-pattern regression remain OPEN. Record:
+  `docs/prompt-log/2026-10-19-profile-gradient-themes.md`.
+
 ## 2026-10-19 — Correct dark-theme colour diversity
 
 - Owner rejected the purple-heavy20-theme batch. Purple was an example, not
