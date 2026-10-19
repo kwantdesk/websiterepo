@@ -252,7 +252,7 @@ import {
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
-import { loadOwnedVolumeProfiles } from "@/lib/ownedVolumeProfiles";
+import { loadOwnedVolumeProfiles, mergeOwnedVolumeProfile } from "@/lib/ownedVolumeProfiles";
 import { shouldRetainLastGoodOwnedVolumeProfile } from "@/lib/volumeProfileContinuity";
 import { planVolumeProfileVariantJobs } from "@/lib/volumeProfileVariants";
 import {
@@ -16789,7 +16789,7 @@ function Chart({
   const variantProfileViewportRevision = variantProfileInstances.some((instance) =>
     instance.indicatorId === "visible-range-volume-profile") ? viewportVersion : 0;
   useEffect(() => {
-    if (!variantProfileInstances.length || !contractSymbol || !candles.length) {
+    if (!variantProfileInstances.length || !contractSymbol) {
       setOwnedVariantProfiles((current) => Object.keys(current).length ? {} : current);
       return;
     }
@@ -16809,11 +16809,15 @@ function Chart({
         contractSymbol,
       });
       const activeOwnerIds = new Set(jobs.map((job) => job.ownerId));
+      const sessionOwners = new Set(variantProfileInstances
+        .filter(instance => instance.indicatorId === "session-volume-profile")
+        .map(instance => instance.instanceId));
       setOwnedVariantProfiles((profiles) => Object.fromEntries(
         Object.entries(profiles).filter(([, profile]) => shouldRetainLastGoodOwnedVolumeProfile(
           profile,
           { root: instrument, contractSymbol, ownerInstanceIds: activeOwnerIds },
-        )),
+        ) && (!sessionOwners.has(profile.ownerInstanceId ?? "")
+          || jobs.some(job => job.ownerId === profile.ownerInstanceId && job.startMs === profile.startMs))),
       ));
       void loadOwnedVolumeProfiles({
         jobs,
@@ -16822,12 +16826,7 @@ function Chart({
         readExact: (job) => fetchInstitutionalVolumeProfile(job.request),
         publish: (result) => {
           if (!current || result.status !== "ready") return;
-          setOwnedVariantProfiles((profiles) => ({
-            ...Object.fromEntries(Object.entries(profiles).filter(([, profile]) => (
-              profile.ownerInstanceId !== result.job.ownerId
-            ))),
-            [result.job.key]: result.profile,
-          }));
+          setOwnedVariantProfiles((profiles) => mergeOwnedVolumeProfile(profiles, result, jobs));
         },
       });
     }, 250);

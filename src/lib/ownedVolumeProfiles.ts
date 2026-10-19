@@ -10,6 +10,22 @@ export type OwnedProfileResult =
   | { status: "ready"; job: ProfileVariantJob; profile: InstitutionalVolumeProfile }
   | { status: "unavailable"; job: ProfileVariantJob; reason: string };
 
+/** A study can own many sessions/months; arrival order must not erase siblings. */
+export function mergeOwnedVolumeProfile(
+  current: Record<string, InstitutionalVolumeProfile>,
+  result: Extract<OwnedProfileResult, { status: "ready" }>,
+  jobs: readonly ProfileVariantJob[],
+): Record<string, InstitutionalVolumeProfile> {
+  const siblingStarts = new Set(jobs.filter(job => job.ownerId === result.job.ownerId).map(job => job.startMs));
+  return {
+    ...Object.fromEntries(Object.entries(current).filter(([, profile]) => (
+      profile.ownerInstanceId !== result.job.ownerId
+      || (profile.startMs !== result.job.startMs && siblingStarts.has(profile.startMs))
+    ))),
+    [result.job.key]: result.profile,
+  };
+}
+
 const symbolKey = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 const almostEqual = (a: number, b: number) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= Math.max(1, Math.abs(a), Math.abs(b)) * 1e-9;
 

@@ -2,7 +2,7 @@ import type { Candle } from "@/lib/backtester";
 import { cmeSessionDateKey, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { monthlyProfileRanges, profileVariantJob, visibleProfileRange, type ProfileVariantJob } from "@/lib/profileVariantJobs";
-import { resolveSessionSegments, RTH_END_MINUTES, RTH_START_MINUTES } from "@/lib/volumeProfileSessions";
+import { requestedSessionIds, resolveSessionSegments, RTH_END_MINUTES, RTH_START_MINUTES } from "@/lib/volumeProfileSessions";
 
 const number = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const count = (value: unknown, fallback: number) => Math.max(1, Math.min(12, Math.round(number(value, fallback))));
@@ -22,23 +22,33 @@ function requestSource(instance: ChartIndicatorInstance, symbol: string, contrac
 
 function sessionJobs(args: VariantProfilePlanArgs, instance: ChartIndicatorInstance): ProfileVariantJob[] {
   const settings = instance.settings ?? {};
-  const dates = [...new Set(args.candles.map((candle) => cmeSessionDateKey(candle.timestamp)).filter(Boolean) as string[])]
+  const dates = [...new Set([
+    ...args.candles.map((candle) => cmeSessionDateKey(candle.timestamp)),
+    cmeSessionDateKey(args.clockMs),
+  ].filter(Boolean) as string[])]
     .sort().slice(-count(settings.numberOfProfiles, 5));
   const mode = String(settings.filterMode ?? "filter");
-  const requestedMode = mode === "triple" ? "triple" : mode === "splitted" ? "splitted" : "filter";
+  const requestedMode = mode === "none" ? "none" : mode === "triple" ? "triple" : mode === "splitted" ? "splitted" : "filter";
+  const sessions = requestedSessionIds({ ...settings, filterMode: requestedMode });
   const requestedWindow = ["rth", "eth", "custom"].includes(String(settings.filterTime))
     ? String(settings.filterTime) as "rth" | "eth" | "custom"
     : "rth";
   return dates.flatMap((tradingDate) => {
     const day = cmeSessionWindowForDate(tradingDate);
     if (!day) return [];
-    return resolveSessionSegments(day.startMs, Math.min(day.endMs, args.clockMs), {
+    // Keep the true session end stable while it develops. Clipping to every
+    // incoming candle clock creates a cold cache key on every update.
+    const ranges = requestedMode === "none"
+      ? [{ id: "globex", label: "Whole session", ...day }]
+      : resolveSessionSegments(day.startMs, day.endMs, {
       mode: requestedMode,
       window: requestedWindow,
       customStartMinutes: number(settings.sessionStartMinutes, RTH_START_MINUTES),
       customEndMinutes: number(settings.sessionEndMinutes, RTH_END_MINUTES),
       useEndSessionAsStartDay: settings.useEndSessionAsStartDay === true,
-    }).map((range) => profileVariantJob({
+    });
+    return ranges.filter((range) => range.startMs < args.clockMs
+      && (!sessions || sessions.has(range.id))).map((range) => profileVariantJob({
       ownerId: instance.instanceId,
       label: `${tradingDate} · ${range.label}`,
       range,

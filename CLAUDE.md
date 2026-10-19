@@ -1,5 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — Asia/London volume-profile availability
+
+- Session variant planner now honours individual Asia/London/NY switches,
+  includes the clock's current CME business date before candles backfill, and
+  preserves mode none as whole-session (not silent RTH). Fixed session ends
+  keep developing request keys stable. Unopened windows are not requested;
+  standard daily profiles also skip unopened jobs.
+- Owned-profile publication previously deleted EVERY profile of the same
+  study on each arrival. Sibling session/month windows now survive cache and
+  network arrival in any order; same-start replacements replace only their
+  slot, removed session windows prune, other owners stay isolated.
+- LIVE DATA BLOCKER, NOT FIXED: authenticated local gateway probes for the
+  2026-10-19 Asia window [2026-10-18 22:00Z,2026-10-19 07:00Z) returned
+  complete:false. NQZ6/ESZ6 coverage starts22:56Z; MNQZ6 starts23:00Z.
+  Opening executions are missing. Keep exact completeness gates intact;
+  do not relabel a partial profile as a complete Asia session. London has
+  not opened at the probe time (~03UTC). Public historical adapter also
+  reports cooldown/unusable. No gateway restart or infrastructure change.
+-26 focused/adjacent tests plus7 session-selection checks and session-window
+  script pass; scoped lint passes. Build/release evidence:
+  docs/prompt-log/2026-10-19-asia-london-volume-profiles.md.
+
 ## 2026-10-19 — CVD freeze recovery and selected-input authority
 
 - Reproduced anti-flash cache livelock: a shorter but newer verified series

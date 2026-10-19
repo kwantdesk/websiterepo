@@ -9343,6 +9343,10 @@ function WorkspaceChartPaneComponent({
                 sessionLabel: undefined,
               }] : [];
           jobs.forEach((job) => {
+            // A selected London/NY window that has not opened cannot have
+            // executions yet. Do not queue known-empty future history ahead
+            // of the developing Asia profile (or cache it as a failure).
+            if (job.startMs !== undefined && job.startMs >= Date.now()) return;
             const requestArgs = {
               symbol: displayCmeSymbol(pane.symbol),
               contractSymbol: resolvedContractSymbol ?? undefined,

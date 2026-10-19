@@ -1,5 +1,18 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Asia/London profiles: code fixes and missing opening tape
+
+- Fixed session variant flags/current-date planning and one profile arrival
+  erasing sibling sessions/months. Unfiltered is whole-session, not RTH;
+  unopened sessions do not issue empty requests. Exact-data gates unchanged.
+- STILL OPEN: today's Asia opening executions are absent. Live gateway
+  probes: NQ/ES first coverage22:56UTC, MNQ23:00UTC vs22:00UTC Globex open
+  (2026-10-18). All three report complete:false, so full Asia profiles cannot
+  honestly render yet. London opens07:00UTC, not during the ~03UTC probe.
+-26 tests,7 session-selection checks, session-window script and scoped lint
+  pass. VPS/full history/public streaming/weekly/footprint/live soak remain
+  open. Record: docs/prompt-log/2026-10-19-asia-london-volume-profiles.md.
+
 ## 2026-10-19 — CVD flat/frozen display faults
 
 - Reproduced and corrected stale render-cache rejection of shorter NEWER CVD
