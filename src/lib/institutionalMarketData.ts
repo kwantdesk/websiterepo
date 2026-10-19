@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { fetchWithDeadline } from "./marketDataRequest.ts";
 import { auctionGapHistorySource } from "./auctionGapHistorySource.ts";
 import { cmeEventTailCutoffMs, cmeSessionDateKey, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 import { futuresTickSize } from "@/lib/eventBars";
@@ -773,17 +774,10 @@ export function cacheInstitutionalChartCandles(
 }
 
 async function gatewayFetch(path: string, init?: RequestInit, timeoutMs = 4_000) {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(`${LOCAL_GATEWAY_ORIGIN}${path}`, {
-      ...init,
-      cache: "no-store",
-      signal: controller.signal,
-    });
-  } finally {
-    window.clearTimeout(timeout);
-  }
+  return fetchWithDeadline(`${LOCAL_GATEWAY_ORIGIN}${path}`, {
+    ...init,
+    cache: "no-store",
+  }, timeoutMs);
 }
 
 export async function fetchInstitutionalInstruments(): Promise<InstitutionalInstrument[] | null> {

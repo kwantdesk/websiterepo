@@ -4,6 +4,8 @@ import type { Candle } from "@/lib/backtester";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import { decodeCompactFootprintHistory } from "@/lib/compactFootprintHistory";
 import { futuresVenue } from "@/lib/futuresVenue";
+import { loadSharedFootprintHistory } from "@/lib/sharedFootprintHistory";
+import { fetchWithDeadline } from "@/lib/marketDataRequest";
 const EMPTY: InstitutionalTrade[] = [];
 
 export function useExactFootprintHistory(contract: string | null, candles: Candle[], intervalMs: number | null, enabled: boolean, live: boolean,
@@ -27,15 +29,18 @@ export function useExactFootprintHistory(contract: string | null, candles: Candl
       const root = contract.replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "");
       const query = new URLSearchParams({ symbol: contract, exchange: futuresVenue(root),
         contractSymbol: contract });
-      void fetch(`/api/institutional-market-data/v1/market-data/trade-tape?${query}`, {
+      // Capture the exact requested candle generation before any async work.
+      const requestedCandles = candlesRef.current;
+      void loadSharedFootprintHistory(scope, async sharedSignal => {
+        const response = await fetchWithDeadline(`/api/institutional-market-data/v1/market-data/trade-tape?${query}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ starts: candlesRef.current.filter(c => c.timestamp < toMs).map(c => c.timestamp),
+        body: JSON.stringify({ starts: requestedCandles.filter(c => c.timestamp < toMs).map(c => c.timestamp),
           toMs, minimumTradeVolume, maximumTradeVolume }),
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]), cache: "no-store" })
-        .then(async response => {
+        signal: sharedSignal, cache: "no-store" }, 30_000);
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || "Exact Footprint history is unavailable.");
-          const records = decodeCompactFootprintHistory(payload, contract, candlesRef.current, fromMs, toMs, minimumTradeVolume, maximumTradeVolume);
+          return decodeCompactFootprintHistory(payload, contract, requestedCandles, fromMs, toMs, minimumTradeVolume, maximumTradeVolume);
+      }, controller.signal).then(records => {
           if (!controller.signal.aborted) setState({ scope, contract, records, error: null });
         }).catch(error => {
           if (!controller.signal.aborted) setState(previous => ({ scope, contract,

@@ -1,5 +1,20 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Shared indicator loading and footprint requests
+
+- Request deadlines now cover response-body downloads, not just headers.
+  Shared workspace JSON retries use one total timeout budget, rather than two
+  consecutive full budgets. Explicit historical backfill limits remain intact.
+- Identical exact-footprint windows share one validated request across panes.
+  Successful results have a 60-second cache capped at four windows / 50,000
+  decoded records total. Empty/error responses are not cached; candle/filter/
+  contract changes cannot reuse another result. Last-owner cancellation aborts.
+- 27 targeted tests passed; scoped lint and the production build passed (84
+  pages). This is not all-indicator UI certification or restored provider data.
+- Still OPEN: stable streaming origin, missing exact sessions, aggregate
+  completeness bug, and signed-in all-indicator/timeframe loading/soak checks.
+  Record: `docs/prompt-log/2026-10-19-shared-indicator-loading.md`.
+
 ## 2026-10-19 — Chart first-load concurrency
 
 - Removed the optional live-seam network call from the candle/cache bootstrap

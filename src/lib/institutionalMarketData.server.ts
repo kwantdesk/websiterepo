@@ -5,6 +5,7 @@ import {
   marketDataProvider,
 } from "@/lib/marketDataGatewayEnv";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
+import { fetchWithDeadline } from "./marketDataRequest.ts";
 import type { MarketIndexSnapshot } from "@/lib/marketIndices.server";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -34,10 +35,7 @@ async function fetchFromOrigin(
   init: RequestInit,
   timeoutMs: number,
 ) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(`${origin}${path}`, {
+  return fetchWithDeadline(`${origin}${path}`, {
       ...init,
       cache: "no-store",
       headers: {
@@ -45,11 +43,7 @@ async function fetchFromOrigin(
         ...init.headers,
         Authorization: `Bearer ${token}`,
       },
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+    }, timeoutMs);
 }
 
 /**
