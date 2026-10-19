@@ -3,7 +3,7 @@ import {gexStorage} from './site-runtime.js?v=1';
 // Source-backed presentation models, adapted to the licensed public REST schema.
 // See OPTIONS-AUDIT.md for shipped source offsets and remaining parity limits.
 const numeric = value => Number.isFinite(Number(value)) ? Number(value) : 0;
-export const OPTION_COLORS = Object.freeze({ get call(){return themePaint("#00FF00");}, get put(){return themePaint("#FF0000");}, get callBar(){return themePaint("#00FF00AA");}, get putBar(){return themePaint("#FF0000AA");}, emptyBar: themePaint("#AAAAAA") + 'AA' });
+export const OPTION_COLORS = Object.freeze({ get call(){return themePaint("#00FF00");}, get put(){return themePaint("#FF0000");}, get callBar(){return themePaint("#00FF00AA");}, get putBar(){return themePaint("#FF0000AA");}, get emptyBar(){return themePaint("#AAAAAAAA");} });
 export const EXCHANGE_GROUP_COLORS = Object.freeze({ get BOX(){return themePaint("#9d2c2c");}, get CBOE(){return themePaint("#139853");}, get MEMX(){return themePaint("#b4ac18");}, get MIAX(){return themePaint("#b46b18");}, get NASDAQ(){return themePaint("#125ea4");}, get NYSE(){return themePaint("#711ac9");}, UNKNOWN: 'gray' });
 export const EXCHANGE_GROUPS = Object.freeze({ AMEX: 'NYSE', BATS: 'CBOE', BOST: 'BOX', C2: 'CBOE', CBOE: 'CBOE', EDGX: 'CBOE', EMLD: 'MIAX', GEMI: 'NASDAQ', ISEX: 'NASDAQ', MEMX: 'MEMX', MIAX: 'MIAX', MRCY: 'NASDAQ', MX2: 'MEMX', NQBX: 'NASDAQ', NQEX: 'NASDAQ', PACF: 'NYSE', PERL: 'MIAX', PHIL: 'NASDAQ', SPHR: 'MIAX', UNKNOWN: 'UNKNOWN' });
 const exchangeAlpha = { BOST: 'FF', BATS: 'FF', C2: 'EE', CBOE: 'DD', EDGX: 'CC', MEMX: 'FF', MX2: 'EE', EMLD: 'FF', MIAX: 'EE', PERL: 'DD', SPHR: 'CC', AMEX: 'FF', PACF: 'EE', GEMI: 'FF', ISEX: 'EE', MRCY: 'DD', NQBX: 'CC', NQEX: 'BB', PHIL: 'AA' };

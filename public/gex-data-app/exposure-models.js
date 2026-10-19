@@ -1,7 +1,7 @@
 import {themePaint} from './site-theme.js?v=1';
 import {gexStorage} from './site-runtime.js?v=1';
 // Source-backed chart rules. See EXPOSURE-CHART-AUDIT.md for provenance and limits.
-const CALL = themePaint("#00FF00"), PUT = themePaint("#FF0000");
+const CALL = ()=>themePaint("#00FF00"), PUT = ()=>themePaint("#FF0000");
 const netMetrics = [
   ['CHARM_EXPOSURE','Net CHEX'], ['DELTA_EXPOSURE','Net DEX'],
   ['GAMMA_EXPOSURE','Net GEX'], ['VANNA_EXPOSURE','Net VEX'],
@@ -27,13 +27,13 @@ export const HEAT_METRICS = Object.freeze([
     format:sourceName==='PREMIUM'?'currency':'abbreviated',
     exposure:sourceName.endsWith('_EXPOSURE'), supportsMVC:sourceName.endsWith('_EXPOSURE'),
     functionType:['PREMIUM','TRADE_COUNT','VOLUME'].includes(sourceName)?'SUM':'REPLACE',
-    minColor:PUT,maxColor:CALL
+    get minColor(){return PUT();},get maxColor(){return CALL();}
   })),
   ...['CALL','PUT'].flatMap(leg=>legMetrics.map(([name,label,format])=>Object.freeze({
     sourceName:`${leg}_${name}`,apiName:`${leg}_${name}`,
     label:`${label} (${leg==='CALL'?'Calls':'Puts'})`,group:leg==='CALL'?'Call':'Put',
     format,exposure:false,supportsMVC:false,functionType:'REPLACE',
-    minColor:leg==='CALL'?CALL:PUT,maxColor:leg==='CALL'?CALL:PUT
+    get minColor(){return leg==='CALL'?CALL():PUT();},get maxColor(){return leg==='CALL'?CALL():PUT();}
   })))
 ]);
 
@@ -72,8 +72,8 @@ export function niceValueDomain(min,max,target=5) {
 
 export function exposureLegs(point,display='NET') {
   const call=Number(point.call)||0,put=Number(point.put)||0;
-  if(display==='NET'){const net=call+put;return [{value:Math.max(net,0),color:CALL},{value:Math.min(net,0),color:PUT}];}
-  return [...(display!=='PUT'?[{value:call,color:CALL}]:[]),...(display!=='CALL'?[{value:put,color:PUT}]:[])];
+  if(display==='NET'){const net=call+put;return [{value:Math.max(net,0),color:CALL()},{value:Math.min(net,0),color:PUT()}];}
+  return [...(display!=='PUT'?[{value:call,color:CALL()}]:[]),...(display!=='CALL'?[{value:put,color:PUT()}]:[])];
 }
 
 export function exposureValueDomain(points,display='NET',fromZero=false) {

@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Live theme colours across KWANTY and GEX DATA
+
+- KWANTY's theme sync missed State Greek/major styles written by settings Save,
+  and retained uncustomized Orderflow series colour snapshots. Complete fresh
+  defaults plus theme-settings.js now relink these; explicit customization
+  flags, visibility, widths, opacity, background and spot overrides survive.
+- GEX DATA exposure legs/heat-map metric colours and empty option bars no
+  longer capture the initial palette in module constants. Resolve on use.
+- KWANTY shares its static colour download across theme changes; neither app
+  lets that download failing prevent base palette changes or canvas repaint.
+- Verification: docs/prompt-log/2026-10-20-workspace-live-theme.md. No data,
+  polling, authentication, source values, saved layouts or gateway changes.
+
 ## 2026-10-20 — Standard loading presentation for KWANTY and GEX DATA
 
 - Latest owner request supersedes GEX DATA's quiet-only startup presentation:

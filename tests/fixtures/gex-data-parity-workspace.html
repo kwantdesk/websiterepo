@@ -1,10 +1,16 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LOCAL PARITY QA — GEX DATA</title>
 <style>html,body{margin:0;height:100%;background:#08060d;color:#fff;font:13px sans-serif}body{display:flex;flex-direction:column}header{padding:8px 12px;background:#211334;border-bottom:1px solid #8249bb;flex:none}header b{color:#e7c4ff}iframe{border:0;width:100%;flex:1;min-height:0}</style></head>
-<body><header><b>LOCAL PARITY QA</b> · Live licensed source through existing local gateway · NOT production · Isolated temporary workspace · Australia/Brisbane</header>
+<body><header><b>LOCAL PARITY QA</b> · Live licensed source through existing local gateway · NOT production · Isolated temporary workspace · Australia/Brisbane <button id="qaDarkTheme">QA dark theme</button> <button id="qaLightTheme">QA light theme</button></header>
 <script>
 (() => {
   const values = new Map();
+  const darkTheme={background:'#08060d',panel:'#100b19',surface:'#20112f',foreground:'#f5edff',muted:'#a18db3',border:'#422a58',primary:'#a864ec',accent:'#d19eff',danger:'#f34c69',warning:'#e9bc54',bullish:'#00ff00',bearish:'#ff0000'};
+  const lightTheme={background:'#fdfdfd',panel:'#f0f8ff',surface:'#e0f2fe',foreground:'#161616',muted:'#57534e',border:'#a3cbd8',primary:'#0284c7',accent:'#0891b2',danger:'#b91c1c',warning:'#a16207',bullish:'#15803d',bearish:'#b91c1c'};
+  let palette=darkTheme;
+  const changeTheme=next=>{palette=next;document.querySelector('iframe').contentWindow.postMessage({type:'gex-data-site-theme'},location.origin);};
+  document.querySelector('#qaDarkTheme').addEventListener('click',()=>changeTheme(darkTheme));
+  document.querySelector('#qaLightTheme').addEventListener('click',()=>changeTheme(lightTheme));
   const validKey = key => typeof key === 'string' && key.startsWith('gex-data') && key.length <= 200;
   const check = next => {
     if (next.size > 500 || JSON.stringify(Object.fromEntries(next)).length > 1500000) throw Error('Local QA preferences exceed their safety limit.');
@@ -15,7 +21,7 @@
     instruments: () => ['SPX','NDX','SPY','QQQ','IWM','VIX','AAPL','NVDA','TSLA','MSFT','AMZN','META','AMD'].map(symbol => [symbol,symbol]),
     read: key => values.get(key) ?? null,
     write: (key,value) => { if (!validKey(key) || value !== null && typeof value !== 'string') throw Error('Invalid local QA preference.'); const next = new Map(values); if (value === null) next.delete(key); else next.set(key,value); check(next); values.clear(); for (const entry of next) values.set(...entry); },
-    theme: () => ({background:'#08060d',panel:'#100b19',surface:'#20112f',foreground:'#f5edff',muted:'#a18db3',border:'#422a58',primary:'#a864ec',accent:'#d19eff',danger:'#f34c69',warning:'#e9bc54',bullish:'#00ff00',bearish:'#ff0000'}),
+    theme: () => palette,
     snapshot: () => Object.fromEntries(values),
     restore: input => { if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid QA workspace.'); const entries = Object.entries(input); if (entries.some(([key,value]) => !validKey(key) || typeof value !== 'string')) throw Error('Invalid QA preferences.'); const next = new Map(entries); check(next); values.clear(); for (const entry of next) values.set(...entry); },
     request: (url,options={}) => { if (!/^\/api\/gex-data\/[a-z-]+$/.test(url)) throw Error('Unsupported local QA request.'); return fetch(url,{...options,credentials:'omit'}); }

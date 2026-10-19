@@ -29,6 +29,6 @@ export async function installTheme(next){
   // Apply the live site surface before awaiting the static colour catalogue.
   // Share that download across theme changes; failed downloads can retry.
   colorCatalogue??=fetch(new URL('./site-colors.json',import.meta.url)).then(r=>{if(!r.ok)throw Error('Theme catalogue unavailable');return r.json();}).catch(error=>{colorCatalogue=undefined;throw error;});
-  const colors=await colorCatalogue;
+  let colors;try{colors=await colorCatalogue;}catch{return;} // Base palette/canvas repaint still work if the static catalogue fails.
   for(const color of colors){const suffix=[...new TextEncoder().encode(color)].map(n=>n.toString(16).padStart(2,'0')).join('');document.documentElement.style.setProperty('--gex-'+suffix,themePaint(color));}
 }
