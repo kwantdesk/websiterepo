@@ -1,5 +1,22 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Correct dark-theme colour diversity
+
+- Owner rejected the purple-heavy20-theme batch. Purple was an example, not
+  the collection's governing colour. Revised20 now span ruby, cobalt/copper,
+  chrome/emerald, orange/lime, pine/gold, yellow/blue, cyan, teal, copper/jade,
+  acid, gold, ember, red/white, coral, fuchsia, pink, lime and turquoise/amber.
+  Only Velvet Voltage retains purple accents/surfaces in the new collection.
+- Renamed changed palettes to match actual identities. Original44 themes and
+  current/custom saved palette snapshots remain unchanged; select a revised
+  preset to apply it. No new renderer work or changes to theme-save semantics.
+-26 focused checks pass, including a purple-exclusivity and broad hue-family
+  guard; all20 visually inspected together in a local token-preview board.
+  Existing workspace source-pattern failure, missing history, live streaming,
+  footprint acceptance/soak and weekly/profile gaps remain OPEN.
+- Supersedes the purple-heavy initial batch below. Record:
+  `docs/prompt-log/2026-10-19-dark-theme-diversity-correction.md`.
+
 ## 2026-10-19 — Twenty deep-dark themes
 
 - Owner preference: clean, deep, colourful dark themes with vivid purple/neon
