@@ -6,6 +6,7 @@ import { brandMarkTokens, resolveBrandMarkColor } from "../src/lib/brandMark.ts"
 import { contrastRatio, parseResolvedColor } from "../src/lib/readableContrast.ts";
 import { themePresets } from "../src/lib/themePresets.ts";
 import { themeBootstrapScript, THEME_STORAGE_KEY } from "../src/lib/theme.ts";
+import { legacyHollowTheme } from "../tests/fixtures/legacy-hollow-theme.mjs";
 
 const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
 const watermark = readFileSync(new URL("../src/lib/chartWatermark.ts", import.meta.url), "utf8");
@@ -60,14 +61,13 @@ check("every preset chooses visible ink from its own bright palette", () => {
 });
 
 check("the owner's representative themes use their signature colour", () => {
-  const midnight = themePresets.find((preset) => preset.name === "Midnight Cockpit");
-  const tangerine = themePresets.find((preset) => preset.name === "Tangerine Terminal");
-  const chromey = themePresets.find((preset) => preset.name === "Chromey Mono");
-  const forestFire = themePresets.find((preset) => preset.name === "Forest Fire");
-  assert.equal(resolveBrandMarkColor(midnight.colors, midnight.colors.background), midnight.colors.primary);
-  assert.equal(resolveBrandMarkColor(tangerine.colors, tangerine.colors.background), tangerine.colors.primary);
-  assert.equal(resolveBrandMarkColor(chromey.colors, chromey.colors.background), chromey.colors.primary);
-  assert.equal(resolveBrandMarkColor(forestFire.colors, forestFire.colors.background), forestFire.colors.secondary);
+  for(const name of ["Midnight Cockpit", "Mr. Quant", "Inverted Mono"]){
+    const preset = themePresets.find(preset => preset.name === name);
+    assert.equal(resolveBrandMarkColor(preset.colors, preset.colors.background), preset.colors.primary);
+  }
+  const orchid = themePresets.find(preset => preset.name === "Orchid Voltage");
+  assert.equal(resolveBrandMarkColor(orchid.colors, orchid.colors.background), orchid.colors.secondary);
+  assert.equal(resolveBrandMarkColor(legacyHollowTheme, legacyHollowTheme.background), legacyHollowTheme.primary);
 });
 
 check("first paint and hydrated paint choose the same logo colours", () => {

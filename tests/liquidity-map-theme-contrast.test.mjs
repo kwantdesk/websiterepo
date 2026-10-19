@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { themePresets } from "../src/lib/themePresets.ts";
+import { legacyHollowTheme } from "./fixtures/legacy-hollow-theme.mjs";
 
 // Match the revision imported by palettes.js; different query strings create
 // different module state, so the old test never themed its actual palette.
@@ -42,8 +43,8 @@ test("every website theme keeps both Liquidity Map sides readable", () => {
   }
 });
 
-test("Chromey Mono replaces its black hollow sell ink with distinct light green", () => {
-  const chromey = themePresets.find((preset) => preset.name === "Chromey Mono");
+test("a saved legacy hollow palette replaces black sell ink with distinct light green", () => {
+  const chromey = {colors: legacyHollowTheme};
   assert.ok(chromey);
   setWebsiteThemeColors(chromey.colors);
   const { bid, ask } = paletteAccents(DEFAULT_PALETTE);

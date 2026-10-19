@@ -1,5 +1,21 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Owner-curated seventeen themes (supersedes expansion batches)
+
+- Keep only the owner's17 named presets, in request order. Remove the other58
+  from the website picker, including the recent20 and profile-gradient themes.
+  Exact canonical names are in KEPT_THEME_NAMES / the prompt record below.
+- All17 resolved palettes match the previous release exactly; default Mono
+  Protocol, existing saved/custom colours and account/theme application stay
+  intact. Removing picker entries does not erase user colour snapshots.
+- Daily/Weekly Volume Profile gradient controls retain all12 schemes and Off;
+  this directive removes WEBSITE THEMES, not indicator settings or colours.
+-27 focused tests plus14 hollow-candle/brand checks pass. Removed Chromey Mono
+  lives only as a legacy test fixture, not a selectable preset. Previous
+  catalogues recoverable through Git. Existing workspace source-pattern,
+  history, streaming, footprint/soak and weekly completeness gaps remain OPEN.
+- Record: `docs/prompt-log/2026-10-19-curated-theme-prune.md`.
+
 ## 2026-10-19 — Profile gradient colours available as themes
 
 - Every one of the12 Daily Volume Profile schemes now has a named theme:

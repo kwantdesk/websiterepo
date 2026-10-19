@@ -10,6 +10,7 @@ import {
   readableTextOn,
 } from "../src/lib/readableContrast.ts";
 import { themePresets } from "../src/lib/themePresets.ts";
+import { legacyHollowTheme } from "./fixtures/legacy-hollow-theme.mjs";
 
 const globals = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
 const theme = readFileSync(new URL("../src/lib/theme.ts", import.meta.url), "utf8");
@@ -35,8 +36,8 @@ test("every theme derives readable text for solid primary and danger actions", (
   }
 });
 
-test("Chromey Mono hollow candles cannot erase the Sell action", () => {
-  const chromey = themePresets.find((preset) => preset.name === "Chromey Mono");
+test("a saved legacy hollow-candle palette cannot erase the Sell action", () => {
+  const chromey = {colors: legacyHollowTheme};
   assert.ok(chromey);
   const sell = legibleSemanticColor(
     chromey.colors.candleDown,

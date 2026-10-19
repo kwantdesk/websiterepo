@@ -1,28 +1,19 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {themePresets, KEPT_THEME_NAMES} from "../src/lib/themePresets.ts";
 
-const settingsPath = new URL("../src/lib/themePresets.ts", import.meta.url);
-
-test("expanded theme catalogue keeps its foundation and original forty distinct palettes", async () => {
-  const source = await readFile(settingsPath, "utf8");
-  const names = [...source.matchAll(/palette\("([^"]+)"/g)].map((match) => match[1]);
-
-  assert.equal(names.length, 64);
-  assert.equal(new Set(names).size, 64);
-  assert.deepEqual(names.slice(0, 3), ["Midnight Cockpit", "Kwant Desk", "Mr. Quant"]);
-
-  for (const name of ["Playdough Parade", "Tangerine Terminal", "Creamsicle OS", "Paper & Ink", "Mono Protocol", "Inverted Mono"]) {
-    assert.ok(names.includes(name), `${name} should be selectable`);
-  }
-
-  for (const retired of ["Kwant Gold", "Onyx Gold", "Carbon Blue", "Blush Pearl", "Midnight Petal"]) {
-    assert.ok(!names.includes(retired), `${retired} should be removed from the reshuffled catalogue`);
-  }
-
-  const newThemeSource = source.slice(source.indexOf('palette("Solar Flare"'));
-  const signatures = [...newThemeSource.matchAll(/palette\("[^"]+", \{[^\n]*?background: "([^"]+)"[^\n]*?primary: "([^"]+)"[^\n]*?secondary: "([^"]+)"/g)]
-    .map((match) => `${match[1]}:${match[2]}:${match[3]}`);
-  assert.equal(signatures.length, 40);
-  assert.equal(new Set(signatures).size, 40);
+const expected = [
+  "Midnight Cockpit", "Kwant Desk", "Mr. Quant", "Retro Terminal", "Inverted Mono",
+  "Mono Protocol", "Paper & Ink", "Bubblegum Blueprint", "Sakura Slate", "Vermilion Sky",
+  "Cherry Soda", "Orchid Voltage", "Matcha Plum", "Electric Lemon", "Tidepool Glass",
+  "Cobalt Clay", "Playdough Parade",
+];
+test("theme picker contains exactly the owner's seventeen approved presets in request order", () => {
+  assert.deepEqual(themePresets.map(p=>p.name), expected);
+  assert.deepEqual([...KEPT_THEME_NAMES], expected);
+  assert.equal(new Set(themePresets.map(p=>p.name)).size,17);
+});
+test("unlisted generated and previous presets cannot reappear in the catalogue", () => {
+  for(const name of ["Chromey Mono","Velvet Voltage","Solar Flare","Pink → Blue","Red → Lime","Forest Fire"])
+    assert.ok(!themePresets.some(p=>p.name===name),name);
 });
