@@ -71,6 +71,29 @@ export const themePresets: ThemePreset[] = [
     candleDown: "#000000", candleDownBorder: "#B9C0B9",
   }),
 
+  // Deep, ink-tinted shells and saturated accents. No animated glow/filter
+  // layers: contrast supplies the luminous edge without repainting charts.
+  palette("Velvet Voltage", { background: "#080310", panel: "#10071D", surface: "#1B0E2C", card: "#150A24", foreground: "#F3EEFF", primary: "#C452FF", secondary: "#25E2F4", muted: "#A99BBE", border: "#39204F", danger: "#FF4975", gridColor: "#1D102D", candleUp: "#C452FF", candleDown: "#25E2F4" }),
+  palette("Amethyst Noir", { background: "#0D0618", panel: "#160C24", surface: "#211232", card: "#1A0E2A", foreground: "#F6F0FF", primary: "#B677FF", secondary: "#FFB52A", muted: "#AFA0BD", border: "#3E2853", danger: "#FF506D", gridColor: "#25163A", candleUp: "#B677FF", candleDown: "#FFB52A" }),
+  palette("Royal Circuit", { background: "#070719", panel: "#0E0E24", surface: "#171735", card: "#12122C", foreground: "#F1F1FF", primary: "#A581FF", secondary: "#16DDFF", muted: "#A1A0C0", border: "#302E57", danger: "#FF4F80", gridColor: "#1B1A3A", candleUp: "#16DDFF", candleDown: "#A581FF" }),
+  palette("Black Iris", { background: "#090410", panel: "#140A1C", surface: "#21112B", card: "#190C23", foreground: "#FFF1FF", primary: "#EC48FF", secondary: "#7796FF", muted: "#B09EB6", border: "#432448", danger: "#FF5C6D", gridColor: "#24142D", candleUp: "#EC48FF", candleDown: "#7796FF" }),
+  palette("Obsidian Orchid", { background: "#11030D", panel: "#1B0816", surface: "#2A1023", card: "#220B1C", foreground: "#FFF1FA", primary: "#DF57FF", secondary: "#FF9833", muted: "#B59DAE", border: "#49223F", danger: "#FF466A", gridColor: "#2B1224", candleUp: "#DF57FF", candleDown: "#FF9833" }),
+  palette("Ion Cobalt", { background: "#020A17", panel: "#071222", surface: "#0E1C30", card: "#0A1728", foreground: "#EDF5FF", primary: "#4C93FF", secondary: "#00E5C0", muted: "#99ACC4", border: "#203B59", danger: "#FF536C", gridColor: "#112239", candleUp: "#00E5C0", candleDown: "#4C93FF" }),
+  palette("Sapphire Pulse", { background: "#03081B", panel: "#091128", surface: "#121C39", card: "#0D1630", foreground: "#EFF3FF", primary: "#6494FF", secondary: "#F047FF", muted: "#A1ACCA", border: "#293C66", danger: "#FF5772", gridColor: "#162140", candleUp: "#6494FF", candleDown: "#F047FF" }),
+  palette("Abyssal Laser", { background: "#020D14", panel: "#061820", surface: "#0C252F", card: "#091E27", foreground: "#EDFCFF", primary: "#00D8F0", secondary: "#6D94FF", muted: "#96B1BE", border: "#1B4351", danger: "#FF5E6C", gridColor: "#102C37", candleUp: "#00D8F0", candleDown: "#FF5E6C" }),
+  palette("Petrol Chrome", { background: "#020D10", panel: "#06191C", surface: "#0D272A", card: "#092023", foreground: "#EDFFFA", primary: "#00E0BC", secondary: "#D2F52A", muted: "#94B4AD", border: "#1B4844", danger: "#FF5B7B", gridColor: "#102E30", candleUp: "#00E0BC", candleDown: "#D2F52A" }),
+  palette("Emerald Afterhours", { background: "#020E0A", panel: "#061B14", surface: "#0C2A20", card: "#092219", foreground: "#EEFFF5", primary: "#18E68A", secondary: "#05C9FF", muted: "#96B4A6", border: "#1B4C39", danger: "#FF536E", gridColor: "#102F25", candleUp: "#18E68A", candleDown: "#05C9FF" }),
+  palette("Malachite Gold", { background: "#071007", panel: "#0E1C0C", surface: "#182A13", card: "#132310", foreground: "#F5FFE9", primary: "#68E51B", secondary: "#FFBF24", muted: "#A7B69A", border: "#354A25", danger: "#FF6142", gridColor: "#1D3017", candleUp: "#68E51B", candleDown: "#FFBF24" }),
+  palette("Acid Obsidian", { background: "#0A0D03", panel: "#131A08", surface: "#20270F", card: "#19210B", foreground: "#F8FFE9", primary: "#C4F01B", secondary: "#A28AFF", muted: "#ADB695", border: "#3D4B1C", danger: "#FF526B", gridColor: "#262E13", candleUp: "#C4F01B", candleDown: "#A28AFF" }),
+  palette("Black Gold", { background: "#100B03", panel: "#1C1407", surface: "#2B200E", card: "#231A0A", foreground: "#FFF7E9", primary: "#FFBD2E", secondary: "#FF7442", muted: "#BCAC91", border: "#4C391B", danger: "#FF5260", gridColor: "#302512", candleUp: "#FFBD2E", candleDown: "#FF7442" }),
+  palette("Ember Noir", { background: "#100603", panel: "#1D0E07", surface: "#2C190E", card: "#24130A", foreground: "#FFF2E9", primary: "#FF8534", secondary: "#FFD02B", muted: "#BBA28F", border: "#50301A", danger: "#FF5367", gridColor: "#321D12", candleUp: "#FFD02B", candleDown: "#FF8534" }),
+  palette("Blood Moon", { background: "#100308", panel: "#1E0810", surface: "#2E101B", card: "#260B15", foreground: "#FFF0F4", primary: "#FF4C68", secondary: "#B882FF", muted: "#BC9FAA", border: "#522336", danger: "#FF4C68", gridColor: "#33131E", candleUp: "#B882FF", candleDown: "#FF4C68" }),
+  palette("Garnet Circuit", { background: "#13050A", panel: "#210C13", surface: "#31151F", card: "#29101A", foreground: "#FFF1F5", primary: "#FF4C91", secondary: "#FFA62B", muted: "#BCA0AD", border: "#552B3D", danger: "#FF5264", gridColor: "#371925", candleUp: "#FFA62B", candleDown: "#FF4C91" }),
+  palette("Fuchsia Carbon", { background: "#0D040D", panel: "#190A19", surface: "#281229", card: "#200E21", foreground: "#FFF0FE", primary: "#F549D7", secondary: "#21DB7C", muted: "#B39FB8", border: "#46274D", danger: "#FF5868", gridColor: "#2D172F", candleUp: "#21DB7C", candleDown: "#F549D7" }),
+  palette("Infrared Plum", { background: "#130615", panel: "#200D21", surface: "#30172F", card: "#281127", foreground: "#FFF2FB", primary: "#FF5AAB", secondary: "#BD8AFF", muted: "#B9A0B7", border: "#53304F", danger: "#FF536F", gridColor: "#361B34", candleUp: "#BD8AFF", candleDown: "#FF5AAB" }),
+  palette("Venom Aubergine", { background: "#10091B", panel: "#1A1029", surface: "#281A3A", card: "#211530", foreground: "#F8FFED", primary: "#CEFB00", secondary: "#D86BFF", muted: "#ACA1BF", border: "#44305A", danger: "#FF547C", gridColor: "#2D1F40", candleUp: "#CEFB00", candleDown: "#D86BFF" }),
+  palette("Plasma Lagoon", { background: "#041215", panel: "#081F23", surface: "#102D30", card: "#0C2529", foreground: "#ECFFFD", primary: "#18F2DD", secondary: "#FF674C", muted: "#9BB7B7", border: "#255052", danger: "#FF674C", gridColor: "#143336", candleUp: "#18F2DD", candleDown: "#FF674C" }),
+
   palette("Solar Flare", { background: "#100702", panel: "#1B0C03", surface: "#2D1507", card: "#241005", foreground: "#FFF4E6", primary: "#FF8A00", secondary: "#36C5F0", muted: "#B48C70", border: "#5A2C0C", danger: "#28A8E0", gridColor: "#351A09" }),
   palette("Playdough Parade", { background: "#FFF4D8", panel: "#FFF9E9", surface: "#FFD166", card: "#FFE7A3", foreground: "#25213B", primary: "#F77F00", secondary: "#4D96FF", muted: "#786C69", border: "#E7BE68", danger: "#9B5DE5", gridColor: "#EAD9B5" }),
   palette("Tangerine Terminal", { background: "#061412", panel: "#0A201C", surface: "#10332C", card: "#0C2924", foreground: "#E9FFF8", primary: "#FF9F1C", secondary: "#2EC4B6", muted: "#79A49A", border: "#21584C", danger: "#FF5D3A", gridColor: "#163D35" }),
@@ -118,4 +141,11 @@ export const themePresets: ThemePreset[] = [
 ];
 
 export const RETAINED_THEME_NAMES = ["Midnight Cockpit", "Kwant Desk", "Mr. Quant"] as const;
-export const NEW_THEME_COUNT = 41;
+export const NEW_THEME_COUNT = 61;
+
+export const DEEP_DARK_THEME_NAMES = [
+  "Velvet Voltage", "Amethyst Noir", "Royal Circuit", "Black Iris", "Obsidian Orchid",
+  "Ion Cobalt", "Sapphire Pulse", "Abyssal Laser", "Petrol Chrome", "Emerald Afterhours",
+  "Malachite Gold", "Acid Obsidian", "Black Gold", "Ember Noir", "Blood Moon",
+  "Garnet Circuit", "Fuchsia Carbon", "Infrared Plum", "Venom Aubergine", "Plasma Lagoon",
+] as const;

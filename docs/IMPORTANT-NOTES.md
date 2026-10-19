@@ -1,5 +1,20 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Twenty deep-dark themes
+
+- Owner preference: clean, deep, colourful dark themes with vivid purple/neon
+  accents; no pastel/tacky styling. Added20 palettes after the four foundation
+  cards, preserving all44 existing palettes and the default/current selection.
+- Theme tokens only; existing apply/save/chart/indicator theme pipeline stays
+  unchanged. No animated glows, filters, new polling or renderer work.
+- New20 pass dark-shell, saturation, distinctness and text/action contrast
+  checks. Scoped theme checks25/25; wider suite29/30 (existing workspace source
+  assertion fails in unchanged code). Full84-page build and lint pass; local
+  browser palette previews inspected, not signed-in settings/roundtrip proof.
+- Ongoing exact-history, stable-streaming, footprint UI/soak, weekly aggregate
+  completeness and existing daily-profile regressions remain OPEN.
+  Record: `docs/prompt-log/2026-10-19-deep-dark-themes.md`.
+
 ## 2026-10-19 — Footprint partially populated / recovery
 
 - A single missing/mismatched candle previously rejected every exact historical

@@ -3,7 +3,9 @@ import test from "node:test";
 
 import { themePresets } from "../src/lib/themePresets.ts";
 
-const revision = "v=20260904-liq-contrast";
+// Match the revision imported by palettes.js; different query strings create
+// different module state, so the old test never themed its actual palette.
+const revision = "v=20261017-aleph-font";
 const themesUrl = new URL(`../public/heatmap-app/src/ui-themes.js?${revision}`, import.meta.url);
 const palettesUrl = new URL(`../public/heatmap-app/src/palettes.js?${revision}`, import.meta.url);
 const { setWebsiteThemeColors } = await import(themesUrl);
