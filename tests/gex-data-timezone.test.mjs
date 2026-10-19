@@ -39,6 +39,7 @@ function host({account='owner', savedAccount=account, savedZone, chartZone='Amer
       };
       if(name.includes('marketIndices'))return {MARKET_INDEX_DEFINITIONS:[]};
       if(name.includes('TimeZoneSelect'))return {default:()=>null};
+      if(name.includes('KwantLoader'))return {default:()=>null};
       if(name.includes('timeZones'))return {normalizeTimeZone};
       throw Error(name);
     },

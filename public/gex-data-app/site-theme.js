@@ -1,5 +1,6 @@
 const defaults={background:'#000000',panel:'#080808',surface:'#151515',foreground:'#FFFFFF',muted:'#777777',border:'#333333',primary:'#FFFFFF',accent:'#9A9A9A',danger:'#6B6B6B',warning:'#D6B45F',bullish:'#FFFFFF',bearish:'#777777'};
 let palette={...defaults};
+let colorCatalogue;
 function channels(color){
   if(color==='white')return[255,255,255,1];if(color==='black')return[0,0,0,1];
   if(color[0]==='#'){let hex=color.slice(1);if(hex.length===3||hex.length===4)hex=[...hex].map(c=>c+c).join('');return[parseInt(hex.slice(0,2),16),parseInt(hex.slice(2,4),16),parseInt(hex.slice(4,6),16),hex.length===8?parseInt(hex.slice(6,8),16)/255:1];}
@@ -21,8 +22,13 @@ export function themePaint(color){
 }
 export async function installTheme(next){
   palette={...defaults,...next};if(typeof document==='undefined')return;
-  const colors=await fetch(new URL('./site-colors.json',import.meta.url)).then(r=>r.json());
-  for(const color of colors){const suffix=[...new TextEncoder().encode(color)].map(n=>n.toString(16).padStart(2,'0')).join('');document.documentElement.style.setProperty('--gex-'+suffix,themePaint(color));}
+  document.documentElement.style.backgroundColor=palette.background;
+  document.documentElement.style.color=palette.foreground;
   for(const[key,value]of Object.entries(palette))document.documentElement.style.setProperty('--site-'+key,value);
   const background=channels(palette.background)||[0,0,0];document.documentElement.style.colorScheme=(Math.max(...background.slice(0,3))+Math.min(...background.slice(0,3)))<255?'dark':'light';
+  // Apply the live site surface before awaiting the static colour catalogue.
+  // Share that download across theme changes; failed downloads can retry.
+  colorCatalogue??=fetch(new URL('./site-colors.json',import.meta.url)).then(r=>{if(!r.ok)throw Error('Theme catalogue unavailable');return r.json();}).catch(error=>{colorCatalogue=undefined;throw error;});
+  const colors=await colorCatalogue;
+  for(const color of colors){const suffix=[...new TextEncoder().encode(color)].map(n=>n.toString(16).padStart(2,'0')).join('');document.documentElement.style.setProperty('--gex-'+suffix,themePaint(color));}
 }

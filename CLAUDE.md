@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA quiet theme-first startup
+
+- Both React startup stages now use the accessible quiet theme surface, without
+  the animated loader or visible Opening GEX DATA text.
+- The iframe's classic site-bootstrap.js runs before styles/modules and reads
+  the existing same-origin account/tool host palette. Theme base variables and
+  canvas background apply before the static colour-catalogue download; that
+  download is shared across theme changes, with failures eligible for retry.
+- Presentation only: auth, gateway, market-data errors, polling and calculations
+  are unchanged. Record: docs/prompt-log/2026-10-20-gex-data-quiet-startup.md.
+- Stable transport, rolling month history/recording, Asia tape, chart-indicator
+  live soak and the GEX DATA parity/cadence gates remain OPEN.
+
 ## 2026-10-20 — GEX VUE quiet theme-coloured startup
 
 - GEX VUE startup covers use KwantLoader's quiet presentation: themed surface,
