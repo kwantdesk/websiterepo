@@ -2,6 +2,12 @@
 
 ## 2026-10-20 — Live theme colours across KWANTY and GEX DATA
 
+- Live acceptance found this account's State background explicitly pinned to
+  pale white while the main theme is black. Do not globally wipe user custom
+  flags: KWANTY colour rows now offer a per-field Theme action, with an explicit
+  Use theme background control. It unpins only that colour, immediately syncs,
+  saves and redraws, preserving other styles. Owner requested this State repair.
+
 - KWANTY's theme sync missed State Greek/major styles written by settings Save,
   and retained uncustomized Orderflow series colour snapshots. Complete fresh
   defaults plus theme-settings.js now relink these; explicit customization

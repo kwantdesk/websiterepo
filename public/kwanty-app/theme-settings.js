@@ -15,3 +15,14 @@ export function syncThemeSettings(current,fresh,{palette,light,timeZone}){
   if(!current.timeZoneIsCustomized)current.timeZone=timeZone;
   return current;
 }
+
+export function useThemeColour(settings,key){
+  if(key.startsWith('series:')){
+    const[,field,sign]=key.split(':'),series=settings.series?.[field];if(!series)return;
+    delete series[sign==='positive'?'isCustomized':'negativeIsCustomized'];
+    delete series[sign==='positive'?'color':'negativeColor'];return;
+  }
+  if(key==='background'){delete settings.backgroundIsCustomized;delete settings.background;return;}
+  if(key==='spotColor'){delete settings.spotIsCustomized;delete settings.spotColor;return;}
+  if(settings[key]&&typeof settings[key]==='object'){delete settings[key].isCustomized;delete settings[key].color;}
+}

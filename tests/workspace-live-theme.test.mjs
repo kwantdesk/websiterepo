@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import {syncThemeSettings} from '../public/kwanty-app/theme-settings.js';
+import {syncThemeSettings,useThemeColour} from '../public/kwanty-app/theme-settings.js';
 import {installTheme as installKwanty,themePaint} from '../public/kwanty-app/site-theme.js';
 import {installTheme as installGex} from '../public/gex-data-app/site-theme.js?v=1';
 import {exposureLegs,HEAT_METRICS} from '../public/gex-data-app/exposure-models.js';
@@ -38,6 +38,17 @@ test('all saved orderflow series discard only non-custom colour snapshots',()=>{
   syncThemeSettings(current,{}, {palette:{},light:false,timeZone:'UTC'});
   assert.equal(current.series.zgr.color,undefined);assert.equal(current.series.zgr.negativeColor,'#123456');assert.equal(current.series.zgr.showPositive,false);
   assert.equal(current.series.zvanna.color,'#abcdef');assert.equal(current.series.zvanna.negativeColor,undefined);
+});
+
+test('per-field theme reset unpins an old white background without resetting any other preferences',()=>{
+  const current={background:'#f5f7ff',backgroundIsCustomized:true,spotColor:'#abcdef',spotIsCustomized:true,gamma:{color:'#123456',isCustomized:true,size:8,display:false},series:{zgr:{color:'#abcdef',isCustomized:true,negativeColor:'#fedcba',negativeIsCustomized:true,showPositive:false}}};
+  useThemeColour(current,'background');syncThemeSettings(current,{gamma:{color:'#eeeeee'}},{palette:palettes[0],light:false,timeZone:'UTC'});
+  assert.equal(current.background,palettes[0].background);assert.equal(current.backgroundIsCustomized,undefined);
+  assert.equal(current.spotColor,'#abcdef');assert.equal(current.gamma.color,'#123456');assert.equal(current.gamma.size,8);
+  useThemeColour(current,'gamma');syncThemeSettings(current,{gamma:{color:'#987654'}},{palette:palettes[0],light:false,timeZone:'UTC'});
+  assert.equal(current.gamma.color,'#987654');assert.equal(current.gamma.size,8);assert.equal(current.gamma.display,false);
+  useThemeColour(current,'series:zgr:positive');assert.equal(current.series.zgr.color,undefined);assert.equal(current.series.zgr.negativeColor,'#fedcba');assert.equal(current.series.zgr.showPositive,false);
+  const editor=read('public/kwanty-app/settings-editor.js');assert.match(editor,/Use theme background/);assert.match(editor,/useThemeColour\(settings\(\),key\);refresh\(\);persist\(\);redraw\(\)/);
 });
 
 test('existing GEX exposure and heat-map metric objects resolve live colours, not boot-time white',async()=>{

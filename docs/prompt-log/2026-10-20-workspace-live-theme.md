@@ -34,6 +34,18 @@ Verification:
 - Full production build passes (84 pages, including TypeScript). Production
   receipt recorded after completion.
 
+Live acceptance follow-up: State rendered a #f5f7ff background against the
+black site because its saved custom override was pinned. Blindly deleting all
+users' custom flags would violate the preservation contract. Added per-colour
+Theme actions and an explicit Use theme background button. These clear only
+the selected customization flag, immediately synchronize/save/redraw, preserve
+all other colours and geometry, and refresh the form's initial-colour baseline
+so a subsequent unchanged SAVE does not re-pin the old override. One additional
+regression verifies background, Greek and per-sign resets (255 total passing).
+The follow-up is static-JS-only with scoped lint; the preceding full build is
+unchanged on the React/TypeScript side. A normal follow-up main push is needed
+after this production-only acceptance finding; no manual deploy or bypass.
+
 Standing unresolved: stable VPS transport; full-month futures/options recording,
 history/backfill and offline gaps; Asia tape; weekly/footprint/CVD live soak;
 GEX DATA forecast/aggregate/cadence parity; 100+ user capacity/shared acquisition
