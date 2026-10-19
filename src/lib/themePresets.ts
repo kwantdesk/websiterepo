@@ -3,13 +3,15 @@ import { defaultTheme, type ThemeColors } from "@/lib/theme";
 export type ThemePreset = {
   name: string;
   colors: ThemeColors;
+  swatches?: readonly string[];
 };
 
 type Palette = Partial<ThemeColors> & Pick<ThemeColors, "background" | "panel" | "surface" | "card" | "foreground" | "primary" | "secondary" | "muted" | "border" | "danger">;
 
-function palette(name: string, colors: Palette): ThemePreset {
+function palette(name: string, colors: Palette, swatches?: readonly string[]): ThemePreset {
   return {
     name,
+    ...(swatches ? { swatches } : {}),
     colors: {
       ...defaultTheme,
       ...colors,
@@ -26,6 +28,10 @@ function palette(name: string, colors: Palette): ThemePreset {
       candleDownBorder: colors.candleDownBorder ?? colors.candleDown ?? colors.danger,
     },
   };
+}
+
+function mixedPalette(name: string, colors: Palette): ThemePreset {
+  return palette(name, colors, [colors.background, colors.panel, colors.primary, colors.secondary, colors.foreground]);
 }
 
 /** Owner-approved catalogue, in the requested order. Saved/custom colour
@@ -48,6 +54,24 @@ export const themePresets: ThemePreset[] = [
   palette("Tidepool Glass", { background: "#E8FFF9", panel: "#F7FFFD", surface: "#B8EFE1", card: "#D5F8EF", foreground: "#14332F", primary: "#00897B", secondary: "#FF6B6B", muted: "#688B84", border: "#9ED8CA", danger: "#D94F70", gridColor: "#C3E9E0" }),
   palette("Cobalt Clay", { background: "#171A2B", panel: "#22263B", surface: "#323852", card: "#292E47", foreground: "#F6F1EB", primary: "#4361EE", secondary: "#D97757", muted: "#9195AA", border: "#474E70", danger: "#E76F51", gridColor: "#30364F" }),
   palette("Playdough Parade", { background: "#FFF4D8", panel: "#FFF9E9", surface: "#FFD166", card: "#FFE7A3", foreground: "#25213B", primary: "#F77F00", secondary: "#4D96FF", muted: "#786C69", border: "#E7BE68", danger: "#9B5DE5", gridColor: "#EAD9B5" }),
+  // Sampled from the centres of the owner's five-colour reference strips.
+  palette("Deep Sea", { background: "#00171F", panel: "#003459", surface: "#007EA7", card: "#003459", foreground: "#FFFFFF", primary: "#00A8E8", secondary: "#007EA7", muted: "#97BAC8", border: "#007EA7", danger: "#FFFFFF", gridColor: "#003459", candleUp: "#00A8E8", candleDown: "#FFFFFF" }, ["#FFFFFF", "#00171F", "#003459", "#007EA7", "#00A8E8"]),
+  palette("Blue Lagoon", { background: "#051923", panel: "#003554", surface: "#006494", card: "#003554", foreground: "#F5FCFF", primary: "#00A6FB", secondary: "#0582CA", muted: "#9BBECE", border: "#006494", danger: "#FFFFFF", gridColor: "#003554", candleUp: "#00A6FB", candleDown: "#FFFFFF" }, ["#00A6FB", "#0582CA", "#006494", "#003554", "#051923"]),
+  palette("Sunflower Fields", { background: "#202020", panel: "#333533", surface: "#333533", card: "#333533", foreground: "#D6D6D6", primary: "#FFEE32", secondary: "#FFD100", muted: "#AFB0A5", border: "#686A5C", danger: "#D6D6D6", gridColor: "#333533", candleUp: "#FFEE32", candleDown: "#D6D6D6" }, ["#D6D6D6", "#FFEE32", "#FFD100", "#202020", "#333533"]),
+  palette("Midnight Sky", { background: "#27187E", panel: "#2F2189", surface: "#3C2E98", card: "#32258C", foreground: "#F1F2F6", primary: "#FF8600", secondary: "#758BFD", accent: "#AEB8FE", muted: "#AEB8FE", border: "#6254AC", danger: "#AEB8FE", gridColor: "#3C2E98", candleUp: "#FF8600", candleDown: "#AEB8FE" }, ["#27187E", "#758BFD", "#AEB8FE", "#F1F2F6", "#FF8600"]),
+  palette("Crimson Fade", { background: "#000000", panel: "#3D010E", surface: "#79021C", card: "#3D010E", foreground: "#FFF3F6", primary: "#F50538", secondary: "#B6042A", muted: "#D69DA9", border: "#B6042A", danger: "#F50538", gridColor: "#3D010E", candleUp: "#F50538", candleDown: "#FFB3C1" }, ["#F50538", "#B6042A", "#79021C", "#3D010E", "#000000"]),
+  palette("Sunset Sorbet", { background: "#FBFD79", panel: "#FBD680", surface: "#FBAF87", card: "#FB878E", foreground: "#48242F", primary: "#9F244B", secondary: "#FB6095", accent: "#FB878E", muted: "#775348", border: "#C57965", danger: "#A62F4F", gridColor: "#E8BA76", candleUp: "#9F244B", candleDown: "#48242F" }, ["#FB6095", "#FB878E", "#FBAF87", "#FBD680", "#FBFD79"]),
+  // Ten separate mixed-colour identities, not a hue-shifted monochrome batch.
+mixedPalette("Copper Current", { background: "#071E20", panel: "#0D2A2C", surface: "#173B3D", card: "#112F31", foreground: "#F6E8DE", primary: "#FF9A52", secondary: "#38E0B8", muted: "#8DAEAC", border: "#31585A", danger: "#FF6B72", candleUp: "#38E0B8", candleDown: "#FF9A52" }),
+  mixedPalette("Voltage Orchard", { background: "#160C20", panel: "#22132F", surface: "#342044", card: "#291838", foreground: "#F1F5DA", primary: "#B8F63D", secondary: "#E879F9", muted: "#AC98B7", border: "#513762", danger: "#FF637E", candleUp: "#B8F63D", candleDown: "#E879F9" }),
+  mixedPalette("Glacier Ember", { background: "#081827", panel: "#102437", surface: "#1B354B", card: "#142B40", foreground: "#E9F4FA", primary: "#68D8FF", secondary: "#FF7154", muted: "#92ABBB", border: "#38566B", danger: "#FF7154", candleUp: "#68D8FF", candleDown: "#FF7154" }),
+  mixedPalette("Saffron Ink", { background: "#171124", panel: "#241B35", surface: "#36294B", card: "#2B203D", foreground: "#FFF3DA", primary: "#FFC247", secondary: "#8F7AFF", muted: "#ACA0BB", border: "#57476B", danger: "#FA756C", candleUp: "#FFC247", candleDown: "#8F7AFF" }),
+  mixedPalette("Racing Fern", { background: "#091B12", panel: "#112A1D", surface: "#1D3D2D", card: "#163224", foreground: "#E6F6E9", primary: "#56F095", secondary: "#FF605C", muted: "#91AD9B", border: "#355D47", danger: "#FF605C", candleUp: "#56F095", candleDown: "#FF605C" }),
+  mixedPalette("Tangerine Circuit", { background: "#0B1730", panel: "#142443", surface: "#22375A", card: "#192C4C", foreground: "#F9EDDE", primary: "#FF9E2C", secondary: "#B8E44C", muted: "#9BAAC4", border: "#3F567A", danger: "#FF6289", candleUp: "#B8E44C", candleDown: "#FF9E2C" }),
+  mixedPalette("Amethyst Petrol", { background: "#071C23", panel: "#0E2A34", surface: "#193D49", card: "#12313C", foreground: "#F0E9FC", primary: "#C18CFF", secondary: "#66E4DD", muted: "#96B0BC", border: "#355C6B", danger: "#F7768E", candleUp: "#66E4DD", candleDown: "#C18CFF" }),
+  mixedPalette("Rose Alloy", { background: "#1D1713", panel: "#2D241F", surface: "#42362E", card: "#342A24", foreground: "#F8ECE3", primary: "#FF799B", secondary: "#92D9A5", muted: "#B8A799", border: "#665346", danger: "#FA8264", candleUp: "#92D9A5", candleDown: "#FF799B" }),
+  mixedPalette("Ultraviolet Mint", { background: "#170C1C", panel: "#26132D", surface: "#3B2043", card: "#2E1835", foreground: "#F8E9F5", primary: "#FA52C5", secondary: "#4DFFBE", muted: "#B89DB5", border: "#5A3663", danger: "#FF7D76", candleUp: "#4DFFBE", candleDown: "#FA52C5" }),
+  mixedPalette("Terracotta Ice", { background: "#21130F", panel: "#321F19", surface: "#493028", card: "#3A251E", foreground: "#F7EDE6", primary: "#6EBEFF", secondary: "#EF997C", muted: "#BDA294", border: "#6C4B3F", danger: "#FF746C", candleUp: "#6EBEFF", candleDown: "#EF997C" }),
 ];
 
 export const RETAINED_THEME_NAMES = ["Midnight Cockpit", "Kwant Desk", "Mr. Quant"] as const;

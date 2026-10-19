@@ -1,5 +1,21 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — Six reference themes plus ten distinct mixed-colour themes
+
+- Owner supplied six five-colour palette screenshots and requested matching
+  themes plus ten non-monochrome extras. Added16 after the existing17,33 total.
+  This supersedes ONLY the previous count cap, not the retained-theme colours.
+- Sampled exact centre pixels; reference picker strips preserve their original
+  five-colour order via optional ThemePreset.swatches. All source colours also
+  participate in actual theme tokens. Dark/light ink may be derived for AA
+  readability; Sunset Sorbet intentionally uses a darker primary text colour.
+- Ten extras have20 unique primary/secondary colours and at least35° hue
+  separation within each pair. Existing default, saved/custom colours and
+  profile gradient settings are unchanged. No new feed, timer, CSS animation.
+-25 focused plus14 hollow-candle/brand checks pass. Local16-theme token board
+  visually inspected, not signed-in cloud-save or live multi-pane soak proof.
+  Full build/release status: `docs/prompt-log/2026-10-19-reference-and-mixed-themes.md`.
+
 ## 2026-10-19 — Options Flow Tools in normal chart-grid panels
 
 - Added an expandable Options Flow Tools group below Market & Order Flow in

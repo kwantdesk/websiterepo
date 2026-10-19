@@ -1,5 +1,21 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Six sampled reference themes and ten mixed palettes
+
+- Owner's new request adds16 themes after the kept17; it does not remove or
+  recolour those17 or restore the earlier rejected batches.33 total themes.
+- Exact sampled five-colour strips: Deep Sea, Blue Lagoon, Sunflower Fields,
+  Midnight Sky, Crimson Fade (unnamed red image), Sunset Sorbet (unnamed warm
+  image). Picker strips retain the exact source order. UI ink may be derived
+  for contrast; every sampled colour is also used in actual theme tokens.
+- Ten additional palettes each have unique cross-hue primary/secondary pairs,
+  not ten blue/pink monochrome variations. Existing default, current/custom
+  appearance, account save/apply semantics and VP gradients stay unchanged.
+-25 focused tests plus14 hollow-candle/brand checks pass. All16 local token
+  previews visually inspected; signed-in cross-device theme saves not verified.
+  Existing history/streaming/weekly/footprint/grid-live soak gaps remain OPEN.
+  Record: `docs/prompt-log/2026-10-19-reference-and-mixed-themes.md`.
+
 ## 2026-10-19 — Options Flow Tools inside chart-grid panels
 
 - Charts/GEX VUE panel picker now has an expandable Options Flow Tools section

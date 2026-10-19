@@ -8,10 +8,10 @@ const expected = [
   "Cherry Soda", "Orchid Voltage", "Matcha Plum", "Electric Lemon", "Tidepool Glass",
   "Cobalt Clay", "Playdough Parade",
 ];
-test("theme picker contains exactly the owner's seventeen approved presets in request order", () => {
-  assert.deepEqual(themePresets.map(p=>p.name), expected);
+test("theme picker retains the owner's original seventeen in request order before later additions", () => {
+  assert.deepEqual(themePresets.slice(0,17).map(p=>p.name), expected);
   assert.deepEqual([...KEPT_THEME_NAMES], expected);
-  assert.equal(new Set(themePresets.map(p=>p.name)).size,17);
+  assert.equal(new Set(themePresets.map(p=>p.name)).size,themePresets.length);
 });
 test("unlisted generated and previous presets cannot reappear in the catalogue", () => {
   for(const name of ["Chromey Mono","Velvet Voltage","Solar Flare","Pink → Blue","Red → Lime","Forest Fire"])
