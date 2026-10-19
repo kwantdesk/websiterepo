@@ -78,7 +78,8 @@ check("zooming does not change how many bars it covers", () => {
 });
 
 check("the primitive really uses this, and the old clamp is gone", () => {
-  assert.match(source, /const bodyWidth = chartCandleBodyWidth\(Number\(timeScale\.options\(\)\.barSpacing\)\)/);
+  assert.match(source, /const barSpacing = Number\(timeScale\.options\(\)\.barSpacing\)/);
+  assert.match(source, /const bodyWidth = chartCandleBodyWidth\(barSpacing\)/);
   assert.match(source, /const left = Math\.min\(rawStartX, rawEndX\) - halfBody;/);
   assert.match(source, /const right = Math\.max\(rawStartX, rawEndX\) \+ halfBody/);
   assert.match(source, /zone\.extensionBars/, "unelapsed zone bars must project beyond the live edge");

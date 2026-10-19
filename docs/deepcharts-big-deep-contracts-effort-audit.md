@@ -1,5 +1,33 @@
 # Big Contracts, Deep Contracts and Deep Effort audit
 
+## 2026-10-19 — Big Blocks lifecycle correction
+
+Owner clarified: preview immediately on the forming candle; withdraw if it
+stops qualifying; freeze a qualifying final candle's block without later
+sampled passes adding signals several bars late. This is the acceptance
+contract requested by the owner, not newly established vendor runtime evidence.
+
+An older anti-flash patch latched every forming signal until a newer sampled
+bar arrived, including failed previews. Replaced that latch with per-chart
+live decision authority; flush the final pending observation before accepting
+a next-bar event, freeze confirmed origin/side/bounds and negative decisions,
+and retain legitimate history/backfill for unobserved gaps. Projection right
+edges can still expire/cross-terminate. Normal intrabar work stays frame-bound.
+
+Fresh REA static inspection of installed `Deepchart.dll`16.0.9.0 (.NET10),
+SHA256 `d8366c8312ab71f1706dea8a2a0046eb620eac4497fb2acf595946f381f3d9b6`,
+returned partial managed metadata: duplicate Module/Assembly rows and unknown
+MVID. Parent Evidence `ev_35948328417da1c1fbec3727d8e4b2cda1d3cbcfaa5eedb1fa61498baa8cd4c4`,
+summary `ev_ee03f390f440e5d8fb5ef236d4659169a581e7d0faf7d19141dd055501539f3a`.
+This did not execute/decompile the private formula or observe its bar-close
+behaviour. Official https://www.deepcharts.com/pricing/deepchart describes
+DeepM Effort NQ as proprietary, not a public calculation specification. Search
+did not supply an authoritative live-confirmation formula. No licensing or
+protection bypass was attempted. Do not claim exact vendor math/pixel parity.
+
+Record/tests/production identity:
+`docs/prompt-log/2026-10-19-big-blocks-live-lifecycle.md`.
+
 ## Reference boundary
 
 This audit used the installed licensed Deep Charts assembly and Volumetrica's

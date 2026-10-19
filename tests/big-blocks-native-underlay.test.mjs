@@ -35,7 +35,7 @@ test("KWANT effort is presented as Big Blocks and migrates saved labels", () => 
     "Big Blocks must remain enabled in the rendered indicator registry",
   );
   assert.match(configSource, /shortName: "Big Blocks"/);
-  assert.match(configSource, /effortSettingsVersion: 3/);
+  assert.match(configSource, /effortSettingsVersion: 5/);
   assert.match(
     configSource,
     /normalizedInstance\.indicatorId === "deep-m-effort-nq"[\s\S]*?shortName: "Big Blocks"/,

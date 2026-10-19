@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — Big Blocks live preview and closed-bar decisions
+
+- Forming Big Blocks now REPLACE their current decision: withdraw when no
+  longer qualified, replace the side on reversal. Do not restore the old
+  ever-qualified latch added to hide sampled-snapshot flashing.
+- `BigBlocksLiveState` owns direct flow/candle authority and confirmed blocks
+  independently of sampled React/history passes. Next-bar transition freezes
+  final price/side/origin OR absence. Later snapshots cannot backdate an
+  observed-live rejected candle into a signal. True unobserved gaps may backfill.
+- Flush a pending closing observation before coalescing a new-bar event in
+  the same animation frame. Ordinary same-bar bursts still calculate once/frame.
+  Keep listener dependencies stable across indicator-object/theme updates.
+- Identity includes pane, symbol, timeframe, tick, indicator instance, numeric
+  calculation settings and replay mode. Style changes preserve decisions.
+  Retain max240 source bars,120 visible/confirmed signals,4096 recent observed
+  timestamps. Existing projection termination remains; no new stream/timer.
+- Proprietary Deep Charts formula/native live parity remains unverified.
+  Lifecycle fix does not restore the public feed/history prerequisites.
+  Verification/release: `docs/prompt-log/2026-10-19-big-blocks-live-lifecycle.md`.
+
 ## 2026-10-19 — Ten additional single-family tonal themes
 
 - Owner prefers Crimson Fade/Blue Lagoon's coherent hue families. Appended

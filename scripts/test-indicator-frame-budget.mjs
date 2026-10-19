@@ -25,9 +25,9 @@ const chart = read("src/components/Chart.tsx");
 assert.match(chart, /bigTradeFullPassKey/, "Big Contracts must use a bounded authoritative refresh cadence");
 assert.match(chart, /recentExecutionTail\(indicatorMarketTrades, 15 \* 60_000\)/, "Big Contracts must not rescan unreachable historical tape on every reconciliation");
 assert.match(chart, /pendingDeepEffortCandleRef/, "Big Blocks must coalesce forming-candle work");
-assert.match(chart, /requestAnimationFrame\(paintLatest\)/, "Big Blocks must run no more than once per display frame");
-assert.match(chart, /provisionalBigBlockZonesRef/, "Big Blocks must latch forming-bar zones across sampled updates");
-assert.match(chart, /provisional\.sourceTimestamp < committedThrough/, "Big Blocks may only release a provisional zone after a newer sampled bar arrives");
+assert.match(chart, /requestAnimationFrame\(paintLatest\)/, "Big Blocks must coalesce same-bar work to a display frame");
+assert.match(chart, /bigBlocksLiveState\.update\(candle\.timestamp, liveZones, hasEffortInputs\)/, "Big Blocks must replace previews and freeze closed decisions independently of samples without rejecting unknown data");
+assert.match(chart, /pending && detail\.candle\.timestamp > pending\.timestamp/, "Big Blocks must settle a closing observation before coalescing the next bar");
 
 const inactiveGuardFiles = [
   "src/lib/absorptionDetectorPrimitive.ts",

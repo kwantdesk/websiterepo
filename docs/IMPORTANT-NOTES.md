@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Big Blocks preview/close lifecycle
+
+- Removed the incorrect intrabar latch: live previews can withdraw/reverse;
+  final qualifying close freezes the block, final non-qualifying close stays
+  empty. Later sampled passes cannot add delayed signals to observed-live bars.
+- Same-frame bar rollover settles the closing observation first; bounded
+  screen-frame updates, no new feed/polling. Existing settings/math preserved.
+- Deep Charts exact proprietary formula and real live side-by-side acceptance
+  remain OPEN. Targeted model/actual-effect tests are not live provider proof.
+  Existing full history, public streaming, weekly and footprint gaps stay OPEN.
+  Record: `docs/prompt-log/2026-10-19-big-blocks-live-lifecycle.md`.
+
 ## 2026-10-19 — Ten tonal theme additions
 
 - Added ten single-colour-family themes as requested,43 total. Existing33

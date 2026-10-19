@@ -1,6 +1,7 @@
 "use client";
 
 import { SuperTrendLabels } from "@/lib/superTrendLabels";
+import { BigBlocksLiveState, type LiveBigBlockZone } from "@/lib/bigBlocksLiveState";
 import { PivotPointLabels } from "@/lib/pivotPointLabels";
 import { GapZonePrimitive } from "@/lib/gapZonePrimitive";
 import { ZigZagRetracementPrimitive } from "@/lib/zigZagRetracementPrimitive";
@@ -11697,31 +11698,37 @@ function Chart({
       instance.enabled && instance.indicatorId === "deep-m-effort-nq") ?? null,
     [indicatorSignature, indicators],
   );
+  const deepEffortOptions = useMemo(() => ({
+    zoneBars: Number(deepEffortIndicator?.settings?.zoneBars ?? 22),
+    tickSize: priceFormat.minMove,
+    instrument,
+    minimumBars: Number(deepEffortIndicator?.settings?.minimumBars ?? 20),
+    minimumDeltaPercent: Number(deepEffortIndicator?.settings?.minimumDeltaPercent ?? 20),
+    maximumDeltaPercent: Number(deepEffortIndicator?.settings?.maximumDeltaPercent ?? 100),
+    maximumDeltaEffort: Number(deepEffortIndicator?.settings?.maximumDeltaEffort ?? 0),
+    averageLength: Number(deepEffortIndicator?.settings?.averageLength ?? 21),
+    entryZoneRangePercent: Number(deepEffortIndicator?.settings?.entryZoneRangePercent ?? 28),
+  }), [instrument, priceFormat.minMove, deepEffortIndicator?.settings?.zoneBars,
+    deepEffortIndicator?.settings?.minimumBars, deepEffortIndicator?.settings?.minimumDeltaPercent,
+    deepEffortIndicator?.settings?.maximumDeltaPercent, deepEffortIndicator?.settings?.maximumDeltaEffort,
+    deepEffortIndicator?.settings?.averageLength, deepEffortIndicator?.settings?.entryZoneRangePercent]);
   const deepEffort = useMemo(
     () => deepEffortIndicator
-      ? calculateDeepEffort(indicatorCandles, {
-          zoneBars: Number(deepEffortIndicator.settings?.zoneBars ?? 22),
-          tickSize: priceFormat.minMove,
-          instrument,
-          minimumBars: Number(deepEffortIndicator.settings?.minimumBars ?? 20),
-          minimumDeltaPercent: Number(deepEffortIndicator.settings?.minimumDeltaPercent ?? 20),
-          maximumDeltaPercent: Number(deepEffortIndicator.settings?.maximumDeltaPercent ?? 100),
-          maximumDeltaEffort: Number(deepEffortIndicator.settings?.maximumDeltaEffort ?? 0),
-          averageLength: Number(deepEffortIndicator.settings?.averageLength ?? 21),
-          entryZoneRangePercent: Number(deepEffortIndicator.settings?.entryZoneRangePercent ?? 28),
-        })
+      ? calculateDeepEffort(indicatorCandles, deepEffortOptions)
       : null,
-    [deepEffortIndicator, indicatorCandles, instrument, priceFormat.minMove],
+    [deepEffortIndicator, indicatorCandles, deepEffortOptions],
   );
-  const deepEffortLiveCandlesRef = useRef<Candle[]>([]);
+  const deepEffortZonesVisible = Boolean(deepEffortIndicator && deepEffortIndicator.settings?.showZones !== false);
   const pendingDeepEffortCandleRef = useRef<Candle | null>(null);
   const deepEffortFrameRef = useRef<number | null>(null);
-  const provisionalBigBlockZonesRef = useRef(new Map<
-    string,
-    { sourceTimestamp: number; zone: BigBlockRenderZone }
-  >());
+  const bigBlocksLiveIdentity = JSON.stringify([
+    liveCandleEventKey, instrument, timeframe, priceFormat.minMove, deepEffortIndicator?.instanceId,
+    Boolean(deepEffortIndicator), replayTimestampMs != null,
+    deepEffortOptions,
+  ]);
+  const bigBlocksLiveState = useMemo(() => new BigBlocksLiveState(bigBlocksLiveIdentity), [bigBlocksLiveIdentity]);
   const bigBlocksPrimitiveOptionsRef = useRef<BigBlocksPrimitiveOptions | null>(null);
-  const bigBlocksCommittedZonesRef = useRef<BigBlockRenderZone[]>([]);
+  const bigBlocksSnapshotZonesRef = useRef<LiveBigBlockZone[]>([]);
   const bigTradesIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "big-trades") ?? null,
@@ -12280,7 +12287,7 @@ function Chart({
     window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
     return () => window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
   }, [bigTradesIndicator, liveCandleEventKey, priceFormat.minMove]);
-  const bigBlockRenderZones = useMemo<BigBlockRenderZone[]>(() => {
+  const bigBlockRenderZones = useMemo<LiveBigBlockZone[]>(() => {
     if (!deepEffort || deepEffortIndicator?.settings?.showZones === false) return [];
     return deepEffort.zones.flatMap((zone) => {
       const startCandle = indicatorCandles[zone.startIndex];
@@ -12288,19 +12295,23 @@ function Chart({
       const endCandle = indicatorCandles[Math.min(zone.endIndex, indicatorCandles.length - 1)];
       if (!endCandle) return [];
       return [{
-        id: zone.id,
-        startTime: (
-          eventChartTimeBySourceTimeRef.current.get(startCandle.timestamp)
-          ?? Math.floor(startCandle.timestamp / 1_000)
-        ) as Time,
-        endTime: (
-          eventChartTimeBySourceTimeRef.current.get(endCandle.timestamp)
-          ?? Math.floor(endCandle.timestamp / 1_000)
-        ) as Time,
-        top: zone.top,
-        bottom: zone.bottom,
-        side: zone.side,
-        extensionBars: Math.max(0, zone.endIndex - Math.min(zone.endIndex, indicatorCandles.length - 1)),
+        sourceTimestamp: zone.startTimestamp,
+        endSourceTimestamp: endCandle.timestamp,
+        zone: {
+          id: zone.id,
+          startTime: (
+            eventChartTimeBySourceTimeRef.current.get(startCandle.timestamp)
+            ?? Math.floor(startCandle.timestamp / 1_000)
+          ) as Time,
+          endTime: (
+            eventChartTimeBySourceTimeRef.current.get(endCandle.timestamp)
+            ?? Math.floor(endCandle.timestamp / 1_000)
+          ) as Time,
+          top: zone.top,
+          bottom: zone.bottom,
+          side: zone.side,
+          extensionBars: Math.max(0, zone.endIndex - Math.min(zone.endIndex, indicatorCandles.length - 1)),
+        },
       }];
     });
   }, [
@@ -12325,26 +12336,14 @@ function Chart({
       opacity: clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1),
       lineWidth: clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4),
     };
-    deepEffortLiveCandlesRef.current = indicatorCandles;
+    bigBlocksLiveState.synchronizeSnapshot(indicatorCandles);
     bigBlocksPrimitiveOptionsRef.current = options;
-    const zones = deepEffortIndicator ? bigBlockRenderZones : [];
-    const committedThrough = Number(indicatorCandles.at(-1)?.timestamp ?? 0);
-    // A live forming bar can qualify between sampled React snapshots. Keep its
-    // zone latched until a NEWER bar reaches the authoritative snapshot; an
-    // older snapshot must never erase and then re-add the same block.
-    for (const [id, provisional] of provisionalBigBlockZonesRef.current) {
-      if (!deepEffortIndicator || provisional.sourceTimestamp < committedThrough) {
-        provisionalBigBlockZonesRef.current.delete(id);
-      }
-    }
-    const displayedZones = new Map(zones.map((zone) => [zone.id, zone]));
-    for (const provisional of provisionalBigBlockZonesRef.current.values()) {
-      displayedZones.set(provisional.zone.id, provisional.zone);
-    }
-    bigBlocksCommittedZonesRef.current = zones;
-    bigBlocksPrimitiveRef.current?.update([...displayedZones.values()], options);
+    bigBlocksSnapshotZonesRef.current = bigBlockRenderZones;
+    const visible = deepEffortIndicator && effortSettings.showZones !== false;
+    bigBlocksPrimitiveRef.current?.update(visible ? bigBlocksLiveState.display(bigBlockRenderZones, eventChartTimeBySourceTimeRef.current) : [], options);
   }, [
     bigBlockRenderZones,
+    bigBlocksLiveState,
     chartReadyRevision,
     deepEffortIndicator,
     indicatorCandles,
@@ -12353,7 +12352,7 @@ function Chart({
     themeVersion,
   ]);
   useEffect(() => {
-    if (!deepEffortIndicator || deepEffortIndicator.settings?.showZones === false) return;
+    if (!deepEffortZonesVisible) return;
     const paintLatest = () => {
       deepEffortFrameRef.current = null;
       const candle = pendingDeepEffortCandleRef.current;
@@ -12365,26 +12364,16 @@ function Chart({
       // one display frame. Only the newest state is visible, so calculate the
       // bar study once per frame instead of repeatedly blocking the UI with
       // intermediate states the monitor can never display.
-      const source = mergeLiveIndicatorCandle(deepEffortLiveCandlesRef.current, candle).slice(-240);
-      deepEffortLiveCandlesRef.current = source;
-      const effortSettings = deepEffortIndicator.settings ?? {};
-      const liveResult = calculateDeepEffort(source, {
-        zoneBars: Number(effortSettings.zoneBars ?? 22),
-        tickSize: priceFormat.minMove,
-        instrument,
-        minimumBars: Number(effortSettings.minimumBars ?? 20),
-        minimumDeltaPercent: Number(effortSettings.minimumDeltaPercent ?? 20),
-        maximumDeltaPercent: Number(effortSettings.maximumDeltaPercent ?? 100),
-        maximumDeltaEffort: Number(effortSettings.maximumDeltaEffort ?? 0),
-        averageLength: Number(effortSettings.averageLength ?? 21),
-        entryZoneRangePercent: Number(effortSettings.entryZoneRangePercent ?? 28),
-      });
+      const source = bigBlocksLiveState.sourceFor(candle);
+      if (!source) return;
+      const liveResult = calculateDeepEffort(source, deepEffortOptions);
       const liveZones = liveResult.zones.flatMap((zone) => {
         const start = source[zone.startIndex];
         const end = source[Math.min(zone.endIndex, source.length - 1)];
         if (!start || !end) return [];
         return [{
           sourceTimestamp: zone.startTimestamp,
+          endSourceTimestamp: end.timestamp,
           zone: {
             id: zone.id,
             startTime: (eventChartTimeBySourceTimeRef.current.get(start.timestamp)
@@ -12398,22 +12387,25 @@ function Chart({
           },
         }];
       });
-      for (const provisional of liveZones) {
-        // Historical zones belong to the sampled model. Only latch a signal
-        // born on the forming bar, where snapshot races can occur.
-        if (provisional.sourceTimestamp === candle.timestamp) {
-          provisionalBigBlockZonesRef.current.set(provisional.zone.id, provisional);
-        }
-      }
-      const merged = new Map(bigBlocksCommittedZonesRef.current.map((zone) => [zone.id, zone]));
-      for (const provisional of provisionalBigBlockZonesRef.current.values()) {
-        merged.set(provisional.zone.id, provisional.zone);
-      }
-      primitive.update([...merged.values()], options);
+      const latest = source.at(-1)!;
+      const hasEffortInputs = source.length >= Math.max(12, Math.min(200, Math.round(deepEffortOptions.minimumBars)))
+        && Number(latest.askVolume ?? 0) + Number(latest.bidVolume ?? 0) > 0;
+      // Missing warm-up/flow is unknown, not a confirmed rejection. It must
+      // remain eligible for genuine history recovery rather than hiding data.
+      bigBlocksLiveState.update(candle.timestamp, liveZones, hasEffortInputs);
+      primitive.update(bigBlocksLiveState.display(bigBlocksSnapshotZonesRef.current, eventChartTimeBySourceTimeRef.current), options);
     };
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
       if (!detail || detail.key !== liveCandleEventKey || liveReplayActiveRef.current) return;
+      const pending = pendingDeepEffortCandleRef.current;
+      if (pending && detail.candle.timestamp < pending.timestamp) return;
+      if (pending && detail.candle.timestamp > pending.timestamp) {
+        // Do not coalesce the closing observation away when two bars arrive
+        // within one frame. Settle the previous bar BEFORE accepting the next.
+        if (deepEffortFrameRef.current !== null) window.cancelAnimationFrame(deepEffortFrameRef.current);
+        paintLatest();
+      }
       pendingDeepEffortCandleRef.current = detail.candle;
       if (deepEffortFrameRef.current === null) {
         deepEffortFrameRef.current = window.requestAnimationFrame(paintLatest);
@@ -12425,9 +12417,8 @@ function Chart({
       if (deepEffortFrameRef.current !== null) window.cancelAnimationFrame(deepEffortFrameRef.current);
       deepEffortFrameRef.current = null;
       pendingDeepEffortCandleRef.current = null;
-      provisionalBigBlockZonesRef.current.clear();
     };
-  }, [deepEffortIndicator, instrument, liveCandleEventKey, priceFormat.minMove]);
+  }, [bigBlocksLiveState, deepEffortZonesVisible, deepEffortOptions, liveCandleEventKey]);
   const imbalanceTracker = useMemo(() => {
     const instance = indicators.find((candidate) =>
       candidate.enabled && candidate.indicatorId === "imbalance-tracker");
