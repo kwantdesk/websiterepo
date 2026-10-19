@@ -174,8 +174,8 @@ function writeLastGoodGexMap<T>(key: string, value: T, updatedAt: number) {
   } catch {}
 }
 
-async function fetchWorkspaceResponse(url: string, timeoutMs = WORKSPACE_REQUEST_TIMEOUT_MS) {
-  return fetchJsonWithBudget(url, timeoutMs);
+async function fetchWorkspaceResponse(url: string, timeoutMs = WORKSPACE_REQUEST_TIMEOUT_MS, forceRevalidate = false) {
+  return fetchJsonWithBudget(url, timeoutMs, forceRevalidate);
 }
 
 export function readWorkspaceData<T>(key: string): T | null {
@@ -255,7 +255,7 @@ export async function fetchWorkspaceData<T>(
   const existing = workspaceDataRequests.get(key);
   if (existing) return existing as Promise<T>;
 
-  const request = fetchWorkspaceResponse(url, options.timeoutMs)
+  const request = fetchWorkspaceResponse(url, options.timeoutMs, options.force)
     .then(({response, payload}) => {
       if (!response.ok) {
         const message = payload && typeof payload === "object" && "error" in payload

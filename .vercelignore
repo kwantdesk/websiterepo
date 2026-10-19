@@ -5,6 +5,7 @@ node_modules
 data-cache
 tmp
 output
+native
 *.tsbuildinfo
 .env*
 services/rithmic_gateway/node_modules

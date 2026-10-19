@@ -28,3 +28,25 @@ test('caller cancellation is preserved and successful JSON is returned unchanged
     await assert.rejects(fetchWithDeadline(url,{signal:owner.signal},1000));
   });
 });
+
+test('browser requests revalidate every refresh; forced refresh reloads and server requests remain uncached',async()=>{
+  const originalFetch=globalThis.fetch;
+  const originalWindow=Object.getOwnPropertyDescriptor(globalThis,'window');
+  const modes=[];
+  globalThis.fetch=async (_url,init)=>{
+    modes.push(init.cache);
+    return new Response('{"levels":[1]}', {headers:{'Content-Type':'application/json'}});
+  };
+  try{
+    Object.defineProperty(globalThis,'window',{value:{},configurable:true});
+    await fetchJsonWithBudget('/api/bounce-levels',1000);
+    await fetchJsonWithBudget('/api/bounce-levels',1000,true);
+    delete globalThis.window;
+    await fetchJsonWithBudget('https://example.test/data',1000);
+    assert.deepEqual(modes,['no-cache','reload','no-store']);
+  }finally{
+    globalThis.fetch=originalFetch;
+    if(originalWindow)Object.defineProperty(globalThis,'window',originalWindow);
+    else delete globalThis.window;
+  }
+});

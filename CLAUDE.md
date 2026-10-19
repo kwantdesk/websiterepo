@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Vercel cost containment and owner-managed cap
+
+- Owner authorises Spend Management automatic production pause at the cap,
+  superseding the earlier keep-live rule for this specific cost safeguard.
+  Owner subsequently confirmed they set the cap themselves. Agent did not
+  configure/read back the numeric budget or pause switch; never claim otherwise.
+- Shared workspace JSON requests must retain private browser ETags, revalidating
+  on every refresh (`no-cache`), rather than defeating them with `no-store`.
+  Explicit force refresh reloads the body; server calls remain `no-store`.
+  Do not slow live cadence, share licensed responses publicly, or cache errors.
+- Native-only commits do not ship the Next website: ignore them in the Vercel
+  build gate and deployment input. Mixed web/native commits still build.
+- Current-cycle baseline: about 75 GB origin transfer, 20 CPU hours, 732 build
+  CPU minutes. These are gross usage, not proof of incremental billed overage;
+  Pro credits and fixed subscription are separate. No measured dollar saving yet.
+- Continuous market-data proxy/SSE costs remain OPEN until supported always-on
+  gateway delivery replaces the temporary laptop/tunnel. Preserve recording,
+  history/backfill and data accuracy. No new paid service authorised.
+- Record: docs/prompt-log/2026-10-20-vercel-cost-containment.md.
+
 ## 2026-10-20 — Live theme colours across KWANTY and GEX DATA
 
 - Live acceptance found this account's State background explicitly pinned to

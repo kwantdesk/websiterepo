@@ -11,11 +11,17 @@ export function fetchWithDeadline(url: string, init: RequestInit = {}, timeoutMs
 const retryable = (status: number) => [429, 502, 503, 504].includes(status);
 
 /** One end-to-end budget for headers, JSON download and bounded GET retry. */
-export async function fetchJsonWithBudget(url: string, timeoutMs = 20_000) {
+export async function fetchJsonWithBudget(url: string, timeoutMs = 20_000, forceRevalidate = false) {
   const signal = AbortSignal.timeout(timeoutMs);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await fetch(url, {cache: "no-store", signal});
+      // Keep the browser's private copy for ETag revalidation, but ask the
+      // server on EVERY refresh: savings must not slow live-data cadence or
+      // inherit a route's stale-while-revalidate window. `no-store` defeated
+      // conditionalJson and downloaded unchanged multi-MB surfaces repeatedly.
+      // Server callers stay uncached; an explicit refresh reloads the body.
+      const cache = typeof window === "undefined" ? "no-store" : forceRevalidate ? "reload" : "no-cache";
+      const response = await fetch(url, {cache, signal});
       if (retryable(response.status) && attempt === 0) {
         void response.body?.cancel().catch(() => undefined);
       } else {

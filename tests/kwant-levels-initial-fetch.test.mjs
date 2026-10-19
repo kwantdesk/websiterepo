@@ -13,7 +13,7 @@ test("KWANT levels recover automatically from an initial cold request", async ()
 
   assert.match(workspace, /timeoutMs: 45_000/);
   assert.match(cache, /timeoutMs\?: number/);
-  assert.match(cache, /fetchWorkspaceResponse\(url, options\.timeoutMs\)/);
+  assert.match(cache, /fetchWorkspaceResponse\(url, options\.timeoutMs, options\.force\)/);
 
   const intentBlock = workspace.match(/const enabledKwantRootKey = useMemo\(\(\) => \{[\s\S]*?\}, \[paneLevelVisibility, visibleWorkspacePaneIds, workspacePanes\]\);/)?.[0] ?? "";
   assert.match(intentBlock, /paneLevelVisibility\[paneId\]/);

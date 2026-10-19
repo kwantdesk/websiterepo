@@ -102,8 +102,8 @@ check("the tag is derived, not hashed from the body", () => {
   const noStoreLines = route.split("\n").filter((line) => line.includes("no-store"));
   assert.equal(noStoreLines.length, 1, "only one response may still refuse caching");
   assert.match(noStoreLines[0], /error: problem\.message/, "and it must be the error path");
-  assert.match(route, /identity: `\$\{key\}:\$\{(cached\.)?payload\.asOf\}`/,
-    "identity must be the cache key plus the surface's own freshness stamp");
+  assert.match(route, /identity: `\$\{key\}:\$\{(cached\.)?payload\.revision\}`/,
+    "identity must be the cache key plus the surface's own revision (including replay bounds)");
   // Both the fresh build AND the in-memory hit must revalidate, or half the
   // polls still ship the whole surface.
   assert.equal((route.match(/conditionalJson\(/g) ?? []).length, 2, "both return paths must use it");
@@ -154,6 +154,8 @@ check("a commit that only touches unshipped paths skips the build", () => {
     "services/rithmic_gateway/src/recorder.mjs",
     "services/rithmic_gateway/deploy/docker-compose.yml",
   ]), false, "the VPS-only collector must not spend a Vercel website build");
+  assert.equal(shouldBuild(["native/src/KwantDesk.Desktop/App.cs", "native/VERSION"]), false,
+    "desktop-only development must not compile the website");
 });
 
 check("anything that ships still builds", () => {
@@ -163,6 +165,7 @@ check("anything that ships still builds", () => {
   assert.equal(shouldBuild(["public/heatmap-app/index.html"]), true);
   // A mixed commit builds — the source half of it matters.
   assert.equal(shouldBuild(["scripts/test-a.mjs", "src/lib/thing.ts"]), true);
+  assert.equal(shouldBuild(["native/VERSION", "src/lib/thing.ts"]), true);
 });
 
 check("it recovers the history Vercel's shallow clone leaves out", () => {
