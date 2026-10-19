@@ -1,5 +1,34 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — Big Blocks (Options)
+
+- New separate Options Flow indicator, ID big-blocks-options. Chart-native
+  paired horizontal call/put bars dock right; priceToCoordinate anchors them
+  through pan/zoom. Same-price qualifying orders aggregate without netting.
+  Defaults100 contracts/order,150px maximum width,0.25 price bin. Configurable
+  premium threshold, strike vs reported-underlying-price, premium vs contracts,
+  rolling window, side visibility, opacity/height/width, theme/custom colours.
+- Dedicated options tape/primitive/hook, not the futures effort calculation.
+  Consolidated parent IDs deduplicate; revisions replace old contributions;
+  comprising children/unknown types/missing prices/future rows are excluded.
+  Multi-leg excluded by default.5K compact records/pane, max200 displayed levels.
+  Session rollover clears old data. Replay and unverified futures mapping fail
+  closed. Existing futures Big Blocks is unchanged.
+- Snapshot feed shares one CONSOLIDATED100 request/ticker across panes,
+  min3s cadence, hidden-tab pause, closed-market60s cadence, failure backoff,
+  last-subscriber abort. Uses existing /api/gex-flow snapshot service, no new
+  endpoint/provider credentials/per-tick streaming or provider fan-out.
+  This does NOT prove complete exchange capture: latest100 per refresh plus
+  observed retention only; disclose the limitation in settings/on-chart.
+  No claims of resting orders/open interest/positions or call=bullish.
+-31 focused/adjacent regressions, scoped lint and TypeScript pass. Existing
+  indicator-settings-window footprint source guard already fails on HEAD
+  (expects obsolete saveFootprintSettings(...validated)); not changed here.
+  Public flow probe is access-gated; signed-in live/visual soak not verified.
+  Release record: docs/prompt-log/2026-10-19-big-blocks-options.md.
+- Permanent gateway/licensed full options capture/rolling-month history and
+  prior missing Asia opening tape remain OPEN; no infrastructure changes.
+
 ## 2026-10-19 — Asia/London volume-profile availability
 
 - Session variant planner now honours individual Asia/London/NY switches,

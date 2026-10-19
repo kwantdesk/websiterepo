@@ -1,5 +1,19 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Big Blocks (Options)
+
+- Separate indicator added under Options Flow for underlying charts (QQQ,
+  SPY, SPX, NDX, supported equities). Right-edge call/put size bars grouped
+  by reported underlying price or strike, with numbers and adjustable inputs.
+  Futures Big Blocks unchanged; no unverified futures/option-premium mapping.
+- Real consolidated executions, not resting orders/positions. Latest100 prints
+  per shared snapshot; only observed flow accumulates, max5K compact records.
+  Not complete session capture. Three-second minimum refresh is NOT tick-live
+  or a promise of provider latency. Signed-in live/visual acceptance remains OPEN.
+-31 regressions/lint/TypeScript pass. Existing feed/history/Asia/weekly/
+  footprint and permanent gateway issues remain OPEN. Record:
+  docs/prompt-log/2026-10-19-big-blocks-options.md.
+
 ## 2026-10-19 — Asia/London profiles: code fixes and missing opening tape
 
 - Fixed session variant flags/current-date planning and one profile arrival

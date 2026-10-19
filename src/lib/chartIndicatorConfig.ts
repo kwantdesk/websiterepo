@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { BIG_BLOCKS_OPTIONS_DEFAULTS } from "@/lib/bigBlocksOptions";
 import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors, normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
 import { PIVOT_POINT_DEFAULTS } from "@/lib/pivotPoints";
@@ -141,6 +142,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zero-gamma-bars",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
+  "big-blocks-options",
   "gex-interval-map",
   "bounce-levels",
   "dark-pool-map",
@@ -287,6 +289,16 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "big-blocks-options": [
+    { key: "minContracts", label: "Minimum contracts per executed order", defaultValue: 100, min: 0, max: 1000000, step: 1 },
+    { key: "minPremium", label: "Minimum premium per executed order ($)", defaultValue: 0, min: 0, max: 1000000000, step: 1000 },
+    { key: "binSize", label: "Price grouping (chart points)", defaultValue: 0.25, min: 0.01, max: 1000, step: 0.01 },
+    { key: "windowMinutes", label: "Rolling minutes · 0 = observed session", defaultValue: 0, min: 0, max: 1440, step: 1 },
+    { key: "maxLevels", label: "Maximum price levels", defaultValue: 60, min: 1, max: 200, step: 1 },
+    { key: "widthPx", label: "Maximum right-edge bar width (px)", defaultValue: 150, min: 30, max: 400, step: 1 },
+    { key: "barHeight", label: "Call/put pair height (px)", defaultValue: 12, min: 4, max: 30, step: 1 },
+    { key: "opacity", label: "Opacity (%)", defaultValue: 85, min: 10, max: 100, step: 1 },
+  ],
   "shift-candle": [
     { key: "maxBarsAfterReversal", label: "Maximum bars after reversal", defaultValue: 3, min: 1, max: 50, step: 1 },
     { key: "minimumTickBreakout", label: "Minimum tick breakout", defaultValue: 1, min: 0, max: 1000, step: 1 },
@@ -1675,6 +1687,9 @@ export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSe
   indicatorSettingsFromTheme(indicatorId, sidedTheme(rawTheme));
 
 const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
+  ...(indicatorId === "big-blocks-options" ? { ...BIG_BLOCKS_OPTIONS_DEFAULTS,
+    callColor: theme?.upColor ?? BIG_BLOCKS_OPTIONS_DEFAULTS.callColor,
+    putColor: theme?.downColor ?? BIG_BLOCKS_OPTIONS_DEFAULTS.putColor } : {}),
   ...(indicatorId === "auction-gap-tracker" ? { ...AUCTION_GAP_DEFAULTS, ...(theme ? auctionGapThemeColors(theme) : {}) } : {}),
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "price-movement-levels" ? PRICE_MOVEMENT_LEVEL_DEFAULTS : {}),

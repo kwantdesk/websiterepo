@@ -399,6 +399,8 @@ function computeIndicatorSeries(
   if (key === "important-levels") return calculateImportantLevels(candles, context.footprintBars ?? [], instance.settings ?? {}, theme);
   if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
+  // Options execution bars own their external-data primitive, never OHLC math.
+  if (key === "big-blocks-options") return [];
   if (key === "source-code-indicator") {
     const source = settingString(instance, "source", "");
     if (!source) return [];

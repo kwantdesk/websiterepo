@@ -588,6 +588,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "zero-gamma-bars",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
+  "big-blocks-options",
   "gex-interval-map",
   "bounce-levels",
   "dark-pool-map",
@@ -1024,6 +1025,7 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   // down colours (see the primitive updates in Chart.tsx), so the swatches must
   // show those while theme mode is on rather than the values stored when the
   // indicator was added.
+  if (indicatorId === "big-blocks-options") return { callColor: chartSettings.upColor, putColor: chartSettings.downColor };
   if (indicatorId === "big-trades" || indicatorId === "deep-m-effort-nq") {
     return {
       askColor: chartSettings.upColor,
@@ -4097,6 +4099,11 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "big-blocks-options" ? (
+                <div className="border border-border bg-surface/30 p-3 text-[10px] leading-5 text-muted">
+                  Executed options trades, not resting orders or open positions. Calls and puts accumulate separately at the underlying price reported with each print; enable Use Strike Price to group by strike instead. Size By Premium changes both bar lengths and values to dollars. Thresholds apply to each order before grouping. Multi-leg trades are excluded unless enabled. The feed supplies the latest 100 consolidated prints per refresh; this is observed flow, not complete session history. Refreshes are shared across panes, pause in hidden tabs, and slow down when markets close. No futures price substitution or live-data replay.
+                </div>
+              ) : null}
               {settingsDefinition.id === "net-gamma-exposure-by-strike" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">

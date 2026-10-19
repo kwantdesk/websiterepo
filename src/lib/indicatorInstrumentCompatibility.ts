@@ -76,6 +76,10 @@ export function indicatorCompatibility(
 ): IndicatorCompatibility {
   const kind = indicatorInstrumentKind(instrument, broker);
   const normalizedInstrument = instrument.trim().toUpperCase().replace(/[^A-Z0-9].*$/, "");
+  if (definition.id === "big-blocks-options" && kind === "futures") return {
+    status: "unavailable", kind, label: "Options underlying required", canAdd: false,
+    reason: "Use an options underlying chart such as SPX, NDX, SPY or QQQ. No unverified options-to-futures price substitution is used.",
+  };
   if (kind === "futures") {
     const hasOptionsFamily = ["ES", "MES", "NQ", "MNQ", "RTY", "M2K"].includes(normalizedInstrument);
     if ((OPTIONS_ONLY_IDS.has(definition.id) || definition.category === "Options Flow") && !hasOptionsFamily) {

@@ -253,6 +253,7 @@ import {
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
 import { loadOwnedVolumeProfiles, mergeOwnedVolumeProfile } from "@/lib/ownedVolumeProfiles";
+import { useBigBlocksOptions } from "@/components/useBigBlocksOptions";
 import { shouldRetainLastGoodOwnedVolumeProfile } from "@/lib/volumeProfileContinuity";
 import { planVolumeProfileVariantJobs } from "@/lib/volumeProfileVariants";
 import {
@@ -4226,6 +4227,8 @@ function Chart({
   const [hedgeLevelsTooltip, setHedgeLevelsTooltip] = useState<{ x: number; y: number; level: HedgeChartLevel } | null>(null);
   const previousHedgeLevelsRef = useRef<HedgeChartLevel[] | null>(null);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
+  useBigBlocksOptions({ seriesRef: candleSeriesRef, revision: chartReadyRevision,
+    instrument, replayTimestampMs, indicators, theme: settings });
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart || typeof window === "undefined") return;
