@@ -184,7 +184,6 @@ export function volumeProfileLevelFrontX(input: {
     facesLeft,
     pinned,
     splitPinnedDaily,
-    visualStyle,
     mode,
     deltaOnRight,
     volumeWidth,
@@ -193,7 +192,7 @@ export function volumeProfileLevelFrontX(input: {
     bidWidth,
   } = input;
   if (facesLeft) return anchorX;
-  if (visualStyle === "line") return anchorX + volumeWidth;
+  // Appearance must not substitute total-volume geometry for delta or sides.
   if (mode === "volume") return anchorX + volumeWidth;
   if (mode === "delta-volume") {
     return anchorX + (
@@ -210,6 +209,45 @@ export function volumeProfileLevelFrontX(input: {
     );
   }
   return anchorX + (pinned && !splitPinnedDaily || deltaOnRight ? deltaWidth : 0);
+}
+
+export type VolumeProfileContourStep = {
+  row: number; x: number; y: number; width: number; height: number;
+  side: "left" | "right" | "both";
+};
+
+/** Trace an edge, never per-row boxes. Steps arrive in price order, so walk
+ * forwards/backwards without sorting/allocating a second row array per frame.
+ * Missing/zero rows and signed-side changes must break the contour. */
+export function traceVolumeProfileContour(
+  path: Pick<Path2D, "moveTo" | "lineTo">,
+  steps: readonly VolumeProfileContourStep[],
+) {
+  const reverse = steps.length > 1 && steps[0].y > steps[steps.length - 1].y;
+  let previous: VolumeProfileContourStep | null = null;
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[reverse ? steps.length - 1 - i : i];
+    if (!Number.isFinite(step.x) || !Number.isFinite(step.y)
+      || !Number.isFinite(step.width) || !Number.isFinite(step.height)
+      || step.width <= 0 || step.height <= 0) {
+      previous = null;
+      continue;
+    }
+    const baseline = step.side === "left" ? step.x + step.width : step.x;
+    const edge = step.side === "left" ? step.x : step.x + step.width;
+    const previousBaseline = previous && (previous.side === "left" ? previous.x + previous.width : previous.x);
+    const adjacent = previous && Math.abs(step.row - previous.row) === 1
+      && step.side === previous.side && Math.abs(baseline - previousBaseline!) < .01
+      && step.y - previous.y - previous.height <= Math.max(.75, Math.max(step.height, previous.height) * .9);
+    if (previous && adjacent) {
+      path.lineTo(previous.side === "left" ? previous.x : previous.x + previous.width, step.y);
+    } else {
+      path.moveTo(baseline, step.y);
+    }
+    path.lineTo(edge, step.y);
+    path.lineTo(edge, step.y + step.height);
+    previous = step;
+  }
 }
 
 export type VolumeProfileLeftDockCandidate = {
@@ -972,8 +1010,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const profileWidth = fineVolumeProfileWidth(baseProfileWidth, effectiveWidthPercent);
         // A daily profile has two independent halves: volume to the right of
         // its spine and signed delta to the left. Once its session anchor has
-        // moved beyond the viewport, dock the volume-only half to the left
-        // edge. Delta returns automatically when the anchor is visible again.
+        // moved beyond the viewport, dock to the left edge. Combined delta
+        // nests inside the volume half so both measurements remain visible.
         const splitPinnedDaily = pinnedLeft && !pinnedRight && profile.period === "daily";
         const volumeOnlyPinnedDaily = splitPinnedDaily
           && (style.mode === "delta-volume" || style.mode === "volume");
@@ -1189,7 +1227,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // Line style traces the profile's outer edge as one stepped polyline
         // rather than outlining every row rectangle, which is what makes it
         // read as a profile silhouette instead of a stack of boxes.
-        const outlineSteps: { y: number; height: number; width: number }[] = [];
+        const contourSteps = style.visualStyle === "line" ? {
+          volume: [] as VolumeProfileContourStep[], positiveDelta: [] as VolumeProfileContourStep[],
+          negativeDelta: [] as VolumeProfileContourStep[], ask: [] as VolumeProfileContourStep[],
+          bid: [] as VolumeProfileContourStep[],
+        } : null;
         const valueAreaPath = new Path2D();
         const outsideValueAreaPath = new Path2D();
         const positiveDeltaPath = new Path2D();
@@ -1198,6 +1240,18 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const bidVolumePath = new Path2D();
         const outlinePath = new Path2D();
         const pocPath = new Path2D();
+        const addComponentBar = (
+          component: "volume" | "positiveDelta" | "negativeDelta" | "ask" | "bid",
+          path: Path2D, row: number, x: number, y: number, width: number, height: number,
+          side: "left" | "right" | "both",
+        ) => {
+          if (!(width > 0) || !(height > 0)) return;
+          if (contourSteps) {
+            contourSteps[component].push({row, x, y, width, height, side});
+          } else {
+            addBar(path, x, y, width, height, side);
+          }
+        };
         const levelFrontRows: Array<{ price: number; frontX: number }> = [];
         for (let levelIndex = firstVisible; levelIndex < lastVisible; levelIndex += 1) {
           const level = levels[levelIndex];
@@ -1217,7 +1271,6 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           const y = Math.min(top, bottom);
           const height = Math.max(0.72, Math.abs(bottom - top) - 0.12);
           const volumeWidth = Math.max(0, volume / groupedMaxVolume * profileWidth);
-          if (style.visualStyle === "line") outlineSteps.push({ y, height, width: volumeWidth });
           // Delta percentage measures how one-sided a row was rather than how
           // big its delta was, so a thin row that traded entirely on the offer
           // reads as strongly as a heavy balanced one.
@@ -1257,8 +1310,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
 
           const valueAreaActive = inValueArea && style.showValueArea;
           if (style.mode === "delta-volume" || style.mode === "volume") {
-            addBar(
+            addComponentBar(
+              "volume",
               valueAreaActive ? valueAreaPath : outsideValueAreaPath,
+              levelIndex,
               facesLeft ? anchorX - volumeWidth : anchorX,
               y,
               volumeWidth,
@@ -1285,11 +1340,13 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               // survives the dock instead of disappearing with it.
               const insideDock = volumeOnlyPinnedDaily;
               const barWidth = insideDock
-                ? Math.max(0.5, Math.min(deltaWidth, volumeWidth))
+                ? Math.min(deltaWidth, volumeWidth)
                 : deltaWidth;
               const sideAnchored = pinned && !splitPinnedDaily;
-              addBar(
+              addComponentBar(
+                delta >= 0 ? "positiveDelta" : "negativeDelta",
                 delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
+                levelIndex,
                 insideDock
                   ? facesLeft ? anchorX - barWidth : anchorX
                   : sideAnchored
@@ -1306,16 +1363,20 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               );
             }
           } else if (style.mode === "bid-ask") {
-            addBar(
+            addComponentBar(
+              "ask",
               askVolumePath,
+              levelIndex,
               facesLeft ? anchorX - askWidth : anchorX,
               y,
               askWidth,
               height,
               facesLeft ? "left" : "right",
             );
-            addBar(
+            addComponentBar(
+              "bid",
               bidVolumePath,
+              levelIndex,
               pinned && !splitPinnedDaily
                 ? facesLeft ? anchorX - bidWidth : anchorX
                 : anchorX - bidWidth,
@@ -1327,8 +1388,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 : "left",
             );
           } else if (style.showDelta) {
-            addBar(
+            addComponentBar(
+              delta >= 0 ? "positiveDelta" : "negativeDelta",
               delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
+              levelIndex,
               pinned && !splitPinnedDaily
                 ? facesLeft ? anchorX - deltaWidth : anchorX
                 : deltaOnRight ? anchorX : anchorX - deltaWidth,
@@ -1400,36 +1463,31 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const levelValueAreaColor = style.gradient
           ? mixHexColors(style.gradient.to, style.gradient.from, 0.35)
           : style.valueAreaColor;
-        if (style.visualStyle === "line" && outlineSteps.length) {
-          // Walk the rows in price order, stepping out to each row's width and
-          // then along to the next — the same shape the filled profile makes,
-          // drawn as a single continuous edge.
-          const ordered = [...outlineSteps].sort((left, right) => left.y - right.y);
-          const direction = facesLeft ? -1 : 1;
-          const silhouette = new Path2D();
-          let previousWidth: number | null = null;
-          for (const step of ordered) {
-            const edgeX = anchorX + direction * step.width;
-            if (previousWidth === null) {
-              silhouette.moveTo(anchorX, step.y);
-              silhouette.lineTo(edgeX, step.y);
-            } else if (step.width !== previousWidth) {
-              silhouette.lineTo(edgeX, step.y);
-            }
-            silhouette.lineTo(edgeX, step.y + step.height);
-            previousWidth = step.width;
-          }
-          context.globalAlpha = Math.min(1, style.opacity + 0.2);
-          context.strokeStyle = bodyColor(style.valueAreaColor);
+        if (contourSteps) {
+          // Appearance changes the paint, not which measurements exist. Every
+          // selected volume/delta/ask/bid component owns its own open contour.
+          const colours = {
+            volume: style.valueAreaColor, positiveDelta: style.positiveDeltaColor,
+            negativeDelta: style.negativeDeltaColor, ask: style.positiveDeltaColor,
+            bid: style.negativeDeltaColor,
+          };
           context.lineWidth = Math.max(0.5, style.borderWidth ?? 1);
           context.setLineDash([]);
           context.lineJoin = "miter";
-          context.stroke(silhouette);
+          for (const component of Object.keys(contourSteps) as Array<keyof typeof contourSteps>) {
+            const steps = contourSteps[component];
+            if (!steps.length) continue;
+            const silhouette = new Path2D();
+            traceVolumeProfileContour(silhouette, steps);
+            context.globalAlpha = Math.min(1, style.opacity + 0.2);
+            context.strokeStyle = bodyColor(colours[component]);
+            context.stroke(silhouette);
+          }
         } else {
           fillPath(outsideValueAreaPath, bodyColor(style.outsideValueAreaColor), style.opacity * 0.34, style.visualStyle, style.borderWidth);
         }
-        // Line is an OUTLINE, and nothing else. The silhouette above already
-        // drew the profile's edge; every remaining path here is built from one
+        // The selected contours above already draw every component's edge;
+        // every remaining path here is built from one
         // rectangle per row, so stroking them in line mode outlined each row
         // individually — the bars reappearing inside the outline as soon as
         // the chart was zoomed in far enough for the rows to separate. In line

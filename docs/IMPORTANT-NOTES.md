@@ -1,5 +1,22 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Volume-profile appearance must retain selected data
+
+- Line used to trace total volume regardless of selected mode, then skip all
+  delta/bid/ask paths. Shared renderer now traces each selected component using
+  exactly the Solid geometry. Delta-only and delta-percent no longer substitute
+  a volume silhouette; combined volume+delta retains both. Level attachment is
+  mode-owned, not appearance-owned. Zero delta must not invent a docked mark.
+- Covers the common Daily/Weekly/Composite/Monthly/Session/Visible renderer and
+  Ask/Bid/Delta variants. Independent TPO and SVG draw-on paths were inspected;
+  they do not share this suppression gate. Swing/Values currently force Solid.
+-21 focused tests pass, including600 renderer combinations and225 stored
+  mode/style pairs. Local synthetic Solid/Line previews checked visually.
+  One existing chart-width source-pattern assertion fails in unchanged code.
+- Historical coverage, stable public streaming, weekly completeness and actual
+  signed-in footprint/profile soak remain OPEN; not solved by a paint fix.
+  Record: `docs/prompt-log/2026-10-19-volume-profile-style-combinations.md`.
+
 ## 2026-10-19 — Owner-curated seventeen themes (supersedes expansion batches)
 
 - Keep only the owner's17 named presets, in request order. Remove the other58
