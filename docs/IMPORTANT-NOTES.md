@@ -1,5 +1,20 @@
 # KWANTDESK important notes
 
+## 2026-10-20 — Slow CME chart startup: artificial live-edge gap removed
+
+- Owned recorded history must include its real forming edge. Removed obsolete
+  delayed-vendor cutoff that discarded the latest two minutes and forced the
+  initial continuity gate to wait for a separate seam request. Replay bounds
+  and real-gap/depth validation remain strict.
+- Stale/non-flow-ready cached charts now use independent fast candle refresh
+  too; CVD/order-flow restoration cannot hold their price bootstrap behind it.
+- Local/public relay history timings were71ms/1,068ms for8,059 NQ1m bars,
+  not a measured whole-browser paint. Receipt:
+  docs/prompt-log/2026-10-20-cme-chart-first-paint.md.
+- Permanent transport, rolling-month history/capture, missing Asia executions,
+  full profile/footprint/CVD soak, GEX parity and shared multi-user costs remain
+  OPEN. Owner reports having set Vercel cap; no new paid services authorised.
+
 ## 2026-10-20 — GEX VUE startup presentation
 
 - Removed the extra animated startup presentation from GEX VUE's charting

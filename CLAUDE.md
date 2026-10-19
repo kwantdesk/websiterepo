@@ -1,5 +1,24 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — CME chart first-paint live-edge repair
+
+- The candle/flow adapters still clipped the owned recorder's upper bound to
+  floor(now minus one minute), a retired delayed-provider rule. Because the
+  range is exclusive this removed the active AND last closed minute. The
+  first-paint continuity gate then waited for separate seam HTTP work. Preserve
+  the gateway's real archive-plus-forming edge and exact replay upper bounds.
+- Nonempty stale/un-enriched caches now start/consume the same independent fast
+  base OHLC path as cold charts. Do not make cached price wait for CVD/tape.
+  Fresh verified full caches still skip it; no continuity/depth gates relaxed.
+- CME browser reads now privately revalidate, with explicit refresh reloading.
+  Timed-flow durable key v6 invalidates the old clipped-edge payload. No gateway
+  restart, new polling cadence, infrastructure or paid service.
+- Live gateway probes: 8,059 NQ minute bars in71ms local /1,068ms public relay.
+  Old 1m cutoff required reconciliation; same gateway through now did not.
+  Do not present these transport timings as signed-in full-chart paint timings.
+- Tests, deployment and remaining gates:
+  docs/prompt-log/2026-10-20-cme-chart-first-paint.md.
+
 ## 2026-10-20 — Vercel cost containment and owner-managed cap
 
 - Owner authorises Spend Management automatic production pause at the cap,

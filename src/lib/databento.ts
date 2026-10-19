@@ -473,19 +473,6 @@ export function isContinuousFuture(symbol: string) {
   return /\.[vnc]\.\d+$/.test(symbol);
 }
 
-function completedHistoricalEnd(end: string) {
-  const requested = Date.parse(end);
-  if (!Number.isFinite(requested)) return end;
-  // Historical GLBX files trail the live venue, but the API reports its exact
-  // available_end and historicalRequest already retries against that value.
-  // A fixed twenty-minute cut-off manufactured a much larger seam than the
-  // provider actually had. Ask through the last completed minute and let the
-  // precise availability response trim it when necessary.
-  const safeLiveEdge = Date.now() - 60_000;
-  if (requested <= safeLiveEdge) return end;
-  return new Date(Math.floor(safeLiveEdge / 60_000) * 60_000).toISOString();
-}
-
 export async function getDatabentoBars(symbol: string, timeframe: string, start: string, end: string): Promise<DatabentoBar[]> {
   if (!getChartInterval(timeframe)) throw new Error(`Unsupported chart interval: ${timeframe}`);
   if (isEventBasedChartInterval(timeframe)) {
@@ -545,7 +532,12 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
    * history no longer depends on anyone's billing and cannot be revoked.
    */
   const requestedFrom = Date.parse(start);
-  const requestedTo = Date.parse(completedHistoricalEnd(end));
+  // This is our recorded gateway, not the retired delayed historical feed.
+  // Its archive already joins completed minutes to the real forming minute.
+  // Cutting off a minute here removed BOTH the active and last closed minute
+  // (the upper bound is exclusive), making first paint wait for a separate
+  // seam/reconciliation request. Preserve replay's exact upper bound too.
+  const requestedTo = Date.parse(end);
   const query = new URLSearchParams({
     symbol: contractRootSymbol(symbol),
     interval: timeframe,
@@ -605,7 +597,7 @@ export async function getDatabentoOrderFlowHistory(
    * roughly 1,400 rows once folded into bars.
    */
   const requestedFrom = Date.parse(start);
-  const requestedTo = Date.parse(completedHistoricalEnd(end));
+  const requestedTo = Date.parse(end);
   const query = new URLSearchParams({
     symbol: contractRootSymbol(symbol),
     interval: timeframe,

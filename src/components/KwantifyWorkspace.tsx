@@ -3873,7 +3873,7 @@ async function fetchWorkspaceCandles(
       const response = await fetch(
         `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${auctionGapExpectedContract ? "&auctionGap=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
         {
-          cache: "no-store",
+          cache: forceFresh ? "reload" : "no-cache",
           // Keep a history request alive across rapid timeframe switches. Its
           // result still warms the browser cache for the next selection.
           signal: signal
@@ -6761,6 +6761,11 @@ function WorkspaceChartPaneComponent({
       || hasUsableOrderFlowHistory(immediateHydratedCandles);
     const immediateTailNeedsReconciliation = pane.broker === "Databento"
       && cmeChartTailNeedsReconciliation(immediateHydratedCandles, pane.timeframe);
+    const immediateHistoryIsHydrated = hasImmediateHistory
+      && Boolean(immediateCache?.updatedAt && Date.now() - immediateCache.updatedAt <= 20_000)
+      && hasFiveDayHistory(immediateHistory, pane.timeframe)
+      && !immediateTailNeedsReconciliation
+      && immediateOrderFlowHistoryReady;
     const liveSeamRequest = pane.broker === "Databento" && resolvedContractSymbol
       ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
       : Promise.resolve([] as Candle[]);
@@ -6768,7 +6773,7 @@ function WorkspaceChartPaneComponent({
     // 12s optional seam request ran BEFORE the main history request even began.
     const earlyBaseHistory = pane.broker === "Databento"
       && !isEventBasedChartInterval(pane.timeframe)
-      && !hasImmediateHistory
+      && !immediateHistoryIsHydrated
       ? beginChartHistoryRead(() => fetchWorkspaceCandles(
           pane.symbol, pane.timeframe, pane.broker, period, 500, false,
           requestController.signal,
@@ -7022,7 +7027,10 @@ function WorkspaceChartPaneComponent({
         pane.broker === "Databento"
         && needsOrderFlowHistory
         && !isEventBasedChartInterval(pane.timeframe)
-        && !cachedBase.length
+        // A nonempty but stale/unenriched cache still needs the fast OHLC
+        // request. Otherwise returning users wait for the much heavier flow
+        // restore before the initial request can settle, despite valid bars.
+        && !cachedIsHydrated
       ) {
         try {
           const baseHistory = earlyBaseHistory ? await earlyBaseHistory() : await fetchWorkspaceCandles(
