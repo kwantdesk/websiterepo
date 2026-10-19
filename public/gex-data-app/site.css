@@ -35,3 +35,17 @@ body{min-width:0;overflow:hidden}
 .choice-dropdown-options{position:absolute;top:calc(100% + 7px);left:0;z-index:12000;min-width:190px;width:100%;box-sizing:border-box;border:1px solid var(--site-border);border-radius:16px;background:var(--site-panel);box-shadow:0 22px 70px #0009}
 .choice-dropdown-options label,.choice-dropdown-options button{border-radius:12px;padding:9px 12px}
 .choice-dropdown-options label:hover{background:var(--site-surface)}
+
+/* Same 28px / Aleph / outlined line-icon contract as the main command rail. */
+.topbar .top-actions{gap:6px!important;scrollbar-width:none}
+.topbar .top-action{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:0 0 auto;width:auto!important;height:28px;min-height:28px;max-height:28px;margin:0;padding:0 10px!important;appearance:none;border:1px solid color-mix(in srgb,var(--site-border) 70%,transparent)!important;border-radius:3px!important;background:transparent!important;color:var(--site-muted)!important;box-shadow:none;font-size:10px!important;font-weight:600;line-height:1;letter-spacing:.075em;text-transform:uppercase;white-space:nowrap;transition:background-color .15s,color .15s,border-color .15s}
+.topbar .top-action svg{width:14px;height:14px;flex:0 0 14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.topbar .top-action.utility{width:28px!important;flex-basis:28px;padding:0!important}
+.topbar .top-action.utility span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.topbar .top-action:hover{background:var(--site-surface)!important;color:var(--site-foreground)!important;border-color:color-mix(in srgb,var(--site-primary) 30%,transparent)!important;filter:none}
+.topbar .top-action:focus-visible{outline:2px solid var(--site-primary);outline-offset:-2px}
+.topbar .top-action[aria-expanded=true]{color:var(--site-primary)!important;background:color-mix(in srgb,var(--site-primary) 8%,transparent)!important}
+.topbar .top-action.danger:hover{color:var(--site-danger)!important;border-color:var(--site-danger)!important}
+.topbar .top-action sup{position:static;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:14px;width:auto;height:14px;margin:0;padding:0 3px;border-radius:3px;background:var(--site-surface);color:var(--site-primary);font-size:9px;letter-spacing:normal}
+.topbar .top-action sup[hidden]{display:none}
+.topbar .top-divider{height:18px;flex:0 0 1px;background:var(--site-border)}

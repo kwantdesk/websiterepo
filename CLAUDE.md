@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA toolbar matches the command rail
+
+- Replaced prototype symbol glyphs with labelled stroked SVG icons; the top
+  toolbar shares main-navigation 28px height, 3px radius, 10px Aleph type,
+  .075em tracking, theme borders and restrained hover/focus states. Utility
+  actions remain compact with accessible names; Workspaces gets a line icon.
+- Preserved action titles/IDs, listeners, dialogs, workspace persistence and
+  timezone reservation. Narrow screens retain horizontal overflow. No data,
+  polling, auth, calculations or gateway change. Verification record:
+  docs/prompt-log/2026-10-20-gex-data-toolbar.md.
+
 ## 2026-10-20 — GEX DATA quiet theme-first startup
 
 - Both React startup stages now use the accessible quiet theme surface, without
