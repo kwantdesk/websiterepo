@@ -1339,16 +1339,24 @@ function ChartIndicatorPanes({
   onUpdateSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenSettings?: (instanceId: string) => void;
 }) {
-  const cvdSeriesCacheRef = useRef<{ scope: string; series: Map<string, CalculatedIndicatorSeries[]> }>({
+  const cvdSeriesCacheRef = useRef<{ scope: string; series: Map<string, { identity: string; series: CalculatedIndicatorSeries[] }> }>({
     scope: coordinateScope,
     series: new Map(),
   });
   if (cvdSeriesCacheRef.current.scope !== coordinateScope) {
     cvdSeriesCacheRef.current = { scope: coordinateScope, series: new Map() };
   }
+  const activeCvdKeys = new Set(baseGroups.filter(group => isCvdIndicator(group.indicatorId)).map(group => group.key));
+  for (const key of cvdSeriesCacheRef.current.series.keys()) {
+    if (!activeCvdKeys.has(key)) cvdSeriesCacheRef.current.series.delete(key);
+  }
   const continuityGroups = baseGroups.map((group) => {
     if (!isCvdIndicator(group.indicatorId)) return group;
-    const previous = cvdSeriesCacheRef.current.series.get(group.key) ?? [];
+    // A user-selected reset period/input/filter is a new calculation, not a
+    // data regression. Never pin the old study over the newly selected one.
+    const identity = JSON.stringify([group.indicatorId, Object.entries(group.settings ?? {}).sort(([a], [b]) => a.localeCompare(b))]);
+    const cached = cvdSeriesCacheRef.current.series.get(group.key);
+    const previous = cached?.identity === identity ? cached.series : [];
     if (cvdSeriesRegressed(previous, group.series)) {
       return {
         ...group,
@@ -1357,7 +1365,7 @@ function ChartIndicatorPanes({
         statusLabel: "SYNCING EXECUTIONS",
       };
     }
-    if (group.series.length) cvdSeriesCacheRef.current.series.set(group.key, group.series);
+    if (group.series.length) cvdSeriesCacheRef.current.series.set(group.key, { identity, series: group.series });
     return group;
   });
   const groups = useSuperTrendLivePanes(continuityGroups, liveChartKey);

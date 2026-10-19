@@ -8870,6 +8870,14 @@ function Chart({
           settings: instance.settings,
           series,
           showHeader: instance.settings?.showName !== false,
+          statusLabel: cumulativeDeltaStudy
+            && Number(indicatorCandles.at(-1)?.volume ?? 0) > 0
+            && Number(series[0]?.data.at(-1)?.time ?? -Infinity) < (
+              eventChartIndicatorTimeMap?.exact.get(Number(indicatorCandles.at(-1)?.timestamp ?? 0))
+              ?? Number(indicatorCandles.at(-1)?.timestamp ?? 0) / 1_000
+            )
+              ? "WAITING FOR EXECUTIONS"
+              : undefined,
           showLegend: instance.indicatorId === "delta-bar" || instance.indicatorId === "deep-delta" ? false : undefined,
         }];
       }
@@ -8886,6 +8894,8 @@ function Chart({
           showLegend: instance.indicatorId === "delta-bar" ? false : undefined,
           unavailableReason: isMarketIndexSymbol(instrument)
             ? "This index feed publishes no executed bid/ask volume — order-flow studies need a CME futures chart."
+            : ["Aggregate Trades", "Orders"].includes(String(instance.settings?.inputData))
+              ? "Waiting for classified bid/ask trade counts for the selected CVD input."
             : orderFlowSeriesReady
               ? "Waiting for executed CME bid/ask volume."
               : instance.indicatorId === "delta-bar"
@@ -20576,7 +20586,7 @@ function Chart({
 
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
-        coordinateScope={`${chartFrameWorkKey}:${replayTimestampMs ?? "live"}`}
+        coordinateScope={`${chartFrameWorkKey}:${instrument}:${timeframe ?? ""}:${contractSymbol ?? ""}:${replayTimestampMs ?? "live"}`}
         liveChartKey={replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0 ? undefined : liveCandleEventKey ?? undefined}
         width={overlaySize.width}
         leftInset={toolbarPlotLeftInset}

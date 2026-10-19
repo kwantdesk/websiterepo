@@ -1,5 +1,18 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — CVD flat/frozen display faults
+
+- Reproduced and corrected stale render-cache rejection of shorter NEWER CVD
+  snapshots, and stale deltaClose overriding current classified side totals.
+  Settings/symbol/timeframe/contract changes cannot pin the previous plot.
+- Unknown trade-count inputs/gaps are unavailable/segmented, not fake zeros;
+  genuine feed waits remain explicit. Removed CVD caches are pruned.
+-55 focused/adjacent regressions and15 settings/candle checks pass. This is
+  deterministic model/render-path verification, not owner-side live soak.
+  Full history, public streaming, weekly, footprint and exact Deep Charts
+  live parity remain OPEN. No VPS/provider/resource changes.
+  Record: `docs/prompt-log/2026-10-19-cvd-freeze-recovery.md`.
+
 ## 2026-10-19 — Big Blocks preview/close lifecycle
 
 - Removed the incorrect intrabar latch: live previews can withdraw/reverse;

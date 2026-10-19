@@ -1,5 +1,28 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — CVD freeze recovery and selected-input authority
+
+- Reproduced anti-flash cache livelock: a shorter but newer verified series
+  was rejected until its count reached95% of an old history window. Now accept
+  advancing endpoints, rolling starts and changing same-bar OHLC/value before
+  applying transient regression protection. Empty/older tails still retain the
+  previous plot with explicit syncing status; do not invent missing executions.
+- CVD cache identity includes sorted indicator settings and ID, not just pane
+  key. Parent coordinate scope now includes instrument/timeframe/contract as
+  well as pane/replay; the live pane ID alone survives symbol switches.
+  Reset periods/input changes take effect; removed entries prune.
+- CVD signed delta is canonical selected-input Ask minus Bid, not a possibly
+  stale deltaClose cache. Aggregate-trade mode needs real side trade counts;
+  missing counts do not become zero-volume fake flat candles. Volume mode and
+  other studies keep their existing verified-volume admission contract.
+- A lagging verified tail shows WAITING FOR EXECUTIONS; count input explains
+  its missing counts. No new timers/provider reconnects/polling/subscriptions.
+-55 CVD/live/continuity and Big Blocks regressions plus15 settings/candle
+  checks pass; affected renderer/helper/test lint passes. Build/release record:
+  `docs/prompt-log/2026-10-19-cvd-freeze-recovery.md`.
+- Owner's exact session/signed-in live reproduction and feed/history/weekly/
+  footprint prerequisites remain unverified. Do not call these data gaps fixed.
+
 ## 2026-10-19 — Big Blocks live preview and closed-bar decisions
 
 - Forming Big Blocks now REPLACE their current decision: withdraw when no

@@ -1,9 +1,9 @@
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 
 /**
- * A live CVD snapshot may grow or receive corrected values, but it must not
- * temporarily lose its tail, a material part of its verified history, or gain
- * new unexplained breaks while reconciliation is still on the same endpoint.
+ * Reject a transient older/empty rehydration frame, without requiring an old
+ * history-window size before newer verified live data is allowed to paint.
+ * Shape-only regression protection applies only to an unchanged live tail.
  */
 export function cvdSeriesRegressed(
   previous: CalculatedIndicatorSeries[],
@@ -22,6 +22,16 @@ export function cvdSeriesRegressed(
   const previousEnd = previousPrimary.at(-1)?.time ?? -Infinity;
   const nextEnd = nextPrimary.at(-1)?.time ?? -Infinity;
   if (nextEnd < previousEnd) return true;
+  // The retained-history size is not a live watermark. After a rolling window,
+  // reconnect or session change, a shorter verified series can be NEWER. The
+  // old size guard rejected every subsequent update until it grew back to95%
+  // of a window that might never be loaded again: a permanent frozen pane.
+  if (nextEnd > previousEnd) return false;
+  if ((nextPrimary[0]?.time ?? -Infinity) > (previousPrimary[0]?.time ?? -Infinity)) return false;
+  const before = previousPrimary.at(-1)!;
+  const after = nextPrimary.at(-1)!;
+  if ((["value", "open", "high", "low", "close"] as const)
+    .some(field => !Object.is(before[field], after[field]))) return false;
   if (nextPrimary.length < previousPrimary.length * 0.95) return true;
   if (nextEnd === previousEnd) {
     const previousBreaks = previousPrimary.reduce((total, point) => total + (point.breakBefore ? 1 : 0), 0);

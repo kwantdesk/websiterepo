@@ -283,10 +283,14 @@ function lineData(candles: Candle[], values: Array<number | null>) {
   );
 }
 
-function hasVerifiedOrderFlow(candle: Candle) {
-  const ask = Number(candle.askVolume);
-  const bid = Number(candle.bidVolume);
+function hasVerifiedCvdInput(candle: Candle, useTradeCounts = false) {
+  const ask = Number(useTradeCounts ? candle.askTrades : candle.askVolume);
+  const bid = Number(useTradeCounts ? candle.bidTrades : candle.bidVolume);
   return Number.isFinite(ask) && Number.isFinite(bid) && ask + bid > 0;
+}
+
+function hasVerifiedOrderFlow(candle: Candle) {
+  return hasVerifiedCvdInput(candle);
 }
 
 function orderFlowAvailable(candles: Candle[]) {
@@ -671,7 +675,6 @@ function computeIndicatorSeries(
     || key === "delta-cumulative-candlestick"
     || key === "delta-cumulative-histogram"
   ) {
-    if (!orderFlowAvailable(candles)) return [];
     const dedicatedCandlestick = key === "delta-cumulative-candlestick";
     const dedicatedHistogram = key === "delta-cumulative-histogram";
     const dedicatedStudy = dedicatedCandlestick || dedicatedHistogram;
@@ -686,6 +689,7 @@ function computeIndicatorSeries(
     const displayStyle = settingString(instance, "displayStyle", dedicatedHistogram ? "bars" : "candles");
     const inputData = settingString(instance, "inputData", "Volumes");
     const useTradeCounts = inputData === "Aggregate Trades" || inputData === "Orders";
+    if (!candles.some(candle => hasVerifiedCvdInput(candle, useTradeCounts))) return [];
     const useThemeColors = settingBoolean(instance, "useThemeColors", dedicatedStudy);
     const askColor = useThemeColors ? theme.positive : settingString(instance, "deltaAskColor", theme.positive);
     const bidColor = useThemeColors ? theme.negative : settingString(instance, "deltaBidColor", theme.negative);
@@ -713,7 +717,7 @@ function computeIndicatorSeries(
     candles.forEach((candle) => {
       // Saved OHLCV-only bars have no aggressor-side split. They must not be
       // rendered as zero delta because that creates a false flat CVD history.
-      if (!hasVerifiedOrderFlow(candle)) {
+      if (!hasVerifiedCvdInput(candle, useTradeCounts)) {
         missingFlowSinceLastVerified = true;
         return;
       }
@@ -741,9 +745,10 @@ function computeIndicatorSeries(
       const ask = Math.max(0, finite(useTradeCounts ? candle.askTrades : candle.askVolume));
       const bid = Math.max(0, finite(useTradeCounts ? candle.bidTrades : candle.bidVolume));
       const total = ask + bid;
-      const delta = useTradeCounts
-        ? ask - bid
-        : finite(candle.deltaClose, finite(candle.delta, ask - bid));
+      // Classified side totals are the authority for this input mode. A
+      // stale cached deltaClose (often zero after a hydrate) must not flatten
+      // current flow even though its actual Ask/Bid totals keep advancing.
+      const delta = ask - bid;
       const relativeOpen = useTradeCounts ? 0 : finite(candle.deltaOpen, 0);
       const relativeHigh = useTradeCounts
         ? Math.max(0, delta)
