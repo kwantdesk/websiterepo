@@ -2294,7 +2294,7 @@ function normalizeWorkspaceFloatingWindows(
       locked: candidate.locked === true,
     });
   }
-  return windows.slice(0, 12);
+  return windows;
 }
 
 function loadWorkspaceFloatingWindows(
@@ -15891,10 +15891,6 @@ export default function KwantifyWorkspace({
       showReportToast("error", "Unlock the workspace before adding a chart", 2200);
       return;
     }
-    if (workspacePanes.length >= 12) {
-      showReportToast("error", "This workspace already has the maximum of 12 panels", 2200);
-      return;
-    }
     const paneElement = workspaceAreaRef.current?.querySelector<HTMLElement>(
       `[data-workspace-pane-id="${activePaneId}"]`,
     );
@@ -15921,10 +15917,6 @@ export default function KwantifyWorkspace({
   const duplicateWorkspacePane = (paneId: string) => {
     if (workspaceLocked) {
       showReportToast("error", "Unlock the workspace before duplicating a panel", 2200);
-      return;
-    }
-    if (workspacePanes.length >= 12) {
-      showReportToast("error", "This workspace already has the maximum of 12 panels", 2200);
       return;
     }
     const sourcePane = workspacePanes.find((pane) => pane.id === paneId);
@@ -15967,10 +15959,6 @@ export default function KwantifyWorkspace({
   };
 
   const duplicateFloatingWorkspacePane = (paneId: string) => {
-    if (workspacePanes.length >= 12) {
-      showReportToast("error", "This workspace already has the maximum of 12 panels", 2200);
-      return;
-    }
     const sourcePane = workspacePanes.find((pane) => pane.id === paneId);
     const sourceWindow = workspaceFloatingWindows.find((entry) => entry.paneId === paneId);
     if (!sourcePane || !sourceWindow) return;
@@ -18591,9 +18579,9 @@ export default function KwantifyWorkspace({
                 <button
                   type="button"
                   onClick={() => duplicateWorkspacePane(pane.id)}
-                  disabled={workspaceLocked || workspacePanes.length >= 12}
+                  disabled={workspaceLocked}
                   className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30"
-                  title={workspacePanes.length >= 12 ? "This workspace already has 12 panels" : "Duplicate this panel"}
+                  title="Duplicate this panel"
                   aria-label={`Duplicate ${option?.label ?? "workspace"} panel`}
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -18837,9 +18825,9 @@ export default function KwantifyWorkspace({
             <button
               type="button"
               onClick={() => duplicateWorkspacePane(pane.id)}
-              disabled={workspaceLocked || workspacePanes.length >= 12}
+              disabled={workspaceLocked}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30"
-              title={workspacePanes.length >= 12 ? "This workspace already has 12 panels" : "Duplicate this chart"}
+              title="Duplicate this chart"
               aria-label="Duplicate chart"
             >
               <Copy className="h-3.5 w-3.5" />
@@ -19019,9 +19007,8 @@ export default function KwantifyWorkspace({
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={() => duplicateFloatingWorkspacePane(floating.paneId)}
-              disabled={workspacePanes.length >= 12}
               className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-border hover:text-primary disabled:opacity-30"
-              title={workspacePanes.length >= 12 ? "This workspace already has 12 panels" : "Duplicate floating window"}
+              title="Duplicate floating window"
               aria-label={`Duplicate ${option?.label ?? "floating"} window`}
             >
               <Copy className="h-3 w-3" />

@@ -1,5 +1,16 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Workspace panel count
+
+- Removed the12-panel cap from add/duplicate controls and floating restore.
+  No replacement fixed panel-count limit. Saved valid floating windows are
+  no longer silently discarded beyond12.
+-21 tests plus8 layout checks pass, including a64-pane model and31 floating
+  windows restored. These are model tests, not a64-live-chart performance soak.
+  Browser RAM/CPU still impose practical limits; existing cache/request/backup
+  safeguards retained. All standing feed/history/Asia/weekly/footprint issues
+  remain OPEN. Record: docs/prompt-log/2026-10-19-workspace-panel-limit.md.
+
 ## 2026-10-19 — Big Blocks (Options)
 
 - Separate indicator added under Options Flow for underlying charts (QQQ,

@@ -1,5 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — Remove workspace panel-count cap
+
+- Removed12-panel add/docked-duplicate/floating-duplicate guards and disabled
+  button/title states. Floating-window normalization now retains every valid
+  unique window instead of silently truncating restore/save to12. No new count
+  cap substitutes for12. Shared Charts/GEX VUE workspace shell behavior.
+- Workspace locks, one-panel minimum, geometry validation, shared execution
+  caches/request budgets and2MB backup-input safety remain unchanged. Per-tool
+  GEX Map columns and number-of-saved-workspaces limits are different controls,
+  not the workspace panel cap, and are not changed.
+- Actual extracted handler tests add64 panes across scope identities, duplicate
+  docked panels beyond12, round-trip31 floating windows and a52-pane backup/tree
+  with independent settings. This is deterministic model verification, NOT a
+  claim that64 live footprint/indicator panels fit the owner's browser memory.
+-21 focused/adjacent tests,8 layout checks and test lint pass. Broader suite
+  has3 pre-existing source-guard failures (lock click spelling, heavy reconcile
+  interval, embedded-liquidity active expression); absent guards confirmed
+  against unmodified HEAD. No unrelated behavior altered to satisfy them.
+  Build/release record: docs/prompt-log/2026-10-19-workspace-panel-limit.md.
+- Existing options delivery/full-history/Asia opening tape/permanent gateway/
+  weekly/footprint/live soak issues remain OPEN.
+
 ## 2026-10-19 — Big Blocks (Options)
 
 - New separate Options Flow indicator, ID big-blocks-options. Chart-native
