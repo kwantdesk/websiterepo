@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
-import { loadStoredChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, defaultChartSettings, loadStoredChartSettings } from "@/lib/chartSettings";
 import { MARKET_INDEX_DEFINITIONS } from "@/lib/marketIndices";
+import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
+import { normalizeTimeZone } from "@/lib/timeZones";
 
 const STORAGE_KEY = "kwantdesk:gex-data:workspace:v1";
+const TIME_ZONE_KEY = "gex-data-timezone";
 type SiteHost = {
   active: boolean;
   read: (key: string) => string | null;
@@ -32,6 +35,8 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   const frame = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
   const [generation, setGeneration] = useState(0);
+  const [timeZone, setTimeZone] = useState(defaultChartSettings.timezone);
+  const timeZoneRef = useRef(timeZone);
   const activeRef = useRef(active);
   activeRef.current = active;
 
@@ -47,9 +52,17 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       try { const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); return saved?.accountKey === accountKey ? saved.values ?? {} : {}; }
       catch { return {}; }
     };
+    const syncTimeZone = () => {
+      const next = normalizeTimeZone(readValues()[TIME_ZONE_KEY] || loadStoredChartSettings().timezone);
+      const changed = next !== timeZoneRef.current;
+      timeZoneRef.current = next;
+      setTimeZone(next);
+      if (changed) broadcast(frame.current?.contentWindow ?? null, "gex-data-site-timezone");
+    };
+    syncTimeZone();
     const host: SiteHost = {
       active: activeRef.current,
-      timezone: () => loadStoredChartSettings().timezone,
+      timezone: () => timeZoneRef.current,
       instruments: () => MARKET_INDEX_DEFINITIONS.filter(item => item.symbol === "VIX" || item.group === "Options Underlyings" && item.symbol !== "SPXW").map(item => [item.symbol, `${item.symbol} — ${item.displayName}`]),
       read: key => readValues()[key] ?? null,
       write: (key, value) => {
@@ -60,6 +73,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
         if (serialized.length > 1_500_000 || Object.keys(values).length > 500 || !writeProtectedItem(STORAGE_KEY, serialized).ok) {
           throw new Error("The workspace could not be saved. Export a backup before continuing.");
         }
+        if (key === TIME_ZONE_KEY) syncTimeZone();
       },
       theme: () => {
         const style = getComputedStyle(document.documentElement);
@@ -75,6 +89,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
         const presets = readValues()["gex-data:saved-workspaces:v1"];
         const serialized = JSON.stringify({ accountKey, values: { ...values, ...(presets ? { "gex-data:saved-workspaces:v1": presets } : {}) } });
         if (serialized.length > 1_500_000 || !writeProtectedItem(STORAGE_KEY, serialized).ok) throw new Error("The workspace could not be saved.");
+        syncTimeZone();
       },
       request: async (url, options = {}) => {
         if (disposed || !activeRef.current) throw new Error("This workspace is paused.");
@@ -115,10 +130,15 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
     window.__kwantGexDataHost = host;
     setGeneration(value => value + 1); setReady(true);
     const themeChanged = () => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme");
-    const hydrated = () => { cache.clear(); setGeneration(value => value + 1); };
+    const hydrated = () => { syncTimeZone(); cache.clear(); setGeneration(value => value + 1); };
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY || event.key === CHART_SETTINGS_STORAGE_KEY || event.key === null) syncTimeZone();
+    };
     window.addEventListener("kwantdesk:theme-change", themeChanged);
     window.addEventListener("olisa-theme-change", themeChanged);
     window.addEventListener(PREFERENCES_HYDRATED_EVENT, hydrated);
+    window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, syncTimeZone);
+    window.addEventListener("storage", storageChanged);
     const observer = new MutationObserver(themeChanged);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
     return () => {
@@ -127,6 +147,8 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       window.removeEventListener("kwantdesk:theme-change", themeChanged);
       window.removeEventListener("olisa-theme-change", themeChanged);
       window.removeEventListener(PREFERENCES_HYDRATED_EVENT, hydrated);
+      window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, syncTimeZone);
+      window.removeEventListener("storage", storageChanged);
       if (window.__kwantGexDataHost === host) delete window.__kwantGexDataHost;
     };
   }, [accountKey]);
@@ -137,9 +159,13 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "3");
+  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "4"); params.set("hostTimezone", "1");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
-  return <section className="h-full min-h-0 flex-1 overflow-hidden bg-background" aria-label="GEX DATA workspace">
+  return <section className="relative h-full min-h-0 flex-1 overflow-hidden bg-background" aria-label="GEX DATA workspace">
+    {ready && <div className="absolute right-2 top-[5px] z-30 flex h-7 w-[172px] items-center bg-background">
+      <TimeZoneSelect value={timeZone} onChange={next => window.__kwantGexDataHost?.write(TIME_ZONE_KEY, normalizeTimeZone(next))}
+        menuLabel="GEX Data timezone" compact className="w-full min-w-0" />
+    </div>}
     {ready ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
       title="GEX DATA tools and workspace" className="h-full w-full border-0" allow="fullscreen"
       onLoad={() => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-activity", { active: activeRef.current })} />

@@ -16,6 +16,7 @@ import {bindZoomNavigator} from './navigator-ui.js?v=1';
 import {MARKET_MAP_SLIDER_MAX,MARKET_MAP_CAMERA_IDENTITY,marketMapMaxZoom,clampMarketMapCamera,wheelMarketMapCamera,panMarketMapCamera,marketMapCameraWindows,applyMarketMapWindow,marketMapWorldPoint} from './market-map-interaction-model.js?v=1';
 const VIEW_PARAMETERS=new URLSearchParams(location.search),EMBEDDED=VIEW_PARAMETERS.get('embed')==='1';
 document.documentElement.classList.toggle('embedded',EMBEDDED);
+document.documentElement.classList.toggle('host-timezone-control',VIEW_PARAMETERS.get('hostTimezone')==='1');
 let toolConfiguration=applyDocumentPreferences();
 
 const PERIOD_OPTIONS = [
@@ -447,6 +448,8 @@ async function loadPanel(panel) {
 async function loadAll() {
   await Promise.all($$(".panel").map(loadPanel));
 }
+
+window.addEventListener('gex-data-timezone',()=>{for(const panel of $$('.panel'))drawPanel(panel);});
 
 function debounce(fn, delay = 350) {
   let timer;
@@ -896,16 +899,26 @@ await boot();
       if(requestId!==toolRequestId||activeTool!==tool)return;
       if(append&&Array.isArray(payload.data))payload.data=[...tableRows,...payload.data];
       toolPayload=payload;toolCursor=payload.nextSearchAfter||null;renderToolPayload(tool,payload);renderSnapshotControl(payload);
-      const pinned=snapshotSelections.get(snapshotKey(tool));
-      const stateLabel=pinned?`completed-minute snapshot ${new Date(completedMinuteSnapshot(pinned)).toISOString()}`:getControl("mode")==="historical"?"snapshot "+getControl("date"):apiStatus.market?.open?"live session":"latest EOD";
-      const fetched=payload._gexData?.gatewayFetchedAt;
-      q("#toolUpdated").textContent=`${fetched?'Retrieved '+new Date(fetched).toLocaleTimeString():'Source time unavailable'} · ${activeTool.id==='iv-rank'?'Rolling series':payload._gexData?.requestedSessionDate||stateLabel}`;
+      updateToolTimestamp(tool,payload);
       saveToolControls();updateLiveState();
     }catch(error){
       if(requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){q("#toolError").textContent=error.message;q("#toolError").hidden=false;updateLiveState();if(EMBEDDED)parent.postMessage({type:'gex-data-status',failed:true,message:error.message},location.origin);}
     }finally{
       if(requestId===toolRequestId&&activeTool===tool){toolView.setAttribute("aria-busy","false");schedulePoll();}
     }
+  }
+
+  function updateToolTimestamp(tool,payload) {
+    const pinned=snapshotSelections.get(snapshotKey(tool));
+    const stateLabel=pinned?`completed-minute snapshot ${new Date(completedMinuteSnapshot(pinned)).toLocaleString('en-US',{timeZone:gexTimeZone()})}`:getControl("mode")==="historical"?"snapshot "+getControl("date"):apiStatus.market?.open?"live session":"latest EOD";
+    const fetched=payload._gexData?.gatewayFetchedAt;
+    q("#toolUpdated").textContent=`${fetched?'Retrieved '+new Date(fetched).toLocaleTimeString('en-US',{timeZone:gexTimeZone()}):'Source time unavailable'} · ${tool.id==='iv-rank'?'Rolling series':payload._gexData?.requestedSessionDate||stateLabel}`;
+  }
+
+  function refreshTimeZonePresentation() {
+    if(!activeTool||!toolPayload)return;
+    renderToolPayload(activeTool,toolPayload);renderSnapshotControl(toolPayload);
+    updateToolTimestamp(activeTool,toolPayload);
   }
 
   function schedulePoll() {
@@ -949,13 +962,13 @@ await boot();
   function timeLabel(value) {
     const date = new Date(Number(value));
     if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: gexTimeZone() });
   }
 
   function dateLabel(value) {
     const date = new Date(Number(value));
     if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: gexTimeZone() });
   }
 
   function numericEntries(data) {
@@ -1604,6 +1617,7 @@ await boot();
   const activityChanged=()=>{if(window.__gexDataActive===false||document.hidden){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}else{refreshMarketStatus();if(activeTool&&!toolPayload)loadActiveTool();schedulePoll();}};
   window.addEventListener('gex-data-activity',activityChanged);document.addEventListener('visibilitychange',activityChanged);
   window.addEventListener('pagehide',()=>{clearInterval(statusTimer);clearTimeout(pollTimer);activeController?.abort();activeChartDispose?.();tableRuntime?.destroy();});
+  window.addEventListener('gex-data-timezone',refreshTimeZonePresentation);
   const preferenceFilterSignature=()=>JSON.stringify({overrides:getFilterOverrides(),groups:getFilterGroups().map(group=>({id:group.id,expression:group.expression}))});
   let lastFilterSignature=preferenceFilterSignature();
   const preferencesChanged=()=>{toolConfiguration=applyDocumentPreferences();reflectFilterOverrides();syncDateControl();const signature=preferenceFilterSignature();if(signature!==lastFilterSignature){lastFilterSignature=signature;if(activeTool)loadActiveTool();}else if(activeTool&&toolPayload){renderToolPayload(activeTool,toolPayload);renderSnapshotControl(toolPayload);}};

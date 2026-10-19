@@ -1,5 +1,15 @@
 # KWANTDESK important notes
 
+## 2026-10-20 — GEX DATA time zone
+
+- Added the same searchable/device timezone picker used on normal charts,
+  top-right; saved for the account's GEX DATA workspace. Cached axes, tables,
+  snapshot labels and retrieved times repaint immediately, without refetching.
+  Exchange session/expiry dates and timestamps are unchanged.
+-100 regressions pass. Record: docs/prompt-log/2026-10-20-gex-data-timezone.md.
+- Still OPEN: supported live transport (wait for Vultr), full rolling-month
+  history, missing Asia opening tape, weekly/footprint/live-soak acceptance.
+
 ## 2026-10-19 — GEX DATA refresh presentation
 
 - Removed repeated loading screens, including embedded tools and legacy board

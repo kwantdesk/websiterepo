@@ -227,5 +227,9 @@ export function createTableView({ table, search = null, count = null, columnHost
     render();
   }
   if (search) listen(search, 'input', renderBody);
+  if (document.defaultView) listen(document.defaultView, 'gex-data-timezone', () => {
+    timeZone = gexTimeZone();
+    render();
+  });
   return { setRows, render, getVisibleRows, getColumns: () => orderedColumns().map(column => ({ ...column, id: idOf(column), visible: !hidden.has(idOf(column)), width: widths.get(idOf(column)) || column.width || 120 })), setSort, setFilter, setVisible, reorder, reset(){order=columns.map(idOf);hidden.clear();widths.clear();filters.clear();sortId=null;sortDirection=-1;if(search)search.value='';persist();render();}, destroy() { destroyed = true; resizeCleanup?.(); listeners.forEach(remove => remove()); columnHost?.replaceChildren(); } };
 }

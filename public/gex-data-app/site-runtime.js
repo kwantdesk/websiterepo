@@ -9,6 +9,7 @@ if(typeof window!=='undefined'&&host){
   await installTheme(host.theme());
   const repaint=async()=>{await installTheme(host.theme());window.dispatchEvent(new CustomEvent('gex-data-preferences'));};
   window.addEventListener('message',event=>{if(event.origin!==location.origin)return;if(event.data?.type==='gex-data-site-theme')void repaint();if(event.data?.type==='gex-data-site-activity'){window.__gexDataActive=event.data.active===true;window.dispatchEvent(new CustomEvent('gex-data-activity'));}});
+  window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='gex-data-site-timezone')window.dispatchEvent(new CustomEvent('gex-data-timezone'));});
   // Text nodes only: internal terminology must not leak out of iframe surfaces.
   const scrub=root=>{const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode()))if(!['SCRIPT','STYLE'].includes(node.parentElement?.tagName))node.nodeValue=node.nodeValue.replace(/\b(?:QuantData|Rithmic|Databento|Bookmap|Trinity|Menthroq|Skylit)\b/gi,'market data');};
   const observeCopy=()=>{scrub(document.body);new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes){if(node.nodeType===1)scrub(node);else if(node.nodeType===3&&node.parentElement)scrub(node.parentElement);}}).observe(document.body,{subtree:true,childList:true});};

@@ -16,6 +16,7 @@ button,input,select,textarea,.qfe,.qfe-json{font-family:Aleph,sans-serif}
 body{min-width:0;overflow:hidden}
 .top-actions{overflow-x:auto;max-width:100%;white-space:nowrap}
 .top-actions{width:100%;min-width:0;flex:1}.top-action{flex:0 0 34px}.top-action.wide{width:auto!important;flex-basis:auto;padding:0 10px;font-size:12px}
+.host-timezone-control .topbar{padding-right:190px!important}
 .tool-library{top:38px!important;height:calc(100vh - 38px)!important}
 .choice-dropdown{min-width:0;border:1px solid var(--site-border);border-radius:3px;background:var(--site-surface);color:var(--site-foreground)}
 .choice-dropdown summary{cursor:pointer;padding:7px 9px;overflow-wrap:anywhere;font-size:12px}

@@ -1,5 +1,26 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA timezone picker
+
+- Reuses normal charts' TimeZoneSelect in top-right GEX DATA toolbar. Parent
+  overlay has172px width; iframe reserves190px only with hostTimezone=1 so
+  existing toolbar actions scroll instead of sitting underneath the picker.
+- Account-scoped gex-data-timezone lives in existing GEX DATA preference blob,
+  inheriting chart default until chosen. No mutation of normal-chart settings.
+  Restore/hydration/storage listeners synchronize it; unchanged timezone does
+  not repaint every child on unrelated preference writes.
+- Broadcast timezone-only messages through nested frames. Cached tool plots,
+  snapshot labels, tables/open detail tables and retrieval footer reformat
+  without API requests, iframe remounts or new timers. Table listeners clean
+  up on destroy. Keep exchange session/expiry dates and source epochs intact.
+-100 focused/integration/reference tests pass, including7 timezone tests for
+  real host persistence/account isolation, nested broadcast, cached repaint,
+  NY DST, Brisbane midnight and source/footer invariance. No signed-in visual
+  or cross-device cloud roundtrip claimed. Release record:
+  docs/prompt-log/2026-10-20-gex-data-timezone.md.
+- Standing supported transport/wait-for-Vultr, full history, missing Asia tape,
+  weekly/footprint/live-soak issues remain OPEN.
+
 ## 2026-10-19 — GEX DATA silent refresh
 
 - Removed the licensed-data loading screen and legacy panel loading overlay.
