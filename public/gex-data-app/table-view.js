@@ -54,12 +54,12 @@ export function formatTableValue(value, column = {}, row = {}, { timeZone = gexT
     case 'date': case 'time': {
       if (value === null || value === undefined || value === '') return '—';
       const date = new Date(n === null ? value : n); if (!Number.isFinite(date.getTime())) return '—';
-      return new Intl.DateTimeFormat('en-US', column.type === 'date' ? { timeZone, year: 'numeric', month: 'short', day: 'numeric' } : { timeZone, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).format(date);
+      return new Intl.DateTimeFormat('en-US', column.type === 'date' ? { timeZone, year: 'numeric', month: 'short', day: 'numeric' } : { timeZone, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, ...(column.fractionalSecondDigits===3?{fractionalSecondDigits:3}:{}) }).format(date);
     }
     case 'integer': return n === null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 0 });
-    case 'money': return column.key === 'premium' || column.key === 'notionalValue' || /Premium$/.test(column.key || '') ? currencyAbbreviated(value,2) : currencyAuto(value);
+    case 'money': return column.rawMoney?(n===null?'—':n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0})):column.key === 'premium' || column.key === 'notionalValue' || /Premium$/.test(column.key || '') ? currencyAbbreviated(value,2) : column.key==='price'?price(value):currencyAuto(value);
     case 'abbreviated': return abbreviate(value,2);
-    case 'decimal': return n === null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    case 'decimal': return n === null ? '—' : n.toLocaleString('en-US', { minimumFractionDigits:['dte','premiumRatio'].includes(column.key)?2:0,maximumFractionDigits: 2 });
     case 'percentage': return n === null ? '—' : `${(n * 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
     case 'percentagePoints': return n === null ? '—' : `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
     case 'greek': return n === null ? '—' : n.toFixed(5);
@@ -70,8 +70,8 @@ export function formatTableValue(value, column = {}, row = {}, { timeZone = gexT
       const m = row.moneyness || {}, code = { IN_THE_MONEY: 'ITM', AT_THE_MONEY: 'ATM', OUT_OF_THE_MONEY: 'OTM' }[m.moneyType] || m.moneyType;
       return code ? `${code}${m.degree == null ? '' : ` by ${price(m.degree)}`}${m.degreeInPercent == null ? '' : ` (${Number(m.degreeInPercent).toFixed(2)}%)`}` : '—';
     }
-    case 'enum': case 'sentiment': return enumLabel(value);
-    default: return value === null || value === undefined ? '—' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+    case 'enum': case 'sentiment': return value==='NOT_APPLICABLE'?'N/A':enumLabel(value);
+    default: return column.blankUnknown&&value==='UNKNOWN'?'':value === null || value === undefined ? '—' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : typeof value === 'object' ? JSON.stringify(value) : String(value);
   }
 }
 export function tableRowStyle(row) {
@@ -188,7 +188,7 @@ export function createTableView({ table, search = null, count = null, columnHost
     const dotColor = column.dot?column.dot(row):sourceDotColor(column, row, value);
     if (dotColor && row.group !== 'TOTAL') { const dot = make(document, 'i', 'qtable-dot'); dot.style.background = dotColor; content.append(dot); }
     let displayText = text;
-    if (column.key === 'exchange') displayText = row.exchangeLabel || exchangeLabel(value);
+    if (column.key === 'exchange') displayText = column.rawExchange?String(value??'—'):row.exchangeLabel || exchangeLabel(value);
     if (column.type === 'contract') {
       const details = make(document, 'span', 'qtable-contract');
       details.append(make(document, 'span', 'qtable-contract-ticker', row.ticker || '—'), make(document, 'span', 'qtable-contract-expiration', expirationLabel(row.expirationDate)), make(document, 'span', 'qtable-contract-strike', autoPrice(row.strikePrice)), make(document, 'span', 'qtable-contract-type', enumLabel(row.contractType)));

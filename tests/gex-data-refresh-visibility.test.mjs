@@ -83,6 +83,18 @@ test('initial load and pagination are also unobstructed; paused tools do not req
   assert.equal(h.requests.length, 2);
 });
 
+test('pagination retains first-page aggregate statistics rather than removing the flow header',async()=>{
+  const h=harness(),statistics={CALL:{ASK:{premium:12345}},PUT:{BID:{premium:2345}}};
+  h.context.activeTool={id:'order-flow-consolidated'};
+  h.context.toolPayload={data:[{id:1}],statistics};h.context.tableRows=[{id:1}];
+  const more=h.context.load({append:true});h.requests[0].resolve({data:[{id:2}],nextSearchAfter:['next']});await more;
+  assert.equal(h.context.toolPayload.statistics,statistics);
+  assert.deepEqual(Array.from(h.context.toolPayload.data,row=>row.id),[1,2]);
+  const replacement={CALL:{ASK:{premium:999}}},next=h.context.load({append:true});
+  h.requests[1].resolve({data:[{id:3}],statistics:replacement});await next;
+  assert.equal(h.context.toolPayload.statistics,replacement);
+});
+
 test('both legacy panels and tool frames remove loading screens, not error or freshness UI', () => {
   assert.doesNotMatch(source, /toolLoading|classList\.(?:add|remove)\("loading"\)/);
   assert.doesNotMatch(read('../public/gex-data-app/index.html'), /toolLoading|Loading licensed market-data/);

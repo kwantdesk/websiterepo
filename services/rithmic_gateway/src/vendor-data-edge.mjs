@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { sendBufferedResponse } from "./buffered-response.mjs";
+import { canonicalQuantDataRequest } from "./quantdata-request-budget.mjs";
 
 const DATABENTO_ORIGIN = "https://api.databento.com";
 const QUANTDATA_ORIGIN = "https://api.quantdata.us";
@@ -59,7 +60,7 @@ function bufferedResponseHeaders(upstream, extra = {}) {
 
 /** Identical path AND identical body, so one ticker never serves another. */
 export function quantDataCacheKey(path, body) {
-  return createHash("sha256").update(path).update(body).digest("hex");
+  return canonicalQuantDataRequest(path, body).key;
 }
 
 export function quantDataResponseCacheMs(body, liveCacheMs, now = Date.now()) {
@@ -111,10 +112,12 @@ export function rollingDatabentoCacheKey(path, body) {
 export class VendorDataEdge {
   // The exposure archiver is optional so the edge stays constructible without
   // it (tests, and a gateway running with archiving turned off).
-  constructor(config, fetchImpl = fetch, exposureArchiver = null) {
+  constructor(config, fetchImpl = fetch, exposureArchiver = null, quantDataFetchImpl = null) {
     this.exposureArchiver = exposureArchiver;
     this.config = config;
     this.fetch = fetchImpl;
+    this.quantDataFetch = quantDataFetchImpl || fetchImpl;
+    this.quantDataBudgeted = Boolean(quantDataFetchImpl);
     this.databentoCache = new Map();
     this.databentoInFlight = new Map();
     this.quantDataCache = new Map();
@@ -317,16 +320,20 @@ export class VendorDataEdge {
   }
 
   async #fetchBufferedQuantData(path, requestHeaders, body, cacheKey) {
-    const now = Date.now();
-    const startAt = Math.max(now, this.quantDataNextStartAt);
-    this.quantDataNextStartAt = startAt + this.config.quantDataMinSpacingMs;
-    if (startAt > now) await new Promise((resolve) => setTimeout(resolve, startAt - now));
+    // The shared account budget owns starts when installed. Keep legacy test/
+    // standalone construction safe without double-queueing production requests.
+    if (!this.quantDataBudgeted) {
+      const now = Date.now();
+      const startAt = Math.max(now, this.quantDataNextStartAt);
+      this.quantDataNextStartAt = startAt + this.config.quantDataMinSpacingMs;
+      if (startAt > now) await new Promise((resolve) => setTimeout(resolve, startAt - now));
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.config.vendorRequestTimeoutMs);
     let upstream;
     try {
-      upstream = await this.fetch(`${QUANTDATA_ORIGIN}${path}`, {
+      upstream = await this.quantDataFetch(`${QUANTDATA_ORIGIN}${path}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.config.quantDataApiKey}`,

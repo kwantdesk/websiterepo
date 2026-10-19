@@ -15,3 +15,8 @@ export function currencyAuto(value) {
   if(value==null||value===''||!Number.isFinite(Number(value)))return '—';
   const number=Number(value);return (number<0?'-':'')+'$'+Math.abs(number).toLocaleString('en-US',{minimumFractionDigits:Number.isInteger(number)?0:2,maximumFractionDigits:2});
 }
+
+// Axes omit insignificant zeroes; headline/table precision stays unchanged.
+export function abbreviatedTick(value) {
+  return abbreviate(value,2).replace(/(\.\d*?[1-9])0+(?= |$)/,'$1').replace(/\.0+(?= |$)/,'');
+}

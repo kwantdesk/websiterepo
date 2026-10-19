@@ -40,3 +40,47 @@ guard preserving real configuration/theme/filter updates.107 tests now pass;
 synthetic browser QA with actual localStorage feedback and750ms settlement
 confirms canvas/navigator nodes retained. This corrective release is needed
 before claiming end-to-end continuity; faster live data remains unresolved.
+
+Corrective release: dad8de0aaa6d671f270e2ec2d83cab5d2628640a; deployment
+dpl_BwMLhXKoVZUpk7wrdN14hGnUGyG7 READY; uncached production diagnostics
+returns that exact SHA and browser loads app.js?v=6. Local full build again
+passes84 pages. Second scoped release was necessary after the first live
+acceptance exposed the storage-echo rebuild path; no manual deploy or bypass.
+
+PRODUCTION CONTINUITY PASS:14:47:51.973–14:48:33.687UTC, navigator end170
+retained keyboard focus and end170 across a live data refresh. Calls changed
+14.67M→14.69M, puts11.79M→12.57M, spot768.10→767.84; no visible error.
+Restored full-session view after this check. This proves the scoped continuity
+fix, not fast updates, exact raw bucket/trade equality or whole-library parity.
+
+## Full-catalogue sequential continuation
+
+Owner explicitly required every currentGEXDATAtool in order, not per-tool
+approval stops. Compared all22catalogue rows against the signed-in reference,
+using isolated loopbackQA and actual licensed responses through the existing
+gateway. Detailed evidence/remaining gates live inGEX-DATA-PARITY-CHECKLIST.md.
+
+Fixed: full-market selectors; DarkPooldatecontract/displayordering; pagination
+statistics retention; canonical ORmultiselect filters and missing settings;
+money/count/ratio/DTE/IV/exchange precision; fractional strike ticks; option
+volume grid; underlying/navigator domains; MarketSharegroup ordering and pie
+label collisions; exposure split legends, expiration years and net overview;
+datedETF terminal latest control; IntervalMap default5m; MaxPainTimepointlabels;
+NetDrift underlying/volume domains; real unconsolidated print drilldown and
+millisecond timestamps. No numeric offsets or manufactured source data.
+
+New request-budget wiring shares one bounded/coalesced account scheduler among
+gatewayRESTconsumers, respecting RetryAfter and upstreamquota. Source/tested
+only; no existing gateway restart, credentials, tunnel, DNS or paid service
+changes. This does NOT provide privatewebsite-stream entitlement or remove
+the30sclientfloor/15sBFFcache; fastliveparity remains OPEN, not concealed.
+
+154focusedtests,26budgettests, scopedESLint and84pageproductionbuild pass.
+Prior fullgatewayrun445/446 had a separately reproduced untouchedsession-
+profile-archive coldworker timeout; not represented as allgatewaytests passing.
+
+Still OPEN: forecast adapter unsupported by connectedlicensedAPI; confirmed
+private/public aggregatedConsolidatedFlow andSPXGainers populationdifferences;
+all-toolfastlivecadence/soak and deeper rawbucket/mode/interactionacceptance.
+Standing notes unchanged: stableVultrtransport, monthhistory/recordingbackfill,
+missingAsiatape, footprint/weeklyprofile/CVDsoak and hundred-usercost/scaling.

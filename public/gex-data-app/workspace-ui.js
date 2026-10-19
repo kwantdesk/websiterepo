@@ -2,7 +2,7 @@ import {themePaint} from './site-theme.js?v=1';
 import {gexStorage} from './site-runtime.js?v=1';
 import {createBoardWorkspace,createWorkspace,workspaceAction,workspaceTabsets,workspaceOrientation,workspaceDockLocation,workspaceDockRect,serializeWorkspace,validateTabName} from './workspace-model.js?v=1';
 import {TOOL_CONFIGURATION_OPTIONS,sanitizeToolConfiguration,setConfigurationVisibility} from './preferences-model.js?v=1';
-import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=1';
+import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=2';
 
 const KEYS={layout:'gex-data:workspace:v1',configuration:'gex-data:configuration:v1',page:'gex-data:page-filters:v1',global:'gex-data:global-filters:v1',groups:'gex-data:filter-groups:v1'};
 const read=(key,fallback)=>{try{return JSON.parse(gexStorage.getItem(key))??fallback;}catch{return fallback;}};
@@ -70,7 +70,7 @@ export function showFilterGroups(anchor,{activeIds=[],onChange=()=>{},toolId}={}
 }
 
 async function editFilterGroup(existing,onSaved,toolId){
-  const {mountFilterEditor}=await import('./filter-editor.js?v=2');
+  const {mountFilterEditor}=await import('./filter-editor.js?v=3');
   dialog(existing?'Edit Filter Group':'Create Filter Group',el=>{
     el.classList.add('filter-group-editor-dialog');const name=node('input'),description=node('textarea');name.maxLength=64;name.placeholder='Filter group name';name.value=existing?.name||'';description.maxLength=1024;description.placeholder='Description';description.value=existing?.description||'';
     for(const [label,input] of [['Name',name],['Description',description]]){const field=node('label','workspace-field');field.append(node('span','',label),input);el.append(field);}

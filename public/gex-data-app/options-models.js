@@ -33,7 +33,10 @@ export function marketShareModel(data = {}, { mode = 'EQUITY_VOLUME', view = 'EX
       if (!groups.has(entry.group)) groups.set(entry.group, { exchange: entry.group, name: entry.group, group: entry.group, color: EXCHANGE_GROUP_COLORS[entry.group], value: 0, members: [] });
       const group = groups.get(entry.group); group.value += entry.value; group.members.push(entry);
     }
-    entries = [...groups.values()]; // Source preserves first-seen group order.
+    // Public REST object insertion order differs from the website's private
+    // store. Preserve the observed website group order, not transport order.
+    const groupOrder=['CBOE','NASDAQ','NYSE','UNKNOWN','MIAX','BOX','MEMX'];
+    entries = [...groups.values()].sort((a,b)=>groupOrder.indexOf(a.group)-groupOrder.indexOf(b.group));
   } else entries.sort((a, b) => b.group.localeCompare(a.group) || b.exchange.localeCompare(a.exchange));
   const total = entries.reduce((sum, entry) => sum + entry.value, 0);
   for (const entry of entries) entry.fraction = total === 0 ? 0 : entry.value / total;
@@ -101,24 +104,24 @@ export const GAINERS_COLUMNS = Object.freeze([
   column('rank', 'Rank', 'integer', 70, { sortable: false }), column('ticker', 'Ticker', 'text', 90),
   column('bearishPremium', 'Bearish Premium', 'money', 150, { bar: 'negative', maxField: 'maxBearishPremium' }),
   column('bullishPremium', 'Bullish Premium', 'money', 150, { bar: 'positive', maxField: 'maxBullishPremium' }),
-  column('premiumRatio', 'Premium Ratio', 'decimal', 130), column('volume', 'Volume', 'integer', 140, { percentField: 'volumePercentage' }),
-  column('tradeCount', 'Trade Count', 'integer', 140, { percentField: 'tradeCountPercentage' }), column('premium', 'Premium', 'money', 140, { percentField: 'premiumPercentage' })
+  column('premiumRatio', 'Premium Ratio', 'decimal', 130), column('volume', 'Volume', 'abbreviated', 140, { percentField: 'volumePercentage' }),
+  column('tradeCount', 'Trade Count', 'abbreviated', 140, { percentField: 'tradeCountPercentage' }), column('premium', 'Premium', 'money', 140, { percentField: 'premiumPercentage' })
 ]);
 export const MARKET_SHARE_COLUMNS = Object.freeze([
-  column('group', 'Group'), column('exchange', 'Exchange'),
+  column('group', 'Group','text',120,{blankUnknown:true}), column('exchange', 'Exchange'),
   ...['Volume', 'TradeCount', 'Premium'].flatMap(metric => {
     const label = metric === 'TradeCount' ? 'Trade Count' : metric;
     const type = metric === 'Premium' ? 'money' : 'integer';
-    return [column(`equityCall${metric}`, `Call ${label}`, type), column(`equityPut${metric}`, `Put ${label}`, type),
-      ...['equity', 'index', 'total'].map(bucket => column(bucket === 'total' ? `total${metric}` : `${bucket}Total${metric}`, `${bucket[0].toUpperCase() + bucket.slice(1)} ${label}`, type, 160, { percentField: `${bucket}${metric}Percentage` }))];
+    return [column(`equityCall${metric}`, `Call ${label}`, type,120,{rawMoney:metric==='Premium'}), column(`equityPut${metric}`, `Put ${label}`, type,120,{rawMoney:metric==='Premium'}),
+      ...['equity', 'index', 'total'].map(bucket => column(bucket === 'total' ? `total${metric}` : `${bucket}Total${metric}`, `${bucket[0].toUpperCase() + bucket.slice(1)} ${label}`, type, 160, { rawMoney:metric==='Premium',percentField: `${bucket}${metric}Percentage` }))];
   })
 ]);
 export const CONSOLIDATED_COLUMNS = Object.freeze([
-  column('tradeTime', 'Date', 'date', 120, { id: 'date' }), column('tradeTime', 'Time', 'time', 110, { id: 'time', canHide: false }),
+  column('tradeTime', 'Date', 'date', 120, { id: 'date' }), column('tradeTime', 'Time', 'time', 140, { id: 'time', canHide: false, fractionalSecondDigits: 3 }),
   column('contract', 'Contract', 'contract', 280, { sortKeys: ['ticker', 'expirationDate', 'strikePrice', 'contractType'] }),
   column('stockPrice', 'Spot', 'money', 100), column('size', 'Quantity', 'integer', 110),
   column('optionPrice', 'Price', 'priceSide', 120), column('bidAskSpread', 'Bid-Ask', 'bidAsk', 160), column('premium', 'Premium', 'money', 130),
-  column('sentimentType', 'Sentiment', 'sentiment', 130), column('exchange', 'Exchange', 'text', 130), column('tradeType', 'Type', 'text', 190),
+  column('sentimentType', 'Sentiment', 'sentiment', 130), column('exchange', 'Exchange', 'text', 130, {rawExchange:true}), column('tradeType', 'Type', 'text', 190),
   column('tradeConsolidationType', 'Consolidation', 'text', 150), column('moneyness', 'Moneyness', 'moneyness', 220),
   column('volume', 'Volume', 'integer', 120), column('openInterest', 'OI', 'integer', 90), column('impliedVolatility', 'IV', 'percentagePoints', 90),
   column('dte', 'DTE', 'decimal', 100), column('sector', 'Sector', 'enum', 160), column('industry', 'Industry', 'enum', 180),
@@ -166,7 +169,7 @@ export function drawProportionChart(ctx, width, height, rows, { formatValue = (v
   ctx.font = `bold ${fontSize}px Aleph, sans-serif`;
   const left = Math.ceil(Math.max(0, ...rows.map(row => ctx.measureText(row.label).width))) + 16, right = width - 16, top = 8, bottom = height - 20, band = (bottom - top) / Math.max(rows.length, 1), barHeight = .6 * band, x = value => left + value / 1.01 * (right - left);
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  for (const value of [0, .25, .5, .75, 1]) { ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x(value), top); ctx.lineTo(x(value), bottom); ctx.stroke(); ctx.fillStyle = themePaint("#FFFFFF"); ctx.fillText(formatPercent(value), x(value), bottom + 6); }
+  for (const value of [0, .25, .5, .75, 1]) { ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x(value), top); ctx.lineTo(x(value), bottom); ctx.stroke(); ctx.fillStyle = themePaint("#FFFFFF"); ctx.fillText(`${value*100}%`, x(value), bottom + 6); }
   ctx.strokeStyle = primary; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(left, bottom); ctx.lineTo(right, bottom); ctx.stroke();
   const hits = [];
   rows.forEach((row, index) => {
@@ -182,37 +185,67 @@ export function drawProportionChart(ctx, width, height, rows, { formatValue = (v
   return hits;
 }
 
+export function layoutMarketSharePieLabels(labels, width, height, preferredRadius, { padding = 4, gap = 2 } = {}) {
+  const centerX = width / 2, centerY = height / 2;
+  const halfHeight = Math.max(0, ...labels.map(label => label.halfHeight));
+  const capacity = Math.max(1, Math.floor((height - 2 * padding + gap) / Math.max(1, 2 * halfHeight + gap)));
+  const sides = { left: [], right: [] };
+  for (const label of labels) sides[Math.cos(label.midAngle) >= 0 ? 'right' : 'left'].push({ ...label });
+  // Small adjacent sectors can all land on one side of the vertical tangent.
+  // Move only overflowing labels nearest that tangent; their leaders continue
+  // to originate at the true slice angle. Slice geometry is never redistributed.
+  for (const side of ['left', 'right']) {
+    const other = side === 'left' ? 'right' : 'left';
+    while (sides[side].length > capacity && sides[other].length < capacity) {
+      let nearest = 0;
+      for (let index = 1; index < sides[side].length; index++) if (Math.abs(Math.cos(sides[side][index].midAngle)) < Math.abs(Math.cos(sides[side][nearest].midAngle))) nearest = index;
+      sides[other].push(sides[side].splice(nearest, 1)[0]);
+    }
+  }
+  const maximumWidth = Math.max(0, ...labels.map(label => label.textWidth));
+  const radius = Math.max(1, Math.min(preferredRadius, width / 2 - maximumWidth - padding - 20));
+  const result = [];
+  for (const [side, list] of Object.entries(sides)) {
+    const direction = side === 'right' ? 1 : -1;
+    list.sort((a, b) => Math.sin(a.midAngle) - Math.sin(b.midAngle) || a.midAngle - b.midAngle);
+    for (let index = 0; index < list.length; index++) {
+      const label = list[index], ideal = centerY + Math.sin(label.midAngle) * (radius + 10);
+      const previous = list[index - 1];
+      label.y = Math.max(padding + label.halfHeight, ideal, previous ? previous.y + previous.halfHeight + label.halfHeight + gap : -Infinity);
+    }
+    for (let index = list.length - 1; index >= 0; index--) {
+      const label = list[index], next = list[index + 1];
+      label.y = Math.min(height - padding - label.halfHeight, label.y, next ? next.y - next.halfHeight - label.halfHeight - gap : Infinity);
+      const textX = direction > 0 ? Math.min(width - padding - label.textWidth, centerX + radius + 20) : Math.max(padding + label.textWidth, centerX - radius - 20);
+      result.push({ ...label, direction, textX, bounds: { left: direction > 0 ? textX : textX - label.textWidth, right: direction > 0 ? textX + label.textWidth : textX, top: label.y - label.halfHeight, bottom: label.y + label.halfHeight } });
+    }
+  }
+  return { radius, labels: result };
+}
+
 export function drawMarketSharePie(ctx, width, height, entries, { fontSize = 13, formatPercent = value => `${(value * 100).toFixed(1)}%` } = {}) {
-  const centerX = width / 2, centerY = height / 2, radius = Math.min(width, height) / 2 * .62, outer = radius + 10, lineHeight = fontSize + 2, total = entries.reduce((sum, entry) => sum + Math.max(0, entry.value), 0);
+  const centerX = width / 2, centerY = height / 2, preferredRadius = Math.min(width, height) / 2 * .62, lineHeight = fontSize + 2, total = entries.reduce((sum, entry) => sum + Math.max(0, entry.value), 0);
+  let radius = preferredRadius;
   if (total <= 0) return { centerX, centerY, radius, cumulativeAngles: [] };
   ctx.font = `bold ${fontSize}px Aleph, sans-serif`; ctx.lineWidth = 1;
   const labels = [], cumulativeAngles = []; let fraction = 0;
   entries.forEach(entry => {
     const share = Math.max(0, entry.value) / total, start = fraction * Math.PI * 2 - Math.PI / 2; fraction += share; const end = fraction * Math.PI * 2 - Math.PI / 2; cumulativeAngles.push(fraction);
     if (share <= 0) return;
-    ctx.beginPath(); ctx.moveTo(centerX, centerY); ctx.arc(centerX, centerY, radius, start, end); ctx.closePath(); ctx.fillStyle = entry.color; ctx.fill();
     const lines = [entry.name, formatPercent(share)], angle = (start + end) / 2;
-    labels.push({ angle, midAngle: angle, color: entry.color, lines, halfHeight: (lineHeight + fontSize) / 2, textWidth: Math.max(...lines.map(line => ctx.measureText(line).width)) });
+    labels.push({ start, end, midAngle: angle, color: entry.color, lines, halfHeight: (lineHeight + fontSize) / 2, textWidth: Math.max(...lines.map(line => ctx.measureText(line).width)) });
   });
-  const bounds = label => { const x = centerX + Math.cos(label.angle) * outer, y = centerY + Math.sin(label.angle) * outer, end = x + (Math.cos(label.angle) >= 0 ? 1 : -1) * (16 + label.textWidth); return { left: Math.min(x, end), right: Math.max(x, end), top: y - label.halfHeight - 2, bottom: y + label.halfHeight + 2 }; };
-  labels.sort((a, b) => a.angle - b.angle);
-  if (labels.length > 1) for (let pass = 0; pass < 240; pass++) {
-    let changed = false;
-    for (let index = 0; index < labels.length; index++) {
-      const a = labels[index], b = labels[(index + 1) % labels.length], aa = bounds(a), bb = bounds(b);
-      if (!(aa.left < bb.right && bb.left < aa.right && aa.top < bb.bottom && bb.top < aa.bottom)) continue;
-      const overlapX = Math.min(aa.right, bb.right) - Math.max(aa.left, bb.left), overlapY = Math.min(aa.bottom, bb.bottom) - Math.max(aa.top, bb.top), mid = (a.angle + b.angle) / 2;
-      const shift = Math.min(Math.max(Math.min((overlapX + 1) / Math.max(Math.abs(Math.sin(mid)), .05), (overlapY + 1) / Math.max(Math.abs(Math.cos(mid)), .05)) / outer, .004), .1);
-      a.angle -= shift / 2; b.angle += shift / 2; changed = true;
-    }
-    if (!changed) break;
-  }
+  const layout = layoutMarketSharePieLabels(labels, width, height, preferredRadius);
+  radius = layout.radius;
   for (const label of labels) {
-    const x = centerX + Math.cos(label.angle) * outer, y = centerY + Math.sin(label.angle) * outer, direction = Math.cos(label.angle) >= 0 ? 1 : -1, elbowX = x + 12 * direction;
-    ctx.strokeStyle = label.color; ctx.beginPath(); ctx.moveTo(centerX + Math.cos(label.midAngle) * radius, centerY + Math.sin(label.midAngle) * radius); ctx.lineTo(x, y); ctx.lineTo(elbowX, y); ctx.stroke(); ctx.fillStyle = label.color; ctx.textAlign = direction === 1 ? 'left' : 'right'; ctx.textBaseline = 'middle';
-    label.lines.forEach((line, index) => ctx.fillText(line, elbowX + 4 * direction, y + (index - .5) * lineHeight));
+    ctx.beginPath(); ctx.moveTo(centerX, centerY); ctx.arc(centerX, centerY, radius, label.start, label.end); ctx.closePath(); ctx.fillStyle = label.color; ctx.fill();
   }
-  return { centerX, centerY, radius, cumulativeAngles };
+  for (const label of layout.labels) {
+    const { y, direction, textX } = label, elbowX = textX - 4 * direction;
+    ctx.strokeStyle = label.color; ctx.beginPath(); ctx.moveTo(centerX + Math.cos(label.midAngle) * radius, centerY + Math.sin(label.midAngle) * radius); ctx.lineTo(elbowX - 8 * direction, y); ctx.lineTo(elbowX, y); ctx.stroke(); ctx.fillStyle = label.color; ctx.textAlign = direction === 1 ? 'left' : 'right'; ctx.textBaseline = 'middle';
+    label.lines.forEach((line, index) => ctx.fillText(line, textX, y + (index - .5) * lineHeight));
+  }
+  return { centerX, centerY, radius, cumulativeAngles, labels: layout.labels };
 }
 
 export function drawMarketShareBars(ctx, width, height, model, { formatValue = String, formatPercent = value => `${(value * 100).toFixed(1)}%`, fontSize = 13, primary = themePaint("#7D1AD6"), grid = themePaint("#FFFFFF33"), ticks = null } = {}) {

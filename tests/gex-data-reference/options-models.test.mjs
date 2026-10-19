@@ -22,6 +22,13 @@ test('market share modes use equity call+put, index, or total and table has real
   assert.equal(MARKET_SHARE_COLUMNS.length, 17); assert.equal(MARKET_SHARE_COLUMNS[2].key, 'equityCallVolume');
 });
 
+test('exchange group layout is stable across public REST insertion orders',()=>{
+ const data={MEMX:{equityCallVolume:1},ISEX:{equityCallVolume:2},PACF:{equityCallVolume:3},BOST:{equityCallVolume:4},MIAX:{equityCallVolume:5},UNKNOWN:{equityCallVolume:6},CBOE:{equityCallVolume:7}};
+ const model=marketShareModel(data,{view:'EXCHANGE_GROUP'});
+ assert.deepEqual(model.barRows.map(row=>row.group),['MEMX','BOX','MIAX','UNKNOWN','NYSE','NASDAQ','CBOE']);
+ assert.equal(model.total,28);
+});
+
 test('proportions preserve empty gray halves and use actual per-side metric', () => {
   const rows = contractStatisticsRows({ CALL: { premium: 60 }, PUT: { premium: 40 } });
   assert.equal(rows[0].leftFraction, .4); assert.equal(rows[0].rightFraction, .6); assert.equal(rows[0].leftColor, '#FF0000AA'); assert.equal(rows[0].rightColor, '#00FF00AA');

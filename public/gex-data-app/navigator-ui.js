@@ -2,6 +2,24 @@ import {themePaint} from './site-theme.js?v=1';
 import {gexStorage} from './site-runtime.js?v=1';
 import {sliderBarWindow,sliderHandleWindow,sliderTrackClick,sliderMinimumSpan} from './chart-interaction-model.js?v=1';
 
+// The navigator is a full-data overview, not a zero-based volume axis. Forcing
+// zero into a $700 price series hides a $2 intraday move in the topmost pixel.
+// A single allocation-free pass also avoids spreading long arrays into Math.
+export function navigatorPreviewDomain(values, { includeZero = false, padding = .06 } = {}) {
+  let min = Infinity, max = -Infinity;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  if (min === Infinity) return null;
+  if (includeZero) { min = Math.min(min, 0); max = Math.max(max, 0); }
+  const fraction = Number.isFinite(padding) ? Math.max(0, Math.min(.5, padding)) : .06;
+  // Constant and zero-valued real series still get a finite, visible domain.
+  const pad = min === max ? Math.max(Math.abs(min) * .01, min === 0 ? 1 : Number.EPSILON) : (max - min) * fraction;
+  return { min: min - pad, max: max + pad };
+}
+
 // Original navigator semantics: band drag, nearest-edge track click, separate
 // handles, keyboard access, and double-click FULL extent (not default crop).
 export function bindZoomNavigator({host,length,getWindow,setWindow,vertical=false,inverted=vertical,minSpan,fractional=false,label='Chart window',onCommit=()=>{}}){

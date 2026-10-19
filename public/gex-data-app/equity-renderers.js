@@ -89,7 +89,7 @@ export const DARK_POOL_LEVEL_COLUMNS = Object.freeze([
 
 // Source 1318800: choose Top N by notional BEFORE applying table sorting;
 // notional progress is relative to maximum, trade/volume percentages to sum.
-export function prepareDarkPoolLevels(payload, {limit=50,sortKey='notionalValue',direction=-1}={}) {
+export function prepareDarkPoolLevels(payload, {limit=50,sortKey='price',direction=-1}={}) {
   const all=Object.entries(payload?.data||{}).map(([price,row])=>({price:marketNumber(price),notionalValue:marketNumber(row.notionalValue),tradeCount:marketNumber(row.tradeCount),volume:marketNumber(row.size)})).filter(row=>Number.isFinite(row.price));
   const top=all.sort((a,b)=>(b.notionalValue??0)-(a.notionalValue??0)).slice(0,Math.max(1,Math.trunc(limit)||50));
   const maximum=Math.max(0,...top.map(row=>row.notionalValue??0)),trades=top.reduce((sum,row)=>sum+(row.tradeCount??0),0),volume=top.reduce((sum,row)=>sum+(row.volume??0),0);

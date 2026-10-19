@@ -1,6 +1,7 @@
 export const GEX_DATA_TOOLS: Record<string, { surface: "options" | "equities"; path?: string }> = Object.fromEntries([
   ...["contract-statistics", "contract-trade-side-statistics", "exposure-by-expiration", "exposure-by-strike", "gainers-losers", "heat-map", "interval-map", "iv-rank", "market-share", "max-pain", "max-pain-over-time", "net-drift", "option-price-over-time"].map(id => [id, { surface: "options" }]),
   ["order-flow-consolidated", { surface: "options", path: "order-flow/consolidated" }],
+  ["order-flow-unconsolidated", { surface: "options", path: "order-flow/unconsolidated" }],
   ...["dark-flow", "dark-pool-levels", "equity-prints", "exchange-notifications", "market-map", "stock-price-over-time"].map(id => [id, { surface: "equities" }]),
 ]);
 
@@ -11,6 +12,34 @@ const HOLIDAYS: Record<string, string[]> = {
   "2028": ["01-17", "02-21", "04-14", "05-29", "06-19", "07-04", "09-04", "11-23", "12-25"],
 };
 const EARLY_CLOSE = new Set(["2026-11-27", "2026-12-24", "2027-11-26", "2028-07-03", "2028-11-24"]);
+const SNAPSHOT_ETF_OPTIONS = ["SPY", "QQQ", "IWM"] as const;
+
+/** Small dated calendar contract, carried by the existing status response. */
+export function gexDataCalendar() {
+  return {
+    version: 1,
+    timeZone: "America/New_York",
+    verifiedAt: "2026-10-18",
+    verifiedYears: Object.keys(HOLIDAYS),
+    holidays: Object.fromEntries(Object.entries(HOLIDAYS).map(([year, dates]) => [year, [...dates]])),
+    earlyCloses: [...EARLY_CLOSE],
+    // Only these ETF option hours have source-backed snapshot-slider evidence.
+    // Index options, equities and other tickers must not inherit these hours.
+    equityOptions: { symbols: [...SNAPSHOT_ETF_OPTIONS], openMinute: 570, closeMinute: 975, earlyCloseMinute: 795 },
+  };
+}
+
+/** Resolve the SELECTED date, not today's session or its close. */
+export function gexDataEquityOptionSchedule(ticker: string, sessionDate: string) {
+  if (typeof ticker !== "string" || !SNAPSHOT_ETF_OPTIONS.some(symbol => symbol === ticker.trim().toUpperCase())
+    || typeof sessionDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) return null;
+  const day = new Date(`${sessionDate}T12:00:00Z`);
+  if (!Number.isFinite(day.getTime()) || !day.toISOString().startsWith(sessionDate)) return null;
+  const holidays = HOLIDAYS[sessionDate.slice(0, 4)];
+  if (!holidays || day.getUTCDay() === 0 || day.getUTCDay() === 6 || holidays.includes(sessionDate.slice(5))) return null;
+  return { verified: true, sessionDate, timeZone: "America/New_York", openMinute: 570,
+    closeMinute: EARLY_CLOSE.has(sessionDate) ? 795 : 975 };
+}
 export function gexDataClock(now = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now).map(part => [part.type, part.value]));
   const date = `${parts.year}-${parts.month}-${parts.day}`, minutes = Number(parts.hour) * 60 + Number(parts.minute);
@@ -26,7 +55,7 @@ export function gexDataClock(now = new Date()) {
   const equitiesOpen = day && minutes >= 240 && minutes < equitiesClose;
   let optionsSessionDate=sessionDate;
   if(day&&minutes<570){const cursor=new Date(date+"T12:00:00Z");do{cursor.setUTCDate(cursor.getUTCDate()-1);optionsSessionDate=cursor.toISOString().slice(0,10);}while(!tradingDate(optionsSessionDate));}
-  return { open: optionsOpen, optionsOpen, equitiesOpen, sessionDate, optionsSessionDate, date, calendarVerified: known,
+  return { open: optionsOpen, optionsOpen, equitiesOpen, sessionDate, optionsSessionDate, date, calendarVerified: known, calendar: gexDataCalendar(),
     note: "Session schedule is not proof of live data; check the last successful source timestamp.",
     phase: optionsOpen ? "OPEN" : "CLOSED", easternTime: `${parts.hour}:${parts.minute}` };
 }

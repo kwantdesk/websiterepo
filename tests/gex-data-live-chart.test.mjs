@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {liveChartWindow,compatibleLiveTimeline} from '../public/gex-data-app/live-chart-model.js';
 import {netDriftRows} from '../public/gex-data-app/options-models.js';
+import {navigatorPreviewDomain} from '../public/gex-data-app/navigator-ui.js';
 
 const source=readFileSync(new URL('../public/gex-data-app/app.js',import.meta.url),'utf8');
 test('live revisions preserve a fixed viewport; tail follows and full view expands',()=>{
@@ -62,7 +63,7 @@ test('real canvas updater retains nodes, revised rows, drag state and growing na
     ResizeObserver:class{observe(){}disconnect(){}},
     canvasContext:()=>({width:600,height:540,ctx:new Proxy({},{get:()=>()=>{}})}),
     themePaint:value=>value,CHART_COLORS:{primary:'#fff'},quantLine(){},
-    bindZoomNavigator:()=>({sync(){},setLength:n=>lengths.push(n)}),liveChartWindow,compatibleLiveTimeline,
+    bindZoomNavigator:()=>({sync(){},setLength:n=>lengths.push(n)}),liveChartWindow,compatibleLiveTimeline,navigatorPreviewDomain,
   };
   vm.runInNewContext(source.slice(source.indexOf('  function quantCanvas('),source.indexOf('  function drawAxisLabels('))+'\nthis.make=quantCanvas;',context);
   const rows=[{time:1,call:10},{time:2,call:15}];

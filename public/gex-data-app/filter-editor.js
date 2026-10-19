@@ -2,7 +2,7 @@ import {themePaint} from './site-theme.js?v=1';
 import {gexStorage} from './site-runtime.js?v=1';
 import { filterFieldsForTool, FILTER_OPERATORS, findFilterField, createFilterDraft, expressionToDraft, draftToExpression } from './filter-editor-model.js?v=1';
 import { normalizeAPIExpression } from './preferences-model.js?v=1';
-import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=1';
+import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=2';
 
 export function mountFilterEditor(host, { expression, onChange = () => {}, toolId } = {}) {
   const doc = host.ownerDocument, fields = filterFieldsForTool(toolId);

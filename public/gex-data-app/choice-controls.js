@@ -28,7 +28,8 @@ export function multiChoiceDropdown({choices,values=[],label='Instruments',empty
   const document=globalThis.document,root=document.createElement('details'),summary=document.createElement('summary'),list=document.createElement('div');
   root.className='choice-dropdown';summary.setAttribute('aria-label',label);list.className='choice-dropdown-options';list.setAttribute('role','group');list.setAttribute('aria-label',label+' options');
   let selected=new Set(values.map(String));
-  const update=()=>{summary.textContent=selected.size?[...selected].join(', '):emptyLabel;};
+  const labels=new Map(choices.map(([value,name])=>[String(value),String(name)]));
+  const update=()=>{summary.textContent=selected.size?[...selected].map(value=>labels.get(value)||value).join(', '):emptyLabel;};
   const render=()=>{
     list.replaceChildren();
     const clear=document.createElement('button');clear.type='button';clear.textContent=emptyLabel;clear.addEventListener('click',()=>{selected.clear();render();root.dispatchEvent(new Event('change',{bubbles:true}));});list.append(clear);

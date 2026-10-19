@@ -41,6 +41,7 @@ import { MassiveIndicesStream } from "./massive-indices-stream.mjs";
 import { NormalizedAnalyticsProxy, normalizedAnalyticsProblem } from "./normalized-analytics-proxy.mjs";
 import { MarketIndexHistoryError, QuantDataMarketHistoryService } from "./quantdata-market-history.mjs";
 import { QuantDataMarketSnapshotStream } from "./quantdata-market-snapshot-stream.mjs";
+import { QuantDataRequestBudget, createQuantDataBudgetFetch } from "./quantdata-request-budget.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
@@ -146,6 +147,14 @@ const exposureArchiver = new ExposureArchiver({
   enabled: config.exposureArchiveEnabled,
 });
 const archiveQuantDataResponse = (entry) => exposureArchiver.archive(entry);
+// Every upstream REST consumer shares ONE account budget. Never create one
+// scheduler per pane, service or user: the provider quota is account-wide.
+const quantDataRequestBudget = config.quantDataApiKey
+  ? new QuantDataRequestBudget({ apiKey: config.quantDataApiKey,
+    minSpacingMs: config.quantDataMinSpacingMs,
+    requestTimeoutMs: config.vendorRequestTimeoutMs })
+  : null;
+const quantDataFetch = createQuantDataBudgetFetch(quantDataRequestBudget);
 // Our OWN daily copy of each completed cash-index session's real minute OHLC
 // (the provider only serves it after the close, and keeps it on its own
 // terms). Archived minutes after every close, retried until complete,
@@ -153,6 +162,7 @@ const archiveQuantDataResponse = (entry) => exposureArchiver.archive(entry);
 const cashIndexArchiver = new CashIndexArchiver({
   dir: config.recordDir,
   apiKey: config.quantDataApiKey,
+  fetchImpl: quantDataFetch,
   tickers: String(process.env.CASH_INDEX_ARCHIVE_TICKERS || "")
     .split(",")
     .map((ticker) => ticker.trim())
@@ -160,7 +170,7 @@ const cashIndexArchiver = new CashIndexArchiver({
   archiveResponse: archiveQuantDataResponse,
   log: (line) => process.stdout.write(`${line}\n`),
 });
-const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver);
+const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver, quantDataFetch);
 const nativePositioningEdge = await createNativePositioningEdge();
 const financialInfo = new FinancialInfoService({
   token: process.env.APIFY_API_TOKEN || "",
@@ -267,9 +277,10 @@ const quantDataMarketSnapshots = new QuantDataMarketSnapshotStream({
   timeoutMs: Math.min(10_000, config.vendorRequestTimeoutMs),
   equitySymbols: ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD"],
   indexSymbols: ["SPX", "NDX", "VIX"],
-}, fetch, archiveQuantDataResponse);
+}, quantDataFetch, archiveQuantDataResponse);
 const quantDataMarketHistory = new QuantDataMarketHistoryService({
   apiKey: config.quantDataApiKey,
+  fetchImpl: quantDataFetch,
   timeoutMs: Math.min(15_000, config.vendorRequestTimeoutMs),
   archiveResponse: archiveQuantDataResponse,
   archiveReadSession: (ticker, sessionDate) => cashIndexArchiver.readSession(ticker, sessionDate),
@@ -1255,6 +1266,7 @@ const server = createServer(async (request, response) => {
       // skipped count far above archived is healthy — it is the dedupe working.
       exposure: exposureArchiver.status(),
       quantDataArchive: exposureArchiver.status(),
+      quantDataRequestBudget: quantDataRequestBudget?.status() ?? { configured: false },
       vendorData: vendorDataEdge.health(),
       chartHistory: chartHistory.status(),
       tradeTape: tradeTape.status(),
@@ -2947,13 +2959,17 @@ async function shutdown() {
   try { await tradeTape.close(); } catch { /* keep shutting down */ }
 
   try { await desktopRevocationSynchronizer?.stop(); } catch { /* ignore */ }
+  // Quiesce upstream acquisition before closing the writer it feeds. Closing
+  // the budget aborts held requests and rejects new work without spending quota.
+  quantDataMarketSnapshots.stop();
+  quantDataSurfaces.stop();
+  cashIndexArchiver.stop();
+  quantDataRequestBudget?.close();
   try { await exposureArchiver.stop(); } catch { /* ignore */ }
   for (const stop of [
     () => massiveIndices.stop(),
     () => databentoEquities.stop(),
     () => optionTrades.stop(),
-    () => quantDataMarketSnapshots.stop(),
-    () => quantDataSurfaces.stop(),
     () => financialInfo.stop(),
   ]) {
     try { stop(); } catch { /* ignore */ }

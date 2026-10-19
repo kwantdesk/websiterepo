@@ -32,6 +32,11 @@ test('multi-choice dropdown preserves OR selections, checkbox changes and cleari
     picker.children[1].children[0].dispatchEvent(new Event('click'));assert.equal(picker.value,'');assert.equal(changes,2);assert.equal(picker.children[0].textContent,'All instruments');
   }finally{globalThis.document=previous;}
 });
+
+test('multi-choice summaries show readable labels without changing wire selection values',()=>{
+ const previous=globalThis.document;const doc={createElement:tag=>new Element(tag,doc)};globalThis.document=doc;
+ try{const picker=multiChoiceDropdown({choices:[['ABOVE_ASK','Above Ask'],['ASK','Ask']],values:['ABOVE_ASK','ASK'],label:'Side'});assert.equal(picker.children[0].textContent,'Above Ask, Ask');assert.equal(picker.value,'ABOVE_ASK, ASK');}finally{globalThis.document=previous;}
+});
 test('all instrument restores and overrides use the select-aware path; snapshot and enum choices are dropdowns',()=>{
   const app=readFileSync(new URL('../../public/gex-data-app/app.js',import.meta.url),'utf8');
   assert.match(app,/ticker: \["Instrument", "select"/);assert.match(app,/tickerOptional: \["Instrument", "select"/);

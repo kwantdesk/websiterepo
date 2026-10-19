@@ -21,8 +21,9 @@ test('calendar uses real NY dates, holidays, early close and distinct equity/opt
   assert.equal(clock(new Date('2028-12-29T17:00:00Z')).open,true);
   assert.equal(clock(new Date('2029-01-02T17:00:00Z')).calendarVerified,false);
 });
-test('exact 20 connected endpoints preserve native request units and filter expressions',()=>{
-  assert.equal(Object.keys(policy.GEX_DATA_TOOLS).length,20);
+test('20 catalogue endpoints plus individual-print detail preserve native units and filters',()=>{
+  assert.equal(Object.keys(policy.GEX_DATA_TOOLS).length,21);
+  assert.equal(policy.GEX_DATA_TOOLS['order-flow-unconsolidated'].path,'order-flow/unconsolidated');
   const input={sessionDate:'2026-10-16',aggregationPeriod:'5m',filter:{ticker:'QQQ',strikePrices:[100.25]},filterExpression:{conjunction:'AND',filters:[]}};
   const output=policy.validateGexDataRequest('exposure-by-strike',input);assert.equal(JSON.stringify(output),JSON.stringify(input));assert.notEqual(output,input);
   for(const [tool,body]of [['made-up',{}],['net-drift',{sessionDate:'2026-02-30'}],['net-drift',{size:101}],['interval-map',{aggregationPeriod:'4s'}],['iv-rank',{sessionDate:'2026-10-08'}],['equity-prints',{timeRange:{startTime:'bad',endTime:'bad'}}],['net-drift',{filter:{ticker:'bad?token=private'}}]])assert.throws(()=>policy.validateGexDataRequest(tool,body));
@@ -49,6 +50,11 @@ test('actual route is authenticated, allow-listed, gateway-only and coalesces id
   assert.match(responses[0].headers.get('Cache-Control'),/^private,/);
   assert.equal((await server({signedIn:false}).post('interval-map',{})).status,401);
   assert.equal((await h.post('not-allowed',{})).status,400);
+  const detail=await h.post('order-flow-unconsolidated',{sessionDate:'2026-10-16',filter:{ticker:'QQQ'},size:100});
+  assert.equal(detail.status,200);
+  assert.equal(h.calls.at(-1).path,'/v1/options/tool/order-flow/unconsolidated');
+  assert.equal((await server({signedIn:false}).post('order-flow-unconsolidated',{})).status,401);
+  assert.equal((await server({production:true,localDev:true}).post('order-flow-unconsolidated',{})).status,401);
   assert.equal((await h.get('status')).status,200);
   assert.equal((await server({signedIn:false}).get('status')).status,401);
   assert.equal((await server({production:true,localDev:true}).get('status')).status,401);

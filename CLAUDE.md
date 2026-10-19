@@ -1,5 +1,24 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA sequential catalogue pass; full parity still OPEN
+
+- All22current catalogue tools inspected against the signed-in reference in
+  order. Exact evidence and per-tool remaining gates are in
+  docs/GEX-DATA-PARITY-CHECKLIST.md; do not collapse partial passes into DONE.
+- Completed-session comparisons found/fixed request/filter/settings, precision,
+  chart/navigator domains, exchange groups, pie labels and ETF snapshot-close
+  semantics. Net Drift now drills down through the supported unconsolidated
+  endpoint;25visible individual prints/all32fields match the tested minute.
+-154focusedtests and26account-budgettests pass; scopedlint and84pagebuild pass.
+- Shared provider-budget source is wired/tested but gateway NOT restarted or
+  rolled out here. No new tunnel, provider account, DNS or paid infrastructure.
+- Still open: licensed forecast output; private/public aggregated totals for
+  ConsolidatedFlow/SPXGainers; fastlivecadence and full all-mode/bucket/soak
+  acceptance. Do not increase per-tick Vercel traffic or invent missing values.
+- Standing unresolved: stable Vultr transport, rolling month options/futures
+  history and recording/backfill, Asia tape and footprint/weekly/CVD soak;
+  shared acquisition/fanout must support the planned hundred-user release.
+
 ## 2026-10-20 — GEX DATA one-to-one audit started, NOT complete
 
 - Acceptance ledger: docs/GEX-DATA-PARITY-CHECKLIST.md.22 tools inventoried;
