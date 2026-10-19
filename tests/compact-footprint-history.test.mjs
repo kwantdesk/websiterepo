@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createExactFootprintFold } from "../services/rithmic_gateway/src/exact-footprint-fold.mjs";
-import { decodeCompactFootprintHistory } from "../src/lib/compactFootprintHistory.ts";
+import { decodeCompactFootprintHistory, decodeAvailableCompactFootprintHistory } from "../src/lib/compactFootprintHistory.ts";
 import { buildFootprintBars, buildFootprintBarsCached } from "../src/lib/footprint.ts";
 const t = Date.parse("2026-10-16T14:00:00Z");
 const prints = [[t + 1, 100, 2, 1], [t + 1, 100, 2, 1], [t + 2, 101, 5, -1],
@@ -59,4 +59,23 @@ test("initial exact history hydrates all closed bars immediately, not through th
   const loaded = buildFootprintBarsCached(cache, candles, records, settings);
   assert.equal(loaded[0].totalVolume, 14);
   assert.equal(loaded[1].totalVolume, 5);
+});
+
+test("an unrecorded edge cannot suppress verified neighbouring candles", () => {
+  const {payload}=compact(prints,candles);
+  const missing={timestamp:t,open:null,high:null,low:null,close:null,volume:0,delta:0,deltaHigh:0,deltaLow:0,levels:[]};
+  const result=decodeAvailableCompactFootprintHistory({...payload,bars:[missing,payload.bars[1]]},"NQZ6",candles,t,t+120000,0,0);
+  assert.deepEqual(result.missingTimestamps,[t]);
+  const bars=buildFootprintBars(candles,result.records,{tickSize:.25,groupTicks:1,minimumTradeVolume:0,maximumTradeVolume:0,imbalanceMode:"diagonal",minimumImbalancePercent:300,minimumDelta:0,includeZero:true});
+  assert.equal(bars[0].totalVolume,0);
+  assert.equal(bars[1].totalVolume,5);
+  assert.equal(bars[1].delta,-1);
+});
+
+test("partial decoding still rejects corrupt levels, totals and identity", () => {
+  const {payload}=compact(prints,candles);
+  for(const patch of [{contractSymbol:"ESZ6"},{bars:[{...payload.bars[0],delta:900},payload.bars[1]]},
+    {bars:[{...payload.bars[0],levels:[[900,1,0,0,1,0,0]]},payload.bars[1]]}]) {
+    assert.throws(()=>decodeAvailableCompactFootprintHistory({...payload,...patch},"NQZ6",candles,t,t+120000,0,0));
+  }
 });

@@ -1,5 +1,22 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Footprint partially populated / recovery
+
+- A single missing/mismatched candle previously rejected every exact historical
+  footprint bar. The UI path now validates the entire payload, paints only bars
+  whose full OHLCV reconciles, and reports the missing count. Corrupt payloads,
+  wrong identity, impossible levels/totals remain rejected; no synthetic cells.
+- Partial responses never enter the completed warm cache. Up to three backoff
+  retries recover the same viewport after a transient failure without user input;
+  scope changes/unmount abort work. This is bounded, not continuous polling.
+- Real local pipeline check: 81/81 settled NQ and ES bars built with rows and
+  exactly matching candle volumes (17,655 / 20,453). Public compact POST ~649ms.
+  64 footprint tests pass. Signed-in screenshot reproduction remains unverified:
+  this session exposes no Chrome tab, and a bare production API request is401.
+- Missing archives, stable live streaming, all-indicator UI/soak and existing
+  daily-profile regression gaps remain OPEN. Record:
+  `docs/prompt-log/2026-10-19-footprint-partial-recovery.md`.
+
 ## 2026-10-19 — Shared indicator loading and footprint requests
 
 - Request deadlines now cover response-body downloads, not just headers.

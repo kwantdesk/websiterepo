@@ -7,8 +7,23 @@ export type CompactFootprintPayload = { schemaVersion?: string; contractSymbol?:
   fromMs?: number; toMs?: number; minimumTradeVolume?: number; maximumTradeVolume?: number;
   sourceRecordCount?: number; bars?: CompactBar[] };
 
+export type FootprintHistoryWindow = {
+  records: InstitutionalTrade[];
+  missingTimestamps: number[];
+  totalBars: number;
+};
+
 export function decodeCompactFootprintHistory(payload: CompactFootprintPayload, contract: string,
   candles: Candle[], fromMs: number, toMs: number, minimumTradeVolume: number, maximumTradeVolume: number): InstitutionalTrade[] {
+  const result = decodeAvailableCompactFootprintHistory(payload, contract, candles, fromMs, toMs, minimumTradeVolume, maximumTradeVolume);
+  if (result.missingTimestamps.length) throw new Error("Exact Footprint executions do not cover this candle history yet.");
+  return result.records;
+}
+
+/** Validate every wire bar, but isolate genuinely missing/mismatched candle
+ * coverage. One unrecorded session edge must not discard proven neighbours. */
+export function decodeAvailableCompactFootprintHistory(payload: CompactFootprintPayload, contract: string,
+  candles: Candle[], fromMs: number, toMs: number, minimumTradeVolume: number, maximumTradeVolume: number): FootprintHistoryWindow {
   const expected = candles.filter(c => c.timestamp >= fromMs && c.timestamp < toMs);
   if (payload.schemaVersion !== "kwantdesk-exact-footprint-v1" || payload.contractSymbol !== contract
     || payload.fromMs !== fromMs || payload.toMs !== toMs || payload.minimumTradeVolume !== minimumTradeVolume
@@ -16,19 +31,25 @@ export function decodeCompactFootprintHistory(payload: CompactFootprintPayload, 
     || payload.bars.length !== expected.length || !Number.isSafeInteger(payload.sourceRecordCount)
     || Number(payload.sourceRecordCount) < 0) throw new Error("Exact Footprint history is incomplete.");
   const records: InstitutionalTrade[] = [];
+  const missingTimestamps: number[] = [];
   let totalTrades = 0;
   for (let i = 0; i < expected.length; i++) {
     const candle = expected[i], bar = payload.bars[i];
-    if (bar.timestamp !== candle.timestamp || bar.volume !== (candle.volume ?? 0)
-      || (bar.volume > 0 && (bar.open !== candle.open || bar.high !== candle.high || bar.low !== candle.low || bar.close !== candle.close))
+    if (!bar || bar.timestamp !== candle.timestamp || !Number.isSafeInteger(bar.volume) || bar.volume < 0
+      || (bar.volume > 0 && (![bar.open, bar.high, bar.low, bar.close].every(v => typeof v === "number" && Number.isFinite(v))
+        || bar.low! > Math.min(bar.open!, bar.close!) || bar.high! < Math.max(bar.open!, bar.close!)))
       || !Array.isArray(bar.levels) || ![bar.delta, bar.deltaHigh, bar.deltaLow].every(Number.isFinite)) {
-      throw new Error("Exact Footprint executions do not cover this candle history yet.");
+      throw new Error("Invalid exact Footprint candle.");
     }
+    const matches = bar.volume === (candle.volume ?? 0)
+      && (!bar.volume || (bar.open === candle.open && bar.high === candle.high && bar.low === candle.low && bar.close === candle.close));
+    if (!matches) missingTimestamps.push(candle.timestamp);
     const firstRecord = records.length;
     let volume = 0, delta = 0, previousPrice = -Infinity;
     for (const row of bar.levels) {
       if (!Array.isArray(row) || row.length !== 7 || !Number.isFinite(row[0]) || row[0] <= previousPrice
-        || row[0] < candle.low || row[0] > candle.high || row.slice(1).some(v => !Number.isSafeInteger(v) || v < 0)) {
+        || bar.low === null || bar.high === null || row[0] < bar.low || row[0] > bar.high
+        || row.slice(1).some(v => !Number.isSafeInteger(v) || v < 0)) {
         throw new Error("Invalid exact Footprint price level.");
       }
       previousPrice = row[0];
@@ -39,6 +60,7 @@ export function decodeCompactFootprintHistory(payload: CompactFootprintPayload, 
           || (maximumTradeVolume > 0 && size > count * maximumTradeVolume)) throw new Error("Invalid exact Footprint trade counts.");
         const bidVolume = side === 1 ? size : 0, askVolume = side === 2 ? size : 0;
         volume += size; delta += askVolume - bidVolume; totalTrades += count;
+        if (!matches) continue;
         const recordIndex = records.length;
         if (recordIndex >= 100000) throw new Error("Footprint has too many price levels; zoom in.");
         records.push({ timestamp: candle.timestamp, open: row[0], high: row[0], low: row[0], close: row[0],
@@ -51,9 +73,9 @@ export function decodeCompactFootprintHistory(payload: CompactFootprintPayload, 
     if (delta !== bar.delta || volume > bar.volume || (!minimumTradeVolume && !maximumTradeVolume && volume !== bar.volume)
       || bar.deltaHigh < Math.max(0, delta) || bar.deltaLow > Math.min(0, delta)
       || bar.deltaHigh > volume || bar.deltaLow < -volume) throw new Error("Invalid exact Footprint totals.");
-    if (records[firstRecord]) records[firstRecord].footprintSummary = { minimumTradeVolume, maximumTradeVolume,
+    if (matches && records[firstRecord]) records[firstRecord].footprintSummary = { minimumTradeVolume, maximumTradeVolume,
       deltaHigh: bar.deltaHigh, deltaLow: bar.deltaLow };
   }
   if (totalTrades > Number(payload.sourceRecordCount)) throw new Error("Invalid exact Footprint source count.");
-  return records;
+  return { records, missingTimestamps, totalBars: expected.length };
 }

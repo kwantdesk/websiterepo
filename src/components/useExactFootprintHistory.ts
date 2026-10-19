@@ -2,10 +2,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Candle } from "@/lib/backtester";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
-import { decodeCompactFootprintHistory } from "@/lib/compactFootprintHistory";
+import { decodeAvailableCompactFootprintHistory } from "@/lib/compactFootprintHistory";
 import { futuresVenue } from "@/lib/futuresVenue";
 import { loadSharedFootprintHistory } from "@/lib/sharedFootprintHistory";
 import { fetchWithDeadline } from "@/lib/marketDataRequest";
+import { recoverFootprintHistory } from "@/lib/footprintHistoryRecovery";
 const EMPTY: InstitutionalTrade[] = [];
 
 export function useExactFootprintHistory(contract: string | null, candles: Candle[], intervalMs: number | null, enabled: boolean, live: boolean,
@@ -31,22 +32,20 @@ export function useExactFootprintHistory(contract: string | null, candles: Candl
         contractSymbol: contract });
       // Capture the exact requested candle generation before any async work.
       const requestedCandles = candlesRef.current;
-      void loadSharedFootprintHistory(scope, async sharedSignal => {
+      void recoverFootprintHistory(() => loadSharedFootprintHistory(scope, async sharedSignal => {
         const response = await fetchWithDeadline(`/api/institutional-market-data/v1/market-data/trade-tape?${query}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ starts: requestedCandles.filter(c => c.timestamp < toMs).map(c => c.timestamp),
-          toMs, minimumTradeVolume, maximumTradeVolume }),
-        signal: sharedSignal, cache: "no-store" }, 30_000);
-          const payload = await response.json();
-          if (!response.ok) throw new Error(payload.error || "Exact Footprint history is unavailable.");
-          return decodeCompactFootprintHistory(payload, contract, requestedCandles, fromMs, toMs, minimumTradeVolume, maximumTradeVolume);
-      }, controller.signal).then(records => {
-          if (!controller.signal.aborted) setState({ scope, contract, records, error: null });
-        }).catch(error => {
-          if (!controller.signal.aborted) setState(previous => ({ scope, contract,
-            records: previous.contract === contract ? previous.records : [],
-            error: error instanceof Error ? error.message : "Exact Footprint history is unavailable." }));
-        });
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ starts: requestedCandles.filter(c => c.timestamp < toMs).map(c => c.timestamp),
+            toMs, minimumTradeVolume, maximumTradeVolume }),
+          signal: sharedSignal, cache: "no-store" }, 30_000);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Exact Footprint history is unavailable.");
+        return decodeAvailableCompactFootprintHistory(payload, contract, requestedCandles, fromMs, toMs, minimumTradeVolume, maximumTradeVolume);
+      }, controller.signal), update => {
+        if (!controller.signal.aborted) setState(previous => ({ scope, contract,
+          records: update.result?.records ?? (previous.contract === contract ? previous.records : []),
+          error: update.error }));
+      }, controller.signal);
     }, 200);
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [scope, contract, fromMs, toMs, minimumTradeVolume, maximumTradeVolume]);
