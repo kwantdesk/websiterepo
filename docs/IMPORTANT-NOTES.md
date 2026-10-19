@@ -1,5 +1,19 @@
 # KWANTDESK important notes
 
+## 2026-10-20 — GEX DATA parity audit (incomplete)
+
+- Running22-tool checklist: docs/GEX-DATA-PARITY-CHECKLIST.md. First Net Drift
+  completed-session SPY check matches rounded calls-16.41M/puts64.76M/spot762.74
+  and curve/volume shape. Exact buckets/trades and live cadence NOT signed off.
+- Net Drift canvas/navigator reuse and historical override polling fixes have
+ 106 passing regressions; no numerical-model or faster-polling change.
+- Live parity still blocked by current30s refresh/cache policy and the shared
+  public API240/min quota; private website stream entitlement not established.
+  Do not promise1ms updates or spend quota/Vercel charges polling every panel.
+- Remaining21 tools not live-audited; forecast feed unavailable. Supported
+  transport/wait for Vultr, month history, Asia tape, weekly/footprint/live-soak
+  issues remain OPEN. VPS alone does not unlock a faster provider API.
+
 ## 2026-10-20 — GEX DATA time zone
 
 - Added the same searchable/device timezone picker used on normal charts,

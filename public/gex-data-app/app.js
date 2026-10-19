@@ -12,7 +12,8 @@ import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrid
 import {instrumentChoices,setChoiceValue,snapshotTimeOptions} from './choice-controls.js?v=1';
 import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} from './preferences-model.js?v=1';
 import {normalizeWheelDelta,wheelZoomWindow,panZoomWindow,heatMapPlainWheel,cursorTooltipPlacement,sliderBarWindow,sliderHandleWindow,sliderTrackClick,lerpZoomStep} from './chart-interaction-model.js?v=1';
-import {bindZoomNavigator} from './navigator-ui.js?v=1';
+import {bindZoomNavigator} from './navigator-ui.js?v=2';
+import {liveChartWindow,compatibleLiveTimeline} from './live-chart-model.js?v=1';
 import {MARKET_MAP_SLIDER_MAX,MARKET_MAP_CAMERA_IDENTITY,marketMapMaxZoom,clampMarketMapCamera,wheelMarketMapCamera,panMarketMapCamera,marketMapCameraWindows,applyMarketMapWindow,marketMapWorldPoint} from './market-map-interaction-model.js?v=1';
 const VIEW_PARAMETERS=new URLSearchParams(location.search),EMBEDDED=VIEW_PARAMETERS.get('embed')==='1';
 document.documentElement.classList.toggle('embedded',EMBEDDED);
@@ -598,6 +599,7 @@ await boot();
   let toolRequestId = 0;
   let activeChartReset = null;
   let activeChartDispose = null;
+  let activeChartUpdate = null;
   let storedWindows=[];try{storedWindows=JSON.parse(gexStorage.getItem(`gex-data-chart-windows:${VIEW_PARAMETERS.get('instance')||'standalone'}`)||'[]');}catch{}
   const chartWindows = new Map(Array.isArray(storedWindows)?storedWindows:[]);
   const snapshotSelections = new Map();
@@ -898,7 +900,7 @@ await boot();
       const payload=await loadToolPayload(tool);
       if(requestId!==toolRequestId||activeTool!==tool)return;
       if(append&&Array.isArray(payload.data))payload.data=[...tableRows,...payload.data];
-      toolPayload=payload;toolCursor=payload.nextSearchAfter||null;renderToolPayload(tool,payload);renderSnapshotControl(payload);
+      toolPayload=payload;toolCursor=payload.nextSearchAfter||null;renderToolPayload(tool,payload,{refresh:true});renderSnapshotControl(payload);
       updateToolTimestamp(tool,payload);
       saveToolControls();updateLiveState();
     }catch(error){
@@ -922,7 +924,9 @@ await boot();
   }
 
   function schedulePoll() {
-    if (!activeTool || !frameVisible || window.__gexDataActive===false || document.hidden || getControl("mode") === "historical" || snapshotSelections.has(snapshotKey(activeTool)) || !toolMarketOpen()) {clearTimeout(pollTimer);pollTimer=null;return;}
+    let requestedDate;try{requestedDate=activeTool?buildRequest(activeTool).sessionDate:null;}catch{clearTimeout(pollTimer);pollTimer=null;return;}
+    const currentDate=activeTool?.group==='Equities'?apiStatus.market?.sessionDate:(apiStatus.market?.optionsSessionDate||apiStatus.market?.sessionDate);
+    if (!activeTool || !frameVisible || window.__gexDataActive===false || document.hidden || getControl("mode") === "historical" || (requestedDate&&currentDate&&requestedDate<currentDate) || snapshotSelections.has(snapshotKey(activeTool)) || !toolMarketOpen()) {clearTimeout(pollTimer);pollTimer=null;return;}
     if(pollTimer!==null)return;
     pollTimer = setTimeout(() => {pollTimer=null;loadActiveTool();}, Math.max(30000,activeTool.liveMs));
   }
@@ -938,6 +942,7 @@ await boot();
   }
 
   function resetStage() {
+    activeChartUpdate=null;
     activeChartDispose?.();activeChartDispose=null;
     tableColumns=null;
     q(".flow-statistics")?.remove();
@@ -1175,7 +1180,18 @@ await boot();
     activeChartReset=()=>{cancelAnimationFrame(resetAnimation);const max=Math.max(1,items.length-1),target={start:(initialWindow?.start??0)/max*100,end:(initialWindow?.end??max)/max*100},targetY=initialWindow?.yWindow?[...initialWindow.yWindow]:[0,1];state.hover=null;tooltip.hidden=true;const tick=()=>{if(disposed)return;const x=lerpZoomStep({start:state.start/max*100,end:state.end/max*100},target),y=lerpZoomStep({start:state.yWindow[0]*100,end:state.yWindow[1]*100},{start:targetY[0]*100,end:targetY[1]*100});state.start=x.next.start/100*max;state.end=x.next.end/100*max;state.yWindow=[y.next.start/100,y.next.end/100];remember();redraw();if(!x.converged||!y.converged)resetAnimation=requestAnimationFrame(tick);};tick();};
     if(zoom&&items.length>1){startRange.hidden=endRange.hidden=true;horizontalNavigation=bindZoomNavigator({host:nav,length:items.length,getWindow:()=>({start:state.start,end:state.end}),setWindow:window=>{state.start=window.start;state.end=window.end;remember();redraw();},vertical:zoomAxis==='y',minSpan:['interval-map','heat-map'].includes(activeTool?.id)?0:undefined});}
     if(twoDimensional){lowRange.hidden=highRange.hidden=true;const count=Math.max(2,verticalValues.length);verticalNavigation=bindZoomNavigator({host:vertical,length:count,vertical:true,minSpan:0,getWindow:()=>({start:state.yWindow[0]*(count-1),end:state.yWindow[1]*(count-1)}),setWindow:window=>{state.yWindow=[window.start/(count-1),window.end/(count-1)];remember();redraw();},label:'Chart vertical window'});}
-    const observer=new ResizeObserver(redraw);observer.observe(shell);activeChartDispose=()=>{disposed=true;cancelAnimationFrame(resetAnimation);observer.disconnect();};syncRanges();redraw();return{shell,canvas,redraw,state};
+    const observer=new ResizeObserver(redraw);observer.observe(shell);activeChartDispose=()=>{disposed=true;clearTimeout(windowSaveTimer);cancelAnimationFrame(resetAnimation);observer.disconnect();};syncRanges();redraw();return{shell,canvas,redraw,state,
+      update(nextItems,nextLegend,nextNavigatorValues){
+        if(disposed||!compatibleLiveTimeline(items,nextItems))return false;
+        const nextWindow=liveChartWindow(state,items.length,nextItems.length),shift=nextWindow.start-state.start;
+        cancelAnimationFrame(resetAnimation);
+        items.splice(0,items.length);for(const row of nextItems)items.push(row);
+        navigatorValues=nextNavigatorValues;
+        state.start=nextWindow.start;state.end=nextWindow.end;
+        if(state.dragStart){state.dragStart[0]+=shift;state.dragStart[1]+=shift;}
+        startRange.max=endRange.max=String(Math.max(0,items.length-1));horizontalNavigation?.setLength(items.length);
+        head.replaceChild(quantLegend(nextLegend),head.lastChild);remember();redraw();return true;
+      }};
   }
 
   function drawAxisLabels(ctx,{left,top,right,bottom,min,max,money=false,rightSide=false,steps=5,label="",formatter=null}){
@@ -1250,9 +1266,12 @@ await boot();
 
   function renderNetDriftQuant(payload) {
     const rows=parseNetDrift(payload),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),last=rows.at(-1)||{},showNet=getControl("driftNet")==="SHOW",showBands=getControl("driftBands")==="SHOW",showUnderlying=getControl("driftUnderlying")!=="HIDE"&&rows.some(row=>Number.isFinite(row.spot));
-    quantCanvas({
+    const presentationKey=JSON.stringify([buildRequest(activeTool),ticker,showNet,showBands,showUnderlying,gexTimeZone()]);
+    const legendFor=row=>[{label:"Calls",color:CHART_COLORS.call,value:compact(row.call,true)},{label:"Puts",color:CHART_COLORS.put,value:compact(row.put,true)},...(showNet?[{label:"Net Premium",color:CHART_COLORS.netPremium,value:compact(row.net,true)}]:[]),...(showUnderlying?[{label:ticker,color:CHART_COLORS.price,value:formatPrice(row.spot)}]:[])];
+    const summarize=row=>setSummary([["Net calls",compact(row.call,true),"positive"],["Net puts",compact(row.put,true),"negative"],["Underlying",formatPrice(row.spot)],["Intervals",rows.length]]);
+    const chart=quantCanvas({
       title:`Net Drift (Premium) - ${ticker}`,
-      legend:[{label:"Calls",color:CHART_COLORS.call,value:compact(last.call,true)},{label:"Puts",color:CHART_COLORS.put,value:compact(last.put,true)},...(showNet?[{label:"Net Premium",color:CHART_COLORS.netPremium,value:compact(last.net,true)}]:[]),...(showUnderlying?[{label:ticker,color:CHART_COLORS.primary,value:formatPrice(last.spot)}]:[])],
+      legend:legendFor(last),
       items:rows,navigatorValues:rows.map(row=>row.call),height:540,timeScale:true,
       onClick:(row,index)=>{if(!row)return;const period=getControl('period')||'1m',duration=Number.parseInt(period,10)*(period.endsWith('h')?3600000:60000),end=rows[index+1]?.time??row.time+duration;openTradeDetail({title:'Net Drift · Largest Trades',preview:`${ticker} · ${displayChartTime(row.time)} · actual trades in this interval`,filter:{ticker},timeRange:{startTime:new Date(row.time).toISOString(),endTime:new Date(end).toISOString()}});},
       tooltipRows:row=>row?[displayChartTime(row.time),`Calls ${compact(row.call,true)}`,`Puts ${compact(row.put,true)}`,`Volume ${compact(row.callVolume-row.putVolume)}`,`${ticker} ${formatPrice(row.spot)}`]:[],
@@ -1276,7 +1295,13 @@ await boot();
         drawChartCrosshair(ctx,state,left,right,top,bottom);
       }
     });
-    setSummary([["Net calls",compact(last.call,true),"positive"],["Net puts",compact(last.put,true),"negative"],["Underlying",formatPrice(last.spot)],["Intervals",rows.length]]);
+    activeChartUpdate=nextPayload=>{
+      const nextRows=parseNetDrift(nextPayload),nextLast=nextRows.at(-1)||{};
+      if(JSON.stringify([buildRequest(activeTool),String(getControl('ticker')||'QQQ').toUpperCase(),getControl('driftNet')==='SHOW',getControl('driftBands')==='SHOW',getControl('driftUnderlying')!=='HIDE'&&nextRows.some(row=>Number.isFinite(row.spot)),gexTimeZone()])!==presentationKey)return false;
+      if(!chart.update(nextRows,legendFor(nextLast),nextRows.map(row=>row.call)))return false;
+      summarize(nextLast);return true;
+    };
+    summarize(last);
   }
 
   function renderDarkFlowQuant(payload) {
@@ -1538,7 +1563,8 @@ await boot();
     q("#toolVisual").replaceChildren(message);setSummary([]);
   }
 
-  function renderToolPayload(tool, payload) {
+  function renderToolPayload(tool, payload, {refresh=false}={}) {
+    if(refresh&&tool.view==='netDrift'&&activeChartUpdate?.(payload))return;
     resetStage(); const data = payload.data || {};
     if (tool.view === "table") {
       const rows=Array.isArray(data)?data:Object.entries(data).map(([key,row])=>({key,...(row||{})})),historical=getControl("mode")==="historical";

@@ -1,5 +1,26 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA one-to-one audit started, NOT complete
+
+- Acceptance ledger: docs/GEX-DATA-PARITY-CHECKLIST.md.22 tools inventoried;
+  only Net Drift has a partial signed-in numerical/visual pass. Do not mark
+  other tools, exact composing trades or live cadence as verified.
+- SPY/all moneyness/2026-10-16 full session: both visible legends calls-16.41M,
+  puts64.76M, spot762.74; curves/lower signed-volume shape align. Initial live
+  discrepancy included ITM-vs-All settings and a stale reference connection,
+  recovered by reloading the reference. No math/sign/offset changes made.
+- Net Drift now updates compatible revisions/appended buckets in its existing
+  canvas/navigator, preserving viewport; changed request/presentation or changed
+  historical timeline rebuilds explicitly. Historical page/global overrides
+  now pause polling, not just tool-local historical mode.106 regressions pass.
+- Cadence remains OPEN:30s client/15s route/10s gateway caches. Official public
+  API quota240/min shared; streaming listed Coming Soon. Do not increase
+  per-tick polling through Vercel or promise website-private-stream parity.
+  Need supported provider stream entitlement plus shared gateway fanout;
+  returning VPS alone does not remove quota. Owner still waits for Vultr.
+- Forecast endpoint not connected. All other standing transport/history/Asia
+  tape/weekly/footprint/live-soak gates remain open. See ledger for boundaries.
+
 ## 2026-10-20 — GEX DATA timezone picker
 
 - Reuses normal charts' TimeZoneSelect in top-right GEX DATA toolbar. Parent
