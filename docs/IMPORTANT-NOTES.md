@@ -1,5 +1,27 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Options Flow Tools inside chart-grid panels
+
+- Charts/GEX VUE panel picker now has an expandable Options Flow Tools section
+  below Market & Order Flow:22 GEX DATA tools, four KWANTY views (including
+  expiration calendar) and25 GEX BOX tools. Use the original source renderers,
+  settings, controls and data paths, not a second implementation of their math.
+- These are non-price-chart panels. Normal Indicators is a native disabled
+  button, not a clickable/focusable hidden library. Existing price-chart studies
+  remain unchanged. Settings snapshots travel with pane/workspace save/duplicate.
+- Frame-scoped hosts prevent two embedded tools overwriting each other's
+  settings or the standalone page. Account-scoped bounded request sharing,
+  cleanup and original cadence/visibility gates avoid a new vendor connection.
+  GEX BOX's self-contained Flow and calendar retain pane-owned settings too.
+-100 focused/source-model tests,15 GEX BOX tests,8 layout checks and Flow/
+  dashboard scripts pass. Offline browser verified IV Rank input, original
+  KWANTY settings/Save/State selection and live theme propagation. This was
+  bridge/UI-fixture QA, not signed-in live chart-grid or cloud-save proof.
+- Unsupported licensed adapters remain honestly unavailable, including GEX
+  DATA Exposure Forecast. Existing historical coverage, public streaming,
+  weekly completeness and live multi-panel/footprint soak remain OPEN.
+  Record: `docs/prompt-log/2026-10-19-options-flow-chart-panels.md`.
+
 ## 2026-10-19 — Volume-profile appearance must retain selected data
 
 - Line used to trace total volume regardless of selected mode, then skip all

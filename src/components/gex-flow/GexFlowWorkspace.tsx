@@ -20,6 +20,7 @@ import {
   type GexFlowSide,
 } from "@/lib/gexFlow";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import { acquireOptionsFlowRequests } from "@/lib/optionsFlowRequests";
 
 const STORAGE_KEY = "kwantdesk:gex-flow:workspace:v1";
 const ALERTS_KEY = "kwantdesk:gex-flow:alerts:v1";
@@ -128,7 +129,9 @@ function download(name: string, content: string, mime: string) {
   URL.revokeObjectURL(anchor.href);
 }
 
-export default function GexFlowWorkspace() {
+export default function GexFlowWorkspace({ accountKey, active = true, workspaceState, onWorkspaceStateChange }: {
+  accountKey?: string; active?: boolean; workspaceState?: string; onWorkspaceStateChange?(value: string): void;
+} = {}) {
   const [symbol, setSymbol] = useState("SPX");
   const [mode, setMode] = useState<GexFlowMode>("HYBRID");
   const [payload, setPayload] = useState<GexFlowPayload | null>(null);
@@ -155,10 +158,20 @@ export default function GexFlowWorkspace() {
   const tableRef = useRef<HTMLDivElement>(null);
   const ratioFetchInFlight = useRef(false);
   const lastRatioFetch = useRef({ signature: "", at: 0 });
+  const initialWorkspaceState = useRef(workspaceState);
+  const stateChange = useRef(onWorkspaceStateChange); stateChange.current = onWorkspaceStateChange;
+  const requests = useRef<ReturnType<typeof acquireOptionsFlowRequests> | null>(null);
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  useEffect(() => {
+    if (!accountKey) return;
+    const pool = acquireOptionsFlowRequests(accountKey); requests.current = pool;
+    return () => { requests.current = null; pool.release(); };
+  }, [accountKey]);
+  const request = useCallback((url: string, options?: RequestInit) => requests.current ? requests.current.request(url, options) : fetch(url, options), []);
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      const stored = JSON.parse(stateChange.current ? initialWorkspaceState.current || "null" : localStorage.getItem(STORAGE_KEY) || "null");
       if (!stored) return;
       if (typeof stored.symbol === "string") setSymbol(stored.symbol);
       if (["CONSOLIDATED", "RAW", "HYBRID"].includes(stored.mode)) setMode(stored.mode);
@@ -167,18 +180,22 @@ export default function GexFlowWorkspace() {
       if (stored.filters) setFilters({ ...DEFAULT_FILTERS, ...stored.filters });
       if (typeof stored.activeScreen === "string") setActiveScreen(stored.activeScreen);
     } catch { /* Account/local state is optional. */ }
+    finally { setPreferencesReady(true); }
   }, []);
   useEffect(() => {
-    writeProtectedItem(STORAGE_KEY, JSON.stringify({ symbol, mode, screens, columns, filters, activeScreen }));
-  }, [symbol, mode, screens, columns, filters, activeScreen]);
+    if (!preferencesReady) return;
+    const value = JSON.stringify({ symbol, mode, screens, columns, filters, activeScreen });
+    if (stateChange.current) stateChange.current(value); else writeProtectedItem(STORAGE_KEY, value);
+  }, [preferencesReady, symbol, mode, screens, columns, filters, activeScreen]);
 
   const load = useCallback(async (silent = false) => {
+    if (!active || !preferencesReady || document.hidden) return;
     if (!silent && !payload) setLoading(true);
     const params = new URLSearchParams({ symbol, mode, size: String(resultLimit) });
     if (sessionDate) params.set("sessionDate", sessionDate);
     if (sessionDate && replayTime) params.set("replayAt", new Date(`${sessionDate}T${replayTime}:00`).toISOString());
     try {
-      const response = await fetch(`/api/gex-flow?${params}`, { cache: "no-store" });
+      const response = await request(`/api/gex-flow?${params}`, { cache: "no-store" });
       const next = await response.json() as GexFlowPayload & { error?: string };
       if (!response.ok) throw new Error(next.error || "GEX FLOW request failed.");
       if (paused) pendingPayload.current = next;
@@ -187,18 +204,18 @@ export default function GexFlowWorkspace() {
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "GEX FLOW request failed.");
     } finally { setLoading(false); }
-  }, [symbol, mode, resultLimit, sessionDate, replayTime, paused, payload]);
+  }, [active, preferencesReady, request, symbol, mode, resultLimit, sessionDate, replayTime, paused, payload]);
 
-  useEffect(() => { void load(); }, [symbol, mode, resultLimit, sessionDate, replayTime]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, [active, preferencesReady, symbol, mode, resultLimit, sessionDate, replayTime]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const intervalMs = refreshMode === "MANUAL" ? 0 : refreshMode === "AUTO" ? payload?.refreshAfterMs ?? 5_000 : Number(refreshMode) * 1_000;
-    if (!intervalMs || sessionDate) return;
+    if (!active || !preferencesReady || !intervalMs || sessionDate) return;
     const id = window.setInterval(() => void load(true), Math.max(2_000, intervalMs));
     return () => window.clearInterval(id);
-  }, [refreshMode, payload?.refreshAfterMs, sessionDate, load]);
+  }, [active, preferencesReady, refreshMode, payload?.refreshAfterMs, sessionDate, load]);
 
   useEffect(() => {
-    if (!payload || ratioFetchInFlight.current) return;
+    if (!active || document.hidden || !payload || ratioFetchInFlight.current) return;
     const contracts = [...new Map([...payload.rows, ...payload.children].map((row) => [gexFlowContractKey(row), {
       osi: row.osi,
       ticker: row.ticker,
@@ -218,7 +235,7 @@ export default function GexFlowWorkspace() {
       let resolved = 0;
       let unavailable = 0;
       for (let index = 0; index < contracts.length; index += 25) {
-        const response = await fetch("/api/gex-flow/ratios", {
+        const response = await request("/api/gex-flow/ratios", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           cache: "no-store",
@@ -266,7 +283,7 @@ export default function GexFlowWorkspace() {
       // Ratios are progressive enrichment. The primary tape remains usable and
       // explicitly displays UNAVAILABLE instead of inventing a row-level ratio.
     }).finally(() => { ratioFetchInFlight.current = false; });
-  }, [payload]);
+  }, [active, payload, request]);
 
   const togglePaused = () => {
     setPaused((value) => {
@@ -308,7 +325,7 @@ export default function GexFlowWorkspace() {
     if (sessionDate) params.set("sessionDate", sessionDate);
     if (sessionDate && replayTime) params.set("replayAt", new Date(`${sessionDate}T${replayTime}:00`).toISOString());
     try {
-      const response = await fetch(`/api/gex-flow?${params}`, { cache: "no-store" });
+      const response = await request(`/api/gex-flow?${params}`, { cache: "no-store" });
       const next = await response.json() as GexFlowPayload & { error?: string };
       if (!response.ok) throw new Error(next.error || "The next GEX FLOW page could not be loaded.");
       setPayload((current) => current ? {

@@ -10,6 +10,7 @@ import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useStat
 import KwantSelect from "@/components/ui/KwantSelect";
 import dynamic from "next/dynamic";
 import ChartColorField from "@/components/ChartColorField";
+import type { GexMapEmbedState } from "@/components/gex-map/GexMapWorkspace";
 
 // Loaded on demand: GEX BOX should not carry the flow workspace unless a panel
 // actually asks for it.
@@ -1161,8 +1162,10 @@ function NoRows() { return <div className="flex h-full items-center justify-cent
  */
 const SELF_CONTAINED_TOOL_IDS = new Set(["gex-flow", "gex-cal"]);
 
-const ToolSurface = memo(function ToolSurface({ panel, onChange }: { panel: DashboardPanel; onChange: (panel: DashboardPanel) => void }) {
-  const tool = toolById.get(panel.toolId); const url = tool?.endpoint?.(panel.settings) ?? null; const feed = useSharedFeed(url);
+const ToolSurface = memo(function ToolSurface({ panel, onChange, active = true }: { panel: DashboardPanel; onChange: (panel: DashboardPanel) => void; active?: boolean }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => { const sync = () => setVisible(!document.hidden); sync(); document.addEventListener("visibilitychange", sync); return () => document.removeEventListener("visibilitychange", sync); }, []);
+  const tool = toolById.get(panel.toolId); const url = active && visible ? tool?.endpoint?.(panel.settings) ?? null : null; const feed = useSharedFeed(url);
   const patchSettings = useCallback((patch: Partial<PanelSettings>) => onChange({ ...panel, settings: { ...panel.settings, ...patch } }), [onChange, panel]);
   /*
    * Tools that bring their own data are answered before the endpoint guard.
@@ -1194,6 +1197,37 @@ const ToolSurface = memo(function ToolSurface({ panel, onChange }: { panel: Dash
   if (panel.toolId === "orderflow-profile") return <DataTable payload={feed.data} limit={panel.settings.rows} />;
   return <div className="flex h-full items-center justify-center px-8 text-center"><div><BookOpen className="mx-auto h-5 w-5 text-primary" /><p className="mt-3 text-[10px] font-semibold uppercase tracking-[.16em]">Verified renderer unavailable</p><p className="mt-2 max-w-md text-[9px] leading-5 text-muted">This tool is not being flattened into a misleading generic table. Its licensed response needs a dedicated renderer.</p></div></div>;
 });
+
+/** Same body and settings as GEX BOX; the outer Charts grid owns layout/save. */
+export function GexBoxToolPanel({ toolId, panelId, accountKey, state, onChange, active = true }: {
+  toolId: string; panelId: string; accountKey: string; state?: Record<string, string>;
+  onChange(value: Record<string, string>): void; active?: boolean;
+}) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const changeRef = useRef(onChange); changeRef.current = onChange;
+  const panel = useMemo<DashboardPanel>(() => {
+    let saved: Partial<PanelSettings> = {};
+    try { const parsed = JSON.parse(state?.["gex-box:panel"] ?? "{}"); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) saved = parsed; } catch { /* Start from source defaults. */ }
+    return { id: panelId, toolId, title: toolById.get(toolId)?.label ?? toolId, settings: completeSettings(saved) };
+  }, [panelId, state, toolId]);
+  const change = useCallback((next: DashboardPanel) => changeRef.current({ "gex-box:panel": JSON.stringify(next.settings) }), []);
+  if (toolId === "gex-flow") return <GexFlowWorkspace accountKey={accountKey} active={active} workspaceState={state?.["gex-box:flow"]}
+    onWorkspaceStateChange={value => changeRef.current({ "gex-box:flow": value })} />;
+  if (toolId === "gex-cal") {
+    let saved: GexMapEmbedState | null = null;
+    try { saved = JSON.parse(state?.["gex-box:calendar"] ?? "null"); } catch { /* The source map validates saved columns. */ }
+    return <GexMapWorkspace lockedTimeHorizon="future" persistedState={saved}
+      onStateChange={value => changeRef.current({ "gex-box:calendar": JSON.stringify(value) })} />;
+  }
+  return <section className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background" aria-label={`${panel.title} tool`}>
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-panel px-2 py-1 text-xs">
+      <span className="truncate text-muted">{panel.settings.symbol} · {panel.settings.aggregation}</span>
+      <button type="button" onClick={() => setSettingsOpen(true)} className="flex items-center gap-1 border border-border px-2 py-1 text-primary" aria-label={`${panel.title} settings`}><Settings2 className="h-3 w-3" />Settings</button>
+    </div>
+    <div className="relative min-h-0 flex-1"><ToolSurface panel={panel} onChange={change} active={active} /></div>
+    {settingsOpen ? <PanelSettingsDialog panel={panel} onChange={change} onClose={() => setSettingsOpen(false)} /> : null}
+  </section>;
+}
 
 function PanelSettingsDialog({ panel, onChange, onClose }: { panel: DashboardPanel; onChange: (panel: DashboardPanel) => void; onClose: () => void }) {
   const [position, setPosition] = useState({ x: 0, y: 0 }); const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);

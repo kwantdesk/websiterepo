@@ -1,5 +1,26 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — Options Flow Tools in normal chart-grid panels
+
+- Added an expandable Options Flow Tools group below Market & Order Flow in
+  the existing panel-content picker:22 GEX DATA tools, KWANTY Classic/State/
+  Orderflow/expiration calendar and25 GEX BOX tools. Source catalogue parity
+  test requires exact IDs; new definitions must be added to the shared registry.
+- Non-chart content kinds use `options-flow:<source>:<tool>`. Pane-owned
+  `optionsFlowState` survives runtime/preset normalization and duplication.
+  The Indicators library is unmounted/replaced by a disabled button on these
+  panels. It must never install volume profiles over analytical tool panels.
+- `OptionsFlowToolPanel` embeds actual static apps through frame-scoped host
+  IDs, without replacing standalone singleton hosts. GEX BOX exports its actual
+  ToolSurface/settings path; self-contained Flow and calendar own scoped saves.
+  Account-scoped request pools coalesce duplicates, cap concurrency/retention,
+  abort on final release and do not add a polling cadence or vendor login.
+-100 source/model/regression tests plus15 GEX BOX and8 layout checks pass;
+  Flow math/dashboard checks pass. Offline browser verified input/settings Save,
+  State selection and theme propagation. Signed-in grid/cloud roundtrip/live
+  soak and provider licensing/history/streaming limitations remain open.
+- Full release/build verification: `docs/prompt-log/2026-10-19-options-flow-chart-panels.md`.
+
 ## 2026-10-18 — Cboe options expiration calendar in KWANTY
 
 - KWANTY now has Positioning / Options Expiration Calendar page buttons; deep

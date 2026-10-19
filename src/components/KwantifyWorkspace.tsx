@@ -7,6 +7,7 @@ import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
+import { OPTIONS_FLOW_TOOLS, optionsFlowTool, normalizeOptionsFlowState, type OptionsFlowPanelKind, type OptionsFlowState } from "@/lib/optionsFlowTools";
 import { normalizeDrawings, type Drawing } from "@/lib/chartDrawTools";
 import KwantLoader from "@/components/KwantLoader";
 import ImpliedVolatilityRankIcon from "@/components/icons/ImpliedVolatilityRankIcon";
@@ -456,8 +457,13 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
 };
 
 function preloadWorkspaceModule(section: string) {
+  if (optionsFlowTool(section)) return import("@/components/options-flow/OptionsFlowToolPanel");
   return workspaceModulePreloaders[section]?.() ?? Promise.resolve(null);
 }
+
+const OptionsFlowToolPanel = dynamic(() => import("@/components/options-flow/OptionsFlowToolPanel"), {
+  ssr: false, loading: () => workspaceLoader("Opening options flow tool", "Restoring tool settings."),
+});
 
 const Chart = dynamic(loadChartWorkspace, {
   ssr: false,
@@ -1015,7 +1021,7 @@ type WorkspaceToolKind =
   | "tool-order-lifetime-decay-divergence"
   | "tool-multi-book-sweep-synchronization"
   | "tool-ghost-liquidity";
-type WorkspacePanelKind = WorkspacePagePanelKind | WorkspaceToolKind;
+type WorkspacePanelKind = WorkspacePagePanelKind | WorkspaceToolKind | OptionsFlowPanelKind;
 type WorkspacePane = {
   id: string;
   symbol: string;
@@ -1029,6 +1035,7 @@ type WorkspacePane = {
   /** Embedded GEX Map configuration (columns, exposure metrics, view mode),
    * saved and restored with the workspace. */
   gexMapState?: GexMapEmbedState;
+  optionsFlowState?: OptionsFlowState;
 };
 type WorkspaceFloatingWindow = {
   paneId: string;
@@ -1452,6 +1459,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
 const ALL_WORKSPACE_PANEL_OPTIONS: WorkspacePanelOption[] = [
   ...WORKSPACE_PANEL_OPTIONS,
   ...WORKSPACE_TOOL_OPTIONS,
+  ...OPTIONS_FLOW_TOOLS.map(tool => ({ ...tool, icon: BarChart3 })),
 ];
 
 function isWorkspaceToolKind(value: unknown): value is WorkspaceToolKind {
@@ -2431,6 +2439,7 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     // The embedded GEX Map validates this itself on mount; carry it through
     // so saved column/metric/view choices survive workspace loads.
     ...(pane.gexMapState && typeof pane.gexMapState === "object" ? { gexMapState: pane.gexMapState } : {}),
+    ...(pane.optionsFlowState ? { optionsFlowState: normalizeOptionsFlowState(pane.optionsFlowState) } : {}),
   };
 }
 
@@ -10420,6 +10429,7 @@ export default function KwantifyWorkspace({
   const workspaceHeaderDragConsumedRef = useRef(false);
   const [activePaneId, setActivePaneId] = useState<string>(initialChartWorkspaceRuntime.activePaneId);
   const [workspacePanelPickerPaneId, setWorkspacePanelPickerPaneId] = useState<string | null>(null);
+  const [optionsFlowPickerOpen, setOptionsFlowPickerOpen] = useState(false);
   const [workspacePanelTransition, setWorkspacePanelTransition] = useState<{
     paneId: string;
     content: WorkspacePanelKind;
@@ -18319,12 +18329,40 @@ export default function KwantifyWorkspace({
               );
             })}
           </div>
+          <div className="my-4 border-t border-border" />
+          <button type="button" onClick={() => setOptionsFlowPickerOpen(open => !open)} aria-expanded={optionsFlowPickerOpen}
+            className="mb-2 flex w-full items-center justify-between border border-border bg-surface p-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
+            <span>Options Flow Tools</span><ChevronDown className={`h-4 w-4 ${optionsFlowPickerOpen ? "rotate-180" : ""}`} />
+          </button>
+          {optionsFlowPickerOpen && (["gex-data", "kwanty", "gex-box"] as const).map(source => (
+            <section key={source} className="mb-3" aria-label={`${source} options tools`}>
+              <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">{source === "gex-data" ? "GEX DATA" : source === "kwanty" ? "KWANTY" : "GEX BOX"}</div>
+              <div className="grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
+                {OPTIONS_FLOW_TOOLS.filter(tool => tool.source === source).map(tool => (
+                  <button key={tool.id} type="button" onClick={() => void selectWorkspacePanelContent(pane.id, tool.id)}
+                    onPointerEnter={() => void preloadWorkspaceModule(tool.id).catch(() => null)}
+                    disabled={workspacePanelTransition?.paneId === pane.id}
+                    className="flex min-h-[60px] items-center gap-3 rounded-xl border border-border bg-surface/60 p-3 text-left hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none">
+                    <BarChart3 className="h-4 w-4 shrink-0 text-primary" /><span><span className="block text-[9px] font-semibold text-foreground">{tool.label}</span><span className="mt-1 block text-[8px] text-muted">{tool.description}</span></span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       </div>
     );
   }
 
   function renderEmbeddedWorkspace(pane: WorkspacePane) {
+    if (optionsFlowTool(pane.content)) {
+      return <WorkspaceFailureBoundary resetKey={`options-flow-${preferenceUserId}-${pane.id}-${pane.content}`} label="Options Flow Tool">
+        <OptionsFlowToolPanel kind={pane.content as OptionsFlowPanelKind} panelId={pane.id} accountKey={preferenceUserId}
+          instrument={displayCmeSymbol(pane.symbol)} state={pane.optionsFlowState} active={chartSurfaceActive}
+          onActivate={() => activateWorkspacePane(pane.id)}
+          onChange={value => setWorkspacePanes(current => current.map(candidate => candidate.id === pane.id ? { ...candidate, optionsFlowState: value } : candidate))} />
+      </WorkspaceFailureBoundary>;
+    }
     switch (pane.content) {
       case "zyon":
         return (
@@ -19938,7 +19976,7 @@ export default function KwantifyWorkspace({
             className={`col-start-3 row-start-1 flex min-w-0 items-center justify-end gap-2 overflow-hidden px-3 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}
           >
           <div className="flex shrink-0 items-center gap-2">
-          <ChartIndicatorsControl
+          {activePaneIsChart ? <ChartIndicatorsControl
             chartInstanceId={activePaneId}
             instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
             broker={activeWorkspacePane.broker}
@@ -20006,7 +20044,7 @@ export default function KwantifyWorkspace({
               },
             ]}
             onChange={(next) => setIndicatorsForPane(activePaneId, next)}
-          />
+          /> : <button type="button" disabled aria-label="Indicators unavailable for this tool panel" title="This tool has its own settings; chart indicators cannot be added here." className="kwant-chart-row-control flex h-7 items-center gap-1.5 px-2.5 text-[10px] uppercase text-muted"><BarChart3 className="h-3.5 w-3.5" />Indicators</button>}
           {chartWorkspaceScope === "gamma" ? (
             <button
               type="button"

@@ -1,5 +1,5 @@
 import {installTheme} from './site-theme.js?v=1';
-function findHost(){if(typeof window==='undefined')return null;let owner=window;for(let i=0;i<5;i++){try{if(owner.__kwantGexDataHost)return owner.__kwantGexDataHost;if(owner.parent!==owner)owner=owner.parent;else if(owner.opener)owner=owner.opener;else break;}catch{break;}}return null;}
+function findHost(){if(typeof window==='undefined')return null;const hostId=new URLSearchParams(location.search).get('hostId');let owner=window;for(let i=0;i<5;i++){try{if(hostId){if(owner.__kwantOptionsToolHosts?.[hostId])return owner.__kwantOptionsToolHosts[hostId];}else if(owner.__kwantGexDataHost)return owner.__kwantGexDataHost;if(owner.parent!==owner)owner=owner.parent;else if(owner.opener)owner=owner.opener;else break;}catch{break;}}return null;}
 const host=findHost();
 export const gexTimeZone=()=>host?.timezone?.()||'Australia/Brisbane';
 export const gexStorage={getItem:key=>host?.read(String(key))??null,setItem:(key,value)=>{if(!host)throw Error('Open GEX DATA from your signed-in workspace.');host.write(String(key),String(value));},removeItem:key=>host?.write(String(key),null),snapshot:()=>host?.snapshot()??{},restore:values=>host?.restore(values)};
