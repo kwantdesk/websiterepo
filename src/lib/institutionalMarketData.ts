@@ -1702,9 +1702,16 @@ export function enrichCandlesWithInstitutionalTrades(
   candles: Candle[],
   records: InstitutionalTrade[],
   limit = 1_500,
+  excludePartialFirstBar = false,
 ) {
   const base = candles.slice(-Math.max(1, limit));
   if (!base.length || !records.length) return base;
+  // A bounded live seed starts inside a bar, not necessarily at its open.
+  // Never replace that bar's full historical flow with a partial tail.
+  const seedStart = excludePartialFirstBar
+    ? records.reduce((earliest, record) => Number.isFinite(record.timestamp)
+      ? Math.min(earliest, record.timestamp) : earliest, Infinity)
+    : -Infinity;
 
   const flows = new Map<number, InstitutionalCandleFlow>();
   const firstTimestamp = base[0].timestamp;
@@ -1735,6 +1742,7 @@ export function enrichCandlesWithInstitutionalTrades(
       }
     }
     if (candleIndex < 0) continue;
+    if (base[candleIndex].timestamp <= seedStart) continue;
     const nextTimestamp = base[candleIndex + 1]?.timestamp;
     if (nextTimestamp != null && record.timestamp >= nextTimestamp) continue;
     if (

@@ -6529,6 +6529,7 @@ function WorkspaceChartPaneComponent({
               latestCandlesRef.current,
               records,
               latestCandlesRef.current.length,
+              true,
             );
         if (seededCandles !== latestCandlesRef.current && seededCandles.length) {
           latestCandlesRef.current = seededCandles;

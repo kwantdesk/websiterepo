@@ -164,11 +164,15 @@ export function createExecutionTapeEngine(
         exchange: futuresVenue(symbol),
         symbol,
         contractSymbol,
+        // A 25k-print seed blocks live trades behind megabytes of JSON on a
+        // slow proxy. History is restored separately; this is a live handoff.
+        seedLimit: "128",
       });
       const stream = new EventSource(
         `/api/institutional-market-data/v1/market-data/trades?${query.toString()}`,
       );
       source = stream;
+      let connectionSeeded = false;
 
       const markActivity = () => {
         if (generation !== thisGeneration || stopped) return false;
@@ -178,11 +182,11 @@ export function createExecutionTapeEngine(
 
       stream.addEventListener("ready", () => {
         if (!markActivity()) return;
-        setStatus("connected");
+        // Transport readiness is not proof that the execution seed arrived.
       });
       stream.addEventListener("heartbeat", () => {
         if (!markActivity()) return;
-        if (status !== "connected") setStatus("connected");
+        if (connectionSeeded && status !== "connected") setStatus("connected");
       });
       stream.addEventListener("seed", (event) => {
         if (!markActivity()) return;
@@ -206,6 +210,8 @@ export function createExecutionTapeEngine(
                 seedPublished = true;
                 handlers.onSeed(tape.records.slice());
               } else if (additions.length) queue(additions);
+              connectionSeeded = true;
+              setStatus("connected");
               return;
             }
             setContinuity("broken");
@@ -228,6 +234,8 @@ export function createExecutionTapeEngine(
             queue(additions);
           }
           setContinuity("continuous");
+          connectionSeeded = true;
+          setStatus("connected");
         } catch {
           setContinuity("broken");
           scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);

@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — CVD live stream: fixes and unresolved transport delay
+
+- Fixed premature execution readiness, oversized browser seed (now128 prints),
+  partial-seed replacement of full historical bar flow, and cumulative delta
+  offset rendering. This is not a substitute for exact historical backfill.
+- Owner-authorized temporary gateway restart completed. Local stream tested
+  seed67ms / first trade112ms. Public tunnel remains unreliable:128-print
+  seed10850ms,64-print probe no body in14s. Still OPEN; no claim that CVD is
+  fully responsive in the owner's browser. Full month history/permanent VPS/
+  missing Asia opening tape/weekly/footprint live acceptance remain OPEN.
+- Record: docs/prompt-log/2026-10-19-cvd-stream-handoff.md.
+
 ## 2026-10-19 — Workspace panel count
 
 - Removed the12-panel cap from add/duplicate controls and floating restore.

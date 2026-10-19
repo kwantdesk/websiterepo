@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
 
+// Opt-in compact live handoff; historical restoration uses the archive APIs.
+// Keep the legacy retained seed for clients that do not request a limit.
+export function tradeSeedLimit(value) {
+  const requested = Number(value);
+  return value !== null && Number.isInteger(requested) && requested > 0
+    ? Math.min(25_000, requested)
+    : 25_000;
+}
+
 function recordKey(record) {
   const eventId = String(record?.eventId ?? "").trim();
   if (eventId) return `event:${eventId}`;

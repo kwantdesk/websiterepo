@@ -751,35 +751,28 @@ function computeIndicatorSeries(
       // stale cached deltaClose (often zero after a hydrate) must not flatten
       // current flow even though its actual Ask/Bid totals keep advancing.
       const delta = ask - bid;
-      const relativeOpen = useTradeCounts ? 0 : finite(candle.deltaOpen, 0);
+      const sourceOpen = useTradeCounts ? 0 : finite(candle.deltaOpen, 0);
+      // Live gateway snapshots can carry session-cumulative delta OHLC.
+      // Translate only when the declared close-open proves that basis.
+      const pathOffset = !useTradeCounts && Number.isFinite(candle.deltaClose)
+        && Math.abs((Number(candle.deltaClose) - sourceOpen) - delta) < 1e-6
+        ? sourceOpen : 0;
       const relativeHigh = useTradeCounts
         ? Math.max(0, delta)
-        : finite(candle.deltaHigh, Math.max(relativeOpen, delta));
+        : finite(candle.deltaHigh, Math.max(0, delta) + pathOffset) - pathOffset;
       const relativeLow = useTradeCounts
         ? Math.min(0, delta)
-        : finite(candle.deltaLow, Math.min(relativeOpen, delta));
+        : finite(candle.deltaLow, Math.min(0, delta) + pathOffset) - pathOffset;
       const passesFilter = total >= filterMin && (filterMax === 0 || total <= filterMax);
       const filteredDelta = passesFilter ? delta : 0;
       const plottedDelta = dedicatedStudy ? filteredDelta : delta;
       const cumulativeBase = cumulative;
-      /*
-       * A CVD candle opens where the one before it closed.
-       *
-       * `deltaOpen` is meant to be the delta at the START of the bar, so the
-       * body spans the bar's own flow. Our flow-baked bars store a single
-       * delta and set deltaOpen to deltaClose - which makes open equal close
-       * on EVERY bar: a zero-height body, and `close >= open` true every time,
-       * so every candle painted the ask colour and the study read as one
-       * block. The cumulative line still rose and fell correctly, which is why
-       * it looked like a colour bug rather than a geometry one.
-       *
-       * A bar that carries a genuine intra-bar open keeps it.
-       */
-      const declaredOpen = cumulativeBase + relativeOpen;
+      // The previous verified close is the cumulative candle's open. Source
+      // session offsets and old baked open=close values are not another flow.
       const cumulativeHigh = cumulativeBase + (passesFilter || !dedicatedStudy ? relativeHigh : 0);
       const cumulativeLow = cumulativeBase + (passesFilter || !dedicatedStudy ? relativeLow : 0);
       cumulative = cumulativeBase + plottedDelta;
-      const cumulativeOpen = declaredOpen === cumulative ? cumulativeBase : declaredOpen;
+      const cumulativeOpen = cumulativeBase;
       cumulativeAsk += ask;
       cumulativeBid += bid;
       cumulativeFiltered += filteredDelta;

@@ -20,6 +20,7 @@ import {
   completeTradeSseSeed,
   createTradeSseSubscriber,
   queueTradeSseRecord,
+  tradeSeedLimit,
 } from "./trade-sse-continuity.mjs";
 import { BarFlowArchive } from "./bar-flow-archive.mjs";
 import { SessionProfileArchive } from "./session-profile-archive.mjs";
@@ -2119,7 +2120,7 @@ const server = createServer(async (request, response) => {
         // Register before reading the option ring for the same atomic handoff
         // guarantee as futures.
         optionTrades.on("trade", onTrade);
-        const seedTrades = optionTrades.trades(option.symbol);
+        const seedTrades = optionTrades.trades(option.symbol).slice(-tradeSeedLimit(url.searchParams.get("seedLimit")));
         writeSseEvent(response, "ready", {
           provider: "Databento",
           dataset: "GLBX.MDP3",
@@ -2182,7 +2183,7 @@ const server = createServer(async (request, response) => {
       const indicatorTrades = client.book.trades(
         instrument.exchange,
         instrument.symbol,
-        { limit: 25_000 },
+        { limit: tradeSeedLimit(url.searchParams.get("seedLimit")) },
       );
       const normalizedSeed = indicatorTrades.map(normalizedTradeRecord);
       completeTradeSseSeed(

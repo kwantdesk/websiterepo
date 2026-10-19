@@ -1,5 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — CVD execution handoff and delta coordinate repair
+
+- Live probe: local execution SSE delivered its ~6MB seed and530 trade batches
+  in12s, but the public temporary tunnel delivered only786432 bytes and no
+  complete seed. Browser now requests128 retained prints for live handoff;
+  legacy clients retain25K. Archive history is separate, not replaced by a
+  claim that128 prints represent a full session. Atomic seed/pending handoff
+  is preserved. First partially covered clock bar keeps historical flow.
+- Transport ready/heartbeat cannot declare connected before a valid seed.
+  CVD translates proven session-offset delta OHLC into bar-relative coordinates
+  and opens each cumulative candle at the previous verified close.
+- Owner approved brief temporary gateway restart. Applied only the two scoped
+  gateway files to the private runtime, preserving its unrelated differences;
+  stopped only the verified supervised child, leaving supervisor/tunnel intact.
+- IMPORTANT: public tunnel latency remains OPEN. Post-restart local seed67ms,
+  first live batch112ms; public512-print seed did not complete in12s. Public
+  128-print seed completed in10850ms with236 batches received during14s.
+  Another64-print public probe received no body in14s. Do not claim end-to-end
+  smoothness or signed-in chart acceptance. Permanent VPS/full month history,
+  missing Asia opening tape, weekly/footprint acceptance remain OPEN.
+- Tests/release: docs/prompt-log/2026-10-19-cvd-stream-handoff.md.
+
 ## 2026-10-19 — Remove workspace panel-count cap
 
 - Removed12-panel add/docked-duplicate/floating-duplicate guards and disabled
