@@ -1,7 +1,7 @@
 import {
   marketDataGatewayToken,
   marketDataGatewayUrl,
-  marketDataGatewayUrlCandidates,
+  marketDataGatewayUrlCandidatesForPath,
   marketDataProvider,
 } from "@/lib/marketDataGatewayEnv";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
@@ -136,7 +136,7 @@ export async function fetchInstitutionalMarketData(
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ) {
   const token = marketDataGatewayToken();
-  const configured = marketDataGatewayUrlCandidates();
+  const configured = marketDataGatewayUrlCandidatesForPath(path);
   if (!configured.length || !token) {
     throw new Error("Institutional market-data gateway is not configured.");
   }

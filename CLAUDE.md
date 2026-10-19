@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Separate temporary SSE transport from bulk history
+
+- Quote delivery probe: local76quotes/14s (first40ms), current Quick Tunnel
+  ZERO bytes/quotes in14s. Official Quick Tunnel docs explicitly exclude SSE.
+  This is NOT a30s candle polling setting or the first-paint loading fix.
+- Reuse the ALREADY running Tailscale Funnel for STREAMS ONLY. Public-DNS TLS
+  probe (not tailnet/MagicDNS hairpin) delivered149quotes/14s, first1,677ms.
+  Its bulk history took14.5s versus~1s Quick Tunnel, so REST stays on Quick.
+- Server-only KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL selects quote, trade,
+  index and heatmap streaming origin. Same collector, credentials, source and
+  existing proxy/subscriptions; no new account/tunnel/service/purchase/restart.
+  Invalid explicit override fails closed instead of silently using buffered SSE.
+- IMPORTANT VPS CUTOVER: remove this override or set it to the supported VPS
+  streaming origin when restoring Vultr. Leaving it points live streams at the
+  laptop even after the ordinary REST URL aliases move. Laptop must stay online.
+- This is a temporary transport repair, NOT zero Vercel cost or launch uptime.
+  Existing stream proxy costs and proper authenticated direct VPS fanout remain
+  OPEN. Full month history/recording, Asia gaps and live indicator soak remain.
+- Verification/release: docs/prompt-log/2026-10-20-live-quote-delivery.md.
+
 ## 2026-10-20 — CME chart first-paint live-edge repair
 
 - The candle/flow adapters still clipped the owned recorder's upper bound to

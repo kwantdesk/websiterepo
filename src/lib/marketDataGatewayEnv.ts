@@ -117,6 +117,34 @@ export function marketDataGatewayUrlCandidates(): string[] {
     .map(({ candidate }) => candidate);
 }
 
+const STREAM_PATHS = new Set([
+  "/v1/market-data/quotes",
+  "/v1/market-data/trades",
+  "/v1/market-data/index-stream",
+  "/v1/heatmap/stream",
+  "/v1/rithmic/events",
+]);
+
+/** A fast bulk-JSON relay is not necessarily a streaming transport. Temporary
+ * Quick Tunnels buffer SSE; the already-running Funnel can carry streams while
+ * history stays on its faster existing origin. This override is server-only,
+ * uses the SAME gateway/token and must move/remove with the restored VPS. */
+export function marketDataGatewayUrlCandidatesForPath(path: string): string[] {
+  const pathname = `/${String(path).split("?")[0].replace(/^\/+|\/+$/g, "")}`;
+  const streamingOrigin = process.env.KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL?.trim();
+  if (!STREAM_PATHS.has(pathname) || !streamingOrigin) return marketDataGatewayUrlCandidates();
+  // An explicitly selected streaming transport must not silently fall back to
+  // the buffered relay and advertise a connected but stalled quote stream.
+  if (!usableInDeployment(streamingOrigin)) return [];
+  try {
+    const parsed = new URL(streamingOrigin);
+    if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password) return [];
+    return [streamingOrigin.replace(/\/+$/, "")];
+  } catch {
+    return [];
+  }
+}
+
 /** Bearer token every collector route requires. Never expose to the browser. */
 export function marketDataGatewayToken(): string {
   return firstConfigured(GATEWAY_TOKEN_KEYS);
@@ -137,6 +165,8 @@ export function marketDataGatewayEnvNames() {
     keys.find((key) => typeof process.env[key] === "string" && process.env[key]?.trim()) ?? null;
   return {
     url: used(GATEWAY_URL_KEYS),
+    streamUrl: process.env.KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL?.trim()
+      ? "KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL" : null,
     token: used(GATEWAY_TOKEN_KEYS),
     provider: used(PROVIDER_KEYS),
     accepted: {

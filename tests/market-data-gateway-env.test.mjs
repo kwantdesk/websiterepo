@@ -6,10 +6,12 @@ import {
   marketDataGatewayToken,
   marketDataGatewayUrl,
   marketDataGatewayUrlCandidates,
+  marketDataGatewayUrlCandidatesForPath,
   marketDataProvider,
 } from "../src/lib/marketDataGatewayEnv.ts";
 
 const KEYS = [
+  "KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL",
   "KWANTDESK_MARKET_DATA_GATEWAY_URL", "KWANTIFY_MARKET_DATA_GATEWAY_URL",
   "KWANTIFY_MARKET_GATEWAY_URL", "KWANTDESK_MARKET_GATEWAY_URL",
   "KWANTDESK_MARKET_DATA_GATEWAY_TOKEN", "KWANTIFY_MARKET_DATA_GATEWAY_TOKEN",
@@ -149,5 +151,39 @@ test("diagnostics report which variable name was actually used", () => {
   assert.equal(names.token, "KWANTIFY_MARKET_GATEWAY_TOKEN");
   assert.equal(names.url, null, "an unset variable reports null rather than guessing");
   assert.ok(names.accepted.token.includes("KWANTDESK_MARKET_DATA_GATEWAY_TOKEN"));
+  clear();
+});
+
+test("stream-only override separates unbuffered delivery from bulk history",()=>{
+  clear();
+  process.env.KWANTDESK_MARKET_DATA_GATEWAY_URL='https://bulk.example.com';
+  process.env.KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL='https://stream.example.com///';
+  for(const path of ['v1/market-data/quotes?symbols=NQ','/v1/market-data/trades','/v1/market-data/index-stream','/v1/heatmap/stream','/v1/rithmic/events']){
+    assert.deepEqual(marketDataGatewayUrlCandidatesForPath(path),['https://stream.example.com']);
+  }
+  for(const path of ['/v1/market-data/history','/v1/market-data/snapshot','/v1/market-data/order-flow-levels','/v1/market-data/volume-profile']){
+    assert.deepEqual(marketDataGatewayUrlCandidatesForPath(path),['https://bulk.example.com']);
+  }
+  assert.equal(marketDataGatewayEnvNames().streamUrl,'KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL');
+  clear();
+});
+
+test("absent streaming override retains normal deployment routing",()=>{
+  clear();
+  process.env.KWANTIFY_MARKET_GATEWAY_URL='https://vps.example.com';
+  assert.deepEqual(marketDataGatewayUrlCandidatesForPath('/v1/market-data/quotes'),['https://vps.example.com']);
+  clear();
+});
+
+test("invalid explicit stream origin fails closed instead of using buffered bulk origin",()=>{
+  clear();
+  const before=process.env.VERCEL;process.env.VERCEL='1';
+  process.env.KWANTDESK_MARKET_DATA_GATEWAY_URL='https://bulk.example.com';
+  for(const origin of ['http://127.0.0.1:8793','not-a-url','file:///tmp/test','https://user:secret@example.com']){
+    process.env.KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL=origin;
+    assert.deepEqual(marketDataGatewayUrlCandidatesForPath('/v1/market-data/quotes'),[]);
+    assert.deepEqual(marketDataGatewayUrlCandidatesForPath('/v1/market-data/history'),['https://bulk.example.com']);
+  }
+  if(before===undefined)delete process.env.VERCEL;else process.env.VERCEL=before;
   clear();
 });

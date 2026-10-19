@@ -1,5 +1,18 @@
 # KWANTDESK important notes
 
+## 2026-10-20 — Live quote burst transport and VPS cutover warning
+
+- Current Quick Tunnel returned no live quote bytes in14s while local gateway
+  returned76updates. Existing PUBLIC Funnel delivered149updates in14s; use it
+  for streams only, keeping faster REST/history on the current bulk relay.
+- New server-only KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL must be REMOVED or
+  moved to the VPS origin when Vultr returns. Otherwise live feed stays tied to
+  this laptop despite a normal gateway URL cutover. No new service purchased,
+  tunnel created, capture restarted or provider credentials changed.
+- Evidence/release: docs/prompt-log/2026-10-20-live-quote-delivery.md.
+- Permanent authenticated direct gateway delivery/cost, month history and
+  capture, Asia gaps and full profile/CVD/footprint live soak remain OPEN.
+
 ## 2026-10-20 — Slow CME chart startup: artificial live-edge gap removed
 
 - Owned recorded history must include its real forming edge. Removed obsolete

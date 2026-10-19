@@ -1,6 +1,6 @@
 import {
   marketDataGatewayToken,
-  marketDataGatewayUrlCandidates,
+  marketDataGatewayUrlCandidatesForPath,
 } from "@/lib/marketDataGatewayEnv";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const token = marketDataGatewayToken();
-  const origins = token ? marketDataGatewayUrlCandidates() : [];
+  const origins = token ? marketDataGatewayUrlCandidatesForPath("/v1/market-data/quotes") : [];
   if (!token || !origins.length) {
     return new Response("The VPS market-data gateway is not configured.", { status: 503 });
   }
