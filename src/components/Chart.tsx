@@ -19959,7 +19959,7 @@ function Chart({
         </div>
       ) : null}
       {volumeProfileError ? (
-        <div className="pointer-events-none absolute left-3 top-10 z-[19] max-w-[420px] border border-border bg-background px-3 py-2 font-mono text-[10px] text-foreground" role="status">
+        <div hidden data-volume-profile-diagnostic="unavailable">
           {volumeProfileError}
         </div>
       ) : null}

@@ -1,5 +1,14 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Remove intrusive volume-profile history banner
+
+- Owner requested removal of the daily-profile missing-history notification.
+  Chart retains the real failure in a hidden diagnostic element, not a visible
+  overlay or live announcement. Daily/weekly completeness gates, calculations,
+  profile rendering and history requests are unchanged. This is NOT a history fix.
+- Regression: tests/volume-profile-notification.test.mjs.
+- Record: docs/prompt-log/2026-10-20-hide-profile-history-banner.md.
+
 ## 2026-10-20 — Separate temporary SSE transport from bulk history
 
 - Quote delivery probe: local76quotes/14s (first40ms), current Quick Tunnel
