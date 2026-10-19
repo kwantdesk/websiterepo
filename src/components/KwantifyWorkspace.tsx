@@ -395,11 +395,12 @@ import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { cmeWeekRange } from "@/lib/cmeProfileWindows";
 import { legibleSemanticColor, readableTextOn } from "@/lib/readableContrast";
 
-function workspaceLoader(title: string, detail: string) {
+function workspaceLoader(title: string, detail: string, quiet = false) {
   return (
     <KwantLoader
       className="h-full min-h-0 flex-1"
       compact
+      quiet={quiet}
       title={title}
       detail={detail}
     />
@@ -467,7 +468,7 @@ const OptionsFlowToolPanel = dynamic(() => import("@/components/options-flow/Opt
 
 const Chart = dynamic(loadChartWorkspace, {
   ssr: false,
-  loading: () => workspaceLoader("Loading chart", "Restoring cached candles and layout."),
+  loading: () => workspaceLoader("Loading chart", "Restoring cached candles and layout.", true),
 });
 const GammaWorkspace = dynamic(loadGammaWorkspace, {
   ssr: false,
@@ -5260,6 +5261,7 @@ function WorkspaceChartPaneComponent({
   pane,
   active,
   embedded = false,
+  quietLoading = false,
   period,
   settings,
   crosshairSyncScope = "matching",
@@ -5322,6 +5324,7 @@ function WorkspaceChartPaneComponent({
   period: string;
   settings: ChartSettings;
   crosshairSyncScope?: "matching" | "gamvue";
+  quietLoading?: boolean;
   /** Whether this chart shares its crosshair while keeping its own viewport. */
   crosshairLinked?: boolean;
   /** Whether this chart paints its candles; everything else keeps its place. */
@@ -9659,6 +9662,7 @@ function WorkspaceChartPaneComponent({
           <KwantLoader
             className="h-full w-full"
             style={{ backgroundColor: settings.backgroundColor }}
+            quiet={quietLoading}
             icon={BarChart3}
             title="Loading chart"
             detail={`${displayCmeSymbol(pane.symbol)} · restoring ${formatChartInterval(pane.timeframe)} candles`}
@@ -9678,6 +9682,7 @@ function WorkspaceChartPaneComponent({
           backgroundZones={gameplanDecorations.zones}
           instrument={displayCmeSymbol(pane.symbol)}
           chartInstanceId={pane.id}
+          quietLoading={quietLoading}
           crosshairSyncScope={crosshairSyncScope}
           crosshairLinked={crosshairLinked}
           candlesVisible={candlesVisible}
@@ -18221,6 +18226,7 @@ export default function KwantifyWorkspace({
             className="h-full w-full"
             compact
             icon={PendingIcon}
+            quiet={chartWorkspaceScope === "gamma"}
             title={`Loading ${pendingPanel.label}`}
             detail="Preparing this workspace panel."
           />
@@ -18621,6 +18627,7 @@ export default function KwantifyWorkspace({
           || linkedCrosshairPaneIds.has(pane.id)
           ? "gamvue"
           : "matching"}
+        quietLoading={chartWorkspaceScope === "gamma"}
         viewportSyncGroup={viewportSyncGroupForScope(chartWorkspaceScope)}
         viewportSyncRole={linkedViewportPaneIds.has(pane.id) ? "peer" : "independent"}
         replayTimestampMs={chartWorkspaceScope === "gamma" && gexVueReplay.active
@@ -19047,6 +19054,7 @@ export default function KwantifyWorkspace({
               title="Loading workspace"
               detail="Starting this live panel without blocking the others."
               className="h-full w-full bg-chart-background"
+              quiet={chartWorkspaceScope === "gamma"}
             />
           )}
         </div>
@@ -20298,13 +20306,13 @@ export default function KwantifyWorkspace({
         {chartSurfaceActive ? (
         <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "GEX Vue charting" : "Charts"}>
         {!preferencesReady ? (
-          workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.")
-        ) : <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.", chartWorkspaceScope === "gamma")
+        ) : <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
           <div
             key={chartWorkspaceScope}
             ref={workspaceAreaRef}
             data-chart-workspace-scope={chartWorkspaceScope}
-            className="relative min-h-0 min-w-0 flex-1"
+            className="relative min-h-0 min-w-0 flex-1 bg-chart-background"
           >
             {renderWorkspaceNode(workspaceTree)}
             {typeof document !== "undefined"
@@ -20324,6 +20332,7 @@ export default function KwantifyWorkspace({
                           title="Loading workspace"
                           detail="Starting this live panel without blocking the others."
                           className="h-full w-full bg-chart-background"
+                          quiet={chartWorkspaceScope === "gamma"}
                         />
                       )}
                     </div>,

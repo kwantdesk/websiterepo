@@ -1,5 +1,16 @@
 # KWANTDESK important notes
 
+## 2026-10-20 — GEX VUE startup presentation
+
+- Removed the extra animated startup presentation from GEX VUE's charting
+  loading stages; theme surfaces remain visible and readiness/errors stay
+  authoritative. Record: docs/prompt-log/2026-10-20-gex-vue-quiet-startup.md.
+- This does not close the stable gateway/Vultr transport, month-long history /
+  recording/backfill, missing Asia tape or CVD/footprint/profile soak issues.
+- Latest GEX DATA acceptance is docs/GEX-DATA-PARITY-CHECKLIST.md, which
+  supersedes the earlier first-tool-only audit note below. Forecast, aggregate
+  source discrepancies and live cadence remain OPEN.
+
 ## 2026-10-20 — GEX DATA parity audit (incomplete)
 
 - Running22-tool checklist: docs/GEX-DATA-PARITY-CHECKLIST.md. First Net Drift

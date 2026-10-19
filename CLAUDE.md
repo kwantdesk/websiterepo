@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX VUE quiet theme-coloured startup
+
+- GEX VUE startup covers use KwantLoader's quiet presentation: themed surface,
+  accessible busy status, no visible emblem/gradient/text/animation. Preserve
+  chart history/visual-fit readiness and real errors; do not bypass them.
+- Explicit quietLoading passes from the gamma workspace to its chart pane and
+  Chart. It is intentionally separate from crosshair/link settings. Workspace
+  background classes follow live theme CSS; custom chart backgrounds survive.
+- Record and verification: docs/prompt-log/2026-10-20-gex-vue-quiet-startup.md.
+- Presentation only; prior transport/history/Asia/CVD/footprint/profile and
+  GEX DATA full-parity gates remain OPEN.
+
 ## 2026-10-20 — GEX DATA sequential catalogue pass; full parity still OPEN
 
 - All22current catalogue tools inspected against the signed-in reference in

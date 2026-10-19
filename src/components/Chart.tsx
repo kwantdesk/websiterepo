@@ -759,6 +759,7 @@ interface ChartProps {
   viewportSyncGroup?: string;
   viewportSyncRole?: ChartViewportSyncRole;
   crosshairSyncScope?: ChartCrosshairSyncScope;
+  quietLoading?: boolean;
   /**
    * Whether this chart shares its crosshair with the others while keeping its
    * own viewport. Its own control, separate from the viewport link.
@@ -3238,6 +3239,7 @@ function Chart({
   viewportSyncGroup = "",
   viewportSyncRole = "independent",
   crosshairSyncScope = "matching",
+  quietLoading = false,
   crosshairLinked = false,
   candlesVisible = true,
   candleSettings = null,
@@ -18778,6 +18780,7 @@ function Chart({
           <KwantLoader
             className="h-full w-full"
             style={{ backgroundColor: settings.backgroundColor }}
+            quiet={quietLoading}
             icon={ChartColumnIncreasing}
             title="Loading chart"
             detail={`${instrument} · fitting history and price scale`}

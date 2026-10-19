@@ -7,6 +7,8 @@ type KwantLoaderProps = {
   icon?: LucideIcon;
   className?: string;
   compact?: boolean;
+  /** Keep readiness accessible without a visible startup screen or animation. */
+  quiet?: boolean;
   /**
    * This loader stands in for a whole page rather than one panel.
    *
@@ -26,9 +28,25 @@ export default function KwantLoader({
   icon: Icon = Sparkles,
   className = "",
   compact = false,
+  quiet = false,
   page = false,
   style,
 }: KwantLoaderProps) {
+  if (quiet) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label={title}
+        aria-busy="true"
+        data-workspace-loading="quiet"
+        className={`relative min-h-0 bg-background ${page ? "h-full w-full grow self-stretch min-h-[70vh]" : ""} ${className}`}
+        style={style}
+      >
+        <span className="sr-only">{title}</span>
+      </div>
+    );
+  }
   return (
     <div
       role="status"
