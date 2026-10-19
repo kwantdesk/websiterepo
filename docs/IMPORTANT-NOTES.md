@@ -1,5 +1,36 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — Chart first-load concurrency
+
+- Removed the optional live-seam network call from the candle/cache bootstrap
+  barrier. Cold ordinary-time OHLC starts immediately, shared/reused while
+  cache/flow/seam hydrate independently. Browser cache waits capped250ms.
+- Late seam commits remain scope/cancellation/continuity checked; event geometry
+  and missing-flow fail-closed behaviour unchanged.21 focused tests pass.
+- This is NOT a repair of the quick-tunnel SSE limitation or missing tape.
+  Actual signed-in startup timing/all-symbol QA remain unverified. Record:
+  `docs/prompt-log/2026-10-19-chart-first-load-concurrency.md`.
+
+## 2026-10-19 — Market-open L3 is active; all indicators NOT verified
+
+- Ten subscribed futures have valid live L3 books; raw recording and exact
+  trade-tape counts advance, with no reported drops. This is not proof of all
+  instruments or missing history. NQ current profile grows but lacks22:00–22:56Z.
+- Five-session aggregate reports complete even though the current individual
+  session is incomplete: per-session completeness needs fixing before trust.
+- Local SSE delivers live trade batches; public quick tunnel delivers only its
+  initial seed during a20s check. Website historical execution-profile source
+  remains503/cooling down. Do not call footprint/CVD/weekly fully restored.
+- Details: `docs/prompt-log/2026-10-19-live-l3-indicator-audit.md`. Stable streaming
+  origin/VPS, exact opening backfill and end-to-end indicator checks remain OPEN.
+
+- Follow-up latency diagnosis: Cloudflare officially documents Quick Tunnels
+  as NOT supporting SSE (the live quote/execution transport). Replace the
+  temporary trycloudflare origin with a verified stable streaming origin, not
+  faster per-user polling. Sample1m/5m/15m/1h histories load publicly in400–976ms;
+  the reported40s signed-in startup remains unreproduced/unisolated. Record:
+  `docs/prompt-log/2026-10-19-chart-load-and-stream-latency.md`.
+
 ## 2026-10-18 — GEX DATA instrument/time dropdowns
 
 - Instrument fields are selects backed by the site's offered options

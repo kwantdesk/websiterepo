@@ -1,6 +1,7 @@
 "use client";
 
 import KwantSelect from "@/components/ui/KwantSelect";
+import { beginChartHistoryRead, readChartCacheWithin } from "@/lib/chartHistoryRead";
 import { chartActivityRemainingMs, chartSourceTimestamp } from "@/lib/chartCountdown";
 import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
@@ -6750,6 +6751,42 @@ function WorkspaceChartPaneComponent({
     const liveSeamRequest = pane.broker === "Databento" && resolvedContractSymbol
       ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
       : Promise.resolve([] as Candle[]);
+    // Start authoritative OHLC before IndexedDB/tape hydration. Previously a
+    // 12s optional seam request ran BEFORE the main history request even began.
+    const earlyBaseHistory = pane.broker === "Databento"
+      && !isEventBasedChartInterval(pane.timeframe)
+      && !hasImmediateHistory
+      ? beginChartHistoryRead(() => fetchWorkspaceCandles(
+          pane.symbol, pane.timeframe, pane.broker, period, 500, false,
+          requestController.signal,
+        ))
+      : null;
+    let liveSeam: Candle[] = [];
+    let receivedBaseHistory = false;
+    void liveSeamRequest.then((seam) => {
+      if (cancelled) return;
+      liveSeam = seam;
+      if (!receivedBaseHistory || !seam.length || !latestCandlesRef.current.length) return;
+      const repaired = applyAvailableOrderFlowHistory(
+        mergeHistoricalWithLiveTail(
+          mergeChartHistory(latestCandlesRef.current, seam),
+          latestCandlesRef.current,
+          pane.timeframe,
+          liveTailStartTimestampRef.current,
+        ),
+        pane.timeframe, latestOrderFlowCandlesRef.current, latestMarketTradesRef.current,
+      );
+      // A late seam may repair the edge, never release an unverified history.
+      if (cmeChartTailNeedsReconciliation(repaired, pane.timeframe)) return;
+      latestCandlesRef.current = repaired;
+      historyHydratedRef.current = true;
+      visibleHistoryReady = true;
+      setCandles(repaired);
+      setSettledChartRequestKey(requestedChartHydrationKey);
+      setLoading(false);
+      setError(null);
+      void writeChartHistoryCache(pane.symbol, pane.timeframe, repaired);
+    });
     // Cached rows may be used as merge input, but they do not earn a visible
     // first paint until their freshness, requested depth and live seam have
     // been verified below. Revealing a short/stale cache is what produced a
@@ -6832,7 +6869,7 @@ function WorkspaceChartPaneComponent({
     }
 
     const loadHistory = async () => {
-      const [cached, storedTape, liveSeam] = await Promise.all([
+      const [cached, storedTape] = await Promise.all([
         /*
          * Cash-index panes read the candle cache too.
          *
@@ -6849,7 +6886,7 @@ function WorkspaceChartPaneComponent({
          * stream owns the forming bar regardless.
          */
         pane.broker === "Databento"
-          ? readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
+          ? readChartCacheWithin(() => readCompatibleChartHistoryCache(pane.symbol, pane.timeframe), null)
           /*
            * The EXACT entry for a cash-index pane, never a resampled one.
            *
@@ -6864,12 +6901,11 @@ function WorkspaceChartPaneComponent({
            * settles at all.
            */
           : pane.broker === "Market Index"
-            ? readChartHistoryCache(pane.symbol, pane.timeframe)
+            ? readChartCacheWithin(() => readChartHistoryCache(pane.symbol, pane.timeframe), null)
             : Promise.resolve(null),
         pane.broker === "Databento" && needsOrderFlowHistory
-          ? readExecutionTapeCache(pane.symbol, pane.timeframe)
+          ? readChartCacheWithin(() => readExecutionTapeCache(pane.symbol, pane.timeframe), null)
           : Promise.resolve(null),
-        liveSeamRequest,
       ]);
       if (cancelled) return;
       const cachedMarketTrades = needsOrderFlowHistory
@@ -6976,7 +7012,7 @@ function WorkspaceChartPaneComponent({
         && !cachedBase.length
       ) {
         try {
-          const baseHistory = await fetchWorkspaceCandles(
+          const baseHistory = earlyBaseHistory ? await earlyBaseHistory() : await fetchWorkspaceCandles(
             pane.symbol,
             pane.timeframe,
             pane.broker,
@@ -6986,9 +7022,10 @@ function WorkspaceChartPaneComponent({
             requestController.signal,
           );
           if (cancelled) return;
+          receivedBaseHistory = true;
           let baseCandles = trimChartHistoryForPeriod(
             trimCandlesAfterActiveBucket(
-              sanitizeCandles(baseHistory, pane.symbol, pane.timeframe),
+              sanitizeCandles(mergeChartHistory(baseHistory, liveSeam), pane.symbol, pane.timeframe),
               pane.timeframe,
             ),
             period,
@@ -7035,7 +7072,9 @@ function WorkspaceChartPaneComponent({
       }
 
       try {
-        const nextCandles = await fetchWorkspaceCandles(
+        const nextCandles = earlyBaseHistory && !needsOrderFlowHistory
+          ? await earlyBaseHistory()
+          : await fetchWorkspaceCandles(
           pane.symbol,
           pane.timeframe,
           pane.broker,
@@ -7050,6 +7089,7 @@ function WorkspaceChartPaneComponent({
           needsAuctionGapHistory ? resolvedContractSymbol : null,
         );
         if (cancelled) return;
+        receivedBaseHistory = true;
         const historyCoverage = (nextCandles as Candle[] & { historyCoverage?: { partial?: boolean } }).historyCoverage;
         setHistoryCoverageWarning(historyCoverage?.partial ? {
           key: `${pane.broker}:${pane.symbol}:${pane.timeframe}:${period}`,
