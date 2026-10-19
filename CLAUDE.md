@@ -1,6 +1,33 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-19 — GEX DATA silent refresh
+
+- Removed the licensed-data loading screen and legacy panel loading overlay.
+  Requests use nonvisual aria-busy state; existing chart/table stays present
+  while fetching. Initial load and pagination also have no spinner overlay.
+- Keep real errors and source/retrieval timestamps visible. Existing poll
+  cadence, hidden/inactive/historical pauses, request abort/identity guards,
+  auth/licensing and provider budgets unchanged. Applies to standalone and
+  embedded Options Flow GEX DATA frames, which share the same app.
+- Five new actual-loader regressions cover in-flight retention, errors,
+  superseded responses, initial load/pagination and removal of overlay markup
+  and CSS;93 focused/integration/reference tests pass. Release record:
+  docs/prompt-log/2026-10-19-gex-data-silent-refresh.md.
+- Existing temporary SSE transport blocker/wait-for-Vultr decision and full
+  history/Asia/weekly/footprint verification remain OPEN; not data-feed fixes.
+
 ## 2026-10-19 — CVD execution handoff and delta coordinate repair
+
+- FOLLOW-UP ROOT CAUSE VERIFIED: Cloudflare's official Quick Tunnel docs state
+  Quick Tunnels do not support SSE. Sandbox tunnel docs explicitly describe
+  trycloudflare.com buffering text/event-stream. This matches128KB public
+  burst thresholds. A restart/smaller seed CANNOT solve unsupported transport.
+  https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/
+  https://developers.cloudflare.com/sandbox/sdk/api/tunnels/
+  Owner answered: "No / not sure—wait for Vultr". Do NOT proceed with another
+  tunnel/account/DNS setup; wait for Vultr as requested. Do not purchase/signup/transfer DNS
+  or create new infrastructure without that decision. Permanent supported
+  gateway/named tunnel is required for reliable execution SSE.
 
 - Live probe: local execution SSE delivered its ~6MB seed and530 trade batches
   in12s, but the public temporary tunnel delivered only786432 bytes and no

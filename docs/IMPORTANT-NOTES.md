@@ -1,6 +1,24 @@
 # KWANTDESK important notes
 
+## 2026-10-19 — GEX DATA refresh presentation
+
+- Removed repeated loading screens, including embedded tools and legacy board
+  panels. Data remains visible while requests run; actual errors and source
+  timestamps stay visible. Poll rate and licensing/data guards unchanged.
+-93 focused/integration/reference tests pass. Record:
+  docs/prompt-log/2026-10-19-gex-data-silent-refresh.md.
+- Still OPEN: supported live transport (owner chose wait for Vultr), full
+  rolling-month history, missing Asia opening tape, weekly/footprint/live soak.
+
 ## 2026-10-19 — CVD live stream: fixes and unresolved transport delay
+
+- VERIFIED transport blocker: official Cloudflare Quick Tunnel documentation
+  says Quick Tunnels do NOT support SSE; trycloudflare.com buffers the stream.
+  A smaller seed/restart is not an end-to-end solution. Need a supported named
+  tunnel (existing Cloudflare account/DNS access) or permanent VPS connection.
+  Owner decision: "No / not sure—wait for Vultr". Do not set up another tunnel,
+  account or DNS route. No new paid services or DNS transfers authorized. Source:
+  https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/
 
 - Fixed premature execution readiness, oversized browser seed (now128 prints),
   partial-seed replacement of full historical bar flow, and cumulative delta

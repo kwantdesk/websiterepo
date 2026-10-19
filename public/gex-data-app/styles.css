@@ -83,7 +83,6 @@ button { color: inherit; }
 }
 
 .panel { min-width: 0; min-height: 0; position: relative; background: linear-gradient(180deg, var(--gex-23306330303162) 0, var(--gex-23303830303132) 100%); overflow: hidden; display: flex; flex-direction: column; }
-.panel.loading::after { content: "Loading market-data…"; position: absolute; inset: 74px 0 0; display: grid; place-items: center; background: var(--gex-7267626128372c302c31352c2e333529); color: var(--gex-23633962356465); z-index: 7; font-size: 12px; }
 .panel.error::after { content: attr(data-error); position: absolute; left: 50%; top: 55%; transform: translate(-50%,-50%); color: var(--gex-23666664326362); background: var(--gex-726762612837342c362c31362c2e383229); border: 1px solid var(--gex-23613532313335); padding: 8px 12px; border-radius: 8px; font-size: 11px; z-index: 7; text-align: center; max-width: 80%; }
 
 .tabs { height: 36px; display: flex; align-items: stretch; gap: 0; border-bottom: 1px solid var(--gex-23323730373434); background: var(--gex-23306230303138); overflow: hidden; flex: 0 0 auto; }
@@ -215,10 +214,6 @@ button { color: inherit; }
 .summary-card.positive b { color: var(--gex-23323865663637); }.summary-card.negative b { color: var(--gex-23666634613439); }
 
 .tool-stage { max-width: 1800px; min-height: 600px; margin: 0 auto; position: relative; overflow: hidden; border: 1px solid var(--gex-23333231343438); border-radius: 11px; background: linear-gradient(180deg, var(--gex-23306330303138), var(--gex-23303830303130)); box-shadow: var(--shadow); }
-.tool-loading { position: absolute; inset: 0; z-index: 8; display: grid; place-content: center; justify-items: center; gap: 12px; background: var(--gex-7267626128372c302c31352c2e373829); color: var(--gex-23633862356439); }
-.tool-loading[hidden] { display: none; }
-.tool-loading i { width: 30px; height: 30px; border: 3px solid var(--gex-23333331343462); border-top-color: var(--gex-23613732666666); border-radius: 50%; animation: spin .75s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 .tool-error { margin: 18px; border: 1px solid var(--gex-23393732633436); border-radius: 9px; padding: 13px; background: var(--gex-726762612839382c31302c33302c2e333629); color: var(--gex-23666664356463); }
 .chart-toolbar { height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 15px; border-bottom: 1px solid var(--gex-23323931303363); color: var(--gex-23373735663864); font-size: 10px; }
 .chart-toolbar button { padding: 4px 8px; font-size: 10px; }

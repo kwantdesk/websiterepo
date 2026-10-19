@@ -423,7 +423,7 @@ async function loadDrift(panel) {
 }
 
 async function loadPanel(panel) {
-  panel.classList.add("loading");
+  panel.setAttribute("aria-busy", "true");
   panel.classList.remove("error");
   panel.removeAttribute("data-error");
   try {
@@ -440,7 +440,7 @@ async function loadPanel(panel) {
       ctx.clearRect(0,0,width,height);
     }
   } finally {
-    panel.classList.remove("loading");
+    panel.setAttribute("aria-busy", "false");
   }
 }
 
@@ -888,7 +888,9 @@ await boot();
     const tool=activeTool,requestId=++toolRequestId;
     if(!append)toolCursor=null;
     clearTimeout(pollTimer);pollTimer=null;activeController?.abort();activeController=new AbortController();
-    q("#toolLoading").hidden=false;q("#toolError").hidden=true;
+    // Keep the existing chart/table usable during both automatic and manual
+    // refreshes. Network activity must not cover it with a loading screen.
+    toolView.setAttribute("aria-busy","true");q("#toolError").hidden=true;
     try{
       const payload=await loadToolPayload(tool);
       if(requestId!==toolRequestId||activeTool!==tool)return;
@@ -902,7 +904,7 @@ await boot();
     }catch(error){
       if(requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){q("#toolError").textContent=error.message;q("#toolError").hidden=false;updateLiveState();if(EMBEDDED)parent.postMessage({type:'gex-data-status',failed:true,message:error.message},location.origin);}
     }finally{
-      if(requestId===toolRequestId&&activeTool===tool){q("#toolLoading").hidden=true;schedulePoll();}
+      if(requestId===toolRequestId&&activeTool===tool){toolView.setAttribute("aria-busy","false");schedulePoll();}
     }
   }
 
