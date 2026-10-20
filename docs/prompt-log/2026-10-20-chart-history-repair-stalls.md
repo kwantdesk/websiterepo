@@ -50,3 +50,17 @@ event-loop overload, max lag9455ms, tripCount77; public history health reported
 connection_failed. At13:51:40 after stopping local build, overload=false and
 lastLagMs=0 with fresh packets. No gateway restart. This is transient recovery,
 not proof the underlying capacity/transport fault is permanently repaired.
+
+## Urgent NQ1m loading follow-up
+
+Production retry-gate release e7c820f7 / dpl_CNs5yMncV3WyLRooShF4JY53n9fb
+is READY, but actual NQ1m remains loading. Server logs identify repeated
+cme-time-flow-v6 NQ.v.0/1m/10d/base history timeouts and one unreachable configured
+origin. Current Quick Tunnel /health responds200, connected, fresh packets,
+overload=false; existing Funnel health also200. Corrected the production
+KWANTDESK_MARKET_DATA_GATEWAY_URL to the currently running Quick Tunnel using
+the existing environment variable, no token change and no gateway restart.
+This temporary address is NOT a permanent VPS fix. It must move on VPS restore.
+One additional incident release is needed to pick up the corrected environment;
+no manual deployment path or preview build. Actual chart acceptance remains open
+until that release is verified in the browser.
