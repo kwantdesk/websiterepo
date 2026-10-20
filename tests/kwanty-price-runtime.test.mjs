@@ -165,7 +165,7 @@ test('Candles/Line toolbar uses linked control targets with package settings as 
   assert.match(settings,/spotViewMode:data\.get\('spotViewMode'\)/);
   assert.match(app,/\$\('#priceViewMode'\)\.addEventListener\('change',event=>changePriceView\(event.target.value\)\)/);
   assert.match(app,/\$\('#priceViewMode'\)\.value=priceViewFor\(panel,settings\(\)\)/);
-  assert.match(app,/for\(const target of chartControlTargets\(\)\)target\[state.package==='orderflow'\?'priceViewMode':'spotViewMode'\]=value/);
+  assert.match(app,/for\(const target of chartControlTargets\(\)\)target\[state.package==='classic'\?'spotViewMode':'priceViewMode'\]=value/);
 });
 
 test('standalone and independently mounted chart-grid tools expose the shared host price bridge',async()=>{

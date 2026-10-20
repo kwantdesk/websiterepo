@@ -54,13 +54,15 @@ export function stateAxisLabels(g, settings = {}) {
 }
 
 export function stateCrosshairReadout(g, point, settings = {}) {
-  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
-  const hit = g.hitTest(point.x, point.y);
+  if (!point || !Number.isFinite(point.x)) return null;
+  const hasPrice = Number.isFinite(point.y);
+  if (!hasPrice && !Number.isFinite(point.time)) return null;
+  const hit = g.hitTest(point.x, hasPrice ? point.y : (g.top + g.bottom) / 2);
   if (!hit || !Number.isFinite(hit.price)) return null;
   const scale = statePriceScale(g.minPrice, g.maxPrice, g.bottom - g.top);
   return {
-    x: point.x, y: point.y, price: hit.price, time: hit.time,
-    priceText: hit.price.toFixed(scale.decimals),
+    x: point.x, y: point.y, price: hasPrice ? hit.price : null, time: hit.time,
+    priceText: hasPrice ? hit.price.toFixed(scale.decimals) : null,
     timeText: Number.isFinite(hit.time) ? clock(settings.timeZone || 'America/New_York', g.endTime-g.startTime <= 10_000 ? 'dateMilliseconds' : 'date').format(hit.time) : null,
   };
 }
@@ -103,7 +105,7 @@ export function drawStateCrosshairLabels(ctx, g, point, settings, width, ink) {
     ctx.fillStyle = ink.background; ctx.fillRect(x, y, w, 22);
     ctx.fillStyle = ink.foreground; ctx.fillText(text, x + 6, y + 15, w - 10);
   };
-  label(readout.priceText, g.right + 1, Math.max(g.top, Math.min(g.bottom - 22, readout.y - 11)), width - g.right - 1);
+  if (readout.priceText !== null) label(readout.priceText, g.right + 1, Math.max(g.top, Math.min(g.bottom - 22, readout.y - 11)), width - g.right - 1);
   if (readout.timeText) {
     const w = Math.min(g.right - g.left, ctx.measureText(readout.timeText).width + 12);
     const x = Math.max(g.left, Math.min(g.right - w, readout.x - w / 2));

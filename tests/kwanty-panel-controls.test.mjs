@@ -54,8 +54,8 @@ test('actual toolbar handlers propagate interval and chart type only within the 
  panels[1].viewportLinked=false;selected=panels[0];context.changeCandleInterval(900000);
  assert.equal(panels[1].candleIntervalMs,300000);
  const restored=JSON.parse(JSON.stringify(panels));assert.equal(restored[0].candleIntervalMs,900000);assert.equal(restored[1].priceViewMode,'candles');
- for(const pkg of ['classic','state']){context.state.package=pkg;selected=null;context.changeCandleInterval(180000);context.changePriceView('line');assert.equal(defaults.candleIntervalMs,180000);assert.equal(defaults.spotViewMode,'line');}
- assert.equal(saves,11);assert.equal(draws,11);
+ for(const pkg of ['classic']){context.state.package=pkg;selected=null;context.changeCandleInterval(180000);context.changePriceView('line');assert.equal(defaults.candleIntervalMs,180000);assert.equal(defaults.spotViewMode,'line');}
+ assert.equal(saves,9);assert.equal(draws,9);
  assert.match(app,/\$\('#priceViewMode'\)\.addEventListener\('change',event=>changePriceView\(event.target.value\)\)/);
 });
 
@@ -86,5 +86,5 @@ test('toolbar is in the mode header, has normal-chart quick timeframes and per-p
  for(const ms of [60000,180000,300000,900000,1800000,3600000])assert.ok(header.includes('data-candle-interval="'+ms+'"'));
  assert.match(app,/panelLinkButton\(chart,'viewportLinked','shared viewport'/);assert.match(app,/panelLinkButton\(chart,'crosshairLinked','crosshair'/);
  assert.match(app,/priceState\(state.package==='orderflow'\?c.panel:null\)/);
- assert.match(app,/activePanelId,scopes/);
+ assert.match(app,/activePanelId,statePanels:state.statePanels,closedStatePanels:state.closedStatePanels,activeStatePanelId,scopes/);
 });

@@ -38,7 +38,7 @@ export function colorParts(value){
 }
 export function alphaColor(hex,alpha){return Math.max(0,Math.min(100,alpha))===100?hex:hex+Math.round(Math.max(0,Math.min(100,alpha))*2.55).toString(16).padStart(2,'0');}
 
-export function mountSettingsEditor({state,settings,defaults,persist,redraw,clearViews,refresh,message}){
+export function mountSettingsEditor({state,settings,defaults,persist,redraw,clearViews,refresh,message,setSettings=value=>{state.settings[state.package]=value;}}){
  const $=s=>document.querySelector(s),make=(tag,className,text)=>{const e=document.createElement(tag);if(className)e.className=className;if(text)e.textContent=text;return e;};
  const form=$('#settingsForm'),dialog=$('#settingsDialog');let activeRows=[];
  const zoneSelect=form.elements.timeZone;zoneSelect.replaceChildren();for(const group of ['Americas','Europe','Asia Pacific','Oceania','Africa','Atlantic']){const optgroup=make('optgroup');optgroup.label=group;for(const [value,label,offset]of SOURCE_TIMEZONES){const actualGroup=value==='Pacific/Honolulu'||value.startsWith('America/')?'Americas':value.startsWith('Europe/')?'Europe':value.startsWith('Asia/')?'Asia Pacific':value.startsWith('Australia/')||value.startsWith('Pacific/')?'Oceania':value.startsWith('Africa/')?'Africa':'Atlantic';if(actualGroup!==group)continue;const option=make('option','',label+' '+offset);option.value=value;optgroup.append(option);}zoneSelect.append(optgroup);}const utc=make('option','','UTC');utc.value='UTC';zoneSelect.append(utc);
@@ -68,7 +68,7 @@ export function mountSettingsEditor({state,settings,defaults,persist,redraw,clea
   dialog.show();
  });
  $('#closeSettings').addEventListener('click',()=>dialog.close());
- $('#resetSettings').addEventListener('click',()=>{state.settings[state.package]=defaults(state.package);dialog.close();persist();clearViews();refresh();redraw();});
+ $('#resetSettings').addEventListener('click',()=>{setSettings(defaults(state.package));dialog.close();persist();clearViews();refresh();redraw();});
  form.addEventListener('submit',event=>{
   event.preventDefault();const s=structuredClone(settings()),data=new FormData(form),multiplier=Number(data.get('priceMultiplier')),offset=Number(data.get('priceOffset'));
   if(!Number.isFinite(multiplier)||multiplier<=0||!Number.isFinite(offset)){message('Price multiplier must be positive and offset must be finite.');return;}
@@ -81,6 +81,6 @@ export function mountSettingsEditor({state,settings,defaults,persist,redraw,clea
   for(const input of form.querySelectorAll('[data-threshold]')){s.flowThresholds??={};s.flowThresholds[state.ticker]??={};s.flowThresholds[state.ticker][input.dataset.threshold]=Math.max(0,Number(input.value)||0);}
   if(data.get('timeZone')!==s.timeZone)s.timeZoneIsCustomized=true;
   Object.assign(s,{spotViewMode:data.get('spotViewMode'),candleColorMode:data.get('candleColorMode')||'spot',priceMultiplier:multiplier,priceOffset:offset,profileBarAlignment:data.get('alignment'),timeZone:data.get('timeZone')});
-  state.settings[state.package]=s;persist();dialog.close();clearViews();refresh();redraw();
+  setSettings(s);persist();dialog.close();clearViews();refresh();redraw();
  });
 }

@@ -108,7 +108,7 @@ function ToolFrame({ tool, panelId, accountKey, instrument, state, onChange, onA
   useEffect(sendActivity, [active, hostId, tool.source]);
   const source = tool.source;
   const symbol = optionsFlowInitialSymbol(instrument, MARKET_INDEX_DEFINITIONS.map(item => item.symbol));
-  const params = new URLSearchParams({ hostId, instance: "panel", v: source === "kwanty" ? "7" : "4", ...(source === "gex-data" ? { embed: "1", c_ticker: symbol } : { ticker: symbol }) });
+  const params = new URLSearchParams({ hostId, instance: "panel", v: source === "kwanty" ? "8" : "4", ...(source === "gex-data" ? { embed: "1", c_ticker: symbol } : { ticker: symbol }) });
   const src = source === "gex-data" ? `/gex-data-app/index.html?${params}#tool=${tool.toolId}` : `/kwanty-app/index.html?${params}#${tool.toolId}`;
   return <div className="h-full min-h-0 w-full overflow-hidden bg-background" data-options-flow-panel={panelId}>
     {ready ? <iframe key={generation} ref={frame} src={src} title={`${tool.description.split(" · ")[0]} · ${tool.label}`} className="h-full w-full border-0" onLoad={sendActivity} allow="fullscreen" />

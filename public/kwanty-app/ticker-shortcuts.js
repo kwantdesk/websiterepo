@@ -1,5 +1,5 @@
 // Reuse the account's existing dropdown favourites; never start a second feed.
-export function mountTickerShortcuts({root,select,preferences,currentTicker,isVisible}){
+export function mountTickerShortcuts({root,select,preferences,currentTicker,isVisible,reselect=()=>false}){
  const doc=root.ownerDocument;
  const render=()=>{
   const focused=root.contains(doc.activeElement)?doc.activeElement?.dataset.ticker:null;
@@ -13,7 +13,7 @@ export function mountTickerShortcuts({root,select,preferences,currentTicker,isVi
    button.title=option.textContent;button.setAttribute('aria-label','Switch ticker to '+option.value);
    button.setAttribute('aria-pressed',String(currentTicker()===option.value));
    button.addEventListener('click',()=>{
-    if(select.value===option.value)return;
+    if(select.value===option.value&&!reselect())return;
     try{preferences?.select('instruments',option.value);}catch{/* Storage failure must not prevent a ticker switch. */}
     select.value=option.value;
     select.dispatchEvent(new doc.defaultView.Event('change',{bubbles:true}));

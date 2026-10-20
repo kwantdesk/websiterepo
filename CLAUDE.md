@@ -1,5 +1,31 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Multiple KWANTY State panels
+
+- State has Add Chart, independent ticker/GEX-or-Greek/expiry/interval/type/style
+  per panel, active-panel header/sidebar, resize separators, close/restore and
+  the same account ticker favourites/search/recents as Orderflow. State panels,
+  closed panels and active ID persist in the existing workspace/template payload.
+  Legacy single State view migrates without discarding its settings or scope.
+- Viewport links apply timeframe/type/ticker edits to linked peers only; metric
+  selection and settings remain independent. Time bounds share across tickers;
+  price bounds/crosshair prices share ONLY with matching ticker and conversion.
+  Crosshair links are separate; other tickers project time without false prices.
+- `state-sources.js`: one price controller per distinct ticker, one snapshot
+  source per ticker/category, coalesced in-flight work, existing 30s refresh/60s
+  error policy, maximum two concurrent snapshot requests. No per-panel timer,
+  provider login or new Vercel endpoint. Removed sources abort/dispose promptly.
+- State snapshots retain exact native inputs under the existing retention
+  budget. Pending-profile price view uses an observed candle close, never 0..1;
+  linked initial viewport waits for actual loaded profile/history. Price ticks
+  only schedule canvas work, not repeated sidebar reconstruction. Offscreen
+  panels skip canvas paints and scrolling requests a fresh paint.
+- 222 KWANTY/reference tests pass, TypeScript passes, scoped lint has no errors
+  (one unchanged OptionsFlowToolPanel cleanup warning). Actual-app browser fixture
+  verifies 4 panels, independent and linked edits, settings isolation, favourites,
+  persistence, close/restore and identical cursor labels499.93/11:30:57 GMT-4.
+- Record: `docs/prompt-log/2026-10-20-kwanty-state-panels.md`.
+
 ## 2026-10-20 — KWANTY State normal chart axes
 
 - State always has a right-hand price scale, independently of profile bar

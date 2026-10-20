@@ -37,3 +37,9 @@ header>.header-links{display:none}.bot-template-actions{grid-column:3;justify-se
 .chart-panel canvas{height:calc(100% - 30px);min-height:0;flex:1}main{min-height:0}
 @media(max-width:1000px){header{height:72px;min-height:72px;grid-template-columns:1fr 1fr;grid-template-rows:34px 34px;gap:0 6px}header>nav{grid-column:1;grid-row:1}.bot-template-actions{grid-column:2;grid-row:1}.chart-top-controls{grid-column:1/-1;grid-row:2;overflow-x:auto;justify-content:center}main{height:calc(100vh - 72px)}}
 @media(max-width:550px){.timeframe-buttons{display:none!important}.chart-top-controls{justify-content:center}.bot-template-actions button{padding:0 5px;font-size:9px}header>nav button{padding:0 6px;font-size:9px}}
+#chartPanels.state-multi-panels{overflow-y:auto;overscroll-behavior:contain}
+#chartPanels.state-multi-panels .chart-panel{min-height:220px;flex-shrink:0}
+.state-panel-control{padding:8px 0;border-bottom:1px solid var(--site-border)}
+.state-panel-control>button,.state-panel-control>select{width:100%;margin:3px 0;text-align:left}
+.state-panel-control>button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#addStateChart{flex-shrink:0}
