@@ -56,3 +56,15 @@ website. This is separate from moving Next hosting or the account database.
 
 One scoped main-only push after the local checks. Production READY/commit/API
 acceptance must be recorded before calling the website routing live.
+
+- Main8e0595a7 is READY and public diagnostics verify exact SHA, feed origin
+  and direct-browser flagfalse. Signed-in actual website legacy SPX Classic
+  returns ok:true/spot7714.52 and KWANTY NDX Orderflow returns29486.67 at its
+  actual Oct20 source close, matching VPS. VIX/NQ_NDX Flow/majors also200 on VPS.
+  Repeated unchanged raw frames correctly increment archive skipped counts.
+  A follow-up deployment
+  safeguard retains GEXBOT_API_KEY alongside QuantData in the existing VPS env
+  preservation script. It does not recreate retired providers or rotate keys.
+  Current VPS production topology is /opt/kwantdesk/compose.yml; do not replace
+  it with an old generic deployment compose. Preserve Caddy's8795 relay routes,
+  read-only source mount, separate0600 env and recording mount on future upgrades.

@@ -22,10 +22,11 @@ test("VM bootstrap refuses to replace production without QuantData", async () =>
   assert.match(source, /refusing to replace the live gateway/);
 });
 
-test("deploys preserve QuantData but cannot resurrect retired provider credentials", async () => {
+test("deploys preserve active VPS provider keys but cannot resurrect retired providers", async () => {
   const source = await readFile(preserveEnvUrl, "utf8");
 
   assert.match(source, /"QUANTDATA_API_KEY"/);
+  assert.match(source, /"GEXBOT_API_KEY"/);
   assert.match(source, /"QUANTDATA_MIN_SPACING_MS"/);
   assert.match(source, /"QUANTDATA_EDGE_CACHE_MS"/);
   assert.doesNotMatch(source, /"DATABENTO_API_KEY"/);

@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 VPS_OWNED_KEYS = (
+    "GEXBOT_API_KEY",
     "QUANTDATA_API_KEY",
     "QUANTDATA_MIN_SPACING_MS",
     "QUANTDATA_EDGE_CACHE_MS",
