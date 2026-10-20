@@ -40,7 +40,24 @@ test('exposure axis affects exposure only, anchored beneath cursor',()=>{
 
 test('reference Ctrl+wheel scales the vertical chart domain, not time or exposure',()=>{
  for(const pkg of ['classic','state']){const next=zoom(pkg,profile,'plot',{ctrlKey:true});assert.ok(next.maxPrice-next.minPrice<20);assert.equal(next.startTime,undefined);assert.equal(next.minExposure,undefined);}
- const next=zoom('orderflow',orderflow,'plot',{ctrlKey:true});assert.ok(next.maxValue-next.minValue<400);assert.equal(next.startTime,undefined);assert.equal(next.minSpot,undefined);
+ const next=zoom('orderflow',orderflow,'plot',{ctrlKey:true});assert.ok(next.maxValue-next.minValue<400);assert.equal(next.startTime,undefined);assert.ok(next.maxSpot-next.minSpot<20);
+});
+
+test('Ctrl-wheel stays vertical across plot and axes in Classic and State',()=>{
+ for(const pkg of ['classic','state'])for(const region of ['plot','time-axis','exposure-axis','price-axis']){
+  const initial={startTime:t,endTime:t+3_600_000,minExposure:-10,maxExposure:30};
+  const next=zoomChartView(pkg,profile,initial,{x:281,y:134,deltaY:-120,ctrlKey:true,region});
+  near(next.maxPrice-next.minPrice,18);assert.equal(next.startTime,initial.startTime);assert.equal(next.endTime,initial.endTime);assert.equal(next.minExposure,-10);assert.equal(next.maxExposure,30);
+ }
+});
+test('rapid Ctrl-wheel events accumulate before paint and reverse without time drift',()=>{
+ const gesture={x:281,y:134,deltaY:-120,ctrlKey:true,region:'plot'};
+ const first=zoomChartView('classic',profile,{},gesture),second=zoomChartView('classic',profile,first,gesture);
+ near(first.maxPrice-first.minPrice,18);near(second.maxPrice-second.minPrice,16.2);
+ const reversed=zoomChartView('classic',profile,second,{...gesture,deltaY:120});
+ near(reversed.minPrice,first.minPrice);near(reversed.maxPrice,first.maxPrice);
+ assert.equal(second.startTime,undefined);assert.equal(second.minExposure,undefined);
+ assert.deepEqual(zoomChartView('classic',profile,first,{...gesture,deltaY:0}),first);
 });
 
 test('vertical price and metric wheel scales remain independent and cursor-anchored',()=>{

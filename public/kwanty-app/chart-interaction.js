@@ -51,17 +51,24 @@ function axisFor(pkg, region, ctrlKey) {
 
 export function zoomChartView(pkg, geometry, view, gesture = {}) {
   const result = copy(view);
-  if (!validPlot(geometry) || !finite(gesture.x) || !finite(gesture.y) || !finite(gesture.deltaY)) return result;
+  if (!validPlot(geometry) || !finite(gesture.x) || !finite(gesture.y) || !finite(gesture.deltaY) || gesture.deltaY===0) return result;
+  // Several wheel events can arrive before the next animation-frame paint.
+  // Accumulate against the latest requested view, not stale rendered geometry.
+  geometry={...geometry};
+  for(const [min,max] of [['startTime','endTime'],['minPrice','maxPrice'],['minExposure','maxExposure'],['minValue','maxValue']])if(validRange(view?.[min],view?.[max])){geometry[min]=view[min];geometry[max]=view[max];}
+  if(validRange(view?.minSpot,view?.maxSpot))geometry.spotDomain=[view.minSpot,view.maxSpot];
   const region = gesture.region ?? chartRegion(pkg, geometry, gesture);
   // Match the reference's advertised Ctrl+wheel vertical scaling. Horizontal
   // exposure scaling remains on the exposure axis (and Ctrl+drag).
-  const axis = region === 'plot' && gesture.ctrlKey ? pkg === 'orderflow' ? 'metric' : 'price' : axisFor(pkg, region, false);
+  const axis = gesture.ctrlKey && region ? pkg === 'orderflow' ? region==='price-axis'?'spot':'metric' : 'price' : axisFor(pkg, region, false);
   if (!axis) return result;
   const horizontal = axis === 'time' || axis === 'exposure';
   const ratio = horizontal ? (gesture.x - geometry.left) / (geometry.right - geometry.left) : (geometry.bottom - gesture.y) / (geometry.bottom - geometry.top);
-  const modeScale = gesture.deltaMode === 1 ? 16 : gesture.deltaMode === 2 ? geometry.bottom - geometry.top : 1;
-  const factor = Math.exp(clamp(gesture.deltaY * modeScale * .0015, -.4, .4));
+  // The reference's desktop wheel uses one 10% step per event, independent of
+  // device delta magnitude; the inverse step restores the same cursor anchor.
+  const factor = gesture.deltaY < 0 ? .9 : 1/.9;
   Object.assign(result, transformedRange(geometry, axis, ratio, factor));
+  if(pkg==='orderflow'&&gesture.ctrlKey&&region==='plot')Object.assign(result,transformedRange(geometry,'spot',ratio,factor));
   return result;
 }
 

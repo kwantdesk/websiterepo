@@ -3,7 +3,7 @@ import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {syncThemeSettings} from './theme-settings.js';
 import {botStorage,botFetch,botTheme,botTimeZone,botPriceHistory,botSubscribePrice} from './site-runtime.js';
 import {createPriceController} from './price-runtime.js?v=1';
-import {chartRegion,panChartView,zoomChartView} from './chart-interaction.js?v=1';
+import {chartRegion,panChartView,zoomChartView} from './chart-interaction.js?v=2';
 import {bindTemplates} from './templates.js';
 import {RetainedSnapshots} from './retention.js';
 import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js';
@@ -123,7 +123,7 @@ function wireChart(c){let drag=null,moved=false;
  c.canvas.addEventListener('pointerdown',event=>{if(event.button!==0||!c.geometry)return;const point=pointerPosition(c,event),marker=state.package==='orderflow'?overlays.markerAt(c.panel,c.overlayGeometry,point,c.geometry):null;if(marker){if(!marker.available)return;c.canvas.setPointerCapture(event.pointerId);drag={type:'profile',slot:marker.slotIndex};return;}c.canvas.setPointerCapture(event.pointerId);drag={...point,geometry:c.geometry,view:{...views.get(c.panel.id)},region:chartRegion(state.package,c.geometry,point),ctrlKey:event.ctrlKey};moved=false;$('#chartTooltip').hidden=true});
  c.canvas.addEventListener('pointermove',event=>{const p=pointerPosition(c,event),g=c.geometry;if(!g)return;if(drag){if(drag.type==='profile'){overlays.dragTo(c.panel,drag.slot,g.xTime(p.x));drawAll();return;}const dx=p.x-drag.x,dy=p.y-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;if(!moved)return;views.set(c.panel.id,panChartView(state.package,drag.geometry,drag.view,{dx,dy,region:drag.region,ctrlKey:drag.ctrlKey}));drawAll();return}c.hover=p;showTooltip(c,p);drawAll()});
  c.canvas.addEventListener('pointerup',()=>{if(drag?.type==='profile')persist();drag=null});c.canvas.addEventListener('pointercancel',()=>drag=null);c.canvas.addEventListener('pointerleave',()=>{if(!drag){c.hover=null;$('#chartTooltip').hidden=true;drawAll()}});c.canvas.addEventListener('dblclick',()=>{views.delete(c.panel.id);drawAll()});
- c.canvas.addEventListener('wheel',event=>{if(!c.geometry)return;event.preventDefault();const point=pointerPosition(c,event);views.set(c.panel.id,zoomChartView(state.package,c.geometry,views.get(c.panel.id),{...point,deltaY:event.deltaY,deltaMode:event.deltaMode,ctrlKey:event.ctrlKey}));drawAll();},{passive:false});
+ c.canvas.addEventListener('wheel',event=>{if(!c.geometry)return;event.preventDefault();event.stopPropagation();const point=pointerPosition(c,event);views.set(c.panel.id,zoomChartView(state.package,c.geometry,views.get(c.panel.id),{...point,deltaY:event.deltaY,deltaMode:event.deltaMode,ctrlKey:event.ctrlKey||event.getModifierState?.('Control')}));drawAll();},{passive:false});
 }
 function showTooltip(c,p){
  if(state.package==='orderflow'?settings().showCursorTooltip===false:!settings().showCrosshairs){$('#chartTooltip').hidden=true;return}

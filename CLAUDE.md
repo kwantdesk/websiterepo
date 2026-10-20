@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — KWANTY Ctrl-wheel vertical zoom correction
+
+- Ctrl-wheel stays vertical over Classic/State plot and axes; never changes time
+  or exposure. Orderflow plot Ctrl-wheel scales both vertical price/metric domains.
+- Reference-style 10% wheel step, cursor anchored and reversible. Apply pending
+  viewport overrides before each event so multiple events before repaint accumulate.
+  Consume wheel events to avoid outer workspace scrolling/browser zoom.
+- App script v5 and interaction module v2. No data/provider/polling changes.
+- Record: docs/prompt-log/2026-10-20-kwanty-control-wheel.md.
+
 ## 2026-10-20 — Complete alphabetical KWANTY ticker directory
 
 - Classic/State/Orderflow share the existing ticker selector. Preserve optional

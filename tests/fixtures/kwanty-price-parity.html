@@ -8,4 +8,6 @@ priceHistory:async()=>{document.querySelector('#calls').textContent='History rea
 subscribePrice:(ticker,listener)=>{listeners.add(listener);return()=>listeners.delete(listener);},
 request:async url=>new Response(JSON.stringify(url.includes('/catalog')?{tickers:['NDX','QQQ','SPX']}:url.includes('/status')?{authenticated:true}: {data:{...snapshot},providerAsOf:'2026-10-19T20:00:00Z',fetchedAt:'2026-10-19T20:00:01Z'}),{headers:{'Content-Type':'application/json'}})};
 document.querySelector('#print').onclick=()=>listeners.forEach(listener=>listener({symbol:'NDX',timestamp:1792439999000,lastPrice:29523.78}));
+// Controlled DOM wheel replay, not a claim of physical input or live data.
+for(const [label,deltaY] of [['Ctrl wheel in',-120],['Ctrl wheel out',120]]){const button=document.createElement('button');button.textContent=label;button.onclick=()=>{const frame=document.querySelector('iframe'),win=frame.contentWindow,canvas=win.document.querySelector('canvas'),rect=canvas.getBoundingClientRect();canvas.dispatchEvent(new win.WheelEvent('wheel',{ctrlKey:true,deltaY,clientX:rect.left+rect.width*.65,clientY:rect.top+rect.height*.5,bubbles:true,cancelable:true}));};document.querySelector('header').append(button);}
 </script></body></html>
