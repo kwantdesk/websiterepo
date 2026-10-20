@@ -153,7 +153,8 @@ test('app passes independent authoritative price history to every renderer, neve
   assert.match(app,/createPriceController\(\{history:botPriceHistory,subscribe:botSubscribePrice/);
   assert.match(app,/renderOrderflow\([\s\S]*?priceHistory:price\.candles,priceLine:price\.points/);
   assert.match(app,/drawProfile\([\s\S]*?priceHistory:s\.spotViewMode==='candles'\?price\.candles:price\.points/);
-  assert.doesNotMatch(app,/collectCandles\(/);assert.match(app,/prices\.setActive\(!document\.hidden&&window\.__kwantyActive!==false\)/);
+  assert.doesNotMatch(app,/collectCandles\(/);assert.match(app,/active=!document\.hidden&&window\.__kwantyActive!==false/);
+  assert.match(app,/prices\.setActive\(active&&!orderflow\)/);
   assert.match(app,/cutoffTime=state\.historyMode\|\|state\.replayIndex!==null/);
 });
 

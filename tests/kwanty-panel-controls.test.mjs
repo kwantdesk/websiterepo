@@ -19,11 +19,12 @@ test('actual active-panel handlers update only the clicked panel and reuse local
  const nodes=Object.fromEntries(['#candleInterval','#priceViewMode','#activeChartLabel'].map(id=>[id,{}])),calls=[],settings={spotViewMode:'candles'},panels=[{id:'a',metric:'a'},{id:'b',metric:'b'}];
  let saves=0;
  const context={saved:{},state:{package:'orderflow',panels},settings:()=>settings,prices:{snapshot:interval=>{calls.push(interval);return {candles:[],points:[]};}},selectedPayload:()=>null,$:id=>nodes[id],$$:()=>[],charts:[],ORDERFLOW_METRICS:{a:{label:'GEX'},b:{label:'DEX'}},candleIntervalFor,priceViewFor,linkedViewportUpdates,linkedCursor,projectCursor,intervalLabel:value=>String(value),persist:()=>saves++,syncTimeline(){},drawAll(){}};
+ context.orderSources={get:()=>({prices:context.prices,records:[]})};context.stopReplay=()=>{};context.syncShell=()=>context.syncActiveChartControls();
  vm.runInNewContext(app.slice(app.indexOf('let activePanelId='),app.indexOf('function syncPrices()')),context);
  context.activateChart({panel:panels[1]});context.changeCandleInterval(300000);context.priceState();
  context.activateChart({panel:panels[0]});context.changeCandleInterval(60000);context.priceState();
  assert.deepEqual(panels.map(p=>p.candleIntervalMs),[60000,300000]);assert.deepEqual(calls,[300000,60000]);
- assert.equal(nodes['#activeChartLabel'].textContent,'Chart 1 · GEX');assert.equal(saves,2);
+ assert.equal(nodes['#activeChartLabel'].textContent,'Chart 1 · GEX');assert.equal(saves,4);
  assert.equal(settings.candleIntervalMs,undefined);
 });
 

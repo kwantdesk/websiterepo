@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Independent Orderflow panel tickers
+
+- Owner clarified tickers must be independent when unlinked. Each persisted
+  panel now owns `ticker`, migrating missing values from the existing workspace
+  ticker. Active panel drives sidebar/favourites; ticker/futures/spot selection
+  applies to active-only or its viewport-link group, retaining unrelated views.
+- `orderflow-sources.js` owns one price/snapshot/session-history source per
+  distinct visible ticker, coalesces same-ticker panels, rejects mismatches and
+  drops stale/removed responses. One existing 30s coordinator, 60s error backoff;
+  no per-panel polling. Hidden/disposed/removed resources release subscriptions.
+- Render/cache keys include ticker+interval; each overlay/expiry/threshold uses
+  its panel source. Historical data is scoped per ticker/session. Distinct
+  tickers share linked time bounds but never another instrument's price scale.
+- Record: docs/prompt-log/2026-10-20-kwanty-independent-tickers.md.
+
 ## 2026-10-20 — KWANTY Orderflow favourite ticker shortcuts
 
 - Header next to timeframes shows the existing account dropdown instrument

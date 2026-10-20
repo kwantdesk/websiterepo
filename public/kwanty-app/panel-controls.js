@@ -9,7 +9,7 @@ export function sharedViewport(view={}){
 }
 export function linkedViewportUpdates(panels,id,next){
  const source=panels.find(panel=>panel.id===id),updates=new Map([[id,{...next}]]);
- if(source?.viewportLinked)for(const panel of panels)if(panel.id!==id&&panel.viewportLinked)updates.set(panel.id,sharedViewport(next));
+ if(source?.viewportLinked)for(const panel of panels)if(panel.id!==id&&panel.viewportLinked){const shared=sharedViewport(next);if(source.ticker!==panel.ticker){delete shared.minSpot;delete shared.maxSpot;}updates.set(panel.id,shared);}
  return updates;
 }
 export function linkedCursor(geometry,point){

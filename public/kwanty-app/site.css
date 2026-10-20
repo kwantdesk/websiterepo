@@ -28,6 +28,7 @@ header>.header-links{display:none}.bot-template-actions{grid-column:3;justify-se
 .ticker-favourites button[aria-pressed=true]{background:var(--site-surface)!important}
 .chart-panel{display:flex;flex-direction:column;min-height:130px;outline:none;border:1px solid transparent}
 .chart-panel.active-chart{border-color:color-mix(in srgb,var(--site-primary) 55%,var(--site-border))}.chart-panel:focus-visible{outline:1px solid var(--site-primary);outline-offset:-2px}
+.chart-panel{position:relative}.panel-source-status{position:absolute;inset:30px 0 0;display:grid;place-items:center;pointer-events:none;color:var(--site-muted);font-size:12px}.panel-source-status[hidden]{display:none}
 .panel-header{height:30px;min-height:30px;display:flex;align-items:center;gap:8px;padding:0 8px;border-bottom:1px solid var(--site-border);background:var(--site-background)}
 .panel-header .panel-title{position:static;left:auto;top:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.05em;flex:1;color:var(--site-foreground)!important}
 .panel-interval{color:var(--site-muted);font-size:10px}.panel-header .panel-tools,.chart-panel:first-child .panel-tools{position:static;margin-left:auto;right:auto;top:auto;display:flex;gap:3px}
