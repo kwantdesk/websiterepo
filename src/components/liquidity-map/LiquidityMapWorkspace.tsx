@@ -170,7 +170,8 @@ function LiquidityMapWorkspace({
         })
         .map((sheet) => sheet.href ?? "");
       const styled = loadedStyleSheets.some((href) => href.includes("/heatmap-app/styles.css"))
-        && loadedStyleSheets.some((href) => href.includes("/heatmap-app/embed.css"));
+        && loadedStyleSheets.some((href) => href.includes("/heatmap-app/embed.css"))
+        && loadedStyleSheets.some((href) => href.includes("/heatmap-app/site.css"));
       if (styled) {
         clearStyleCheck();
         stylesReadyRef.current = true;
@@ -337,7 +338,7 @@ function LiquidityMapWorkspace({
       <iframe
         ref={iframeRef}
         className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
-        src="/heatmap-app/index.html?v=20261020-centered-settings"
+        src="/heatmap-app/index.html?v=20261020-workspace-chrome"
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
           iframeRef.current?.contentDocument?.documentElement.setAttribute(

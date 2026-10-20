@@ -1,5 +1,24 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — LIQ MAP matches options-workspace chrome
+
+- `public/heatmap-app/site.css` is the final presentation layer, matching GEX
+  DATA/KWANTY: 38px rows, 28px outlined controls, Aleph 10px/600/.075em, 3px
+  corners, 14px line icons, flat website-token backgrounds and theme active states.
+  Do not revert to the old gradient toolbar, small text or pill-group controls.
+- Settings fields, menus, selected rows, checkboxes, Depth/Signals cards, CVD
+  buttons, instrument picker and injected Trade button follow the same language.
+  Settings remains centred with the chart visible; no market rendering/feed rules
+  changed. Preserve palette gradients that encode actual liquidity data.
+- `site` stylesheet participates in the existing three-sheet readiness/retry
+  handshake, including parent verification, so startup cannot flash legacy chrome.
+  Narrow headers keep labelled icons accessible and the tool rail scrollable.
+- 70 focused tests, scoped lint and TypeScript pass. Isolated actual-HTML/CSS
+  browser checks verified 28px/10px/600/3px/.75px controls, dark/light themes,
+  themed 12px/36px dropdown rows and a 360px pane. No owner settings changed.
+  Reproduce locally with `node scripts/serve-liquidity-chrome-fixture.cjs`.
+- Release record: `docs/prompt-log/2026-10-20-liquidity-map-workspace-chrome.md`.
+
 ## 2026-10-20 — Centred LIQ MAP settings
 
 - LIQ MAP Display/settings (also Depth/Signals/CVD settings) uses a native centred

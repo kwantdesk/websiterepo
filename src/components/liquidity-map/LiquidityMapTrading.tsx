@@ -118,7 +118,7 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
     } finally { cancelDrag(); }
   };
   return <>
-    <button type="button" className="absolute right-3 top-2 z-20 rounded border border-border bg-panel px-3 py-1 text-xs text-foreground hover:border-primary"
+    <button type="button" className="absolute right-3 top-2 z-20 inline-flex h-7 items-center justify-center rounded-[3px] border border-border/70 bg-background px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[.075em] text-muted hover:border-primary/30 hover:bg-surface hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
       style={plot ? { right: "auto", left: plot.left + plot.width - 65, top: plot.top + 8 } : undefined}
       onClick={() => { onActivate?.(); trading.onOpenTicket(); }}>Trade</button>
     {plot && active && !replay && trading.enabled && trading.armedOrder && <span className="pointer-events-none absolute z-20 bg-panel px-2 py-1 text-xs text-foreground" style={{ left: plot.left + 8, top: plot.top + 8 }}>Click map to place {trading.armedOrder.type.toUpperCase()} · Esc to cancel</span>}

@@ -1,0 +1,185 @@
+/* LIQ MAP uses the GEX DATA / KWANTY command-rail contract. Data colours and
+   canvas geometry are intentionally outside this presentation-only sheet. */
+html[data-embed="true"] .terminal-shell { grid-template-rows: 38px 38px minmax(0, 1fr); }
+html[data-embed="true"] .app-bar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  height: 38px;
+  min-height: 38px;
+  padding: 0 10px;
+  background: var(--ui-bg);
+  border-bottom: 1px solid var(--ui-line);
+  box-shadow: none;
+}
+html[data-embed="true"] :is(.instrument-tabs, .app-actions) { height: 38px; min-width: 0; }
+html[data-embed="true"] .instrument-tabs { gap: 6px; overflow: hidden; }
+html[data-embed="true"] .instrument-tab-list { min-width: 0; gap: 6px; }
+html[data-embed="true"] .app-actions { gap: 10px; }
+html[data-embed="true"] .top-deck {
+  height: 38px;
+  background: var(--ui-bg);
+  box-shadow: none;
+}
+html[data-embed="true"] .tool-rail {
+  box-sizing: border-box;
+  height: 37px;
+  gap: 6px;
+  padding: 4px 10px;
+  scroll-padding-right: 10px;
+}
+html[data-embed="true"] :is(.toolbar-panel-shortcuts, .header-panel-shortcuts) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-embed="true"] :is(.rail-button, .rail-button.labelled-control, .toolbar-panel-shortcuts button, .instrument-tab, .new-tab, .window-button, .cvd-panel header button) {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--ui-line) 70%, transparent);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ui-muted);
+  box-shadow: none;
+  font: 600 10px/1 var(--font-ui);
+  letter-spacing: .075em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .15s, color .15s, border-color .15s;
+}
+html[data-embed="true"] :is(.rail-button:not(.labelled-control), .new-tab, .window-button) { flex: 0 0 28px; width: 28px; padding: 0; }
+html[data-embed="true"] .rail-button.labelled-control { flex: 0 0 auto; min-width: 0; width: auto; }
+html[data-embed="true"] :is(.rail-button, .toolbar-panel-shortcuts button, .new-tab, .window-button) svg {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+html[data-embed="true"] :is(.rail-button, .toolbar-panel-shortcuts button, .instrument-tab, .new-tab, .window-button, .cvd-panel header button):hover {
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  border-color: color-mix(in srgb, var(--ui-accent) 30%, transparent);
+  box-shadow: none;
+}
+html[data-embed="true"] :is(.rail-button.active, .rail-button.active-toggle:not(.active), .toolbar-panel-shortcuts button.active, .instrument-tab.active) {
+  background: color-mix(in srgb, var(--ui-accent) 8%, transparent);
+  color: var(--ui-accent);
+  border-color: color-mix(in srgb, var(--ui-accent) 30%, var(--ui-line));
+  box-shadow: none;
+}
+html[data-embed="true"] .instrument-tab { flex: 0 0 auto; min-width: 110px; }
+html[data-embed="true"] .instrument-tab strong { color: inherit; font: inherit; letter-spacing: inherit; }
+html[data-embed="true"] .instrument-tab span[data-close-instrument] { margin-left: 2px; }
+html[data-embed="true"] .toolbar-separator { height: 18px; margin: 0 2px; }
+html[data-embed="true"] #utcClock { color: var(--ui-muted); font: 500 10px/1 var(--font-ui); white-space: nowrap; }
+html[data-embed="true"] .heat-control { height: 28px; min-width: 0; padding: 0 4px; color: var(--ui-muted); }
+html[data-embed="true"] .heat-control svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+html[data-embed="true"] .heat-palette { height: 22px; border-radius: 3px; box-shadow: none; }
+html[data-embed="true"] :is(button, input, select):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+html[data-embed="true"] button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Same flat settings chrome, readable field labels and popup rows as the other
+   options workspaces. Keep the centered dialog and light backdrop. */
+html[data-embed="true"] :is(dialog.inspector, .modal) { border-radius: 3px; background: var(--ui-panel); color: var(--ui-text); }
+html[data-embed="true"] .inspector-header { min-height: 48px; padding: 12px 16px; }
+html[data-embed="true"] .inspector-header h2 { font: 600 11px/1.4 var(--font-ui); text-transform: uppercase; letter-spacing: .12em; }
+html[data-embed="true"] .inspector-header .panel-collapse { border-radius: 3px; }
+html[data-embed="true"] dialog.inspector .inspector-panel { padding: 16px; font: 400 12px/1.5 var(--font-ui); }
+html[data-embed="true"] #inspector label { color: var(--ui-text); font: 400 11px/1.5 var(--font-ui); letter-spacing: normal; }
+html[data-embed="true"] #inspector output { color: var(--ui-muted); font: 400 10px/1.4 var(--font-ui); }
+html[data-embed="true"] #settingsPanel { gap: 14px; }
+html[data-embed="true"] #settingsPanel > label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 28px;
+}
+html[data-embed="true"] #inspector :is(input[type="checkbox"], input[type="radio"]) { flex: 0 0 14px; width: 14px; height: 14px; margin: 0; accent-color: var(--ui-accent); }
+html[data-embed="true"] #inspector :is(input[type="number"], input[type="search"]) {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--ui-line);
+  border-radius: 3px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: 400 12px var(--font-ui);
+}
+html[data-embed="true"] #inspector .kwant-select-trigger {
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid var(--ui-line);
+  border-radius: 3px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: 400 12px/1.4 var(--font-ui);
+  letter-spacing: normal;
+}
+html[data-embed="true"] #inspector .kwant-select-trigger:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent) 10%, transparent);
+}
+html[data-embed="true"] #inspector .kwant-select-menu {
+  padding: 6px;
+  border: 1px solid var(--ui-line);
+  border-radius: 16px;
+  background: var(--ui-panel);
+  color: var(--ui-text);
+  box-shadow: 0 22px 70px #0009;
+  font-size: 12px;
+}
+html[data-embed="true"] #inspector .kwant-select-option {
+  min-height: 36px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ui-text);
+  font: 400 12px/1.4 var(--font-ui);
+  letter-spacing: normal;
+}
+html[data-embed="true"] #inspector .kwant-select-option:is(:hover, :focus-visible) { background: var(--ui-surface); }
+html[data-embed="true"] #inspector .kwant-select-option.active { color: var(--ui-accent); background: color-mix(in srgb, var(--ui-accent) 10%, transparent); }
+html[data-embed="true"] #inspector .kwant-select-group { padding: 8px 10px 4px; color: var(--ui-muted); font: 700 8px var(--font-ui); letter-spacing: .16em; }
+html[data-embed="true"] #resetSettings { min-height: 28px; padding: 6px 10px; border: 1px solid var(--ui-line); border-radius: 3px; background: var(--ui-surface); color: var(--ui-text); font: 600 10px var(--font-ui); letter-spacing: .075em; }
+html[data-embed="true"] #resetSettings:hover { border-color: var(--ui-accent); color: var(--ui-accent); }
+html[data-embed="true"] :is(.indicator-settings fieldset, #signalsPanel article, .metric-grid span) { border-radius: 3px; border-color: var(--ui-line); background: var(--ui-panel-alt); }
+html[data-embed="true"] .indicator-settings legend { font: 600 9px var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ui-muted); }
+html[data-embed="true"] .dom-column-settings { border: 1px solid var(--ui-line); border-radius: 3px; padding: 10px; }
+html[data-embed="true"] .dom-column-settings > strong { font: 600 9px var(--font-ui); letter-spacing: .12em; color: var(--ui-muted); }
+html[data-embed="true"] .dom-column-settings > div { gap: 8px; }
+html[data-embed="true"] .modal-header { min-height: 48px; padding: 12px 16px; }
+html[data-embed="true"] .modal-header strong { font: 600 11px var(--font-ui); letter-spacing: .12em; text-transform: uppercase; }
+html[data-embed="true"] :is(.instrument-search-wrap, .instrument-result, .instrument-result-action, .cvd-style-menu) { border-radius: 3px; background: var(--ui-panel); border-color: var(--ui-line); }
+html[data-embed="true"] .instrument-search-wrap input { font: 400 12px var(--font-ui); color: var(--ui-text); }
+html[data-embed="true"] .instrument-result:hover { background: var(--ui-surface); }
+html[data-embed="true"] :is(.chart-tooltip, .measurement-label, .chart-corner-label, .loading-strip) { background: var(--ui-panel); border-radius: 3px; backdrop-filter: none; -webkit-backdrop-filter: none; }
+html[data-embed="true"] .cvd-panel header { background: var(--ui-bg); }
+
+@media (max-width: 620px) {
+  html[data-embed="true"] #utcClock { display: none; }
+  html[data-embed="true"] :is(.app-bar, .tool-rail) { padding-left: 6px; padding-right: 6px; }
+}
+@media (max-width: 520px) {
+  html[data-embed="true"] .header-panel-shortcuts button { width: 28px; padding: 0; }
+  html[data-embed="true"] .header-panel-shortcuts button > span { display: none; }
+}
