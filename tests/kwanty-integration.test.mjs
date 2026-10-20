@@ -5,7 +5,7 @@ import {createNativePositioningEdge} from '../services/rithmic_gateway/src/nativ
 import {trimSnapshotRows,RetainedSnapshots} from '../public/kwanty-app/retention.js';
 const read=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
 test('KWANTY is separate from GEX BOX, GEX DATA and the preserved assistant',()=>{
- const nav=read('src/components/AppSidebar.tsx'),shell=read('src/components/KwantifyWorkspace.tsx');assert.match(nav,/key: "kwanty", href: "\/kwanty", label: "KWANTY"/);assert.match(shell,/has\("kwanty"\)/);assert.match(shell,/KwantBotIntelligenceWorkspace interpreter=/);assert.match(shell,/GexBotWorkspace/);assert.match(read('src/lib/userPreferences.ts'),/kwantdesk:kwanty:workspace:v1/);
+ const nav=read('src/components/AppSidebar.tsx'),shell=read('src/components/KwantifyWorkspace.tsx');assert.match(nav,/key: "kwanty", href: "\/kwanty", label: "KWANTY"/);assert.match(shell,/has\("kwanty"\)/);assert.match(shell,/KwantBotIntelligenceWorkspace interpreter=/);assert.doesNotMatch(shell,/GexBotWorkspace/);assert.match(shell,/GexDataWorkspace/);assert.match(read('src/lib/userPreferences.ts'),/kwantdesk:kwanty:workspace:v1/);
 });
 test('gateway edge rejects unknown operations, methods, duplicate or unsafe query keys',async()=>{
  const edge=await createNativePositioningEdge({});

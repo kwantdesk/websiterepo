@@ -318,7 +318,7 @@ export function renderOrderflow(ctx, width, height, options = {}) {
       const metricColor=metricPoint?.raw>=0?data.series[0]?.positiveColor:data.series[0]?.negativeColor;
       const up=candle.close>=candle.open;
       if((up?settings.candleUp:settings.candleDown)?.display===false)continue;
-      const color=settings.candleColorMode==='metric'&&metricColor?metricColor:up?settings.candleUp?.color||themePaint("#0086E9"):settings.candleDown?.color||themePaint("#504B4B");
+      const color=settings.candleColorMode==='metric'&&metricColor?metricColor:up?settings.candleUp?.color||themePaint("#00ff00"):settings.candleDown?.color||themePaint("#ff0000");
       ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,spotY(candle.high));ctx.lineTo(x,spotY(candle.low));ctx.stroke();ctx.fillStyle=color;ctx.fillRect(x-halfWidth,Math.min(spotY(candle.open),spotY(candle.close)),halfWidth*2,Math.max(1,Math.abs(spotY(candle.close)-spotY(candle.open))));
     }
     else {ctx.strokeStyle = spotColor; ctx.lineWidth = 1; pathLine(ctx, (data.pricePoints||data.points).map(point => ({ time: point.time, value: point.spot })), timeX, spotY);}

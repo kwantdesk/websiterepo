@@ -54,6 +54,27 @@ test('all saved orderflow series discard only non-custom colour snapshots',()=>{
   assert.equal(current.series.zvanna.color,'#abcdef');assert.equal(current.series.zvanna.negativeColor,undefined);
 });
 
+test('all KWANTY packages refresh saved candle defaults and legacy aliases without losing custom colours',async()=>{
+  const restore=environment();try{
+    const app=read('public/kwanty-app/app.js'),context={themePaint,structuredClone};
+    vm.runInNewContext(app.slice(app.indexOf('const defaults='),app.indexOf('let saved={}'))+';globalThis.make=settingsDefaults;',context);
+    for(const pkg of ['classic','state','orderflow']){
+      const current={candleUp:{color:'#0086e9',display:true},candleDown:{color:'#504b4b',display:false},spot_candle_up:{color:'#0086e9'},spot_candle_down:{color:'#504b4b',display:false}};
+      for(const palette of palettes){
+        await installKwanty(palette);const fresh=context.make(pkg);
+        assert.equal(fresh.candleUp.color,palette.bullish,pkg);assert.equal(fresh.candleDown.color,palette.bearish,pkg);
+        syncThemeSettings(current,fresh,{palette,light:false,timeZone:'UTC'});
+        assert.equal(current.candleUp.color,palette.bullish);assert.equal(current.candleDown.color,palette.bearish);
+        assert.equal(current.spot_candle_up.color,palette.bullish);assert.equal(current.spot_candle_down.color,palette.bearish);
+        assert.equal(current.candleDown.display,false);assert.equal(current.spot_candle_down.display,false);
+      }
+      current.candleUp={color:'#112233',isCustomized:true};current.spot_candle_down={color:'#445566',isCustomized:true};
+      syncThemeSettings(current,context.make(pkg),{palette:palettes[0],light:false,timeZone:'UTC'});
+      assert.equal(current.candleUp.color,'#112233');assert.equal(current.spot_candle_down.color,'#445566');
+    }
+  }finally{restore();}
+});
+
 test('per-field theme reset unpins an old white background without resetting any other preferences',()=>{
   const current={background:'#f5f7ff',backgroundIsCustomized:true,spotColor:'#abcdef',spotIsCustomized:true,gamma:{color:'#123456',isCustomized:true,size:8,display:false},series:{zgr:{color:'#abcdef',isCustomized:true,negativeColor:'#fedcba',negativeIsCustomized:true,showPositive:false}}};
   useThemeColour(current,'background');syncThemeSettings(current,{gamma:{color:'#eeeeee'}},{palette:palettes[0],light:false,timeZone:'UTC'});

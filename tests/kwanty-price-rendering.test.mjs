@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {drawProfile} from '../public/kwanty-app/profile-chart.js';
 import {renderOrderflow} from '../public/kwanty-app/orderflow-chart.js';
+import {installTheme} from '../public/kwanty-app/site-theme.js';
 
 // Recording Canvas2D arithmetic fixture: actual renderers, no mocked renderer,
 // network, provider or production fallback. Colours identify price paint calls.
@@ -23,6 +24,26 @@ const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-9,`${a} != ${b}`);
 const priceBodies=calls=>calls.filter(c=>['roundRect','fillRect'].includes(c.method)&&[up,down].includes(c.fill));
 const order=(options={})=>{const result=canvas();return {...result,geometry:renderOrderflow(result.ctx,1000,500,{ticker:'QQQ',metric:'net-gex',records:[record()],priceHistory:prices,priceLine:line,settings,view,...options})};};
 const profile=(options={})=>{const result=canvas();return {...result,geometry:drawProfile(result.ctx,1000,500,{package:'classic',payload,priceHistory:prices,settings,candleInterval:minute,view,...options})};};
+
+test('Classic, State and Orderflow default candle bodies and wicks follow live theme up/down colours',async()=>{
+  const previousDocument=globalThis.document,previousFetch=globalThis.fetch;
+  globalThis.document={documentElement:{style:{setProperty(){}}}};
+  globalThis.fetch=async()=>({ok:true,json:async()=>[]});
+  try{
+    for(const palette of [{background:'#080808',bullish:'#ffffff',bearish:'#777777'},{background:'#fffaf0',bullish:'#951234',bearish:'#187654'}]){
+      await installTheme(palette);
+      const plain={spotViewMode:'candles',showGrid:false,showMajorLevels:false,show_volume:false,show_oi:false};
+      for(const pkg of ['classic','state','orderflow']){
+        const result=pkg==='orderflow'?order({settings:plain}):profile({package:pkg,settings:plain});
+        const bodies=result.calls.filter(c=>['roundRect','fillRect'].includes(c.method)&&[palette.bullish,palette.bearish].includes(c.fill));
+        assert.equal(bodies.length,3,pkg);
+        assert.deepEqual(bodies.map(c=>c.fill),[palette.bullish,palette.bullish,palette.bearish]);
+        const wicks=result.calls.filter(c=>c.method==='lineTo'&&[palette.bullish,palette.bearish].includes(c.stroke));
+        assert.deepEqual(wicks.map(c=>c.stroke),[palette.bullish,palette.bullish,palette.bearish]);
+      }
+    }
+  }finally{globalThis.document=previousDocument;globalThis.fetch=previousFetch;}
+});
 
 test('one real Orderflow observation has a visible current metric label, never an invented curve',()=>{
  const result=order({records:[record(2,{zgr:-29428.66})]});

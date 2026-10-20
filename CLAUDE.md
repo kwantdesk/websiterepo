@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — KWANTY candles use theme up/down colours
+
+- Classic/State/Orderflow candle defaults and renderer fallbacks use bullish/
+  bearish theme roles, not generic blue/accent and grey/border mappings. Both
+  bodies and wicks follow the active site's candle pair. Non-custom saved legacy
+  spot_candle_up/down aliases refresh too; explicit custom colours and intentional
+  Orderflow metric-colour mode remain supported. No price/data/feed changes.
+- Record: docs/prompt-log/2026-10-20-kwanty-themed-candles.md.
+
+
 ## 2026-10-20 — GEX DATA connection-banner flash removed
 
 - Remove the obsolete static status strip (CONNECTING/Connecting) rather than
