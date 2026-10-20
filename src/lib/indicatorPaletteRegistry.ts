@@ -1,5 +1,6 @@
 import { defaultIndicatorSettings } from "@/lib/chartIndicatorConfig";
 import type { ChartSettings } from "@/lib/chartSettings";
+import { isVolumeProfileGradientActive } from "@/lib/volumeProfileGradients";
 import {
   INDICATOR_COLOR_ROLES,
   INDICATOR_GRADIENT_KEY,
@@ -76,7 +77,7 @@ export function settingsWithPalette<T extends { indicatorId: string; settings?: 
   theme: IndicatorPaletteTheme,
 ): T {
   const settings = instance.settings;
-  if (!settings || !settings[INDICATOR_GRADIENT_KEY]) return instance;
+  if (!settings || !isVolumeProfileGradientActive(settings[INDICATOR_GRADIENT_KEY])) return instance;
   // The roles are looked up here rather than left to a cache the dialog fills,
   // so a scheme works on a chart whose settings have never been opened.
   const resolved = resolveIndicatorPalette(
@@ -87,7 +88,15 @@ export function settingsWithPalette<T extends { indicatorId: string; settings?: 
     paletteRolesFor(instance.indicatorId),
   );
   if (!Object.keys(resolved).length) return instance;
-  return { ...instance, settings: { ...settings, ...resolved } };
+  // Canvas studies also have renderer-local theme/map switches. Resolve their
+  // authority here, not only their swatches, or they discard the scheme below.
+  // This is render-only: Off restores the saved theme/map choices unchanged.
+  return { ...instance, settings: {
+    ...settings,
+    ...resolved,
+    useThemeColors: false,
+    ...(instance.indicatorId === "bounce-levels" ? { syncGexMapColors: false } : {}),
+  } };
 }
 
 /*
