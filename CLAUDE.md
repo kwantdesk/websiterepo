@@ -1,5 +1,13 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA filter-row background and centering
+
+- Tool filter rows use the exact website background, not the reference grey
+  surface. Embedded controls/actions align vertically to the row center in a
+  border-box 42px row; action buttons share 24px control height. Keep horizontal
+  overflow and left-aligned filters/right-aligned actions intact.
+- Record: docs/prompt-log/2026-10-20-gex-data-filter-row.md.
+
 ## 2026-10-20 — GEX DATA blank-tool regression repaired
 
 - Removing the connection strip left two `.page-name` writes in `showTool` and

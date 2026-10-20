@@ -55,13 +55,18 @@ body{min-width:0;overflow:hidden}
    Do not inherit the reference app's decorative gradients or frosted panels.
    Data-encoded canvas fills, heatmaps and conic statistics remain untouched. */
 html,body,.app-shell,.dashboard,.dock-body,.dock-tool-frame,
-.panel,.tool-workspace,.tool-stage,.tool-visual,.quant-chart-shell,.quant-chart-plot,
+.panel,.tool-workspace,.tool-controls,.tool-stage,.tool-visual,.quant-chart-shell,.quant-chart-plot,
 .stats-visual,.side-stat-visual,.share-visual,.stat-ring-card,.summary-card,.picker-preview{
   background:var(--site-background)!important;
   backdrop-filter:none!important;
   -webkit-backdrop-filter:none!important;
   box-shadow:none!important;
 }
+
+/* Centre compact filters and actions within the row, not on its baseline. */
+.embedded .tool-controls{box-sizing:border-box;align-items:center;min-height:42px;height:42px;max-height:42px;padding:5px 8px}
+.embedded .tool-controls>.control,.embedded .tool-controls>.embedded-actions{align-items:center;align-self:center}
+.embedded .embedded-actions button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:24px;min-height:24px;line-height:1}
 
 /* Palette roles affect data chrome only; page and plot backgrounds remain themed. */
 html[data-chart-palette="custom"] thead th{color:var(--site-chartHeader,var(--site-foreground))!important}

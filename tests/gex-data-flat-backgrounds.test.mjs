@@ -15,7 +15,7 @@ test("empty docks and populated tool surfaces use the exact live host background
 
 test("flat host overrides load after reference gradients, with a fresh stylesheet URL",()=>{
   const html=read("public/gex-data-app/index.html");
-  const site=html.indexOf('/gex-data-app/site.css?v=6');
+  const site=html.indexOf('/gex-data-app/site.css?v=7');
   assert.ok(site>html.indexOf('/gex-data-app/styles.css'));
   assert.ok(site>html.indexOf('/gex-data-app/workspace.css'));
   const theme=read("public/gex-data-app/site-theme.js");
@@ -23,4 +23,12 @@ test("flat host overrides load after reference gradients, with a fresh styleshee
   // Financial series/rings still encode real data; they are not page decoration.
   assert.match(read("public/gex-data-app/equity-renderers.js"),/ctx\.createLinearGradient/);
   assert.match(read("public/gex-data-app/styles.css"),/\.stat-ring \{[^}]*conic-gradient/);
+});
+
+test('filter row shares the flat background and vertically centres controls and actions',()=>{
+  const css=read('public/gex-data-app/site.css');
+  assert.match(css,/\.panel,\.tool-workspace,\.tool-controls,\.tool-stage/);
+  assert.match(css,/\.embedded \.tool-controls\{[^}]*box-sizing:border-box;align-items:center/);
+  assert.match(css,/\.embedded \.tool-controls>\.control,\.embedded \.tool-controls>\.embedded-actions\{align-items:center;align-self:center\}/);
+  assert.match(css,/\.embedded \.embedded-actions button\{[^}]*height:24px;min-height:24px;line-height:1/);
 });
