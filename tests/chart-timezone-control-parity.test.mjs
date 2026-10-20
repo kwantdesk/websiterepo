@@ -16,7 +16,7 @@ test("GEX VUE and GEX DATA use identical compact trigger sizing and menu heading
   assert.match(component,/CHART_TIME_ZONE_TRIGGER_CLASS_NAME = "w-auto min-w-\[118px\] max-w-\[164px\] shrink-0 px-2.5"/);
   assert.match(component,/kwant-chart-timezone-control kwant-chart-row-control/);
   const css=read("src/app/globals.css");
-  const styles=css.match(/body\.kwant-cockpit-ui \.kwant-chart-command-deck \.kwant-chart-row-control,\s*body\.kwant-cockpit-ui \.kwant-chart-timezone-control \{([^}]+)\}/)?.[1];
+  const styles=css.match(/body\.kwant-cockpit-ui \.kwant-chart-command-deck \.kwant-chart-row-control,\s*body\.kwant-cockpit-ui \.kwant-chart-timezone-control,\s*body\.kwant-cockpit-ui \.kwant-workspace-toolbar-control \{([^}]+)\}/)?.[1];
   assert.ok(styles);
   for(const token of ['height: 28px','font-family: "Aleph", sans-serif','font-size: 10px','font-weight: 600','letter-spacing: .075em'])assert.ok(styles.includes(token),token);
 });

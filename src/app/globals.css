@@ -1618,7 +1618,8 @@ body.kwant-cockpit-ui .kwant-chart-command-deck button {
 /* Every actionable box in the chart command row shares one visual contract.
    Component-specific menus may differ, but their triggers must align. */
 body.kwant-cockpit-ui .kwant-chart-command-deck .kwant-chart-row-control,
-body.kwant-cockpit-ui .kwant-chart-timezone-control {
+body.kwant-cockpit-ui .kwant-chart-timezone-control,
+body.kwant-cockpit-ui .kwant-workspace-toolbar-control {
   height: 28px;
   min-height: 28px;
   border-radius: 3px !important;

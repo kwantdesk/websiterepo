@@ -20,6 +20,8 @@ const GexFlowWorkspace = dynamic(() => import("@/components/gex-flow/GexFlowWork
 // tool rather than as a page that duplicates the map.
 const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), { ssr: false });
 
+const TOOLBAR_CONTROL_CLASS_NAME = "kwant-workspace-toolbar-control inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[.075em] transition-colors";
+
 type ToolCategory = "Options" | "Equities" | "KwantDesk";
 // `endpoint` is optional: a tool that owns its own data fetching renders a
 // whole workspace and takes nothing from the shared feed.
@@ -1490,7 +1492,26 @@ export default function GexBoxDashboard() {
     style={gexBoxThemeVariables(themeRoles) as CSSProperties}
     className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground"
   >
-    <header className="shrink-0 border-b border-border bg-panel"><div className="flex h-11 items-center justify-between gap-3 px-3"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center border border-primary/25 bg-primary/10"><LayoutDashboard className="h-4 w-4 text-primary" /></div><div><h1 className="text-[11px] font-semibold uppercase tracking-[.18em]">GEX BOX</h1><p className="text-[8px] text-muted">QuantData tools · KwantDesk workspace engine</p></div></div><div className="relative flex flex-1 justify-center"><button onClick={() => setWorkspaceMenu((v) => !v)} className={`flex h-8 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[.075em] transition-colors ${workspaceMenu ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`} title="Saved GEX BOX workspaces"><Save className="h-3.5 w-3.5" strokeWidth={1.55} /><span>WORKSPACES</span></button>{workspaceMenu ? <GexBoxWorkspacesMenu activeId={activeWorkspaceId} snapshotName={activeWorkspaceName} onApply={applySavedWorkspace} onSave={saveNamedWorkspace} onImport={importSavedWorkspace} onReset={() => { setWorkspace(defaultWorkspace()); setActiveWorkspaceId(null); setActiveWorkspaceName("GEX BOX"); }} onClose={() => setWorkspaceMenu(false)} /> : null}</div><div className="flex items-center gap-1"><button onClick={() => setShowTools(true)} className="flex h-8 items-center gap-2 border border-primary/30 bg-primary/10 px-3 text-[9px] font-semibold uppercase tracking-[.12em] text-primary"><Plus className="h-3.5 w-3.5" />Add Tool</button><button onClick={() => setShowStyle(true)} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground" title="Workspace style and palette"><SlidersHorizontal className="h-3.5 w-3.5" />Settings</button></div></div>
+    <header className="shrink-0 border-b border-border bg-panel">
+      <div role="toolbar" aria-label="GEX BOX toolbar" className="flex h-[var(--kwant-shell-bar-height)] min-w-0 items-center justify-between gap-2 px-3">
+        <div className="hidden shrink-0 items-center gap-2 sm:flex">
+          <LayoutDashboard className="h-3.5 w-3.5 text-primary" />
+          <h1 className="text-[10px] font-semibold uppercase tracking-[.075em]">GEX BOX</h1>
+        </div>
+        <div className="relative flex min-w-0 flex-1 justify-center">
+          <button type="button" onClick={() => setWorkspaceMenu((v) => !v)} aria-expanded={workspaceMenu}
+            className={`${TOOLBAR_CONTROL_CLASS_NAME} ${workspaceMenu ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
+            title="Saved GEX BOX workspaces"><Save className="h-3.5 w-3.5" strokeWidth={1.55} /><span>WORKSPACES</span></button>
+          {workspaceMenu ? <GexBoxWorkspacesMenu activeId={activeWorkspaceId} snapshotName={activeWorkspaceName} onApply={applySavedWorkspace} onSave={saveNamedWorkspace} onImport={importSavedWorkspace} onReset={() => { setWorkspace(defaultWorkspace()); setActiveWorkspaceId(null); setActiveWorkspaceName("GEX BOX"); }} onClose={() => setWorkspaceMenu(false)} /> : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button type="button" onClick={() => setShowTools(true)} className={`${TOOLBAR_CONTROL_CLASS_NAME} border-primary/30 bg-primary/10 text-primary`}>
+            <Plus className="h-3.5 w-3.5" />Add Tool
+          </button>
+          <button type="button" onClick={() => setShowStyle(true)} className={`${TOOLBAR_CONTROL_CLASS_NAME} border-transparent text-muted hover:bg-surface hover:text-foreground`}
+            aria-label="Settings" title="Workspace style and palette"><SlidersHorizontal className="h-3.5 w-3.5" /><span className="hidden min-[420px]:inline">Settings</span></button>
+        </div>
+      </div>
       {showStyle ? <GexBoxStyleSettings
         paletteId={workspace.paletteId ?? DEFAULT_GEX_BOX_PALETTE_ID}
         onPreview={applyPalette}

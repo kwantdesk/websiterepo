@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Compact GEX BOT / GEX BOX command toolbar
+
+- /gexbot and /gex-box use GexBoxDashboard (not the older Classic component).
+  Live row was44px, buttons32px, generic site font13px/500. Match the shared
+  36px shell height and28px/10px/600/.075em command-control contract instead.
+- Remove bulky badge/subtitle; keep a single compact desktop title, responsive
+  icon-only Settings on narrow screens. Preserve all workspace/tool/style actions.
+- New toolbar-control CSS shares the same declaration as chart row/timezone
+  controls so generic button styles cannot silently enlarge this page again.
+- Record: docs/prompt-log/2026-10-20-gex-bot-toolbar-size.md.
+
 ## 2026-10-20 — GEX DATA timezone control parity
 
 - Browser comparison found GEX DATA timezone trigger 172px/13px/500 versus
