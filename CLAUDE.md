@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Linked KWANTY toolbar controls follow the group
+
+- Owner clarified Orderflow linking includes timeframe and line/candles, not
+  just viewport. Toolbar dropdown and quick timeframe buttons apply to all
+  viewportLinked panels when the active panel is linked; otherwise active only.
+  Crosshair-only links do not join control updates. Unlinked edits remain local.
+- Saved per-panel values persist as before. Same shared price aggregation;
+  no extra provider history, live subscriptions or polling. Existing linked
+  viewport/reset/cursor semantics remain intact.
+- Record: docs/prompt-log/2026-10-20-kwanty-linked-toolbar.md.
+
 ## 2026-10-20 — GEX DATA tool actions beside filters
 
 - Refresh/reset/filter/settings sit immediately after their tool's dropdowns,
@@ -35,7 +46,8 @@
   is locally aggregated; no per-panel vendor polling or extra gateway requests.
 - Per-panel shared-viewport and crosshair buttons mirror normal charts. Share
   time and underlying-price bounds/cursor coordinates, never unrelated raw metric
-  axes. Candle intervals remain independent. Links and active-panel selection
+  axes. Unlinked candle intervals remain independent; linked toolbar changes
+  now follow the group (see later owner clarification above). Links and active-panel selection
   persist in existing templates; resets keep linked time/price views together.
 - Record: docs/prompt-log/2026-10-20-kwanty-panel-toolbar-links.md.
 

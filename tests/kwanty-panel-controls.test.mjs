@@ -37,6 +37,27 @@ test('viewport links copy time/underlying price, never incompatible metric value
  panels[0].viewportLinked=false;assert.equal(linkedViewportUpdates(panels,'a',next).size,1);
 });
 
+test('actual toolbar handlers propagate interval and chart type only within the linked group',()=>{
+ const panels=[{id:'a',viewportLinked:true,crosshairLinked:false},{id:'b',viewportLinked:true},{id:'c',viewportLinked:false,crosshairLinked:true}],defaults={};
+ let selected=panels[0],saves=0,draws=0;
+ const context={state:{package:'orderflow',panels},activePanel:()=>selected,settings:()=>defaults,persist:()=>saves++,syncActiveChartControls(){},syncTimeline(){},drawAll:()=>draws++};
+ vm.runInNewContext(app.slice(app.indexOf('function chartControlTargets('),app.indexOf('function setChartView(')),context);
+ context.changeCandleInterval('180000');context.changePriceView('line');
+ assert.deepEqual(panels.map(p=>[p.candleIntervalMs,p.priceViewMode]),[[180000,'line'],[180000,'line'],[undefined,undefined]]);
+ selected=panels[1];context.changeCandleInterval(300000);context.changePriceView('candles');
+ assert.deepEqual(panels.slice(0,2).map(p=>[p.candleIntervalMs,p.priceViewMode]),[[300000,'candles'],[300000,'candles']]);
+ selected=panels[2];context.changeCandleInterval(60000);context.changePriceView('line');
+ assert.equal(panels[0].candleIntervalMs,300000);assert.equal(panels[0].priceViewMode,'candles');
+ assert.equal(panels[2].candleIntervalMs,60000);assert.equal(panels[2].priceViewMode,'line');
+ // Unlinking makes future edits independent without erasing the saved choices.
+ panels[1].viewportLinked=false;selected=panels[0];context.changeCandleInterval(900000);
+ assert.equal(panels[1].candleIntervalMs,300000);
+ const restored=JSON.parse(JSON.stringify(panels));assert.equal(restored[0].candleIntervalMs,900000);assert.equal(restored[1].priceViewMode,'candles');
+ for(const pkg of ['classic','state']){context.state.package=pkg;selected=null;context.changeCandleInterval(180000);context.changePriceView('line');assert.equal(defaults.candleIntervalMs,180000);assert.equal(defaults.spotViewMode,'line');}
+ assert.equal(saves,11);assert.equal(draws,11);
+ assert.match(app,/\$\('#priceViewMode'\)\.addEventListener\('change',event=>changePriceView\(event.target.value\)\)/);
+});
+
 function geometry({left=100,right=900,top=40,bottom=400,startTime=1000,endTime=11000,spotDomain=[90,110]}={}){
  return {left,right,top,bottom,startTime,endTime,spotDomain,priceAxisVisible:true,xTime:x=>startTime+(x-left)/(right-left)*(endTime-startTime),timeX:time=>left+(time-startTime)/(endTime-startTime)*(right-left),spotY:price=>bottom-(price-spotDomain[0])/(spotDomain[1]-spotDomain[0])*(bottom-top)};
 }

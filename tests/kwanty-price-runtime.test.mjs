@@ -157,14 +157,14 @@ test('app passes independent authoritative price history to every renderer, neve
   assert.match(app,/cutoffTime=state\.historyMode\|\|state\.replayIndex!==null/);
 });
 
-test('Candles/Line toolbar selects a panel-local type with package settings as the default',async()=>{
+test('Candles/Line toolbar uses linked control targets with package settings as the default',async()=>{
   const [html,app,settings]=await Promise.all(['index.html','app.js','settings-editor.js'].map(name=>readFile(new URL('../public/kwanty-app/'+name,import.meta.url),'utf8')));
   assert.match(html,/id="priceViewMode" aria-label="Price chart type"[\s\S]*?value="candles">Candles[\s\S]*?value="line">Line/);
   assert.match(html,/name="spotViewMode" value="line"/);assert.match(html,/name="spotViewMode" value="candles"/);
   assert.match(settings,/spotViewMode:data\.get\('spotViewMode'\)/);
-  assert.match(app,/settings\(\)\.spotViewMode=event\.target\.value;persist\(\)/);
+  assert.match(app,/\$\('#priceViewMode'\)\.addEventListener\('change',event=>changePriceView\(event.target.value\)\)/);
   assert.match(app,/\$\('#priceViewMode'\)\.value=priceViewFor\(panel,settings\(\)\)/);
-  assert.match(app,/if\(panel\)panel.priceViewMode=event.target.value/);
+  assert.match(app,/for\(const target of chartControlTargets\(\)\)target\[state.package==='orderflow'\?'priceViewMode':'spotViewMode'\]=value/);
 });
 
 test('standalone and independently mounted chart-grid tools expose the shared host price bridge',async()=>{
