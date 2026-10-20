@@ -418,7 +418,6 @@ const loadDepthOfMarketWorkspace = () => import("@/components/DepthOfMarketPanel
 const loadSpoofingDetectorWorkspace = () => import("@/components/order-flow/SpoofingDetectorWorkspace");
 const loadSingleProfileWorkspace = () => import("@/components/profile-workspaces/SingleProfileWorkspace");
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
-const loadGexBotWorkspace = () => import("@/components/gexbot/GexBoxDashboard");
 const loadGexDataWorkspace = () => import("@/components/gex-data/GexDataWorkspace");
 const loadKwantyWorkspace = () => import("@/components/kwanty/KwantyWorkspace");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
@@ -443,7 +442,6 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   "tool-single-tpo-chart": loadSingleProfileWorkspace,
   "tool-single-volume-profile": loadSingleProfileWorkspace,
   heatmap: loadOptionsHeatmapWorkspace,
-  gexbot: loadGexBotWorkspace,
   gexdata: loadGexDataWorkspace,
   kwanty: loadKwantyWorkspace,
   gexdesk: loadGexDeskWorkspace,
@@ -501,10 +499,6 @@ const SingleProfileWorkspace = dynamic(loadSingleProfileWorkspace, {
 const OptionsHeatmapWorkspace = dynamic(loadOptionsHeatmapWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Heat Map", "Restoring options positioning and the shared NQ tape."),
-});
-const GexBotWorkspace = dynamic(loadGexBotWorkspace, {
-  ssr: false,
-  loading: () => workspaceLoader("Opening GEX BOT", "Restoring the latest New York options frame."),
 });
 const GexDataWorkspace = dynamic(loadGexDataWorkspace, {
   ssr: false,
@@ -1175,7 +1169,6 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "gamvue" as const, label: "GEX Vue" },
   { id: "gexdata" as const, label: "GEX DATA" },
   { id: "kwanty" as const, label: "KWANTY" },
-  { id: "gexbot" as const, label: "GEX BOX" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
@@ -20635,13 +20628,6 @@ export default function KwantifyWorkspace({
               <ReactActivity mode={bottomWorkspaceSection === "heatmap" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="heatmap" label="Heat Map">
                   <OptionsHeatmapWorkspace />
-                </WorkspaceFailureBoundary>
-              </ReactActivity>
-            ) : null}
-            {visitedWorkspaceSections.has("gexbot") ? (
-              <ReactActivity mode={bottomWorkspaceSection === "gexbot" ? "visible" : "hidden"}>
-                <WorkspaceFailureBoundary resetKey="gexbot" label="GEX BOX">
-                  <GexBotWorkspace />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

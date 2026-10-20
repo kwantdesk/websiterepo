@@ -12,8 +12,9 @@ const app = read('../public/gex-data-app/app.js');
 const storageKey = 'kwantdesk:gex-data:workspace:v1';
 const zoneKey = 'gex-data-timezone';
 
-function host({account='owner', savedAccount=account, savedZone, chartZone='America/New_York'}={}) {
+function host({account='owner', savedAccount=account, savedZone, savedPalette, chartZone='America/New_York'}={}) {
   const values = savedZone ? {[zoneKey]: savedZone, 'gex-data-existing': 'keep'} : {'gex-data-existing': 'keep'};
+  if(savedPalette) values['gex-data:palette:v1']=savedPalette;
   const store = new Map([[storageKey, JSON.stringify({accountKey:savedAccount, values})]]);
   const effects=[], cleanups=[], listeners=new Map(), messages=[], refs=[];
   const child = {frames:[], postMessage:data=>messages.push(['child',data.type])};
@@ -24,6 +25,7 @@ function host({account='owner', savedAccount=account, savedZone, chartZone='Amer
     removeEventListener:name=>listeners.delete(name),
   };
   const context = {exports:{}, window, document:{documentElement:{}}, URLSearchParams, Map, Set, AbortController,
+    getComputedStyle:()=>({getPropertyValue:name=>({'--background':'#080808','--foreground':'#ffffff','--primary':'#0088ff','--candle-up':'#00ff00','--candle-down':'#ff0000'}[name]||'#777777')}),
     localStorage:{getItem:key=>store.get(key)??null},
     MutationObserver:class {observe(){} disconnect(){}},
     require:name=>{
@@ -39,6 +41,9 @@ function host({account='owner', savedAccount=account, savedZone, chartZone='Amer
       };
       if(name.includes('marketIndices'))return {MARKET_INDEX_DEFINITIONS:[]};
       if(name.includes('TimeZoneSelect'))return {default:()=>null};
+      if(name.includes('GexPaletteSettings'))return {default:()=>null};
+      if(name.includes('gexMapPalette'))return {GEX_MAP_PALETTE_PRESETS:[{id:'viridis'}]};
+      if(name.includes('gexBoxTheme'))return {resolveGexBoxRoles:()=>({call:'#aaff00',put:'#ff3366',callSoft:'#88aa00',net:'#ffffff',header:'#999999',strike:'#cccccc'})};
       if(name.includes('KwantLoader'))return {default:()=>null};
       if(name.includes('timeZones'))return {normalizeTimeZone};
       throw Error(name);
@@ -96,6 +101,37 @@ test('timezone changes reformat cached data only and keep historical selections 
   assert.deepEqual(calls,[payload,payload,payload]);
   assert.doesNotMatch(code,/loadActiveTool|fetch|snapshotSelections\.(?:delete|set)|setTimeout/);
   assert.match(app,/addEventListener\('gex-data-timezone',refreshTimeZonePresentation\)/);
+});
+
+test('palette saves are account scoped, preserve filters and repaint frames without fetching',()=>{
+  const h=host();
+  assert.equal(h.api.theme().bullish,'#00ff00');
+  assert.equal(typeof h.api.openPalette,'function');
+  h.api.write('gex-data:palette:v1','viridis');
+  const theme=h.api.theme();
+  assert.equal(theme.bullish,'#aaff00');assert.equal(theme.bearish,'#ff3366');
+  assert.equal(theme.background,'#080808');assert.equal(theme.primary,'#0088ff','toolbar keeps website colours');
+  assert.equal(theme.chartPrimary,'#ffffff');
+  assert.deepEqual(h.messages,[['root','gex-data-site-theme'],['child','gex-data-site-theme']]);
+  const saved=JSON.parse(h.store.get(storageKey));assert.equal(saved.values['gex-data-existing'],'keep');
+  const reopened=host({savedPalette:saved.values['gex-data:palette:v1']});
+  assert.equal(reopened.api.theme().bullish,'#aaff00');
+  h.api.write('gex-data:palette:v1','site');assert.equal(h.api.theme().bullish,'#00ff00');
+  const other=host({account:'other',savedAccount:'owner',savedPalette:'viridis'});
+  assert.equal(other.api.theme().bullish,'#00ff00');
+  h.cleanup();reopened.cleanup();other.cleanup();
+});
+
+test('GEX BOX page is retired but shared tools are preserved, and Settings exposes the shared picker',()=>{
+  assert.doesNotMatch(read('../src/components/AppSidebar.tsx'),/href: "\/gex-box"/);
+  assert.doesNotMatch(read('../src/components/KwantifyWorkspace.tsx'),/label: "GEX BOX"/);
+  assert.match(read('../next.config.ts'),/source: "\/gex-box", destination: "\/gex-data"/);
+  assert.match(read('../next.config.ts'),/source: "\/gexbot", destination: "\/gex-data"/);
+  assert.match(read('../src/components/options-flow/OptionsFlowToolPanel.tsx'),/tool.source === "gex-box"/);
+  assert.match(read('../public/gex-data-app/workspace-ui.js'),/button\('Colour palette'/);
+  const picker=read('../src/components/gex-data/GexPaletteSettings.tsx');
+  assert.match(picker,/GEX_MAP_PALETTE_PRESETS.map/);assert.match(picker,/onPreview\(originalRef.current\)/);
+  assert.match(picker,/Save this palette\?/);assert.match(picker,/Follow website theme/);
 });
 
 test('axes, table times and retrieval timestamps honor zone changes, including NY DST',()=>{

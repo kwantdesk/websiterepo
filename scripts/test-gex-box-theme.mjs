@@ -109,7 +109,7 @@ check("the variables cover every role a panel can ask for", () => {
 
 check("the dashboard applies a palette to every panel on every page", () => {
   const source = readFileSync(new URL("../src/components/gexbot/GexBoxDashboard.tsx", import.meta.url), "utf8");
-  assert.match(source, /function GexBoxStyleSettings/, "the style dialog must exist");
+  assert.match(source, /import GexBoxStyleSettings from/, "the retained panels use the shared style dialog");
   assert.match(source, /setShowStyle\(true\)/, "a Settings button must open it");
   assert.match(source, /pages: current\.pages\.map\(\(page\) => \(\{[\s\S]{0,200}panels: page\.panels\.map/,
     "applying must reach every panel on every page, not just the active one");

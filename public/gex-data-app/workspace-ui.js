@@ -1,5 +1,5 @@
 import {themePaint} from './site-theme.js?v=1';
-import {gexStorage} from './site-runtime.js?v=1';
+import {gexStorage,openWorkspacePalette} from './site-runtime.js?v=1';
 import {createBoardWorkspace,createWorkspace,workspaceAction,workspaceTabsets,workspaceOrientation,workspaceDockLocation,workspaceDockRect,serializeWorkspace,validateTabName} from './workspace-model.js?v=1';
 import {TOOL_CONFIGURATION_OPTIONS,sanitizeToolConfiguration,setConfigurationVisibility} from './preferences-model.js?v=1';
 import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=2';
@@ -41,6 +41,7 @@ export function confirmLocalAction(title,message,action,event){if(event?.shiftKe
 
 export function showToolConfiguration(anchor){
   popup(anchor,'Tool Configuration',el=>{
+    el.append(button('Colour palette',()=>{if(openWorkspacePalette())closePopup();}));
     const configuration=getConfiguration();for(const {key,label} of TOOL_CONFIGURATION_OPTIONS){const row=node('label','configuration-row'),input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!configuration[key];input.setAttribute('aria-label',label);
       input.addEventListener('change',()=>write(KEYS.configuration,setConfigurationVisibility(getConfiguration(),key,input.checked)));row.append(node('span','',label),input);el.append(row);}
   });

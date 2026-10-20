@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import {syncThemeSettings,useThemeColour} from '../public/kwanty-app/theme-settings.js';
 import {installTheme as installKwanty,themePaint} from '../public/kwanty-app/site-theme.js';
-import {installTheme as installGex} from '../public/gex-data-app/site-theme.js?v=1';
+import {installTheme as installGex,themePaint as gexPaint} from '../public/gex-data-app/site-theme.js?v=1';
 import {exposureLegs,HEAT_METRICS} from '../public/gex-data-app/exposure-models.js';
 import {OPTION_COLORS} from '../public/gex-data-app/options-models.js';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -12,7 +12,21 @@ const palettes=[
   {background:'#10051f',foreground:'#f4eaff',primary:'#a855f7',accent:'#e879f9',bullish:'#22c55e',bearish:'#f43f5e',muted:'#a8a29e',warning:'#fbbf24'},
   {background:'#fdfdfd',foreground:'#161616',primary:'#0284c7',accent:'#0891b2',bullish:'#15803d',bearish:'#b91c1c',muted:'#57534e',warning:'#a16207'},
 ];
-function environment(){const oldDocument=globalThis.document,oldFetch=globalThis.fetch;globalThis.document={documentElement:{style:{setProperty(){}}}};globalThis.fetch=async()=>({ok:true,json:async()=>[]});return()=>{globalThis.document=oldDocument;globalThis.fetch=oldFetch;};}
+function environment(){const oldDocument=globalThis.document,oldFetch=globalThis.fetch;globalThis.document={documentElement:{style:{setProperty(){},removeProperty(){}}}};globalThis.fetch=async()=>({ok:true,json:async()=>[]});return()=>{globalThis.document=oldDocument;globalThis.fetch=oldFetch;};}
+
+test('GEX DATA palette colours affect chart roles, retain site surfaces and reset cleanly',async()=>{
+  const restore=environment(),removed=[];
+  document.documentElement.style.removeProperty=key=>removed.push(key);
+  try{
+    await installGex({...palettes[0],bullish:'#aaff00',bearish:'#ff3366',chartPrimary:'#ffee00',chartHeader:'#bbbbbb',chartStrike:'#cccccc'});
+    assert.equal(gexPaint('#00ff00'),'#aaff00');assert.equal(gexPaint('#ff0000'),'#ff3366');
+    assert.equal(gexPaint('#7d1ad6'),'#ffee00');
+    assert.equal(document.documentElement.style.backgroundColor,palettes[0].background);
+    await installGex(palettes[1]);
+    assert.equal(gexPaint('#00ff00'),palettes[1].bullish);assert.equal(gexPaint('#7d1ad6'),palettes[1].primary);
+    for(const key of ['chartPrimary','chartHeader','chartStrike'])assert.ok(removed.includes('--site-'+key));
+  }finally{restore();}
+});
 
 test('every State Greek and major defaults follows multiple themes, preserving explicit custom styles',async()=>{
   const restore=environment();try{

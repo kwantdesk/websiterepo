@@ -15,7 +15,7 @@ test("empty docks and populated tool surfaces use the exact live host background
 
 test("flat host overrides load after reference gradients, with a fresh stylesheet URL",()=>{
   const html=read("public/gex-data-app/index.html");
-  const site=html.indexOf('/gex-data-app/site.css?v=5');
+  const site=html.indexOf('/gex-data-app/site.css?v=6');
   assert.ok(site>html.indexOf('/gex-data-app/styles.css'));
   assert.ok(site>html.indexOf('/gex-data-app/workspace.css'));
   const theme=read("public/gex-data-app/site-theme.js");

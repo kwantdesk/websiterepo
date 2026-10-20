@@ -62,3 +62,7 @@ html,body,.app-shell,.dashboard,.dock-body,.dock-tool-frame,
   -webkit-backdrop-filter:none!important;
   box-shadow:none!important;
 }
+
+/* Palette roles affect data chrome only; page and plot backgrounds remain themed. */
+html[data-chart-palette="custom"] thead th{color:var(--site-chartHeader,var(--site-foreground))!important}
+html[data-chart-palette="custom"] td[data-column-id="strikePrice"],html[data-chart-palette="custom"] td[data-column-id="strike"]{color:var(--site-chartStrike,var(--site-foreground))!important}

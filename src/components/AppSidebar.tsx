@@ -4,7 +4,6 @@ import Link from "next/link";
 import { memo, useEffect, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   BarChart3,
-  Boxes,
   BookOpen,
   Bot,
   CalendarDays,
@@ -103,7 +102,6 @@ const navItems: Array<{
   { key: "gamvue", href: "/gamvue", label: "GEX VUE", title: "GEX charting", icon: BarChart3 },
   { key: "gexdata", href: "/gex-data", label: "GEX DATA", title: "Options and equities data workspace", icon: BarChart3 },
   { key: "kwanty", href: "/kwanty", label: "KWANTY", title: "Classic, State and Orderflow", icon: Bot },
-  { key: "gexbot", href: "/gex-box", label: "GEX BOX", title: "Classic, state, order-flow and research exposure", icon: Boxes },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
   { key: "liqmap", href: "/liqmap", label: "LIQ MAP", title: "Liquidity Heatmap", icon: Waves },
@@ -129,7 +127,6 @@ const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "gexmap",
   "liqmap",
   "heatmap",
-  "gexbot",
   "gexdesk",
   "levelz",
   "news",

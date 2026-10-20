@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA palette settings; retire GEX BOX page
+
+- GEX DATA Settings → Colour palette reuses the full 30-preset GEX BOX picker,
+  with live preview, Save/Discard and Follow website theme. Its account-scoped
+  workspace value is included in existing workspace saves/imports/preferences.
+- Only chart semantic colours/header/strike roles change; website backgrounds,
+  fonts and toolbar colours remain theme-owned. Repaint cached chart data without
+  new provider requests. Reset removes stale custom CSS palette variables.
+- Remove the standalone GEX BOX navigation/workspace surface and redirect
+  /gex-box, /gex-box/:surface and /gexbot to /gex-data. Preserve saved legacy
+  workspaces, chart-grid GEX BOX tools and their shared backend/API routes.
+- Record: docs/prompt-log/2026-10-20-gex-data-palette-migration.md.
+
+
 ## 2026-10-20 — KWANTY Orderflow visible readings and recorded-session restoration
 
 - Native latest snapshots have real metric values, but frontend only retained

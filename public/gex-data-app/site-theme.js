@@ -17,11 +17,13 @@ export function themeRole(color){
 }
 export function themePaint(color){
   if(typeof document==='undefined')return color;
-  const mapped=palette[themeRole(color)]||palette.primary,alpha=channels(color)?.[3]??1;
+  const role=themeRole(color),mapped=(role==='primary'?palette.chartPrimary:null)||palette[role]||palette.primary,alpha=channels(color)?.[3]??1;
   if(alpha>=1)return mapped;const rgb=channels(mapped);return rgb?`rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`:mapped;
 }
 export async function installTheme(next){
-  palette={...defaults,...next};if(typeof document==='undefined')return;
+  const previous=palette;palette={...defaults,...next};if(typeof document==='undefined')return;
+  for(const key of Object.keys(previous))if(!(key in palette))document.documentElement.style.removeProperty('--site-'+key);
+  document.documentElement.setAttribute?.('data-chart-palette',palette.chartPrimary?'custom':'site');
   document.documentElement.style.backgroundColor=palette.background;
   document.documentElement.style.color=palette.foreground;
   for(const[key,value]of Object.entries(palette))document.documentElement.style.setProperty('--site-'+key,value);

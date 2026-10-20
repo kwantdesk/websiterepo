@@ -7,15 +7,21 @@ import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, defaultChartSe
 import { MARKET_INDEX_DEFINITIONS } from "@/lib/marketIndices";
 import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components/ui/TimeZoneSelect";
 import { normalizeTimeZone } from "@/lib/timeZones";
+import GexPaletteSettings from "./GexPaletteSettings";
+import { GEX_MAP_PALETTE_PRESETS } from "@/lib/gexMapPalette";
+import { resolveGexBoxRoles } from "@/lib/gexBoxTheme";
 
 const STORAGE_KEY = "kwantdesk:gex-data:workspace:v1";
 const TIME_ZONE_KEY = "gex-data-timezone";
+const PALETTE_KEY = "gex-data:palette:v1";
+const validPalette = (id: string | null) => id === "site" || GEX_MAP_PALETTE_PRESETS.some(preset => preset.id === id);
 type SiteHost = {
   active: boolean;
   read: (key: string) => string | null;
   write: (key: string, value: string | null) => void;
   theme: () => Record<string, string>;
   timezone: () => string;
+  openPalette: () => void;
   instruments: () => Array<[string, string]>;
   request: (url: string, options?: RequestInit) => Promise<Response>;
   snapshot: () => Record<string, string>;
@@ -36,6 +42,9 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   const [ready, setReady] = useState(false);
   const [generation, setGeneration] = useState(0);
   const [timeZone, setTimeZone] = useState(defaultChartSettings.timezone);
+  const [showPalette, setShowPalette] = useState(false);
+  const [paletteId, setPaletteId] = useState("site");
+  const paletteRef = useRef("site");
   const timeZoneRef = useRef(timeZone);
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -59,9 +68,19 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       setTimeZone(next);
       if (changed) broadcast(frame.current?.contentWindow ?? null, "gex-data-site-timezone");
     };
+    const syncPalette = () => {
+      const saved = readValues()[PALETTE_KEY];
+      const next = validPalette(saved) ? saved : "site";
+      const changed = next !== paletteRef.current;
+      paletteRef.current = next;
+      setPaletteId(paletteRef.current);
+      if (changed) broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme");
+    };
     syncTimeZone();
+    syncPalette();
     const host: SiteHost = {
       active: activeRef.current,
+      openPalette: () => setShowPalette(true),
       timezone: () => timeZoneRef.current,
       instruments: () => MARKET_INDEX_DEFINITIONS.filter(item => item.symbol === "VIX" || item.group === "Options Underlyings" && item.symbol !== "SPXW").map(item => [item.symbol, `${item.symbol} — ${item.displayName}`]),
       read: key => readValues()[key] ?? null,
@@ -74,6 +93,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
           throw new Error("The workspace could not be saved. Export a backup before continuing.");
         }
         if (key === TIME_ZONE_KEY) syncTimeZone();
+        if (key === PALETTE_KEY) syncPalette();
       },
       theme: () => {
         const style = getComputedStyle(document.documentElement);
@@ -81,6 +101,10 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
         const result = Object.fromEntries(names.map(name => [name, style.getPropertyValue(`--${name}`).trim()]));
         result.bullish = style.getPropertyValue("--candle-up").trim() || result.primary;
         result.bearish = style.getPropertyValue("--candle-down").trim() || result.danger;
+        if (paletteRef.current !== "site") {
+          const roles = resolveGexBoxRoles(paletteRef.current);
+          Object.assign(result, { bullish: roles.call, bearish: roles.put, accent: roles.callSoft, warning: roles.net, chartPrimary: roles.net, chartHeader: roles.header, chartStrike: roles.strike });
+        }
         return Object.fromEntries(Object.entries(result).filter(([, value]) => value));
       },
       snapshot: () => Object.fromEntries(Object.entries(readValues()).filter(([key]) => key !== "gex-data:saved-workspaces:v1")),
@@ -90,6 +114,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
         const serialized = JSON.stringify({ accountKey, values: { ...values, ...(presets ? { "gex-data:saved-workspaces:v1": presets } : {}) } });
         if (serialized.length > 1_500_000 || !writeProtectedItem(STORAGE_KEY, serialized).ok) throw new Error("The workspace could not be saved.");
         syncTimeZone();
+        syncPalette();
       },
       request: async (url, options = {}) => {
         if (disposed || !activeRef.current) throw new Error("This workspace is paused.");
@@ -130,9 +155,10 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
     window.__kwantGexDataHost = host;
     setGeneration(value => value + 1); setReady(true);
     const themeChanged = () => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme");
-    const hydrated = () => { syncTimeZone(); cache.clear(); setGeneration(value => value + 1); };
+    const hydrated = () => { syncTimeZone(); syncPalette(); cache.clear(); setGeneration(value => value + 1); };
     const storageChanged = (event: StorageEvent) => {
       if (event.key === STORAGE_KEY || event.key === CHART_SETTINGS_STORAGE_KEY || event.key === null) syncTimeZone();
+      if (event.key === STORAGE_KEY || event.key === null) syncPalette();
     };
     window.addEventListener("kwantdesk:theme-change", themeChanged);
     window.addEventListener("olisa-theme-change", themeChanged);
@@ -162,6 +188,10 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "4"); params.set("hostTimezone", "1");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
   return <section className="relative h-full min-h-0 flex-1 overflow-hidden bg-background" aria-label="GEX DATA workspace">
+    {showPalette && <GexPaletteSettings includeSiteTheme paletteId={paletteId}
+      onPreview={id => { paletteRef.current = id; broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme"); }}
+      onSave={id => { window.__kwantGexDataHost?.write(PALETTE_KEY, id); setShowPalette(false); }}
+      onClose={() => setShowPalette(false)} />}
     {ready && <div className="absolute right-2 top-[5px] z-30 flex h-7 items-center bg-background">
       <TimeZoneSelect value={timeZone} onChange={next => window.__kwantGexDataHost?.write(TIME_ZONE_KEY, normalizeTimeZone(next))}
         menuLabel="Chart timezone" compact className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME} />

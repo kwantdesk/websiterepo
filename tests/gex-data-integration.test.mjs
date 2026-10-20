@@ -64,8 +64,8 @@ test('actual route is authenticated, allow-listed, gateway-only and coalesces id
 test('provider refusal stays an error, never fabricated output or exposed provider details',async()=>{
   const h=server({fail:true});const response=await h.post('net-drift',{filter:{ticker:'QQQ'}});assert.equal(response.status,429);assert.equal(h.calls.length,1);assert.doesNotMatch(await response.text(),/private upstream/);
 });
-test('navigation, account preferences and host lifecycle are integrated without changing GEX BOX',()=>{
-  const nav=read('../src/components/AppSidebar.tsx');assert.match(nav,/key: "gamvue"[^\n]+\n\s*\{ key: "gexdata"[^\n]+\n\s*\{ key: "kwanty"[^\n]+\n\s*\{ key: "gexbot"/);
+test('navigation, account preferences and host lifecycle are integrated with GEX BOX retired',()=>{
+  const nav=read('../src/components/AppSidebar.tsx');assert.match(nav,/key: "gamvue"[^\n]+\n\s*\{ key: "gexdata"[^\n]+\n\s*\{ key: "kwanty"/);assert.doesNotMatch(nav,/href: "\/gex-box"/);
   assert.match(read('../src/app/(workspace)/layout.tsx'),/"\/gex-data": "gexdata"/);
   assert.match(read('../src/lib/userPreferences.ts'),/kwantdesk:gex-data:workspace:v1/);
   const host=read('../src/components/gex-data/GexDataWorkspace.tsx');
