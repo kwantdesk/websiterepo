@@ -1548,6 +1548,32 @@ body.kwant-cockpit-ui button {
   font: inherit;
 }
 
+/* Match State's clean drawing rail. Unlayered cockpit font inheritance wins
+   over utility typography, so keep these compact controls explicitly scoped. */
+.kwant-draw-toolbar .kwant-draw-button,
+body.kwant-cockpit-ui .kwant-draw-toolbar .kwant-draw-button {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 4px;
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.kwant-draw-toolbar .kwant-draw-expand,
+body.kwant-cockpit-ui .kwant-draw-toolbar .kwant-draw-expand {
+  width: 10px;
+  height: 12px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  font-size: 8px;
+  line-height: 1;
+}
+
 body.kwant-cockpit-ui .font-mono,
 body.kwant-cockpit-ui code,
 body.kwant-cockpit-ui pre,

@@ -217,12 +217,12 @@ export default function ChartDrawToolbar({
     setOpenGroup(group);
   };
 
-  const chip = "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] border transition-colors";
-  const textChip = "flex h-5 w-7 shrink-0 items-center justify-center rounded-[3px] border text-[8px] font-semibold uppercase tracking-[0.02em] transition-colors";
+  const chip = "kwant-draw-button relative flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] border transition-colors";
+  const textChip = `${chip} uppercase`;
   const flyoutTools = openGroup ? toolsOf(openGroup) : [];
 
   return (
-    <div className="pointer-events-auto z-[26] flex h-full w-9 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-border/70 bg-panel/85 py-1 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div role="toolbar" aria-label="Chart drawing tools" className="kwant-draw-toolbar pointer-events-auto z-[26] flex h-full w-9 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-border/70 bg-background py-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {DRAW_TOOL_GROUPS.map((group) => {
         const groupTools = toolsOf(group.id);
         const shown = quickDrawToolForGroup(group.id, activeTool, lastUsedToolByGroup);
@@ -235,7 +235,8 @@ export default function ChartDrawToolbar({
             <button
               type="button"
               onClick={() => selectTool(shown)}
-              className={`${chip} ${groupActive ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
+              className={`${chip} ${groupActive ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-border text-foreground hover:bg-surface"}`}
+              aria-pressed={groupActive}
               title={emojiGroup ? `Emoji · ${emoji}` : DRAW_TOOL_SPECS[shown].label}
             >
               {emojiGroup ? (
@@ -251,8 +252,9 @@ export default function ChartDrawToolbar({
                 type="button"
                 ref={(node) => { triggers.current[group.id] = node; }}
                 onClick={() => (openGroup === group.id ? setOpenGroup(null) : openFlyout(group.id))}
-                className="absolute -right-0.5 bottom-0 flex h-3 w-3 items-center justify-center rounded-[2px] text-muted hover:text-foreground"
+                className="kwant-draw-expand absolute right-0 bottom-0 flex h-3 w-2.5 items-center justify-center rounded-[2px] text-muted hover:text-foreground"
                 aria-label={`${group.label} tools`}
+                aria-expanded={openGroup === group.id}
               >
                 <ChevronDown className="h-2.5 w-2.5 -rotate-90" />
               </button>
@@ -266,7 +268,7 @@ export default function ChartDrawToolbar({
         <button
           type="button"
           onClick={onToggleMagnet}
-          className={`${chip} ${magnet ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
+          className={`${chip} ${magnet ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-border text-foreground hover:bg-surface"}`}
           title={`Magnet (${magnetStrength}) - snap drawing points to the nearest candle wick/body`}
           aria-pressed={magnet}
         >
@@ -274,6 +276,7 @@ export default function ChartDrawToolbar({
             <path d="M6 4v7a6 6 0 0 0 12 0V4" /><path d="M6 8h4" /><path d="M14 8h4" />
           </svg>
         </button>
+      </div>
         <button
           type="button"
           ref={magnetTrigger}
@@ -286,16 +289,17 @@ export default function ChartDrawToolbar({
             });
             setMagnetMenuOpen((value) => !value);
           }}
-          className="absolute -right-0.5 bottom-0 flex h-3 w-3 items-center justify-center rounded-[2px] text-muted hover:text-foreground"
+          className={`${textChip} border-border text-foreground hover:bg-surface`}
           aria-label="Magnet strength"
+          aria-expanded={magnetMenuOpen}
+          title={`Magnet strength: ${magnetStrength}`}
         >
-          <ChevronDown className="h-2.5 w-2.5 -rotate-90" />
+          {magnetStrength === "strong" ? "STR" : "STD"}
         </button>
-      </div>
-      <button type="button" onClick={onToggleKeepDrawing} className={`${textChip} ${keepDrawing ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`} title="Keep the tool active after drawing">Stay</button>
-      <button type="button" onClick={onOpenSettings} disabled={!hasSelection} className={`${textChip} ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-foreground" : "border-transparent text-muted/30"}`} title="Selected drawing style">Sty</button>
-      <button type="button" onClick={onDeleteSelection} disabled={!hasSelection} className={`${textChip} ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-danger" : "border-transparent text-muted/30"}`} title="Delete selected drawing">Del</button>
-      <button type="button" onClick={onClearAll} className={`${textChip} border-transparent text-muted hover:bg-surface hover:text-danger`} title="Remove every drawing on this chart">Clr</button>
+      <button type="button" onClick={onToggleKeepDrawing} aria-pressed={keepDrawing} className={`${textChip} ${keepDrawing ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-border text-foreground hover:bg-surface"}`} title="Keep the tool active after drawing">STAY</button>
+      <button type="button" onClick={onOpenSettings} disabled={!hasSelection} className={`${textChip} border-border ${hasSelection ? "text-foreground hover:bg-surface" : "text-muted/30"}`} title="Selected drawing style">STY</button>
+      <button type="button" onClick={onDeleteSelection} disabled={!hasSelection} className={`${textChip} border-border ${hasSelection ? "text-foreground hover:bg-surface hover:text-danger" : "text-muted/30"}`} title="Delete selected drawing">DEL</button>
+      <button type="button" onClick={onClearAll} className={`${textChip} border-border text-foreground hover:bg-surface hover:text-danger`} title="Remove every drawing on this chart">CLR</button>
 
       {magnetMenuOpen && magnetMenuPos && typeof document !== "undefined"
         ? createPortal(
