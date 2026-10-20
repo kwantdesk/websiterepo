@@ -10,7 +10,7 @@ test('new React pages reuse the existing KwantSelect, not browser menus',()=>{
 });
 test('both integrated static pages load one shared theme-driven popup implementation',()=>{
   for(const path of ['public/gex-data-app/index.html','public/kwanty-app/index.html']){
-    const html=read(path);assert.match(html,/\/gex-data-app\/themed-select\.js\?v=1/);assert.match(html,/\/gex-data-app\/themed-select\.css\?v=1/);
+    const html=read(path);const version=path.includes('kwanty')?'2':'1';assert.ok(html.includes(`/gex-data-app/themed-select.js?v=${version}`));assert.ok(html.includes(`/gex-data-app/themed-select.css?v=${version}`));
   }
   const css=read('public/gex-data-app/themed-select.css');assert.match(css,/select\.kwant-choice-source\{display:none!important\}/);
   for(const token of ['primary','panel','surface','foreground','border','muted'])assert.ok(css.includes(`var(--site-${token})`));

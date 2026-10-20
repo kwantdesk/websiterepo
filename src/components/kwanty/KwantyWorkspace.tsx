@@ -69,11 +69,12 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
         result.bearish = style.getPropertyValue("--candle-down").trim() || result.danger;
         return Object.fromEntries(Object.entries(result).filter(([, value]) => value));
       },
-      snapshot: () => Object.fromEntries(Object.entries(readValues()).filter(([key]) => key !== "kwanty:saved-workspaces:v1")),
+      snapshot: () => Object.fromEntries(Object.entries(readValues()).filter(([key]) => key !== "kwanty:saved-workspaces:v1" && key !== "kwanty:select-preferences:v1")),
       restore: values => {
         if (!values || typeof values !== "object" || Array.isArray(values) || Object.keys(values).length > 500 || Object.entries(values).some(([key, value]) => !key.startsWith("kwanty") || key === "kwanty:saved-workspaces:v1" || typeof value !== "string")) throw new Error("Invalid KWANTY workspace.");
         const presets = readValues()["kwanty:saved-workspaces:v1"];
-        const serialized = JSON.stringify({ accountKey, values: { ...values, ...(presets ? { "kwanty:saved-workspaces:v1": presets } : {}) } });
+        const selectPreferences = readValues()["kwanty:select-preferences:v1"];
+        const serialized = JSON.stringify({ accountKey, values: { ...values, ...(presets ? { "kwanty:saved-workspaces:v1": presets } : {}), ...(selectPreferences ? { "kwanty:select-preferences:v1": selectPreferences } : {}) } });
         if (serialized.length > 1_500_000 || !writeProtectedItem(STORAGE_KEY, serialized).ok) throw new Error("The workspace could not be saved.");
       },
       request: async (url, options = {}) => {

@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Shared KWANTY dropdown recents and favourites
+
+- All KWANTY native single-select dropdowns gain search, Recents first,
+  favourite stars and All/Favourites only filters through the shared adapter.
+- Ticker choices share one instruments list across Classic, State and Orderflow;
+  dynamic Orderflow metrics/time windows share their own semantic groups.
+  Unrelated settings stay separate. Recent choices are deduplicated, newest first.
+- Persist through the existing account-backed bridge; workspace snapshots exclude
+  these preferences and workspace restore preserves them. No new API calls,
+  polling or market-data changes. GEX DATA keeps its existing non-opt-in menus.
+- Record: docs/prompt-log/2026-10-20-kwanty-dropdown-favourites.md.
+
 ## 2026-10-20 — Quiet KWANTY provider/history notices
 
 - Hide historyNotice, connection and freshnessDetails from first paint and
