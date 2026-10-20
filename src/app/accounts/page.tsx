@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
@@ -9,7 +9,7 @@ import {
   PAPER_TRADING_ACCOUNTS_EVENT,
   createPaperTradingAccount,
   formatMoney,
-  loadPaperTradingAccounts,
+  readPaperTradingAccounts,
   parseMoney,
   savePaperTradingAccounts,
   type PaperTradingAccountRecord,
@@ -143,14 +143,15 @@ export default function AccountsPage() {
   const previewBalance = Math.min(1000000, Math.max(0, currentBalance + parsedAdjustAmount));
 
   /** Whether the saved accounts have been read yet. Until they have, nothing is written back. */
-  const paperAccountsHydratedRef = useRef(false);
+  const [paperAccountsHydrated, setPaperAccountsHydrated] = useState(false);
 
   useEffect(() => {
-    const saved = loadPaperTradingAccounts();
+    const result = readPaperTradingAccounts();
+    const saved = result.accounts;
     // Marked read even when nothing was stored: an empty store is a real
     // answer, and the save below must be allowed to record the first account
     // the trader creates.
-    paperAccountsHydratedRef.current = true;
+    setPaperAccountsHydrated(result.ok);
     if (!saved.length) return;
     setAccounts(saved.map((account) => ({ ...account, winRate: "0%" })));
     const reconciledLedger = saved.reduce(
@@ -165,6 +166,7 @@ export default function AccountsPage() {
     const syncLedger = () => setPaperLedger(loadPaperTradingLedger());
     const handleStorage = (event: StorageEvent) => {
       if (event.key === PAPER_TRADING_LEDGER_STORAGE_KEY) syncLedger();
+      if (event.key === "kwantify-paper-trading-accounts") syncAccounts();
     };
     /*
      * The accounts themselves were only ever read once, on mount.
@@ -175,8 +177,13 @@ export default function AccountsPage() {
      * left the page showing nothing, which reads exactly like the accounts were
      * never saved.
      */
-    const syncAccounts = () => {
-      const saved = loadPaperTradingAccounts();
+    const syncAccounts = (event?: Event) => {
+      const announced = event instanceof CustomEvent && event.type === PAPER_TRADING_ACCOUNTS_EVENT && Array.isArray(event.detail)
+        ? event.detail as PaperTradingAccountRecord[] : null;
+      const result = announced ? { ok: true, accounts: announced } : readPaperTradingAccounts();
+      setPaperAccountsHydrated(result.ok);
+      if (!result.ok) return;
+      const saved = result.accounts;
       setAccounts((current) => {
         const next = saved.map((account) => ({ ...account, winRate: "0%" }));
         return JSON.stringify(current.map(({ winRate: _ignored, ...rest }) => rest))
@@ -203,7 +210,7 @@ export default function AccountsPage() {
     // mount with the state as it was BEFORE the load effect's setState lands,
     // so without the guard it saves that starting value over the accounts on
     // disk.
-    if (!paperAccountsHydratedRef.current) return;
+    if (!paperAccountsHydrated) return;
     const written = savePaperTradingAccounts(
       accounts.map(({ winRate: _winRate, ...account }) => account),
     );
@@ -211,7 +218,7 @@ export default function AccountsPage() {
     // gone after a refresh. The result was already reported and nobody read
     // it, which made silent data loss indistinguishable from success.
     if (!written.ok) setAccountsStorageFull(true);
-  }, [accounts]);
+  }, [accounts, paperAccountsHydrated]);
 
   function openAdjustBalance(accountId: string) {
     setAdjustAccountId(accountId);

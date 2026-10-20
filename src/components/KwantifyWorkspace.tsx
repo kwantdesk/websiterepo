@@ -253,7 +253,7 @@ import {
 } from "@/lib/marketIndexLiveClient";
 import {
   createPaperTradingAccount,
-  loadPaperTradingAccounts,
+  readPaperTradingAccounts,
   PAPER_TRADING_ACCOUNTS_EVENT,
   savePaperTradingAccounts,
   parseMoney as parsePaperMoney,
@@ -10683,7 +10683,7 @@ export default function KwantifyWorkspace({
   const [linkedCTraderAccounts, setLinkedCTraderAccounts] = useState<CTraderStatusAccount[]>([]);
   const [paperTradingAccounts, setPaperTradingAccounts] = useState<PaperTradingAccountRecord[]>([]);
   /** Whether the saved accounts have been read yet. Until they have, nothing is written back. */
-  const paperAccountsHydratedRef = useRef(false);
+  const [paperAccountsHydrated, setPaperAccountsHydrated] = useState(false);
   const [selectedPaperAccountId, setSelectedPaperAccountId] = useState(() =>
     typeof window === "undefined" ? "" : window.localStorage.getItem("kwantify-selected-paper-account") ?? "");
   const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
@@ -12865,20 +12865,18 @@ export default function KwantifyWorkspace({
   }, [rightPanel, rightPanelWidth]);
 
   useEffect(() => {
+    const savedAccounts = readPaperTradingAccounts();
+    setPaperTradingAccounts(savedAccounts.accounts);
+    setPaperAccountsHydrated(savedAccounts.ok);
     try {
       setBrokerFavourites(JSON.parse(window.localStorage.getItem("olisa-broker-favourites") ?? "[]"));
       setConnectedBroker("Databento");
       window.localStorage.setItem("olisa-connected-broker", "Databento");
       setBrokerConnections(JSON.parse(window.localStorage.getItem("olisa-broker-connections") ?? "{}"));
-      setPaperTradingAccounts(loadPaperTradingAccounts());
-      paperAccountsHydratedRef.current = true;
     } catch {
       setBrokerFavourites([]);
       setBrokerConnections({});
-      // Deliberately NOT marked hydrated: a failure here means the stored
-      // accounts were never read, and saving an empty list over them would
-      // turn a bad read into permanent loss.
-      setPaperTradingAccounts([]);
+      // Broker preferences are independent of the paper account store.
     }
   }, []);
 
@@ -12971,9 +12969,9 @@ export default function KwantifyWorkspace({
     // saved it over the trader's accounts. It could only recover if the load
     // in the same pass had already succeeded, which is why the accounts came
     // back sometimes and were gone for good other times.
-    if (!paperAccountsHydratedRef.current) return;
+    if (!paperAccountsHydrated) return;
     savePaperTradingAccounts(paperTradingAccounts);
-  }, [paperTradingAccounts]);
+  }, [paperAccountsHydrated, paperTradingAccounts]);
 
   useEffect(() => {
     // An exception thrown here reaches the workspace failure boundary, which
@@ -13106,7 +13104,9 @@ export default function KwantifyWorkspace({
     const handleStorage = (event: StorageEvent) => {
       if (event.key) {
         if (event.key === "kwantify-paper-trading-accounts") {
-          setPaperTradingAccounts(loadPaperTradingAccounts());
+          const saved = readPaperTradingAccounts();
+          setPaperAccountsHydrated(saved.ok);
+          if (saved.ok) setPaperTradingAccounts(saved.accounts);
         }
         if (event.key === "kwantify-paper-trading-ledger-v1") {
           commitPaperLedger(loadPaperTradingLedger());
@@ -13120,8 +13120,15 @@ export default function KwantifyWorkspace({
         }
       }
     };
-    const handlePaperAccountsChange = () => {
-      const nextAccounts = loadPaperTradingAccounts();
+    const handlePaperAccountsChange = (event?: Event) => {
+      // A quota-refused write still announces the valid in-memory list. Do
+      // not reread the old disk value and erase that list from this session.
+      const announced = event instanceof CustomEvent && event.type === PAPER_TRADING_ACCOUNTS_EVENT && Array.isArray(event.detail)
+        ? event.detail as PaperTradingAccountRecord[] : null;
+      const saved = announced ? { ok: true, accounts: announced } : readPaperTradingAccounts();
+      setPaperAccountsHydrated(saved.ok);
+      if (!saved.ok) return;
+      const nextAccounts = saved.accounts;
       setPaperTradingAccounts((current) =>
         JSON.stringify(current) === JSON.stringify(nextAccounts) ? current : nextAccounts);
     };
@@ -19289,8 +19296,8 @@ export default function KwantifyWorkspace({
           accountAvatarUrl={currentAvatarUrl || ""}
           onAccountClick={() => router.push(currentUsername ? `/socials/${encodeURIComponent(currentUsername)}` : "/socials")}
           onTradesClick={() => {
+            setTradesMenuView(paperTradingAccounts.length > 0 ? "paper" : "root");
             setShowTradesMenu((current) => {
-              if (current) setTradesMenuView("root");
               return !current;
             });
           }}

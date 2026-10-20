@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
+import ts from "typescript";
 import {
   PAPER_TRADING_ACCOUNTS_STORAGE_KEY,
+  PAPER_TRADING_ACCOUNTS_EVENT,
   createPaperTradingAccount,
   loadPaperTradingAccounts,
+  readPaperTradingAccounts,
   savePaperTradingAccounts,
 } from "../src/lib/paperAccounts.ts";
 
@@ -71,22 +75,75 @@ check("neither surface writes back before it has read", () => {
     const guarded = source.slice(Math.max(0, save - 700), save);
     assert.match(
       guarded,
-      /if \(!paperAccountsHydratedRef\.current\) return;/,
+      /if \(!paperAccountsHydrated\) return;/,
       `${label} saves accounts before it has loaded them`,
     );
   }
 });
 
 check("a failed read is never treated as an empty account list", () => {
-  // The workspace's loader catches and falls back to an empty list. That
-  // fallback must NOT count as having read the store, or a single bad parse
-  // turns into permanent loss.
-  const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
-  const start = workspace.indexOf("setPaperTradingAccounts(loadPaperTradingAccounts());");
-  const block = workspace.slice(start, start + 700);
-  const marked = block.indexOf("paperAccountsHydratedRef.current = true;");
-  const failed = block.indexOf("setPaperTradingAccounts([]);");
-  assert.ok(marked > 0 && failed > marked, "the catch branch must not mark the store as read");
+  for (const raw of ["{bad json", "{}", '[{"name":"missing id"}]']) {
+    store.set(PAPER_TRADING_ACCOUNTS_STORAGE_KEY, raw);
+    assert.equal(readPaperTradingAccounts().ok, false);
+    assert.equal(store.get(PAPER_TRADING_ACCOUNTS_STORAGE_KEY), raw);
+  }
+  store.delete(PAPER_TRADING_ACCOUNTS_STORAGE_KEY);
+  assert.deepEqual(readPaperTradingAccounts(), { ok: true, accounts: [] });
 });
+
+// Replay the ACTUAL effects, not a hand-written model of their guards. State
+// setters queue a next render; they cannot change another effect's closure in
+// the same pass. The old mutable-ref guard let [] reach disk in this replay.
+for (const file of ["../src/components/KwantifyWorkspace.tsx", "../src/app/accounts/page.tsx"]) {
+  check(`${file}: mount and Strict Mode replay never write the pre-hydration list`, () => {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const effects = [];
+    let changeHandler;
+    const visit = node => {
+      if (ts.isCallExpression(node) && node.expression.getText(ast) === "useEffect" && node.arguments[0]) effects.push(node.arguments[0].getText(ast));
+      if (ts.isVariableDeclaration(node) && ["handlePaperAccountsChange", "syncAccounts"].includes(node.name.getText(ast))) changeHandler = node.initializer?.getText(ast);
+      ts.forEachChild(node, visit);
+    };
+    visit(ast);
+    const reader = effects.find(text => text.includes("readPaperTradingAccounts()") && text.includes("setPaperAccountsHydrated"));
+    const writer = effects.find(text => text.includes("savePaperTradingAccounts("));
+    assert.ok(reader && writer);
+    const compile = (text, context) => vm.runInNewContext(ts.transpileModule(`(${text})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+    const account = createPaperTradingAccount({ name: "Retained simulator", balance: 50000, leverage: "1:30", instrument: "NQ" });
+    for (const raw of [JSON.stringify([account]), "{bad json", null]) {
+      store.clear(); if (raw !== null) store.set(PAPER_TRADING_ACCOUNTS_STORAGE_KEY, raw);
+      let pending = {}, writes = [];
+      const noop = () => {};
+      const context = {
+        window: globalThis.window, paperAccountsHydrated: false, accounts: [], paperTradingAccounts: [],
+        readPaperTradingAccounts,
+        setAccounts: value => { pending.accounts = value; },
+        setPaperTradingAccounts: value => { pending.paperTradingAccounts = value; },
+        setPaperAccountsHydrated: value => { pending.paperAccountsHydrated = value; },
+        setBrokerFavourites: noop, setConnectedBroker: noop, setBrokerConnections: noop,
+        loadPaperTradingLedger: () => ({}), ensurePaperAccountLedger: value => value,
+        savePaperTradingLedger: noop, setPaperLedger: noop, setAccountsStorageFull: noop,
+        savePaperTradingAccounts: value => { writes.push(value); return savePaperTradingAccounts(value); },
+      };
+      const load = compile(reader, context), save = compile(writer, context);
+      load(); save(); load(); save();
+      assert.equal(writes.length, 0, "a starting [] was written during mount replay");
+      assert.equal(store.get(PAPER_TRADING_ACCOUNTS_STORAGE_KEY) ?? null, raw);
+      compile(writer, { ...context, ...pending })();
+      if (raw === "{bad json") assert.equal(writes.length, 0, "failed read destroyed stored evidence");
+      else assert.equal(writes.at(-1).length, raw === null ? 0 : 1);
+    }
+    let visible = [];
+    const receive = value => { visible = typeof value === "function" ? value(visible) : value; };
+    compile(changeHandler, {
+      CustomEvent: globalThis.CustomEvent, PAPER_TRADING_ACCOUNTS_EVENT,
+      readPaperTradingAccounts: () => ({ ok: true, accounts: [] }),
+      setPaperAccountsHydrated: () => {}, setPaperTradingAccounts: receive, setAccounts: receive,
+      setPaperLedger: () => {}, loadPaperTradingLedger: () => ({}),
+    })(new CustomEvent(PAPER_TRADING_ACCOUNTS_EVENT, { detail: [account] }));
+    assert.equal(visible[0]?.id, account.id, "a refused save's event reread old storage and hid the account");
+  });
+}
 
 console.log(`\npaper account persistence: ${passed}/${passed} checks passed`);

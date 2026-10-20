@@ -24,13 +24,18 @@ export const PAPER_TRADING_ACCOUNTS_EVENT = "kwantify-paper-trading-accounts-cha
 const defaultSparkline = "5,36 20,28 35,32 50,18 65,24 80,16 95,22 115,14";
 
 export function loadPaperTradingAccounts(): PaperTradingAccountRecord[] {
-  if (typeof window === "undefined") return [];
+  return readPaperTradingAccounts().accounts;
+}
+
+/** A failed read is not permission to replace the saved accounts with []. */
+export function readPaperTradingAccounts(): { ok: boolean; accounts: PaperTradingAccountRecord[] } {
+  if (typeof window === "undefined") return { ok: false, accounts: [] };
   try {
     const raw = window.localStorage.getItem(PAPER_TRADING_ACCOUNTS_STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) return { ok: true, accounts: [] };
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((value): PaperTradingAccountRecord[] => {
+    if (!Array.isArray(parsed)) return { ok: false, accounts: [] };
+    const accounts = parsed.flatMap((value): PaperTradingAccountRecord[] => {
       if (!value || typeof value !== "object") return [];
       const account = value as Partial<PaperTradingAccountRecord> & { balance?: unknown; equity?: unknown };
       if (!account.id || !account.name) return [];
@@ -55,8 +60,9 @@ export function loadPaperTradingAccounts(): PaperTradingAccountRecord[] {
         points: String(account.points || defaultSparkline),
       }];
     });
+    return { ok: accounts.length === parsed.length, accounts };
   } catch {
-    return [];
+    return { ok: false, accounts: [] };
   }
 }
 
