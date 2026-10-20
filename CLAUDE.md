@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Delete retired KWANTY snapshot banner
+
+- Owner still saw the snapshot/no-full-history/no-invented-curve banner.
+  Remove its markup and health-update text generation entirely, not just hide it.
+  New app startup also removes the node from any older cached shell.
+- App script version3; primary KWANTY shell version3 and embedded KWANTY shell
+  version5 invalidate old markup without changing GEX DATA URLs or preferences.
+- Keep retention, source diagnostics, missing-history safeguards and retries.
+- Record: docs/prompt-log/2026-10-20-remove-snapshot-banner.md.
+
 ## 2026-10-20 — Shared KWANTY dropdown recents and favourites
 
 - All KWANTY native single-select dropdowns gain search, Recents first,

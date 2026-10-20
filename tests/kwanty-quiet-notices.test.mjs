@@ -7,7 +7,8 @@ const app=read("public/kwanty-app/app.js");
 
 test("provider/history notices are hidden before startup and never announce",()=>{
   const html=read("public/kwanty-app/index.html");
-  for(const id of ["historyNotice","connection","freshnessDetails"]){
+  assert.doesNotMatch(html,/id="historyNotice"/);
+  for(const id of ["connection","freshnessDetails"]){
     const tag=html.match(new RegExp(`<[^>]+id="${id}"[^>]*>`))?.[0];
     assert.ok(tag,id);assert.match(tag,/ hidden data-kwanty-diagnostic/);
     assert.doesNotMatch(tag,/role=|aria-live/);
@@ -18,16 +19,24 @@ test("provider/history notices are hidden before startup and never announce",()=
 });
 
 test("health updates preserve diagnostics without making them visible",()=>{
-  const elements=Object.fromEntries(["connection","freshnessDetails","historyNotice"].map(id=>[id,{hidden:true,textContent:"",className:"",classList:{toggle(){}}}]));
+  const elements=Object.fromEntries(["connection","freshnessDetails"].map(id=>[id,{hidden:true,textContent:"",className:"",classList:{toggle(){}}}]));
   const state={sourceError:null,envelope:null,authenticated:false,historyMode:false,records:[],auto:true,replayIndex:null,historyError:null};
   const context={state,$:selector=>elements[selector.slice(1)],Date};
   vm.runInNewContext(app.slice(app.indexOf("function updateHealth()"),app.indexOf("function updateLabels()"))+";globalThis.update=updateHealth;",context);
   context.update();assert.match(elements.connection.textContent,/Checking provider/);
   state.sourceError="UPSTREAM_ENTITLEMENT_REQUIRED";context.update();assert.match(elements.connection.textContent,/UNAVAILABLE/);
   state.sourceError=null;state.envelope={providerAsOf:new Date().toISOString(),fetchedAt:new Date().toISOString()};state.records=[{}];context.update();
-  assert.match(elements.historyNotice.textContent,/1 actual snapshot/);
-  state.historyMode="2026-10-19";context.update();assert.match(elements.historyNotice.textContent,/Historical/);
+  state.historyMode="2026-10-19";context.update();assert.match(elements.connection.textContent,/HISTORICAL/);
   for(const element of Object.values(elements))assert.equal(element.hidden,true);
+});
+
+test("snapshot banner is removed rather than regenerated in any KWANTY surface",()=>{
+  assert.doesNotMatch(app,/actual snapshot|no full-session history loaded|no invented curve|history-limited/);
+  assert.match(app,/document\.getElementById\('historyNotice'\)\?\.remove\(\)/);
+  assert.doesNotMatch(app,/\$\('#historyNotice'\)/);
+  assert.match(read("public/kwanty-app/index.html"),/app\.js\?v=3/);
+  assert.match(read("src/components/kwanty/KwantyWorkspace.tsx"),/params\.set\("v", "3"\)/);
+  assert.match(read("src/components/options-flow/OptionsFlowToolPanel.tsx"),/v: source === "kwanty" \? "5" : "4"/);
 });
 
 test("automatic provider failure retains error and backoff without a toast",async()=>{
