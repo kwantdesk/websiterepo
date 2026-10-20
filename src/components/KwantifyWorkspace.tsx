@@ -5,7 +5,7 @@ import { beginChartHistoryRead, readChartCacheWithin } from "@/lib/chartHistoryR
 import { chartActivityRemainingMs, chartSourceTimestamp } from "@/lib/chartCountdown";
 import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
-import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
+import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import { OPTIONS_FLOW_TOOLS, optionsFlowTool, normalizeOptionsFlowState, type OptionsFlowPanelKind, type OptionsFlowState } from "@/lib/optionsFlowTools";
 import { normalizeDrawings, type Drawing } from "@/lib/chartDrawTools";
@@ -20080,7 +20080,7 @@ export default function KwantifyWorkspace({
             onChange={changeChartTimeZone}
             menuLabel="Chart timezone"
             compact
-            className="w-auto min-w-[118px] max-w-[164px] shrink-0 px-2.5"
+            className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME}
           />
           <button
             type="button"

@@ -5,7 +5,7 @@ import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, defaultChartSettings, loadStoredChartSettings } from "@/lib/chartSettings";
 import { MARKET_INDEX_DEFINITIONS } from "@/lib/marketIndices";
-import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
+import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components/ui/TimeZoneSelect";
 import { normalizeTimeZone } from "@/lib/timeZones";
 
 const STORAGE_KEY = "kwantdesk:gex-data:workspace:v1";
@@ -162,9 +162,9 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "4"); params.set("hostTimezone", "1");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
   return <section className="relative h-full min-h-0 flex-1 overflow-hidden bg-background" aria-label="GEX DATA workspace">
-    {ready && <div className="absolute right-2 top-[5px] z-30 flex h-7 w-[172px] items-center bg-background">
+    {ready && <div className="absolute right-2 top-[5px] z-30 flex h-7 items-center bg-background">
       <TimeZoneSelect value={timeZone} onChange={next => window.__kwantGexDataHost?.write(TIME_ZONE_KEY, normalizeTimeZone(next))}
-        menuLabel="GEX Data timezone" compact className="w-full min-w-0" />
+        menuLabel="Chart timezone" compact className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME} />
     </div>}
     {ready ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
       title="GEX DATA tools and workspace" className="h-full w-full border-0" allow="fullscreen"

@@ -10,6 +10,8 @@ import {
   timeZoneOptions,
 } from "@/lib/timeZones";
 
+export const CHART_TIME_ZONE_TRIGGER_CLASS_NAME = "w-auto min-w-[118px] max-w-[164px] shrink-0 px-2.5";
+
 export default function TimeZoneSelect({
   value,
   onChange,
@@ -72,7 +74,11 @@ export default function TimeZoneSelect({
         triggerRef.current?.focus();
       }
     };
-    const handleViewportChange = () => close();
+    const handleViewportChange = (event: Event) => {
+      // Scrolling the timezone choices is not a viewport/layout change.
+      if (event.type === "scroll" && event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+      close();
+    };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
     window.addEventListener("resize", handleViewportChange);
@@ -106,7 +112,7 @@ export default function TimeZoneSelect({
             : compact
               ? "border-transparent text-muted hover:bg-surface hover:text-foreground"
               : "border-border bg-surface text-muted hover:border-primary/25 hover:text-foreground"
-        } ${compact ? "kwant-chart-row-control h-7 rounded-[3px] px-2.5 text-[10px] leading-none" : "h-10 w-full rounded-xl px-3 text-[12px]"} ${className}`}
+        } ${compact ? "kwant-chart-timezone-control kwant-chart-row-control h-7 rounded-[3px] px-2.5 text-[10px] leading-none" : "h-10 w-full rounded-xl px-3 text-[12px]"} ${className}`}
       >
         <Clock3 className={`h-3.5 w-3.5 shrink-0 ${compact ? "text-current" : "text-primary"}`} />
         <span className={`min-w-0 flex-1 truncate ${compact ? "font-semibold uppercase tracking-[0.075em]" : "font-mono"}`}>

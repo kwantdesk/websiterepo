@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA timezone control parity
+
+- Browser comparison found GEX DATA timezone trigger 172px/13px/500 versus
+  GEX VUE 164px/10px/600. Root cause: command-deck CSS fixed generic button
+  overrides only inside charts; data wrapper forced a wider full-width trigger.
+- Both callers now use the same exported sizing class, compact component and
+  menu heading. Compact timezone CSS contract applies outside command deck too.
+- TimeZoneSelect ignores scroll originating inside its own menu so searching
+  and scrolling choices do not dismiss it; outside scroll/resize still close.
+- Preserve existing timezone persistence and data formatting; no extra fetches.
+- Record: docs/prompt-log/2026-10-20-gex-data-time-control-parity.md.
+
 ## 2026-10-20 — News options/futures expiration calendars
 
 - News order: Economic Calendar, Financial Info, Macroeconomics, Live Macro,

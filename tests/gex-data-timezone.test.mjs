@@ -54,7 +54,7 @@ function host({account='owner', savedAccount=account, savedZone, chartZone='Amer
 }
 
 test('GEX Data uses the charts picker, top-right reserved toolbar space and current chart default',()=>{
-  assert.match(hostSource,/import TimeZoneSelect from "@\/components\/ui\/TimeZoneSelect"/);
+  assert.match(hostSource,/import TimeZoneSelect, \{ CHART_TIME_ZONE_TRIGGER_CLASS_NAME \} from "@\/components\/ui\/TimeZoneSelect"/);
   assert.match(hostSource,/absolute right-2 top-\[5px\]/);
   assert.match(hostSource,/params\.set\("hostTimezone", "1"\)/);
   assert.match(read('../public/gex-data-app/site.css'),/\.host-timezone-control \.topbar\{padding-right:190px!important\}/);
