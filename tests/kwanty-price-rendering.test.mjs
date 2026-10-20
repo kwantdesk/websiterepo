@@ -51,6 +51,14 @@ test('one real Orderflow observation has a visible current metric label, never a
  assert.equal(result.geometry.data.series[0].values.length,1);assert.equal(result.geometry.data.series[0].values[0].raw,-29428.66);
 });
 
+test('linked Orderflow crosshair uses the exact shared cursor time rather than snapping to different candle buckets',()=>{
+ const cursorTime=time+30_000,g=order().geometry;
+ const result=order({hover:{time:cursorTime,x:g.timeX(cursorTime),y:200}});
+ const vertical=result.calls.find(call=>call.method==='moveTo'&&call.stroke==='#aaa'&&call.args[1]===result.geometry.top);
+ assert.ok(vertical);near(vertical.args[0],result.geometry.timeX(cursorTime));
+ assert.notEqual(vertical.args[0],result.geometry.timeX(time));
+});
+
 test('Classic and State draw explicit real OHLC wicks and bodies rather than positioning spot candles',()=>{
   for(const pkg of ['classic','state']){
     const {geometry:g,calls}=profile({package:pkg});assert.deepEqual(g.history.map(c=>[c.open,c.high,c.low,c.close]),prices.map(c=>[c.open,c.high,c.low,c.close]));

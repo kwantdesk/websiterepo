@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — KWANTY centered toolbar and independent linked panels
+
+- Move sidebar-floating chart controls into the mode header's center; compact
+  normal-chart quick timeframes and themed chart-type dropdown. Responsive header
+  keeps the controls accessible at narrower sizes; fullscreen retains this bar.
+- Orderflow click/focus selects a panel; timeframe and price style persist per
+  panel, with package defaults for older saves. One shared underlying feed/history
+  is locally aggregated; no per-panel vendor polling or extra gateway requests.
+- Per-panel shared-viewport and crosshair buttons mirror normal charts. Share
+  time and underlying-price bounds/cursor coordinates, never unrelated raw metric
+  axes. Candle intervals remain independent. Links and active-panel selection
+  persist in existing templates; resets keep linked time/price views together.
+- Record: docs/prompt-log/2026-10-20-kwanty-panel-toolbar-links.md.
+
+
 ## 2026-10-20 — KWANTY candles use theme up/down colours
 
 - Classic/State/Orderflow candle defaults and renderer fallbacks use bullish/

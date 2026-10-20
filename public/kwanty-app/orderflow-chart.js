@@ -326,7 +326,7 @@ export function renderOrderflow(ctx, width, height, options = {}) {
     if (!candleMode && observed.length === 1) { ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(timeX(observed[0].time), spotY(observed[0].spot), 2, 0, Math.PI * 2); ctx.fill(); }
   }
   const hovered = options.hover && settings.showCrosshairs !== false ? hitTest(options.hover) : null;
-  if (hovered) { ctx.strokeStyle = settings.lightMode ? themePaint("#666666") : themePaint("#aaa"); ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(timeX(hovered.time), top); ctx.lineTo(timeX(hovered.time), bottom);if(Number.isFinite(options.hover.y)){ctx.moveTo(left,options.hover.y);ctx.lineTo(right,options.hover.y);} ctx.stroke(); ctx.setLineDash([]); }
+  if (hovered) { ctx.strokeStyle = settings.lightMode ? themePaint("#666666") : themePaint("#aaa"); ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(timeX(finite(options.hover?.time)??hovered.time), top); ctx.lineTo(timeX(finite(options.hover?.time)??hovered.time), bottom);if(Number.isFinite(options.hover.y)){ctx.moveTo(left,options.hover.y);ctx.lineTo(right,options.hover.y);} ctx.stroke(); ctx.setLineDash([]); }
   ctx.restore();
   const hoverX=finite(options.hover?.x)??(hovered?timeX(hovered.time):null),hoverY=finite(options.hover?.y);
   if(options.hover&&settings.showAxisTooltips!==false&&hoverX!==null&&hoverY!==null&&hoverX>=left&&hoverX<=right&&hoverY>=top&&hoverY<=bottom){
