@@ -717,6 +717,7 @@ function publishLiveExecutionQuote(quote: ChartExecutionQuote) {
         && quote.bid === previous.bid
         && quote.ask === previous.ask
         && quote.mid === previous.mid
+        && quote.last === previous.last
       )
     )
   ) return false;
@@ -11539,7 +11540,10 @@ export default function KwantifyWorkspace({
     : gexPaperReplayActive && activeChartExecutionQuoteRef.current?.source === "replay"
       ? activeChartExecutionQuoteRef.current ?? activeChartExecutionQuote
       : null;
-  const paperTradingInstrument = replayPaperQuote?.symbol ?? selectedInstrument;
+  const mapTicketContext = bottomWorkspaceSection === "liqmap"
+    || (chartSurfaceActive
+      && workspacePanes.find(pane => pane.id === activePaneId)?.content === "liqmap");
+  const paperTradingInstrument = mapTicketContext ? normalizePaperSymbol(selectedLiquidityMapInstrument) : replayPaperQuote?.symbol ?? selectedInstrument;
   const selectedWatchlistItem = watchlist.find((item) => item.symbol === paperTradingInstrument && item.broker === activeChartBrokerLabel);
   const fallbackDetail = getStaticWatchlistDetail(paperTradingInstrument, activeChartBrokerLabel, watchlistDetails);
   const fallbackMidPrice = fallbackDetail ? Number(fallbackDetail.price.replace(/,/g, "")) || 0 : 0;
@@ -11552,13 +11556,14 @@ export default function KwantifyWorkspace({
     && activeExecutionQuoteCandidate.paneId === activePaneId
     && normalizePaperSymbol(activeExecutionQuoteCandidate.symbol) === normalizePaperSymbol(paperTradingInstrument)
     && Date.now() - activeExecutionQuoteCandidate.receivedAt <= 5_000
+    && (!mapTicketContext || Date.now() - activeExecutionQuoteCandidate.timestamp <= 5_000)
       ? activeExecutionQuoteCandidate
       : null
   );
-  const selectedMidPrice = selectedChartExecutionQuote?.mid ?? selectedWatchlistItem?.mid ?? fallbackMidPrice;
+  const selectedMidPrice = selectedChartExecutionQuote?.mid ?? (mapTicketContext ? 0 : selectedWatchlistItem?.mid ?? fallbackMidPrice);
   const currentLivePrice = {
-    bid: selectedChartExecutionQuote?.bid ?? selectedWatchlistItem?.bid ?? selectedMidPrice,
-    ask: selectedChartExecutionQuote?.ask ?? selectedWatchlistItem?.ask ?? selectedMidPrice,
+    bid: selectedChartExecutionQuote?.bid ?? (mapTicketContext ? 0 : selectedWatchlistItem?.bid ?? selectedMidPrice),
+    ask: selectedChartExecutionQuote?.ask ?? (mapTicketContext ? 0 : selectedWatchlistItem?.ask ?? selectedMidPrice),
     mid: selectedMidPrice,
   };
   if (liveGexCalibrationPriceRef.current === null && currentLivePrice.mid > 0) {
@@ -11975,11 +11980,15 @@ export default function KwantifyWorkspace({
   // Only expose an actionable submit button when the selected account has a
   // verified execution adapter. Paper execution is complete; broker routing is
   // deliberately gated until its submit/cancel/liquidate adapter is wired.
-  const tradingUnlocked = paperExecutionRequested;
+  const tradingUnlocked = paperExecutionRequested && !(mapTicketContext && gexPaperReplayActive);
   const selectedPaperSummary = selectedPaperTradingAccount
     ? summarizePaperAccount(paperLedger, selectedPaperTradingAccount)
     : null;
   const selectedPaperContract = paperContractSpec(paperTradingInstrument);
+  useEffect(() => {
+    // A picked price belongs to one instrument/account, never the next tab.
+    setPendingChartOrder(null);
+  }, [paperTradingInstrument, selectedPaperTradingAccount?.id, mapTicketContext]);
   const selectedOrderQuantity = paperOrderQuantity(paperTradingInstrument, orderUnits);
   /**
    * Choosing limit or stop arms the chart. There is no second button to press:
@@ -18009,11 +18018,15 @@ export default function KwantifyWorkspace({
       && activeQuote.paneId === activePaneId
       && normalizePaperSymbol(activeQuote.symbol) === normalized
       && Date.now() - activeQuote.receivedAt <= 5_000
+      && (!mapTicketContext || Date.now() - activeQuote.timestamp <= 5_000)
       && activeQuote.bid > 0
       && activeQuote.ask > 0
     ) {
       return { bid: activeQuote.bid, ask: activeQuote.ask, last: activeQuote.last, timestamp: activeQuote.timestamp };
     }
+    // LIQ MAP may execute only from its validated fresh stream, not a cached
+    // watchlist or static display price stamped as if it had just arrived.
+    if (mapTicketContext) return null;
     if (normalized === normalizePaperSymbol(paperTradingInstrument) && currentLivePrice.bid > 0 && currentLivePrice.ask > 0) {
       return { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };
     }
@@ -18354,6 +18367,27 @@ export default function KwantifyWorkspace({
     );
   }
 
+  const liquidityMapTrading = (paneId: string) => ({
+    paneId,
+    accountId: selectedPaperTradingAccount?.id,
+    enabled: tradingUnlocked,
+    positions: selectedPaperAccountLedger?.positions ?? [],
+    orders: selectedPaperWorkingOrders,
+    armedOrder,
+    onOpenTicket: openPaperOrderTicket,
+    onPick: (price: number) => { if (armedOrder) setPendingChartOrder({ ...armedOrder, price }); },
+    onCancelPick: () => setChartPlacementSuspended(true),
+    onQuote: handleActiveChartExecutionQuote,
+    onProtection: handlePaperProtectionUpdate,
+    onOrderPrice: handlePaperOrderPriceUpdate,
+    onDrag: handlePaperProtectionDragStateChange,
+    onClose: (accountId: string, positionId: string) => {
+      const position = paperLedgerRef.current.accounts[accountId]?.positions.find(p => p.id === positionId && p.status === "open");
+      if (position) handleFlattenPaperPosition(position);
+    },
+    onCancelOrder: handleCancelPaperOrder,
+  });
+
   function renderEmbeddedWorkspace(pane: WorkspacePane) {
     if (optionsFlowTool(pane.content)) {
       return <WorkspaceFailureBoundary resetKey={`options-flow-${preferenceUserId}-${pane.id}-${pane.content}`} label="Options Flow Tool">
@@ -18395,6 +18429,7 @@ export default function KwantifyWorkspace({
           <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map">
             <LiquidityMapWorkspace
               instrument={selectedLiquidityMapInstrument}
+              trading={liquidityMapTrading(pane.id)}
               onInstrumentChange={setSelectedLiquidityMapInstrument}
               onActivate={() => activateWorkspacePane(pane.id)}
               embedded
@@ -20620,6 +20655,7 @@ export default function KwantifyWorkspace({
               <WorkspaceFailureBoundary resetKey="liqmap" label="Liquidity Map">
                 <LiquidityMapWorkspace
                   instrument={selectedLiquidityMapInstrument}
+                  trading={liquidityMapTrading(activePaneId)}
                   onInstrumentChange={setSelectedLiquidityMapInstrument}
                 />
               </WorkspaceFailureBoundary>

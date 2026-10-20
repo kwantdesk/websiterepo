@@ -1,5 +1,31 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — LIQ MAP shares the normal-chart trading ledger
+
+- Standalone and embedded LIQ MAP expose the existing side order ticket, filled
+  entries, working orders, draggable SL/TP (including multiple targets), add
+  missing protection, close and cancel. All actions use the workspace's existing
+  account ledger/handlers and chart-click confirmation; never create a second
+  iframe ledger or submit broker orders from the read-only depth app.
+- The ticket follows the active map's instrument, distinct minis/micros and
+  selected paper account. Returning to a normal chart shows the same ledger.
+  Existing verified-adapter gates remain: paper execution works, live broker
+  submit/cancel/liquidate is NOT newly implemented by this change.
+- Map geometry comes from the actual renderer plot and price range, excluding
+  ladder/profile/axis. Protection drags use pointer capture, suspend the owner's
+  protection checks until release, commit once, and release on cancel, lost
+  capture, blur, account/symbol/replay change, removed order or unmount.
+- Only fresh genuine book packets and genuine trade prints reach the existing
+  synchronous execution arbiter. Historical and visual-hold frames never do;
+  replay cannot place/edit map orders. No new feed, polling, provider session,
+  Vercel endpoint or per-tick network fan-out was added. A same-timestamp actual
+  print must not be deduplicated against a quote-only book with no last price.
+- Tests: 59 focused tests pass; TypeScript and production build pass. Isolated
+  browser QA verifies ticket opening, SL/TP drags, shared-ledger mirror and replay
+  disabling; no owner trades submitted. Twelve older source-contract assertions
+  fail identically against HEAD and are not claimed fixed. Detailed release
+  record: `docs/prompt-log/2026-10-20-liquidity-map-shared-trading.md`.
+
 ## 2026-10-20 — Independent Orderflow panel tickers
 
 - Owner clarified tickers must be independent when unlinked. Each persisted

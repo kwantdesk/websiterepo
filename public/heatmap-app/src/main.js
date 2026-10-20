@@ -1,3 +1,4 @@
+import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261017-aleph-font';
 import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261017-aleph-font';
@@ -332,6 +333,13 @@ class DepthForgeApp {
     $('resetSettings').addEventListener('click', () => this.#resetSettings());
     window.addEventListener('message', event => {
       if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'kwantdesk:liquidity-map-trading') {
+        if (event.source !== window.parent) return;
+        this.tradingIntent = event.data;
+        this.tradingPlotKey = null;
+        this.#publishTradingPlot();
+        return;
+      }
       if (event.data?.type === 'kwantdesk:liquidity-map-symbol') {
         const symbol = normalizeLiquidityMapSymbol(event.data.symbol);
         // The parent sends the active symbol once the iframe reports ready.
@@ -1391,6 +1399,11 @@ class DepthForgeApp {
       || snapshot.readOnly !== true
     ) return;
 
+    const book = executableBook(snapshot, this.symbol, metadata);
+    if (book) {
+      this.executionBook = book;
+      if (window.parent !== window) window.parent.postMessage(book, window.location.origin);
+    }
     const liveTickSize = Number(snapshot.tickSize);
     if (Number.isFinite(liveTickSize) && liveTickSize > 0) {
       const config = SYMBOLS[this.symbol];
@@ -1464,6 +1477,8 @@ class DepthForgeApp {
 
   #ingestPresentationTick(tick, timestamp) {
     if (this.replay.active) return;
+    const print = executablePrint(this.executionBook, tick, timestamp, SYMBOLS[this.symbol].tickSize, this.symbol);
+    if (print && window.parent !== window) window.parent.postMessage(print, window.location.origin);
     if (!this.atLive || !this.history.length) return;
     updateLivePresentationEdge(this.history, { lastTick: tick, timestamp });
     this.viewEnd = this.history.length - 1;
@@ -1604,6 +1619,7 @@ class DepthForgeApp {
           const previousPixelsPerTick = Number(this.renderer.layout?.plotHeight)
             / Math.max(1, Number(this.renderer.layout?.visibleTickSpan));
           this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
+          this.#publishTradingPlot();
           const nextCenterTick = Number(this.renderer.layout?.centerTick);
           const previousEndIndex = previousEndFrame ? this.history.indexOf(previousEndFrame) : -1;
           if (previousEndIndex >= 0 && this.viewEnd > previousEndIndex) {
@@ -2064,7 +2080,31 @@ class DepthForgeApp {
     }
   }
 
+  #publishTradingPlot() {
+    const layout = this.renderer.layout;
+    if (!layout || layout.config.key !== this.symbol || window.parent === window) return;
+    const rect = $('heatmapCanvas').getBoundingClientRect();
+    const payload = { type: 'kwantdesk:liquidity-map-plot', symbol: this.symbol,
+      left: rect.left, top: rect.top, width: layout.plotWidth, height: layout.plotHeight,
+      topPrice: layout.topTick * layout.config.tickSize, bottomPrice: layout.bottomTick * layout.config.tickSize };
+    const key = JSON.stringify(payload);
+    if (key === this.tradingPlotKey) return;
+    this.tradingPlotKey = key;
+    window.parent.postMessage(payload, window.location.origin);
+  }
+
   #pointerDown(event) {
+    const intent = this.tradingIntent;
+    if (event.button === 0 && intent?.armed && intent.symbol === this.symbol && !this.replay.active && this.atLive && this.playing
+      && this.tool !== 'measure' && this.tool !== 'pan' && !event.altKey) {
+      const point = this.#canvasPoint(event), layout = this.renderer.layout;
+      if (layout && point.x >= 0 && point.x < layout.plotWidth && point.y >= 0 && point.y < layout.plotHeight) {
+        event.preventDefault();
+        window.parent.postMessage({ type: 'kwantdesk:liquidity-map-order-pick', symbol: this.symbol, scope: intent.scope,
+          price: layout.tickForY(point.y) * layout.config.tickSize }, window.location.origin);
+        return;
+      }
+    }
     if (event.button !== 0) return;
     const point = this.#canvasPoint(event);
     const domResize = this.#isDomResizePoint(point);
@@ -2305,6 +2345,11 @@ class DepthForgeApp {
   }
 
   #keyDown(event) {
+    if (event.key === 'Escape' && this.tradingIntent?.armed) {
+      window.parent.postMessage({ type: 'kwantdesk:liquidity-map-order-pick', symbol: this.symbol,
+        scope: this.tradingIntent.scope, cancel: true }, window.location.origin);
+      this.tradingIntent.armed = null;
+    }
     if (event.target instanceof HTMLInputElement
       || event.target instanceof HTMLSelectElement
       || event.target instanceof HTMLTextAreaElement

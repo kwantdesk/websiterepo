@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
+import LiquidityMapTrading, { type LiquidityMapTradingProps } from "./LiquidityMapTrading";
 import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import {
@@ -18,6 +19,7 @@ type LiquidityMapReplayControl = {
 
 type LiquidityMapWorkspaceProps = {
   instrument: string;
+  trading?: LiquidityMapTradingProps;
   onInstrumentChange?: (instrument: string) => void;
   onActivate?: () => void;
   embedded?: boolean;
@@ -34,6 +36,7 @@ function liquidityMapInstrument(root: unknown) {
 
 function LiquidityMapWorkspace({
   instrument,
+  trading,
   onInstrumentChange,
   onActivate,
   embedded = false,
@@ -329,7 +332,7 @@ function LiquidityMapWorkspace({
       <iframe
         ref={iframeRef}
         className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
-        src="/heatmap-app/index.html"
+        src="/heatmap-app/index.html?v=20261020-shared-trading"
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
           iframeRef.current?.contentDocument?.documentElement.setAttribute(
@@ -343,6 +346,7 @@ function LiquidityMapWorkspace({
           syncPerformancePriority();
         }}
       />
+      {trading ? <LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /> : null}
       {watermark ? (
         /*
           * The same mark the charts carry, on the same sizing rules.
@@ -410,6 +414,8 @@ function LiquidityMapWorkspace({
 export default memo(
   LiquidityMapWorkspace,
   (previous, next) => previous.instrument === next.instrument
+    && previous.trading === next.trading
+    && previous.onActivate === next.onActivate
     && previous.embedded === next.embedded
     && previous.active === next.active
     && previous.onInstrumentChange === next.onInstrumentChange
