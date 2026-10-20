@@ -34,7 +34,7 @@ test("real candle loader returns while optional flow and browser persistence rem
     getHistoricalCandleLimit: () => 10000, DEFAULT_CHART_HISTORY_CALENDAR_DAYS: 10,
     workspaceCandleRequests: new Map(), isEventBasedChartInterval: () => false,
     fetchWorkspaceOrderFlow: () => { optionalRequests++; return never; },
-    fetch: async () => ({ ok: true, json: async () => ({ candles: [candle], executions: [] }) }),
+    fetchJsonWithBudget: async () => ({ response: { ok: true }, payload: { candles: [candle], executions: [] } }),
     sanitizeCandles: rows => rows, decodeExecutionTape: rows => rows,
     mergeInstitutionalTradeTape: (a, b) => [...a, ...b],
     workspaceExecutionTape: tapes, workspaceOrderFlowKey: () => "NQ:1m",

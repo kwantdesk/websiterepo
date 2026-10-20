@@ -5,7 +5,7 @@ import {
   marketDataProvider,
 } from "@/lib/marketDataGatewayEnv";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
-import { fetchWithDeadline } from "./marketDataRequest.ts";
+import { fetchWithDeadline, MarketDataResponseError } from "./marketDataRequest.ts";
 import type { MarketIndexSnapshot } from "@/lib/marketIndices.server";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -35,7 +35,7 @@ async function fetchFromOrigin(
   init: RequestInit,
   timeoutMs: number,
 ) {
-  return fetchWithDeadline(`${origin}${path}`, {
+  const response = await fetchWithDeadline(`${origin}${path}`, {
       ...init,
       cache: "no-store",
       headers: {
@@ -44,6 +44,14 @@ async function fetchFromOrigin(
         Authorization: `Bearer ${token}`,
       },
     }, timeoutMs);
+  // A relay/holding page can answer 200 while its collector is unavailable.
+  // Do not remember that origin as healthy or forward HTML into JSON callers.
+  if ([502, 503, 504].includes(response.status)
+    || /\b(?:text\/html|application\/xhtml\+xml)\b/i.test(response.headers.get("content-type") ?? "")) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new MarketDataResponseError(response.status);
+  }
+  return response;
 }
 
 /**
@@ -166,7 +174,7 @@ export async function fetchInstitutionalMarketData(
       return response;
     } catch (error) {
       lastError = error;
-      recordOriginFailure(origin);
+      recordOriginFailure(origin, error instanceof MarketDataResponseError);
       if (origin === lastGoodOrigin) lastGoodOrigin = null;
     }
   }
@@ -189,7 +197,7 @@ export async function fetchInstitutionalMarketData(
       return response;
     } catch (error) {
       lastError = error;
-      recordOriginFailure(origin);
+      recordOriginFailure(origin, error instanceof MarketDataResponseError);
     }
   }
 

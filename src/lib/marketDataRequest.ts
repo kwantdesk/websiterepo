@@ -10,9 +10,39 @@ export function fetchWithDeadline(url: string, init: RequestInit = {}, timeoutMs
 
 const retryable = (status: number) => [429, 502, 503, 504].includes(status);
 
+export class MarketDataResponseError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(status === 401 || status === 403
+      ? "Your chart session needs attention. Sign in again to reconnect."
+      : "Chart data is temporarily unavailable. Try refreshing this chart.");
+    this.name = "MarketDataResponseError";
+    this.status = status;
+  }
+}
+
+/** Never expose an HTML holding/error page or JSON parser internals as data. */
+export async function readMarketDataJson<T = unknown>(response: Response): Promise<T> {
+  if (/\b(?:text\/html|application\/xhtml\+xml)\b/i.test(response.headers.get("content-type") ?? "")) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new MarketDataResponseError(response.status);
+  }
+  try {
+    const payload: unknown = await response.json();
+    if (payload === null || typeof payload !== "object") throw new MarketDataResponseError(response.status);
+    return payload as T;
+  } catch (error) {
+    // Preserve cancellation/deadlines; they are not malformed responses.
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new MarketDataResponseError(response.status);
+  }
+}
+
 /** One end-to-end budget for headers, JSON download and bounded GET retry. */
-export async function fetchJsonWithBudget(url: string, timeoutMs = 20_000, forceRevalidate = false) {
-  const signal = AbortSignal.timeout(timeoutMs);
+export async function fetchJsonWithBudget<T = unknown>(url: string, timeoutMs = 20_000, forceRevalidate = false, init: RequestInit = {}) {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const signal = init.signal ? AbortSignal.any([init.signal, deadline]) : deadline;
+  const canRetry = !init.method || ["GET", "HEAD"].includes(init.method.toUpperCase());
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       // Keep the browser's private copy for ETag revalidation, but ask the
@@ -21,15 +51,16 @@ export async function fetchJsonWithBudget(url: string, timeoutMs = 20_000, force
       // conditionalJson and downloaded unchanged multi-MB surfaces repeatedly.
       // Server callers stay uncached; an explicit refresh reloads the body.
       const cache = typeof window === "undefined" ? "no-store" : forceRevalidate ? "reload" : "no-cache";
-      const response = await fetch(url, {cache, signal});
-      if (retryable(response.status) && attempt === 0) {
+      const response = await fetch(url, {...init, cache, signal});
+      if (canRetry && retryable(response.status) && attempt === 0) {
         void response.body?.cancel().catch(() => undefined);
       } else {
-        const payload: unknown = await response.json();
+        const payload = await readMarketDataJson<T>(response);
         return {response, payload};
       }
     } catch (error) {
-      if (signal.aborted || attempt === 1 || error instanceof SyntaxError) throw error;
+      if (signal.aborted || attempt === 1 || !canRetry
+        || (error instanceof MarketDataResponseError && [401, 403].includes(error.status))) throw error;
     }
     // Never start a second full timeout or keep a retry alive after its budget.
     await new Promise<void>((resolve, reject) => {

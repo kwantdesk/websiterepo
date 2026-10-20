@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {fetchWithDeadline,fetchJsonWithBudget} from '../src/lib/marketDataRequest.ts';
+import {fetchWithDeadline,fetchJsonWithBudget,MarketDataResponseError} from '../src/lib/marketDataRequest.ts';
 async function withServer(handler,run){
   const server=createServer(handler);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try{await run(`http://127.0.0.1:${server.address().port}`)}finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
@@ -49,4 +49,61 @@ test('browser requests revalidate every refresh; forced refresh reloads and serv
     if(originalWindow)Object.defineProperty(globalThis,'window',originalWindow);
     else delete globalThis.window;
   }
+});
+
+test('a transient HTML holding page is retried once and real chart data survives unchanged', async()=>{
+  let calls=0;
+  const candles=[{timestamp:1000,open:100,high:102,low:99,close:101}];
+  await withServer((_req,res)=>{
+    calls++;
+    res.setHeader('Content-Type',calls===1?'text/html':'application/json');
+    res.end(calls===1?'<!DOCTYPE html><title>relay unavailable</title>':JSON.stringify({candles}));
+  },async url=>{
+    const result=await fetchJsonWithBudget(url,1500);
+    assert.equal(calls,2);assert.deepEqual(result.payload,{candles});
+  });
+});
+
+test('persistent HTML never leaks markup/parser errors and retries are capped',async()=>{
+  let calls=0;
+  await withServer((_req,res)=>{calls++;res.setHeader('Content-Type','text/html');res.end('<!DOCTYPE html>private provider details');},async url=>{
+    await assert.rejects(fetchJsonWithBudget(url,1500),error=>{
+      assert.ok(error instanceof MarketDataResponseError);
+      assert.doesNotMatch(error.message,/DOCTYPE|Unexpected token|private provider/i);
+      return true;
+    });
+    assert.equal(calls,2);
+  });
+});
+
+test('malformed or empty JSON receives the same bounded recovery',async()=>{
+  for(const bad of ['<!DOCTYPE html>', '{broken', '', 'null']){
+    let calls=0;
+    await withServer((_req,res)=>{calls++;res.setHeader('Content-Type','application/json');res.end(calls===1?bad:'{"candles":[]}');},async url=>{
+      assert.deepEqual((await fetchJsonWithBudget(url,1500)).payload,{candles:[]});assert.equal(calls,2);
+    });
+  }
+});
+
+test('HTML authentication failures and mutating requests are not retried',async()=>{
+  for(const status of [401,403]){
+    let calls=0;
+    await withServer((_req,res)=>{calls++;res.writeHead(status,{'Content-Type':'text/html'});res.end('<html>sign in</html>');},async url=>{
+      await assert.rejects(fetchJsonWithBudget(url,1500),/Sign in again/);assert.equal(calls,1);
+    });
+  }
+  let calls=0;
+  await withServer((_req,res)=>{calls++;res.setHeader('Content-Type','text/html');res.end('<html>error</html>');},async url=>{
+    await assert.rejects(fetchJsonWithBudget(url,1500,false,{method:'POST'}));assert.equal(calls,1);
+  });
+});
+
+test('caller abort also cancels bounded chart JSON retries',async()=>{
+  let calls=0;
+  await withServer((_req,res)=>{calls++;res.setHeader('Content-Type','text/html');res.end('<html>retry</html>');},async url=>{
+    const controller=new AbortController();
+    const pending=fetchJsonWithBudget(url,1500,false,{signal:controller.signal});
+    setTimeout(()=>controller.abort(),100);
+    await assert.rejects(pending,error=>error.name==='AbortError');assert.equal(calls,1);
+  });
 });

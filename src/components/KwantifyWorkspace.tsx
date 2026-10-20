@@ -2,6 +2,7 @@
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import { beginChartHistoryRead, readChartCacheWithin } from "@/lib/chartHistoryRead";
+import { fetchJsonWithBudget, readMarketDataJson } from "@/lib/marketDataRequest";
 import { chartActivityRemainingMs, chartSourceTimestamp } from "@/lib/chartCountdown";
 import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
@@ -3698,6 +3699,15 @@ function fetchWorkspaceOrderFlow(
  * The provider-backed 1m history keeps the strongest exact executions from
  * every minute and is deliberately canonical for every chart aggregation.
  */
+type WorkspaceHistoryPayload = {
+  error?: string;
+  candles?: unknown;
+  executions?: unknown;
+  auctionGap?: unknown;
+  historyCoverage?: unknown;
+  configured?: boolean;
+};
+
 function fetchWorkspaceHistoricalExecutions(
   symbol: string,
   days = DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
@@ -3716,14 +3726,10 @@ function fetchWorkspaceHistoricalExecutions(
   if (pending) return pending;
 
   const request = (async () => {
-    const response = await fetch(
+    const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(
       `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=1m&days=${requestedDays}&orderFlow=1${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}`,
-      {
-        cache: "no-store",
-        signal: AbortSignal.timeout(120_000),
-      },
+      120_000,
     );
-    const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error ?? `CME execution history is unavailable for ${displayCmeSymbol(symbol)}.`);
     }
@@ -3864,21 +3870,12 @@ async function fetchWorkspaceCandles(
       const eventBased = isEventBasedChartInterval(timeframe);
       // The independent pane effect hydrates the supplemental execution tape.
       // Candle readiness must not wait for its potentially two-minute request.
-      const response = await fetch(
+      const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(
         `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${auctionGapExpectedContract ? "&auctionGap=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
-        {
-          cache: forceFresh ? "reload" : "no-cache",
-          // Keep a history request alive across rapid timeframe switches. Its
-          // result still warms the browser cache for the next selection.
-          signal: signal
-            ? AbortSignal.any([
-                signal,
-                AbortSignal.timeout(isEventBasedChartInterval(timeframe) ? 285_000 : 45_000),
-              ])
-            : AbortSignal.timeout(isEventBasedChartInterval(timeframe) ? 285_000 : 45_000),
-        },
+        isEventBasedChartInterval(timeframe) ? 285_000 : 45_000,
+        forceFresh,
+        { signal },
       );
-      const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
       const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
       if (auctionGapExpectedContract) {
@@ -3981,7 +3978,7 @@ async function fetchWorkspaceCandles(
           `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${windowFrom}&to=${windowTo}`,
           { cache: "no-store", signal: timeoutController.signal },
         );
-        const payload = await response.json();
+        const payload = await readMarketDataJson<WorkspaceHistoryPayload>(response);
         if (!response.ok) throw new Error(payload.error ?? `${symbol} index history is unavailable.`);
         return Object.assign(sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe), {
           historyCoverage: payload.historyCoverage,
@@ -4041,8 +4038,8 @@ async function fetchWorkspaceCandles(
   try {
     const storedUrl = `/api/market-data/history?broker=${encodeURIComponent(broker)}&symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${from}&to=${to}&limit=${historicalLimit}`;
     const storedRes = await fetch(storedUrl, { cache: "no-store", signal });
-    const storedData = await storedRes.json();
-    if (storedData.configured && storedData.candles && storedData.candles.length > 0) {
+    const storedData = await readMarketDataJson<WorkspaceHistoryPayload>(storedRes);
+    if (storedData.configured && Array.isArray(storedData.candles) && storedData.candles.length > 0) {
       return sanitizeCandles(storedData.candles as Candle[], symbol, timeframe);
     }
   } catch {
@@ -4055,8 +4052,8 @@ async function fetchWorkspaceCandles(
         `/api/ctrader?action=candles&broker=${encodeURIComponent(broker)}&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(timeframe)}&from=${Date.parse(periodConfig.from)}&to=${Date.now()}&count=${Math.max(outputsize, 3)}`,
         { signal },
       );
-      const data = await res.json();
-      if (data.candles && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol, timeframe);
+      const data = await readMarketDataJson<WorkspaceHistoryPayload>(res);
+      if (Array.isArray(data.candles) && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol, timeframe);
       throw new Error(data.error || `${broker} did not return candle data for ${symbol}.`);
     } catch {
       throw new Error(`${broker} candle feed unavailable for ${symbol}.`);
@@ -4068,8 +4065,8 @@ async function fetchWorkspaceCandles(
       let url = `/api/oanda?action=candles&instrument=${oandaInstrument}&granularity=${oandaGranularity}`;
       url += `&from=${encodeURIComponent(periodConfig.from)}&to=${encodeURIComponent(new Date(to).toISOString())}&maxCandles=${historicalLimit}`;
       const res = await fetch(url, { signal });
-      const data = await res.json();
-      if (data.candles && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol, timeframe);
+      const data = await readMarketDataJson<WorkspaceHistoryPayload>(res);
+      if (Array.isArray(data.candles) && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol, timeframe);
     } catch {
       // fall through
     }
@@ -4079,7 +4076,7 @@ async function fetchWorkspaceCandles(
     `/api/market-data?symbol=${symbol}&interval=${timeframe}&outputsize=${historicalLimit}`,
     { signal },
   );
-  const data = await res.json();
+  const data = await readMarketDataJson<WorkspaceHistoryPayload>(res);
   return sanitizeCandles((data.candles || []) as Candle[], symbol, timeframe);
 }
 

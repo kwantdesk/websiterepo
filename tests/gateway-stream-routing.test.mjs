@@ -46,3 +46,30 @@ test('quote endpoint and generic stream proxy use the same server-only selection
   assert.match(generic,/isLongLivedStream[\s\S]*?295_000/);
   assert.match(generic,/if \(isLongLivedStream\)[\s\S]*?new Response\(upstream.body/);
 });
+
+test('HTML holding pages and unavailable responses fail over instead of becoming the remembered good origin',async()=>{
+  const originalFetch=globalThis.fetch;
+  const keys=['KWANTDESK_MARKET_DATA_GATEWAY_URL','KWANTIFY_MARKET_DATA_GATEWAY_URL','KWANTDESK_MARKET_DATA_GATEWAY_TOKEN'];
+  const before=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  try{
+    for(const status of [200,502,503,504]){
+      const bad=`https://bad-${status}-fixture.example`,good=`https://good-${status}-fixture.example`;
+      Object.assign(process.env,{KWANTDESK_MARKET_DATA_GATEWAY_URL:bad,KWANTIFY_MARKET_DATA_GATEWAY_URL:good,KWANTDESK_MARKET_DATA_GATEWAY_TOKEN:'fixture-only'});
+      const requests=[];
+      globalThis.fetch=async input=>{
+        const url=new URL(String(input));
+        if(url.pathname==='/health')return Response.json({connected:true,authenticated:true});
+        requests.push(url.origin);
+        return url.origin===bad
+          ?new Response(status===200?'<!DOCTYPE html><title>holding page</title>':'{"error":"unavailable"}',{status,headers:{'Content-Type':status===200?'text/html':'application/json'}})
+          :Response.json({candles:[{timestamp:1000,close:100}]});
+      };
+      assert.deepEqual(await(await fetchInstitutionalMarketData('/v1/market-data/history?symbol=NQ')).json(),{candles:[{timestamp:1000,close:100}]});
+      await fetchInstitutionalMarketData('/v1/market-data/history?symbol=NQ');
+      assert.deepEqual(requests,[bad,good,good]);
+    }
+  }finally{
+    globalThis.fetch=originalFetch;
+    for(const key of keys){if(before[key]===undefined)delete process.env[key];else process.env[key]=before[key];}
+  }
+});

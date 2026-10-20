@@ -70,7 +70,9 @@ test('actual candle and flow adapters request the gateway live edge, not a delay
 test('history refresh revalidates privately and continuity safety gates remain intact',()=>{
   const workspace=readFileSync(new URL('../src/components/KwantifyWorkspace.tsx',import.meta.url),'utf8');
   const route=readFileSync(new URL('../src/app/api/databento/market/route.ts',import.meta.url),'utf8');
-  assert.match(workspace,/cache: forceFresh \? "reload" : "no-cache"/);
+  assert.match(workspace,/fetchJsonWithBudget<WorkspaceHistoryPayload>\([\s\S]*?forceFresh,[\s\S]*?\{ signal \}/);
+  const transport=readFileSync(new URL('../src/lib/marketDataRequest.ts',import.meta.url),'utf8');
+  assert.match(transport,/forceRevalidate \? "reload" : "no-cache"/);
   const early=workspace.slice(workspace.indexOf('const earlyBaseHistory ='),workspace.indexOf('let liveSeam: Candle[]'));
   assert.match(early,/!immediateHistoryIsHydrated/);
   assert.doesNotMatch(early,/!hasImmediateHistory/);
