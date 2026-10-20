@@ -29,7 +29,7 @@ test('KWANTY hides the loader for real data and replaces it with genuine errors'
   context.render();assert.equal(target.textContent,'Loading KWANTY');assert.equal(target.hidden,false);
   context.state.payload={real:true};context.render();assert.equal(target.hidden,true);
   context.state.payload=null;context.state.sourceError='Connection unavailable';context.render();
-  assert.equal(target.hidden,false);assert.equal(target.textContent,'Data unavailable — Connection unavailable');
+  assert.equal(target.hidden,false);assert.equal(target.textContent,'Data unavailable.');
   assert.match(app,/catch\(error\)\{state\.sourceError=error\.message;renderChartEmpty\(\);updateHealth/);
 });
 

@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Quiet KWANTY provider/history notices
+
+- Hide historyNotice, connection and freshnessDetails from first paint and
+  accessibility announcements. Their real technical diagnostics remain hidden.
+- Stop automatic snapshot/auth/gateway-error toasts; retain sourceError and
+  retry/backoff unchanged. Empty failures say Data unavailable, without vendor
+  internals. User-requested history failures keep a concise action response.
+- Do not fabricate missing history or move unavailable historical markers.
+  Actual source date/time and replay controls remain visible in the sidebar.
+- Record: docs/prompt-log/2026-10-20-kwanty-quiet-notices.md.
+
 ## 2026-10-20 — Flat theme backgrounds in GEX DATA
 
 - Empty dock slots, iframe frames, plot shells and populated visual/card surfaces
