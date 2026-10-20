@@ -257,6 +257,15 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   if(priceAxisVisible)for(const value of priceTicks.values){ctx.fillStyle=axisColor;ctx.textAlign='left';ctx.fillText(value.toFixed(priceTicks.decimals),right+7,spotY(value)+4);}
   const clock = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: settings.timeZone || 'America/New_York' });
   for (let tick = 0; tick <= 4; tick++) { const time = startTime + tick / 4 * (endTime - startTime); ctx.fillStyle = axisColor; ctx.textAlign = 'center'; ctx.fillText(clock.format(new Date(time)), timeX(time), height - 9); }
+  // A latest-only real observation is still useful. Label it rather than
+  // making a missing session look blank or fabricating a flat history line.
+  ctx.save();ctx.font='10px Aleph, sans-serif';ctx.textAlign='left';let legendX=left;
+  for(const series of data.series.filter(series=>series.metric===data.metric)){
+    const point=series.values.filter(point=>point.time>=startTime&&point.time<=endTime&&point.raw!==null).at(-1);
+    if(!point||(point.raw>=0?!series.showPositive:!series.showNegative))continue;
+    const label=`${series.expiry==='one'?'Next':series.expiry==='both'?'Combined':'Latest'} ${compact(point.raw)}`;
+    ctx.fillStyle=point.raw>=0?series.positiveColor:series.negativeColor;ctx.fillText(label,legendX,top-10);legendX+=label.length*6+16;
+  }ctx.restore();
   ctx.save(); ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
   ctx.strokeStyle = themePaint("#666666"); ctx.beginPath(); ctx.moveTo(left, valueY(0)); ctx.lineTo(right, valueY(0)); ctx.stroke();
   for (const series of data.series) {

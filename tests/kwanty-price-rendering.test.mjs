@@ -24,6 +24,12 @@ const priceBodies=calls=>calls.filter(c=>['roundRect','fillRect'].includes(c.met
 const order=(options={})=>{const result=canvas();return {...result,geometry:renderOrderflow(result.ctx,1000,500,{ticker:'QQQ',metric:'net-gex',records:[record()],priceHistory:prices,priceLine:line,settings,view,...options})};};
 const profile=(options={})=>{const result=canvas();return {...result,geometry:drawProfile(result.ctx,1000,500,{package:'classic',payload,priceHistory:prices,settings,candleInterval:minute,view,...options})};};
 
+test('one real Orderflow observation has a visible current metric label, never an invented curve',()=>{
+ const result=order({records:[record(2,{zgr:-29428.66})]});
+ assert.ok(result.calls.some(call=>call.method==='fillText'&&call.args[0]==='Latest -29,428.66'));
+ assert.equal(result.geometry.data.series[0].values.length,1);assert.equal(result.geometry.data.series[0].values[0].raw,-29428.66);
+});
+
 test('Classic and State draw explicit real OHLC wicks and bodies rather than positioning spot candles',()=>{
   for(const pkg of ['classic','state']){
     const {geometry:g,calls}=profile({package:pkg});assert.deepEqual(g.history.map(c=>[c.open,c.high,c.low,c.close]),prices.map(c=>[c.open,c.high,c.low,c.close]));

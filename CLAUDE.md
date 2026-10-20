@@ -1,5 +1,22 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — KWANTY Orderflow visible readings and recorded-session restoration
+
+- Native latest snapshots have real metric values, but frontend only retained
+  observations collected since page load; latest-only marks were against the
+  chart edge. Add latest-value labels and 4% default right time padding, preserving
+  actual source timestamps and manual viewport overrides.
+- Restore exact-instrument/New-York-session observations once per selection from
+  the existing Supabase orderflow archive. Existing authenticated snapshot route
+  best-effort records one genuine accepted observation per source minute via
+  Next after(); minute-keyed archive identity deduplicates across instances.
+  No new vendor polling; bounded reads/caches, failure backoff, no fake rows.
+- This is recording of accepted requests, NOT an always-on collector. Stable VPS
+  collection, paid provider history access and unrecorded past sessions remain
+  separate unresolved requirements. Native NDX 2026-10-19 history returned403;
+  old terminal API returned401. Do not mark those external faults fixed.
+- Record: docs/prompt-log/2026-10-20-kwanty-orderflow-restoration.md.
+
 ## 2026-10-20 — KWANTY Ctrl-wheel vertical zoom correction
 
 - Ctrl-wheel stays vertical over Classic/State plot and axes; never changes time
