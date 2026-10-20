@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — KWANTY State normal chart axes
+
+- State always has a right-hand price scale, independently of profile bar
+  alignment. `priceAxisSide` drives gesture hit regions; Classic stays unchanged.
+- `state-axes.js` paints decimal price ticks and clock-boundary bottom time ticks
+  from the renderer's exact time/price transforms. Crosshair badges use cursor
+  coordinates, not nearest candle/strike; timezone/DST/date/seconds are explicit,
+  with milliseconds on tight views. IV/skew scale has a separate lower row.
+- Pan, wheel, right-axis scaling and Ctrl+wheel continue through the existing
+  viewport engine. No new acquisition, subscriptions, polling or fabricated bars.
+- 209 KWANTY/reference tests pass; TypeScript passes. Browser fixture verifies
+  exact cursor values, pan, independent price zoom, dark/light and 380px pane.
+  Reproduce: `node scripts/serve-kwanty-state-axes-fixture.cjs`.
+- Release record: `docs/prompt-log/2026-10-20-kwanty-state-axes.md`.
+
 ## 2026-10-20 — LIQ MAP motion stalls
 
 - Camera easing must finish on display frames, not wait for another depth

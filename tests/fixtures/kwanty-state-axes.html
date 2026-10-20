@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><title>KWANTY State axis QA</title>
+<style>html,body{margin:0;background:var(--bg,#080b12);color:var(--fg,#e8edf5);font:12px Aleph,sans-serif}header{padding:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,select{background:transparent;color:inherit;border:1px solid #666;border-radius:3px;padding:6px}#wrap{height:620px;margin:12px;border:1px solid #444}canvas{display:block;width:100%;height:100%;touch-action:none}output{display:block;padding:8px 12px;white-space:pre-wrap}</style></head>
+<body><header><strong>KWANTY State · isolated synthetic chart, not live market data</strong>
+<button id="theme">Light theme</button><button id="reset">Reset view</button><button id="narrow">Narrow pane</button>
+<label>Bars <select id="alignment"><option>center</option><option>left</option><option>right</option></select></label>
+<label>Timezone <select id="zone"><option>America/New_York</option><option>UTC</option></select></label>
+<label><input type="checkbox" id="skew" checked> IV skew</label></header>
+<div id="wrap"><canvas id="chart" aria-label="State chart with time bottom and price right"></canvas></div><output id="readout"></output>
+<script type="module">
+import {drawProfile} from '/kwanty-app/profile-chart.js';
+import {chartRegion,panChartView,zoomChartView} from '/kwanty-app/chart-interaction.js';
+import {installTheme} from '/kwanty-app/site-theme.js';
+const canvas=document.querySelector('#chart'),ctx=canvas.getContext('2d'),out=document.querySelector('#readout');
+const start=Date.UTC(2026,9,20,13,30),prices=Array.from({length:80},(_,i)=>({time:start+i*60000,open:100+Math.sin(i/8)*1.5,high:100.3+Math.sin(i/8)*1.5,low:99.7+Math.sin(i/8)*1.5,close:100+Math.sin((i+1)/8)*1.5}));
+const payload={ticker:'QQQ',spot:100.25,min_dte:1,mini_contracts:Array.from({length:25},(_,i)=>[97+i*.25,.2+i*.002,.21+i*.001,Math.sin(i/2)*30,[i,15-i,i-5]])};
+let view={startTime:start,endTime:start+90*60000,minPrice:96.5,maxPrice:104},hover=null,g,drag=null,light=false;
+const original={...view};
+let settings={spotViewMode:'candles',timeZone:'America/New_York',showCrosshairs:true,ivSkew:true,profileBarAlignment:'center'};
+async function theme(){const background=light?'#fafafa':'#080b12',foreground=light?'#121923':'#e8edf5';document.documentElement.style.setProperty('--bg',background);document.documentElement.style.setProperty('--fg',foreground);settings={...settings,background,lightMode:light};await installTheme({background,foreground,muted:light?'#485465':'#a7b4c8',border:light?'#d1d7e0':'#29364b',surface:light?'#e1e7ef':'#182335',primary:light?'#0055bb':'#55bdff',bullish:'#1c9a90',bearish:'#ed7392'});draw();}
+function draw(){const r=canvas.getBoundingClientRect(),dpr=devicePixelRatio||1;canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);g=drawProfile(ctx,r.width,r.height,{package:'state',category:'gamma_zero',payload,priceHistory:prices,candleInterval:60000,settings,view,hover});out.textContent=JSON.stringify({priceAxisSide:g.priceAxisSide,view:{startTime:g.startTime,endTime:g.endTime,minPrice:g.minPrice,maxPrice:g.maxPrice},crosshair:g.crosshair},null,2);}
+function position(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+canvas.onpointerdown=e=>{if(e.button!==0)return;const p=position(e);hover=p;drag={point:p,geometry:g,view:{...view},region:chartRegion('state',g,p),ctrlKey:e.ctrlKey};canvas.setPointerCapture(e.pointerId);draw();};
+canvas.onpointermove=e=>{hover=position(e);if(drag)view=panChartView('state',drag.geometry,drag.view,{region:drag.region,dx:hover.x-drag.point.x,dy:hover.y-drag.point.y,ctrlKey:drag.ctrlKey});draw();};
+canvas.onpointerup=()=>drag=null;canvas.onpointercancel=()=>drag=null;canvas.onpointerleave=()=>{if(!drag){hover=null;draw();}};
+canvas.addEventListener('wheel',e=>{e.preventDefault();const p=position(e);view=zoomChartView('state',g,view,{...p,deltaY:e.deltaY,ctrlKey:e.ctrlKey});hover=p;draw();},{passive:false});
+document.querySelector('#theme').onclick=()=>{light=!light;document.querySelector('#theme').textContent=light?'Dark theme':'Light theme';theme();};
+document.querySelector('#reset').onclick=()=>{view={...original};hover=null;draw();};
+document.querySelector('#narrow').onclick=()=>{const w=document.querySelector('#wrap');w.style.width=w.style.width?'':'380px';draw();};
+document.querySelector('#alignment').onchange=e=>{settings.profileBarAlignment=e.target.value;draw();};
+document.querySelector('#zone').onchange=e=>{settings.timeZone=e.target.value;draw();};
+document.querySelector('#skew').onchange=e=>{settings.ivSkew=e.target.checked;draw();};
+new ResizeObserver(draw).observe(canvas);theme();
+</script></body></html>

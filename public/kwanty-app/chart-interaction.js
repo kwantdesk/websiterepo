@@ -16,7 +16,7 @@ export function chartRegion(pkg, geometry, point) {
   }
   if (y < top || y > bottom) return null;
   if (pkg === 'orderflow') return x < left ? 'metric-axis' : geometry.priceAxisVisible === false ? null : 'price-axis';
-  return geometry.alignment === 'right' ? x > right ? 'price-axis' : null : x < left ? 'price-axis' : null;
+  return (geometry.priceAxisSide ?? (geometry.alignment === 'right' ? 'right' : 'left')) === 'right' ? x > right ? 'price-axis' : null : x < left ? 'price-axis' : null;
 }
 
 function rangeFor(geometry, axis) {

@@ -1,5 +1,6 @@
 import {themePaint,themeInk} from './site-theme.js';
 import {botStorage,botFetch} from './site-runtime.js';
+import {drawStateAxes,drawStateCrosshairLabels} from './state-axes.js?v=20261020-state-axes';
 // Independent renderer. Tuple meanings are documented in SHIPPED-SEMANTICS.md.
 // Preserve native REST values. Websocket decoder scales are transport-specific
 // and are not proof of a public REST-to-website numerical equivalence.
@@ -44,7 +45,8 @@ export function initialPriceFraction(spot,ticker,{mobile=false,converted=false}=
 export function calculateProfileGeometry(width,height,options={}) {
  const {settings={},view={},conversion=1}=options,offset=finite(options.conversionOffset??settings.priceOffset)??0,raw=options.payload?.data??options.payload??{},rows=profileRows(raw,options),spot=finite(options.spotPrice??raw.spot),convertedSpot=spot===null?null:spot*conversion+offset;
  const alignment=settings.profileBarAlignment??settings.profileAlignment??'center';
- const history=normalizePriceHistory(options.priceHistory,conversion,offset),hasSkew=options.package==='state'&&Array.isArray(raw.mini_contracts)&&skewEnabled(settings),left=alignment==='right'?18:56,right=Math.max(left+20,width-(alignment==='right'?56:18)),top=34,bottom=Math.max(76,height-(hasSkew?58:34));
+ const normalAxes=options.package==='state',priceAxisSide=normalAxes||alignment==='right'?'right':'left';
+ const history=normalizePriceHistory(options.priceHistory,conversion,offset),hasSkew=options.package==='state'&&Array.isArray(raw.mini_contracts)&&skewEnabled(settings),left=normalAxes||alignment==='right'?18:56,right=Math.max(left+20,width-(normalAxes?88:alignment==='right'?56:18)),top=34,bottom=Math.max(76,height-(hasSkew?58:34));
  const unique=[...new Set(rows.map(p=>p.strike))],steps=unique.slice(1).map((p,i)=>p-unique[i]).filter(v=>v>0).sort((a,b)=>a-b),step=steps.length?steps[Math.floor(steps.length/2)]:convertedSpot!==null?niceStep(Math.abs(convertedSpot)*.01):1;
  // Bounds come from observed prices. A lone $100 strike gets cents/dollars-scale padding, never ±$50.
  let minPrice=unique[0]??convertedSpot??0,maxPrice=unique.at(-1)??convertedSpot??1;
@@ -61,7 +63,7 @@ export function calculateProfileGeometry(width,height,options={}) {
  const priceY=p=>bottom-(p-minPrice)/(maxPrice-minPrice)*(bottom-top),exposureX=v=>left+((alignment==='left'?Math.abs(v):alignment==='right'?-Math.abs(v):v)-minExposure)/(maxExposure-minExposure)*(right-left),timeX=t=>startTime===null||endTime===null?null:left+(timeMs(t)-startTime)/(endTime-startTime)*(right-left);
  const hitTest=(x,y)=>{if(x<left||x>right||y<top||y>bottom)return null;const price=minPrice+(bottom-y)/(bottom-top)*(maxPrice-minPrice),exposure=minExposure+(x-left)/(right-left)*(maxExposure-minExposure),time=startTime===null||endTime===null?null:startTime+(x-left)/(right-left)*(endTime-startTime),pricePoint=nearestPrice(history,time),candle=pricePoint&&['open','high','low','close'].every(key=>finite(pricePoint[key])!==null)?pricePoint:null;let row=null,distance=Infinity;for(const p of visibleRows){const d=Math.abs(priceY(p.strike)-y);if(d<distance){distance=d;row=p;}}return {row:distance<=Math.max(12,(bottom-top)/Math.max(1,visibleRows.length)/2)?row:null,price,exposure,time,pricePoint,candle,spot:pricePoint?.spot??candle?.close??null};};
  const expectedMove=greek?calculateExpectedMove(raw,{category:options.category,conversion,conversionOffset:offset}):null;
- return {left,right,top,bottom,minPrice,maxPrice,minExposure,maxExposure,startTime,endTime,priceY,exposureX,timeX,hitTest,rows,visibleRows,history,spot:convertedSpot,greek,step,showVolume,showOI,alignment,offset,expectedMove};
+ return {left,right,top,bottom,minPrice,maxPrice,minExposure,maxExposure,startTime,endTime,priceY,exposureX,timeX,hitTest,rows,visibleRows,history,spot:convertedSpot,greek,step,showVolume,showOI,alignment,priceAxisSide,offset,expectedMove};
 }
 function line(ctx,x1,y1,x2,y2,stroke,dash=[]) {ctx.beginPath();ctx.strokeStyle=stroke;ctx.setLineDash(dash);ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);}
 function roundedBar(ctx,x,y,w,h,fill) {ctx.fillStyle=fill;const left=Math.min(x,x+w),width=Math.abs(w);ctx.beginPath();if(ctx.roundRect)ctx.roundRect(left,y,width,h,Math.min(3,h/2,width/2));else ctx.rect(left,y,width,h);ctx.fill();}
@@ -71,7 +73,8 @@ export function drawProfile(ctx,width,height,options={}) {
  const settings=options.settings??{},data=options.payload?.data??options.payload??{},g=calculateProfileGeometry(width,height,options),{left,right,top,bottom,priceY,exposureX,timeX}=g;
  const light=settings.lightMode===true,axisColor=themeInk(false,light?'#393939':'#b9b9b9'),secondaryColor=themeInk(true,light?'#666666':'#777777'),gridColor=light?themePaint("#dedede"):themePaint("#303030"),zeroColor=light?themePaint("#999"):themePaint("#626262"),showGrid=shown(settings,'showGrid',true);
  ctx.clearRect(0,0,width,height);ctx.fillStyle=settings.background??(light?themePaint("#fff"):themePaint("#111"));ctx.fillRect(0,0,width,height);ctx.font='11px Aleph, sans-serif, sans-serif';ctx.lineWidth=.6;ctx.fillStyle=axisColor;ctx.textAlign='right';
- const priceTicks=profilePriceTicks(g.minPrice,g.maxPrice);ctx.font='bold 10px Aleph, sans-serif, sans-serif';for(const [i,p]of priceTicks.entries()){const y=priceY(p);if(showGrid)line(ctx,left,y,right,y,gridColor);ctx.fillStyle=axisColor;ctx.textAlign=g.alignment==='right'?'left':'right';const label=profileTickLabel(p,i,priceTicks.length,'price');if(label)ctx.fillText(label,g.alignment==='right'?right+8:left-8,y+4);}
+ if(options.package==='state')drawStateAxes(ctx,g,{...settings,showGrid},{foreground:axisColor,muted:secondaryColor,border:gridColor});
+ else {const priceTicks=profilePriceTicks(g.minPrice,g.maxPrice);ctx.font='bold 10px Aleph, sans-serif, sans-serif';for(const [i,p]of priceTicks.entries()){const y=priceY(p);if(showGrid)line(ctx,left,y,right,y,gridColor);ctx.fillStyle=axisColor;ctx.textAlign=g.alignment==='right'?'left':'right';const label=profileTickLabel(p,i,priceTicks.length,'price');if(label)ctx.fillText(label,g.alignment==='right'?right+8:left-8,y+4);}}
  ctx.font='bold 11px Aleph, sans-serif, sans-serif';ctx.textAlign='center';const exposureTicks=tickValues(g.minExposure,g.maxExposure,4).slice(0,5);for(const [i,e]of exposureTicks.entries()){const x=exposureX(e);if(e===0&&showGrid)line(ctx,x,top,x,bottom,zeroColor);ctx.fillStyle=secondaryColor;const label=profileTickLabel(e,i,exposureTicks.length);if(label)ctx.fillText(label,x,22);}
  const greekMode=options.package==='state'&&g.greek,metric=String(options.category??'');
  ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
@@ -91,11 +94,12 @@ export function drawProfile(ctx,width,height,options={}) {
  if(settings.showCrosshairs!==false&&options.hover&&finite(options.hover.x)!==null&&finite(options.hover.y)!==null){const {x,y}=options.hover;if(g.hitTest(x,y)){line(ctx,x,top,x,bottom,themePaint("#939393"),[3,3]);line(ctx,left,y,right,y,themePaint("#939393"),[3,3]);}}
  ctx.restore();
  for(const level of levels)badge(ctx,level.price.toFixed(2),level.side==='right'?right-3:left+3,priceY(level.price),level.color,level.side==='right'?'right':'left');
- if(horizontalSpot)badge(ctx,g.spot.toFixed(2),g.alignment==='right'?right+3:left-3,priceY(g.spot),spotColor,g.alignment==='right'?'left':'right');
- if(g.ivDomain){ctx.textAlign='center';ctx.fillStyle='goldenrod';const ticks=tickValues(...g.ivDomain,6);for(const [i,v]of ticks.entries()){const label=profileTickLabel(v,i,ticks.length);if(label)ctx.fillText(label,g.ivX(v),bottom+18);}}
- if(g.history.length&&g.startTime!==null&&g.endTime!==null){ctx.textAlign='center';ctx.fillStyle=secondaryColor;for(let i=0;i<=4;i++){const time=g.startTime+(g.endTime-g.startTime)*i/4;ctx.fillText(new Date(time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:settings.timeZone??'America/New_York'}),left+(right-left)*i/4,bottom+(g.ivDomain?39:22));}}
+ if(horizontalSpot)badge(ctx,g.spot.toFixed(2),g.priceAxisSide==='right'?right+3:left-3,priceY(g.spot),spotColor,g.priceAxisSide==='right'?'left':'right');
+ if(g.ivDomain){ctx.textAlign='center';ctx.fillStyle=secondaryColor;const ticks=tickValues(...g.ivDomain,6);for(const [i,v]of ticks.entries()){const label=profileTickLabel(v,i,ticks.length);if(label)ctx.fillText(label,g.ivX(v),bottom+(options.package==='state'?43:18));}}
+ if(options.package!=='state'&&g.history.length&&g.startTime!==null&&g.endTime!==null){ctx.textAlign='center';ctx.fillStyle=secondaryColor;for(let i=0;i<=4;i++){const time=g.startTime+(g.endTime-g.startTime)*i/4;ctx.fillText(new Date(time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:settings.timeZone??'America/New_York'}),left+(right-left)*i/4,bottom+(g.ivDomain?39:22));}}
  if(g.expectedMove&&shown(settings,'expected_move',true)){const style=settings.expected_move??{},c=color(settings,'expected_move',themePaint("#888888"));g.expectedMoveAnnotations=[];for(const [sign,value]of [['+',g.expectedMove.plusOneSigma],['-',g.expectedMove.minusOneSigma]]){if(value<g.minPrice||value>g.maxPrice)continue;const y=priceY(value);ctx.lineWidth=finite(style.size)||1.5;line(ctx,left,y,right,y,c,strokeDash(style.lineType??'dashed'));const label=`${sign}1σ (${value.toFixed(2)})`,position=style.labelPosition??'auto',side=position==='auto'?(g.alignment==='left'?'left':'right'):position,font=finite(style.labelFontSize)||12;ctx.font=`${font}px Arial, sans-serif`;const w=ctx.measureText(label).width+8,h=font+6,x=side==='left'?left+3:side==='center'?(left+right-w)/2:right-w-3;roundedBar(ctx,x,y-h/2,w,h,c);ctx.fillStyle=style.labelColor??themePaint("#000000");ctx.textAlign='left';ctx.fillText(label,x+4,y+font*.35);g.expectedMoveAnnotations.push({value,label,color:c,position:side});}}
  if(!g.rows.length){ctx.textAlign='center';ctx.fillStyle=secondaryColor;ctx.fillText('No valid profile data',(left+right)/2,(top+bottom)/2);}
+ if(options.package==='state')g.crosshair=drawStateCrosshairLabels(ctx,g,options.hover,settings,width,{background:themePaint('#192234'),foreground:axisColor});
  g.levels=levels;
  return g;
 }
