@@ -12,7 +12,7 @@ import {createOrderflowSources} from './orderflow-sources.js?v=1';
 import {createStateSources} from './state-sources.js?v=1';
 import {STATE_PROFILES,statePanelCategory,statePanelLabel,selectStateProfile,restoreStatePanels,stateControlTargets,stateViewportUpdates,stateCursor,projectStateCursor,sameStatePriceUnits} from './state-panels.js?v=1';
 import {RetainedSnapshots} from './retention.js';
-import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261020-state-panels';
+import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261020-square-candles';
 import {renderOrderflow,ORDERFLOW_METRICS} from './orderflow-chart.js';
 import {mountSettingsEditor} from './settings-editor.js?v=2';
 import {createOverlayEditor} from './overlay-editor.js?v=2';

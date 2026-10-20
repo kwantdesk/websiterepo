@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Square State candle bodies
+
+- State price candles now use square Canvas rectangles instead of the rounded
+  profile-bar helper. Exact OHLC, high/low wicks, theme colours, candle width and
+  minimum one-pixel dojis are unchanged. Profile prior/skew circles and rounded
+  exposure bars remain unchanged; Classic retains its existing renderer.
+- Versioned the standalone and embedded KWANTY asset chain. No extra endpoints,
+  polling, provider logins or market-data restarts.
+- 224 KWANTY/reference tests pass; scoped lint passes. Isolated synthetic browser
+  rendering visually checked in dark/light themes, without modifying user data.
+- Record: docs/prompt-log/2026-10-20-kwanty-square-candles.md.
+
 ## 2026-10-20 — Multiple KWANTY State panels
 
 - State has Add Chart, independent ticker/GEX-or-Greek/expiry/interval/type/style

@@ -68,6 +68,30 @@ test('Classic and State draw explicit real OHLC wicks and bodies rather than pos
   }
 });
 
+test('State candles have square bodies at exact OHLC coordinates, including dojis',()=>{
+  const history=[...prices,bar(3,{open:102,high:106,low:99,close:102})];
+  const {geometry:g,calls}=profile({package:'state',priceHistory:history});
+  const bodies=priceBodies(calls);assert.equal(bodies.length,4);
+  for(const [i,body] of bodies.entries()){
+    assert.equal(body.method,'fillRect');
+    near(body.args[0]+body.args[2]/2,g.timeX(history[i].time));
+    near(body.args[1],Math.min(g.priceY(history[i].open),g.priceY(history[i].close)));
+    near(body.args[3],Math.max(1,Math.abs(g.priceY(history[i].open)-g.priceY(history[i].close))));
+  }
+  const wicks=calls.filter(c=>c.method==='lineTo'&&[up,down].includes(c.stroke));
+  assert.equal(wicks.length,4);for(const [i,wick]of wicks.entries())near(wick.args[1],g.priceY(history[i].low));
+});
+
+test('square State candles leave profile circles and rounded profile bars unchanged',()=>{
+  const source={ticker:'QQQ',spot:100,strikes:[[100,2,3,[1,2,3,4,5]]]};
+  const candles=profile({package:'state',payload:source});
+  const lineView=profile({package:'state',payload:source,settings:{...settings,spotViewMode:'line'}});
+  const circles=result=>result.calls.filter(c=>c.method==='arc').map(c=>c.args);
+  assert.ok(circles(candles).length>0);assert.deepEqual(circles(candles),circles(lineView));
+  const bars=result=>result.calls.filter(c=>c.method==='roundRect');
+  assert.ok(bars(candles).length>0);assert.deepEqual(bars(candles),bars(lineView));
+});
+
 test('Orderflow real OHLC input is not reconstructed from positioning snapshots',()=>{
   const {geometry:g,calls}=order({records:[record(0,{spot:999}),record(1,{spot:1})]});
   assert.deepEqual(g.data.candles.map(c=>[c.open,c.high,c.low,c.close]),prices.map(c=>[c.open,c.high,c.low,c.close]));
