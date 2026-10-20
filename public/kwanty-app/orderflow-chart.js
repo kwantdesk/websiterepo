@@ -98,7 +98,8 @@ export function makeOrderflowSeries(options = {}) {
   if (instruments.length > 1) return { metric, expiry, combine, label: descriptor.label, points: [], series: [], instruments, error: 'MIXED_INSTRUMENTS' };
   const actualRecords = sorted.map(point => point.record);
   const bucketMs = settings.spotViewMode === 'candles' ? Math.max(1000,finite(settings.candleBucketMs) ?? 60000) : Math.max(0,finite(settings.candleBucketMs) ?? 0);
-  const candles = collectOrderflowCandles(actualRecords,bucketMs,settings);
+  const priceMultiplier=finite(settings.priceMultiplier)??1,priceOffset=finite(settings.priceOffset)??0;
+  const candles = Array.isArray(options.priceHistory)?options.priceHistory.map(c=>({...c,time:orderflowTimestamp(c.time??c.timestamp),open:c.open*priceMultiplier+priceOffset,high:c.high*priceMultiplier+priceOffset,low:c.low*priceMultiplier+priceOffset,close:c.close*priceMultiplier+priceOffset})).filter(c=>c.time!==null&&[c.open,c.high,c.low,c.close].every(Number.isFinite)).sort((a,b)=>a.time-b.time):collectOrderflowCandles(actualRecords,bucketMs,settings);
   if(bucketMs>=1000)sorted=bucketRecords(sorted,bucketMs);
   const combined = !!combine && !descriptor.noCombine;
   const expiries = expiry === 'both' ? [0, 1] : [expiry === 'one' ? 1 : 0];
@@ -162,7 +163,8 @@ export function makeOrderflowSeries(options = {}) {
     });
     return { ...definition, values };
   });
-  return { metric, expiry, combine: combined, label: descriptor.label, points, series, levels, candles, bucketMs, sourceObservationCount:actualRecords.length, instruments, error: null, flow: !!descriptor.flow };
+  const pricePoints=Array.isArray(options.priceLine)?options.priceLine.map(point=>({time:orderflowTimestamp(point.time??point.timestamp),spot:finite(point.spot??point.close)})).filter(point=>point.time!==null&&point.spot!==null).map(point=>({...point,spot:point.spot*multiplier+offset})).sort((a,b)=>a.time-b.time):Array.isArray(options.priceHistory)?candles.map(candle=>({time:candle.time,spot:candle.close})):points;
+  return { metric, expiry, combine: combined, label: descriptor.label, points, pricePoints, series, levels, candles, bucketMs, sourceObservationCount:actualRecords.length, instruments, error: null, flow: !!descriptor.flow };
 }
 
 function extent(values, includeZero = false) {
@@ -208,7 +210,7 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   const priceAxisVisible = options.showSpot !== false || (settings.showMajorLevels !== false && !!data.levels?.length);
   const left = Math.min(112,width*.25), right = Math.max(left + 1, width - (priceAxisVisible ? 75 : 18));
   const top = 30, bottom = Math.max(top + 1, height - 31);
-  const first = data.points[0]?.time ?? Date.now() - 60000, last = data.points.at(-1)?.time ?? first + 60000;
+  const first = data.pricePoints?.[0]?.time ?? data.points[0]?.time ?? Date.now() - 60000, last = data.pricePoints?.at(-1)?.time ?? data.points.at(-1)?.time ?? first + 60000;
   let startTime = finite(view.startTime) ?? first, endTime = finite(view.endTime) ?? last;
   if (endTime <= startTime) { startTime -= 30000; endTime += 30000; }
   const visible = data.points.filter(point => point.time >= startTime && point.time <= endTime);
@@ -218,13 +220,25 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   if (maxValue <= minValue) { minValue -= 1; maxValue += 1; }
   const candleMode = settings.spotViewMode === 'candles';
   const visibleCandles = (data.candles || []).filter(candle => candle.time >= startTime && candle.time <= endTime);
-  const spotDomain = extent([...(options.showSpot === false ? [] : candleMode ? visibleCandles.flatMap(candle=>[candle.low,candle.high]) : visible.map(point => point.spot)), ...(settings.showMajorLevels === false ? [] : (data.levels || []).flatMap(level => level.values.filter(point => point.time >= startTime && point.time <= endTime).map(point => point.value)))]);
+  const visiblePrices=(data.pricePoints||data.points).filter(point=>point.time>=startTime&&point.time<=endTime);
+  const spotDomain = extent([...(options.showSpot === false ? [] : candleMode ? visibleCandles.flatMap(candle=>[candle.low,candle.high]) : visiblePrices.map(point => point.spot)), ...(settings.showMajorLevels === false ? [] : (data.levels || []).flatMap(level => level.values.filter(point => point.time >= startTime && point.time <= endTime).map(point => point.value)))]);
+  if(finite(view.minSpot)!==null&&finite(view.maxSpot)!==null&&view.maxSpot>view.minSpot){spotDomain[0]=view.minSpot;spotDomain[1]=view.maxSpot;}
   const timeX = time => left + (time - startTime) / (endTime - startTime) * (right - left);
   const valueY = value => bottom - (value - minValue) / (maxValue - minValue) * (bottom - top);
   const spotY = value => bottom - (value - spotDomain[0]) / (spotDomain[1] - spotDomain[0]) * (bottom - top);
   const xTime = x => startTime + (x - left) / (right - left) * (endTime - startTime);
+  const externalPrices=Array.isArray(options.priceLine)||Array.isArray(options.priceHistory),hoverPrices=Array.isArray(options.priceLine)?data.pricePoints:Array.isArray(options.priceHistory)?data.candles.map(candle=>({time:candle.time,spot:candle.close})):[];
+  const nearestIndex=(points,target)=>{if(!points.length)return -1;let low=0,high=points.length-1;while(low<high){const middle=Math.floor((low+high)/2);if(points[middle].time<target)low=middle+1;else high=middle;}if(low>0&&Math.abs(points[low-1].time-target)<=Math.abs(points[low].time-target))low--;return low;};
   const hitTest = position => {
     const target = typeof position === 'number' ? position : finite(position?.time) ?? xTime(position?.x ?? left);
+    if(externalPrices){
+      if(!Number.isFinite(target)||target<startTime||target>endTime)return null;
+      const priceIndex=nearestIndex(hoverPrices,target);if(priceIndex<0)return null;const pricePoint=hoverPrices[priceIndex];
+      const tolerance=Math.max(1000,data.bucketMs||60000),candidate=nearestIndex(data.points,pricePoint.time),metricIndex=candidate>=0&&Math.abs(data.points[candidate].time-pricePoint.time)<=tolerance?candidate:-1;
+      let candleIndex=nearestIndex(data.candles,pricePoint.time);if(candleIndex>=0&&data.candles[candleIndex].time>pricePoint.time)candleIndex--;
+      const candle=candleIndex>=0&&pricePoint.time<data.candles[candleIndex].time+tolerance?data.candles[candleIndex]:null;
+      return {time:pricePoint.time,spot:pricePoint.spot,pricePoint,candle,index:metricIndex,record:metricIndex>=0?data.points[metricIndex].record:null,series:data.series.map(series=>({id:series.id,label:series.label,...(metricIndex>=0?series.values[metricIndex]:{time:pricePoint.time,raw:null,value:null})}))};
+    }
     if (!data.points.length || target < startTime || target > endTime) return null;
     let low = 0, high = data.points.length - 1;
     while (low < high) { const middle = Math.floor((low + high) / 2); if (data.points[middle].time < target) low = middle + 1; else high = middle; }
@@ -298,8 +312,8 @@ export function renderOrderflow(ctx, width, height, options = {}) {
       const color=settings.candleColorMode==='metric'&&metricColor?metricColor:up?settings.candleUp?.color||themePaint("#0086E9"):settings.candleDown?.color||themePaint("#504B4B");
       ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,spotY(candle.high));ctx.lineTo(x,spotY(candle.low));ctx.stroke();ctx.fillStyle=color;ctx.fillRect(x-halfWidth,Math.min(spotY(candle.open),spotY(candle.close)),halfWidth*2,Math.max(1,Math.abs(spotY(candle.close)-spotY(candle.open))));
     }
-    else {ctx.strokeStyle = spotColor; ctx.lineWidth = 1; pathLine(ctx, data.points.map(point => ({ time: point.time, value: point.spot })), timeX, spotY);}
-    const observed = visible.filter(point => point.spot !== null);
+    else {ctx.strokeStyle = spotColor; ctx.lineWidth = 1; pathLine(ctx, (data.pricePoints||data.points).map(point => ({ time: point.time, value: point.spot })), timeX, spotY);}
+    const observed = visiblePrices.filter(point => point.spot !== null);
     if (!candleMode && observed.length === 1) { ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(timeX(observed[0].time), spotY(observed[0].spot), 2, 0, Math.PI * 2); ctx.fill(); }
   }
   const hovered = options.hover && settings.showCrosshairs !== false ? hitTest(options.hover) : null;
@@ -312,7 +326,7 @@ export function renderOrderflow(ctx, width, height, options = {}) {
     if(priceAxisVisible)badge((spotDomain[0]+(bottom-hoverY)/(bottom-top)*(spotDomain[1]-spotDomain[0])).toFixed(2),right+2,hoverY,'left');
     badge(clock.format(new Date(xTime(hoverX))),hoverX,height-12,'center');
   }
-  if (!data.points.length) { ctx.textAlign = 'center'; ctx.fillStyle = settings.lightMode ? themePaint("#555555") : themePaint("#aaaaaa"); ctx.fillText(data.error === 'MIXED_INSTRUMENTS' ? 'Mixed instruments: choose one ticker' : 'No licensed Orderflow observations available', (left + right) / 2, (top + bottom) / 2); }
+  if (!data.points.length&&!visiblePrices.length) { ctx.textAlign = 'center'; ctx.fillStyle = settings.lightMode ? themePaint("#555555") : themePaint("#aaaaaa"); ctx.fillText(data.error === 'MIXED_INSTRUMENTS' ? 'Mixed instruments: choose one ticker' : 'No Orderflow observations available', (left + right) / 2, (top + bottom) / 2); }
   ctx.restore();
   return { left, right, top, bottom, startTime, endTime, minValue, maxValue, spotDomain, priceTicks, priceAxisVisible, timeX, xTime, valueY, spotY, hitTest, data };
 }

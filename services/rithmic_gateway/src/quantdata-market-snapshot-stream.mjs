@@ -27,7 +27,7 @@ function newYorkSession(timestamp = Date.now()) {
   };
 }
 
-function quote(symbol, lastPrice, referencePrice, timestamp = Date.now()) {
+function quote(symbol, lastPrice, referencePrice, timestamp = Date.now(), candle = null) {
   const session = newYorkSession(timestamp);
   const openPrice = finitePrice(referencePrice) ?? lastPrice;
   const change = lastPrice - openPrice;
@@ -42,6 +42,7 @@ function quote(symbol, lastPrice, referencePrice, timestamp = Date.now()) {
     delayed: false,
     provider: "QuantData",
     sessionDate: session.date,
+    ...(candle ? { candle: { ...candle } } : {}),
   };
 }
 
@@ -58,10 +59,23 @@ function parseLatestCandle(payload) {
   const latest = valid.at(-1);
   const lastPrice = finitePrice(latest.row.closePrice ?? latest.row.lastPrice);
   if (lastPrice === null) return null;
+  // Preserve actual provider minute OHLC for shared chart consumers. A market
+  // map quote or a malformed/partial row is NOT a candle. This adds no request,
+  // changes no quote cadence, and leaves the existing lastPrice contract intact.
+  const open = finitePrice(latest.row.openPrice ?? latest.row.open);
+  const high = finitePrice(latest.row.highPrice ?? latest.row.high);
+  const low = finitePrice(latest.row.lowPrice ?? latest.row.low);
+  const close = finitePrice(latest.row.closePrice ?? latest.row.close);
+  const candle = latest.timestamp >= 1e11 && latest.timestamp % 60_000 === 0
+    && [open, high, low, close].every(value => value !== null)
+    && high >= Math.max(open, close) && low <= Math.min(open, close) && high >= low
+    ? { time: latest.timestamp, open, high, low, close }
+    : null;
   return {
     lastPrice,
     openPrice: finitePrice(first.row.openPrice) ?? lastPrice,
     timestamp: latest.timestamp,
+    ...(candle ? { candle } : {}),
   };
 }
 
@@ -203,9 +217,9 @@ export class QuantDataMarketSnapshotStream extends EventEmitter {
     });
     const candle = parseLatestCandle(payload);
     if (!candle) return false;
-    this.#store(quote(symbol, candle.lastPrice, candle.openPrice, candle.timestamp));
+    this.#store(quote(symbol, candle.lastPrice, candle.openPrice, candle.timestamp, candle.candle));
     if (symbol === "SPX") {
-      this.#store(quote("SPXW", candle.lastPrice, candle.openPrice, candle.timestamp));
+      this.#store(quote("SPXW", candle.lastPrice, candle.openPrice, candle.timestamp, candle.candle));
     }
     return true;
   }

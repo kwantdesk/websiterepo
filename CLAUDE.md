@@ -1,5 +1,22 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — KWANTY genuine underlying candles and chart interaction
+
+- Classic, State and Orderflow now share genuine underlying OHLC history and
+  the account-scoped existing live stream, independently of positioning snapshots.
+  Candles/Line toolbar, real OHLC tooltips, time pan/zoom, independent Orderflow
+  price-axis scaling and reset are covered. Embedded chart-grid tools share it.
+- Never manufacture OHLC from sparse positioning spots or quote-only seeds.
+  Quote-only feeds repair authoritative OHLC at shared minute boundaries; live
+  quotes can update the line and existing source bars. Bounded caches/subscriptions.
+- Gateway optional upstream OHLC forwarding is prepared/tested but requires a
+  separately coordinated runtime activation; this change does not restart the
+  owner's shared temporary Rithmic gateway. No new Vercel streaming/poll fan-out.
+- 175 focused tests and recorded-session browser interactions verified. Full
+  live/reference parity is NOT certified: reference was market-closed and full
+  positioning history remains independently source-dependent.
+- Evidence/checklist: docs/prompt-log/2026-10-20-kwanty-price-parity.md.
+
 ## 2026-10-20 — Delete retired KWANTY snapshot banner
 
 - Owner still saw the snapshot/no-full-history/no-invented-curve banner.

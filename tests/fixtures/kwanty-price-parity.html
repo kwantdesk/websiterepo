@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><title>KWANTY recorded price interaction QA</title><style>html,body{height:100%;margin:0;background:#080b12;color:#fff;font:14px Arial}header{height:48px;display:flex;align-items:center;padding:0 14px;gap:12px}iframe{height:calc(100% - 48px);width:100%;border:0}button{color:#fff;background:#192234;border:1px solid #34435c;padding:6px}</style></head><body><header>Recorded NDX session · interaction QA, not live <button id="print">Replay last price update</button><output id="calls"></output></header><iframe title="KWANTY actual application" src="/kwanty-app/index.html?v=4#classic"></iframe><script>
+const values=new Map(),listeners=new Set();let reads=0;
+const palette={background:'#080b12',panel:'#101725',surface:'#192234',foreground:'#e8edf5',muted:'#8997b0',border:'#34435c',primary:'#65caff',accent:'#8e9cff',danger:'#ff627d',warning:'#ffce65',bullish:'#65caff',bearish:'#dd758d'};
+values.set('kwanty:v1',JSON.stringify({schemaVersion:2,ticker:'NDX'}));
+const snapshot={ticker:'NDX',timestamp:1792439999,spot:29518.92,strikes:[[29400,-100,20,[5,10,15,20,25]],[29500,30,12,[1,2,3,4,5]],[29600,70,15,[2,4,6,8,10]]],zero_gamma:29530,major_pos_vol:29600,major_neg_vol:29400,z_ngamma:123,o_ngamma:50,z_nconvex:42,o_nconvex:12};
+window.__kwantyHost={active:true,read:key=>values.get(key)||null,write:(key,value)=>values.set(key,value),theme:()=>palette,timezone:()=> 'America/New_York',snapshot:()=>Object.fromEntries(values),restore:next=>Object.entries(next).forEach(([k,v])=>values.set(k,v)),
+priceHistory:async()=>{document.querySelector('#calls').textContent='History reads '+(++reads);const p=await(await fetch('/recorded-history')).json();return p.candles;},
+subscribePrice:(ticker,listener)=>{listeners.add(listener);return()=>listeners.delete(listener);},
+request:async url=>new Response(JSON.stringify(url.includes('/catalog')?{tickers:['NDX','QQQ','SPX']}:url.includes('/status')?{authenticated:true}: {data:{...snapshot},providerAsOf:'2026-10-19T20:00:00Z',fetchedAt:'2026-10-19T20:00:01Z'}),{headers:{'Content-Type':'application/json'}})};
+document.querySelector('#print').onclick=()=>listeners.forEach(listener=>listener({symbol:'NDX',timestamp:1792439999000,lastPrice:29523.78}));
+</script></body></html>

@@ -8,6 +8,8 @@ export type MarketIndexLiveSnapshot = {
   marketOpen: boolean;
   delayed?: boolean;
   provider?: string;
+  /** Authoritative latest one-minute OHLC, when supplied by the source. */
+  candle?: { time: number; open: number; high: number; low: number; close: number };
 };
 
 type SnapshotListener = (snapshot: MarketIndexLiveSnapshot) => void;
@@ -23,7 +25,7 @@ let indexEventSource: EventSource | null = null;
 let indexEventSourceKey = "";
 let streamConnected = false;
 const lastStreamFrameAt = new Map<string, number>();
-export type MarketIndexFrameIdentity = Pick<MarketIndexLiveSnapshot, "timestamp" | "lastPrice">;
+export type MarketIndexFrameIdentity = Pick<MarketIndexLiveSnapshot, "timestamp" | "lastPrice" | "candle">;
 // Keep the complete retained frame, not only its ordering identity. A chart
 // pane can remount while sibling panes keep this shared stream alive (manual
 // refresh does exactly that). The upstream quite correctly deduplicates an
@@ -77,8 +79,8 @@ function schedulePoll(delay: number) {
 /**
  * Cash-index providers can publish several genuine price changes inside one
  * minute while keeping the bar's minute timestamp. Reject only an older frame
- * or an exact timestamp/price duplicate; treating every equal timestamp as a
- * duplicate froze SPX and NDX between minute boundaries.
+ * or an exact timestamp/price/OHLC duplicate; a changed source wick is genuine
+ * new evidence even when the latest close returned to the same price.
  */
 export function shouldAcceptMarketIndexFrame(
   previous: MarketIndexFrameIdentity | null | undefined,
@@ -86,7 +88,13 @@ export function shouldAcceptMarketIndexFrame(
 ) {
   if (!previous) return true;
   if (next.timestamp < previous.timestamp) return false;
-  return next.timestamp !== previous.timestamp || next.lastPrice !== previous.lastPrice;
+  if (next.timestamp !== previous.timestamp || next.lastPrice !== previous.lastPrice) return true;
+  const candle = next.candle, before = previous.candle;
+  if (!candle || !Number.isFinite(candle.time) || candle.time < 1e11 || candle.time % 60_000 !== 0
+    || ![candle.open, candle.high, candle.low, candle.close].every(value => Number.isFinite(value) && value > 0)
+    || candle.high < Math.max(candle.open, candle.close) || candle.low > Math.min(candle.open, candle.close)
+    || before && candle.time < before.time) return false;
+  return !before || (["time", "open", "high", "low", "close"] as const).some(key => candle[key] !== before[key]);
 }
 
 function deliverSnapshot(snapshot: MarketIndexLiveSnapshot, streamed = false) {

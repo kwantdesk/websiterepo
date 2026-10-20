@@ -70,6 +70,42 @@ test("index candles publish SPX and its SPXW cash alias without another request"
   assert.equal(stream.snapshot("SPX").lastPrice, 6411.5);
   assert.equal(stream.snapshot("SPXW").lastPrice, 6411.5);
   assert.equal(stream.snapshot("SPX").openPrice, 6400);
+  assert.deepEqual(stream.snapshot("SPX").candle, {
+    time: 1786455060000, open: 6405, high: 6412, low: 6404, close: 6411.5,
+  });
+  assert.deepEqual(stream.snapshot("SPXW").candle, stream.snapshot("SPX").candle);
+});
+
+test("sampled market-map quotes never invent OHLC", async () => {
+  const stream = new QuantDataMarketSnapshotStream({apiKey: "qd-test", equitySymbols: ["QQQ"]},
+    async () => jsonResponse({data: {QQQ: {currentValue: 500, previousValue: 495}}}));
+  await stream.pollNow();
+  assert.equal(stream.snapshot("QQQ").lastPrice, 500);
+  assert.equal(stream.snapshot("QQQ").candle, undefined);
+});
+
+test("malformed or missing source OHLC keeps quote semantics without forwarding fake candles", async () => {
+  for (const row of [
+    {openPrice: 100, closePrice: 101},
+    {openPrice: 100, highPrice: 99, lowPrice: 98, closePrice: 101},
+    {openPrice: 100, highPrice: 102, lowPrice: 101, closePrice: 101},
+  ]) {
+    const stream = new QuantDataMarketSnapshotStream({apiKey: "qd-test", indexSymbols: ["NDX"], requestSpacingMs: 1},
+      async () => jsonResponse({data: {"1786455000000": row}}));
+    await stream.pollNow();
+    assert.equal(stream.snapshot("NDX").lastPrice, 101);
+    assert.equal(stream.snapshot("NDX").candle, undefined);
+  }
+});
+
+test("older source responses cannot rewind quote or actual candle", async () => {
+  let nextTime = 1786455060000;
+  const stream = new QuantDataMarketSnapshotStream({apiKey: "qd-test", indexSymbols: ["NDX"], indexPollMs: 1, requestSpacingMs: 1},
+    async () => jsonResponse({data: {[nextTime]: {openPrice: 100, highPrice: 102, lowPrice: 99, closePrice: 101}}}));
+  await stream.pollNow(); nextTime -= 60_000;
+  await new Promise(resolve => setTimeout(resolve, 2)); await stream.pollNow();
+  assert.equal(stream.snapshot("NDX").timestamp, 1786455060000);
+  assert.equal(stream.snapshot("NDX").candle.time, 1786455060000);
 });
 
 test("cash indices rotate independently so a first symbol cannot starve the next", async () => {

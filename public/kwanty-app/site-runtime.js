@@ -6,6 +6,8 @@ export const botStorage={getItem:key=>host?.read(String(key))??null,setItem:(key
 export const botFetch=(url,options)=>{if(!host)throw Error('Open KWANTY in your workspace.');return host.request(url,options);};
 export const botTimeZone=()=>host?.timezone()||'America/New_York';
 export const botTheme=()=>host?.theme()||{};
+export const botPriceHistory=(symbol,date)=>host?.priceHistory?host.priceHistory(symbol,date):Promise.reject(Error('Price history unavailable.'));
+export const botSubscribePrice=(symbol,listener,onError)=>host?.subscribePrice?host.subscribePrice(symbol,listener,onError):()=>{};
 if(typeof window!=='undefined'&&host){
  window.__kwantSelectPreferences=createSelectPreferences(botStorage);
  window.__kwantyActive=host.active;await installTheme(host.theme());

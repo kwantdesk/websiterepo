@@ -5,9 +5,10 @@ import {usePathname,useRouter,useSearchParams} from "next/navigation";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { loadStoredChartSettings } from "@/lib/chartSettings";
+import { acquireKwantyPrices, type KwantyPriceHost } from "@/lib/kwantyPriceBridge";
 
 const STORAGE_KEY = "kwantdesk:kwanty:workspace:v1";
-type BotSiteHost = {
+type BotSiteHost = KwantyPriceHost & {
   active: boolean;
   read: (key: string) => string | null;
   write: (key: string, value: string | null) => void;
@@ -39,6 +40,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
   useEffect(() => {
     if (!accountKey) return;
     let disposed = false;
+    const prices = acquireKwantyPrices(accountKey);
     const controllers = new Set<AbortController>();
     const pending = new Map<string, Promise<{ text: string; status: number; headers: [string, string][]; until: number }>>();
     const cache = new Map<string, { text: string; status: number; headers: [string, string][]; until: number }>();
@@ -49,6 +51,8 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
       catch { return {}; }
     };
     const host: BotSiteHost = {
+      priceHistory: prices.priceHistory,
+      subscribePrice: prices.subscribePrice,
       active: activeRef.current,
       timezone: () => loadStoredChartSettings().timezone,
       read: key => readValues()[key] ?? null,
@@ -123,7 +127,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
     const observer = new MutationObserver(themeChanged);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
     return () => {
-      disposed = true; setReady(false); controllers.forEach(controller => controller.abort());
+      disposed = true; prices.release(); setReady(false); controllers.forEach(controller => controller.abort());
       waiting.splice(0).forEach(resolve => resolve()); cache.clear(); pending.clear(); observer.disconnect();
       window.removeEventListener("kwantdesk:theme-change", themeChanged);
       window.removeEventListener("olisa-theme-change", themeChanged);
@@ -138,7 +142,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("botView"); params.delete("botView"); params.delete("view"); params.set("v", "3");
+  const requestedTool = params.get("botView"); params.delete("botView"); params.delete("view"); params.set("v", "4");
   const src = `/kwanty-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#${requestedTool}` : "#orderflow"}`;
   return <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background" aria-label="KWANTY workspace">
     <div className="flex min-h-0 flex-1">

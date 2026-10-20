@@ -7,10 +7,11 @@ import { loadStoredChartSettings } from "@/lib/chartSettings";
 import { acquireOptionsFlowRequests } from "@/lib/optionsFlowRequests";
 import { normalizeOptionsFlowState, optionsFlowTool, optionsFlowInitialSymbol, type OptionsFlowPanelKind, type OptionsFlowState } from "@/lib/optionsFlowTools";
 import KwantLoader from "@/components/KwantLoader";
+import { acquireKwantyPrices, type KwantyPriceHost } from "@/lib/kwantyPriceBridge";
 
 const BoxTool = dynamic(() => import("@/components/gexbot/GexBoxDashboard").then(module => module.GexBoxToolPanel), { ssr: false });
 const Calendar = dynamic(() => import("@/components/news/OptionsExpirationCalendar"), { ssr: false, loading: () => null });
-type ToolHost = {
+type ToolHost = Partial<KwantyPriceHost> & {
   active: boolean; read(key: string): string | null; write(key: string, value: string | null): void;
   theme(): Record<string, string>; timezone(): string; instruments(): Array<[string, string]>;
   request(url: string, options?: RequestInit): Promise<Response>;
@@ -52,6 +53,7 @@ function ToolFrame({ tool, panelId, accountKey, instrument, state, onChange, onA
   useEffect(() => {
     if (!accountKey) return;
     const requests = acquireOptionsFlowRequests(accountKey);
+    const prices = tool.source === "kwanty" ? acquireKwantyPrices(accountKey) : null;
     const prefix = tool.source === "kwanty" ? "kwanty" : "gex-data";
     let closed = false;
     const save = (next: OptionsFlowState) => {
@@ -60,6 +62,7 @@ function ToolFrame({ tool, panelId, accountKey, instrument, state, onChange, onA
       values.current = next; change.current(next);
     };
     const host: ToolHost = {
+      ...(prices ? { priceHistory: prices.priceHistory, subscribePrice: prices.subscribePrice } : {}),
       active: activeRef.current,
       read: key => values.current[key] ?? null,
       write: (key, value) => {
@@ -95,7 +98,7 @@ function ToolFrame({ tool, panelId, accountKey, instrument, state, onChange, onA
     return () => {
       closed = true; host.active = false;
       frame.current?.contentWindow?.postMessage({ type: `${prefix}-site-activity`, active: false }, location.origin);
-      delete registry[hostId]; requests.release(); observer.disconnect(); window.removeEventListener("olisa-theme-change", themeChanged);
+      delete registry[hostId]; requests.release(); prices?.release(); observer.disconnect(); window.removeEventListener("olisa-theme-change", themeChanged);
     };
   }, [accountKey, hostId, tool.source]);
   const sendActivity = () => {
@@ -105,7 +108,7 @@ function ToolFrame({ tool, panelId, accountKey, instrument, state, onChange, onA
   useEffect(sendActivity, [active, hostId, tool.source]);
   const source = tool.source;
   const symbol = optionsFlowInitialSymbol(instrument, MARKET_INDEX_DEFINITIONS.map(item => item.symbol));
-  const params = new URLSearchParams({ hostId, instance: "panel", v: source === "kwanty" ? "5" : "4", ...(source === "gex-data" ? { embed: "1", c_ticker: symbol } : { ticker: symbol }) });
+  const params = new URLSearchParams({ hostId, instance: "panel", v: source === "kwanty" ? "6" : "4", ...(source === "gex-data" ? { embed: "1", c_ticker: symbol } : { ticker: symbol }) });
   const src = source === "gex-data" ? `/gex-data-app/index.html?${params}#tool=${tool.toolId}` : `/kwanty-app/index.html?${params}#${tool.toolId}`;
   return <div className="h-full min-h-0 w-full overflow-hidden bg-background" data-options-flow-panel={panelId}>
     {ready ? <iframe key={generation} ref={frame} src={src} title={`${tool.description.split(" · ")[0]} · ${tool.label}`} className="h-full w-full border-0" onLoad={sendActivity} allow="fullscreen" />

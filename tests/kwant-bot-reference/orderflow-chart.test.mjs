@@ -112,7 +112,7 @@ test('viewport is kept when observations grow; empty render remains explicit', (
   const b = renderOrderflow(mockCanvas(), 800, 300, { records: [sample(base), sample(base + 60)], view });
   assert.equal(a.startTime, b.startTime); assert.equal(a.endTime, b.endTime);
   const empty = mockCanvas(); renderOrderflow(empty, 800, 300);
-  assert.ok(empty.calls.some(call => call[0] === 'fillText' && /No licensed/.test(call[1])));
+  assert.ok(empty.calls.some(call => call[0] === 'fillText' && /No Orderflow observations/.test(call[1])));
 });
 test('pixel hover selects second timestamp and crosshair uses its plotted coordinate', () => {
   const records = [sample(base), sample(base + 60)], ctx = mockCanvas();
