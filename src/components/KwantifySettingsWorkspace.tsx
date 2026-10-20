@@ -49,6 +49,7 @@ import {
 import { cacheProfileIdentity, readProfileIdentityCache, subscribeProfileIdentity } from "@/lib/profileIdentityCache";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import { themePresets } from "@/lib/themePresets";
+import { CUSTOM_THEMES_KEY, CUSTOM_THEMES_EVENT, customThemeAppearance, readCustomThemes, saveCustomTheme, type CustomTheme } from "@/lib/customThemes";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type SettingsTab =
@@ -272,6 +273,23 @@ export default function SettingsPage() {
     return readStoredTheme();
   });
   const [chartSettings, setChartSettings] = useState<ChartSettings>(() => loadStoredChartSettings());
+  const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
+  const [newThemeOpen, setNewThemeOpen] = useState(false);
+  const [newThemeName, setNewThemeName] = useState("");
+  const [customThemeMessage, setCustomThemeMessage] = useState("");
+  useEffect(() => {
+    const sync = () => setCustomThemes(readCustomThemes().themes);
+    const storage = (event: StorageEvent) => { if (event.key === CUSTOM_THEMES_KEY || event.key === null) sync(); };
+    sync();
+    window.addEventListener(CUSTOM_THEMES_EVENT, sync);
+    window.addEventListener("kwantdesk:preferences-hydrated", sync);
+    window.addEventListener("storage", storage);
+    return () => {
+      window.removeEventListener(CUSTOM_THEMES_EVENT, sync);
+      window.removeEventListener("kwantdesk:preferences-hydrated", sync);
+      window.removeEventListener("storage", storage);
+    };
+  }, []);
   // Keep the latest committed pair available inside rapid pointer/preset
   // interactions. React state does not update until the handler returns, so
   // deriving the next palette from a render closure could drop the immediately
@@ -689,6 +707,15 @@ export default function SettingsPage() {
     commitAppearance(theme, nextChartSettings);
   }
 
+  function saveNewTheme() {
+    const result = saveCustomTheme(newThemeName, themeSettingsRef.current, chartSettingsRef.current);
+    if (!result.ok) { setCustomThemeMessage(result.error); return; }
+    setCustomThemes(result.themes);
+    setNewThemeOpen(false);
+    setNewThemeName("");
+    setCustomThemeMessage(`Saved “${result.theme.name}” to My Themes.`);
+  }
+
   async function saveThemeSettings() {
     const linkedChartSettings = { ...chartSettingsRef.current, themeLinked: true };
     const syncedTheme = mergeChartSettingsIntoTheme(themeSettingsRef.current, linkedChartSettings);
@@ -975,6 +1002,19 @@ export default function SettingsPage() {
                     </button>
                   ))}
                 </div>
+                {customThemes.length > 0 && <div className="mt-6 border-t border-border pt-5">
+                  <h3 className={sectionTitle}>My Themes</h3>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {customThemes.map(preset => <button key={preset.id} type="button"
+                      onClick={() => { const next = customThemeAppearance(preset, chartSettingsRef.current); commitAppearance(next.colors, next.chartSettings); }}
+                      className="rounded-2xl border border-border bg-surface/40 p-4 text-left transition hover:border-primary/50">
+                      <div className="mb-3 flex overflow-hidden rounded-lg border border-border" aria-hidden="true">
+                        {[preset.colors.background, preset.colors.panel, preset.chartColors.upColor, preset.chartColors.downColor, preset.colors.primary].map((color, index) => <span key={index} className="h-6 flex-1" style={{ backgroundColor: color }} />)}
+                      </div>
+                      <div className="break-words text-[13px] font-medium">{preset.name}</div>
+                    </button>)}
+                  </div>
+                </div>}
               </section>
 
               <section className="rounded-2xl border border-border bg-panel p-6">
@@ -992,6 +1032,18 @@ export default function SettingsPage() {
                 <div className="mt-5 flex items-center justify-between rounded-xl border border-border bg-surface/40 px-4 py-3 text-[13px]">
                   <span className="text-muted">Show grid lines</span>
                   <Toggle checked={chartSettings.gridLines} onChange={() => commitChartPreference({ ...chartSettingsRef.current, gridLines: !chartSettingsRef.current.gridLines })} />
+                </div>
+                <div className="mt-5 border-t border-border pt-4">
+                  {newThemeOpen ? <form className="space-y-3" onSubmit={event => { event.preventDefault(); saveNewTheme(); }}>
+                    <label className="block text-[12px] text-muted">Theme name
+                      <input autoFocus maxLength={60} value={newThemeName} onChange={event => setNewThemeName(event.target.value)} placeholder="Name your theme" className={`${input} mt-2`} />
+                    </label>
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={!newThemeName.trim()} className="rounded-xl bg-primary px-5 py-2.5 text-[12px] font-semibold text-on-primary disabled:opacity-40">Save theme</button>
+                      <button type="button" onClick={() => { setNewThemeOpen(false); setCustomThemeMessage(""); }} className={secondaryButton}>Cancel</button>
+                    </div>
+                  </form> : <button type="button" onClick={() => { setNewThemeOpen(true); setCustomThemeMessage(""); }} className="rounded-xl border border-primary/35 bg-primary/10 px-5 py-2.5 text-[12px] font-semibold text-primary">Save as New Theme</button>}
+                  {customThemeMessage && <p role="status" className="mt-3 text-[12px] text-foreground">{customThemeMessage}</p>}
                 </div>
               </section>
 

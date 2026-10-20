@@ -10,6 +10,7 @@ const ACTIVE_PREFERENCES_OWNER_KEY = "kwantdesk:active-preferences-owner:v1";
 const SOCIAL_OBJECTS_TABLE = "social_objects";
 const SOCIAL_PREFERENCES_ID = "account-preferences";
 const ACCOUNT_TEMPLATE_STORAGE_KEYS = [
+  "kwantdesk:custom-themes:v1",
   "kwantdesk:indicator-templates:v1",
   "kwantdesk:footprint:templates:v1",
   "kwantdesk:tpo-user-presets:v1",
@@ -17,6 +18,7 @@ const ACCOUNT_TEMPLATE_STORAGE_KEYS = [
 ] as const;
 
 const TRACKED_STORAGE_KEYS = new Set([
+  "kwantdesk:custom-themes:v1",
   "olisa-theme",
   "olisa-chart-settings",
   "kwantdesk:chart-workspace-settings:v1",
@@ -439,6 +441,15 @@ export async function hydrateUserPreferences(
         "olisa-theme": themeAtHydrationStart,
       },
     };
+  }
+
+  // Naming a theme while the account snapshot is in flight is also a user
+  // decision. Preserve that new library, but never import another owner's.
+  const libraryKey = "kwantdesk:custom-themes:v1";
+  if ((localPreferencesBelongToUser || (!activePreferenceOwner && !legacyPreferenceOwner))
+    && latest.values[libraryKey] && latest.values[libraryKey] !== current.values[libraryKey]) {
+    selected = { ...selected, updatedAt: latest.updatedAt,
+      values: { ...selected.values, [libraryKey]: latest.values[libraryKey] } };
   }
 
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
