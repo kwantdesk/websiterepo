@@ -58,6 +58,7 @@ function LiquidityMapWorkspace({
   const stylesReadyRef = useRef(false);
   const marketFrameReadyRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [replayStatus, setReplayStatus] = useState<{ state: string; detail: string } | null>(null);
   const lastReplayPostAtRef = useRef(0);
   const replayPostTimerRef = useRef<number | null>(null);
@@ -183,6 +184,10 @@ function LiquidityMapWorkspace({
     const handleMapReady = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type === "kwantdesk:liquidity-map-inspector") {
+        setInspectorOpen(event.data.open === true);
+        return;
+      }
       if (event.data?.type === "kwantdesk:liquidity-map-plot") {
         const { left, top, width, height } = event.data as Record<string, unknown>;
         if ([left, top, width, height].every((value) => typeof value === "number" && Number.isFinite(value))) {
@@ -332,7 +337,7 @@ function LiquidityMapWorkspace({
       <iframe
         ref={iframeRef}
         className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
-        src="/heatmap-app/index.html?v=20261020-shared-trading"
+        src="/heatmap-app/index.html?v=20261020-centered-settings"
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
           iframeRef.current?.contentDocument?.documentElement.setAttribute(
@@ -340,13 +345,14 @@ function LiquidityMapWorkspace({
             "true",
           );
           stylesReadyRef.current = false;
+          setInspectorOpen(false);
           marketFrameReadyRef.current = false;
           syncReadyState();
           syncTheme();
           syncPerformancePriority();
         }}
       />
-      {trading ? <LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /> : null}
+      {trading ? <div className={inspectorOpen ? "hidden" : undefined}><LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active && !inspectorOpen} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /></div> : null}
       {watermark ? (
         /*
           * The same mark the charts carry, on the same sizing rules.

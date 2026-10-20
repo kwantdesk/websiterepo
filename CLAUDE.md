@@ -1,5 +1,22 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Centred LIQ MAP settings
+
+- LIQ MAP Display/settings (also Depth/Signals/CVD settings) uses a native centred
+  dialog, not the old right-anchored inspector. Keep the same mounted controls,
+  theme panel/border/text, 35% unblurred backdrop and unchanged live chart geometry.
+- Dialog is viewport-bounded with scrolling and a sticky title/close row. Native
+  focus containment is retained; ×, backdrop and Escape dismiss. Escape dismisses
+  an expanded custom dropdown before the dialog. Chart shortcuts must not execute
+  while dialog focus is active.
+- Parent validates inspector state messages and hides/deactivates injected trade
+  handles while settings is open. Trading bridge stays mounted so genuine quote
+  processing continues; do not add another feed or reset market history on open.
+- 64 focused map/paper tests, scoped lint and TypeScript pass. Browser fixture
+  verified exact centring (620×672 at 330,24 in 1280×720), chart size unchanged,
+  Escape dismissal and outside click. Release details:
+  `docs/prompt-log/2026-10-20-liquidity-map-centered-settings.md`.
+
 ## 2026-10-20 — LIQ MAP shares the normal-chart trading ledger
 
 - Standalone and embedded LIQ MAP expose the existing side order ticket, filled

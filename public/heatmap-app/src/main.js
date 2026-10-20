@@ -1,4 +1,5 @@
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
+import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261017-aleph-font';
 import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261017-aleph-font';
@@ -244,11 +245,14 @@ class DepthForgeApp {
       this.requestRender();
     }));
 
-    $('panelCollapse').addEventListener('click', () => {
-      const hidden = !$('inspector').classList.toggle('open');
-      $('panelCollapse').textContent = hidden ? '‹' : '›';
-      setTimeout(() => this.requestRender(), 170);
+    this.inspectorDialog = createInspectorDialog({
+      dialog: $('inspector'), title: $('inspectorTitle'),
+      onChange: open => {
+        if (!open) all('[data-panel-shortcut]').forEach(button => button.classList.remove('active'));
+        if (window.parent !== window) window.parent.postMessage({ type: 'kwantdesk:liquidity-map-inspector', open }, window.location.origin);
+      },
     });
+    $('panelCollapse').addEventListener('click', () => this.inspectorDialog.close());
 
     all('[data-panel-shortcut]').forEach(button => button.addEventListener('click', () => this.#openPanel(button.dataset.panelShortcut)));
     $('settingsButton').addEventListener('click', () => this.#openPanel('settings'));
@@ -432,8 +436,7 @@ class DepthForgeApp {
       const inspector = $('inspector');
       if (!inspector.classList.contains('open')) return;
       if (event.target.closest('#inspector, [data-panel-shortcut], #settingsButton, #cvdSettingsButton')) return;
-      inspector.classList.remove('open');
-      all('[data-panel-shortcut]').forEach(button => button.classList.remove('active'));
+      this.inspectorDialog.close();
     });
 
     $('helpButton').addEventListener('click', () => $('helpModal').showModal());
@@ -983,15 +986,11 @@ class DepthForgeApp {
   }
 
   #openPanel(panel) {
-    $('inspector').classList.add('open');
-    if (document.querySelector('.workspace').classList.contains('panel-hidden')) {
-      document.querySelector('.workspace').classList.remove('panel-hidden');
-      $('panelCollapse').textContent = '›';
-      setTimeout(() => this.requestRender(), 170);
-    }
     const mapping = { depth: 'depthPanel', signals: 'signalsPanel', settings: 'settingsPanel' };
+    if (!mapping[panel]) return;
     all('[data-panel-shortcut]').forEach(button => button.classList.toggle('active', button.dataset.panelShortcut === panel));
     all('.inspector-panel').forEach(candidate => candidate.classList.toggle('active', candidate.id === mapping[panel]));
+    this.inspectorDialog.open({ depth: 'Market depth', signals: 'Order flow settings', settings: 'Liquidity Map settings' }[panel]);
     this.#updateUi(false);
   }
 
@@ -2345,6 +2344,8 @@ class DepthForgeApp {
   }
 
   #keyDown(event) {
+    // Native dialog owns focus/Tab/Escape; map shortcuts must not fire behind it.
+    if ($('inspector').open) return;
     if (event.key === 'Escape' && this.tradingIntent?.armed) {
       window.parent.postMessage({ type: 'kwantdesk:liquidity-map-order-pick', symbol: this.symbol,
         scope: this.tradingIntent.scope, cancel: true }, window.location.origin);

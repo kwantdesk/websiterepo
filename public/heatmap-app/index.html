@@ -143,8 +143,8 @@
   >
   <link
     rel="stylesheet"
-    href="/heatmap-app/embed.css?v=20261017-aleph-font"
-    data-source="/heatmap-app/embed.css?v=20261017-aleph-font"
+    href="/heatmap-app/embed.css?v=20261020-centered-settings"
+    data-source="/heatmap-app/embed.css?v=20261020-centered-settings"
     data-liquidity-style="embed"
     onload="window.__kwantLiquidityStyleLoaded('embed')"
     onerror="window.__kwantLiquidityStyleFailed('embed', this)"
@@ -291,8 +291,11 @@
       </main>
     </div>
 
-    <aside class="inspector" id="inspector">
-      <button class="panel-collapse" id="panelCollapse" aria-label="Close side panel">×</button>
+    <dialog class="inspector" id="inspector" aria-labelledby="inspectorTitle" aria-modal="true">
+      <header class="inspector-header">
+        <h2 id="inspectorTitle">Liquidity Map settings</h2>
+        <button class="panel-collapse" id="panelCollapse" aria-label="Close Liquidity Map settings" autofocus>×</button>
+      </header>
       <div class="inspector-panel active" id="depthPanel">
         <header><span>MARKET DEPTH</span><strong id="depthSymbol">MNQU6</strong></header>
         <div class="depth-ladder" id="depthLadder" aria-label="Depth of market ladder"></div>
@@ -370,7 +373,7 @@
         <label><input id="aggregateDepth" type="checkbox"> Aggregate market depth</label>
         <button id="resetSettings">RESET DISPLAY DEFAULTS</button>
       </div>
-    </aside>
+    </dialog>
 
     <footer class="status-bar">
       <div><span class="status-led"></span><strong>DATA</strong><span id="feedStatus">CONNECTING</span></div>
@@ -403,6 +406,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=20261020-shared-trading"></script>
+  <script type="module" src="src/main.js?v=20261020-centered-settings"></script>
 </body>
 </html>
