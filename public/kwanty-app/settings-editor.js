@@ -7,6 +7,10 @@ import {SOURCE_TIMEZONES} from './timezones.js';
 const BASE=[['background','Chart Background','color'],['showCrosshairs','Show Cursor Crosshairs','boolean']];
 const SPOT=[['show_spot_history','Spot History'],['candleUp','Candle Up','fixed'],['candleDown','Candle Down','fixed']];
 const COUNTERPART={'net-convexity':'convexity-orderflow','net-gex':'gex-orderflow','aggregate-dex':'dex-orderflow','convexity-orderflow':'net-convexity','gex-orderflow':'net-gex','dex-orderflow':'aggregate-dex'};
+export function editorStyleSize(settings,key){
+ const base=key.replace(/_neg$/,'');
+ return settings[key]?.size??(/^(?:gex_(?:vol|oi)|delta|gamma|vanna|charm)$/.test(base)?settings[base]?.size??6.5:1);
+}
 export function editorRows(state){
  if(state.package==='orderflow'){
   const rows=[...BASE,['showCursorTooltip','Show Cursor Tooltip','boolean'],['showAxisTooltips','Axis Tooltips','boolean'],['showGrid','Grid','boolean'],['spotColor','Spot Color','color'],['candleUp','Candle Up','fixed'],['candleDown','Candle Down','fixed']];
@@ -47,7 +51,7 @@ export function mountSettingsEditor({state,settings,defaults,persist,redraw,clea
   const details=make('details','style-options'),summary=make('summary','','Style');details.append(summary);
   const add=(name,text,type,initial,options)=>{const l=make('label','',text),input=make(type==='select'?'select':'input');input.dataset.styleKey=key;input.dataset.styleProperty=name;input.setAttribute('aria-label',label+' '+text);if(type==='select')for(const item of options){const o=make('option','',item);o.value=item;input.append(o)}else{input.type=type;if(type==='number'){input.min='0.1';input.max='10';input.step='0.1';}}if(type==='checkbox')input.checked=initial!==false;else input.value=String(initial);l.append(input);details.append(l);return input;};
   if(!key.startsWith('series:')&&!['candleUp','candleDown','call_skew','put_skew'].includes(key)){
-   add('size','Size','number',value?.size??(key.startsWith('gex_')||['delta','gamma','vanna','charm'].includes(key)?6.5:1));
+   add('size','Size','number',editorStyleSize(settings(),key));
    if(['show_spot_history','show_zero_gamma_history','show_call_major_history','show_put_major_history','expected_move','time_marker'].includes(key))add('lineType','Line style','select',value?.lineType||(key==='expected_move'||key==='show_zero_gamma_history'||key==='time_marker'?'dashed':key.includes('major_history')?'dotted':'solid'),['solid','dashed','dotted']);
    if(key==='show_spot_history')add('showHorizontalLine','Horizontal price line','checkbox',value?.showHorizontalLine!==false);
    if(key==='time_marker')add('showVerticalLine','Vertical time line','checkbox',value?.showVerticalLine!==false);

@@ -1,5 +1,29 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-21 — KWANTY parity audit: missing Orderflow restoration
+
+- Owner requires sequential Classic/State/Orderflow check → repair → verify;
+  ledger `docs/KWANTY-PARITY-AUDIT-2026-10-21.md`. Never declare full parity
+  while its source, cadence, history or interaction gates remain open.
+- Both standalone and grid request hosts omitted `/api/kwanty/session` from
+  allowlists, silently defeating accepted-observation restoration. Permit only
+  that existing authenticated operation; origin/operation restrictions remain.
+- Negative profile Volume/OI/Greek sizes and Classic prior-marker sizes now
+  affect their intended marks. Editor negative Greek default matches inherited
+  render size so an untouched Save cannot shrink it. Isolated real Orderflow
+  major observations paint dots, not invisible moveTo-only paths or fake trails.
+- Historical403/404 can restore existing exact-session Orderflow observations;
+  explicit observations-only provenance, no401/429 masking. Same source/request
+  sharing, no poller/cadence increase, paid service or collector restart.
+- OPEN: Classic history403, no full pre-page-load major trails, State private
+  classified volume splits, historical drawStyle parity,30s REST vs fast native
+  updates, full session replay and runtime/soak acceptance. Native entitlement
+  reports websocketAllowed=true but stream not negotiated (shared API slot).
+  Do not change shared slot or claim VPS alone repairs these source limits.
+- Old owner tab ran index v4; ordinary reload brought current v8 before audit.
+  This batch versions index9/app17 and embedded index11 for consistent assets.
+ 242 focused tests pass; release receipt and verification are in the ledger.
+
 ## 2026-10-20 — State normal-chart drawing tools
 
 - Every State pane has a theme-linked left drawing rail backed by the existing

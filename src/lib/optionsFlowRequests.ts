@@ -9,7 +9,7 @@ export function createOptionsFlowRequestPool(fetcher: typeof fetch = fetch) {
   let running = 0, disposed = false;
   async function request(url: string, options: RequestInit = {}) {
     if (disposed) throw new Error("This workspace is closed.");
-    if (!/^\/api\/(?:gex-data\/[a-z-]+|kwanty\/(?:status|catalog|snapshot|history)(?:\?[^#]*)?|gex-flow(?:\/ratios|\?[^#]*))$/.test(url)) throw new Error("Unsupported tool request.");
+    if (!/^\/api\/(?:gex-data\/[a-z-]+|kwanty\/(?:status|catalog|snapshot|history|session)(?:\?[^#]*)?|gex-flow(?:\/ratios|\?[^#]*))$/.test(url)) throw new Error("Unsupported tool request.");
     if (options.body != null && typeof options.body !== "string") throw new Error("Unsupported request body.");
     const key = `${options.method ?? "GET"}:${url}:${options.body ?? ""}`;
     let entry = cache.get(key);

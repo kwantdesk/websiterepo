@@ -187,3 +187,23 @@ test('major overlay display, size and line style settings are honored',()=>{
   assert.ok(ctx.calls.some(call=>call[0]==='set'&&call[1]==='lineWidth'&&call[2]===3));
   assert.ok(ctx.calls.some(call=>call[0]==='setLineDash'&&call[1]?.join(',')==='8,4'));
 });
+
+test('latest-only major levels paint at their genuine observation, never as invented session lines',()=>{
+  const ctx=mockCanvas(),time=base*1000;
+  const geometry=renderOrderflow(ctx,800,320,{records:[sample(base,{z_mlgamma:5100})],showSpot:false,settings:{majorLevels:[{field:'z_mlgamma',color:'cyan'}]},view:{startTime:time-60000,endTime:time+60000}});
+  assert.ok(ctx.calls.some(call=>call[0]==='arc'&&call[1]===geometry.timeX(time)&&call[2]===geometry.spotY(5100)));
+  assert.deepEqual(geometry.data.levels[0].values,[{time,value:5100}]);
+  const absent=mockCanvas();renderOrderflow(absent,800,320,{records:[sample(base)],showSpot:false,settings:{showPositive:false,showNegative:false,majorLevels:[{field:'z_mlgamma'}]}});
+  assert.ok(!absent.calls.some(call=>call[0]==='arc'));
+});
+
+test('every supplied Orderflow metric produces a visible latest-only mark for each enabled expiry',()=>{
+  for(const metric of Object.keys(ORDERFLOW_METRICS))for(const expiry of ['zero','one','both']){
+    const records=[sample(base,{zvanna:3,ovanna:-4,zcharm:5,ocharm:-6})],ctx=mockCanvas();
+    const geometry=renderOrderflow(ctx,800,320,{records,metric,expiry,showSpot:false,view:{startTime:base*1000-60000,endTime:base*1000+60000}});
+    assert.ok(geometry.data.series.every(series=>series.values[0].value!==null),`${metric}/${expiry} retains every supplied metric`);
+    for(const series of geometry.data.series){const point=series.values[0],x=geometry.timeX(point.time),y=geometry.valueY(point.value);
+      assert.ok(ctx.calls.some(call=>series.flow?call[0]==='lineTo'&&call[1]===x&&call[2]===y:call[0]==='arc'&&call[1]===x&&call[2]===y),`${metric}/${expiry}/${series.id} paints actual value`);
+    }
+  }
+});

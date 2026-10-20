@@ -26,7 +26,19 @@ export function createOrderflowSources({api,history,subscribe,sessionHistory,onC
   const job=(async()=>{
    try{
     const query=new URLSearchParams({ticker:source.ticker,package:'orderflow',category:'orderflow'});if(source.date)query.set('date',source.date);
-    const envelope=await api((source.date?'history?':'snapshot?')+query,controller.signal);
+    let envelope;
+    try{envelope=await api((source.date?'history?':'snapshot?')+query,controller.signal);}
+    catch(error){
+     // Paid historical access can be absent while our accepted observations
+     // for this exact session already exist. Reuse those real recordings;
+     // never turn a latest snapshot into an invented historical curve.
+     if(!source.date||![403,404].includes(error.status)||!current(source)||controller.signal.aborted)throw error;
+     const recorded=await sessionHistory.read(source.ticker,source.date);
+     if(!current(source)||controller.signal.aborted)return;
+     const rows=historyRecords(recorded,source.ticker).filter(row=>sourceDate(row.timestamp)===source.date);
+     if(!rows.length)throw error;
+     envelope={data:rows,ticker:source.ticker,package:'orderflow',category:'orderflow',sessionDate:source.date,availability:'recorded',coverage:'observations-only',providerAsOf:new Date(rows.at(-1).timestamp*1000).toISOString(),fetchedAt:new Date(now()).toISOString(),freshness:{state:'historical'},historySource:'recorded-session',upstreamHistoryError:error.message};
+    }
     if(!current(source)||controller.signal.aborted)return;
     const rows=source.date?historyRecords(envelope.data,source.ticker):mergeSnapshots([], [envelope.data],source.ticker);
     if(!rows.length)throw Error('INSTRUMENT_DATA_MISMATCH');

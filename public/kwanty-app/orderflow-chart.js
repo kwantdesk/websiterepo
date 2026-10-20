@@ -307,6 +307,16 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   if (settings.showMajorLevels !== false) for (const level of data.levels || []) {
     const dash=level.dash??({solid:[],'simple-dashed':[6,2],dashed:[8,4],dotted:[3,3]}[level.lineType]??[]);
     ctx.strokeStyle = orderflowThemeColor(level.color || themePaint("#999"), level.defaultColor || level.color || themePaint("#999"), settings.lightMode, level.isCustomized); ctx.lineWidth = level.lineWidth ?? level.size ?? 2; ctx.setLineDash(dash); pathLine(ctx, level.values, timeX, spotY);
+    // A real latest-only level has no line segment: Canvas moveTo + stroke
+    // paints nothing. Mark isolated observations at their actual time/price,
+    // without extending today's level backwards over unrecorded history.
+    ctx.fillStyle = ctx.strokeStyle;
+    for (let index = 0; index < level.values.length; index++) {
+      const point = level.values[index];
+      if (!Number.isFinite(point.value) || point.time < startTime || point.time > endTime) continue;
+      if (Number.isFinite(level.values[index - 1]?.value) || Number.isFinite(level.values[index + 1]?.value)) continue;
+      ctx.beginPath(); ctx.arc(timeX(point.time), spotY(point.value), Math.max(2.5, ctx.lineWidth / 2), 0, Math.PI * 2); ctx.fill();
+    }
   }
   ctx.setLineDash([]);
   if (options.showSpot !== false) {

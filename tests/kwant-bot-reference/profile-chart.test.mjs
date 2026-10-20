@@ -31,3 +31,25 @@ test('State skew sides independently respect colors and have independent source-
 test('State Gamma major fields and expected-move annotations follow source settings',()=>{const{ctx}=recordingContext();const payload={spot:100,min_dte:1,major_positive:100.1,major_negative:99.9,major_long_gamma:100.2,major_short_gamma:99.8,mini_contracts:[[100,.02,.02,3,[1,2,3]]]};const g=drawProfile(ctx,900,600,{payload,package:'state',category:'gamma_zero',settings:{expected_move:{display:true,color:'#888888',labelPosition:'left'}}});assert.deepEqual(g.levels.map(l=>l.field),['major_long_gamma','major_short_gamma']);assert.equal(g.expectedMoveAnnotations.length,2);assert.ok(g.expectedMoveAnnotations.every(a=>a.position==='left'&&a.color==='#888888'));const off=drawProfile(ctx,900,600,{payload,package:'state',category:'gamma_zero',settings:{expected_move:{display:false}}});assert.equal(off.expectedMoveAnnotations,undefined);});
 test('State GEX never adds a Classic OI profile from inherited preferences',()=>{const g=calculateProfileGeometry(900,600,{package:'state',payload:{strikes:[[100,2,300,[]]]},settings:{show_oi:true}});assert.equal(g.showOI,false);assert.equal(g.maxExposure,3);});
 test('right alignment moves price-axis space and keeps original signed hover data',()=>{const payload={strikes:[[100,-25,30,[]]]},left=calculateProfileGeometry(900,600,{payload}),right=calculateProfileGeometry(900,600,{payload,settings:{profileBarAlignment:'right'}});assert.ok(right.left<left.left);assert.ok(right.right<left.right);assert.equal(right.hitTest(right.exposureX(-25),right.priceY(100)).row.volume,-25);});
+
+test('positive and negative Classic profile sizes independently affect their own bars',()=>{
+ const payload={ticker:'SPY',spot:100,strikes:[[99,-2,-3,[]],[100,2,3,[]]]},settings={gex_vol:{size:2,color:'#111111'},gex_vol_neg:{size:2,color:'#222222'},gex_oi:{size:2,color:'#333333'},gex_oi_neg:{size:2,color:'#444444'}};
+ const render=s=>{const {ctx,calls}=recordingContext();drawProfile(ctx,900,600,{payload,settings:{showGrid:false,show_spot_history:false,...s}});return new Map(calls.filter(c=>c.method==='roundRect').map(c=>[c.fill,c.args]));};
+ const before=render(settings),after=render({...settings,gex_vol_neg:{...settings.gex_vol_neg,size:4},gex_oi_neg:{...settings.gex_oi_neg,size:4}});
+ for(const color of ['#222222','#444444'])assert.ok(after.get(color)[3]>before.get(color)[3]);
+ for(const color of ['#111111','#333333'])assert.deepEqual(after.get(color),before.get(color));
+});
+
+test('negative Greek bar size follows its own setting without changing positive bars',()=>{
+ for(const family of ['delta','gamma','vanna','charm']){
+  const payload={ticker:'SPY',spot:100,mini_contracts:[[99,0,0,-2,[]],[100,0,0,2,[]]]};
+  const render=size=>{const {ctx,calls}=recordingContext();drawProfile(ctx,900,600,{payload,package:'state',category:family+'_zero',settings:{[family]:{size:2,color:'#111111'},[family+'_neg']:{size,color:'#222222'}}});return new Map(calls.filter(c=>c.method==='roundRect').map(c=>[c.fill,c.args]));};
+  const before=render(2),after=render(4);assert.ok(after.get('#222222')[3]>before.get('#222222')[3]);assert.deepEqual(after.get('#111111'),before.get('#111111'));
+ }
+});
+
+test('Classic prior marker size controls change only the chosen lookback and preserve visibility',()=>{
+ const payload={ticker:'SPY',spot:100,strikes:[[100,2,3,[1,2,3,4,5]]]};
+ const render=settings=>{const {ctx,calls}=recordingContext();drawProfile(ctx,900,600,{payload,settings});return calls.filter(c=>c.method==='arc').map(c=>c.args);};
+ const before=render({}),after=render({one:{size:2}});assert.equal(after[0][2],before[0][2]*2);assert.deepEqual(after.slice(1),before.slice(1));assert.equal(render({one:{display:false,size:2}}).length,4);
+});

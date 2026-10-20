@@ -67,3 +67,21 @@ test('actual linked viewport seed waits for real history and does not reseed on 
  price.loading=false;context.seed();assert.equal(calls.length,1);
  price.points.push({time:timestamp*1000+1000,spot:501});context.seed();assert.equal(calls.length,1,'live updates retain manual viewport');
 });
+
+test('denied provider history restores only genuine exact-session archive observations with provenance',async()=>{
+ for(const status of [403,404]){
+  let reads=0,requests=0;const error=Object.assign(Error('UPSTREAM_ENTITLEMENT_REQUIRED'),{status});
+  const pool=createOrderflowSources({api:async()=>{requests++;throw error;},sessionHistory:{read:async(ticker,date)=>{reads++;assert.equal(ticker,'NDX');assert.equal(date,'2026-10-19');return [frame('NDX',20000),{...frame('NDX',19000),timestamp:timestamp-86400}];}},history(){},subscribe(){},onChange(){},createPrices:()=>({setActive(){},select(){},dispose(){}})});
+  pool.reconcile(['NDX','NDX'],{active:true,date:'2026-10-19',live:false});await pool.refresh();
+  const source=pool.get('NDX');assert.equal(source.error,null);assert.equal(source.records.length,1);assert.equal(source.records[0].spot,20000);assert.equal(source.envelope.historySource,'recorded-session');assert.equal(source.envelope.coverage,'observations-only');assert.equal(source.envelope.upstreamHistoryError,error.message);assert.equal(reads,1);assert.equal(requests,1);pool.dispose();
+ }
+});
+
+test('historical archive cannot mask other failures, unavailable history, wrong ticker or removed scope',async()=>{
+ for(const [status,rows]of [[401,[frame('NDX')]],[429,[frame('NDX')]],[403,[]],[404,[frame('SPY')]]]){
+  let reads=0;const pool=createOrderflowSources({api:async()=>{throw Object.assign(Error('provider failed'),{status});},sessionHistory:{read:async()=>{reads++;return rows;}},history(){},subscribe(){},onChange(){},createPrices:()=>({setActive(){},select(){},dispose(){}})});
+  pool.reconcile(['NDX'],{active:true,date:'2026-10-19'});await pool.refresh();assert.equal(pool.get('NDX').records.length,0);assert.ok(pool.get('NDX').error);assert.equal(reads,[403,404].includes(status)?1:0);pool.dispose();
+ }
+ let resolve;const pending=new Promise(done=>resolve=done),pool=createOrderflowSources({api:async()=>{throw Object.assign(Error('denied'),{status:403});},sessionHistory:{read:()=>pending},history(){},subscribe(){},onChange(){},createPrices:()=>({setActive(){},select(){},dispose(){}})});
+ pool.reconcile(['NDX'],{active:true,date:'2026-10-19'});const job=pool.refresh();await Promise.resolve();pool.reconcile([],{active:false});resolve([frame('NDX')]);await job;assert.equal(pool.get('NDX'),undefined);pool.dispose();
+});
