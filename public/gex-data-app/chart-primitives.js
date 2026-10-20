@@ -33,9 +33,9 @@ export function niceTicks(min, max, target = 5) {
   return ticks;
 }
 
-export function intervalStrikeWindow(rows, padding = 5) {
+export function intervalStrikeWindow(rows, padding = 5, priceRows = rows) {
   const strikes = [...new Set(rows.flatMap(row => row.strikes.map(point => point.strike)))].sort((a,b) => a-b);
-  const prices = rows.map(row => row.spot).filter(Number.isFinite);
+  const prices = priceRows.map(row => row.spot).filter(Number.isFinite);
   if (!strikes.length) return [0,1];
   if (!prices.length) return [strikes[0],strikes.at(-1)];
   const nearest = value => strikes.reduce((best,strike,index) => Math.abs(strike-value) < Math.abs(strikes[best]-value) ? index : best,0);
@@ -50,7 +50,8 @@ export function intervalPreview(rows) {
 }
 
 export function averagedIvRank(contractTypes) {
-  const rows=Object.values(contractTypes||{}).filter(row=>row&&Number.isFinite(Number(row.lastIv))&&Number.isFinite(Number(row.windowMinIv))&&Number.isFinite(Number(row.windowMaxIv)));
+  const valid=value=>(typeof value==='number'||typeof value==='string'&&value.trim()!=='')&&Number.isFinite(Number(value));
+  const rows=Object.values(contractTypes||{}).filter(row=>row&&['lastIv','windowMinIv','windowMaxIv'].every(key=>valid(row[key])));
   if(!rows.length)return null;
   const average=key=>rows.reduce((sum,row)=>sum+Number(row[key]),0)/rows.length;
   const last=average('lastIv'),min=average('windowMinIv'),max=average('windowMaxIv');
@@ -95,6 +96,20 @@ export function foldIntervalUpdates(data) {
   return rows;
 }
 
+// Price observations are a separate series, not exposure updates. A tooltip
+// may use a recent preceding price, but never a future or indefinitely stale one.
+export function precedingIntervalSpot(prices,time,maxAge=60000) {
+  let match;
+  for(const price of prices){if(price.time>time)break;if(Number.isFinite(price.spot))match=price;}
+  return match&&time-match.time<=maxAge?match.spot:undefined;
+}
+
+export function intervalTimeline(rows,prices=[]) {
+  const timeline=new Map(rows.map(row=>[row.time,row]));
+  for(const price of prices)if(!timeline.has(price.time))timeline.set(price.time,{time:price.time,strikes:[]});
+  return [...timeline.values()].sort((a,b)=>a.time-b.time);
+}
+
 export function drawSignedVolume(ctx, points, zeroY, top, bottom) {
   if (points.length < 2) return;
   for (const [color,clipTop,clipBottom] of [[CHART_COLORS.call,top,zeroY],[CHART_COLORS.put,zeroY,bottom]]) {
@@ -109,7 +124,8 @@ export function drawIntervalPlot(ctx,width,height,rows,options={}) {
   const {start=0,end=rows.length-1,padding=5,minStrike,maxStrike,hover=null,formatTime,formatStrike,axisFont=13,left=98,right=width-18,top=10,bottom=height-34}=options;
   const visible=rows.slice(Math.floor(start),Math.ceil(end)+1);
   if(!visible.length || right<=left || bottom<=top) return null;
-  const [autoMin,autoMax]=intervalStrikeWindow(rows,padding),baseMin=Number.isFinite(minStrike)?minStrike:autoMin,baseMax=Number.isFinite(maxStrike)?maxStrike:autoMax;
+  const prices=options.prices??rows;
+  const [autoMin,autoMax]=intervalStrikeWindow(rows,padding,prices),baseMin=Number.isFinite(minStrike)?minStrike:autoMin,baseMax=Number.isFinite(maxStrike)?maxStrike:autoMax;
   const yWindow=options.yWindow||[0,1],minY=baseMin+(baseMax-baseMin)*yWindow[0],maxY=baseMin+(baseMax-baseMin)*yWindow[1];
   const domain=timeDomain(rows,start,end),from=domain.firstTime,to=domain.lastTime,minX=domain.min,maxX=domain.max;
   const xFor=time=>left+(time-minX)/Math.max(1,maxX-minX)*(right-left),yFor=strike=>bottom-(strike-minY)/Math.max(1e-9,maxY-minY)*(bottom-top);
@@ -130,7 +146,7 @@ export function drawIntervalPlot(ctx,width,height,rows,options={}) {
   // Opaque area is encoded by circle diameter, never by alpha or glow.
   for(const {point,x} of cells.values()){const diameter=bubbleDiameter(point.value,maxAbs),y=yFor(point.strike);ctx.fillStyle=point.value>0?CHART_COLORS.call:CHART_COLORS.put;ctx.beginPath();if(diameter<2){ctx.fillRect(x-.6,y-.6,1.2,1.2);continue;}ctx.arc(x,y,diameter/2,0,Math.PI*2);ctx.fill();if(diameter>=4){ctx.lineWidth=.5;ctx.strokeStyle=themePaint("#000000");ctx.stroke();}}
   ctx.strokeStyle=CHART_COLORS.price;ctx.lineWidth=2;ctx.lineJoin="round";ctx.beginPath();let started=false;
-  for(const row of visible){if(!Number.isFinite(row.spot)){started=false;continue;}const x=xFor(row.time),y=yFor(row.spot);if(started)ctx.lineTo(x,y);else{ctx.moveTo(x,y);started=true;}}ctx.stroke();
+  for(const row of prices){if(!Number.isFinite(row.spot)){started=false;continue;}const x=xFor(row.time),y=yFor(row.spot);if(started)ctx.lineTo(x,y);else{ctx.moveTo(x,y);started=true;}}ctx.stroke();
   // Draw session markers only at the actual New York equity open in the window.
   const openRow=rows.find(row=>new Date(row.time).toLocaleTimeString("en-GB",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit"})==="09:30");
   if(openRow&&openRow.time>=from&&openRow.time<=to){const x=xFor(openRow.time);ctx.strokeStyle=themePaint("#FFFFFF");ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bottom);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=themePaint("#FFFFFF");ctx.font=`700 ${axisFont-2}px Aleph, sans-serif`;ctx.textAlign="left";ctx.textBaseline="top";ctx.fillText("Market Open",x+4,top+4);}

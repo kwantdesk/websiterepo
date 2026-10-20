@@ -1,7 +1,7 @@
 import {themePaint} from './site-theme.js?v=1';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {gexStorage,gexTimeZone,gexFetch as fetch} from './site-runtime.js?v=1';
-import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, averagedIvRank, marketMapColor, squarifyTreemap, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=1";
+import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, precedingIntervalSpot, intervalTimeline, averagedIvRank, marketMapColor, squarifyTreemap, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=2";
 import { PRICE_CHART_TYPES, parsePriceRows, priceChartPresentation, drawPriceCandles, drawOptionVolume, drawDarkFlowArea, prepareDarkPoolLevels, DARK_POOL_LEVEL_COLUMNS, EQUITY_PRINT_COLUMNS, EXCHANGE_NOTIFICATION_COLUMNS, NOTIFICATION_TYPES, equitySideColorToken, equityPrintColorToken, notificationColorToken } from "./equity-renderers.js?v=2";
 import { MARKET_SHARE_MODES, marketShareModel, drawMarketSharePie, drawMarketShareBars, drawProportionChart, contractStatisticsRows, contractSideStatisticsRows, GAINERS_COLUMNS, MARKET_SHARE_COLUMNS, CONSOLIDATED_COLUMNS, gainersModel, marketShareTableModel, netDriftRows, flowStatisticsModel, exchangeColor, exchangeLabel, EXCHANGE_GROUP_COLORS } from "./options-models.js?v=2";
 import { HEAT_METRICS, heatMetricFor, heatCellValue, heatCellColor, niceValueDomain, exposureStrikeWindow, drawExposureBars, MAX_PAIN_STYLES, heatMapInitialWindow } from "./exposure-models.js?v=1";
@@ -14,7 +14,7 @@ import {instrumentChoices,setChoiceValue,snapshotTimeOptions,multiChoiceDropdown
 import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} from './preferences-model.js?v=1';
 import {normalizeWheelDelta,wheelZoomWindow,panZoomWindow,heatMapPlainWheel,cursorTooltipPlacement,sliderBarWindow,sliderHandleWindow,sliderTrackClick,lerpZoomStep} from './chart-interaction-model.js?v=1';
 import {bindZoomNavigator,navigatorPreviewDomain} from './navigator-ui.js?v=3';
-import {liveChartWindow,compatibleLiveTimeline} from './live-chart-model.js?v=1';
+import {liveChartWindow,compatibleLiveTimeline,dataRequestIdentity} from './live-chart-model.js?v=2';
 import {OPTION_TRADE_DETAIL_ENDPOINT,UNCONSOLIDATED_COLUMNS,optionTradeDetailRequest,unconsolidatedTradeRows} from './option-trade-detail-model.js?v=1';
 import {MARKET_MAP_SLIDER_MAX,MARKET_MAP_CAMERA_IDENTITY,marketMapMaxZoom,clampMarketMapCamera,wheelMarketMapCamera,panMarketMapCamera,marketMapCameraWindows,applyMarketMapWindow,marketMapWorldPoint} from './market-map-interaction-model.js?v=1';
 const VIEW_PARAMETERS=new URLSearchParams(location.search),EMBEDDED=VIEW_PARAMETERS.get('embed')==='1';
@@ -172,19 +172,8 @@ function parsePrices(response) {
 function parseInterval(response, prices = []) {
   const payload = unwrapArchive(response);
   const data = payload?.data || payload || {};
-  const updates = {...data};
-  const firstUpdate = Math.min(...Object.keys(data).filter(key=>/^\d+$/.test(key)).map(Number));
-  for(const price of prices)if(price.time>=firstUpdate&&!Object.hasOwn(updates,price.time))updates[price.time]={};
-  const buckets = foldIntervalUpdates(updates);
-  if (prices.length && buckets.length) {
-    for (const bucket of buckets) {
-      let nearest = prices[0];
-      for (const point of prices) {
-        if (Math.abs(point.time - bucket.time) < Math.abs(nearest.time - bucket.time)) nearest = point;
-      }
-      bucket.spot = nearest.spot;
-    }
-  }
+  const buckets = foldIntervalUpdates(data);
+  for(const bucket of buckets)bucket.spot=precedingIntervalSpot(prices,bucket.time);
   return buckets;
 }
 
@@ -584,6 +573,7 @@ await boot();
   const scrim = q("#libraryScrim");
   let activeTool = null;
   let toolPayload = null;
+  let toolPayloadQuery = null;
   let tableRows = [];
   let tableColumns = null;
   let tableRuntime = null;
@@ -906,6 +896,10 @@ await boot();
     toolView.setAttribute("aria-busy","true");q("#toolError").hidden=true;
     updateInitialToolLoading(!toolPayload&&!append);
     try{
+      const query=dataRequestIdentity(tool.id,buildRequest(tool),snapshotSelections.get(snapshotKey(tool))??null);
+      // Refreshes keep the SAME instrument/session visible. A failed new
+      // selection must never leave another ticker's chart beneath its controls.
+      if(!append&&toolPayloadQuery!==query){toolPayload=null;resetStage();q('#toolUpdated').textContent='';updateInitialToolLoading(true);}
       const payload=await loadToolPayload(tool);
       if(requestId!==toolRequestId||activeTool!==tool)return;
       if(append&&Array.isArray(payload.data)){
@@ -915,7 +909,7 @@ await boot();
         // from the currently loaded subset or remove its header.
         if(payload.statistics==null&&toolPayload?.statistics!=null)payload.statistics=toolPayload.statistics;
       }
-      toolPayload=payload;toolCursor=payload.nextSearchAfter||null;renderToolPayload(tool,payload,{refresh:true});renderSnapshotControl(payload);
+      toolPayload=payload;toolPayloadQuery=query;toolCursor=payload.nextSearchAfter||null;renderToolPayload(tool,payload,{refresh:true});renderSnapshotControl(payload);
       updateToolTimestamp(tool,payload);
       saveToolControls();updateLiveState();
     }catch(error){
@@ -1131,8 +1125,10 @@ await boot();
     const nav=element("div","quant-navigator"),mini=element("canvas"),startRange=document.createElement("input"),endRange=document.createElement("input");
     const state={start:0,end:Math.max(0,items.length-1),hover:null,pointerY:0,dragX:null,dragY:null,dragStart:null,yWindow:[0,1],panning:false};
     if(initialWindow){state.start=initialWindow.start??state.start;state.end=initialWindow.end??state.end;state.yWindow=initialWindow.yWindow??state.yWindow;}
-    const remembered=chartWindows.get(activeTool?.id);
-    if(remembered&&remembered.length<=items.length){const tail=remembered.end>=remembered.length-1,extra=tail?items.length-remembered.length:0;state.start=Math.min(items.length-1,remembered.start+extra);state.end=Math.min(items.length-1,remembered.end+extra);state.yWindow=[...remembered.yWindow];}
+    const windowQuery=JSON.stringify(buildRequest(activeTool)),remembered=chartWindows.get(activeTool?.id);
+    if(remembered?.query===windowQuery&&remembered.length<=items.length&&(!timeScale||remembered.times?.every((time,index)=>time===items[index]?.time))){
+      Object.assign(state,liveChartWindow(remembered,remembered.length,items.length));state.yWindow=[...remembered.yWindow];
+    }
     for(const [input,label] of [[startRange,"Chart window start"],[endRange,"Chart window end"]]){input.type="range";input.min="0";input.max=String(Math.max(0,items.length-1));input.step="1";input.setAttribute("aria-label",label);}
     startRange.className="navigator-start";endRange.className="navigator-end";
     if(zoom&&items.length>1){nav.append(mini,startRange,endRange);shell.append(nav);if(zoomAxis==='y'){nav.classList.add('category-vertical-navigator');shell.classList.add('category-vertical-chart');}}
@@ -1140,7 +1136,7 @@ await boot();
     if(twoDimensional){shell.classList.add("two-dimensional-chart");for(const [input,label] of [[lowRange,"Chart vertical window start"],[highRange,"Chart vertical window end"]]){input.type="range";input.min="0";input.max="1000";input.step="1";input.setAttribute("aria-label",label);}vertical.append(verticalMini,lowRange,highRange);plot.append(vertical);}
     holder.append(shell);let disposed=false,horizontalNavigation,verticalNavigation,windowSaveTimer,resetAnimation;
     const syncRanges=()=>{startRange.value=String(state.start);endRange.value=String(state.end);lowRange.value=String(Math.round(state.yWindow[0]*1000));highRange.value=String(Math.round(state.yWindow[1]*1000));horizontalNavigation?.sync();verticalNavigation?.sync();};
-    function remember(){if(activeTool)chartWindows.set(activeTool.id,{start:state.start,end:state.end,yWindow:[...state.yWindow],length:items.length});clearTimeout(windowSaveTimer);windowSaveTimer=setTimeout(()=>{try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}},300);syncRanges();}
+    function remember(){if(activeTool)chartWindows.set(activeTool.id,{query:windowQuery,times:timeScale?items.map(row=>row.time):undefined,start:state.start,end:state.end,yWindow:[...state.yWindow],length:items.length});clearTimeout(windowSaveTimer);windowSaveTimer=setTimeout(()=>{try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}},300);syncRanges();}
     function drawNavigator(){
       if(!mini.isConnected)return;
       const {ctx,width:w,height:h}=canvasContext(mini);ctx.clearRect(0,0,w,h);
@@ -1232,7 +1228,7 @@ await boot();
   }
 
   function renderIntervalMapQuant(payload) {
-    const rawRows=parseInterval(payload,parsePrices({data:payload.stock||{}}));
+    const prices=parsePrices({data:payload.stock||{}}),rawRows=parseInterval(payload,prices);
     const ticker=String(getControl("ticker")||"QQQ").toUpperCase(),greek=getControl("greek")||"GAMMA";
     const code={GAMMA:"GEX",DELTA:"DEX",CHARM:"CHEX",VANNA:"VEX"}[greek];
     const difference=getControl("intervalValueMode")==="DIFFERENCE";
@@ -1242,26 +1238,27 @@ await boot();
     }).slice(1):rawRows;
     const padding=Math.max(0,Math.round(Number(getControl("strikePadding"))||0));
     const minStrike=getControl("minStrike")===""?undefined:Number(getControl("minStrike")),maxStrike=getControl("maxStrike")===""?undefined:Number(getControl("maxStrike"));
-    const autoBounds=intervalStrikeWindow(rows,padding),baseMin=minStrike??autoBounds[0],baseMax=maxStrike??autoBounds[1],profile=(rows.at(-1)?.strikes||[]).filter(point=>point.strike>=baseMin&&point.strike<=baseMax).map(point=>({position:(point.strike-baseMin)/Math.max(1e-9,baseMax-baseMin),value:Math.abs(point.value)}));
+    const plotRows=intervalTimeline(rows,prices),latestSpot=prices.at(-1)?.spot;
+    const autoBounds=intervalStrikeWindow(rows,padding,prices),baseMin=minStrike??autoBounds[0],baseMax=maxStrike??autoBounds[1],profile=(rows.at(-1)?.strikes||[]).filter(point=>point.strike>=baseMin&&point.strike<=baseMax).map(point=>({position:(point.strike-baseMin)/Math.max(1e-9,baseMax-baseMin),value:Math.abs(point.value)}));
     let plotBounds=null;
     const chart=quantCanvas({
       title:`Interval Map (${code}) - ${ticker}`,
-      legend:[{label:ticker,color:CHART_COLORS.primary,value:formatPrice(rows.at(-1)?.spot)}],
-      items:rows,navigatorValues:intervalPreview(rows),verticalValues:profile,height:560,plotLeft:98,plotRight:48,twoDimensional:true,timeScale:true,
+      legend:[{label:ticker,color:CHART_COLORS.primary,value:formatPrice(latestSpot)}],
+      items:plotRows,navigatorValues:intervalPreview(plotRows),verticalValues:profile,height:560,plotLeft:98,plotRight:48,twoDimensional:true,timeScale:true,
       tooltipRows:(row,index,state)=>{
         if(!row||!plotBounds)return [];
         const strike=plotBounds.maxY-(state.pointerY-plotBounds.top)/Math.max(1,plotBounds.bottom-plotBounds.top)*(plotBounds.maxY-plotBounds.minY);
         const point=row.strikes.reduce((best,point)=>!best||Math.abs(point.strike-strike)<Math.abs(best.strike-strike)?point:best,null);
-        if(!point)return [];
+        if(!point)return [displayChartTime(row.time),`${ticker}: ${formatPrice(precedingIntervalSpot(prices,row.time))}`];
         return [displayChartTime(row.time),`${ticker} · ${formatPrice(point.strike)}`,...(difference?[]:[`Call ${code}: ${compact(point.call)}`,`Put ${code}: ${compact(point.put)}`]),`${difference?"Difference of net":"Net"} ${code}: ${compact(point.value)}`,`${ticker}: ${formatPrice(row.spot)}`];
       },
       draw:(ctx,w,h,state)=>{
-        plotBounds=drawIntervalPlot(ctx,w,h,rows,{start:state.rawStart??state.start,end:state.rawEnd??state.end,padding,minStrike,maxStrike,right:w-48,yWindow:state.yWindow,hover:toolConfiguration.hideCrosshairs?null:state.hover,hideAxisTitles:toolConfiguration.hideAxisTitles,formatTime:displayChartTime,formatStrike:chartStrikeLabel});
+        plotBounds=drawIntervalPlot(ctx,w,h,plotRows,{prices,start:state.rawStart??state.start,end:state.rawEnd??state.end,padding,minStrike,maxStrike,right:w-48,yWindow:state.yWindow,hover:toolConfiguration.hideCrosshairs?null:state.hover,hideAxisTitles:toolConfiguration.hideAxisTitles,formatTime:displayChartTime,formatStrike:chartStrikeLabel});
       }
     });
     chart.shell.classList.add("interval-chart-shell");
     const latest=rawRows.at(-1)?.strikes||[],latestNet=latest.reduce((sum,point)=>sum+point.value,0);
-    setSummary([["Session snapshots",rows.length.toLocaleString()],["Strikes",new Set(rows.flatMap(row=>row.strikes.map(point=>point.strike))).size],["Latest spot",formatPrice(rows.at(-1)?.spot)],["Latest net exposure",compact(latestNet)]]);
+    setSummary([["Session snapshots",rows.length.toLocaleString()],["Strikes",new Set(rows.flatMap(row=>row.strikes.map(point=>point.strike))).size],["Latest spot",formatPrice(latestSpot)],["Latest net exposure",compact(latestNet)]]);
   }
 
   function renderExposureProfileQuant(payload,byExpiration=false) {
@@ -1297,12 +1294,16 @@ await boot();
         const volumes=visible.map(row=>row.callVolume-row.putVolume),[volumeMin,volumeMax]=safeBounds(volumes,true,.02),{min:vmin,max:vmax}=niceValueDomain(volumeMin,volumeMax);
         const domain=timeDomain(rows,state.rawStart??state.start,state.rawEnd??state.end),x=index=>timeX(visible[index]?.time,domain,left,right),py=value=>mainBottom-(value-pmin)/(pmax-pmin)*(mainBottom-top),sy=value=>mainBottom-(value-smin)/(smax-smin)*(mainBottom-top),vy=value=>bottom-(value-vmin)/(vmax-vmin)*(bottom-volumeTop);
         drawHorizontalTicks(ctx,left,right,top,mainBottom,pmin,pmax,value=>compact(value,true));
+        ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,mainBottom-top);ctx.clip();
         if(showBands){for(const [valueKey,bandKey,color] of [["call","callBand",CHART_COLORS.call],["put","putBand",CHART_COLORS.put]]){ctx.save();ctx.beginPath();visible.forEach((row,index)=>index?ctx.lineTo(x(index),py(row[valueKey]+Math.abs(row[bandKey]))):ctx.moveTo(x(index),py(row[valueKey]+Math.abs(row[bandKey]))));for(let index=visible.length-1;index>=0;index--)ctx.lineTo(x(index),py(visible[index][valueKey]-Math.abs(visible[index][bandKey])));ctx.closePath();ctx.fillStyle=color;ctx.globalAlpha=.2;ctx.fill();ctx.restore();}}
         quantLine(ctx,visible.map((row,index)=>[x(index),py(row.call)]),CHART_COLORS.call,2);
         quantLine(ctx,visible.map((row,index)=>[x(index),py(row.put)]),CHART_COLORS.put,2);
         if(showNet)quantLine(ctx,visible.map((row,index)=>[x(index),py(row.net)]),CHART_COLORS.netPremium,2);
         if(showUnderlying)quantLine(ctx,visible.map((row,index)=>[x(index),sy(row.spot)]).filter(point=>Number.isFinite(point[1])),CHART_COLORS.price,2);
+        ctx.restore();
+        ctx.save();ctx.beginPath();ctx.rect(left,volumeTop,right-left,bottom-volumeTop);ctx.clip();
         drawSignedVolume(ctx,volumes.map((value,index)=>[x(index),vy(value)]),vy(0),volumeTop,bottom);
+        ctx.restore();
         drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:pmin,max:pmax,money:true,label:"Premium ($)"});
         if(showUnderlying)drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
         drawAxisLabels(ctx,{left,top:volumeTop,right,bottom,min:vmin,max:vmax,label:"Volume",steps:5});

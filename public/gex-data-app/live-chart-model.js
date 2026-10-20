@@ -14,3 +14,8 @@ export function compatibleLiveTimeline(previous, next) {
   return previous.length > 1 && next.length >= previous.length &&
     previous.every((row, index) => row.time === next[index]?.time);
 }
+
+export function dataRequestIdentity(toolId,body,snapshot=null) {
+  const {searchAfter,...selection}=body;
+  return JSON.stringify([toolId,selection,snapshot]);
+}
