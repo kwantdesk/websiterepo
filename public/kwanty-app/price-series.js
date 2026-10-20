@@ -12,7 +12,7 @@ export function normalizePriceCandle(row) {
   if (!epoch(time) || time % MINUTE !== 0
     || ![open, high, low, close].every(value => numeric(value) && value > 0)
     || high < Math.max(open, close) || low > Math.min(open, close) || high < low) return null;
-  return {time, open, high, low, close, spot: close, provenance: 'ohlc'};
+  return {time, open, high, low, close, spot: close, provenance: 'ohlc',...(numeric(row.volume)&&row.volume>=0?{volume:row.volume}:{})};
 }
 
 export function createPriceSeries({maxBars = 6_000, maxQuotes = 3_000} = {}) {
@@ -98,6 +98,7 @@ export function createPriceSeries({maxBars = 6_000, maxQuotes = 3_000} = {}) {
         else {
           current.high = Math.max(current.high, candle.high); current.low = Math.min(current.low, candle.low);
           current.close = candle.close; current.spot = candle.close; current.sourceBars++;
+          if(numeric(current.volume)&&numeric(candle.volume))current.volume+=candle.volume;else delete current.volume;
           current.lastSourceTime = candle.time;
           current.observationOnly ||= !!candle.observationOnly;
           if (current.observationOnly) current.provenance = 'ohlc+observed-quote';

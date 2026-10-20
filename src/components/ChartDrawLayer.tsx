@@ -55,6 +55,9 @@ type Props = {
   candles: DrawCandle[];
   /** Exact Rithmic execution profiles keyed by committed drawing id. */
   volumeProfiles?: Readonly<Record<string, InstitutionalVolumeProfile>>;
+  /** Options workspaces must never reconstruct traded VAP from positioning/OHLC. */
+  requireExactVolumeProfiles?: boolean;
+  volumeProfileMessages?: Readonly<Record<string, string>>;
   magnet: boolean;
   magnetStrength: MagnetStrength;
   viewportVersion: number;
@@ -75,6 +78,8 @@ type Props = {
   themeColor?: string;
   /** Theme bearish candle, for the risk side of a position calculator. */
   themeBearColor?: string;
+  /** Observed live price can lead the next authoritative candle. */
+  currentPrice?: number | null;
 };
 
 type XY = { x: number | null; y: number | null };
@@ -91,10 +96,14 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "
 
 export default function ChartDrawLayer({
   width, height, priceScaleWidth = 0, activeTool, emoji, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, volumeProfiles = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport,
-  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor,
+  toX, toY, fromXY, candles, volumeProfiles = {}, requireExactVolumeProfiles = false, volumeProfileMessages = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport,
+  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor, currentPrice,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const eventWindowRef = useRef<Window | null>(null);
+  // Cache ownership while mounted so cleanup still targets the iframe window
+  // after React has cleared the SVG ref during unmount.
+  const eventWindow = () => eventWindowRef.current ??= svgRef.current?.ownerDocument.defaultView ?? window;
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
   const [cursor, setCursor] = useState<DrawPoint | null>(null);
   const freehandRef = useRef(false);
@@ -629,16 +638,16 @@ export default function ChartDrawLayer({
       const t0 = anchored ? pr[0].time : Math.min(pr[0].time, pr[1].time);
       const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
       const exact = exactCustomDrawVolumeProfile(volumeProfiles[drawing.id]);
-      cache.set(drawing.id, exact ?? volumeProfile(
+      cache.set(drawing.id, exact ?? (requireExactVolumeProfiles ? null : volumeProfile(
           candles,
           t0,
           t1,
           drawing.style.profileRows ?? 80,
           drawing.style.valueAreaPercent ?? 68,
-        ));
+        )));
     }
     return cache;
-  }, [drawings, candles, volumeProfiles]);
+  }, [drawings, candles, volumeProfiles, requireExactVolumeProfiles]);
   // Between the first and second placement click the preview histogram used to
   // recompute on EVERY mousemove — a full candle scan per pixel of cursor
   // travel, which is what made drawing the fixed range feel glitchy. The
@@ -725,15 +734,15 @@ export default function ChartDrawLayer({
       onUpdate({ ...drawing, points: next });
     };
     const cleanup = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", cleanup);
-      window.removeEventListener("pointercancel", cleanup);
+      eventWindow().removeEventListener("pointermove", onMove);
+      eventWindow().removeEventListener("pointerup", cleanup);
+      eventWindow().removeEventListener("pointercancel", cleanup);
       dragCleanupRef.current = null;
     };
     dragCleanupRef.current = cleanup;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", cleanup);
-    window.addEventListener("pointercancel", cleanup);
+    eventWindow().addEventListener("pointermove", onMove);
+    eventWindow().addEventListener("pointerup", cleanup);
+    eventWindow().addEventListener("pointercancel", cleanup);
   };
 
   /**
@@ -771,15 +780,15 @@ export default function ChartDrawLayer({
       onUpdate({ ...drawing, points: next });
     };
     const cleanup = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", cleanup);
-      window.removeEventListener("pointercancel", cleanup);
+      eventWindow().removeEventListener("pointermove", onMove);
+      eventWindow().removeEventListener("pointerup", cleanup);
+      eventWindow().removeEventListener("pointercancel", cleanup);
       dragCleanupRef.current = null;
     };
     dragCleanupRef.current = cleanup;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", cleanup);
-    window.addEventListener("pointercancel", cleanup);
+    eventWindow().addEventListener("pointermove", onMove);
+    eventWindow().addEventListener("pointerup", cleanup);
+    eventWindow().addEventListener("pointercancel", cleanup);
   };
 
   /** Resize the emoji's chart-relative nominal size without moving its anchor. */
@@ -803,15 +812,15 @@ export default function ChartDrawLayer({
       onUpdate({ ...drawing, style: { ...drawing.style, fontSize } });
     };
     const cleanup = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", cleanup);
-      window.removeEventListener("pointercancel", cleanup);
+      eventWindow().removeEventListener("pointermove", onMove);
+      eventWindow().removeEventListener("pointerup", cleanup);
+      eventWindow().removeEventListener("pointercancel", cleanup);
       dragCleanupRef.current = null;
     };
     dragCleanupRef.current = cleanup;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", cleanup);
-    window.addEventListener("pointercancel", cleanup);
+    eventWindow().addEventListener("pointermove", onMove);
+    eventWindow().addEventListener("pointerup", cleanup);
+    eventWindow().addEventListener("pointercancel", cleanup);
   };
 
   const beginDrag = (drawing: Drawing, mode: "move" | number, event: ReactPointerEvent) => {
@@ -903,16 +912,16 @@ export default function ChartDrawLayer({
       }
     };
     const cleanup = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      eventWindow().removeEventListener("pointermove", onMove);
+      eventWindow().removeEventListener("pointerup", onUp);
       dragCleanupRef.current = null;
     };
     const onUp = () => { settle(); cleanup(); };
     // A single stored cleanup guarantees the window listeners are removed even
     // if the pane unmounts mid-drag (the previous leak).
     dragCleanupRef.current = cleanup;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    eventWindow().addEventListener("pointermove", onMove);
+    eventWindow().addEventListener("pointerup", onUp);
   };
 
   const handlePointerDown = (event: ReactPointerEvent) => {
@@ -984,9 +993,9 @@ export default function ChartDrawLayer({
         setPending({ tool: activeTool, points: samples });
       };
       const cleanup = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("pointercancel", onUp);
+        eventWindow().removeEventListener("pointermove", onMove);
+        eventWindow().removeEventListener("pointerup", onUp);
+        eventWindow().removeEventListener("pointercancel", onUp);
         freehandCleanupRef.current = null;
         freehandRef.current = false;
       };
@@ -997,9 +1006,9 @@ export default function ChartDrawLayer({
         else setPending(null);
       };
       freehandCleanupRef.current = cleanup;
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      window.addEventListener("pointercancel", onUp);
+      eventWindow().addEventListener("pointermove", onMove);
+      eventWindow().addEventListener("pointerup", onUp);
+      eventWindow().addEventListener("pointercancel", onUp);
       return;
     }
     if (spec.points === "poly") {
@@ -1337,7 +1346,7 @@ export default function ChartDrawLayer({
           // Stop pill ON the stop boundary, and a grey stats pill on the entry
           // line showing open P&L (real last close, in points) and the
           // risk/reward ratio.
-          const lastClose = candles.length ? candles[candles.length - 1].close : null;
+          const lastClose = currentPrice != null && Number.isFinite(currentPrice) ? currentPrice : candles.length ? candles[candles.length - 1].close : null;
           const openPnl = lastClose == null ? null : (long ? lastClose - entryP : entryP - lastClose);
           const stats = `${openPnl == null ? "" : `Open P&L: ${openPnl >= 0 ? "+" : ""}${openPnl.toFixed(2)} · `}Risk/Reward Ratio: ${rr.toFixed(2)}`;
           return (
@@ -1512,10 +1521,13 @@ export default function ChartDrawLayer({
           // Committed drawings read the memoized histogram (recomputed only when
           // candles/anchors/settings change); the live preview recomputes only
           // when the cursor crosses a bar, never per pixel.
-          const prof = preview
+          const prof = requireExactVolumeProfiles ? volumeProfileCache.get(drawing.id) : preview
             ? previewVolumeProfile(t0, t1, rows, valueArea)
             : (volumeProfileCache.get(drawing.id) ?? volumeProfile(candles, t0, t1, rows, valueArea));
-          if (!prof) return null;
+          if (!prof) return requireExactVolumeProfiles ? <g>
+            <rect x={Math.min(x0,x1)} y={plotTopInset} width={Math.max(1,Math.abs(x1-x0))} height={Math.max(1,height-plotTopInset-plotBottomInset)} fill="none" stroke={stroke} strokeWidth={w} strokeDasharray="4 4" />
+            {label(Math.min(x0,x1)+4,a.y ?? plotTopInset+14,volumeProfileMessages[drawing.id] || (preview ? "Select profile range" : "Exact volume-at-price unavailable"),stroke)}
+          </g> : null;
           const boxRight = anchored ? x1 : Math.max(x0, x1);
           const boxLeft = Math.min(x0, x1);
           const widthSetting = Math.max(1, Math.min(80, style.profileWidthPercent ?? 32));
@@ -1553,6 +1565,11 @@ export default function ChartDrawLayer({
           </g>;
         }
         case "anchoredVwap": {
+          if (requireExactVolumeProfiles) {
+            const range = candles.filter(candle => candle.time >= pr[0].time);
+            if (!range.length || range.some(candle => !Number.isFinite(candle.volume)) || !range.some(candle => candle.volume > 0))
+              return <g>{label(a.x ?? 0,a.y ?? plotTopInset+14,"Reported bar volume unavailable for this range",stroke)}</g>;
+          }
           if (a.x == null) return null;
           const from = pr[0].time;
           const series = preview

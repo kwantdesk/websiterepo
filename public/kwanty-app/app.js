@@ -2,14 +2,15 @@ import {themePaint,themeIsLight} from './site-theme.js';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {syncThemeSettings} from './theme-settings.js';
 import {botStorage,botFetch,botTheme,botTimeZone,botPriceHistory,botSubscribePrice} from './site-runtime.js';
-import {createPriceController} from './price-runtime.js?v=1';
+import {attachStateDrawingTools,botMountStateDrawings} from './state-drawing-tools.js?v=1';
+import {createPriceController} from './price-runtime.js?v=2';
 import {chartRegion,panChartView,zoomChartView} from './chart-interaction.js?v=3';
 import {createSessionHistory} from './session-history.js?v=1';
 import {candleIntervalFor,priceViewFor,intervalLabel,linkedViewportUpdates,linkedCursor,projectCursor} from './panel-controls.js?v=2';
 import {bindTemplates} from './templates.js';
 import {mountTickerShortcuts} from './ticker-shortcuts.js?v=2';
-import {createOrderflowSources} from './orderflow-sources.js?v=1';
-import {createStateSources} from './state-sources.js?v=1';
+import {createOrderflowSources} from './orderflow-sources.js?v=2';
+import {createStateSources} from './state-sources.js?v=2';
 import {STATE_PROFILES,statePanelCategory,statePanelLabel,selectStateProfile,restoreStatePanels,stateControlTargets,stateViewportUpdates,stateCursor,projectStateCursor,sameStatePriceUnits} from './state-panels.js?v=1';
 import {RetainedSnapshots} from './retention.js';
 import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261020-square-candles';
@@ -167,14 +168,16 @@ function addStateChart({restore=false}={}){saveScope();const closed=restore?stat
 function closeStateChart(panel){if(state.statePanels.length<2)return;saveScope();state.closedStatePanels.push({chart:structuredClone(panel),index:state.statePanels.indexOf(panel)});state.closedStatePanels=state.closedStatePanels.slice(-12);state.statePanels=state.statePanels.filter(p=>p!==panel);views.delete(panel.id);if(activeStatePanelId===panel.id)activeStatePanelId=state.statePanels[0].id;state.replayIndex=null;stopReplay();syncStatePanel();syncShell();buildCharts();persist();}
 function renderStateControls(){const holder=$('#statePanelControls');holder.replaceChildren();for(const panel of state.statePanels){const box=el('section','state-panel-control'),focus=el('button',panel===activeStatePanel()?'selected':'',`${state.statePanels.indexOf(panel)+1} · ${panel.ticker} · ${statePanelLabel(panel)}`);focus.setAttribute('aria-pressed',String(panel===activeStatePanel()));focus.addEventListener('click',()=>{const chart=charts.find(c=>c.panel===panel);if(chart){activateChart(chart);chart.wrap.scrollIntoView({block:'nearest'});}});const select=el('select');select.setAttribute('aria-label','State profile for chart '+(state.statePanels.indexOf(panel)+1));for(const[value,label]of STATE_PROFILES){const option=el('option','',label);option.value=value;select.append(option);}select.value=statePanelCategory(panel);select.addEventListener('change',()=>{const chart=charts.find(c=>c.panel===panel);if(chart)activateChart(chart);const next={...panel};selectStateProfile(next,select.value);changeStateProfile({gexCategory:next.gexCategory,greek:next.greek,greekExpiry:next.greekExpiry});});box.append(focus,select);holder.append(box);}if(state.closedStatePanels.length){const restore=el('button','','Restore closed chart');restore.type='button';restore.onclick=()=>addStateChart({restore:true});holder.append(restore);}}
 function buildStateCharts(){
- observer?.disconnect();charts=[];stateLinkedSeedKey=null;$('#chartPanels').replaceChildren();
+ observer?.disconnect();for(const chart of charts)chart.drawTools?.dispose();charts=[];stateLinkedSeedKey=null;$('#chartPanels').replaceChildren();
  if(!state.statePanels.some(p=>p.id===activeStatePanelId))activeStatePanelId=state.statePanels[0].id;
  for(const panel of state.statePanels){
   const wrap=el('div','chart-panel'),canvas=el('canvas'),header=el('div','panel-header'),title=el('span','panel-title',panel.ticker+' · '+statePanelLabel(panel)),interval=el('span','panel-interval'),tools=el('div','panel-tools'),status=el('div','panel-source-status');
   wrap.tabIndex=0;wrap.setAttribute('role','group');wrap.setAttribute('aria-label',panel.ticker+' '+statePanelLabel(panel)+' chart panel');wrap.dataset.panelId=panel.id;wrap.style.flex=String(panel.height||1);canvas.setAttribute('role','img');canvas.setAttribute('aria-label',panel.ticker+' '+statePanelLabel(panel));status.setAttribute('role','status');status.hidden=true;
-  const chart={panel,wrap,canvas,title,status,intervalLabel:interval,geometry:null,hover:null};
+  const toolsHost=el('div','state-drawing-host'),chart={panel,wrap,canvas,title,status,toolsHost,intervalLabel:interval,geometry:null,hover:null};
   tools.append(panelLinkButton(chart,'viewportLinked','shared viewport','M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4'),panelLinkButton(chart,'crosshairLinked','crosshair','M12 2v4m0 12v4M2 12h4m12 0h4M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12'));
   const reset=el('button','','↻');reset.setAttribute('aria-label','Reset chart scaling');reset.onclick=()=>resetChartView(chart);const configure=el('button','','⚙');configure.setAttribute('aria-label','Settings for '+panel.ticker+' '+statePanelLabel(panel));configure.onclick=()=>{activateChart(chart);$('#openSettings').click();};chart.settingsButton=configure;const close=el('button','','×');close.setAttribute('aria-label','Close '+panel.ticker+' '+statePanelLabel(panel));close.disabled=state.statePanels.length===1;close.onclick=()=>closeStateChart(panel);chart.closeButton=close;tools.append(reset,configure,close);header.append(title,interval,tools);wrap.append(header,canvas,status);$('#chartPanels').append(wrap);charts.push(chart);
+  const content=el('div','state-chart-content');canvas.before(content);content.append(canvas,toolsHost);
+  chart.drawTools=attachStateDrawingTools(chart,{mount:botMountStateDrawings,persist,activate:()=>activateChart(chart),zoom:event=>{if(chart.geometry)setChartView(chart,zoomChartView('state',chart.geometry,views.get(panel.id),event));},onError:()=>{toolsHost.textContent='Drawing tools unavailable';}});
   wrap.addEventListener('pointerdown',()=>activateChart(chart));wrap.addEventListener('focusin',()=>activateChart(chart));wrap.addEventListener('keydown',event=>{if(event.target===wrap&&['Enter',' '].includes(event.key)){event.preventDefault();activateChart(chart);}});wireChart(chart);
  }
  observer=new ResizeObserver(drawAll);for(const chart of charts)observer.observe(chart.wrap);wirePanelDividers();syncActiveChartControls();drawAll();
@@ -183,7 +186,7 @@ function buildCharts(){
  $('#chartPanels').classList.toggle('state-multi-panels',state.package==='state');
  if(state.package==='state'){buildStateCharts();return;}
  for(const panel of state.panels)if(!panel.ticker)panel.ticker=state.ticker;
- observer?.disconnect();charts=[];linkedViewportSeedKey=null;$('#chartPanels').replaceChildren();
+ observer?.disconnect();for(const chart of charts)chart.drawTools?.dispose();charts=[];linkedViewportSeedKey=null;$('#chartPanels').replaceChildren();
  if(state.package==='orderflow'&&!state.panels.some(panel=>panel.id===activePanelId))activePanelId=state.panels[0]?.id||null;
  for(const panel of state.package==='orderflow'?state.panels:[{id:'profile'}]){
   const name=state.package==='orderflow'?ORDERFLOW_METRICS[panel.metric].label:state.package+' exposure profile',wrap=el('div','chart-panel'),canvas=el('canvas');
@@ -211,14 +214,19 @@ function regularWindow(records,seconds){const last=records.at(-1);if(!last)retur
 function orderflowWindow(points,seconds){const last=points.at(-1),window=regularWindow(last?[{timestamp:last.time/1000}]:[],seconds);return window.endTime?{...window,endTime:window.endTime+Math.max(60000,(window.endTime-window.startTime)*.04)}:window;}
 function exportChartImage(){if(!state.payload||!charts.length)return;const canvas=document.createElement('canvas');canvas.width=Math.max(...charts.map(c=>c.canvas.width));canvas.height=charts.reduce((sum,c)=>sum+c.canvas.height,0);const ctx=canvas.getContext('2d');ctx.fillStyle=settings().background||themePaint("#111111");ctx.fillRect(0,0,canvas.width,canvas.height);let y=0;for(const chart of charts){ctx.drawImage(chart.canvas,0,y);y+=chart.canvas.height;}const a=document.createElement('a');a.download=`kwanty-${state.package}-${state.ticker}-${sourceDate(state.payload.timestamp)}.png`;a.href=canvas.toDataURL('image/png');a.click();}
 let paintFrame=null,linkedViewportSeedKey=null;function drawAll(){if(paintFrame===null)paintFrame=requestAnimationFrame(()=>{paintFrame=null;paintAll();});}
+function updateStateDrawingTools(c,width,height,price){
+ const s=c.panel.settings,t=botTheme();
+ c.drawTools?.update({ticker:c.panel.ticker,active:!document.hidden&&window.__kwantyActive!==false,width,height,geometry:c.geometry,candles:price.candles,lastPrice:price.latest?.spot??price.candles.at(-1)?.close??null,multiplier:Number(s.priceMultiplier)||1,offset:Number(s.priceOffset)||0,interval:candleIntervalFor(c.panel,s),bullish:t.bullish||t.primary||'#33b7a5',bearish:t.bearish||t.danger||'#e97995'});
+}
 function paintStateChart(c,ctx,width,height){
  const panel=c.panel,price=priceState(panel),source=stateSources.get(panel),payload=selectedPayload(panel),s={...panel.settings,spotViewMode:priceViewFor(panel,panel.settings)},records=currentRecords(panel);
  const date=sourceDate(payload?.timestamp);if(c.sessionDate&&date&&c.sessionDate!==date){views.delete(panel.id);c.hover=null;stateLinkedSeedKey=null;}if(date)c.sessionDate=date;
  const title=panel.ticker+' · '+statePanelLabel(panel);if(c.renderedTitle!==title){c.renderedTitle=title;c.title.textContent=title;c.wrap.setAttribute('aria-label',title+' chart panel');c.canvas.setAttribute('aria-label',title);c.closeButton.setAttribute('aria-label','Close '+panel.ticker+' '+statePanelLabel(panel));c.settingsButton.setAttribute('aria-label','Settings for '+panel.ticker+' '+statePanelLabel(panel));for(const button of c.wrap.querySelectorAll('[data-link-key]'))button.setAttribute('aria-label',(panel[button.dataset.linkKey]?'Unlink ':'Link ')+button.dataset.linkLabel+' for '+statePanelLabel(panel));}
  c.status.hidden=Boolean(payload);if(!c.status.hidden)c.status.textContent=source?.error?'Profile data unavailable for '+panel.ticker:'Loading '+panel.ticker+' profile';
- if(!payload&&!price.points.length){ctx.clearRect(0,0,width,height);ctx.fillStyle=s.background;ctx.fillRect(0,0,width,height);c.geometry=null;return;}
+ if(!payload&&!price.points.length){ctx.clearRect(0,0,width,height);ctx.fillStyle=s.background;ctx.fillRect(0,0,width,height);c.geometry=null;updateStateDrawingTools(c,width,height,price);return;}
  if(panel.greek){delete s.gex_vol;delete s.gex_vol_neg;}
  c.geometry=drawProfile(ctx,width,height,{payload:payload||{ticker:panel.ticker,strikes:[],spot:price.latest?.spot??price.points.at(-1)?.spot},spotPrice:price.latest?.spot,package:'state',category:statePanelCategory(panel),settings:s,candleInterval:candleIntervalFor(panel,s),conversion:Number(s.priceMultiplier)||1,conversionOffset:Number(s.priceOffset)||0,priceHistory:s.spotViewMode==='candles'?price.candles:price.points,majorHistory:{majorCall:records.map(row=>({time:row.timestamp,spot:row.major_pos_vol})),majorPut:records.map(row=>({time:row.timestamp,spot:row.major_neg_vol}))},view:{...regularWindow(price.points.map(point=>({timestamp:point.time/1000})),23400),...views.get(panel.id)},hover:s.showCrosshairs?c.hover:null});
+ updateStateDrawingTools(c,width,height,price);
 }
 function seedStateViews(){const linked=charts.filter(chart=>chart.panel.viewportLinked&&chart.geometry&&selectedPayload(chart.panel)&&!priceState(chart.panel).loading&&priceState(chart.panel).candles.length),key=linked.map(chart=>chart.panel.id+':'+chart.panel.ticker+':'+statePanelCategory(chart.panel)+':'+sourceDate(priceState(chart.panel).candles[0]?.time/1000)).join(',');if(linked.length<2||key===stateLinkedSeedKey)return;stateLinkedSeedKey=key;const source=linked.find(chart=>chart.panel===activeStatePanel())||linked[0],g=source.geometry;setChartView(source,{...views.get(source.panel.id),startTime:g.startTime,endTime:g.endTime,minPrice:g.minPrice,maxPrice:g.maxPrice});}
 function paintAll(){
@@ -297,4 +305,8 @@ const tickerShortcuts=mountTickerShortcuts({root:$('#tickerFavourites'),select:$
 $('.chart-top-controls').insertBefore($('#addStateChart'),$('#toggleSidebar'));$('#addStateChart').addEventListener('click',addStateChart);
 $('#chartPanels').addEventListener('scroll',drawAll,{passive:true});
 window.addEventListener('pagehide',()=>tickerShortcuts.dispose());
+window.addEventListener('pagehide',()=>{for(const chart of charts)chart.drawTools?.dispose();});
+function syncStateDrawingActivity(){if(state.package==='state')for(const c of charts)updateStateDrawingTools(c,c.canvas.clientWidth,c.canvas.clientHeight,priceState(c.panel));}
+window.addEventListener('kwanty-activity',syncStateDrawingActivity);
+document.addEventListener('visibilitychange',syncStateDrawingActivity);
 bindTemplates(message,persist);buildCharts();syncPrices();init();

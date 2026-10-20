@@ -109,7 +109,7 @@ test('State pending-profile price chart uses real candle close and linked seed w
  const p={...panel(),viewportLinked:true},ctx=new Proxy({measureText:text=>({width:text.length*6})},{get:(o,k)=>k in o?o[k]:()=>{},set:(o,k,v)=>(o[k]=v,true)});
  const price={latest:null,loading:false,points:[{time,spot:500}],candles:[{time,open:499,high:501,low:498,close:500}]};
  const chart={panel:p,status:{},title:{},wrap:{setAttribute(){},querySelectorAll:()=>[]},canvas:{setAttribute(){}},closeButton:{setAttribute(){}},settingsButton:{setAttribute(){}}};
- const context={priceState:()=>price,stateSources:{get:()=>({})},selectedPayload:()=>null,currentRecords:()=>[],priceViewFor:()=> 'candles',statePanelLabel:()=> 'Gamma',statePanelCategory,sourceDate:()=> '2026-10-20',drawProfile,candleIntervalFor:()=>60000,regularWindow:()=>({startTime:time,endTime:time+60000}),views:new Map(),stateLinkedSeedKey:null};
+ const context={updateStateDrawingTools(){},priceState:()=>price,stateSources:{get:()=>({})},selectedPayload:()=>null,currentRecords:()=>[],priceViewFor:()=> 'candles',statePanelLabel:()=> 'Gamma',statePanelCategory,sourceDate:()=> '2026-10-20',drawProfile,candleIntervalFor:()=>60000,regularWindow:()=>({startTime:time,endTime:time+60000}),views:new Map(),stateLinkedSeedKey:null};
  vm.runInNewContext(app.slice(app.indexOf('function paintStateChart('),app.indexOf('function seedStateViews(')),context);
  context.paintStateChart(chart,ctx,1000,600);assert.equal(chart.geometry.spot,500);assert.ok(chart.geometry.minPrice>450);assert.ok(chart.geometry.maxPrice<550);
  let ready=false,calls=0;Object.assign(context,{charts:[chart,{...chart,panel:{...p,id:'b'}}],selectedPayload:()=>ready?frame('QQQ','gamma_zero'):null,activeStatePanel:()=>p,setChartView:()=>calls++});

@@ -1,4 +1,4 @@
-import {createPriceSeries} from './price-series.js?v=1';
+import {createPriceSeries} from './price-series.js?v=2';
 
 const canonical=ticker=>ticker==='ES_SPX'?'ES':ticker==='NQ_NDX'?'NQ':ticker==='SPXW'?'SPX':ticker;
 // One underlying series per iframe; all its Classic/State/Orderflow panels share

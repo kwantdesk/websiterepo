@@ -6,9 +6,11 @@ import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { loadStoredChartSettings } from "@/lib/chartSettings";
 import { acquireKwantyPrices, type KwantyPriceHost } from "@/lib/kwantyPriceBridge";
+import type { StateDrawingApi, StateDrawingMount } from "@/lib/kwantyStateDrawingAdapter";
 
 const STORAGE_KEY = "kwantdesk:kwanty:workspace:v1";
 type BotSiteHost = KwantyPriceHost & {
+  mountStateDrawings(element: HTMLElement, api: StateDrawingApi): Promise<StateDrawingMount>;
   active: boolean;
   read: (key: string) => string | null;
   write: (key: string, value: string | null) => void;
@@ -51,6 +53,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
       catch { return {}; }
     };
     const host: BotSiteHost = {
+      mountStateDrawings: (element, api) => import("./StateChartTools").then(module => module.mountStateChartTools(element, api)),
       priceHistory: prices.priceHistory,
       subscribePrice: prices.subscribePrice,
       active: activeRef.current,
@@ -142,7 +145,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("botView"); params.delete("botView"); params.delete("view"); params.set("v", "7");
+  const requestedTool = params.get("botView"); params.delete("botView"); params.delete("view"); params.set("v", "8");
   const src = `/kwanty-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#${requestedTool}` : "#orderflow"}`;
   return <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background" aria-label="KWANTY workspace">
     <div className="flex min-h-0 flex-1">

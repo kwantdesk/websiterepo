@@ -1,5 +1,36 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — State normal-chart drawing tools
+
+- Every State pane has a theme-linked left drawing rail backed by the existing
+  ChartDrawLayer, ChartDrawSettings, tool catalogue/icons and emoji picker.
+  Geometry is seconds/raw underlying price; State milliseconds, multiplier and
+  offset are applied only at projection. Never anchor to exposure/strike rows.
+- Host mount is lazy and shared by standalone KWANTY and embedded State tools.
+  Drawings persist per panel/ticker in the existing workspace/template payload.
+  Editing, handles, magnet strengths, undo/redo, deletion, text, settings and
+  price/time zoom use the normal engine. P&L reads observed price without
+  inventing a next candle. Iframe drags bind to their owning window, including
+  cleanup after SVG ref removal.
+- Fixed/anchored profiles request exact ES/NQ execution ranges through the
+  existing coalesced gateway client after 300ms debounce, sequentially. No
+  per-tick poller; inactive/no-geometry panes do not start range requests.
+  Range signatures reject obsolete profile responses. GEX/OI exposure and OHLC
+  distributions are NEVER substituted for execution VAP in State.
+- OPEN data limitation: cash indices have no traded volume, and a generic
+  equity/ETF/options-contract VAP adapter is not connected here. Their drawings
+  and calculators work, but fixed profiles show an honest range/data caption;
+  do not claim that all tickers now have exact VAP. Real provider bar volume is
+  retained for anchored VWAP, which refuses missing-volume ranges.
+- 232 KWANTY/reference tests, TypeScript and scoped lint pass; shared position
+  resize/migration/crosshair scripts pass 23 checks. One existing broad custom
+  profile script fails an outdated exact-string assertion in UNCHANGED
+  ChartIndicatorsControl; confirmed identical on HEAD, not hidden as passed.
+- Actual app/browser fixture verifies calculator placement/resize/style/P&L,
+  zoom, ticker isolation/reload, and synthetic exact-profile POC/VAH/VAL output.
+  This is not live provider/history proof. See
+  docs/prompt-log/2026-10-20-kwanty-state-drawing-tools.md.
+
 ## 2026-10-20 — Square State candle bodies
 
 - State price candles now use square Canvas rectangles instead of the rounded

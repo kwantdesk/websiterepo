@@ -112,6 +112,10 @@ const ChartEmojiPicker = dynamic(() => import("./ChartEmojiPicker"), {
 
 const fallbackIcon = svg(<circle cx="12" cy="12" r="7" />);
 const iconFor = (id: DrawToolId): ToolIcon => ICONS[id] ?? fallbackIcon;
+export function DrawingToolIcon({ tool }: { tool: DrawToolId }) {
+  const Icon = iconFor(tool);
+  return <Icon className="state-tool-icon" />;
+}
 const toolsOf = (group: DrawToolGroupId): DrawToolId[] => DRAW_TOOL_LIST.filter((t) => t.group === group).map((t) => t.id);
 
 type Props = {

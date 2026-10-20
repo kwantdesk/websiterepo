@@ -5,7 +5,7 @@ import { subscribeMarketIndexSnapshot } from "@/lib/marketIndexLiveClient";
 import { fetchInstitutionalFrontMonth, fetchInstitutionalSnapshot, type InstitutionalTrade } from "@/lib/institutionalMarketData";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
 
-export type KwantyPriceBar = { time: number; open: number; high: number; low: number; close: number };
+export type KwantyPriceBar = { time: number; open: number; high: number; low: number; close: number; volume?: number };
 export type KwantyPriceFrame = { symbol: string; timestamp: number; lastPrice: number; candle?: KwantyPriceBar; sessionDate?: string };
 export type KwantyPriceHost = {
   priceHistory(symbol: string, sessionDate?: string): Promise<KwantyPriceBar[]>;
@@ -29,7 +29,7 @@ function bars(value: unknown): KwantyPriceBar[] {
     const time = Number(item.time ?? item.timestamp);
     const [open, high, low, close] = [item.open, item.high, item.low, item.close].map(Number);
     if (!Number.isFinite(time) || time < 1e11 || time % 60_000 || ![open, high, low, close].every(n => Number.isFinite(n) && n > 0) || low > Math.min(open, close) || high < Math.max(open, close)) return [];
-    return [{ time, open, high, low, close }];
+    return [{ time, open, high, low, close, ...(typeof item.volume === "number" && Number.isFinite(item.volume) && item.volume >= 0 ? {volume: item.volume} : {}) }];
   }).slice(-6_000);
 }
 type PriceDependencies = {

@@ -1,4 +1,4 @@
-import {createPriceController} from './price-runtime.js?v=1';
+import {createPriceController} from './price-runtime.js?v=2';
 import {mergeSnapshots,historyRecords,sourceDate} from './models.js';
 import {trimSnapshotRows} from './retention.js';
 
