@@ -1,5 +1,12 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA tool actions beside filters
+
+- Refresh/reset/filter/settings sit immediately after their tool's dropdowns,
+  not against the far right. Match dropdown background/foreground/border/radius
+  theme tokens, retaining accessible labels, focus and existing click handlers.
+- Record: docs/prompt-log/2026-10-20-gex-data-inline-actions.md.
+
 ## 2026-10-20 — GEX DATA filter-row background and centering
 
 - Tool filter rows use the exact website background, not the reference grey

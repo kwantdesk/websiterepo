@@ -15,7 +15,7 @@ test("empty docks and populated tool surfaces use the exact live host background
 
 test("flat host overrides load after reference gradients, with a fresh stylesheet URL",()=>{
   const html=read("public/gex-data-app/index.html");
-  const site=html.indexOf('/gex-data-app/site.css?v=7');
+  const site=html.indexOf('/gex-data-app/site.css?v=8');
   assert.ok(site>html.indexOf('/gex-data-app/styles.css'));
   assert.ok(site>html.indexOf('/gex-data-app/workspace.css'));
   const theme=read("public/gex-data-app/site-theme.js");
@@ -31,4 +31,6 @@ test('filter row shares the flat background and vertically centres controls and 
   assert.match(css,/\.embedded \.tool-controls\{[^}]*box-sizing:border-box;align-items:center/);
   assert.match(css,/\.embedded \.tool-controls>\.control,\.embedded \.tool-controls>\.embedded-actions\{align-items:center;align-self:center\}/);
   assert.match(css,/\.embedded \.embedded-actions button\{[^}]*height:24px;min-height:24px;line-height:1/);
+  assert.match(css,/\.embedded \.tool-controls>\.embedded-actions\{margin-left:0;gap:5px;flex:0 0 auto\}/);
+  assert.match(css,/\.embedded-actions button\{background:var\(--site-surface\)!important;color:var\(--site-foreground\)!important;border:1px solid var\(--site-border\)!important;border-radius:3px!important/);
 });
