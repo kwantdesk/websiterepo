@@ -358,6 +358,7 @@ import {
   writeChartHistoryCache,
   writeExecutionTapeCache,
 } from "@/lib/chartHistoryCache";
+import { ChartHistoryRepairGate } from "@/lib/chartHistoryRepairGate";
 import {
   cmeSessionDateKey,
   cmeSessionStartMs,
@@ -6611,6 +6612,14 @@ function WorkspaceChartPaneComponent({
     let visibleHistoryReady = false;
     const requestController = new AbortController();
     let reconciliationTimer: number | null = null;
+    const repairGate = new ChartHistoryRepairGate();
+    const scheduleTailRepair = (minimumDelay = 0) => {
+      if (cancelled || reconciliationTimer !== null || pane.broker !== "Databento") return;
+      reconciliationTimer = window.setTimeout(() => {
+        reconciliationTimer = null;
+        void reconcileTail();
+      }, Math.max(minimumDelay, repairGate.delay()));
+    };
 
     // A replay pane is a closed, immutable historical session. Hydrate that
     // precise window once and stop here: reading today's IndexedDB cache,
@@ -7196,10 +7205,7 @@ function WorkspaceChartPaneComponent({
           setLoading(false);
         }
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
-          reconciliationTimer = window.setTimeout(() => {
-            reconciliationTimer = null;
-            void reconcileTail();
-          }, 2_000);
+          scheduleTailRepair(2_000);
         }
       } catch (loadError) {
         if (cancelled) return;
@@ -7247,16 +7253,15 @@ function WorkspaceChartPaneComponent({
           setSettledChartRequestKey(requestedChartHydrationKey);
         }
         if (willRetry) {
-          reconciliationTimer = window.setTimeout(() => {
-            reconciliationTimer = null;
-            void reconcileTail();
-          }, 2_000);
+          scheduleTailRepair(2_000);
         }
       }
     };
 
     const reconcileTail = async () => {
       if (cancelled || historyHydratedRef.current || pane.broker !== "Databento") return;
+      if (!repairGate.begin()) { scheduleTailRepair(Math.max(2_000, repairGate.delay())); return; }
+      let recovered = false;
       try {
         const [historical, seam] = await Promise.all([
           fetchWorkspaceCandles(
@@ -7267,6 +7272,9 @@ function WorkspaceChartPaneComponent({
             500,
             false,
             requestController.signal,
+            true,
+            // Repair attempts must not persist another full history snapshot
+            // before this pane has verified it. Cache the successful result once.
             true,
           ),
           resolvedContractSymbol
@@ -7301,6 +7309,7 @@ function WorkspaceChartPaneComponent({
         latestCandlesRef.current = repaired;
         historyHydratedRef.current = !stillBroken;
         if (!stillBroken) {
+          recovered = true;
           setCandles(repaired);
           if (hasUsableOrderFlowHistory(repaired)) {
             setOrderFlowHistoryReady(true);
@@ -7314,22 +7323,18 @@ function WorkspaceChartPaneComponent({
         }
       } catch (error) {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+      } finally {
+        repairGate.finish(recovered);
       }
       if (!cancelled) {
-        reconciliationTimer = window.setTimeout(() => {
-          reconciliationTimer = null;
-          void reconcileTail();
-        }, 2_000);
+        scheduleTailRepair();
       }
     };
 
     const requestTailReconciliation = () => {
       if (cancelled || reconciliationTimer !== null || pane.broker !== "Databento") return;
       historyHydratedRef.current = false;
-      reconciliationTimer = window.setTimeout(() => {
-        reconciliationTimer = null;
-        void reconcileTail();
-      }, 0);
+      scheduleTailRepair();
     };
     requestTailReconciliationRef.current = requestTailReconciliation;
 
