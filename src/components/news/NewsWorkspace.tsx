@@ -26,6 +26,8 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { usePathname, useSearchParams } from "next/navigation";
 import KwantLoader from "@/components/KwantLoader";
 import MacroWorkspace, { type MacroNewsView } from "@/components/news/MacroWorkspace";
 import FinancialInfoWorkspace from "@/components/news/FinancialInfoWorkspace";
@@ -44,6 +46,9 @@ import {
   normalizeTimeZone,
 } from "@/lib/timeZones";
 import type { FriendSummary, FriendsPayload } from "@/lib/friends";
+
+const OptionsExpirationCalendar = dynamic(() => import("./OptionsExpirationCalendar"), { ssr: false, loading: () => null });
+const FuturesExpirationCalendar = dynamic(() => import("./FuturesExpirationCalendar"), { ssr: false, loading: () => null });
 
 const ALERTS_STORAGE_KEY = "kwantdesk:economic-calendar-alerts:v1";
 const CURRENCIES_STORAGE_KEY = "kwantdesk:economic-calendar-currencies:v1";
@@ -899,21 +904,38 @@ function EconomicCalendarWorkspace() {
   );
 }
 
-type NewsView = "calendar" | "financial-info" | MacroNewsView;
+type NewsView = "calendar" | "financial-info" | "options-expirations" | "futures-expirations" | MacroNewsView;
 
-export default function NewsWorkspace() {
-  const [view, setView] = useState<NewsView>("calendar");
+export default function NewsWorkspace({ accountKey = "local", active = true }: { accountKey?: string; active?: boolean }) {
+  const search = useSearchParams();
+  const pathname = usePathname();
+  const [localView, setView] = useState<NewsView>("calendar");
+  const requested = pathname === "/news" ? search.get("view") : null;
+  const view = requested === "options-expirations" || requested === "futures-expirations" ? requested : localView;
+  const changeView = (next: NewsView) => {
+    setView(next);
+    // Only the full News page owns URL navigation; grid panels stay independent.
+    if (window.location.pathname === "/news") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", next);
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  };
   const sections: Array<{ id: NewsView; label: string; description: string; icon: typeof CalendarDays }> = [
     { id: "calendar", label: "Economic Calendar", description: "Scheduled catalysts", icon: CalendarDays },
     { id: "financial-info", label: "Financial Info", description: "Financial headline wire", icon: Globe2 },
     { id: "macro", label: "Macroeconomics", description: "Causal event maps", icon: BrainCircuit },
     { id: "developments", label: "Live Macro Developments", description: "Policy and geopolitical shocks", icon: Radio },
+    { id: "options-expirations", label: "Options Expiration Calendar", description: "Cboe expiry dates", icon: CalendarDays },
+    { id: "futures-expirations", label: "Futures Expiration Calendar", description: "CME expirations and rolls", icon: CalendarDays },
   ];
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <WorkspaceSubnav items={sections} value={view} onChange={setView} ariaLabel="News sections" />
+      <WorkspaceSubnav items={sections} value={view} onChange={changeView} ariaLabel="News sections" />
       <div className="min-h-0 flex-1">
-        {view === "calendar" ? <EconomicCalendarWorkspace /> : view === "financial-info" ? <FinancialInfoWorkspace /> : <MacroWorkspace view={view} />}
+        {view === "calendar" ? <EconomicCalendarWorkspace /> : view === "financial-info" ? <FinancialInfoWorkspace />
+          : view === "options-expirations" ? <OptionsExpirationCalendar key={accountKey} accountKey={accountKey} active={active} />
+          : view === "futures-expirations" ? <FuturesExpirationCalendar /> : <MacroWorkspace view={view} />}
       </div>
     </div>
   );

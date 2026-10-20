@@ -18490,7 +18490,7 @@ export default function KwantifyWorkspace({
           </WorkspaceFailureBoundary>
         );
       case "news":
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-news`} label="News"><NewsWorkspace /></WorkspaceFailureBoundary>;
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-news`} label="News"><NewsWorkspace accountKey={preferenceUserId || currentUsername || "local"} /></WorkspaceFailureBoundary>;
       case "socials":
         return (
           <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-socials`} label="Socials">
@@ -20683,7 +20683,7 @@ export default function KwantifyWorkspace({
             {visitedWorkspaceSections.has("news") ? (
               <ReactActivity mode={bottomWorkspaceSection === "news" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="news" label="News">
-                  <NewsWorkspace />
+                  <NewsWorkspace accountKey={preferenceUserId || currentUsername || "local"} active={bottomWorkspaceSection === "news"} />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

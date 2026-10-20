@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — News options/futures expiration calendars
+
+- News order: Economic Calendar, Financial Info, Macroeconomics, Live Macro,
+  Options Expiration Calendar, Futures Expiration Calendar. Removed KWANTY's
+  calendar nav; old ?view=calendar bookmarks redirect to News options tab.
+- Options component moved to components/news, keeping existing account-backed
+  preference key, official Cboe verification and chart-grid tool compatibility.
+- Futures uses verified CME published 2026–2028 U.S./Japanese equity-index
+  expiration/roll table. June 2026 U.S. expiry is June 18, not generic Friday.
+  Explicitly not energy/metals/rates, delivery/first-notice or live source sync.
+  Full exchange calendar linked. CME blocks automated scraping; no scraper,
+  paid service, new API polling or implied automatic verification was added.
+- Record: docs/prompt-log/2026-10-20-news-expiration-calendars.md.
+
 ## 2026-10-20 — Quiet GEX DATA and expiration-calendar entry
 
 - Owner no longer wants the opening/loading page splash for GEX DATA or the

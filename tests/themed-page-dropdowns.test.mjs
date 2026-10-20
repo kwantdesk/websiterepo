@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('new React pages reuse the existing KwantSelect, not browser menus',()=>{
-  for(const path of ['src/components/kwanty/OptionsExpirationCalendar.tsx','src/components/news/FinancialInfoWorkspace.tsx']){
+  for(const path of ['src/components/news/OptionsExpirationCalendar.tsx','src/components/news/FuturesExpirationCalendar.tsx','src/components/news/FinancialInfoWorkspace.tsx']){
     const source=read(path);assert.match(source,/import KwantSelect/);assert.match(source,/<KwantSelect/);assert.doesNotMatch(source,/<select\b/);
   }
 });

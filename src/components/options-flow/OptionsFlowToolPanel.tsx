@@ -9,7 +9,7 @@ import { normalizeOptionsFlowState, optionsFlowTool, optionsFlowInitialSymbol, t
 import KwantLoader from "@/components/KwantLoader";
 
 const BoxTool = dynamic(() => import("@/components/gexbot/GexBoxDashboard").then(module => module.GexBoxToolPanel), { ssr: false });
-const Calendar = dynamic(() => import("@/components/kwanty/OptionsExpirationCalendar"), { ssr: false });
+const Calendar = dynamic(() => import("@/components/news/OptionsExpirationCalendar"), { ssr: false, loading: () => null });
 type ToolHost = {
   active: boolean; read(key: string): string | null; write(key: string, value: string | null): void;
   theme(): Record<string, string>; timezone(): string; instruments(): Array<[string, string]>;

@@ -61,6 +61,8 @@ test('page startup stays on the themed surface without a loading splash',()=>{
   assert.match(host,/overflow-hidden bg-background/);
   const kwanty=read('src/components/kwanty/KwantyWorkspace.tsx');
   assert.doesNotMatch(kwanty,/KwantLoader|Loading calendar|Opening KWANTY/);
-  assert.match(kwanty,/OptionsExpirationCalendar=dynamic\([^\n]+loading:\(\)=>null/);
+  const news=read('src/components/news/NewsWorkspace.tsx');
+  assert.match(news,/OptionsExpirationCalendar = dynamic\([^\n]+loading: \(\) => null/);
+  assert.match(news,/FuturesExpirationCalendar = dynamic\([^\n]+loading: \(\) => null/);
   assert.match(kwanty,/overflow-hidden bg-background/);
 });
