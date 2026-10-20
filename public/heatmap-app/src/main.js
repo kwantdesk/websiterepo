@@ -2,7 +2,7 @@ import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261017-aleph-font';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261017-aleph-font';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261020-smooth-motion';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -1603,7 +1603,10 @@ class DepthForgeApp {
       // performing redundant paints between updates.
       const canvasPaintInterval = this.workspaceEmbedded && !this.workspacePresentationActive ? 50 : 0;
       const canvasPaintDue = timestamp - this.lastCanvasPaintAt >= canvasPaintInterval;
-      if (this.renderRequested && canvasPaintDue) {
+      // Finish the existing camera movement on display frames, rather than
+      // freezing its easing between book packets. This changes presentation
+      // coordinates only: it never appends history or invents market prices.
+      if ((this.renderRequested || this.renderer.cameraInMotion) && canvasPaintDue) {
         const current = this.history[this.viewEnd];
         if (current) {
           if (this.settings.autoCenter && this.atLive) this.view.centerTick = null;

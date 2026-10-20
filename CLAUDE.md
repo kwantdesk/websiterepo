@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — LIQ MAP motion stalls
+
+- Camera easing must finish on display frames, not wait for another depth
+  packet. Paint while dirty OR `renderer.cameraInMotion`; stop when settled.
+  Preserve the inactive embedded-pane 50ms budget and never translate the whole
+  canvas, append synthetic frames, interpolate feed prices or delay executions.
+- `heat-raster.js` preserves the previous heat pixels exactly, computes row
+  geometry once per row and writes cached native-endian packed RGBA colours.
+  Palette storage is weakly keyed; no accumulating geometry/frame cache.
+- Isolated 1800×1080 raster CPU benchmark: median 10.18→5.42ms, p95
+  12.35→6.93ms (60 alternating samples). This is NOT full browser FPS or proof
+  of end-to-end feed latency. No browser CDP endpoint was exposed in this run.
+- Regression record: `docs/prompt-log/2026-10-20-liquidity-map-smooth-motion.md`.
+
 ## 2026-10-20 — LIQ MAP matches options-workspace chrome
 
 - `public/heatmap-app/site.css` is the final presentation layer, matching GEX

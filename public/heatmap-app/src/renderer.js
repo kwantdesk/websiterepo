@@ -1,5 +1,6 @@
 import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261017-aleph-font';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
+import { writeHeatRgba } from './heat-raster.js?v=20261020-smooth-motion';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1
@@ -531,24 +532,7 @@ export class DepthRenderer {
   #writeHeatmapPixels(heatmap, palette, sourceX, width, rasterRows) {
     if (width <= 0 || heatmap.height <= 0) return;
     const image = this.heatContext.createImageData(width, rasterRows);
-    const pixels = image.data;
-    for (let row = 0; row < rasterRows; row += 1) {
-      for (let localX = 0; localX < width; localX += 1) {
-        const intensity = interpolateHeatIntensity(
-          heatmap.intensities,
-          heatmap.width,
-          heatmap.height,
-          sourceX + localX,
-          row,
-          rasterRows,
-        );
-        const target = (row * width + localX) * 4;
-        pixels[target] = palette[intensity * 3];
-        pixels[target + 1] = palette[intensity * 3 + 1];
-        pixels[target + 2] = palette[intensity * 3 + 2];
-        pixels[target + 3] = 255;
-      }
-    }
+    writeHeatRgba(heatmap, palette, sourceX, width, rasterRows, image.data);
     this.heatContext.putImageData(image, sourceX, 0);
   }
 
