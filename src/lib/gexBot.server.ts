@@ -1,11 +1,11 @@
 import "server-only";
+import { fetchGexBotGateway } from "@/lib/gexBotGateway.server";
 
 import { gunzipSync } from "node:zlib";
 
 import {
   historyRowsFromPayload,
   providerHistoryCategory,
-  signedHistoryUrlFromPayload,
 } from "@/lib/gex-box/history";
 import { normalizeReplayFrames } from "@/lib/gex-box/replay";
 
@@ -27,7 +27,6 @@ type View = "classic" | "state" | "orderflow";
 
 // Classic, State, Orderflow, and their signed historical archives are served
 // by the primary API. api.gex.bot/v2 is the separate gbR research surface.
-const API_ROOT = "https://api.gexbot.com";
 const LIVE_TTL_MS = 2_000;
 const CLOSED_TTL_MS = 60_000;
 const STALE_IF_ERROR_MS = 18 * 60 * 60_000;
@@ -44,9 +43,6 @@ type HistoryResult = {
   error?: string;
 };
 
-function apiKey() {
-  return process.env.GEXBOT_API_KEY?.trim() ?? "";
-}
 
 function finite(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -315,8 +311,6 @@ export function isNewYorkRth(now = new Date()) {
 }
 
 async function requestJson(path: string, marketOpen: boolean): Promise<unknown> {
-  const key = apiKey();
-  if (!key) throw new Error("GEXBot is not configured on this deployment.");
   const now = Date.now();
   const cached = responseCache.get(path);
   const ttl = marketOpen ? LIVE_TTL_MS : CLOSED_TTL_MS;
@@ -324,15 +318,7 @@ async function requestJson(path: string, marketOpen: boolean): Promise<unknown> 
   const pending = inFlight.get(path);
   if (pending) return pending;
 
-  const request = fetch(`${API_ROOT}${path}`, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${key}`,
-      "User-Agent": "KwantDesk/1.0",
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  })
+  const request = fetchGexBotGateway(path)
     .then(async (response) => {
       const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
       if (!response.ok) {
@@ -397,42 +383,10 @@ async function requestHistoryDate(ticker: string, view: View, category: string, 
   if (cached && Date.now() - cached.receivedAt <= ttl) return cached.value;
   const pending = historyInFlight.get(cacheKey);
   if (pending) return pending;
-  const key = apiKey();
-  if (!key) throw new Error("GEXBot is not configured on this deployment.");
-
   const request = (async () => {
-    const path = `${API_ROOT}/hist/${encodeURIComponent(ticker)}/${view}/${encodeURIComponent(archiveCategory)}/${date}?noredirect`;
-    const signedResponse = await fetch(path, {
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "Accept-Encoding": "gzip",
-        Authorization: `Bearer ${key}`,
-        "User-Agent": "KwantDesk/1.0",
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
-    });
-    const signedPayload = await signedResponse.json().catch(() => null) as unknown;
-    if (!signedResponse.ok) {
-      const detail = signedPayload && typeof signedPayload === "object"
-        ? stringValue((signedPayload as Record<string, unknown>).detail)
-          || stringValue((signedPayload as Record<string, unknown>).message)
-        : "";
-      throw new Error(detail || `GEXBot history request failed (${signedResponse.status}) for ${date}.`);
-    }
-
-    const directRows = historyRowsFromPayload(signedPayload);
-    let rows: unknown[];
-    if (directRows) {
-      rows = directRows;
-    } else {
-      const downloadUrl = signedHistoryUrlFromPayload(signedPayload);
-      if (!downloadUrl) throw new Error(`GEXBot did not return a history archive for ${date}.`);
-      const fileResponse = await fetch(downloadUrl, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
-      if (!fileResponse.ok) throw new Error(`GEXBot history archive failed (${fileResponse.status}) for ${date}.`);
-      rows = parseHistoryBytes(Buffer.from(await fileResponse.arrayBuffer()));
-    }
+    const response = await fetchGexBotGateway(`/hist/${encodeURIComponent(ticker)}/${view}/${encodeURIComponent(archiveCategory)}/${date}`, true);
+    if (!response.ok) throw new Error(`GEXBot history request failed (${response.status}) for ${date}.`);
+    const rows = parseHistoryBytes(Buffer.from(await response.arrayBuffer()));
     if (!rows.length) throw new Error(`GEXBot history archive was empty for ${date}.`);
     historyCache.set(cacheKey, { value: rows, receivedAt: Date.now() });
     return rows;

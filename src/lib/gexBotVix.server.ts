@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchGexBotResearch, hasGexBotGatewayAccess } from "@/lib/gexBotGateway.server";
 
 type GexBotVixResponse = {
   timestamp?: unknown;
@@ -12,19 +13,14 @@ export type GexBotVixSpot = {
   stale: boolean;
 };
 
-const GEXBOT_VIX_URL = "https://api.gex.bot/v2/VIX/classic/gex_full";
 const LIVE_CACHE_MS = 2_000;
 const STALE_IF_ERROR_MS = 2 * 60_000;
 
 let lastGood: { value: GexBotVixSpot; receivedAt: number } | null = null;
 let inFlight: Promise<GexBotVixSpot> | null = null;
 
-function configuredApiKey() {
-  return process.env.GEXBOT_API_KEY?.trim() ?? "";
-}
-
 export function hasGexBotVixAccess() {
-  return Boolean(configuredApiKey());
+  return hasGexBotGatewayAccess();
 }
 
 function finiteNumber(value: unknown) {
@@ -39,18 +35,7 @@ function normalizeTimestamp(value: unknown) {
 }
 
 async function requestGexBotVix(): Promise<GexBotVixSpot> {
-  const apiKey = configuredApiKey();
-  if (!apiKey) throw new Error("GEXBot VIX is not configured.");
-
-  const response = await fetch(GEXBOT_VIX_URL, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "User-Agent": "KwantDesk/1.0",
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
+  const response = await fetchGexBotResearch({ ticker: "VIX", package: "classic", category: "gex_full" });
   const payload = await response.json().catch(() => ({})) as GexBotVixResponse & {
     detail?: unknown;
     error?: unknown;

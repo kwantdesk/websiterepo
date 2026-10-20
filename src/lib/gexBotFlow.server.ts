@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchGexBotResearch } from "@/lib/gexBotGateway.server";
 
 import { persistOrderflowFrame } from "@/lib/gexBotOrderflowArchive.server";
 import {
@@ -20,8 +21,6 @@ import {
   type GexBotSponsorshipVerdict,
 } from "@/lib/gexBotFlow";
 
-const GEXBOT_FLOW_URL = `https://api.gex.bot/v2/${GEXBOT_FLOW_TICKER}/orderflow/orderflow`;
-const GEXBOT_MAJORS_URL = `https://api.gex.bot/v2/${GEXBOT_FLOW_TICKER}/classic/gex_zero/majors`;
 const DEFAULT_STRIKE_INTERVAL = 25;
 const MAJORS_FRESH_MS = 5 * 60_000;
 
@@ -57,9 +56,6 @@ const state: PollerState = {
 
 let inFlight: Promise<GexBotFlowPayload> | null = null;
 
-function configuredApiKey() {
-  return process.env.GEXBOT_API_KEY?.trim() ?? "";
-}
 
 function sponsorshipConfig() {
   const threshold = Number(process.env.GEXBOT_FLOW_PUSH_THRESHOLD_PERCENT);
@@ -135,17 +131,7 @@ function appendSample(sample: GexBotFlowSample, now: number) {
 }
 
 async function requestFlowSample(now: number) {
-  const key = configuredApiKey();
-  if (!key) throw new Error("GEX Bot flow is not configured on this deployment.");
-  const response = await fetch(GEXBOT_FLOW_URL, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${key}`,
-      "User-Agent": "KwantDesk/1.0",
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
+  const response = await fetchGexBotResearch({ ticker: GEXBOT_FLOW_TICKER, package: "orderflow", category: "orderflow" });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
     const detail = [payload.detail, payload.error, payload.message]
@@ -156,17 +142,7 @@ async function requestFlowSample(now: number) {
 }
 
 async function requestMajors(now: number) {
-  const key = configuredApiKey();
-  if (!key) return null;
-  const response = await fetch(GEXBOT_MAJORS_URL, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${key}`,
-      "User-Agent": "KwantDesk/1.0",
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
+  const response = await fetchGexBotResearch({ ticker: GEXBOT_FLOW_TICKER, package: "classic", category: "gex_zero", view: "majors" });
   if (!response.ok) return null;
   const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
   return payload ? normalizeGexBotFlowMajors(payload, now) : null;

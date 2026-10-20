@@ -1,5 +1,36 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-21 — All three provider API boundaries on VPS
+
+- Owner clarified Gexbot/QuantData/Rithmic → VPS → website, independently of
+  migrating website hosting/account DB. QuantData and Rithmic already used VPS;
+  old Gexbot terminal/history, sponsorship Flow and VIX helpers still called
+  vendors from Next. All now use gexBotGateway.server.ts, no website vendor key.
+- Private read-only gexbot-relay sidecar8795 preserves the primary legacy API;
+  native research reads reuse gateway8793's existing provider/cache. Caddy
+  forwards both /v1/native-positioning/* and /v1/gexbot-legacy/* to the sidecar.
+  Exact bearer, selection/storage-origin validation, fixed vendor origins,
+  manual redirects, bounded payloads/concurrency/cache and429 hold are required.
+- VPS-only signed history downloads never forward provider bearer to storage.
+  Accepted native snapshots/history and legacy responses archive under separate
+  /recordings/gexbot/exposure with real source times and no changing transport
+  cache ages. This is request-driven capture, NOT unattended all-ticker replay.
+- Deployed on existing private gateway image by scoped script mounts/Compose,
+  without restarting sole Rithmic owner. Separate0600 sidecar env contains only
+  existing Gexbot key + gateway bearer. Original main operator.env is untouched.
+- VPS checks: native status authenticated, Classic/State/Orderflow200, primary
+  legacy SPX200, QuantData QQQ interval map200/3.32MB, Rithmic timestamps advance,
+  recordingtrue/no reported drops. Options source is the actual Oct20 close,
+  not a claim of live RTH. Gexbot archive counts advance/no reported drops.
+- Removed conventional GEXBOT_API_KEY and QUANTDATA_API_KEY from Vercel
+  Production after successful VPS probes. Other target environments preserved.
+  Website still uses authenticated Next delivery; direct browser stream remains
+  disabled pending browser reachability. No zero-Vercel-cost or full hosting
+  migration claim. Existing history/parity/capacity/restore gates remain open.
+- Tests:455 gateway tests,23 routing/flow/env tests, scopedESLint, TypeScript
+  and84-page production build pass. Release/runtime receipt:
+  docs/prompt-log/2026-10-21-provider-vps-boundary.md.
+
 ## 2026-10-21 — VPS remainder audit and direct browser streams
 
 - Runtime follow-up: direct edge was NOT accepted in actual in-app browser:
