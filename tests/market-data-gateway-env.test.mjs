@@ -175,6 +175,20 @@ test("absent streaming override retains normal deployment routing",()=>{
   clear();
 });
 
+test("temporary bulk history can recover through the existing same-collector stream transport",()=>{
+  clear();
+  process.env.KWANTDESK_MARKET_DATA_GATEWAY_URL='https://temporary.trycloudflare.com';
+  process.env.KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL='https://same-collector.ts.net/';
+  for(const path of ['/v1/market-data/history?symbol=NQ','/v1/market-data/volume-profile','/v1/market-data/order-flow-levels']) {
+    assert.deepEqual(marketDataGatewayUrlCandidatesForPath(path),['https://temporary.trycloudflare.com','https://same-collector.ts.net']);
+  }
+  assert.deepEqual(marketDataGatewayUrlCandidatesForPath('/v1/market-data/quotes'),['https://same-collector.ts.net']);
+  assert.deepEqual(marketDataGatewayUrlCandidatesForPath('/v1/vendors/quantdata'),['https://temporary.trycloudflare.com']);
+  process.env.KWANTDESK_MARKET_DATA_GATEWAY_URL='https://restored-vps.example.com';
+  assert.deepEqual(marketDataGatewayUrlCandidatesForPath('/v1/market-data/history'),['https://restored-vps.example.com']);
+  clear();
+});
+
 test("invalid explicit stream origin fails closed instead of using buffered bulk origin",()=>{
   clear();
   const before=process.env.VERCEL;process.env.VERCEL='1';

@@ -64,3 +64,11 @@ This temporary address is NOT a permanent VPS fix. It must move on VPS restore.
 One additional incident release is needed to pick up the corrected environment;
 no manual deployment path or preview build. Actual chart acceptance remains open
 until that release is verified in the browser.
+
+The documentation-only activation was correctly skipped by the existing build
+cost guard. Added a functional recovery route: only when bulk uses a temporary
+Quick Tunnel, finite candle/profile/flow-level reads can fail over to the
+already-configured same-collector streaming transport. Streams stay exclusively
+on their unbuffered transport; vendor requests unchanged. A permanent VPS does
+not inherit this desktop fallback. Seventeen env/adapter tests pass, including
+primary failure/HTML rejection, routing separation and permanent-VPS exclusion.

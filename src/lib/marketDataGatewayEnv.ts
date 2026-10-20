@@ -132,7 +132,27 @@ const STREAM_PATHS = new Set([
 export function marketDataGatewayUrlCandidatesForPath(path: string): string[] {
   const pathname = `/${String(path).split("?")[0].replace(/^\/+|\/+$/g, "")}`;
   const streamingOrigin = process.env.KWANTDESK_MARKET_DATA_STREAM_GATEWAY_URL?.trim();
-  if (!STREAM_PATHS.has(pathname) || !streamingOrigin) return marketDataGatewayUrlCandidates();
+  if (!STREAM_PATHS.has(pathname)) {
+    const bulk = marketDataGatewayUrlCandidates();
+    // During laptop operation both transports terminate at the SAME collector.
+    // A dead/buffering Quick Tunnel must not strand candle history while the
+    // configured unbuffered transport is still delivering live executions.
+    // Never add an old desktop transport behind a restored permanent VPS.
+    const temporaryBulk = bulk.some(origin => {
+      try { return new URL(origin).hostname.endsWith(".trycloudflare.com"); } catch { return false; }
+    });
+    const recoveryRead = ["/v1/market-data/history", "/v1/market-data/volume-profile", "/v1/market-data/order-flow-levels"].includes(pathname);
+    if (temporaryBulk && recoveryRead && streamingOrigin && usableInDeployment(streamingOrigin)) {
+      try {
+        const parsed = new URL(streamingOrigin);
+        if (["https:", "http:"].includes(parsed.protocol) && !parsed.username && !parsed.password) {
+          return [...new Set([...bulk, streamingOrigin.replace(/\/+$/, "")])];
+        }
+      } catch { /* Invalid fallback cannot replace the primary. */ }
+    }
+    return bulk;
+  }
+  if (!streamingOrigin) return marketDataGatewayUrlCandidates();
   // An explicitly selected streaming transport must not silently fall back to
   // the buffered relay and advertise a connected but stalled quote stream.
   if (!usableInDeployment(streamingOrigin)) return [];
