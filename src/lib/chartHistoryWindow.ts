@@ -359,7 +359,12 @@ export function cmeChartTailNeedsReconciliation(
     candles.at(-1)?.timestamp ?? Number.NEGATIVE_INFINITY,
     latestObservedTimestamp,
   ) / durationMs) * durationMs;
-  if (latestBucket < activeBucket) return true;
+  // A history archive may end at the last COMPLETED bucket. The forming
+  // candle does not exist until an actual execution creates it. Requiring it
+  // before admitting history deadlocked startup when the independent snapshot
+  // was unavailable: valid closed candles stayed hidden behind the loader.
+  // Never accept a missing completed minute or manufacture a forming candle.
+  if (latestBucket < activeBucket - durationMs) return true;
 
   // Validate the recent seam as well as the final timestamp. A single current
   // tick can create the active candle while two-to-five intervening candles
@@ -386,8 +391,9 @@ export function cmeChartTailNeedsReconciliation(
 
   // Presence at the right edge is not enough. A response containing only the
   // newly-created live bucket used to pass this function because there was no
-  // adjacent pair to compare. Require the active bucket and its two immediate
-  // predecessors. The wider pairwise scan below still catches older internal
+  // adjacent pair to compare. Require its two immediate predecessors; if the
+  // active bucket has not traded yet, those completed predecessors suffice.
+  // The wider pairwise scan below still catches older internal
   // holes without requiring an arbitrary full half-hour on a newly-opened
   // chart.
   const availableBuckets = new Set(recentBuckets);
@@ -397,7 +403,7 @@ export function cmeChartTailNeedsReconciliation(
   );
   for (
     let expectedBucket = firstExpectedBucket;
-    expectedBucket <= activeBucket;
+    expectedBucket <= Math.min(activeBucket, latestBucket);
     expectedBucket += durationMs
   ) {
     if (!availableBuckets.has(expectedBucket)) return true;

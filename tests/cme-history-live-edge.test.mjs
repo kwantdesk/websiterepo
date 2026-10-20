@@ -60,7 +60,9 @@ test('actual candle and flow adapters request the gateway live edge, not a delay
     const oldEnd=Math.floor((now-60000)/60000)*60000;
     const oldBars=rows.filter(row=>row.timestamp<oldEnd);
     assert.equal(cmeChartTailNeedsReconciliation(oldBars,'1m',now),true);
-    assert.equal(cmeChartTailNeedsReconciliation(oldBars,'3m',now),true);
+    // The same minute rows still cover the previous completed 3m bucket.
+    // Missing only a forming bucket must not hide valid completed history.
+    assert.equal(cmeChartTailNeedsReconciliation(oldBars,'3m',now),false);
   }finally{
     globalThis.fetch=originalFetch;
     keys.forEach((key,i)=>{if(saved[i]===undefined)delete process.env[key];else process.env[key]=saved[i];});

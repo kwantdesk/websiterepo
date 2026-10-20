@@ -72,3 +72,18 @@ already-configured same-collector streaming transport. Streams stay exclusively
 on their unbuffered transport; vendor requests unchanged. A permanent VPS does
 not inherit this desktop fallback. Seventeen env/adapter tests pass, including
 primary failure/HTML rejection, routing separation and permanent-VPS exclusion.
+
+## Loading-deadlock evidence and correction
+
+Both routing releases reached READY, yet refreshed NQ1m still displayed Loading.
+CDN logs show200 history responses. An authenticated local request at14:02:48
+returned8928 real NQ1m rows, continuous recent history ending14:01:00, but
+cmeChartTailNeedsReconciliation returnedtrue solely because14:02 had no forming
+row. Completed history is a valid initial chart: require the last completed
+bucket and recent contiguous predecessors, but not a fabricated forming row.
+Live executions still join through the existing path. Missing completed buckets,
+internal gaps and a lone live candle remain rejected. Three new readiness tests
+pass; the existing 3m fixture expectation changes because its previous completed
+bucket is present (the same fixture still correctly fails1m).
+The older test-chart-history-state script fails an unchanged exact source-string
+assertion about willRetry broker scoping; not claimed passed.
