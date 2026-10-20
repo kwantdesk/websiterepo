@@ -25,23 +25,23 @@ export function createBrowserStreamServer({key,upstream='http://gateway:8793',ma
  if(!key)throw Error('Stream edge key is required');
  const target=new URL(upstream);
  if(target.protocol!=='http:'||target.username||target.password)throw Error('Invalid internal upstream');
- let active=0;
+ let active=0,accepted=0,denied=0,lastDeniedOrigin=null;
  return http.createServer((request,response)=>{
   const origin=String(request.headers.origin||'');
   const cors=ORIGINS.has(origin)?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{};
   const fail=(status)=>{response.writeHead(status,{...cors,'Content-Type':'application/json','Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'});response.end(JSON.stringify({error:'Market stream unavailable'}));};
   const url=new URL(request.url,'http://stream-edge');
   if(url.pathname==='/health'&&request.method==='GET'){
-   response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify({ok:true,active,maxStreams}));return;
+   response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify({ok:true,active,maxStreams,accepted,denied,lastDeniedOrigin}));return;
   }
   if(url.pathname!=='/browser-stream'||request.method!=='GET')return fail(404);
   let lease;
   try{
    if([...url.searchParams.keys()].some(k=>k!=='ticket')||url.searchParams.getAll('ticket').length!==1)throw Error();
    lease=verifyBrowserStreamTicket(url.searchParams.get('ticket'),key,origin,now());
-  }catch{return fail(401);}
+  }catch{denied++;lastDeniedOrigin=ORIGINS.has(origin)?origin:origin==='null'?'null':origin?'other':'missing';return fail(401);}
   if(active>=maxStreams)return fail(503);
-  active++;
+  active++;accepted++;
   let released=false,expiry,headersDeadline;
   const release=()=>{if(released)return;released=true;active--;clearTimeout(expiry);clearTimeout(headersDeadline);};
   const relay=http.get({hostname:target.hostname,port:target.port||80,path:lease.path+lease.search,

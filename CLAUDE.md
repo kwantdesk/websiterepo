@@ -2,6 +2,16 @@
 
 ## 2026-10-21 — VPS remainder audit and direct browser streams
 
+- Runtime follow-up: direct edge was NOT accepted in actual in-app browser:
+  feed HTTPS returned ERR_CONNECTION_REFUSED while pinned-IP server probes
+  succeeded. Production rolled back to82691d1c; feature flag nowFALSE for
+  subsequent builds. Keep current authenticated Vercel relay until actual
+  browser reachability/reconnect checks pass. Never loosen CORS/TLS or bypass
+  the browser's blocked DNS-cache-control surface to force acceptance.
+- Website-hosting cutover is blocked by signed-out Squarespace and missing
+  original production secrets (Vercel exports31 redacted placeholders). Do not
+  disable site access, reset keys, or deploy a redacted env file. Existing
+  Vultr backups now DAILY09:00UTC, no completed backup/restore proof yet.
 - Owner explicitly requires nothing left behind. Component inventory and open
   acceptance gates: docs/prompt-log/2026-10-21-vps-remainder-audit.md.
 - Direct stream edge permits only exact-Origin/exact-request,300s HMAC leases

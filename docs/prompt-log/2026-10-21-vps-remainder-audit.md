@@ -49,3 +49,36 @@ reconnect and invalid-lease denial; no secret values or signed URLs in receipts.
 Preserve original recordings, old verified releases and DNS rollback until final
 acceptance. Do not cancel paid subscriptions, create new storage or delete source
 history as a shortcut.
+
+## Runtime acceptance and safe rollback
+
+- Main c8898fc7 built READY, but the in-app browser refused a direct navigation
+  to https://feed.kwantdesk.com/health (ERR_CONNECTION_REFUSED). No browser
+  stream reached the sidecar. Server probes alone did not establish browser
+  connectivity. Browser DNS-cache control is not available under the tool's
+  browser security policy; do not attempt a workaround or weaken TLS/CORS.
+- Rolled production back immediately to the verified82691d1c deployment; the
+  collector remained live on VPS. Direct-stream flag is now false for subsequent
+  builds. Existing authenticated Vercel body proxy remains a cost/open migration
+  gate, not an accepted final architecture. Do not enable direct mode again
+  until actual browser TLS reachability, stream and reconnect checks pass.
+- Full website transfer has real external-access gates: Squarespace is signed
+  out in the connected Chrome profile. Vercel env pull redacts31 sensitive
+  entries; checked local project env files lack site-access password, Supabase
+  service key and desktop signing/revocation credentials. Some provider keys
+  exist separately, but that is not a complete authenticated app configuration.
+  Never deploy placeholder [SENSITIVE] values, bypass auth or reset credentials.
+- Existing Vultr automatic backups were verified enabled but WEEKLY, with no
+  completed image. Changed that existing service to DAILY09:00UTC and verified
+  update/next backup2026-10-21T09:00Z. No new service/volume/snapshot purchased.
+  This is not proof of a completed backup or restore drill. Official service
+  schedule/pricing: https://docs.vultr.com/product-overviews/backups.
+- Backed up and disabled stale Windows task Kwantify Sierra Market Gateway;
+  it referenced missing Desktop/olisa-labs-platform startup script. Original
+  local recordings, Rithmic STOP marker and current compatibility bridge remain.
+- Bulk transfer was paused briefly after saturating the laptop uplink delayed
+  management connections. Resume at verified prefix with512KiB/s pacing,
+ 64KiB buffers. Verified-only closed-session restorer remains in place.
+- Direct provider size probes returned200 for QQQ/SPX/SPY/NDX1m Gamma maps:
+  3.32MB/4.74MB/3.53MB/0.68MB. These did NOT reproduce the12MB ceiling fault;
+  do not raise/remove memory limits blindly or claim all tools repaired.

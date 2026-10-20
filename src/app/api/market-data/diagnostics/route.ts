@@ -189,6 +189,8 @@ export async function GET(request: Request) {
       },
       gatewayHost: url ? new URL(url).host : null,
       gatewayConfigured: Boolean(url && marketDataGatewayToken()),
+      // Operational visibility only; never expose a signed stream URL or key.
+      directBrowserStreamsEnabled: process.env.KWANTDESK_BROWSER_STREAM_DIRECT === "true",
       /*
        * Whether completed cash-index sessions are being served from the VPS
        * archive or restored from the provider every time.
