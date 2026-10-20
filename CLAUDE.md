@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-21 — VPS remainder audit and direct browser streams
+
+- Owner explicitly requires nothing left behind. Component inventory and open
+  acceptance gates: docs/prompt-log/2026-10-21-vps-remainder-audit.md.
+- Direct stream edge permits only exact-Origin/exact-request,300s HMAC leases
+  for quotes/trades/index/heatmap. New private read-only sidecar8794 keeps raw
+  gateway bearer server-only. Caddy excludes ticket URLs from access logging.
+- Existing authenticated API routes can issue307 via
+  KWANTDESK_BROWSER_STREAM_DIRECT=true; no hidden Vercel body proxy fallback in
+  that mode. Enable only after verified VPS edge rollout. Feature flag off
+  preserves the old route until production/browser acceptance passes.
+- Older archive transfer/restore, complete options capture, website hosting,
+  account/database ownership and recovery drills remain separately tracked.
+  Do not call the entire migration complete from successful SSE probes.
+
 ## 2026-10-21 — Permanent VPS live-owner cutover
 
 - Owner explicitly requests all live services switched to the new Vultr VPS.

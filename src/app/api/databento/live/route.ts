@@ -2,6 +2,7 @@ import {
   marketDataGatewayToken,
   marketDataGatewayUrlCandidatesForPath,
 } from "@/lib/marketDataGatewayEnv";
+import { directBrowserStreamResponse } from "@/lib/browserStreamRedirect.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,6 +19,8 @@ export async function GET(request: Request) {
   const search = new URLSearchParams();
   search.set("symbols", incoming.searchParams.get("symbols") || "");
   search.set("priority", incoming.searchParams.get("priority") || "");
+  const direct = directBrowserStreamResponse(request, "/v1/market-data/quotes", `?${search}`);
+  if (direct) return direct;
   let lastStatus = 503;
 
   for (const origin of origins) {

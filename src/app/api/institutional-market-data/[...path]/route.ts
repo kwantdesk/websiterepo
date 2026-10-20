@@ -1,4 +1,5 @@
 import { providerErrorMessage, logProviderError } from "@/lib/providerErrorMessage";
+import { directBrowserStreamResponse } from "@/lib/browserStreamRedirect.server";
 import { NextRequest, NextResponse } from "next/server";
 import {
   RTH_END_MINUTES,
@@ -114,6 +115,10 @@ async function proxy(request: NextRequest, context: RouteContext) {
   // upstream request starts, otherwise the default 30s abort makes quotes
   // disappear and reconnect in a loop at precisely the busiest time of day.
   const isLongLivedStream = path.endsWith("/trades") || path.includes("stream");
+  if (request.method === "GET" && isLongLivedStream) {
+    const direct = directBrowserStreamResponse(request, `/${path}`, forwarded.search);
+    if (direct) return direct;
+  }
   try {
     const upstream = await fetchInstitutionalMarketData(
       `${path}${forwarded.search}`,
