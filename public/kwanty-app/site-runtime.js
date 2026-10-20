@@ -1,5 +1,5 @@
 import {installTheme} from './site-theme.js';
-import {createSelectPreferences} from './select-preferences.js?v=2';
+import {createSelectPreferences} from './select-preferences.js?v=3';
 const hostId=typeof window!=='undefined'?new URLSearchParams(location.search).get('hostId'):null;
 const host=typeof window!=='undefined'?(hostId?window.parent?.__kwantOptionsToolHosts?.[hostId]:window.parent?.__kwantyHost):null;
 export const botStorage={getItem:key=>host?.read(String(key))??null,setItem:(key,value)=>{if(!host)throw Error('Open KWANTY in your workspace.');host.write(String(key),String(value));},removeItem:key=>host?.write(String(key),null)};

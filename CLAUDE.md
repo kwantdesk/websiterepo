@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — KWANTY Orderflow favourite ticker shortcuts
+
+- Header next to timeframes shows the existing account dropdown instrument
+  favourites, alphabetically, horizontally scrollable (no four-ticker cap).
+  Stars add/remove shortcuts immediately via preference observers, no polling.
+  Empty state opens the existing ticker picker for starring choices.
+- Buttons dispatch through the existing ticker dropdown change path, synchronize
+  selection/highlight and update recents. Current Orderflow architecture has one
+  workspace-wide ticker (all panels including linked); this does not introduce
+  per-panel ticker feeds or extra requests. Classic/State shortcut row is hidden.
+- Record: docs/prompt-log/2026-10-20-kwanty-favourite-tickers.md.
+
 ## 2026-10-20 — Linked KWANTY toolbar controls follow the group
 
 - Owner clarified Orderflow linking includes timeframe and line/candles, not

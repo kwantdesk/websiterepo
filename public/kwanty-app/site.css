@@ -23,6 +23,9 @@ header>.header-links{display:none}.bot-template-actions{grid-column:3;justify-se
 .chart-top-controls select{width:auto}.chart-top-controls .kwant-choice-trigger{min-width:44px;max-width:100px}.chart-top-controls .timeframe-buttons{display:flex;gap:2px;align-items:center}
 .timeframe-buttons button{border-color:transparent;padding:0 8px}.timeframe-buttons button.selected{background:var(--site-surface)!important;border-color:var(--site-border)!important;color:var(--site-primary)!important}
 .active-chart-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.ticker-favourites{display:flex;gap:2px;align-items:center;min-width:0;max-width:220px;overflow-x:auto;flex:0 1 auto;scrollbar-width:thin}
+.ticker-favourites[hidden]{display:none}.ticker-favourites button{flex:0 0 auto;white-space:nowrap}
+.ticker-favourites button[aria-pressed=true]{background:var(--site-surface)!important}
 .chart-panel{display:flex;flex-direction:column;min-height:130px;outline:none;border:1px solid transparent}
 .chart-panel.active-chart{border-color:color-mix(in srgb,var(--site-primary) 55%,var(--site-border))}.chart-panel:focus-visible{outline:1px solid var(--site-primary);outline-offset:-2px}
 .panel-header{height:30px;min-height:30px;display:flex;align-items:center;gap:8px;padding:0 8px;border-bottom:1px solid var(--site-border);background:var(--site-background)}

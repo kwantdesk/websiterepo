@@ -41,6 +41,7 @@ export function choiceSections(options,preferences,query='',{group=''}={}){
 }
 
 export function createSelectPreferences(storage){
+  const listeners=new Set();
   const read=()=>{try{const value=JSON.parse(storage.getItem(SELECT_PREFERENCES_KEY)||'{}');return value?.version===1&&value.groups&&typeof value.groups==='object'&&!Array.isArray(value.groups)?value.groups:{};}catch{return {};}};
   const valid=key=>typeof key==='string'&&/^[a-z0-9:_-]{1,80}$/i.test(key)&&!['__proto__','constructor','prototype'].includes(key);
   const get=key=>{const groups=read();return normalize(valid(key)&&Object.hasOwn(groups,key)?groups[key]:null);};
@@ -50,9 +51,12 @@ export function createSelectPreferences(storage){
     const next=normalize(change(get(key)));delete groups[key];groups[key]=next;
     while(Object.keys(groups).length>GROUP_LIMIT)delete groups[Object.keys(groups)[0]];
     // Commit only after the account-backed bridge accepts the complete value.
-    storage.setItem(SELECT_PREFERENCES_KEY,JSON.stringify({version:1,groups}));return next;
+    storage.setItem(SELECT_PREFERENCES_KEY,JSON.stringify({version:1,groups}));
+    for(const listener of listeners)try{listener(key);}catch{/* Preference observers must not block selection. */}
+    return next;
   };
   return {keyFor:choiceGroup,get,sections:choiceSections,
+    subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener);},
     select:(key,value)=>save(key,prefs=>({...prefs,recent:[String(value),...prefs.recent.filter(item=>item!==String(value))]})),
     toggleFavourite:(key,value)=>save(key,prefs=>{if(!prefs.favourites.includes(value)&&prefs.favourites.length>=FAVOURITE_LIMIT)throw Error('Favourite limit reached.');return {...prefs,favourites:prefs.favourites.includes(value)?prefs.favourites.filter(item=>item!==value):[...prefs.favourites,value]};}),
     update:(key,patch)=>save(key,prefs=>({...prefs,showRecents:patch.showRecents??prefs.showRecents,favouritesOnly:patch.favouritesOnly??prefs.favouritesOnly})),
