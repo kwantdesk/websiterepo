@@ -1,5 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-21 — Permanent VPS live-owner cutover
+
+- Owner explicitly requests all live services switched to the new Vultr VPS.
+  New Chicago origin is `https://feed.kwantdesk.com`, IP `144.202.52.66`;
+  Ubuntu24.04 LTS, key-only SSH, clean gateway image from3c712357.
+- Laptop collector was closed through its existing awaited shutdown handler;
+  its supervisor STOP marker remains. New VPS is the sole Rithmic owner.
+  Temporary localhost bridge forwards old deployment-pinned requests to VPS;
+  it has no provider connection and is NOT the permanent production origin.
+- Essential archive and final delta SHA256 verified before extraction/start.
+  Older raw/exposure bulk archive remains separately preserved/restoring;
+  never overwrite current VPS append files with an older bulk archive.
+- All URL/token/provider aliases, explicit futures snapshot settings and SSE
+  override move together in16 production env entries. One main Git build is
+  needed to activate them; verify deployment and actual website, not env alone.
+- Recording mount is a110GiB ext4 allocation inside the INCLUDED VPS disk,
+  not a separately purchased volume or independent backup. Mount dependency,
+  bounded container/log memory, capacity monitor and unhealthy recovery exist.
+- Migration notes/acceptance: docs/prompt-log/2026-10-21-permanent-vps-cutover.md.
+  Do not claim zero gaps, complete month history, full GEX/KWANTY parity,
+  independent restore/HA or zero Vercel stream-proxy costs from this cutover.
+
 ## 2026-10-21 — KWANTY parity audit: missing Orderflow restoration
 
 - Owner requires sequential Classic/State/Orderflow check → repair → verify;

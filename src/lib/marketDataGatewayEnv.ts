@@ -24,6 +24,9 @@
 // in client bundles or replace the shared backend with per-user provider calls.
 // Oct 20 stopped-owner recovery follows the same four-alias cutover; preserve
 // provider credentials, gateway tokens and the private recording directory.
+// Oct 21 permanent VPS recovery moves all four URL aliases, the separate SSE
+// override, and explicit futures snapshot settings together. Never leave an
+// otherwise restored deployment streaming from a temporary laptop transport.
 
 const GATEWAY_URL_KEYS = [
   "KWANTDESK_MARKET_DATA_GATEWAY_URL",
