@@ -20,6 +20,8 @@ as other pages, with the chart still visible behind it, not a panel on the right
   no-op; delayed native close events cannot close a newly reopened dialog.
 - Parent hides/deactivates trade controls while the child settings dialog is
   open, without unmounting the execution bridge or stopping quote processing.
+- Parent watermark/loading/replay overlays are also suppressed while settings is
+  open: iframe native top-layer dialogs cannot otherwise outrank parent overlays.
 - Version the changed iframe, main module and embed stylesheet once.
 
 ## Verification

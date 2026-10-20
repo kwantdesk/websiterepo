@@ -46,5 +46,6 @@ test('the actual inspector is centered, theme-bound, viewport-limited and leaves
  assert.match(centered,/::backdrop \{ background: rgba\(0, 0, 0, .35\)/);assert.match(centered,/backdrop-filter: none/);
  assert.match(main,/if \(\$\('inspector'\)\.open\) return/);assert.match(main,/this.inspectorDialog.open\(/);
  assert.match(workspace,/active=\{active && !inspectorOpen\}/);assert.match(workspace,/className=\{inspectorOpen \? "hidden" : undefined\}/);
+ assert.match(workspace,/watermark && !inspectorOpen/);assert.match(workspace,/!isReady && !inspectorOpen/);
  assert.doesNotMatch(centered,/blur\(/);
 });

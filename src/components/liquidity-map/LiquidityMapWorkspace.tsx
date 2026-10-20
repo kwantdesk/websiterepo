@@ -353,7 +353,7 @@ function LiquidityMapWorkspace({
         }}
       />
       {trading ? <div className={inspectorOpen ? "hidden" : undefined}><LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active && !inspectorOpen} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /></div> : null}
-      {watermark ? (
+      {watermark && !inspectorOpen ? (
         /*
           * The same mark the charts carry, on the same sizing rules.
           *
@@ -385,7 +385,7 @@ function LiquidityMapWorkspace({
           }}
         />
       ) : null}
-      {!isReady ? (
+      {!isReady && !inspectorOpen ? (
         <div className="pointer-events-none absolute inset-0 z-10">
           <KwantLoader
             title="Loading LIQ MAP"
@@ -394,7 +394,7 @@ function LiquidityMapWorkspace({
           />
         </div>
       ) : null}
-      {replay && replayStatus && replayStatus.state !== "ready" ? (
+      {!inspectorOpen && replay && replayStatus && replayStatus.state !== "ready" ? (
         <div className={`pointer-events-none absolute left-2 top-2 z-10 border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] ${
           replayStatus.state === "unavailable"
             ? "border-danger/50 bg-panel/90 text-danger"
@@ -408,7 +408,7 @@ function LiquidityMapWorkspace({
               : "Loading recorded session…"}
         </div>
       ) : null}
-      {replay && replayStatus?.state === "ready" ? (
+      {!inspectorOpen && replay && replayStatus?.state === "ready" ? (
         <div className="pointer-events-none absolute left-2 top-2 z-10 border border-primary/40 bg-panel/90 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-primary">
           Replay · recorded L3
         </div>
