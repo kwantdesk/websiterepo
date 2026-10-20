@@ -48,11 +48,19 @@ test('theme surface changes synchronously while one shared colour download is pe
   await context.install({background:'#001b20'});assert.equal(requests,1);
 });
 
-test('both React startup phases use the standard website loader requested by the owner',()=>{
+test('page startup stays on the themed surface without a loading splash',()=>{
   const workspace=read('src/components/KwantifyWorkspace.tsx');
   const host=read('src/components/gex-data/GexDataWorkspace.tsx');
-  assert.match(workspace,/workspaceLoader\("Loading GEX DATA", "Restoring your data workspace\."\)/);
-  assert.match(host,/<KwantLoader compact className="h-full w-full" title="Loading GEX DATA"/);
-  assert.doesNotMatch(host,/>Opening GEX DATA…</);
+  for(const name of ['GexDataWorkspace','KwantyWorkspace']){
+    const dynamicBlock=workspace.match(new RegExp(`const ${name} = dynamic\\([\\s\\S]*?\\n\\}\\);`))?.[0];
+    assert.ok(dynamicBlock);
+    assert.match(dynamicBlock,/loading: \(\) => <div className="h-full min-h-0 flex-1 bg-background" \/>/);
+    assert.doesNotMatch(dynamicBlock,/workspaceLoader|KwantLoader/);
+  }
+  assert.doesNotMatch(host,/KwantLoader|Opening GEX DATA|Loading GEX DATA/);
   assert.match(host,/overflow-hidden bg-background/);
+  const kwanty=read('src/components/kwanty/KwantyWorkspace.tsx');
+  assert.doesNotMatch(kwanty,/KwantLoader|Loading calendar|Opening KWANTY/);
+  assert.match(kwanty,/OptionsExpirationCalendar=dynamic\([^\n]+loading:\(\)=>null/);
+  assert.match(kwanty,/overflow-hidden bg-background/);
 });

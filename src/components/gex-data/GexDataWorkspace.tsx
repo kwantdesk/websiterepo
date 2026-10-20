@@ -6,7 +6,6 @@ import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, defaultChartSettings, loadStoredChartSettings } from "@/lib/chartSettings";
 import { MARKET_INDEX_DEFINITIONS } from "@/lib/marketIndices";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
-import KwantLoader from "@/components/KwantLoader";
 import { normalizeTimeZone } from "@/lib/timeZones";
 
 const STORAGE_KEY = "kwantdesk:gex-data:workspace:v1";
@@ -170,6 +169,6 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
     {ready ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
       title="GEX DATA tools and workspace" className="h-full w-full border-0" allow="fullscreen"
       onLoad={() => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-activity", { active: activeRef.current })} />
-      : <KwantLoader compact className="h-full w-full" title="Loading GEX DATA" />}
+      : null}
   </section>;
 }

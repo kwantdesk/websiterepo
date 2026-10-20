@@ -1,5 +1,14 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Quiet GEX DATA and expiration-calendar entry
+
+- Owner no longer wants the opening/loading page splash for GEX DATA or the
+  options expiration calendar. Both outer dynamic imports use a plain themed
+  surface; the GEX DATA/KWANTY host setup and calendar chunk use no splash.
+- Preserve real embedded chart loading/error states and calendar source checks.
+  No data cadence, requests, auth, saved workspace or theme semantics changed.
+- Record: docs/prompt-log/2026-10-20-quiet-options-page-entry.md.
+
 ## 2026-10-20 — Remove intrusive volume-profile history banner
 
 - Owner requested removal of the daily-profile missing-history notification.

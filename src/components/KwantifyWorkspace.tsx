@@ -508,11 +508,11 @@ const GexBotWorkspace = dynamic(loadGexBotWorkspace, {
 });
 const GexDataWorkspace = dynamic(loadGexDataWorkspace, {
   ssr: false,
-  loading: () => workspaceLoader("Loading GEX DATA", "Restoring your data workspace."),
+  loading: () => <div className="h-full min-h-0 flex-1 bg-background" />,
 });
 const KwantyWorkspace = dynamic(loadKwantyWorkspace, {
   ssr: false,
-  loading: () => workspaceLoader("Opening KWANTY", "Restoring your positioning workspace."),
+  loading: () => <div className="h-full min-h-0 flex-1 bg-background" />,
 });
 const GexDeskWorkspace = dynamic(loadGexDeskWorkspace, {
   ssr: false,

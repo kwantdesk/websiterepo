@@ -33,10 +33,10 @@ test('KWANTY hides the loader for real data and replaces it with genuine errors'
   assert.match(app,/catch\(error\)\{state\.sourceError=error\.message;renderChartEmpty\(\);updateHealth/);
 });
 
-test('both workspaces use the standard loader, with no licensed-data loading copy',()=>{
+test('embedded data loaders stay standard while React page startup has no splash',()=>{
   for(const path of ['public/gex-data-app/app.js','public/gex-data-app/index.html','public/kwanty-app/app.js','public/kwanty-app/index.html','public/kwanty-app/overlay-editor.js'])assert.doesNotMatch(read(path),/(?:Loading|Connecting to)[^'"\n]{0,45}licensed/i);
   for(const path of ['public/gex-data-app/index.html','public/kwanty-app/index.html'])assert.match(read(path),/workspace-loading\.css/);
-  assert.match(read('src/components/kwanty/KwantyWorkspace.tsx'),/<KwantLoader compact className="h-full w-full" title="Loading KWANTY"/);
+  assert.doesNotMatch(read('src/components/kwanty/KwantyWorkspace.tsx'),/KwantLoader|Loading KWANTY|Loading calendar/);
   const context={document:{documentElement:{style:{setProperty(){}}}},location:{search:'',pathname:'/kwanty-app/index.html'},URLSearchParams};
   context.window={__kwantyHost:{theme:()=>({background:'#fefefe',foreground:'#111111'})}};
   vm.runInNewContext(read('public/gex-data-app/site-bootstrap.js'),context);
