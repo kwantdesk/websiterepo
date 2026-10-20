@@ -15,15 +15,28 @@ export function choiceGroup({id='',name='',label='',values=[]}){
   return 'choices:'+(hash>>>0).toString(16);
 }
 
-export function choiceSections(options,preferences,query=''){
+const alphabetical=(a,b)=>a.label.trim().localeCompare(b.label.trim(),'en',{sensitivity:'base',numeric:true})||a.value.localeCompare(b.value,'en');
+export function choiceSections(options,preferences,query='',{group=''}={}){
   const prefs=normalize(preferences),search=query.trim().toLowerCase(),unique=new Map();
   for(const option of options)if(!unique.has(option.value))unique.set(option.value,option);
   const matches=option=>(!prefs.favouritesOnly||prefs.favourites.includes(option.value))&&(!search||`${option.label} ${option.value}`.toLowerCase().includes(search));
   const candidates=[...unique.values()].filter(matches),seen=new Set(),sections=[];
+  if(group==='instruments'){
+    const sorted=[...candidates].sort(alphabetical);
+    // Keep one complete alphabetic directory. Shortcuts must not remove a
+    // ticker from its expected A–Z position. Search has one ungrouped result set.
+    if(search)return sorted.length?[{label:'Search results',options:sorted}]:[];
+    if(prefs.favouritesOnly)return sorted.length?[{label:'Favourite tickers (A–Z)',options:sorted}]:[];
+    if(prefs.showRecents){const recent=prefs.recent.map(value=>unique.get(value)).filter(Boolean);if(recent.length)sections.push({label:'Recent',options:recent});}
+    const favourites=sorted.filter(option=>prefs.favourites.includes(option.value));
+    if(favourites.length)sections.push({label:'Favourites',options:favourites});
+    if(sorted.length)sections.push({label:'All tickers (A–Z)',options:sorted});
+    return sections;
+  }
   const add=(label,rows)=>{const filtered=rows.filter(option=>option&&!seen.has(option.value)&&matches(option));for(const option of filtered)seen.add(option.value);if(filtered.length)sections.push({label,options:filtered});};
   if(prefs.showRecents)add('Recent',prefs.recent.map(value=>unique.get(value)));
-  add('Favourites',candidates.filter(option=>prefs.favourites.includes(option.value)).sort((a,b)=>a.label.localeCompare(b.label)));
-  if(!prefs.favouritesOnly)add('All options',candidates.filter(option=>!seen.has(option.value)).sort((a,b)=>a.label.localeCompare(b.label)));
+  add('Favourites',candidates.filter(option=>prefs.favourites.includes(option.value)).sort(alphabetical));
+  if(!prefs.favouritesOnly)add('All options',candidates.filter(option=>!seen.has(option.value)).sort(alphabetical));
   return sections;
 }
 

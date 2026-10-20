@@ -67,7 +67,7 @@ export function installThemedSelects(doc = document) {
       };
       if(preferences){
         menu.classList.add('with-preferences');
-        const search=doc.createElement('input');search.type='search';search.placeholder='Search options';search.setAttribute('aria-label','Search dropdown options');
+        const search=doc.createElement('input');search.type='search';search.placeholder=group==='instruments'?'Search tickers':'Search options';search.setAttribute('aria-label',group==='instruments'?'Search tickers':'Search dropdown options');
         const filters=doc.createElement('div');filters.className='kwant-choice-filters';
         const all=doc.createElement('button'),favourites=doc.createElement('button');
         for(const control of [all,favourites])control.type='button';
@@ -81,7 +81,7 @@ export function installThemedSelects(doc = document) {
         const render=()=>{
           const prefs=preferences.get(group);all.setAttribute('aria-pressed',String(!prefs.favouritesOnly));favourites.setAttribute('aria-pressed',String(prefs.favouritesOnly));recent.checked=prefs.showRecents;
           const options=[...select.options].map(option=>({value:option.value,label:option.textContent||option.value,disabled:option.disabled||Boolean(option.closest('optgroup')?.disabled),source:option}));
-          const sections=preferences.sections(options,prefs,search.value);list.replaceChildren();
+          const sections=preferences.sections(options,prefs,search.value,{group});list.replaceChildren();
           for(const section of sections){
             const title=doc.createElement('div');title.className='kwant-choice-heading';title.textContent=section.label;list.append(title);
             for(const option of section.options){

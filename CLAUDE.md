@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Complete alphabetical KWANTY ticker directory
+
+- Classic/State/Orderflow share the existing ticker selector. Preserve optional
+  Recent/Favourite shortcuts, but All tickers (A–Z) must contain every ticker,
+  including those shortcuts; never remove it from its alphabetic position.
+- Ticker search is clearly labelled, case-insensitive, trimmed and returns one
+  alphabetical result list without duplicate shortcuts. Favourites-only remains
+  an explicit filter. Other dropdown grouping and GEX DATA are unchanged.
+- Record: docs/prompt-log/2026-10-20-kwanty-ticker-directory.md.
+
 ## 2026-10-20 — KWANTY genuine underlying candles and chart interaction
 
 - Classic, State and Orderflow now share genuine underlying OHLC history and

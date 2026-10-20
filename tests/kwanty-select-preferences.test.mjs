@@ -5,6 +5,38 @@ import {choiceGroup,choiceSections,createSelectPreferences,SELECT_PREFERENCES_KE
 const options=['SPX','QQQ','NDX','ES','NQ'].map(value=>({value,label:value}));
 function memory(initial){const values=new Map(initial?[[SELECT_PREFERENCES_KEY,initial]]:[]);return {values,getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};}
 
+test('ticker directory stays complete and alphabetic despite recent and favourite shortcuts',()=>{
+ const shuffled=['SPX','qqq','NDX','ES_SPX','AAPL','NQ_NDX','a2','A10'].map(value=>({value,label:value}));
+ const rows=choiceSections(shuffled,{recent:['SPX','NDX'],favourites:['qqq','AAPL']},'',{group:'instruments'});
+ assert.deepEqual(rows.map(row=>row.label),['Recent','Favourites','All tickers (A–Z)']);
+ assert.deepEqual(rows.at(-1).options.map(row=>row.value),['a2','A10','AAPL','ES_SPX','NDX','NQ_NDX','qqq','SPX']);
+ assert.ok(rows.at(-1).options.some(row=>row.value==='SPX'));assert.ok(rows.at(-1).options.some(row=>row.value==='qqq'));
+ assert.deepEqual(shuffled.map(row=>row.value),['SPX','qqq','NDX','ES_SPX','AAPL','NQ_NDX','a2','A10']);
+});
+test('ticker search is case insensitive, trimmed, alphabetic and contains no repeated shortcut results',()=>{
+ const prefs={recent:['NQ','QQQ'],favourites:['QQQ']};
+ const sections=choiceSections(options,prefs,'  q  ',{group:'instruments'});
+ assert.deepEqual(sections.map(row=>row.label),['Search results']);
+ assert.deepEqual(sections[0].options.map(row=>row.value),['NQ','QQQ']);
+ assert.deepEqual(choiceSections(options,prefs,'no-match',{group:'instruments'}),[]);
+ const filtered=choiceSections(options,{...prefs,favouritesOnly:true},'q',{group:'instruments'});
+ assert.deepEqual(filtered[0].options.map(row=>row.value),['QQQ']);
+});
+test('ticker favourites-only and recents toggle retain predictable alphabetic lists',()=>{
+ const rows=choiceSections(options,{recent:['QQQ'],favourites:['SPX','ES'],showRecents:false},'',{group:'instruments'});
+ assert.deepEqual(rows.map(row=>row.label),['Favourites','All tickers (A–Z)']);
+ assert.deepEqual(rows.at(-1).options.map(row=>row.value),['ES','NDX','NQ','QQQ','SPX']);
+ const only=choiceSections(options,{recent:['SPX'],favourites:['SPX','ES'],favouritesOnly:true},'',{group:'instruments'});
+ assert.deepEqual(only.map(row=>row.label),['Favourite tickers (A–Z)']);assert.deepEqual(only[0].options.map(row=>row.value),['ES','SPX']);
+});
+test('all three KWANTY modes use the same searchable ticker menu contract',()=>{
+ const adapter=readFileSync(new URL('../public/gex-data-app/themed-select.js',import.meta.url),'utf8');
+ assert.match(adapter,/group==='instruments'\?'Search tickers'/);
+ assert.match(adapter,/preferences\.sections\(options,prefs,search\.value,\{group\}\)/);
+ const app=readFileSync(new URL('../public/kwanty-app/index.html',import.meta.url),'utf8');
+ assert.equal((app.match(/id="ticker"/g)||[]).length,1);
+});
+
 test('Classic, State and Orderflow share ticker recents/favourites across reopening',()=>{
   const storage=memory(),classic=createSelectPreferences(storage),state=createSelectPreferences(storage),orderflow=createSelectPreferences(storage);
   const group=choiceGroup({id:'ticker'});classic.toggleFavourite(group,'NDX');state.select(group,'QQQ');orderflow.select(group,'NQ');
