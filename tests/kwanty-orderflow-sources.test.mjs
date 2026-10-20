@@ -54,3 +54,16 @@ test('price caches, rendering, overlay lookup and state restore use each panel t
  assert.match(overlay,/profileSelector\(slot,tickerFor\(p\)\)/);assert.match(overlay,/selectedPayload\(p\)/);
  assert.match(app,/for\(const panel of state.panels\)if\(!panel.ticker\)panel.ticker=state.ticker/);
 });
+
+test('actual linked viewport seed waits for real history and does not reseed on each quote',()=>{
+ const panels=[{id:'a',ticker:'SPY',viewportLinked:true},{id:'b',ticker:'SPY',viewportLinked:true}];
+ const price={loading:true,candles:[],points:[{time:timestamp*1000,spot:500}]},calls=[];
+ const context={state:{package:'orderflow',historyMode:false},charts:panels.map(panel=>({panel,geometry:{startTime:1,endTime:10,priceAxisVisible:true,spotDomain:[490,510]}})),views:new Map(),priceState:()=>price,panelTicker:p=>p.ticker,sourceDate:()=> '2026-10-19',setChartView:(chart,value)=>calls.push({chart,value})};
+ const start=app.indexOf(" if(state.package==='orderflow'){\n  const linked=");
+ const code=app.slice(start,app.indexOf('\n}\nfunction pointerPosition',start));
+ vm.runInNewContext("let linkedViewportSeedKey=null,activePanelId='a';function seed(){"+code+'};globalThis.seed=seed;',context);
+ context.seed();assert.equal(calls.length,0);
+ price.candles=[{time:timestamp*1000}];context.seed();assert.equal(calls.length,0,'pending history cannot freeze an empty scale');
+ price.loading=false;context.seed();assert.equal(calls.length,1);
+ price.points.push({time:timestamp*1000+1000,spot:501});context.seed();assert.equal(calls.length,1,'live updates retain manual viewport');
+});

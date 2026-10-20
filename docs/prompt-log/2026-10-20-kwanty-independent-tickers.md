@@ -23,3 +23,11 @@ NDX/SPY/QQQ prices and headers, selected-only switches, linked B+C switches with
 changing A, and reload restoring those choices. 131 focused tests pass including
 pool deduplication, staleness/cancellation, mismatches, historical scopes and
 actual ticker handler isolation. Live production receipt follows release.
+
+Live QA caught a second edge: linked auto-scaling could capture the renderer's
+empty loading geometry before history arrived, retaining a blank range until
+Reset. Follow-up gates auto-seeding and link-join viewport copying on genuine
+loaded candle history, with ticker/session-stable identity (no per-quote reset).
+Explicit group ticker changes clear every target view even if a peer already
+has that ticker. Actual seed execution regression covers delayed history and
+stable manual view after quote updates; focused suite now 132 tests.

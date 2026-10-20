@@ -14,6 +14,9 @@
   its panel source. Historical data is scoped per ticker/session. Distinct
   tickers share linked time bounds but never another instrument's price scale.
 - Record: docs/prompt-log/2026-10-20-kwanty-independent-tickers.md.
+- Follow-up live QA: never seed linked viewport from a loading-only geometry.
+  Wait for actual candle history and use ticker/session-stable seed keys. Ticker
+  changes reset all target-group views even if one peer already has that ticker.
 
 ## 2026-10-20 — KWANTY Orderflow favourite ticker shortcuts
 
