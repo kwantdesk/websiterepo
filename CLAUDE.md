@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA blank-tool regression repaired
+
+- Removing the connection strip left two `.page-name` writes in `showTool` and
+  `showBoard`. The absent label caused a null dereference before controls and
+  data loading, blanking every embedded tool. Remove these obsolete writes;
+  do not restore the unwanted banner or alter feed/polling behaviour.
+- Regression tests execute actual tool/board navigation for all 22 catalogue
+  entries with the banner absent, checking controls, load and board restoration.
+- Record: docs/prompt-log/2026-10-20-gex-data-blank-tools.md.
+
 ## 2026-10-20 — KWANTY centered toolbar and independent linked panels
 
 - Move sidebar-floating chart controls into the mode header's center; compact

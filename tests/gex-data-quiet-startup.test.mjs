@@ -9,7 +9,7 @@ const bootstrap=read('public/gex-data-app/site-bootstrap.js');
 test('startup has no legacy connection banner before or after modules initialize',async()=>{
   const html=read('public/gex-data-app/index.html'),app=read('public/gex-data-app/app.js'),workspace=read('public/gex-data-app/workspace-ui.js');
   assert.doesNotMatch(html,/status-strip|sourceBadge|statusCopy|CONNECTING|Connecting…|id="refreshAll"/);
-  assert.doesNotMatch(app+workspace,/#sourceBadge|#statusCopy|#refreshAll/);
+  assert.doesNotMatch(app+workspace,/#sourceBadge|#statusCopy|#refreshAll|\.page-name/);
   const code=app.slice(app.indexOf('async function boot()'),app.indexOf('await boot();'));
   for(const fail of [false,true]){
     let requests=0;const context={apiStatus:null,fetchJson:async url=>{requests++;assert.equal(url,'/api/gex-data/status');if(fail)throw Error('Offline');return {connected:true,market:{optionsOpen:true}};}};
@@ -17,6 +17,39 @@ test('startup has no legacy connection banner before or after modules initialize
     assert.equal(requests,1);assert.equal(context.apiStatus.connected,!fail);
   }
   assert.match(app,/q\("#toolError"\)\.textContent=error.message/,'genuine tool errors remain visible');
+});
+
+test('every catalogue tool opens and loads with the retired banner absent; board restores',async()=>{
+  const app=read('public/gex-data-app/app.js');
+  const catalogue=app.slice(app.indexOf('const TOOL_DEFINITIONS = ['),app.indexOf('const FILTER_GROUP_TOOLS='));
+  const functions=app.slice(app.indexOf('function showBoard()'),app.indexOf('function requestBase()'));
+  const nodes=new Map(['#tableSearch','#toolSearch','#toolGroup','#toolTitle','#toolDescription'].map(key=>[key,{value:'',textContent:''}]));
+  const calls=[],context={
+    toolView:{hidden:true},dashboard:{hidden:false},location:{hash:''},
+    activeTool:null,toolPayload:null,toolCursor:null,tableRows:[],pollTimer:null,activeController:null,
+    VIEW_PARAMETERS:new URLSearchParams(),snapshotSelections:new Map(),
+    clearTimeout(){},onControlsChanged(){},resetStage:()=>calls.push('reset'),
+    workspaceController:{visibility:value=>calls.push(['visibility',value])},
+    q:selector=>nodes.get(selector)??null,
+    openLibrary:()=>{},renderControls:tool=>calls.push(['controls',tool.id]),
+    renderToolNav:()=>calls.push('navigation'),loadActiveTool:async()=>calls.push('load'),
+  };
+  vm.runInNewContext(catalogue+'const toolMap=new Map(TOOL_DEFINITIONS.map(tool=>[tool.id,tool]));'+functions+';globalThis.tools=TOOL_DEFINITIONS;globalThis.open=showTool;globalThis.board=showBoard;',context);
+  assert.equal(context.tools.length,22);
+  for(const tool of context.tools){
+    calls.length=0;
+    await context.open(tool.id);
+    assert.equal(context.toolView.hidden,false,tool.id);
+    assert.equal(context.dashboard.hidden,true,tool.id);
+    assert.equal(nodes.get('#toolTitle').textContent,tool.title);
+    assert.equal(context.location.hash,`tool=${tool.id}`);
+    assert.deepEqual(calls,['reset',['visibility',false],['controls',tool.id],'navigation','load']);
+    context.board();
+    assert.equal(context.toolView.hidden,true,tool.id);
+    assert.equal(context.dashboard.hidden,false,tool.id);
+    assert.equal(context.location.hash,'');
+    assert.deepEqual(calls.at(-1),['visibility',true]);
+  }
 });
 
 test('iframe paints the current host theme before styles, modules or network requests',()=>{

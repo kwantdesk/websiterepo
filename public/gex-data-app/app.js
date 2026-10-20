@@ -753,7 +753,6 @@ await boot();
     clearTimeout(onControlsChanged.timer);
     activeTool = null; clearTimeout(pollTimer); activeController?.abort();
     toolView.hidden = true; dashboard.hidden = false; location.hash = ""; openLibrary(false); renderToolNav(q("#toolSearch").value);
-    q(".page-name").textContent = "GEX DATA";
     workspaceController?.visibility(true);
   }
 
@@ -765,7 +764,7 @@ await boot();
     q("#tableSearch").value="";
     dashboard.hidden = true; toolView.hidden = false; openLibrary(false); location.hash = `tool=${tool.id}`;
     q("#toolGroup").textContent = tool.group.toUpperCase(); q("#toolTitle").textContent = tool.title; q("#toolDescription").textContent = tool.description;
-    q(".page-name").textContent = tool.title.toUpperCase(); renderControls(tool); renderToolNav(q("#toolSearch").value);
+    renderControls(tool); renderToolNav(q("#toolSearch").value);
     const snapshot=Number(VIEW_PARAMETERS.get('snapshot'));if(VIEW_PARAMETERS.has('snapshot')&&Number.isFinite(snapshot)&&snapshot>946684800000&&snapshot<=Date.now()&&['heat-map','exposure-by-strike','exposure-by-expiration','market-map'].includes(tool.id)&&!snapshotSelections.has(snapshotKey(tool)))snapshotSelections.set(snapshotKey(tool),snapshot);
     await loadActiveTool();
   }
