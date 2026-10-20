@@ -6,6 +6,19 @@ import vm from 'node:vm';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const bootstrap=read('public/gex-data-app/site-bootstrap.js');
 
+test('startup has no legacy connection banner before or after modules initialize',async()=>{
+  const html=read('public/gex-data-app/index.html'),app=read('public/gex-data-app/app.js'),workspace=read('public/gex-data-app/workspace-ui.js');
+  assert.doesNotMatch(html,/status-strip|sourceBadge|statusCopy|CONNECTING|Connecting…|id="refreshAll"/);
+  assert.doesNotMatch(app+workspace,/#sourceBadge|#statusCopy|#refreshAll/);
+  const code=app.slice(app.indexOf('async function boot()'),app.indexOf('await boot();'));
+  for(const fail of [false,true]){
+    let requests=0;const context={apiStatus:null,fetchJson:async url=>{requests++;assert.equal(url,'/api/gex-data/status');if(fail)throw Error('Offline');return {connected:true,market:{optionsOpen:true}};}};
+    vm.runInNewContext(code+';globalThis.start=boot;',context);await context.start();
+    assert.equal(requests,1);assert.equal(context.apiStatus.connected,!fail);
+  }
+  assert.match(app,/q\("#toolError"\)\.textContent=error.message/,'genuine tool errors remain visible');
+});
+
 test('iframe paints the current host theme before styles, modules or network requests',()=>{
   const html=read('public/gex-data-app/index.html');
   assert.ok(html.indexOf('site-bootstrap.js')<html.indexOf('rel="stylesheet"'));

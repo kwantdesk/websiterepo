@@ -9,7 +9,7 @@ import { createTableView } from "./table-view.js?v=2";
 import { selectedSnapshotSpot, completedMinuteSnapshot, sessionMinuteTimestamp, snapshotControlTimeline, equityOptionSnapshotSchedule } from "./snapshot-model.js?v=2";
 import { timeDomain, timeX, timeTicks, nearestTimeIndex,timeAtIndex } from "./time-axis.js?v=1";
 import { abbreviate, currencyAbbreviated, currencyAuto, abbreviatedTick } from "./number-format.js?v=2";
-import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=4';
+import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=5';
 import {instrumentChoices,setChoiceValue,snapshotTimeOptions,multiChoiceDropdown} from './choice-controls.js?v=2';
 import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} from './preferences-model.js?v=1';
 import {normalizeWheelDelta,wheelZoomWindow,panZoomWindow,heatMapPlainWheel,cursorTooltipPlacement,sliderBarWindow,sliderHandleWindow,sliderTrackClick,lerpZoomStep} from './chart-interaction-model.js?v=1';
@@ -472,7 +472,6 @@ for (const panel of $$(".panel")) {
   });
 }
 
-$("#refreshAll").addEventListener("click", loadAll);
 
 const fullscreenButton = $$('.top-action').find((button) => button.title === 'Fullscreen');
 fullscreenButton?.addEventListener("click", () => {
@@ -488,16 +487,6 @@ async function boot() {
     apiStatus = await fetchJson("/api/gex-data/status");
   } catch {
     apiStatus = { connected: false, mode: "archive-preview" };
-  }
-  const badge = $("#sourceBadge");
-  const copy = $("#statusCopy");
-  if (apiStatus.connected) {
-    badge.classList.add("live");
-    $("span", badge).textContent = "GATEWAY READY";
-    copy.textContent = "Shared market-data connection ready";
-  } else {
-    $("span", badge).textContent = "ARCHIVE PREVIEW";
-    copy.textContent = "Licensed connection unavailable · only saved source data can be shown";
   }
   // Docked tools own all data requests; never load the old fixed-date board.
 }

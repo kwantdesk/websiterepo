@@ -1,5 +1,14 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — GEX DATA connection-banner flash removed
+
+- Remove the obsolete static status strip (CONNECTING/Connecting) rather than
+  waiting for the dock runtime to hide it. Remove only its DOM-writing and
+  refresh-button listeners; retain the status request, session/live eligibility,
+  real tool errors and existing polling unchanged. Theme-first boot remains.
+- Record: docs/prompt-log/2026-10-20-gex-data-connection-flash.md.
+
+
 ## 2026-10-20 — GEX DATA palette settings; retire GEX BOX page
 
 - GEX DATA Settings → Colour palette reuses the full 30-preset GEX BOX picker,

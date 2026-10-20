@@ -184,7 +184,6 @@ export function bootWorkspace({tools,showBoard,openTool}){
   const observer=new ResizeObserver(()=>requestAnimationFrame(syncFrames));observer.observe(root);window.addEventListener('resize',syncFrames);
   const popoutTimer=setInterval(()=>{for(const [id,child] of popouts)if(child.closed){popouts.delete(id);render();}},500);
   window.addEventListener('pagehide',()=>{clearInterval(popoutTimer);for(const child of popouts.values())child.close?.();});
-  document.querySelector('#refreshAll').addEventListener('click',()=>{for(const frame of frames.values())send(frame,'gex-data-refresh');});
   applyDocumentPreferences();render();
   return {addTool:anchor=>addDialog(anchor,state.activeTabsetId),refresh:()=>{for(const frame of frames.values())send(frame,'gex-data-refresh');},visibility:visible=>{document.documentElement.classList.toggle('workspace-home',visible);for(const frame of frames.values())send(frame,'gex-data-visibility',{visible:visible&&!frame.hidden});if(visible)requestAnimationFrame(syncFrames);}};
 }
