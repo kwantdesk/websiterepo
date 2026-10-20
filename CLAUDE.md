@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-20 — Flat theme backgrounds in GEX DATA
+
+- Empty dock slots, iframe frames, plot shells and populated visual/card surfaces
+  use the exact live --site-background, not the reference app's gradient layers.
+  Remove surface blur/shadows without flattening data-encoded canvas/heatmap/
+  conic-statistic fills. Scoped final site.css override; stylesheet version5.
+- Applies to embedded tools/popouts too, since they load the same index/style.
+  No theme palette mapping, renderer logic, requests or saved layouts changed.
+- Record: docs/prompt-log/2026-10-20-gex-data-flat-backgrounds.md.
+
 ## 2026-10-20 — Compact GEX BOT / GEX BOX command toolbar
 
 - /gexbot and /gex-box use GexBoxDashboard (not the older Classic component).
