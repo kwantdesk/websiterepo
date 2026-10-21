@@ -1,5 +1,22 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-21 — GEX Data queue and failure isolation repair
+
+- Incident: provider headers19 remaining/reset55 caused the shared budget to
+  delay every successful request by ~2.9s, exhausting multi-panel deadlines.
+  Reset means full refill, not next token. Apply optional header pacing only
+  below10 remaining, per provider guidance; preserve180/min,350ms spacing,
+  concurrency2, real429/zero-token backoff and12MB response ceiling.
+- Known request-scoped gateway failures now carry a fixed error-code header.
+  The website preserves their real error response without poisoning the whole
+  QuantData origin breaker. Unclassified transport failures still trip it.
+- Six actual saved workspace provider reads returned200 in40–264ms individually.
+  Scoped gateway runtime mounts deploy only the two repaired modules, not dirty
+  unrelated gateway/socials/native work. Brief sole-collector reconnect required.
+- Verification:457 gateway tests,3 website failure-isolation tests, scoped
+  ESLint, TypeScript and84-page production build passed. Browser/deployment
+  acceptance and measured VPS timings recorded in the incident prompt log.
+
 ## 2026-10-21 — All three provider API boundaries on VPS
 
 - Owner clarified Gexbot/QuantData/Rithmic → VPS → website, independently of

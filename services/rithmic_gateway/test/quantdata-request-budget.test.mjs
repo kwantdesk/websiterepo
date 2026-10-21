@@ -116,6 +116,18 @@ test("exhausted runtime remaining pauses all keys until reset; low remaining pac
   await paced.advance(1); await Promise.all([c, d]); assert.equal(paced.calls[1].at, 5000); paced.scheduler.close();
 });
 
+test("normal remaining headroom does not serialize a workspace over the full refill window", async () => {
+  const h = harness({}, async () => new Response("{}", { headers: {
+    "x-ratelimit-limit": "240", "x-ratelimit-remaining": "19", "x-ratelimit-reset": "55",
+  } }));
+  const jobs = Array.from({ length: 12 }, (_, index) => request(h, 'T' + index));
+  await h.advance(3850); await Promise.all(jobs);
+  assert.equal(h.calls.length, 12);
+  assert.equal(h.calls.at(-1).at, 3850);
+  assert.equal(h.scheduler.status().limitPerMinute, 180);
+  h.scheduler.close();
+});
+
 test("queue count/bytes, per-request size and coalesced waiter count are bounded", async () => {
   const h = harness({ maxPending: 1, maxWaitersPerRequest: 1 }, () => new Promise(() => {}));
   const a = request(h, "SPY"); const rejection = assert.rejects(a, { code: "scheduler_closed" });

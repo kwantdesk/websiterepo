@@ -199,7 +199,11 @@ export class QuantDataRequestBudget {
     // Public API defines Reset as seconds remaining, not an epoch timestamp.
     if (remaining !== null && reset !== null && reset <= 86400) {
       if (remaining === 0) this.blockedUntil = Math.max(this.blockedUntil, now + reset * 1000);
-      else this.headerPaceUntil = Math.max(this.headerPaceUntil, now + reset * 1000 / remaining);
+      // Reset describes FULL refill, not the next available token. Pacing every
+      // healthy response by Reset/Remaining turned 19 remaining /55s into a
+      // three-second delay per tool, stranding ordinary multi-panel loads.
+      // The provider documents proactive pacing only for low headroom (<10).
+      else if (remaining < 10) this.headerPaceUntil = Math.max(this.headerPaceUntil, now + reset * 1000 / remaining);
     }
     if (response.status === 429) this.blockedUntil = Math.max(this.blockedUntil, quantDataRetryUntil(headers, now));
     this.#pump();

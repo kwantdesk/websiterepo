@@ -2,7 +2,7 @@ import {
   originIsCoolingDown,
   recordOriginFailure,
   recordOriginSuccess,
-} from "@/lib/institutionalMarketData.server";
+} from "./institutionalMarketData.server.ts";
 import {
   marketDataGatewayToken,
   marketDataGatewayUrlCandidates,
@@ -126,6 +126,13 @@ export async function vendorMarketDataFetch(
         `${origin}/v1/vendors/${provider}${normalizedPath}`,
         { ...init, headers: gatewayHeaders(token, init.headers), signal: controller.signal },
       );
+      const requestProblem = response.headers.get("x-kwantdesk-vendor-error");
+      if (requestProblem && ["response_too_large", "request_too_large", "queue_full", "request_timeout", "ABORT_ERR"].includes(requestProblem)) {
+        // A single too-wide tool or queued request cannot black out every
+        // options tool on an otherwise reachable VPS. Preserve its real error.
+        recordOriginSuccess(breakerKey);
+        return response;
+      }
       if (![502, 503, 504].includes(response.status)) {
         recordOriginSuccess(breakerKey);
         return response;

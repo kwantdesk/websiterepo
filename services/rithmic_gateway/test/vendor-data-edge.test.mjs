@@ -72,6 +72,18 @@ test("KwantData credentials stay at the edge and identical reads coalesce throug
   assert.equal(edge.health().quantDataCacheHits, 1);
 });
 
+test("known request failures retain scope without misreporting a dead provider edge", async () => {
+  const edge = new VendorDataEdge(config, fetch, null, async () => {
+    throw Object.assign(new Error('The provider response is too large.'), { code: 'response_too_large', status: 502 });
+  });
+  const capture = responseCapture();
+  await edge.handle(request(), capture.stream, new URL('http://gateway/v1/vendors/quantdata/v1/options/tool/interval-map'));
+  await capture.finished;
+  assert.equal(capture.stream.statusCode, 502);
+  assert.equal(capture.stream.headers['X-KwantDesk-Vendor-Error'], 'response_too_large');
+  assert.deepEqual(JSON.parse(capture.body()), { error: 'The provider response is too large.' });
+});
+
 test("Databento history is streamed and the browser-facing request never supplies its key", async () => {
   let upstreamAuthorization = "";
   const edge = new VendorDataEdge(config, async (_url, init) => {

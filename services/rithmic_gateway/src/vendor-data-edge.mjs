@@ -180,6 +180,10 @@ export class VendorDataEdge {
       response.writeHead(Number(error?.status) || 502, {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
+        // Known request/budget failures are not evidence the whole gateway
+        // is down. Keep this fixed allow-list separate from raw vendor text.
+        ...(["response_too_large", "request_too_large", "queue_full", "request_timeout", "ABORT_ERR"].includes(error?.code)
+          ? { "X-KwantDesk-Vendor-Error": error.code } : {}),
       });
       response.end(JSON.stringify({ error: this.metrics.lastError.message }));
       return true;
