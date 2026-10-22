@@ -7,6 +7,11 @@ export function isZyonJournalAccountName(value: unknown) {
     && value.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase() === ZYON_JOURNAL_ACCOUNT.toLowerCase();
 }
 
+export function latestZyonJournalReset(...values: unknown[]): string | null {
+  return values.filter((value): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)))
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+}
+
 export type JournalSide = "LONG" | "SHORT" | "UNKNOWN";
 export type JournalTradingAccountType = "LIVE_CAPITAL" | "EVALUATION" | "FUNDED";
 
@@ -113,6 +118,7 @@ export type JournalImportBatch = {
 
 export type JournalState = {
   version: 1;
+  zyonResetAt?: string | null;
   accounts: JournalAccount[];
   trades: JournalTrade[];
   evidence: JournalEvidence[];
@@ -526,7 +532,8 @@ export function mergeJournalImportTrades(existing: JournalTrade[], incoming: Jou
   return { added, duplicateTrades };
 }
 
-export function zyonOutcomesToJournalTrades(records: ZyonSocialRecord[], viewerId: string) {
+export function zyonOutcomesToJournalTrades(records: ZyonSocialRecord[], viewerId: string, resetAt?: string | null) {
+  const resetTime = resetAt ? Date.parse(resetAt) : NaN;
   const precards = new Map(
     records
       .filter((record) => record.userId === viewerId && record.objectType === "precord")
@@ -536,6 +543,9 @@ export function zyonOutcomesToJournalTrades(records: ZyonSocialRecord[], viewerI
 
   return records
     .filter((record) => record.userId === viewerId && record.objectType === "receipt" && record.parentId && precards.has(record.parentId))
+    // A reviewed outcome is immutable journal evidence. Reset its inclusion,
+    // not the original Gameplan/receipt; later edits must not resurrect it.
+    .filter((record) => !Number.isFinite(resetTime) || Date.parse(record.createdAt) > resetTime)
     .map((receipt) => {
       const precord = precards.get(receipt.parentId as string);
       if (!precord) return null;

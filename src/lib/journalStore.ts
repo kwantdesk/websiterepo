@@ -129,6 +129,7 @@ function normalizeState(value: unknown): JournalState {
   const candidate = value as Partial<JournalState>;
   return {
     version: 1,
+    zyonResetAt: typeof candidate.zyonResetAt === "string" && Number.isFinite(Date.parse(candidate.zyonResetAt)) ? candidate.zyonResetAt : null,
     accounts: Array.isArray(candidate.accounts) ? candidate.accounts : [],
     trades: Array.isArray(candidate.trades) ? candidate.trades : [],
     evidence: Array.isArray(candidate.evidence) ? candidate.evidence : [],

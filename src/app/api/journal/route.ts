@@ -46,6 +46,7 @@ type AccountStateRow = {
     account?: unknown;
     archivedAt?: unknown;
     sortOrder?: unknown;
+    zyonResetAt?: unknown;
   };
 };
 
@@ -434,6 +435,8 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     cloud: true,
+    zyonResetAt: ((accountStateResult.data ?? []) as AccountStateRow[])
+      .find((row) => row.payload?.accountId === "zyon-journal-reset")?.payload.zyonResetAt ?? null,
     accounts: accountRows.map((row) => fromAccountRow(row, accountStates.get(row.id))),
     trades: ((tradeResult.data ?? []) as TradeRow[]).map((row) => ({ ...row.payload, account: accountNames.get(row.account_id) ?? row.payload.account })),
     imports: ((importResult.data ?? []) as ImportRow[]).map((row) => ({ ...row.payload, account: accountNames.get(row.account_id) ?? row.payload.account })),
@@ -458,6 +461,7 @@ export async function POST(request: NextRequest) {
     imports?: unknown;
     trade?: unknown;
     evidence?: unknown;
+    confirmation?: unknown;
   };
   try {
     body = await request.json();
@@ -466,6 +470,25 @@ export async function POST(request: NextRequest) {
   }
 
   const action = cleanText(body.action, 20);
+  if (action === "reset-zyon-journal") {
+    if (body.confirmation !== "RESET ZYON JOURNAL") {
+      return NextResponse.json({ error: "Confirm the ZYON Journal reset." }, { status: 400 });
+    }
+    const zyonResetAt = new Date().toISOString();
+    const { error } = await supabase.from("social_objects").upsert({
+      user_id: actor.userId,
+      id: "journal-account-state:zyon-journal-reset",
+      author_label: actor.label,
+      object_type: "progress",
+      scope: "private",
+      desk_id: null,
+      parent_id: null,
+      payload: { kind: JOURNAL_ACCOUNT_STATE_KIND, accountId: "zyon-journal-reset", zyonResetAt },
+      updated_at: zyonResetAt,
+    }, { onConflict: "user_id,id" });
+    if (error) return NextResponse.json({ error: "ZYON Journal could not be reset. Nothing was cleared." }, { status: 502 });
+    return NextResponse.json({ cloud: true, zyonResetAt }, { headers: { "Cache-Control": "private, no-store" } });
+  }
   if (action === "reorder-accounts") {
     const requestedIds = Array.isArray(body.accountIds)
       ? [...new Set(body.accountIds.map((value) => cleanId(value)).filter(Boolean))].slice(0, 500)

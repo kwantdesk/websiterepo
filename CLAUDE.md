@@ -1,5 +1,23 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-22 — ZYON performance Journal reset control
+
+- Journal > ZYON Journal now exposes Reset journal with a theme-aware modal,
+  exact typed confirmation and cancel. Adding the control does not reset data.
+- ZYON performance is derived from reviewed social receipts, not journal_trades.
+  Reset persists an authenticated private account-state marker in existing
+  social_objects storage; no schema/purchase/new polling. It excludes receipts
+  created on/before the server timestamp from ZYON and consolidated totals.
+  Later edits cannot resurrect an old receipt. Future outcomes still appear.
+- Original Gameplans, conversations, receipts and other/paper journals are not
+  deleted or changed. Local IndexedDB and memory retain the cutoff; hydrate
+  merges keep newest cloud/local cutoff and guard same-account reset races.
+  Old in-flight outcome and analysis requests cannot repopulate cleared UI.
+- Browser checked button location, disabled-until-typed confirmation and Cancel
+  without submitting any reset.24 focused journal tests pass. Existing equity
+  curve source test is stale (expects primary/danger instead of journal-win/loss)
+  on unchanged HEAD as well; do not change palette code to satisfy it.
+
 ## 2026-10-22 — Drawing pan/zoom frame alignment
 
 - Live `ChartDrawLayer` was scheduling rAF from the native repaint callback,

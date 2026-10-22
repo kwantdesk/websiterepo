@@ -65,6 +65,7 @@ import {
   calculateJournalStats,
   EMPTY_JOURNAL_STATE,
   isZyonJournalAccountName,
+  latestZyonJournalReset,
   journalTradesToCsv,
   mergeJournalImportTrades,
   parseJournalTextFile,
@@ -195,6 +196,7 @@ type SocialJournalResponse = {
 
 type CloudJournalResponse = {
   cloud?: boolean;
+  zyonResetAt?: string | null;
   accounts?: JournalAccount[];
   trades?: JournalTrade[];
   imports?: JournalImportBatch[];
@@ -918,6 +920,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [state, setState] = useState<JournalState>(() => initialMemory?.state ?? EMPTY_JOURNAL_STATE);
   const [zyonTrades, setZyonTrades] = useState<JournalTrade[]>(() => initialMemory?.zyonTrades ?? []);
   const [zyonLoading, setZyonLoading] = useState(() => !initialMemory);
+  const [showZyonReset, setShowZyonReset] = useState(false);
+  const [zyonResetConfirmation, setZyonResetConfirmation] = useState("");
+  const [zyonResetError, setZyonResetError] = useState("");
+  const zyonOutcomeRequest = useRef(0);
+  const zyonResetApplied = useRef<{ accountKey: string; resetAt: string } | null>(null);
   const [ready, setReady] = useState(() => Boolean(initialMemory));
   const [saveStatus, setSaveStatus] = useState<"loading" | "saved" | "error">(() => initialMemory ? "saved" : "loading");
   const [cloudState, setCloudState] = useState<JournalCloudState>(() => initialMemory?.cloudState ?? "loading");
@@ -1078,12 +1085,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       cloudEvidence.forEach((item) => evidence.set(item.id, item));
       const merged = {
         ...stored,
+        zyonResetAt: latestZyonJournalReset(stored.zyonResetAt, remembered?.zyonResetAt, cloud.zyonResetAt),
         accounts: [...accounts.values()],
         trades: [...trades.values()],
         evidence: [...evidence.values()],
         imports: [...imports.values()],
       };
-      setState(merged);
+      setState({ ...merged, zyonResetAt: latestZyonJournalReset(merged.zyonResetAt,
+        zyonResetApplied.current?.accountKey === resolvedAccountKey ? zyonResetApplied.current.resetAt : null) });
       setCloudState(cloud.cloud ? "cloud" : "local");
       setReady(true);
       setSaveStatus("saved");
@@ -1139,18 +1148,51 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   }, [accountFilter, cloudState, ready, resolvedAccountKey, state, tab, zyonTrades]);
 
   const loadZyonOutcomes = useCallback(async () => {
+    const requestId = ++zyonOutcomeRequest.current;
     try {
       const response = await fetch("/api/socials?mine=1&types=precord,receipt", { cache: "no-store" });
       if (!response.ok) throw new Error("ZYON outcomes could not be loaded.");
       const data = await response.json() as SocialJournalResponse;
       if (!data.viewerId || !Array.isArray(data.objects)) throw new Error("ZYON outcome storage is unavailable.");
-      setZyonTrades(zyonOutcomesToJournalTrades(data.objects, data.viewerId));
+      if (requestId !== zyonOutcomeRequest.current) return;
+      setZyonTrades(zyonOutcomesToJournalTrades(data.objects, data.viewerId, state.zyonResetAt));
     } catch {
-      setZyonTrades([]);
+      if (requestId === zyonOutcomeRequest.current) setZyonTrades([]);
     } finally {
-      setZyonLoading(false);
+      if (requestId === zyonOutcomeRequest.current) setZyonLoading(false);
     }
-  }, []);
+  }, [state.zyonResetAt]);
+
+  const resetZyonJournal = async () => {
+    if (zyonResetConfirmation !== "RESET ZYON JOURNAL" || journalLifecycleBusy) return;
+    setJournalLifecycleBusy(ZYON_JOURNAL_ACCOUNT);
+    setZyonResetError("");
+    try {
+      const response = await fetch("/api/journal", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset-zyon-journal", confirmation: zyonResetConfirmation }),
+      });
+      const result = await response.json() as { cloud?: boolean; zyonResetAt?: string; error?: string };
+      if (!response.ok || !result.cloud || !result.zyonResetAt || !Number.isFinite(Date.parse(result.zyonResetAt))) {
+        throw new Error(result.error || "ZYON Journal could not be reset. Nothing was cleared.");
+      }
+      ++zyonOutcomeRequest.current;
+      zyonResetApplied.current = { accountKey: resolvedAccountKey, resetAt: result.zyonResetAt };
+      setZyonTrades([]);
+      setState(current => ({ ...current, zyonResetAt: result.zyonResetAt }));
+      setSelectedTradeId(null);
+      setJournalAnalysis(null);
+      setAnalysisLoadedAccount("");
+      ++analysisRequestRef.current;
+      analysisAbortRef.current?.abort();
+      setShowZyonReset(false);
+      setJournalLifecycleMessage("ZYON Journal reset. New reviewed outcomes will appear automatically; original Gameplans are unchanged.");
+    } catch (error) {
+      setZyonResetError(error instanceof Error ? error.message : "ZYON Journal could not be reset.");
+    } finally {
+      setJournalLifecycleBusy(null);
+    }
+  };
 
   useEffect(() => {
     void loadZyonOutcomes();
@@ -1408,7 +1450,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       const result = await response.json() as JournalAnalysisResponse;
       if (!response.ok) throw new Error(result.error || "The saved analysis could not be loaded.");
       if (controller.signal.aborted || requestId !== analysisRequestRef.current) return;
-      setJournalAnalysis(result.analysis ?? null);
+      setJournalAnalysis(state.zyonResetAt && (analysisAccount === "all" || isZyonJournalAccountName(analysisAccount))
+        && result.analysis?.fingerprint !== analysisEvidence.fingerprint ? null : result.analysis ?? null);
       setAnalysisLoadedAccount(analysisAccount);
       setAnalysisStatus("ready");
     }).catch((error: unknown) => {
@@ -1417,7 +1460,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       setAnalysisError(error instanceof Error ? error.message : "The saved analysis could not be loaded.");
     });
     return () => controller.abort();
-  }, [analysisAccount, analysisLoadedAccount, tab]);
+  }, [analysisAccount, analysisLoadedAccount, tab, state.zyonResetAt, analysisEvidence.fingerprint]);
 
   const runJournalAnalysis = useCallback(async () => {
     if (analysisEvidence.performance.trades < 3) {
@@ -2446,6 +2489,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <p className="mt-0.5 text-[9px] text-muted">{accountFilter === "all" ? "Consolidated performance across every journal account" : accountFilter === "ZYON Journal" ? "Personal outcomes created from reviewed ZYON Gameplans" : "Imported performance · review evidence · measurable edge"}</p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            {zyonJournalSelected ? <button type="button" disabled={!ready || zyonLoading || Boolean(journalLifecycleBusy)} onClick={() => { setZyonResetConfirmation(""); setZyonResetError(""); setShowZyonReset(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:border-danger/40 hover:text-danger disabled:opacity-35"><RefreshCw className="h-3.5 w-3.5" />Reset journal</button> : null}
             <span className={`flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 text-[9px] ${saveStatus === "error" ? "text-danger" : "text-muted"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${cloudState === "cloud" ? "bg-primary" : cloudState === "error" || saveStatus === "error" ? "bg-danger" : cloudState === "loading" || saveStatus === "loading" ? "animate-pulse bg-warning" : "bg-muted"}`} />
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
@@ -3078,6 +3122,22 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               {!archivedAccountViews.length ? <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 text-center"><FolderArchive className="h-7 w-7 text-muted" /><h3 className="mt-4 text-[12px] font-semibold text-foreground">Archive is empty</h3><p className="mt-2 max-w-sm text-[9px] leading-4 text-muted">Right-click a Journal account or use its three-dot menu to archive it without losing its record.</p></div> : null}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {showZyonReset ? (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !journalLifecycleBusy) setShowZyonReset(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="zyon-journal-reset-title" className="w-full max-w-[470px] rounded-3xl border border-border bg-panel p-5 shadow-2xl">
+            <h2 id="zyon-journal-reset-title" className="text-[17px] font-semibold text-foreground">Reset ZYON Journal?</h2>
+            <p className="mt-3 text-[10px] leading-5 text-muted">Start your ZYON performance totals fresh. Existing outcomes will be excluded from this journal and Overall Journal totals. New reviewed outcomes will continue to appear automatically.</p>
+            <p className="mt-2 text-[10px] leading-5 text-muted">Your original Gameplans, conversations, public receipts, paper accounts and other journals will not be deleted or changed. Back up your journal first if you want a separate copy of its current totals.</p>
+            <label className="mt-4 block text-[10px] text-muted">Type RESET ZYON JOURNAL to confirm<input autoFocus aria-label="Reset ZYON Journal confirmation" value={zyonResetConfirmation} onChange={event => setZyonResetConfirmation(event.target.value)} disabled={Boolean(journalLifecycleBusy)} className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3 text-foreground outline-none focus:border-primary" /></label>
+            {zyonResetError ? <p role="alert" className="mt-3 text-[10px] text-danger">{zyonResetError}</p> : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setShowZyonReset(false)} className="h-9 rounded-xl border border-border px-4 text-[10px] text-muted">Cancel</button>
+              <button type="button" disabled={zyonResetConfirmation !== "RESET ZYON JOURNAL" || Boolean(journalLifecycleBusy)} onClick={() => void resetZyonJournal()} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-white disabled:opacity-35">{journalLifecycleBusy ? "Resetting…" : "Reset ZYON Journal"}</button>
+            </div>
+          </section>
         </div>
       ) : null}
 
