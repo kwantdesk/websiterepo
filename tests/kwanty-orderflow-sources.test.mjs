@@ -6,6 +6,13 @@ import {createOrderflowSources} from '../public/kwanty-app/orderflow-sources.js'
 const app=readFileSync(new URL('../public/kwanty-app/app.js',import.meta.url),'utf8');
 const timestamp=Date.parse('2026-10-19T18:00:00Z')/1000;
 const frame=(ticker,spot=1)=>({ticker,spot,timestamp});
+test('restoration retains a complete second-resolution session rather than 1200 tail rows',async()=>{
+ const start=Date.parse('2026-10-21T13:30:00Z')/1000;
+ const rows=Array.from({length:23400},(_,i)=>({ticker:'QQQ',timestamp:start+i,spot:725,cvroflow:i%7}));
+ const pool=createOrderflowSources({api:async()=>({data:rows.at(-1)}),sessionHistory:{read:async()=>rows},history(){},subscribe(){},onChange(){},createPrices:()=>({setActive(){},select(){},dispose(){}})});
+ pool.reconcile(['QQQ'],{active:true});await pool.refresh();await new Promise(resolve=>setImmediate(resolve));
+ const records=pool.get('QQQ').records;assert.equal(records.length,23400);assert.equal(records[0].timestamp,start);assert.equal(records.at(-1).cvroflow,rows.at(-1).cvroflow);pool.dispose();
+});
 function harness(){
  let time=1;const requests=[],prices=[],history=[],pending=new Map();
  const pool=createOrderflowSources({now:()=>time,api:async(path,signal)=>{const query=new URLSearchParams(path.split('?')[1]),ticker=query.get('ticker');requests.push({ticker,path,signal});if(pending.has(ticker))return pending.get(ticker);return {data:path.startsWith('history')?[frame(ticker)]:frame(ticker,ticker==='NDX'?20000:500)};},history(){},subscribe(){},sessionHistory:{read:async(ticker,date)=>{history.push({ticker,date});return []; }},onChange(){},createPrices:()=>{const price={selected:[],disposed:0,active:[],setActive(value){this.active.push(value);},select(ticker,options){this.ticker=ticker;this.selected.push({ticker,options});},snapshot(interval){return {ticker:this.ticker,interval,candles:[],points:[]};},refresh:async()=>{},dispose(){this.disposed++;}};prices.push(price);return price;}});

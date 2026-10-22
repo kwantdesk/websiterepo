@@ -1,12 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ORDERFLOW_METRICS, collectOrderflowCandles, makeOrderflowSeries, orderflowPriceTicks, orderflowThemeColor, orderflowTimestamp, renderOrderflow } from '../../public/kwanty-app/orderflow-chart.js';
+import { ORDERFLOW_METRICS, collectOrderflowCandles, createOrderflowModel, makeOrderflowSeries, orderflowPriceTicks, orderflowThemeColor, orderflowTimestamp, renderOrderflow } from '../../public/kwanty-app/orderflow-chart.js';
 import {drawProfileOverlay} from '../../public/kwanty-app/profile-overlay.js';
 
 // Explicitly synthetic arithmetic fixtures; never production fallbacks.
 test('hex and named default colors retain source light conversion without recoloring customized values',()=>{assert.equal(orderflowThemeColor('#ffffff','white',true),'#4b5563');assert.equal(orderflowThemeColor('#00ffff','cyan',true),'#0369a1');assert.equal(orderflowThemeColor('#ffffff','white',true,true),'#ffffff')});
 const sample = (timestamp, fields = {}) => ({ timestamp, ticker: 'SPX', spot: 5000, zcvr: 10, ocvr: -3, zgr: 40, ogr: 7, agg_dex: 100, one_agg_dex: 20, agg_call_dex: 140, agg_put_dex: -40, one_agg_call_dex: 30, one_agg_put_dex: -10, dexoflow: 5, one_dexoflow: -2, gexoflow: 9, one_gexoflow: 1, cvroflow: -8, one_cvroflow: 2, ...fields });
 const base = 1770000000;
+test('pointer and viewport paints reuse the model; records, mode and thresholds invalidate it',()=>{
+ const model=createOrderflowModel(),options={records:[sample(base)],metric:'convexity-orderflow',settings:{spotViewMode:'line',candleBucketMs:60000}};
+ const first=model(options);assert.equal(model({...options,hover:{x:50},view:{startTime:base}}),first);
+ assert.notEqual(model({...options,records:[...options.records]}),first);
+ const next=model(options);assert.notEqual(model({...options,threshold:100}),next);
+ const other=model(options);assert.notEqual(model({...options,settings:{...options.settings,spotViewMode:'candles'}}),other);
+});
+
+test('line mode preserves individual flow velocities despite a saved candle interval',()=>{
+ const records=[sample(base+1,{cvroflow:30}),sample(base+2,{cvroflow:40})];
+ const line=makeOrderflowSeries({records,metric:'convexity-orderflow',settings:{spotViewMode:'line',candleBucketMs:60000}});
+ assert.equal(line.bucketMs,0);assert.deepEqual(line.series[0].values.map(point=>point.raw),[30,40]);
+ const candles=makeOrderflowSeries({records,metric:'convexity-orderflow',settings:{spotViewMode:'candles',candleBucketMs:60000}});
+ assert.deepEqual(candles.series[0].values.map(point=>point.raw),[70]);
+});
 
 test('native units and aggregate values are neither divided nor recumulated', () => {
   const data = makeOrderflowSeries({ records: [sample(base), sample(base + 60, { agg_dex: 120 })], metric: 'aggregate-dex' });

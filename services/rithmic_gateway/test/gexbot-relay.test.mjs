@@ -11,6 +11,17 @@ async function fixture(t, options = {}) {
   return (path, init = {}) => fetch(root + path, { headers: { Authorization: 'Bearer private-fixture' }, ...init });
 }
 const read = '/v1/gexbot-legacy/read?path=' + encodeURIComponent('/SPX/classic/gex_full');
+test('EOD sessions stay authenticated, exact-selection scoped, coalesced and out of live archiver',async t=>{
+ let reads=0;const request=await fixture(t,{eod:{read:async(ticker,date)=>{reads++;assert.equal(ticker,'QQQ');assert.equal(date,'2026-10-21');return {source:'provider-eod-archive',data:[{ticker,timestamp:1792612800,cvroflow:-10.9}]};}},fetchImpl:()=>assert.fail('no live provider request'),archive:{archive:()=>assert.fail('no duplicate raw-session archive')}});
+ const path='/v1/native-positioning/session?ticker=QQQ&date=2026-10-21';
+ assert.equal((await request(path,{headers:{}})).status,401);
+ assert.equal((await request(path+'&ticker=SPX')).status,400);
+ const responses=await Promise.all([request(path),request(path)]);assert.deepEqual((await responses[0].json()).data[0].cvroflow,-10.9);assert.equal(reads,1);
+});
+test('EOD upstream refusal preserves failure status without forwarding secrets',async t=>{
+ const request=await fixture(t,{eod:{read:async()=>{throw Object.assign(Error('secret'),{code:'EOD_UPSTREAM_FORBIDDEN',status:403});}}});
+ const response=await request('/v1/native-positioning/session?ticker=QQQ&date=2026-10-21');assert.equal(response.status,403);assert.deepEqual(await response.json(),{error:'EOD_UPSTREAM_FORBIDDEN'});
+});
 
 test('legacy selection rejects arbitrary hosts, traversal, dates and write shapes', () => {
   for (const path of ['https://evil.test','//evil.test/x','/SPX/classic/../../x','/UNKNOWN/classic/gex_full','/SPX/orderflow/majors','/SPX/classic/gex_full?api_key=x']) assert.throws(() => validateLegacyPath(path));

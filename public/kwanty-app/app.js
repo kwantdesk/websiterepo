@@ -6,15 +6,16 @@ import {attachStateDrawingTools,botMountStateDrawings} from './state-drawing-too
 import {createPriceController} from './price-runtime.js?v=2';
 import {chartRegion,panChartView,zoomChartView} from './chart-interaction.js?v=3';
 import {createSessionHistory} from './session-history.js?v=1';
+import {decodeSessionTransport} from './session-transport.js?v=1';
 import {candleIntervalFor,priceViewFor,intervalLabel,linkedViewportUpdates,linkedCursor,projectCursor} from './panel-controls.js?v=2';
 import {bindTemplates} from './templates.js';
 import {mountTickerShortcuts} from './ticker-shortcuts.js?v=2';
-import {createOrderflowSources} from './orderflow-sources.js?v=3';
+import {createOrderflowSources} from './orderflow-sources.js?v=4';
 import {createStateSources} from './state-sources.js?v=2';
 import {STATE_PROFILES,statePanelCategory,statePanelLabel,selectStateProfile,restoreStatePanels,stateControlTargets,stateViewportUpdates,stateCursor,projectStateCursor,sameStatePriceUnits} from './state-panels.js?v=1';
 import {RetainedSnapshots} from './retention.js';
 import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261021-settings';
-import {renderOrderflow,ORDERFLOW_METRICS} from './orderflow-chart.js?v=3';
+import {renderOrderflow,ORDERFLOW_METRICS,createOrderflowModel} from './orderflow-chart.js?v=4';
 import {mountSettingsEditor} from './settings-editor.js?v=3';
 import {createOverlayEditor} from './overlay-editor.js?v=3';
 import {finite,mergeSnapshots,sourceDate,sourceTime,expiryLabel,historyRecords,seekSnapshot,exposureSummary,exposureSummaryUnit,toggleExpiry,closeOrderPanel,restoreOrderPanel,ORDERFLOW_WINDOWS} from './models.js';
@@ -39,7 +40,7 @@ state.closedStatePanels=Array.isArray(saved.closedStatePanels)?saved.closedState
 let activeStatePanelId=saved.activeStatePanelId||state.statePanels[0].id,stateLoadSerial=0,stateLinkedSeedKey=null,statePriceUiKey=null;
 let catalog=null,requestId=0,modeGeneration=0,controller=null,historyController=null,pollTimer=null,playTimer=null,views=new Map(),charts=[],observer=null,noticeTimer=null;
 let restoredSessionKey=null;
-const sessionHistory=createSessionHistory((ticker,date)=>api('session?'+new URLSearchParams({ticker,date}),AbortSignal.timeout(15000)));
+const sessionHistory=createSessionHistory((ticker,date)=>api('session?'+new URLSearchParams({ticker,date}),AbortSignal.timeout(40000)));
 const collections=new RetainedSnapshots();
 const prices=createPriceController({history:botPriceHistory,subscribe:botSubscribePrice,onChange:()=>{syncTimeline();renderChartEmpty();drawAll();}});
 const orderSources=createOrderflowSources({api,history:botPriceHistory,subscribe:botSubscribePrice,sessionHistory,onChange:()=>{if(state.package==='orderflow'){syncOrderflowState();syncTimeline();renderChartEmpty();drawAll();}}});
@@ -93,7 +94,7 @@ function persist(){saveScope();try{botStorage.setItem(STORE,JSON.stringify({sche
 function el(tag,className,text){const e=document.createElement(tag);if(className)e.className=className;if(text!==undefined)e.textContent=text;return e}
 function number(value,digits=2){return finite(value)===null?'—':Number(value).toFixed(digits)}
 function message(text,timeout=10000){clearTimeout(noticeTimer);$('#message').textContent=text;$('#message').hidden=false;if(timeout)noticeTimer=setTimeout(()=>$('#message').hidden=true,timeout)}
-async function api(path,signal){const response=await botFetch('/api/kwanty/'+path,{signal});let result;try{result=await response.json()}catch{throw new Error('INVALID_GATEWAY_RESPONSE')}if(!response.ok){const error=new Error(result.error||'PROVIDER_REQUEST_FAILED');error.status=response.status;error.retryAfterSeconds=result.retryAfterSeconds;throw error}return result}
+async function api(path,signal){const response=await botFetch('/api/kwanty/'+path,{signal});let result;try{result=await response.json()}catch{throw new Error('INVALID_GATEWAY_RESPONSE')}if(!response.ok){const error=new Error(result.error||'PROVIDER_REQUEST_FAILED');error.status=response.status;error.retryAfterSeconds=result.retryAfterSeconds;throw error}return decodeSessionTransport(result)}
 function query(){return new URLSearchParams({ticker:state.ticker,package:state.package,category:category()})}
 function currentRecords(panel){if(state.package==='state')return stateRecords(panel);const records=state.package==='orderflow'&&panel?orderSources.get(panelTicker(panel))?.records||[]:state.records;if(state.replayIndex===null)return records;const time=state.records[state.replayIndex]?.timestamp;return records.filter(row=>time!==undefined&&row.timestamp<=time);}
 function selectedPayload(panel){if(state.package==='state')return stateRecords(panel).at(-1)||null;return panel&&state.package==='orderflow'?currentRecords(panel).at(-1)||null:state.replayIndex===null?state.payload:state.records[state.replayIndex]||state.payload}
@@ -250,7 +251,8 @@ function paintAll(){
     const one=expiry==='one',defs=convex?[[one?'o_mlgamma':'z_mlgamma','long','major_long_gamma',themePaint("#00ffff")],[one?'o_msgamma':'z_msgamma','short','major_short_gamma',themePaint("#ae4ad5")]]:[[one?'one_mcall':'zero_mcall','call','major_call_gamma',themePaint("#00ff00")],[one?'one_mput':'zero_mput','put','major_put_gamma',themePaint("#ff0000")]];
     for(const [field,label,key,color]of defs){const style=s[key]||{};if(style.display!==false)s.majorLevels.push({field,label:(panel.expiry==='both'?(one?'next ':'latest '):'')+label,color:style.color||color,defaultColor:color,isCustomized:style.isCustomized,dash:style.dash||[9,9],size:style.size||1});}
    }
-   c.geometry=renderOrderflow(ctx,width,height,{...panel,threshold:undefined,thresholds:s.flowThresholds?.[ticker]||{},records,ticker,priceHistory:price.candles,priceLine:price.points,settings:s,view:{...orderflowWindow(price.points,panel.period,records),...views.get(panel.id)},hover:c.hover});c.overlayGeometry=overlays.paint(ctx,c.geometry,panel);
+   c.orderflowModel??=createOrderflowModel();
+   c.geometry=renderOrderflow(ctx,width,height,{...panel,model:c.orderflowModel,threshold:undefined,thresholds:s.flowThresholds?.[ticker]||{},records,ticker,priceHistory:price.candles,priceLine:price.points,settings:s,view:{...orderflowWindow(price.points,panel.period,records),...views.get(panel.id)},hover:c.hover});c.overlayGeometry=overlays.paint(ctx,c.geometry,panel);
   }else{
    if(state.package==='state'&&state.greek){delete s.gex_vol;delete s.gex_vol_neg;}
    c.geometry=drawProfile(ctx,width,height,{payload,spotPrice:price.latest?.spot,package:state.package,category:category(),settings:s,candleInterval:interval,conversion:Number(s.priceMultiplier)||1,conversionOffset:Number(s.priceOffset)||0,priceHistory:s.spotViewMode==='candles'?price.candles:price.points,majorHistory:{zeroGamma:records.map(r=>({time:r.timestamp,spot:r.zero_gamma})),majorCall:records.map(r=>({time:r.timestamp,spot:r.major_pos_vol})),majorPut:records.map(r=>({time:r.timestamp,spot:r.major_neg_vol}))},view:{...regularWindow(records.length?records:price.points.map(p=>({timestamp:p.time/1000})),23400),...views.get(c.panel.id)},hover:s.showCrosshairs?c.hover:null});

@@ -1,5 +1,29 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-22 — Orderflow full-session restoration and line-mode parity
+
+- Previous native history403 does NOT establish all history is unavailable.
+  Official `/v2/hist/eod/{ticker}` includes eligible existing-tier daily ZIP
+  reports. QQQ Oct21 report verified: 22,017 native one-second observations,
+  timestamps1792589480..1792612800, actual one-minute convexity extrema
+  -211.33/+422.09. Preserve missing source intervals; never invent observations.
+- Private VPS relay owns bounded, request-driven EOD download/cache/ZIP reader;
+  exact filename/date/member/ticker/time and CRC validations, no redirects,
+  128MiB download, 1GiB disk guard, hourly per-ticker retry hold. No new billing
+  resource and no Rithmic gateway restart. Reports remain on included disk.
+- Authenticated session API compresses raw arrays as gzip-base64 below4MB;
+  browser bounded-decodes exact values and retains up to30k rows/40MB per active
+  Orderflow source, three session jobs. Generic profile budget stays unchanged.
+- Line mode does not bucket despite saved candle interval. Candle flow SUM,
+  exposure MEAN, last price/major observations and post-bucket masks remain.
+  Panel-owned model reuse avoids full session aggregation on pointer paints.
+- Version chain standalone11/app19/orderflow4; embedded shell cache unchanged.
+- OPEN: live REST acquisition remains30sec, not one-second parity. This change
+  restores completed available reports, not unreceived live velocity spikes.
+  EOD endpoint only supplies newest eligible report, not arbitrary90day history;
+  reports must already be persisted for older-date replay. No blanket parity claim.
+- Receipt: docs/prompt-log/2026-10-22-kwanty-convexity-session-repair.md.
+
 ## 2026-10-22 — KWANTY disappearing overlays
 
 - Anchor default positioning windows to genuine positioning-session records,

@@ -97,7 +97,9 @@ export function makeOrderflowSeries(options = {}) {
   // Never silently stitch different instruments into a single apparent history.
   if (instruments.length > 1) return { metric, expiry, combine, label: descriptor.label, points: [], series: [], instruments, error: 'MIXED_INSTRUMENTS' };
   const actualRecords = sorted.map(point => point.record);
-  const bucketMs = settings.spotViewMode === 'candles' ? Math.max(1000,finite(settings.candleBucketMs) ?? 60000) : Math.max(0,finite(settings.candleBucketMs) ?? 0);
+  // A saved candle interval is a preference, not a transform for line mode.
+  // Native one-second flow velocities must remain separate outside candles.
+  const bucketMs = settings.spotViewMode === 'candles' ? Math.max(1000,finite(settings.candleBucketMs) ?? 60000) : 0;
   const priceMultiplier=finite(settings.priceMultiplier)??1,priceOffset=finite(settings.priceOffset)??0;
   const candles = Array.isArray(options.priceHistory)?options.priceHistory.map(c=>({...c,time:orderflowTimestamp(c.time??c.timestamp),open:c.open*priceMultiplier+priceOffset,high:c.high*priceMultiplier+priceOffset,low:c.low*priceMultiplier+priceOffset,close:c.close*priceMultiplier+priceOffset})).filter(c=>c.time!==null&&[c.open,c.high,c.low,c.close].every(Number.isFinite)).sort((a,b)=>a.time-b.time):collectOrderflowCandles(actualRecords,bucketMs,settings);
   if(bucketMs>=1000)sorted=bucketRecords(sorted,bucketMs);
@@ -201,8 +203,19 @@ function pathLine(ctx, points, x, y) {
   ctx.stroke();
 }
 
+// Each panel owns one model. Pointer/viewport paints must not re-bucket a
+// 23,400-observation session; new data, style, thresholds and price invalidate it.
+export function createOrderflowModel(){
+ let previous=null;
+ return options=>{
+  const key=JSON.stringify([options.ticker,options.metric,options.expiry,options.combine,options.threshold,options.thresholds,options.settings,Object.values(ORDERFLOW_METRICS).map(metric=>metric.colors)]);
+  if(previous&&previous.records===options.records&&previous.prices===options.priceHistory&&previous.line===options.priceLine&&previous.key===key)return previous.data;
+  const data=makeOrderflowSeries(options);previous={key,records:options.records,prices:options.priceHistory,line:options.priceLine,data};return data;
+ };
+}
+
 export function renderOrderflow(ctx, width, height, options = {}) {
-  const data = makeOrderflowSeries(options);
+  const data = options.model ? options.model(options) : makeOrderflowSeries(options);
   const settings = options.settings || {}, view = options.view || {};
   const axisColor = themeInk(false,settings.lightMode?'#353535':'#b9b9b9');
   const gridColor = settings.lightMode ? themePaint("#dddddd") : themePaint("#303030");

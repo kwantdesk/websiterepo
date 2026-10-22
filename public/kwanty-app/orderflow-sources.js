@@ -1,6 +1,9 @@
 import {createPriceController} from './price-runtime.js?v=2';
 import {mergeSnapshots,historyRecords,sourceDate} from './models.js';
 import {trimSnapshotRows} from './retention.js';
+// Completed provider sessions contain ~23,400 one-second observations. The
+// generic 1,200-row profile budget silently discarded most of that history.
+const retainOrderflow=rows=>trimSnapshotRows(rows,40_000_000,30000);
 
 // One owned source per distinct visible ticker, never per chart panel.
 export function createOrderflowSources({api,history,subscribe,sessionHistory,onChange,now=Date.now,createPrices=createPriceController}){
@@ -42,13 +45,13 @@ export function createOrderflowSources({api,history,subscribe,sessionHistory,onC
     if(!current(source)||controller.signal.aborted)return;
     const rows=source.date?historyRecords(envelope.data,source.ticker):mergeSnapshots([], [envelope.data],source.ticker);
     if(!rows.length)throw Error('INSTRUMENT_DATA_MISMATCH');
-    source.records=trimSnapshotRows(mergeSnapshots(source.records,rows,source.ticker));source.envelope=envelope;source.error=null;notify();
+    source.records=retainOrderflow(mergeSnapshots(source.records,rows,source.ticker));source.envelope=envelope;source.error=null;notify();
     const date=sourceDate(rows.at(-1).timestamp);
     if(!source.date&&!source.restored.has(date)){
      source.restored.add(date);
      void sessionHistory.read(source.ticker,date).then(history=>{
       if(!current(source)||sourceDate(source.records.at(-1)?.timestamp)!==date||!history.length)return;
-      source.records=trimSnapshotRows(mergeSnapshots(history,source.records,source.ticker));notify();
+      source.records=retainOrderflow(mergeSnapshots(history,source.records,source.ticker));notify();
      });
     }
    }catch(error){if(current(source)&&!controller.signal.aborted){source.error=error.message;notify();}}
