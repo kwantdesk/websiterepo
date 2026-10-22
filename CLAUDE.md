@@ -1,5 +1,34 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-22 — Classic/State exact paged profile history
+
+- History was still sent to denied Quant history for Classic/State; previous
+  EOD repair only handled Orderflow. Private relay now falls back on403/404
+  only, exact package/category/date;401/429 remain failures. Five-minute
+  denied-selection memo prevents repeated forbidden vendor reads during indexing.
+- Classic/State EOD arrays exceed140MB. ZIP/CRC validation + bounded streaming
+  JSON reader build atomic gzip pages (<=200 original rows/2MB) and a full
+  second-resolution summary timeline. No resampling, interpolation or fake
+  profiles. Metadata strips only strikes/mini_contracts, exact arrays lazy-load.
+- Profiles index under /recordings/gexbot/profile-replay;2GiB root guard,
+  1GiB free reserve,128MiB/category compressed budget, one build at a time.
+  Cold indexing returns retryable503 after4s; request-driven browser retries
+  only EOD_INDEX_BUSY/BUILDING for<=120s, cancellable; no permanent poller.
+- State retains complete paged timelines rather than generic1200-row tails.
+  Client shares exact pages by selection, max12 pages/two requests. Playback
+  waits for its exact frame, restarts at beginning when Play is pressed at
+  close; empty session cache can retry after30s on demand instead of forever.
+- Verified real Oct21 QQQ Classic/GEX/Gamma/Delta22017 observations and SPX
+  StateGEX15739 observations; preserve genuine source gaps. QQQ warm VPS
+  manifest+last-page timings0.76–1.92s, not whole-browser latency claims.
+- Only gexbot-relay sidecar recreated; Rithmic start time unchanged. Existing
+  provider credentials/subscriptions/disk; no purchase or new provider session.
+- OPEN: older dates not previously persisted are unavailable when source EOD
+  returns a different/latest day; no arbitrary90day/full-universe history claim.
+  Live30s positioning cadence, full parity, month archive and recovery gates
+  remain open. Version standalone12/embedded13/app20/state3/session-history2.
+- Receipt: docs/prompt-log/2026-10-22-kwanty-profile-history.md.
+
 ## 2026-10-22 — Orderflow full-session restoration and line-mode parity
 
 - Previous native history403 does NOT establish all history is unavailable.

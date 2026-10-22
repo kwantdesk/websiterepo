@@ -11,6 +11,13 @@ async function fixture(t, options = {}) {
   return (path, init = {}) => fetch(root + path, { headers: { Authorization: 'Bearer private-fixture' }, ...init });
 }
 const read = '/v1/gexbot-legacy/read?path=' + encodeURIComponent('/SPX/classic/gex_full');
+test('Classic and State denied native history use exact EOD profile pages, without rearchiving them',async t=>{
+ for(const pkg of ['classic','state']){
+  let calls=0,reads=0;const request=await fixture(t,{profiles:{read:async(selection,page)=>{reads++;assert.equal(selection.package,pkg);assert.equal(selection.ticker,'QQQ');assert.equal(selection.date,'2026-10-21');return {source:'provider-eod-archive',data:[{ticker:'QQQ',timestamp:1792612800}],page};}},archive:{archive:()=>assert.fail('EOD page is already persisted')},fetchImpl:async()=>{calls++;return Response.json({error:'UPSTREAM_ENTITLEMENT_REQUIRED'},{status:403});}});
+  const path='/v1/native-positioning/history?ticker=QQQ&package='+pkg+'&category=gex_full&date=2026-10-21';assert.equal((await request(path)).status,200);assert.equal(calls,1);assert.equal(reads,1);
+  assert.equal((await request(path+'&page=0')).status,200);assert.equal(calls,1);assert.equal(reads,2);
+ }
+});
 test('EOD sessions stay authenticated, exact-selection scoped, coalesced and out of live archiver',async t=>{
  let reads=0;const request=await fixture(t,{eod:{read:async(ticker,date)=>{reads++;assert.equal(ticker,'QQQ');assert.equal(date,'2026-10-21');return {source:'provider-eod-archive',data:[{ticker,timestamp:1792612800,cvroflow:-10.9}]};}},fetchImpl:()=>assert.fail('no live provider request'),archive:{archive:()=>assert.fail('no duplicate raw-session archive')}});
  const path='/v1/native-positioning/session?ticker=QQQ&date=2026-10-21';

@@ -1,5 +1,6 @@
 import { open } from 'node:fs/promises';
-import { gunzip, inflateRaw } from 'node:zlib';
+import { gunzip, inflateRaw, createGunzip } from 'node:zlib';
+import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 
 const unzip = promisify(inflateRaw), ungzip = promisify(gunzip);
@@ -30,7 +31,7 @@ const nyDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', 
 function sessionDate(epoch) { const parts = Object.fromEntries(nyDate.formatToParts(epoch).map(p => [p.type, p.value])); return `${parts.year}-${parts.month}-${parts.day}`; }
 
 /** Reads only the central directory and exact selected member; never extracts files. */
-export async function extractEodSession(path, selection) {
+export async function extractEodSession(path, selection, {onRow} = {}) {
   const wanted = eodEntryName(selection), file = await open(path, 'r');
   try {
     const stat = await file.stat(), size = stat.size;
@@ -71,6 +72,15 @@ export async function extractEodSession(path, selection) {
     let gzipBytes, jsonBytes;
     try { gzipBytes = entry.method === 0 ? payload : await unzip(payload, { maxOutputLength: EOD_LIMITS.entryBytes }); } catch { fail('EOD_INVALID_COMPRESSION'); }
     check(gzipBytes.length === entry.uncompressed && eodCrc32(gzipBytes) === entry.crc, 'EOD_CRC_MISMATCH');
+    if(onRow){
+      let total=0,count=0,previous=-Infinity;
+      for await(const row of decodeEodRows(Readable.from([gzipBytes]).pipe(createGunzip()))){
+        const epoch=Number(row.timestamp)*1000;
+        check(row.ticker===selection.ticker&&typeof row.timestamp==='number'&&Number.isFinite(epoch)&&sessionDate(epoch)===selection.date&&epoch>=previous,'EOD_INVALID_TIMESTAMP');
+        previous=epoch;check(++count<=30000,'EOD_INVALID_ROWS');total+=Buffer.byteLength(JSON.stringify(row));await onRow(row);
+      }
+      check(count>0,'EOD_INVALID_ROWS');return {rowCount:count,jsonBytes:total,entryName:wanted};
+    }
     try { jsonBytes = await ungzip(gzipBytes, { maxOutputLength: EOD_LIMITS.jsonBytes }); } catch { fail('EOD_INVALID_GZIP'); }
     let rows; try { rows = JSON.parse(jsonBytes.toString('utf8')); } catch { fail('EOD_INVALID_JSON'); }
     check(Array.isArray(rows) && rows.length > 0 && rows.length <= EOD_LIMITS.rows, 'EOD_INVALID_ROWS');
@@ -83,4 +93,33 @@ export async function extractEodSession(path, selection) {
     }
     return { rows, entryName: wanted, jsonBytes: jsonBytes.length, source: 'provider-eod-archive', selection: { ...selection } };
   } finally { await file.close(); }
+}
+
+// Streaming top-level JSON array parser. Profile sessions can exceed 150MB;
+// only one bounded original row is materialized, with nested arrays/strings intact.
+export async function* decodeEodRows(stream){
+ let state='start',depth=0,quoted=false,escaped=false,parts=[],rowLength=0,bytes=0,count=0;
+ const decoder=new TextDecoder('utf-8',{fatal:true});
+ for await(const chunk of stream){
+  bytes+=chunk.length;check(bytes<=512*1024*1024,'EOD_JSON_SIZE_LIMIT');
+  const text=decoder.decode(chunk,{stream:true});let start=depth>0?0:-1;
+  for(let index=0;index<text.length;index++){
+   const char=text[index];
+   if(state==='done'){check(/\s/.test(char),'EOD_INVALID_JSON');continue;}
+   if(state==='start'){if(/\s/.test(char))continue;check(char==='[','EOD_INVALID_JSON');state='value';continue;}
+   if(depth===0){
+    if(/\s/.test(char))continue;
+    if(state==='separator'){if(char===']'){state='done';continue;}check(char===',','EOD_INVALID_JSON');state='required';continue;}
+    if(char===']'&&state==='value'){state='done';continue;}
+    check(char==='{','EOD_INVALID_JSON');start=index;depth=1;quoted=false;escaped=false;continue;
+   }
+   if(quoted){if(escaped)escaped=false;else if(char==='\\')escaped=true;else if(char==='"')quoted=false;continue;}
+   if(char==='"'){quoted=true;continue;}
+   if(char==='{'||char==='[')depth++;
+   else if(char==='}'||char===']')depth--;
+   if(depth===0){parts.push(text.slice(start,index+1));rowLength+=index+1-start;check(rowLength<=512*1024,'EOD_ROW_SIZE_LIMIT');let value;try{value=JSON.parse(parts.join(''));}catch{fail('EOD_INVALID_JSON');}check(value&&typeof value==='object'&&!Array.isArray(value),'EOD_INVALID_ROW');check(++count<=30000,'EOD_INVALID_ROWS');yield value;parts=[];rowLength=0;start=-1;state='separator';}
+  }
+  if(depth>0&&start>=0){parts.push(text.slice(start));rowLength+=text.length-start;check(rowLength<=512*1024,'EOD_ROW_SIZE_LIMIT');}
+ }
+ check(!decoder.decode()&&state==='done'&&depth===0,'EOD_INVALID_JSON');
 }

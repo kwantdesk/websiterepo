@@ -35,7 +35,8 @@ export function createStateSources({api,history,subscribe,onChange,now=Date.now,
    if(!rows.length)throw Error('INSTRUMENT_DATA_MISMATCH');
    if(rows.some(row=>row.category&&row.category!==source.category))throw Error('PROFILE_DATA_MISMATCH');
    if(source.date&&rows.some(row=>sourceDate(row.timestamp)!==source.date))throw Error('HISTORY_SESSION_MISMATCH');
-   source.records=trimSnapshotRows(mergeSnapshots(source.records,rows,source.ticker));source.envelope=envelope;source.error=null;notify();
+   const merged=mergeSnapshots(source.records,rows,source.ticker);
+   source.records=envelope.profilePages?trimSnapshotRows(merged,32_000_000,30000):trimSnapshotRows(merged);source.envelope=envelope;source.error=null;notify();
   }catch(error){if(current(source)&&!controller.signal.aborted){source.error=error.message;notify();}}
   finally{if(source.controller===controller){source.pending=null;source.controller=null;}}})();source.pending=job;return job;
  }

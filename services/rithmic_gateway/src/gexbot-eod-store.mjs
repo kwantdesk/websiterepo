@@ -45,7 +45,7 @@ export function createEodStore({ dir, key, fetchImpl = fetch, now = Date.now } =
     try { const stat = await lstat(path); requireThat(stat.isFile() && !stat.isSymbolicLink(), 'EOD_INVALID_CACHE'); return await parse(path, ticker, date); }
     catch (error) { if (error.code === 'ENOENT') return null; throw error; }
   }
-  async function download(path, ticker, date) {
+  async function download(path, ticker, date, archiveOnly = false) {
     requireThat(typeof key === 'string' && key.trim(), 'EOD_KEY_REQUIRED', 503);
     await mkdir(dir, { recursive: true, mode: 0o750 });
     const used = await diskBytes(dir), space = await statfs(dir);
@@ -67,7 +67,7 @@ export function createEodStore({ dir, key, fetchImpl = fetch, now = Date.now } =
       }
       requireThat(length >= 22 && (!declared || declared === length), 'EOD_INCOMPLETE_DOWNLOAD');
       await file.sync(); await file.close(); file = null;
-      const result = await parse(partial, ticker, date);
+      const result = archiveOnly ? await extractEodSession(partial,{ticker,date,package:'orderflow',category:'orderflow'}) : await parse(partial, ticker, date);
       // A second owner must never be overwritten. In-process downloads are serialized.
       try { await lstat(path); throw problem('EOD_CACHE_ALREADY_EXISTS', 409); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       await rename(partial, path); return result;
@@ -77,19 +77,21 @@ export function createEodStore({ dir, key, fetchImpl = fetch, now = Date.now } =
       await unlink(partial).catch(error => { if (error.code !== 'ENOENT') throw error; });
     }
   }
-  async function read(ticker, date) {
+  async function read(ticker, date, archiveOnly = false) {
     validate(ticker, date, now());
-    const path = join(dir, `eod_report_${ticker}_${date}.zip`), hit = await existing(path, ticker, date); if (hit) return hit;
+    const path = join(dir, `eod_report_${ticker}_${date}.zip`);
+    if(archiveOnly){try{const info=await lstat(path);requireThat(info.isFile()&&!info.isSymbolicLink(),'EOD_INVALID_CACHE');return path;}catch(error){if(error.code!=='ENOENT')throw error;}}
+    const hit = archiveOnly ? null : await existing(path, ticker, date); if (hit) return hit;
     if (downloading) {
       requireThat(downloading.ticker === ticker && downloading.date === date, 'EOD_DOWNLOAD_BUSY', 503);
-      return downloading.promise;
+      await downloading.promise;return archiveOnly?path:parse(path,ticker,date);
     }
     const prior = attempts.get(ticker), at = now();
     if (prior && at - prior.at < HOUR) throw problem(prior.code || 'EOD_DOWNLOAD_COOLDOWN', prior.status || 429, Math.ceil((HOUR - (at - prior.at)) / 1000));
     if (attempts.size >= 128) attempts.delete(attempts.keys().next().value);
     attempts.set(ticker, { at, code: 'EOD_DOWNLOAD_COOLDOWN', status: 429 });
-    const promise = download(path, ticker, date).catch(error => { attempts.set(ticker, { at, code: error.code || 'EOD_DOWNLOAD_FAILED', status: error.status || 502 }); throw error; }).finally(() => { downloading = null; });
+    const promise = download(path, ticker, date, archiveOnly).catch(error => { attempts.set(ticker, { at, code: error.code || 'EOD_DOWNLOAD_FAILED', status: error.status || 502 }); throw error; }).finally(() => { downloading = null; });
     downloading = { ticker, date, promise }; return promise;
   }
-  return { read };
+  return { read,async archivePath(ticker,date){await read(ticker,date,true);return join(dir,`eod_report_${ticker}_${date}.zip`);} };
 }

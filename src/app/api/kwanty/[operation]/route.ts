@@ -33,7 +33,7 @@ export async function GET(request:NextRequest,{params}:{params:Promise<{operatio
  if(!actor||(process.env.VERCEL&&actor.mode==="local-dev"))return NextResponse.json({error:"Authentication required."},{status:401});
  const {operation}=await params;
  if(!["status","catalog","snapshot","history","session"].includes(operation))return NextResponse.json({error:"Unsupported operation."},{status:404});
- const fields=new Set(operation==="session"?["ticker","date"]:["snapshot","history"].includes(operation)?["ticker","package","category","view",...(operation==="history"?["date"]:[])]:[]);
+ const fields=new Set(operation==="session"?["ticker","date"]:["snapshot","history"].includes(operation)?["ticker","package","category","view",...(operation==="history"?["date","page"]:[])]:[]);
  const query=new URL(request.url).searchParams;
  if(query.toString().length>500||[...query].some(([key,value])=>!fields.has(key)||query.getAll(key).length>1||!/^[A-Za-z0-9_-]{0,32}$/.test(value)))return NextResponse.json({error:"Invalid selection."},{status:400});
  if(operation==="session"){
@@ -56,6 +56,6 @@ export async function GET(request:NextRequest,{params}:{params:Promise<{operatio
   if(!response.ok)return NextResponse.json({error:/^[A-Z_]{3,80}$/.test(data.error)?data.error:"POSITIONING_UNAVAILABLE",retryAfterSeconds:data.retryAfterSeconds},{status:response.status===401?502:response.status,headers:{"Cache-Control":"private, no-store"}});
   if(operation==="snapshot"&&query.get("package")==="orderflow"&&data.data?.ticker===query.get("ticker"))after(()=>kwantyOrderflowArchive.record(data.data));
   const ttl=operation==="history"||operation==="catalog"?300000:15000;
-  return conditionalJson(request,data,{identity:createHash("sha256").update(text).digest("hex"),maxAgeMs:ttl});
+  return conditionalJson(request,operation==="history"?await sessionTransport(data):data,{identity:createHash("sha256").update(text).digest("hex"),maxAgeMs:ttl});
  }catch{return NextResponse.json({error:"POSITIONING_UNAVAILABLE"},{status:502,headers:{"Cache-Control":"private, no-store"}});}
 }

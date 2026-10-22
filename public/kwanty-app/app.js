@@ -5,13 +5,14 @@ import {botStorage,botFetch,botTheme,botTimeZone,botPriceHistory,botSubscribePri
 import {attachStateDrawingTools,botMountStateDrawings} from './state-drawing-tools.js?v=1';
 import {createPriceController} from './price-runtime.js?v=2';
 import {chartRegion,panChartView,zoomChartView} from './chart-interaction.js?v=3';
-import {createSessionHistory} from './session-history.js?v=1';
+import {createSessionHistory} from './session-history.js?v=2';
 import {decodeSessionTransport} from './session-transport.js?v=1';
+import {createProfileReplay} from './profile-replay.js?v=1';
 import {candleIntervalFor,priceViewFor,intervalLabel,linkedViewportUpdates,linkedCursor,projectCursor} from './panel-controls.js?v=2';
 import {bindTemplates} from './templates.js';
 import {mountTickerShortcuts} from './ticker-shortcuts.js?v=2';
 import {createOrderflowSources} from './orderflow-sources.js?v=4';
-import {createStateSources} from './state-sources.js?v=2';
+import {createStateSources} from './state-sources.js?v=3';
 import {STATE_PROFILES,statePanelCategory,statePanelLabel,selectStateProfile,restoreStatePanels,stateControlTargets,stateViewportUpdates,stateCursor,projectStateCursor,sameStatePriceUnits} from './state-panels.js?v=1';
 import {RetainedSnapshots} from './retention.js';
 import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261021-settings';
@@ -41,6 +42,7 @@ let activeStatePanelId=saved.activeStatePanelId||state.statePanels[0].id,stateLo
 let catalog=null,requestId=0,modeGeneration=0,controller=null,historyController=null,pollTimer=null,playTimer=null,views=new Map(),charts=[],observer=null,noticeTimer=null;
 let restoredSessionKey=null;
 const sessionHistory=createSessionHistory((ticker,date)=>api('session?'+new URLSearchParams({ticker,date}),AbortSignal.timeout(40000)));
+const profileReplay=createProfileReplay({api,onChange:failure=>{if(failure)message('A replay page could not be loaded. Click Load history to retry.');renderSummary();drawAll();}});
 const collections=new RetainedSnapshots();
 const prices=createPriceController({history:botPriceHistory,subscribe:botSubscribePrice,onChange:()=>{syncTimeline();renderChartEmpty();drawAll();}});
 const orderSources=createOrderflowSources({api,history:botPriceHistory,subscribe:botSubscribePrice,sessionHistory,onChange:()=>{if(state.package==='orderflow'){syncOrderflowState();syncTimeline();renderChartEmpty();drawAll();}}});
@@ -94,10 +96,23 @@ function persist(){saveScope();try{botStorage.setItem(STORE,JSON.stringify({sche
 function el(tag,className,text){const e=document.createElement(tag);if(className)e.className=className;if(text!==undefined)e.textContent=text;return e}
 function number(value,digits=2){return finite(value)===null?'—':Number(value).toFixed(digits)}
 function message(text,timeout=10000){clearTimeout(noticeTimer);$('#message').textContent=text;$('#message').hidden=false;if(timeout)noticeTimer=setTimeout(()=>$('#message').hidden=true,timeout)}
-async function api(path,signal){const response=await botFetch('/api/kwanty/'+path,{signal});let result;try{result=await response.json()}catch{throw new Error('INVALID_GATEWAY_RESPONSE')}if(!response.ok){const error=new Error(result.error||'PROVIDER_REQUEST_FAILED');error.status=response.status;error.retryAfterSeconds=result.retryAfterSeconds;throw error}return decodeSessionTransport(result)}
+async function api(path,signal){
+ const started=Date.now();
+ for(;;){
+  if(signal?.aborted)throw new DOMException('Aborted','AbortError');
+  const response=await botFetch('/api/kwanty/'+path,{signal});let result;try{result=await response.json()}catch{throw new Error('INVALID_GATEWAY_RESPONSE')}
+  if(!response.ok){
+   if(path.startsWith('history?')&&response.status===503&&['EOD_INDEX_BUSY','EOD_INDEX_BUILDING'].includes(result.error)&&Date.now()-started<120000){
+    await new Promise((resolve,reject)=>{const aborted=()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'));};const timer=setTimeout(()=>{signal?.removeEventListener('abort',aborted);resolve();},3000);signal?.addEventListener('abort',aborted,{once:true});});continue;
+   }
+   const error=new Error(result.error||'PROVIDER_REQUEST_FAILED');error.status=response.status;error.retryAfterSeconds=result.retryAfterSeconds;throw error;
+  }
+  return decodeSessionTransport(result);
+ }
+}
 function query(){return new URLSearchParams({ticker:state.ticker,package:state.package,category:category()})}
 function currentRecords(panel){if(state.package==='state')return stateRecords(panel);const records=state.package==='orderflow'&&panel?orderSources.get(panelTicker(panel))?.records||[]:state.records;if(state.replayIndex===null)return records;const time=state.records[state.replayIndex]?.timestamp;return records.filter(row=>time!==undefined&&row.timestamp<=time);}
-function selectedPayload(panel){if(state.package==='state')return stateRecords(panel).at(-1)||null;return panel&&state.package==='orderflow'?currentRecords(panel).at(-1)||null:state.replayIndex===null?state.payload:state.records[state.replayIndex]||state.payload}
+function selectedPayload(panel){if(state.package==='state'){const selected=panel||activeStatePanel();return profileReplay.select(stateSources.get(selected)?.envelope,stateRecords(selected).at(-1)||null);}const row=panel&&state.package==='orderflow'?currentRecords(panel).at(-1)||null:state.replayIndex===null?state.payload:state.records[state.replayIndex]||state.payload;return state.package==='classic'?profileReplay.select(state.envelope,row):row;}
 async function restoreOrderflowSession(key,generation,date,ticker){
  const rows=await sessionHistory.read(ticker,date);
  if(generation!==modeGeneration||key!==identity()||state.package!=='orderflow'||state.historyMode||!state.auto||sourceDate(state.payload?.timestamp)!==date||!rows.length)return;
@@ -289,7 +304,31 @@ function syncTimeline(){const slider=$('#timeline');slider.max=String(Math.max(0
 function stopReplay(){state.playing=false;cancelAnimationFrame(playTimer);$('#playPause').textContent='▶';$('#playPause').setAttribute('aria-label','Play replay')}
 function pauseAt(index){invalidateRequests();stopReplay();state.auto=false;state.replayIndex=Math.max(0,Math.min(state.records.length-1,index));syncTimeline();renderSummary();updateHealth();drawAll()}
 $('#timeline').addEventListener('input',e=>pauseAt(Number(e.target.value)));
-$('#playPause').addEventListener('click',()=>{if(state.playing){stopReplay();return}if(state.records.length<2)return;invalidateRequests();state.auto=false;state.playing=true;$('#playPause').textContent='Ⅱ';const start=performance.now(),base=state.records[state.replayIndex??0].timestamp*1000,speed=Number($('#replaySpeed').value);const tick=now=>{if(!state.playing)return;state.replayIndex=seekSnapshot(state.records,base+(now-start)*speed);syncTimeline();renderSummary();drawAll();updateHealth();if(state.replayIndex>=state.records.length-1){stopReplay();if(!state.historyMode&&sourceDate(state.payload?.timestamp)===sourceDate(Date.now()/1000)){state.auto=true;state.replayIndex=null;syncShell();load();}return}playTimer=requestAnimationFrame(tick)};playTimer=requestAnimationFrame(tick)});
+function replayFrameReady(index){
+ const cutoff=state.records[index]?.timestamp;
+ const selections=state.package==='state'?charts.map(chart=>{const source=stateSources.get(chart.panel),rows=source?.records||[];return [source?.envelope,rows[seekSnapshot(rows,cutoff*1000)]];}):state.package==='classic'?[[state.envelope,state.records[index]]]:[];
+ let ready=true;
+ for(const [envelope,row]of selections){profileReplay.select(envelope,row);if(profileReplay.error(envelope,row)){stopReplay();message('Replay data could not be loaded for this moment.');return false;}if(!profileReplay.ready(envelope,row))ready=false;}
+ return ready;
+}
+$('#loadHistory').addEventListener('click',()=>profileReplay.retry(),{capture:true});
+$('#playPause').addEventListener('click',()=>{
+ if(state.playing){stopReplay();return}if(state.records.length<2)return;
+ invalidateRequests();state.auto=false;state.playing=true;$('#playPause').textContent='Ⅱ';
+ // Loading history selects its close. Play from there must restart the session.
+ if(state.replayIndex===null||state.replayIndex>=state.records.length-1)state.replayIndex=0;
+ let previous=performance.now(),cursor=state.records[state.replayIndex].timestamp*1000;
+ const speed=Number($('#replaySpeed').value),tick=now=>{
+  if(!state.playing)return;
+  const next=cursor+(now-previous)*speed,index=seekSnapshot(state.records,next);previous=now;
+  // Freeze the replay clock while its exact page loads; never skip unreceived
+  // profiles or paint the previous frame as though it belonged to a new time.
+  if(replayFrameReady(index)){cursor=next;state.replayIndex=index;syncTimeline();renderSummary();drawAll();updateHealth();}
+  if(!state.playing)return;
+  if(state.replayIndex>=state.records.length-1){stopReplay();if(!state.historyMode&&sourceDate(state.payload?.timestamp)===sourceDate(Date.now()/1000)){state.auto=true;state.replayIndex=null;syncShell();load();}return}
+  playTimer=requestAnimationFrame(tick);
+ };playTimer=requestAnimationFrame(tick);
+});
 $$('[data-seek]').forEach(b=>b.addEventListener('click',()=>{const p=selectedPayload();if(p)pauseAt(seekSnapshot(state.records,p.timestamp*1000+Number(b.dataset.seek)*1000))}));
 $('#liveButton').addEventListener('click',()=>{invalidateRequests();stopReplay();state.historyMode=false;state.replayIndex=null;state.auto=true;state.historyError=null;views.clear();syncShell();load()});
 $('#clearHistory').addEventListener('click',()=>{invalidateRequests();stopReplay();state.historyMode=false;state.replayIndex=null;state.auto=true;state.historyError=null;if(state.package==='state'){for(const panel of state.statePanels){const source=stateSources.get(panel);if(source)source.records=source.records.slice(-1);}views.clear();syncShell();syncTimeline();load();return;}state.records=state.payload?[state.payload]:[];collections.set(identity(),state.records);views.clear();syncTimeline();load()});

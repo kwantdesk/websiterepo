@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { ExposureArchiver } from './exposure-archiver.mjs';
 import { createEodStore } from './gexbot-eod-store.mjs';
+import {createProfileHistory} from './gexbot-profile-history.mjs';
 
 const TICKERS = new Set(['NQ_NDX','ES_SPX','NDX','QQQ','SPX','SPY','RUT','IWM','VIX']);
 const CATEGORIES = new Set(['full','zero','one','gex_full','gex_zero','gex_one','majors','maxchange',
@@ -58,9 +59,9 @@ async function bounded(response, maximum) {
 }
 
 /** Private read-only compatibility edge; never owns another Rithmic session. */
-export function createGexbotRelay({ token, key, fetchImpl = fetch, archive = null, eod = null, now = Date.now } = {}) {
+export function createGexbotRelay({ token, key, fetchImpl = fetch, archive = null, eod = null, profiles = null, now = Date.now } = {}) {
   if (!token || !key) throw Error('PRIVATE_PROVIDER_CONFIGURATION_REQUIRED');
-  const expected = Buffer.from('Bearer ' + token), pending = new Map(), cache = new Map();
+  const expected = Buffer.from('Bearer ' + token), pending = new Map(), cache = new Map(),profileFallbacks=new Map();
   let cacheBytes = 0, active = 0;
   const metrics = { upstreamRequests: 0, cacheHits: 0, captured: 0, failures: 0 };
   function remember(id, entry) {
@@ -80,6 +81,13 @@ export function createGexbotRelay({ token, key, fetchImpl = fetch, archive = nul
     return { status: 200, body: await bounded(response, maximum), type: response.headers.get('content-type') || 'application/json' };
   }
   async function read(url) {
+    const profileHistory=url.pathname==='/v1/native-positioning/history'&&['classic','state'].includes(url.searchParams.get('package'));
+    const readProfile=async()=>{
+      if(!profiles) return null;
+      try{return {status:200,body:Buffer.from(JSON.stringify(await profiles.read(Object.fromEntries(['ticker','package','category','date'].map(key=>[key,url.searchParams.get(key)])),url.searchParams.get('page')))),type:'application/json'};}
+      catch(error){return {status:error.status||502,body:Buffer.from(JSON.stringify({error:/^EOD_[A-Z_]+$/.test(error.code||'')?error.code:'EOD_UNAVAILABLE',...(/EOD_INDEX_(BUSY|BUILDING)/.test(error.code||'')?{retryAfterSeconds:3}:{})})),type:'application/json'};}
+    };
+    if(profileHistory&&(url.searchParams.has('page')||(profileFallbacks.get(url.search)>now())))return await readProfile()||{status:503,body:Buffer.from('{"error":"EOD_UNAVAILABLE"}')};
     if (url.pathname === '/v1/native-positioning/session') {
       if (!eod) return { status: 503, body: Buffer.from(JSON.stringify({error:'EOD_UNAVAILABLE'})) };
       try {
@@ -95,6 +103,7 @@ export function createGexbotRelay({ token, key, fetchImpl = fetch, archive = nul
       // Reuse the existing native provider's validation, coalescing and quota.
       const response = await fetchImpl('http://gateway:8793' + url.pathname + url.search,
         { headers: { Authorization: 'Bearer ' + token }, redirect: 'manual', signal: AbortSignal.timeout(40000) });
+      if(profileHistory&&[403,404].includes(response.status)&&profiles){await response.body?.cancel();profileFallbacks.set(url.search,now()+300000);while(profileFallbacks.size>128)profileFallbacks.delete(profileFallbacks.keys().next().value);return readProfile();}
       return { status: response.status, body: await bounded(response, 16 * 1024 * 1024), type: 'application/json' };
     }
     const history = url.pathname === '/v1/gexbot-legacy/history';
@@ -138,9 +147,9 @@ export function createGexbotRelay({ token, key, fetchImpl = fetch, archive = nul
               // Transport cache ages change on every read; do not archive them
               // as new market observations or defeat raw-frame deduplication.
               const envelope = JSON.parse(entry.body.toString('utf8'));
-              payload = Buffer.from(JSON.stringify({ data: envelope.data, providerAsOf: envelope.providerAsOf }));
+              payload = envelope.source==='provider-eod-archive'?null:Buffer.from(JSON.stringify({ data: envelope.data, providerAsOf: envelope.providerAsOf }));
             }
-            if ((!native || /\/(snapshot|history)$/.test(url.pathname))
+            if (payload&&(!native || /\/(snapshot|history)$/.test(url.pathname))
               && archive?.archive({ path: url.pathname, requestBody: Buffer.from(url.search), payload, receivedAtMs: now() })) metrics.captured++;
             remember(id, { ...entry, expires: now() + (historical ? 300000 : native ? 1000 : 2000) });
           } else {
@@ -162,7 +171,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const archive = new ExposureArchiver({ enabled: true, dir: '/recordings/gexbot', maxPendingBytes: 16 * 1024 * 1024, maxTrackedKeys: 512 });
   archive.start();
   const eod = createEodStore({dir:'/recordings/gexbot/eod',key:process.env.GEXBOT_API_KEY});
-  const server = createGexbotRelay({ token: process.env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN, key: process.env.GEXBOT_API_KEY, archive, eod });
+  const profiles=createProfileHistory({dir:'/recordings/gexbot/profile-replay',eod});
+  const server = createGexbotRelay({ token: process.env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN, key: process.env.GEXBOT_API_KEY, archive, eod, profiles });
   server.listen(8795, '0.0.0.0');
   for (const signal of ['SIGTERM','SIGINT']) process.once(signal, () => {
     server.close(async () => { await archive.stop(); process.exit(0); });
