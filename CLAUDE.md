@@ -1,5 +1,24 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-22 — KWANTY disappearing overlays
+
+- Anchor default positioning windows to genuine positioning-session records,
+  not overnight underlying prices. Classic/State share this session anchor;
+  Orderflow resets only its affected pane's manual view/pins on source rollover.
+- Live profile and Orderflow observations are independently timed. An unpinned
+  live profile uses its own latest same-session source time, even if one second
+  newer than Orderflow. Paused/replay/pinned profiles retain no-future cutoffs.
+- Paint isolated genuine exposure observations across null/zero gaps. Enabling
+  profiles preserves their price coordinate system when Spot drawing is hidden.
+  Never interpolate missing metrics or treat raw exposure as price.
+- Version chain: standalone index10/embedded12/app18/overlay and Orderflow3.
+  No poll cadence, provider session, VPS restart, billing or account schema change.
+- Current provider snapshot QQQ/SPX Oct21 close200 includes real overlay fields.
+  QQQ Oct21 native history403 UPSTREAM_ENTITLEMENT_REQUIRED; legacy history401.
+  Full-session curve/replay parity remains OPEN; this repair cannot recover
+  unreceived history. Prior full-month, archive restore, capacity and live-soak
+  gates remain open. Verification receipt is in the dated prompt log.
+
 ## 2026-10-21 — GEX Data queue and failure isolation repair
 
 - Incident: provider headers19 remaining/reset55 caused the shared budget to

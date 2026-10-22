@@ -42,3 +42,18 @@ test('default window keeps actual close timestamp inside the plot without changi
  const full=context.windowFor([{time:time*1000}],23400),rolling=context.windowFor([{time:time*1000}],5400);
  assert.ok(full.endTime>time*1000);assert.equal(full.startTime,Date.UTC(2026,9,19,13,30));assert.ok(rolling.endTime>time*1000);assert.equal(rolling.startTime,time*1000-5400000);
 });
+
+test('positioning window stays on its real session when underlying prices advance overnight',()=>{
+ const source=readFileSync(new URL('../public/kwanty-app/app.js',import.meta.url),'utf8'),context={};
+ vm.runInNewContext(source.slice(source.indexOf('function regularWindow'),source.indexOf('function exportChartImage'))+';globalThis.windowFor=orderflowWindow;',context);
+ const close=Date.UTC(2026,9,21,20),overnight=[{time:Date.UTC(2026,9,22,10)}],records=[{timestamp:close/1000}];
+ for(const seconds of [23400,7200,5400]){
+  const result=context.windowFor(overnight,seconds,records);
+  assert.ok(result.startTime<=close&&result.endTime>=close,'latest real metric remains inside the plot');
+  assert.ok(result.endTime<Date.UTC(2026,9,22),'overnight price cannot shift the options window into tomorrow');
+ }
+ assert.equal(context.windowFor(overnight,23400,records).startTime,Date.UTC(2026,9,21,13,30));
+ assert.equal(records[0].timestamp,close/1000,'no source timestamp rewrite');
+ assert.match(source,/orderflowWindow\(price\.points,panel\.period,records\)/);
+ assert.match(source,/c\.sessionDate!==sessionDate\)\{views\.delete\(panel\.id\)/);
+});

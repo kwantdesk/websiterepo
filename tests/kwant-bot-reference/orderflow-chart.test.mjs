@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ORDERFLOW_METRICS, collectOrderflowCandles, makeOrderflowSeries, orderflowPriceTicks, orderflowThemeColor, orderflowTimestamp, renderOrderflow } from '../../public/kwanty-app/orderflow-chart.js';
+import {drawProfileOverlay} from '../../public/kwanty-app/profile-overlay.js';
 
 // Explicitly synthetic arithmetic fixtures; never production fallbacks.
 test('hex and named default colors retain source light conversion without recoloring customized values',()=>{assert.equal(orderflowThemeColor('#ffffff','white',true),'#4b5563');assert.equal(orderflowThemeColor('#00ffff','cyan',true),'#0369a1');assert.equal(orderflowThemeColor('#ffffff','white',true,true),'#ffffff')});
@@ -206,4 +207,40 @@ test('every supplied Orderflow metric produces a visible latest-only mark for ea
       assert.ok(ctx.calls.some(call=>series.flow?call[0]==='lineTo'&&call[1]===x&&call[2]===y:call[0]==='arc'&&call[1]===x&&call[2]===y),`${metric}/${expiry}/${series.id} paints actual value`);
     }
   }
+});
+
+test('separate isolated exposure observations remain visible across genuine missing and zero gaps',()=>{
+  for(const metric of Object.keys(ORDERFLOW_METRICS).filter(key=>!ORDERFLOW_METRICS[key].flow)){
+    const field=ORDERFLOW_METRICS[metric].fields[0],ctx=mockCanvas();
+    const records=[10,null,-20,0,30].map((value,index)=>sample(base+index*60,{agg_call_dex:null,agg_put_dex:null,[field]:value}));
+    const geometry=renderOrderflow(ctx,800,320,{records,metric,showSpot:false,settings:{showGrid:false}});
+    const series=geometry.data.series[0];
+    for(const point of series.values.filter(point=>point.value!==null))assert.ok(ctx.calls.some(call=>call[0]==='arc'&&call[1]===geometry.timeX(point.time)&&call[2]===geometry.valueY(point.value)),`${metric} paints isolated actual observation at ${point.time}`);
+    // The only lineTo is the existing zero axis: no bridge over either gap.
+    assert.equal(ctx.calls.filter(call=>call[0]==='lineTo').length,1,`${metric} preserves missing intervals`);
+    assert.deepEqual(series.values.map(point=>point.raw),[10,null,-20,0,30]);
+  }
+});
+
+test('isolated exposure marks honor sign visibility without adding dots to connected segments',()=>{
+  const ctx=mockCanvas(),records=[sample(base,{zgr:10}),sample(base+60,{zgr:20}),sample(base+120,{zgr:null}),sample(base+180,{zgr:-30}),sample(base+240,{zgr:null}),sample(base+300,{zgr:40})];
+  const geometry=renderOrderflow(ctx,800,320,{records,metric:'net-gex',showSpot:false,settings:{showNegative:false}});
+  const arcs=ctx.calls.filter(call=>call[0]==='arc');
+  assert.equal(arcs.length,1);
+  assert.deepEqual(arcs[0].slice(1,3),[geometry.timeX((base+300)*1000),geometry.valueY(40)]);
+});
+
+test('hiding spot drawing preserves the real price scale and enabled profile bars',()=>{
+ const profileSlots=[{show:true,category:'gex_zero',payload:{ticker:'SPX',timestamp:base,strikes:[[5000,25,8,[]]]}}];
+ for(const priceHistory of [undefined,[]]){
+  const ctx=mockCanvas(),geometry=renderOrderflow(ctx,800,320,{records:[sample(base),sample(base+60)],metric:'aggregate-dex',showSpot:false,profileSlots,priceHistory,settings:{spotViewMode:'candles',candleBucketMs:60000}});
+  assert.equal(geometry.priceAxisVisible,true);assert.ok(geometry.spotDomain[0]<5000&&geometry.spotDomain[1]>5000);
+  assert.equal(ctx.calls.filter(call=>call[0]==='fillRect').length,1,'price candles remain hidden');
+  const layout=drawProfileOverlay(ctx,geometry,{slots:profileSlots});
+  assert.equal(layout.layers[0].bars.length,1);
+  const bar=layout.layers[0].bars[0];assert.ok(bar.y>=geometry.top&&bar.y<=geometry.bottom);
+  assert.ok(ctx.calls.some(call=>call[0]==='fillRect'&&call[1]===bar.x&&call[2]===bar.y));
+ }
+ const hidden=renderOrderflow(mockCanvas(),800,320,{records:[sample(base)],showSpot:false,profileSlots:[{show:false}]});
+ assert.equal(hidden.priceAxisVisible,false);
 });

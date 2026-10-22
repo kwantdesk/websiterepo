@@ -207,7 +207,8 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   const axisColor = themeInk(false,settings.lightMode?'#353535':'#b9b9b9');
   const gridColor = settings.lightMode ? themePaint("#dddddd") : themePaint("#303030");
   const spotColor = orderflowThemeColor(settings.spotColor ?? themePaint("white"), themePaint("white"), settings.lightMode, settings.spotIsCustomized);
-  const priceAxisVisible = options.showSpot !== false || (settings.showMajorLevels !== false && !!data.levels?.length);
+  const profilesVisible = (options.profileSlots || []).some(slot => slot.show === true);
+  const priceAxisVisible = options.showSpot !== false || profilesVisible || (settings.showMajorLevels !== false && !!data.levels?.length);
   const left = Math.min(112,width*.25), right = Math.max(left + 1, width - (priceAxisVisible ? 75 : 18));
   const top = 30, bottom = Math.max(top + 1, height - 31);
   const first = data.pricePoints?.[0]?.time ?? data.points[0]?.time ?? Date.now() - 60000, last = data.pricePoints?.at(-1)?.time ?? data.points.at(-1)?.time ?? first + 60000;
@@ -221,7 +222,11 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   const candleMode = settings.spotViewMode === 'candles';
   const visibleCandles = (data.candles || []).filter(candle => candle.time >= startTime && candle.time <= endTime);
   const visiblePrices=(data.pricePoints||data.points).filter(point=>point.time>=startTime&&point.time<=endTime);
-  const spotDomain = extent([...(options.showSpot === false ? [] : candleMode ? visibleCandles.flatMap(candle=>[candle.low,candle.high]) : visiblePrices.map(point => point.spot)), ...(settings.showMajorLevels === false ? [] : (data.levels || []).flatMap(level => level.values.filter(point => point.time >= startTime && point.time <= endTime).map(point => point.value)))]);
+  // Hiding the price marks must not delete the independent price coordinate
+  // system used by enabled profiles. Retain genuine observed price anchors,
+  // including snapshot spots when an external candle request is still empty.
+  const profilePriceAnchors = profilesVisible ? [...visiblePrices.map(point=>point.spot),...visible.map(point=>point.spot)] : [];
+  const spotDomain = extent([...(options.showSpot === false && !profilesVisible ? [] : candleMode ? visibleCandles.flatMap(candle=>[candle.low,candle.high]) : visiblePrices.map(point => point.spot)), ...profilePriceAnchors, ...(settings.showMajorLevels === false ? [] : (data.levels || []).flatMap(level => level.values.filter(point => point.time >= startTime && point.time <= endTime).map(point => point.value)))]);
   if(finite(view.minSpot)!==null&&finite(view.maxSpot)!==null&&view.maxSpot>view.minSpot){spotDomain[0]=view.minSpot;spotDomain[1]=view.maxSpot;}
   const timeX = time => left + (time - startTime) / (endTime - startTime) * (right - left);
   const valueY = value => bottom - (value - minValue) / (maxValue - minValue) * (bottom - top);
@@ -269,6 +274,7 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   ctx.save(); ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
   ctx.strokeStyle = themePaint("#666666"); ctx.beginPath(); ctx.moveTo(left, valueY(0)); ctx.lineTo(right, valueY(0)); ctx.stroke();
   for (const series of data.series) {
+    const connectedTimes = new Set();
     if (series.flow) {
       // Shipped uPlot renderer 783.de20bf0d.chunk.js UTF-16 27600+:
       // thin dashed vertical stems, not solid bars or filled areas.
@@ -286,6 +292,7 @@ export function renderOrderflow(ctx, width, height, options = {}) {
         if(positive?!series.showPositive:!series.showNegative)return;
         ctx.strokeStyle = positive ? series.positiveColor : series.negativeColor;
         ctx.beginPath(); ctx.moveTo(timeX(first.time), valueY(first.value)); ctx.lineTo(timeX(last.time), valueY(last.value)); ctx.stroke();
+        connectedTimes.add(first.time); connectedTimes.add(last.time);
       };
       for (let index = 1; index < series.values.length; index++) {
         const first = {...series.values[index - 1],value:series.values[index - 1].raw}, last = {...series.values[index],value:series.values[index].raw};
@@ -298,8 +305,11 @@ export function renderOrderflow(ctx, width, height, options = {}) {
       }
     }
     const observed = series.values.filter(point => point.value !== null && point.time >= startTime && point.time <= endTime);
-    if (!series.flow && observed.length === 1) {
-      const point = observed[0]; ctx.fillStyle = point.value >= 0 ? series.positiveColor : series.negativeColor;
+    // Each genuine one-point segment needs its own mark. Counting all visible
+    // observations hid several isolated values separated by missing/zero gaps.
+    if (!series.flow) for (const point of observed) {
+      if (connectedTimes.has(point.time)) continue;
+      ctx.fillStyle = point.value >= 0 ? series.positiveColor : series.negativeColor;
       ctx.beginPath(); ctx.arc(timeX(point.time), valueY(point.value), 2.5, 0, Math.PI * 2); ctx.fill();
     }
   }
