@@ -2814,6 +2814,38 @@ const CHART_TIME_AXIS_HEIGHT = 24;
 // this as a user setting allowed individual charts to create competing fetch
 // loops, so it intentionally cannot be overridden by saved indicator state.
 const BOUNCE_LEVELS_REFRESH_INTERVAL_MS = 5_000;
+
+function selectBounceReplaySnapshot(snapshot: BounceLevelsSnapshot | null, replayTimestampMs: number | null | undefined) {
+  if (!snapshot || !replayTimestampMs) return snapshot;
+  // A retained live/later replay head must never become an earlier replay's
+  // levels while its own as-of request is loading (or has failed).
+  if (snapshot.snapshotTimeMs > replayTimestampMs) return null;
+  const futureField = (snapshot.exposureField.at(-1)?.timestamp ?? 0) > replayTimestampMs;
+  const futureSeries = snapshot.exposureSeries.some((series) => (series.samples.at(-1)?.timestamp ?? 0) > replayTimestampMs);
+  const futureRolls = (snapshot.rolls.at(-1)?.timestamp ?? 0) > replayTimestampMs;
+  // Normal as-of payloads are already causal. Preserve object identity and
+  // avoid copying the full retained week on every replay clock paint.
+  if (!futureField && !futureSeries && !futureRolls) return snapshot;
+  return {
+    ...snapshot,
+    exposureField: futureField ? snapshot.exposureField.filter((slice) => slice.timestamp <= replayTimestampMs) : snapshot.exposureField,
+    exposureSeries: futureSeries ? snapshot.exposureSeries.map((series) => (series.samples.at(-1)?.timestamp ?? 0) > replayTimestampMs ? ({
+      ...series, samples: series.samples.filter((sample) => sample.timestamp <= replayTimestampMs),
+    }) : series) : snapshot.exposureSeries,
+    rolls: futureRolls ? snapshot.rolls.filter((roll) => roll.timestamp <= replayTimestampMs) : snapshot.rolls,
+  };
+}
+
+function nextBounceReplayTarget(previous: { scope: string; minute: number; generation: number }, scope: string, minute: number) {
+  const changedClock = Boolean(previous.minute) !== Boolean(minute);
+  const invalidate = previous.scope !== scope || changedClock || minute < previous.minute;
+  return { scope, minute, generation: previous.generation + (invalidate ? 1 : 0) };
+}
+
+function bounceReplayResponseIsCurrent(requestScope: string, requestedAsOfMs: number, generation: number, target: { scope: string; minute: number; generation: number }) {
+  return target.scope === requestScope && target.minute > 0 && target.generation === generation
+    && Math.floor(requestedAsOfMs / 60_000) <= target.minute;
+}
 // Native chart primitives may consume every provider update, but React must
 // not reconcile this very large component for every Level 3 packet. A single
 // summary update per second keeps badges/tooltips current without allowing a
@@ -4167,7 +4199,9 @@ function Chart({
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
   const [netGammaTooltip, setNetGammaTooltip] = useState<NetGammaExposureHit | null>(null);
-  const [bounceLevelsSnapshot, setBounceLevelsSnapshot] = useState<BounceLevelsSnapshot | null>(null);
+  const [bounceLevelsState, setBounceLevelsState] = useState<{ snapshot: BounceLevelsSnapshot | null; scope: string }>({ snapshot: null, scope: "" });
+  const bounceLevelsSnapshot = bounceLevelsState.snapshot;
+  const bounceLevelsSnapshotScope = bounceLevelsState.scope;
   const bounceLevelsDataSignatureRef = useRef("");
   // Replay follows the clock with ONE request in flight at a time, latest
   // minute wins. The old pattern re-ran the effect every replay minute and
@@ -4175,6 +4209,7 @@ function Chart({
   // ever lived long enough to land — levels appeared only while paused, then
   // "stopped" as soon as the clock moved again.
   const bounceLevelsScopeRef = useRef("");
+  const bounceReplayTargetRef = useRef({ scope: "", minute: 0, generation: 0 });
   const bounceReplayInFlightRef = useRef(false);
   const bounceReplayNextMinuteRef = useRef<number | null>(null);
   const bounceReplayLoaderRef = useRef<((minute: number, checkpoint?: boolean) => Promise<void>) | null>(null);
@@ -9773,10 +9808,11 @@ function Chart({
     rollWindowSeconds: Number(bounceLevelsIndicator.settings?.rollWindowSeconds ?? 120),
   }) : "";
   const bounceLevelsReplayMinute = replayTimestampMs ? Math.floor(replayTimestampMs / 60_000) : 0;
+  bounceReplayTargetRef.current = nextBounceReplayTarget(bounceReplayTargetRef.current, `${instrument}|${bounceLevelsDataSignature}`, bounceLevelsReplayMinute);
   useEffect(() => {
     if (!bounceLevelsDataSignature) {
       bounceLevelsDataSignatureRef.current = "";
-      setBounceLevelsSnapshot(null);
+      setBounceLevelsState({ snapshot: null, scope: "" });
       setBounceLevelsLoading(false);
       setBounceLevelsError(null);
       return;
@@ -9793,27 +9829,37 @@ function Chart({
     // error). The next valid snapshot is committed atomically below.
     let cancelled = false;
     let hasCommittedSnapshot = false;
-    const commitSnapshot = (snapshot: BounceLevelsSnapshot, fromReplay = false) => {
+    const commitSnapshot = (snapshot: BounceLevelsSnapshot, fromReplay = false, requestedAsOfMs = 0, generation = 0) => {
       // Replay commits survive the per-minute effect re-run (latest-wins,
       // guarded by instrument+settings scope); live commits still cancel with
       // their effect instance.
       if (fromReplay
-        ? bounceLevelsScopeRef.current !== requestScope
+        ? !bounceReplayResponseIsCurrent(requestScope, requestedAsOfMs, generation, bounceReplayTargetRef.current)
         : cancelled || bounceLevelsDataSignatureRef.current !== requestSignature) return;
-      setBounceLevelsSnapshot((current) => {
-        if (!hasCommittedSnapshot) return snapshot;
+      if (fromReplay && snapshot.snapshotTimeMs > requestedAsOfMs) return;
+      setBounceLevelsState((currentState) => {
+        if (fromReplay && !bounceReplayResponseIsCurrent(requestScope, requestedAsOfMs, generation, bounceReplayTargetRef.current)) return currentState;
+        const current = currentState.snapshot;
+        // Forward playback may finish an older causal request after a newer
+        // head. Keep that safe newer head; a future head from a backward seek
+        // is instead allowed to be replaced by its earlier valid response.
+        if (fromReplay && currentState.scope === requestScope && current && current.sourceTicker === snapshot.sourceTicker
+          && current.displayInstrument === snapshot.displayInstrument
+          && current.snapshotTimeMs > snapshot.snapshotTimeMs
+          && current.snapshotTimeMs <= bounceReplayTargetRef.current.minute * 60_000) return currentState;
+        if (!hasCommittedSnapshot || currentState.scope !== requestScope) return { snapshot, scope: requestScope };
         // The shared request cache deliberately returns the same verified
         // object to every identical panel. Do not clone and invalidate the
         // expensive Canvas layer when a refresh cycle is only a cache hit.
-        if (current === snapshot || bounceLevelsSnapshotsHaveSameHead(current, snapshot)) return current;
-        return mergeBounceLevelsSnapshots(current, snapshot);
+        if (current === snapshot || bounceLevelsSnapshotsHaveSameHead(current, snapshot)) return currentState;
+        return { snapshot: mergeBounceLevelsSnapshots(current, snapshot), scope: requestScope };
       });
       hasCommittedSnapshot = true;
     };
     const indicatorSettings = JSON.parse(bounceLevelsDataSignature) as Record<string, string | number | boolean>;
     const display = normalizeGammaHeatmapInstrument(instrument);
     if (!/^(NQ|MNQ|ES|MES|RTY|M2K|QQQ|NDX|SPY|SPX|SPXW|IWM)$/.test(display)) {
-      setBounceLevelsSnapshot(null);
+      setBounceLevelsState({ snapshot: null, scope: "" });
       setBounceLevelsLoading(false);
       setBounceLevelsError("GEX Bounce supports the available index and ETF option underlyings plus their mapped futures.");
       return;
@@ -9836,6 +9882,7 @@ function Chart({
     }
     let timer: number | null = null;
     const load = async (force = false, replayAsOfMs: number | null = null, checkpoint = false) => {
+      const replayGeneration = bounceReplayTargetRef.current.generation;
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
       if (!(displayPrice && displayPrice > 0)) {
         // The serialized replay drain retries on the next clock tick instead
@@ -9904,7 +9951,9 @@ function Chart({
         ? `bounce-levels:${display}:${source}:${requestSignature}:${Math.floor(replayAsOfMs / 60_000)}`
         : bounceCacheKey;
       const fromReplay = Boolean(replayAsOfMs);
-      const scopeAlive = () => (fromReplay ? bounceLevelsScopeRef.current === requestScope : !cancelled);
+      const scopeAlive = () => (fromReplay
+        ? bounceLevelsScopeRef.current === requestScope && bounceReplayTargetRef.current.generation === replayGeneration
+        : !cancelled);
       try {
         const payload = await fetchWorkspaceData<BounceLevelsSnapshot>(
           requestCacheKey,
@@ -9915,7 +9964,7 @@ function Chart({
           if (checkpoint && replayAsOfMs) {
             setBounceReplayCheckpoint({ scope: requestScope, asOfMs: replayAsOfMs, slices: payload.exposureField });
           } else {
-            commitSnapshot(payload, fromReplay);
+            commitSnapshot(payload, fromReplay, replayAsOfMs ?? 0, replayGeneration);
           }
           setBounceLevelsError(null);
         }
@@ -10005,7 +10054,9 @@ function Chart({
     // so this shows exactly what live showed, advancing with every clock tick
     // instead of trailing a provider round-trip behind price. Level lines and
     // role states stay on the at-clock snapshot (no lookahead).
-    let sourceSnapshot = bounceLevelsSnapshot;
+    if (replayTimestampMs && bounceLevelsSnapshotScope !== `${instrument}|${bounceLevelsDataSignature}`) return null;
+    let sourceSnapshot = selectBounceReplaySnapshot(bounceLevelsSnapshot, replayTimestampMs);
+    if (!sourceSnapshot) return null;
     if (replayTimestampMs && bounceReplayCheckpoint
       && bounceReplayCheckpoint.scope === bounceLevelsScopeRef.current) {
       const clipped = bounceReplayCheckpoint.slices.filter((slice) => slice.timestamp <= replayTimestampMs);
@@ -10056,7 +10107,7 @@ function Chart({
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
       extendRight: indicatorSettings.extendRight === true,
     };
-  }, [bounceGexStrikeColors, bounceLevelsIndicator, bounceLevelsSnapshot, bounceReplayCheckpoint, overlayTimelineMs, replayTimestampMs, settings.borderUpColor, settings.gridColor, settings.downColor, settings.upColor]);
+  }, [bounceGexStrikeColors, bounceLevelsDataSignature, bounceLevelsIndicator, bounceLevelsSnapshot, bounceLevelsSnapshotScope, bounceReplayCheckpoint, instrument, overlayTimelineMs, replayTimestampMs, settings.borderUpColor, settings.gridColor, settings.downColor, settings.upColor]);
   useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);
   useEffect(() => {
     const container = chartContainerRef.current;

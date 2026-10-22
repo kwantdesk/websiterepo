@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-23 — GEX Vue snapshot lineage and causal replay
+
+- Audit ledger: `docs/GEX-VUE-SNAPSHOT-PARITY-AUDIT-2026-10-23.md`.
+  Bounded licensed REST comparisons: 3,992 frames / 740,253 call/put/net
+  values across default SPXW/NDX/QQQ/SPY GAMMA front-expiry $1 selections
+  and SPY all-expiry 1%, for Oct 16 and Oct 22. Do not turn this into a
+  blanket private-website/live/all-Greeks certification; open rows are explicit.
+- Compact live maps retain the actual first recorded opening surface (cache
+  suffix compact-v2); content-sensitive ETags admit equal-total corrections.
+  Replay must never advance the clock to future exposure or borrow latest spot.
+- Bounce display heads/trails and request seek-generations are causal. Missing
+  numeric query settings use defaults, not Number(null)=0. Dark Pool calibration
+  samples and frozen receipts cannot be learned after the replay clock; no
+  completed-session close fallback when historical prints are absent.
+- Keep custom Bounce/dealer-inventory calculations distinct from raw structural
+  OI. No additional live cadence, vendor login, VPS process or subscription.
+- Focused regressions: 24/24. Bounded audit script requires explicit --run;
+  it is not a background job. All-expiry full history exceeds Next's 2 MB
+  persistent cache item limit; successful response is not cache certification.
+
 ## 2026-10-22 — Demo fast-wick TP/SL execution
 
 - Gateway quote fan-out intentionally keeps only the last trade per quote batch.

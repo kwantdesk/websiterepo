@@ -29,12 +29,12 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
+import { buildGexMapSnapshots as buildSnapshots, gexMapPriceAt as priceAt } from "@/lib/gexMapSnapshots";
 import {
   DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   DEFAULT_GEX_MAP_REPRESENTATION,
   GEX_MAP_GREEKS,
   hasRenderableGexMapSurface,
-  latestGexMapStrikesFromFrames,
   selectGexMapStarNode,
   type GexMapExpiryScope,
   type GexMapPanelPayload,
@@ -69,7 +69,6 @@ import {
 } from "@/lib/gexMapStar";
 import {
   OPTIONS_FLOW_INSTRUMENTS,
-  type ExposureStrike,
   type GreekMode,
 } from "@/lib/optionsFlow";
 import {
@@ -316,73 +315,6 @@ function formatSessionDate(value: string) {
     day: "2-digit",
     year: "numeric",
   });
-}
-
-/**
- * The surface as it stood at the session's FIRST recorded frame.
- *
- * The velocity pill measures growth against this rather than against the
- * previous step. A one-minute step divides by whatever the node happened to
- * hold sixty seconds ago, and a node that was near zero then reads 900% or
- * 3,000% now - true arithmetic, useless to a trader, and it re-rolled the dice
- * on every refresh. Against the open the same number answers a question worth
- * asking: how much has this node built TODAY.
- */
-function sessionOpenSurface(payload: GexMapPanelPayload, upTo: number | null) {
-  const opening = new Map<number, ExposureStrike>();
-  const first = payload.frames.find((frame) => upTo === null || frame.timestamp <= upTo);
-  if (!first) return opening;
-  for (const update of first.updates) opening.set(update.strike, update);
-  return opening;
-}
-
-function buildSnapshots(payload: GexMapPanelPayload, timestamp: number | null, stepMinutes: number) {
-  if (timestamp === null) {
-    // Older browser snapshots may have been saved during the provider's
-    // post-close window with an empty latestStrikes array. Recover directly
-    // from their retained interval frames so the map repairs itself before
-    // the network refresh completes.
-    const latestStrikes = payload.latestStrikes.length
-      ? payload.latestStrikes
-      : latestGexMapStrikesFromFrames(payload.frames);
-    const current = new Map(latestStrikes.map((row) => [row.strike, row]));
-    // The comparison window anchors on the NEWEST RECORDED FRAME, not asOf:
-    // after the session, asOf keeps drifting past the final frame, which made
-    // every step selection collapse onto the same stale comparison. Anchored
-    // here, 1m/2m/5m/10m each measure exactly that much recorded change.
-    const lastFrameMs = payload.frames.length
-      ? payload.frames[payload.frames.length - 1].timestamp
-      : Date.parse(payload.asOf);
-    const previousTarget = lastFrameMs - stepMinutes * 60_000;
-    const previous = new Map<number, ExposureStrike>();
-    for (const frame of payload.frames) {
-      if (frame.timestamp > previousTarget) break;
-      for (const update of frame.updates) previous.set(update.strike, update);
-    }
-    return { current, previous, opening: sessionOpenSurface(payload, null) };
-  }
-
-  const previousTarget = timestamp - stepMinutes * 60_000;
-  const current = new Map<number, ExposureStrike>();
-  const previous = new Map<number, ExposureStrike>();
-  for (const frame of payload.frames) {
-    if (frame.timestamp > timestamp) break;
-    for (const update of frame.updates) {
-      current.set(update.strike, update);
-      if (frame.timestamp <= previousTarget) previous.set(update.strike, update);
-    }
-  }
-  return { current, previous, opening: sessionOpenSurface(payload, timestamp) };
-}
-
-function priceAt(payload: GexMapPanelPayload, timestamp: number | null) {
-  if (timestamp === null) return payload.stockPrice;
-  let value: number | null = null;
-  for (const candle of payload.candles) {
-    if (candle.timestamp > timestamp) break;
-    value = candle.close;
-  }
-  return value ?? payload.stockPrice;
 }
 
 const THEME_HEAT_TONES: GexMapHeatTones = {
@@ -697,11 +629,8 @@ function ExposurePanel({
   }, [priceLocked]);
   const [surfacePainted, setSurfacePainted] = useState(false);
   const [starPalette, setStarPalette] = useState<StarPalette>(DEFAULT_STAR_PALETTE);
-  // A replay clock can legitimately start before the session's first recorded
-  // exposure bucket (candles begin at the open; the first interval-map bucket
-  // completes a minute later). The first recorded frame IS the session's
-  // opening surface, so the ladder clamps to it instead of sitting empty on
-  // the first replay bars.
+  // Missing opening observations stay missing: never advance the requested
+  // replay clock to a future exposure frame merely to populate the ladder.
   const firstFrameTimestamp = useMemo(() => {
     if (!payload?.frames.length) return null;
     let first = Number.POSITIVE_INFINITY;
@@ -710,9 +639,7 @@ function ExposurePanel({
     }
     return Number.isFinite(first) ? first : null;
   }, [payload]);
-  const effectiveTimestamp = selectedTimestamp !== null && firstFrameTimestamp !== null
-    ? Math.max(selectedTimestamp, firstFrameTimestamp)
-    : selectedTimestamp;
+  const effectiveTimestamp = selectedTimestamp;
   // A payload whose recording starts long after the replay clock is usually a
   // stale live-session capture served from the long replay cache, not the
   // complete archived session — ask the workspace for one forced refetch.

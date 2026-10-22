@@ -25,6 +25,7 @@ import {
   getQuantDataHttpError,
 } from "@/lib/quantData.server";
 import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } from "@/lib/siteAccess";
+import { causalDarkPoolMappingReceipt, causalDarkPoolMappingSamples } from "@/lib/darkPoolMappingCausality";
 
 export const maxDuration = 60;
 
@@ -177,9 +178,9 @@ function settingsFromRequest(request: NextRequest): DarkPoolMapSettings {
 
 function addMappingSample(key: string, source: number | null, display: number | null, nowMs: number, windowMinutes: number) {
   if (!(source && display && source > 0 && display > 0)) return [];
-  const samples = [...(mappingSamples.get(key) ?? []), { source, display, timeMs: nowMs }]
-    .filter((sample) => sample.timeMs >= nowMs - windowMinutes * 60_000)
-    .slice(-1_000);
+  const samples = causalDarkPoolMappingSamples(
+    [...(mappingSamples.get(key) ?? []), { source, display, timeMs: nowMs }], nowMs, windowMinutes,
+  );
   mappingSamples.set(key, samples);
   return samples.map(({ source: nextSource, display: nextDisplay }) => ({ source: nextSource, display: nextDisplay }));
 }
@@ -292,7 +293,7 @@ export async function GET(request: NextRequest) {
     // latest print that had actually occurred at the replay clock so the
     // underlying-to-futures mapping is an honest as-of conversion.
     const sourceMid = hasHistoricalAsOf
-      ? prints.at(-1)?.price ?? baseline?.latestStockPrice ?? null
+      ? prints.at(-1)?.price ?? null
       : baseline?.latestStockPrice ?? prints.at(-1)?.price ?? null;
     // Never mix live mapping samples with an old replay. Future wall-clock
     // samples survived the replay window's lower-bound filter and could make a
@@ -317,7 +318,7 @@ export async function GET(request: NextRequest) {
     }
     const mapped = prints.map((print) => {
       const frozenKey = `${sampleKey}:${print.id}`;
-      const historicalReceipt = frozenPrintMappings.get(frozenKey) ?? { ...receipt };
+      const historicalReceipt = causalDarkPoolMappingReceipt(frozenPrintMappings.get(frozenKey), receipt, nowMs);
       frozenPrintMappings.set(frozenKey, historicalReceipt);
       return mapDarkPoolPrint(print, displayInstrument, historicalReceipt);
     });

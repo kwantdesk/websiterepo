@@ -298,7 +298,7 @@ export function compactGexMapLiveCacheKey(
   scope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
 ) {
-  return `${gexMapCacheKey(symbol, greekMode, "", scope, representation)}:compact`;
+  return `${gexMapCacheKey(symbol, greekMode, "", scope, representation)}:compact-v2`;
 }
 
 export function gameplanCacheKey(root: string, session: string) {

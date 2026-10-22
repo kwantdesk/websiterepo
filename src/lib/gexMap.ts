@@ -73,7 +73,8 @@ export const GEX_MAP_LIVE_LOOKBACK_MINUTES = [10, 5, 2, 1] as const;
  * produced a large recurring heap spike beside a multi-pane chart workspace.
  *
  * Live mode only needs the current ladder and the state at the four selectable
- * comparison windows. Reconstruct those states once on the server and emit
+ * comparison windows AND the first recorded session surface used by growth.
+ * Reconstruct those states once on the server and emit
  * them as complete frames. The existing client snapshot logic can consume
  * this payload unchanged, while historical replay continues to request the
  * unmodified full frame history.
@@ -97,10 +98,12 @@ export function compactLiveGexMapPanel(
 
   const capture = (timestamp: number) => {
     if (!surface.size) return;
-    frames.push({
+    const captured = {
       timestamp,
       updates: [...surface.values()].map((row) => ({ ...row })),
-    });
+    };
+    if (frames.at(-1)?.timestamp === timestamp) frames[frames.length - 1] = captured;
+    else frames.push(captured);
   };
 
   for (const frame of payload.frames) {
@@ -109,6 +112,7 @@ export function compactLiveGexMapPanel(
       targetIndex += 1;
     }
     for (const update of frame.updates) surface.set(update.strike, update);
+    if (frame === payload.frames[0]) capture(frame.timestamp);
     while (targetIndex < targets.length && targets[targetIndex] === frame.timestamp) {
       capture(targets[targetIndex]);
       targetIndex += 1;

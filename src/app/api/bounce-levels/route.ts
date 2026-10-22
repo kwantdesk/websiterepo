@@ -68,7 +68,9 @@ async function isAuthenticated(request: NextRequest) {
 }
 
 const finite = (request: NextRequest, key: string, fallback: number) => {
-  const value = Number(request.nextUrl.searchParams.get(key));
+  const raw = request.nextUrl.searchParams.get(key);
+  if (raw === null || raw.trim() === "") return fallback;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : fallback;
 };
 

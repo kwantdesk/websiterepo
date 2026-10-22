@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getConfiguredQuantDataApiKey, getGexMapPanel, getQuantDataHttpError, getUsOptionsSessionDate } from "@/lib/quantData.server";
 import { conditionalJson } from "@/lib/conditionalJson";
+import { gexMapSnapshotIdentity } from "@/lib/gexMapSnapshotIdentity.server";
 import { getDealerInventoryPanel } from "@/lib/gexMapV2.server";
 import {
   compactLiveGexMapPanel,
@@ -140,15 +141,7 @@ export async function GET(request: NextRequest) {
      */
     const body = compact ? compactLiveGexMapPanel(payload) : payload;
     return conditionalJson(request, body, {
-      identity: [
-        request.nextUrl.searchParams.toString(),
-        payload.asOf,
-        payload.status,
-        payload.stockPrice ?? "",
-        payload.netExposure,
-        payload.latestStrikes.length,
-        payload.frames.length,
-      ].join("::"),
+      identity: gexMapSnapshotIdentity(request.nextUrl.searchParams.toString(), body),
       maxAgeMs: payload.refreshAfterMs,
     });
   } catch (error) {
