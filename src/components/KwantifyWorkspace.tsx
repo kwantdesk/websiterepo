@@ -201,6 +201,7 @@ import {
 } from "@/lib/liveExecutionTape";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
+import { processPaperExecutionTape } from "@/lib/paperExecutionTape";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   currentGameplanSession,
@@ -10821,7 +10822,10 @@ export default function KwantifyWorkspace({
       quote.symbol,
       { bid: quote.bid, ask: quote.ask, last: quote.last, timestamp: quote.timestamp },
       {
-        executionAuthorized: true,
+        // Futures protection is owned by the lossless execution tape below.
+        // Sampled display quotes can arrive ahead of its 40ms batch and must
+        // not advance its watermark past an intervening TP/SL touch.
+        executionAuthorized: quote.source === "replay" || !paperContractSpec(quote.symbol).isFutures,
         suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
       },
     );
@@ -11590,6 +11594,66 @@ export default function KwantifyWorkspace({
     [activePaneId, workspacePanes],
   );
   const activePaneIsChart = isWorkspaceChartKind(activeWorkspacePane.content);
+  const paperLiveExecutionEnabled = paperAccountsHydrated && paperTradingAccounts.length > 0
+    && optimisticWorkspaceSection !== "backtesting"
+    && !(chartWorkspaceScope === "gamma" && gexVueReplay.active);
+  const paperExecutionSymbols = new Set<string>();
+  if (paperLiveExecutionEnabled) {
+    // Warm the selected instrument before the first order, then keep every
+    // exposed symbol subscribed even when its chart is closed or deselected.
+    if (paperContractSpec(selectedInstrument).isFutures) paperExecutionSymbols.add(normalizePaperSymbol(selectedInstrument));
+    for (const account of Object.values(paperLedger.accounts)) {
+      for (const position of account.positions) {
+        if (position.status === "open" && paperContractSpec(position.symbol).isFutures) paperExecutionSymbols.add(normalizePaperSymbol(position.symbol));
+      }
+      for (const order of account.orders) {
+        if (order.status === "working" && paperContractSpec(order.symbol).isFutures) paperExecutionSymbols.add(normalizePaperSymbol(order.symbol));
+      }
+    }
+  }
+  const paperExecutionSignature = [...paperExecutionSymbols].sort().map((symbol) =>
+    `${symbol}:${currentCmeContract(`${symbol}.c.0`) ?? symbol}`).join("|");
+  const paperLiveExecutionEnabledRef = useRef(paperLiveExecutionEnabled);
+  paperLiveExecutionEnabledRef.current = paperLiveExecutionEnabled;
+  const paperExecutionSubscriptionsRef = useRef(new Map<string, () => void>());
+  useEffect(() => {
+    const desired = new Set(paperExecutionSignature ? paperExecutionSignature.split("|") : []);
+    const subscriptions = paperExecutionSubscriptionsRef.current;
+    for (const [key, unsubscribe] of subscriptions) {
+      if (desired.has(key)) continue;
+      unsubscribe();
+      subscriptions.delete(key);
+    }
+    // Reuse the existing per-contract worker/fan-out, not another vendor
+    // connection, poller, or per-tick React/chart callback. Seed is display
+    // history, never permission to execute a newly created/edited order.
+    for (const key of desired) {
+      if (subscriptions.has(key)) continue;
+      const [symbol, contractSymbol] = key.split(":");
+      subscriptions.set(key, subscribeRithmicIndicatorTrades({ symbol, contractSymbol, onTrades: (records) => {
+        if (!paperLiveExecutionEnabledRef.current) return;
+        const current = paperLedgerRef.current;
+        if (!Object.values(current.accounts).some((account) =>
+          account.positions.some((position) => position.status === "open" && normalizePaperSymbol(position.symbol) === symbol)
+          || account.orders.some((order) => order.status === "working" && normalizePaperSymbol(order.symbol) === symbol))) return;
+        const next = processPaperExecutionTape(current, paperJournalAccountsRef.current, symbol, records, {
+          suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
+        });
+        if (next === current) return;
+        paperLedgerRef.current = next;
+        const filled = paperLedgerExecutionShapeChanged(current, next);
+        if (filled) schedulePaperJournalSync();
+        syncPaperLedgerUi(filled, 1_000);
+      } }));
+    }
+  }, [paperExecutionSignature, schedulePaperJournalSync, syncPaperLedgerUi]);
+  useEffect(() => {
+    const subscriptions = paperExecutionSubscriptionsRef.current;
+    return () => {
+      subscriptions.forEach((unsubscribe) => unsubscribe());
+      subscriptions.clear();
+    };
+  }, []);
   // Step the GEX Vue replay clock by exactly one candle of the ACTIVE chart's
   // timeframe. Forward lands on the next bar's open (the previous bar fully
   // reveals, the next starts forming from its first recorded trades); back
@@ -13069,16 +13133,24 @@ export default function KwantifyWorkspace({
         }
       }
       if (!symbols.size) return;
-      let next = ledger;
+      const histories: Array<{ symbol: string; candles: Array<{ timestamp: number; high: number; low: number }> }> = [];
       for (const symbol of symbols) {
         // Minute bars, because a resting order needs the finest range we hold.
         const cached = await readCompatibleChartHistoryCache(symbol, "1m").catch(() => null);
         if (cancelled || !cached?.candles.length) continue;
+        histories.push({ symbol, candles: cached.candles });
+      }
+      if (cancelled) return;
+      // History I/O must never write its old pre-await ledger over a live
+      // TP/SL fill (resurrecting the position). Reconcile synchronously onto
+      // the latest execution-owned ledger only after every read completes.
+      let next = paperLedgerRef.current;
+      for (const { symbol, candles } of histories) {
         next = reconcilePaperOrdersAgainstBars(
           next,
           paperTradingAccounts,
           symbol,
-          cached.candles.map((candle) => ({
+          candles.map((candle) => ({
             timestamp: candle.timestamp, high: candle.high, low: candle.low,
           })),
           { executionAuthorized: true },

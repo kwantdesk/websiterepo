@@ -1,5 +1,33 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-22 — Demo fast-wick TP/SL execution
+
+- Gateway quote fan-out intentionally keeps only the last trade per quote batch.
+  It is display data, not a lossless execution source: a TP/SL touch and reversal
+  within one batch was invisible to the demo engine. Live futures fills now consume
+  every actual print from the existing shared per-contract execution worker, in
+  arrival order including equal-millisecond executions. Sampled futures quotes
+  mark P&L only and cannot race ahead of the tape's protection watermark.
+- Warm the selected futures symbol for saved demo accounts and retain subscriptions
+  for all open positions/working orders, independent of selected/visible chart.
+  Diff subscription keys; selecting another instrument must not reconnect existing
+  protection. Reuse worker/fan-out, no new upstream vendor login or poller. The
+  existing deployment-controlled stream transport is unchanged; this is not a
+  claim that browser demo orders execute server-side while the browser is closed.
+- Seeds are not newly executable orders. Aggregate flow/footprint summaries and
+  invalid records cannot fill; delayed prints before a resting order's createdAt
+  cannot enter it. Exact working stop/target fills retain their configured tick,
+  first actual hit wins, partial quantities/OCO behavior and drag suspension remain.
+- Flush admitted queued executions before reconnect: otherwise dedup discards the
+  same recovered prints forever. Cached-history resting-order reconciliation now
+  applies synchronously to the latest ref after I/O, never overwriting a live exit
+  with its stale pre-await ledger. Journal/execution persistence remains shared.
+- Tests: tests/paper-execution-tape.test.mjs (14), continuity (3), existing protection
+  triggers (8), limit fills (8), limit-order ticket/engine/chart and stream watchdog.
+  Legacy paper-trading-integration source gates have the same five failures on
+  unchanged HEAD (16/21); baseline checked, not introduced by this repair.
+  Receipt: docs/prompt-log/2026-10-22-demo-fast-wick-exits.md.
+
 ## 2026-10-22 — Demo account to Journal linkage
 
 - Actual Accounts showed20 october with12 current exits; Journal had duplicate

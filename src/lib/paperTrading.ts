@@ -1197,7 +1197,9 @@ export function processPaperQuote(
     let account = original;
     const workingOrders = executionAuthorized
       ? account.orders.filter((order) =>
-          normalizePaperSymbol(order.symbol) === normalizedSymbol && orderTriggered(order, quote))
+          normalizePaperSymbol(order.symbol) === normalizedSymbol
+          && quote.timestamp >= order.createdAt
+          && orderTriggered(order, quote))
       : [];
     for (const order of workingOrders) {
       account = createEntryPosition(

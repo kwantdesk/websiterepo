@@ -121,6 +121,9 @@ export function createExecutionTapeEngine(
   const scheduleReconnect = (delayMs: number = STREAM_RECONNECT_DELAY_MS) => {
     if (stopped) return;
     closeConnection();
+    // These prints have already been admitted/deduplicated. Discarding them
+    // on a reconnect loses fast touches forever: a replay seed will dedup them.
+    flush();
     discardPending();
     receipt = null;
     setContinuity("checking");
