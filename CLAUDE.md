@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-22 — Demo account to Journal linkage
+
+- Actual Accounts showed20 october with12 current exits; Journal had duplicate
+  same-name cards labelled imported. Paper journal ids previously contained
+  spaces while API cleanId stripped them; hydration treated local/cloud aliases
+  as separate accounts. Cloud source was also downgraded to import.
+- Paper ids now use the cloud-safe alphabet before local persistence; alias
+  normalization coalesces identical cleaned ids and preserves trade arrays,
+  archive metadata and ZYON reset cutoff. GET reconstructs paper source from
+  reserved paper- ids without changing DB schema or requiring a migration.
+- Journal boot reconciles actual locally saved demo accounts and real ledger
+  exits, guarded by existing deletion tombstones. Empty demo journals can sync
+  before a first trade. No balances/positions/fills are edited or reset; older
+  journal records remain even when source fills were cleared in the past.
+- Cards explicitly say Linked demo account; duplicate display names are not
+  rendered twice.28 focused bridge/link/deletion/reset checks pass. Different
+  account names that sanitize to one id fail closed instead of being merged.
+  New id collisions use the actual demo account id as their unique suffix. No extra
+  live poller, provider request or VPS restart was added.
+
 ## 2026-10-22 — ZYON performance Journal reset control
 
 - Journal > ZYON Journal now exposes Reset journal with a theme-aware modal,

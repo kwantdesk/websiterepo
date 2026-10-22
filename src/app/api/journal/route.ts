@@ -315,7 +315,9 @@ function fromAccountRow(row: AccountRow, state?: AccountState): JournalAccount {
   return {
     id: row.id,
     name: row.name,
-    source: row.source,
+    // The database stores paper journals using its existing import source;
+    // their reserved id namespace retains the real source without a migration.
+    source: row.id.startsWith("paper-") ? "paper" : row.source,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: state?.archivedAt ?? null,

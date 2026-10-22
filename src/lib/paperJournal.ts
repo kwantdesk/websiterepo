@@ -76,6 +76,32 @@ export function isPaperJournalTrade(trade: Pick<JournalTrade, "id">) {
   return trade.id.startsWith(PAPER_JOURNAL_TRADE_PREFIX);
 }
 
+/** Match the cloud API's id alphabet before storing locally. Older paper ids
+ * contained spaces, so hydration treated the cleaned cloud id as a NEW account.
+ * Only collapse aliases of the same id; never merge unrelated trade records. */
+export function normalizePaperJournalAccounts(state: JournalState): JournalState {
+  const accounts = new Map<string, JournalAccount>();
+  let changed = false;
+  for (const account of state.accounts) {
+    const paper = account.source === "paper" || account.id.startsWith("paper-");
+    const id = paper ? account.id.replace(/[^a-zA-Z0-9:_.-]/g, "").slice(0, 180) : account.id;
+    const previous = accounts.get(id);
+    // Distinct names can clean to the same id ("Demo A" / "DemoA"). That
+    // isn't a local/cloud alias: leave this ambiguous legacy state untouched.
+    if (paper && previous && previous.name !== account.name) return state;
+    if (paper && previous) {
+      changed = true;
+      accounts.set(id, { ...previous, source: "paper", archivedAt: previous.archivedAt ?? account.archivedAt });
+    } else {
+      const normalized = paper && (id !== account.id || account.source !== "paper")
+        ? { ...account, id, source: "paper" as const } : account;
+      changed ||= normalized !== account;
+      accounts.set(id, normalized);
+    }
+  }
+  return changed ? { ...state, accounts: [...accounts.values()] } : state;
+}
+
 /**
  * A journal account for every demo account, created once and then left alone.
  *
@@ -88,6 +114,7 @@ export function ensurePaperJournalAccounts(
   records: readonly PaperTradingAccountRecord[],
   now = Date.now(),
 ): JournalState {
+  state = normalizePaperJournalAccounts(state);
   const existing = new Set(state.accounts.map((account) => account.name));
   const missing = records
     .map((record) => paperJournalAccountName(record))
@@ -95,14 +122,20 @@ export function ensurePaperJournalAccounts(
   if (!missing.length) return state;
 
   const timestamp = new Date(now).toISOString();
-  const added: JournalAccount[] = missing.map((name, index) => ({
-    id: `paper-${name}`,
+  const ids = new Set(state.accounts.map(account => account.id));
+  const added: JournalAccount[] = missing.map((name, index) => {
+    const baseId = `paper-${name}`.replace(/[^a-zA-Z0-9:_.-]/g, "").slice(0, 180);
+    const record = records.find(record => paperJournalAccountName(record) === name)!;
+    const id = ids.has(baseId) ? `paper-linked-${record.id}`.replace(/[^a-zA-Z0-9:_.-]/g, "").slice(0, 180) : baseId;
+    ids.add(id);
+    return {
+    id,
     name,
     source: "paper",
     createdAt: timestamp,
     updatedAt: timestamp,
     sortOrder: state.accounts.length + index,
-  }));
+  }; });
   return { ...state, accounts: [...state.accounts, ...added] };
 }
 

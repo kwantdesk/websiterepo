@@ -87,7 +87,9 @@ import {
   purgeDeletedJournalAccounts,
   saveJournalState,
 } from "@/lib/journalStore";
-import { PAPER_JOURNAL_UPDATED_EVENT } from "@/lib/paperJournal";
+import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, normalizePaperJournalAccounts, paperJournalAccountName } from "@/lib/paperJournal";
+import { readPaperTradingAccounts } from "@/lib/paperAccounts";
+import { loadPaperTradingLedger } from "@/lib/paperTrading";
 import {
   buildJournalAnalysisEvidence,
   type JournalAnalysisFinding,
@@ -1083,7 +1085,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       const evidence = new Map(stored.evidence.map((item) => [item.id, item]));
       remembered?.evidence.forEach((item) => evidence.set(item.id, item));
       cloudEvidence.forEach((item) => evidence.set(item.id, item));
-      const merged = {
+      const mergedSources = {
         ...stored,
         zyonResetAt: latestZyonJournalReset(stored.zyonResetAt, remembered?.zyonResetAt, cloud.zyonResetAt),
         accounts: [...accounts.values()],
@@ -1091,6 +1093,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         evidence: [...evidence.values()],
         imports: [...imports.values()],
       };
+      const deletedNames = new Set(deletions.map(row => row.name.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase()));
+      const paperRecords = readPaperTradingAccounts();
+      const merged = paperRecords.ok ? appendPaperTradesToJournal(mergedSources,
+        paperRecords.accounts.filter(record => !deletedNames.has(paperJournalAccountName(record).normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase())),
+        loadPaperTradingLedger()) : normalizePaperJournalAccounts(mergedSources);
       setState({ ...merged, zyonResetAt: latestZyonJournalReset(merged.zyonResetAt,
         zyonResetApplied.current?.accountKey === resolvedAccountKey ? zyonResetApplied.current.resetAt : null) });
       setCloudState(cloud.cloud ? "cloud" : "local");
@@ -1105,8 +1112,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         updatedAt: Date.now(),
       });
 
-      if (cloud.cloud && (stored.trades.length || stored.imports.length)) {
+      if (cloud.cloud && (stored.trades.length || stored.imports.length || merged.accounts.some(account => account.source === "paper"))) {
         const accountNames = [...new Set([
+          ...merged.accounts.filter(account => account.source === "paper").map(account => account.name),
           ...stored.trades.map((trade) => trade.account),
           ...stored.imports.map((batch) => batch.account),
         ].filter((name) => name && !isZyonJournalAccountName(name)))];
@@ -1117,9 +1125,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             body: JSON.stringify({
               action: "sync",
               account,
-              accountId: stored.accounts.find((candidate) => candidate.name === account)?.id,
-              trades: stored.trades.filter((trade) => trade.account === account),
-              imports: stored.imports.filter((batch) => batch.account === account),
+              accountId: merged.accounts.find((candidate) => candidate.name === account)?.id,
+              trades: merged.trades.filter((trade) => trade.account === account),
+              imports: merged.imports.filter((batch) => batch.account === account),
             }),
           });
         });
@@ -1278,7 +1286,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       ...state.evidence.map((item) => item.account),
       ...state.imports.map((item) => item.account),
     ].filter((account) => account && !known.has(account) && !isZyonJournalAccountName(account) && !archivedAccountNames.has(account));
-    return [...activeAccounts, ...new Set(orphaned)];
+    return [...new Set([...activeAccounts, ...orphaned])];
   }, [archivedAccountNames, state.accounts, state.evidence, state.imports, state.trades]);
   const accounts = useMemo(() => [ZYON_JOURNAL_ACCOUNT, ...customAccounts], [customAccounts]);
   const accountSource = useMemo(() => new Map(state.accounts.map((account) => [account.name, account.source])), [state.accounts]);
@@ -1302,6 +1310,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         label: account,
         detail: account === ZYON_JOURNAL_ACCOUNT
           ? "Reviewed ZYON Gameplans"
+          : accountSource.get(account) === "paper"
+            ? `Linked demo account · ${accountTrades.length} closed trade${accountTrades.length === 1 ? "" : "s"}`
           : accountSource.get(account) === "manual"
             ? "Native KwantDesk Journal"
           : `${accountTrades.length} imported trade${accountTrades.length === 1 ? "" : "s"}`,
