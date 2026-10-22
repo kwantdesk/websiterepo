@@ -311,10 +311,22 @@ test("drawings end where the candles end, not over the price scale", () => {
   // candles do.
   const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
   assert.match(layer, /priceScaleWidth\?: number;/, "the layer must know where the scale starts");
-  assert.match(layer, /width=\{Math\.max\(0, width - priceScaleWidth\) \+ EDGE_OVERSCAN\}/);
+  assert.match(layer, /width=\{Math\.max\(0, width - priceScaleWidth\)\}/);
   assert.match(layer, /clipPath=\{`url\(#\$\{plotClipId\}\)`\}/, "the drawing group must be clipped");
   // Unique per layer, or two charts on screen share one clip.
   assert.match(layer, /const plotClipId = useId\(\)/);
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
   assert.match(chart, /priceScaleWidth=\{nativePriceScaleWidth\}/, "the chart must pass its measured scale width");
+});
+
+test("drawing projection follows the native paint without an extra animation frame", () => {
+  const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  assert.match(layer, /subscribeViewport\(onViewport\)/);
+  assert.doesNotMatch(layer, /requestAnimationFrame|cancelAnimationFrame/);
+  assert.match(layer, /const renderedProjection = readProjection\(\)/);
+  assert.match(layer, /projectionBasisRef\.current = renderedProjection/);
+  assert.match(layer, /removeAttribute\("transform"\);\s*alignViewportRef\.current\?\.\(\)/,
+    "a yielded React commit must realign from its rendered basis before paint");
+  assert.match(layer, /<g clipPath=\{`url\(#\$\{plotClipId\}\)`\}>\s*<g ref=\{drawingsGroupRef\}/,
+    "the pane clip must stay fixed outside the moving group");
 });

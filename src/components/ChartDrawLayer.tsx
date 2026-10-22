@@ -474,8 +474,7 @@ export default function ChartDrawLayer({
 
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { dragCleanupRef.current?.(); }, []);
-  // Redraw the overlay in lockstep with the chart's OWN viewport changes,
-  // coalesced to one repaint per animation frame. Relying on the chart's
+  // Align the overlay inside the chart's OWN paint pass. Relying on the chart's
   // throttled ~15fps React signal made drawings lag and wobble behind the
   // candles during a fast pan; this tracks the candles at frame rate.
   const [, forceRedraw] = useState(0);
@@ -531,15 +530,17 @@ export default function ChartDrawLayer({
   // thrown chart left drawings somewhere they should not be: the error was
   // recorded into the basis rather than corrected.
   //
-  // useLayoutEffect runs synchronously after the DOM is updated and before the
-  // browser paints, so the basis is captured from the same projection the
-  // render actually used. Canvas primitives — volume profiles, TPO, Big
-  // Contracts — never had this problem because they paint inside the chart's
-  // own pass and cannot fall out of step with it.
+  // Layout effects still run before paint, but are not the right place to
+  // CAPTURE coordinates: concurrent React may yield before the DOM commits.
+  // React may yield between render and commit while the imperative chart keeps
+  // moving. Capture the basis alongside the JSX coordinates, NOT at commit.
+  const renderedProjection = readProjection();
+  const alignViewportRef = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     // Fresh coordinates: drop any compensating transform from the last pan.
-    projectionBasisRef.current = readProjection();
+    projectionBasisRef.current = renderedProjection;
     drawingsGroupRef.current?.removeAttribute("transform");
+    alignViewportRef.current?.();
   });
 
   useEffect(() => {
@@ -548,7 +549,6 @@ export default function ChartDrawLayer({
     // in every pane.
     if (drawings.length === 0 && pending === null) return;
     let settleTimer: number | null = null;
-    let viewportFrame: number | null = null;
     /**
      * Re-render at the real projection once the chart stops moving.
      *
@@ -606,20 +606,15 @@ export default function ChartDrawLayer({
       // distorting it, so it can hold the transform indefinitely.
       if (scaleX !== 1 || scaleY !== 1) settle();
     };
-    // The chart can announce one viewport change through both its time-scale
-    // event and repaint primitive. Coalesce those duplicate notifications so
-    // one browser frame performs at most one projection.
-    const scheduleViewport = () => {
-      if (viewportFrame !== null) return;
-      viewportFrame = window.requestAnimationFrame(() => {
-        viewportFrame = null;
-        onViewport();
-      });
-    };
-    const unsubscribe = subscribeViewport(scheduleViewport);
+    // The repaint notifier already runs inside the chart's animation frame.
+    // Scheduling another rAF here paints the candles first and drawings one
+    // frame late. This only projects four anchors; it never reconciles React.
+    alignViewportRef.current = onViewport;
+    const unsubscribe = subscribeViewport(onViewport);
+    onViewport();
     return () => {
       unsubscribe();
-      if (viewportFrame !== null) window.cancelAnimationFrame(viewportFrame);
+      alignViewportRef.current = null;
       if (settleTimer !== null) window.clearTimeout(settleTimer);
     };
   }, [subscribeViewport, chartReady, drawings.length, pending]);
@@ -1822,7 +1817,7 @@ export default function ChartDrawLayer({
   return (
     <svg
       ref={svgRef}
-      className="absolute inset-0 z-[24]"
+      className="absolute inset-0 z-[24] [&_*]:[vector-effect:non-scaling-stroke]"
       width={width}
       height={height}
       data-viewport={viewportVersion}
@@ -1847,13 +1842,14 @@ export default function ChartDrawLayer({
             * and starts below any docked above, so drawings sit above the
             * candles and behind everything that is not the price pane.
             *
-            * Horizontally it still stops at the price scale: drawings are chart
-            * content and slide under the axis rather than across it.
+            * This clip belongs to the stationary outer group. Attaching it to
+            * the transformed drawing group also pans/scales the pane boundary,
+            * exposing content over the axis or cutting valid drawings off.
             */}
           <rect
-            x={-EDGE_OVERSCAN}
+            x={0}
             y={plotTopInset}
-            width={Math.max(0, width - priceScaleWidth) + EDGE_OVERSCAN}
+            width={Math.max(0, width - priceScaleWidth)}
             height={Math.max(1, height - plotTopInset - plotBottomInset)}
           />
         </clipPath>
@@ -1895,9 +1891,11 @@ export default function ChartDrawLayer({
         * non-scaling-stroke keeps line weight true while the group carries a
         * pan's small rescale, so a drawing cannot thicken as the chart moves.
         */}
-      <g ref={drawingsGroupRef} vectorEffect="non-scaling-stroke" clipPath={`url(#${plotClipId})`}>
-        {drawings.map((drawing) => renderDrawing(drawing))}
-        {previewDrawing ? renderDrawing(previewDrawing, true) : null}
+      <g clipPath={`url(#${plotClipId})`}>
+        <g ref={drawingsGroupRef} vectorEffect="non-scaling-stroke">
+          {drawings.map((drawing) => renderDrawing(drawing))}
+          {previewDrawing ? renderDrawing(previewDrawing, true) : null}
+        </g>
       </g>
     </svg>
   );

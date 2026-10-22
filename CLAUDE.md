@@ -1,5 +1,22 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-22 — Drawing pan/zoom frame alignment
+
+- Live `ChartDrawLayer` was scheduling rAF from the native repaint callback,
+  delaying SVG geometry one paint behind candles. Its viewport projection now
+  runs synchronously in that paint callback (four anchor lookups, no full React
+  reconciliation). Keep empty-layer subscription guard and trailing zoom settle.
+- Capture projection basis during render, not layout commit: React may yield
+  while the native chart keeps moving. Layout commit re-aligns the rendered basis
+  against the current viewport before paint rather than clearing compensation.
+- Pane clip is stationary outside the transformed group; otherwise its boundary
+  pans/scales into the axes. Descendant strokes explicitly stay non-scaling.
+- Browser acceptance fixture `tests/fixtures/drawing-motion-audit.tsx` uses only
+  synthetic candles and the real native chart/repaint/SVG components. Temporary
+  local auth route is removed before release. 180-frame pan/zoom/autoscale plus
+  concurrent React updates: delayed control failed at43.789px; patch <0.001px.
+  No data-feed cadence, gateway, persisted anchors or drawing settings changed.
+
 ## 2026-10-22 — Classic/State exact paged profile history
 
 - History was still sent to denied Quant history for Classic/State; previous
