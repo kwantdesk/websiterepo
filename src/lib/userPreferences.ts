@@ -2,6 +2,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { applyTheme } from "./theme.ts";
 import { retainLocalChartAppearance } from "./chartSettings.ts";
 import { writeProtectedItem } from "./browserStorageQuota.ts";
+import { inFlightGexWorkspace } from "./gexDataPreferenceOwnership.ts";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
@@ -451,6 +452,13 @@ export async function hydrateUserPreferences(
     selected = { ...selected, updatedAt: latest.updatedAt,
       values: { ...selected.values, [libraryKey]: latest.values[libraryKey] } };
   }
+
+  // GEX can start after verified identity, before optional cloud sync settles.
+  // Do not let the late snapshot erase new same-account workspace edits.
+  const gexKey = "kwantdesk:gex-data:workspace:v1";
+  const gexWorkspace = inFlightGexWorkspace(current.values[gexKey], latest.values[gexKey], user.id);
+  if (gexWorkspace) selected = { ...selected, updatedAt: latest.updatedAt,
+    values: { ...selected.values, [gexKey]: gexWorkspace } };
 
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
   applyBrowserPreferences(selected);

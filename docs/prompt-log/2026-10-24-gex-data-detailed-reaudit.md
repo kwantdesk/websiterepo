@@ -24,3 +24,11 @@ and latest snapshot boundary. Release receipt belongs in the audit ledger.
 No blanket1:1 certification: forecast,
 consolidated source totals, group order, full raw lattice/snapshot coverage
 and supported fast live delivery remain open. No data values fabricated.
+
+Post-release signed-in QA caught GEX startup waiting indefinitely for optional
+cloud preference hydration. Separate verified identity now starts only GEX;
+API authorization and trading/journal gates remain unchanged. Late hydration
+cannot discard new same-account GEX edits or import another account's storage.
+Six new tests plus delayed real-hydrator owner/foreign-owner cases pass.
+Initial parity release READY/exact SHA; a necessary corrective startup release
+follows, not repeated deployment churn or a provider-cadence increase.

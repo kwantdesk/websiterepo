@@ -2,6 +2,14 @@
 
 ## 2026-10-24 — Detailed GEX Data re-audit (not blanket parity)
 
+- Post-release signed-in QA revealed an independent blank startup gate:
+  GEX host account identity waited behind potentially stalled cloud preference
+  hydration. GEX now receives its own getUser-verified identity immediately;
+  trading/journal hydration gates and API authorization are unchanged. Identity
+  resets before a new verification; no username/local/anonymous fallback.
+  Late cloud hydration preserves newly edited GEX storage only if its embedded
+  accountKey exactly matches the verified user, with existing size/key bounds.
+  Six new tests plus real deferred-hydration same/foreign-owner cases pass.
 - Fresh sequential UI/source coverage of all22 current GEX Data tools against
   the signed-in reference. Ledger: docs/GEX-DATA-DETAILED-REAUDIT-2026-10-24.md.
   Exact row/cell checks and visual-only checks are deliberately distinguished.

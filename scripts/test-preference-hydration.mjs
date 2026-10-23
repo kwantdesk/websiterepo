@@ -56,7 +56,8 @@ function createSupabaseStub(cloudSnapshot) {
             eq() { return chain; },
             async maybeSingle() {
               if (table === "user_preferences" && cloudSnapshot) {
-                return { data: { preferences: cloudSnapshot, updated_at: cloudSnapshot.updatedAt }, error: null };
+                const snapshot = await cloudSnapshot;
+                return { data: { preferences: snapshot, updated_at: snapshot.updatedAt }, error: null };
               }
               return { data: null, error: null };
             },
@@ -139,6 +140,27 @@ localStorage.setItem(INDICATOR_TEMPLATES_KEY, JSON.stringify({ volume: [{ id: "t
   ));
   assert.ok(uploaded, "legacy local templates must be uploaded into the signed-in account snapshot");
   assert.equal(uploaded.row.preferences.values[LAYOUT_KEY], "quad", "newer unrelated cloud settings remain authoritative");
+}
+
+// 5. A verified GEX host can render before cloud preferences settle. Edits
+//    made in that interval survive, without overriding unrelated newer keys.
+const GEX_KEY = "kwantdesk:gex-data:workspace:v1";
+for (const writer of [USER_ID, "other-user"]) {
+  localStorage.clear();
+  localStorage.setItem(ACTIVE_OWNER_KEY, USER_ID);
+  const older = JSON.stringify({ accountKey: USER_ID, values: { "gex-data:layout": "old" } });
+  const newer = JSON.stringify({ accountKey: writer, values: { "gex-data:layout": "new" } });
+  localStorage.setItem(GEX_KEY, older);
+  localStorage.setItem(SCOPED_KEY, JSON.stringify(snapshotAt(T1, { [GEX_KEY]: older })));
+  let release;
+  const delayed = new Promise(resolve => { release = resolve; });
+  const pending = hydrateUserPreferences(createSupabaseStub(delayed), user);
+  localStorage.setItem(GEX_KEY, newer);
+  release(snapshotAt(T2, { [LAYOUT_KEY]: "quad", [GEX_KEY]: older }));
+  await pending;
+  assert.equal(localStorage.getItem(GEX_KEY), writer === USER_ID ? newer : older,
+    "only new verified same-account GEX edits survive late hydration");
+  assert.equal(localStorage.getItem(LAYOUT_KEY), "quad", "unrelated newer cloud layout still wins");
 }
 
 console.log("Preference hydration tests passed.");

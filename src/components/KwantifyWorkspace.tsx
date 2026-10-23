@@ -10240,6 +10240,10 @@ export default function KwantifyWorkspace({
     void preloadWorkspaceData(target).catch(() => null);
   }, []);
   const [preferenceUserId, setPreferenceUserId] = useState("");
+  // GEX DATA's account-scoped host may start after identity verification;
+  // unrelated cloud-preference I/O must not leave its frame blank indefinitely.
+  // Trading/journal preference ownership still waits for full hydration below.
+  const [authenticatedGexDataUserId, setAuthenticatedGexDataUserId] = useState("");
   const [preferencesReady, setPreferencesReady] = useState(false);
   useAccountPreferenceSync({
     supabase,
@@ -14769,12 +14773,14 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (!supabase) {
+      setAuthenticatedGexDataUserId("");
       setAuthChecked(true);
       const returnTo = typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : "/";
       router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
       return;
     }
 
+    setAuthenticatedGexDataUserId("");
     const checkUsername = async () => {
       const user = (await supabase?.auth?.getUser())?.data?.user ?? null;
       if (!user) {
@@ -14793,6 +14799,7 @@ export default function KwantifyWorkspace({
       ).trim();
       setCurrentUsername(existingUsername ?? "Account");
       setCurrentDisplayName(existingDisplayName || "Trader");
+      setAuthenticatedGexDataUserId(user.id);
       let hydrated: Awaited<ReturnType<typeof hydrateUserPreferences>> | null = null;
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
@@ -20767,7 +20774,7 @@ export default function KwantifyWorkspace({
             {visitedWorkspaceSections.has("gexdata") ? (
               <ReactActivity mode={bottomWorkspaceSection === "gexdata" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="gexdata" label="GEX DATA">
-                  <GexDataWorkspace key={preferenceUserId} accountKey={preferenceUserId} active={bottomWorkspaceSection === "gexdata"} />
+                  <GexDataWorkspace key={authenticatedGexDataUserId} accountKey={authenticatedGexDataUserId} active={bottomWorkspaceSection === "gexdata"} />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

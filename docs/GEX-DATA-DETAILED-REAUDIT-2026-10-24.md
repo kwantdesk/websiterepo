@@ -210,3 +210,33 @@ has zero errors and one pre-existing cleanup-ref warning in OptionsFlowToolPanel
 These tests are regression evidence, not proof of reference/live parity.
 No production deployment, new paid service, extra long-running provider poller
 or VPS restart has been performed for this re-audit.
+
+## Release and post-release startup gate
+
+First scoped release3c9cfce403e3165dfb118f404d6d8e247209f71b reached READY
+on websiterepo-yfmi-hh62r6kf0-kwant-desk.vercel.app. Public diagnostics returned
+that exact SHA; app12/table3/equity3/styles2 and host iframe5 verified live.
+Temporary loopback QA server31396 was verified and stopped; tab93 closed.
+The preceding no-deployment statement describes the pre-release audit phase.
+
+Final signed-in page check then exposed another real startup problem: shell
+authenticated identity/name appeared, but GEX frame remained absent. Source
+assigns preferenceUserId only after await hydrateUserPreferences; that routine
+waits on cloud read/write I/O before returning. GEX host returns no frame for
+an empty account key, so optional preference sync can leave the tool blank.
+
+Corrective change: separately publish the getUser-verified ID to GEX only,
+before preference hydration. No anonymous/name fallback; API auth, trading and
+journal preference gates unchanged. Reset identity on re-verification.
+Because users can now edit GEX while hydration waits, preserve only changed,
+bounded, valid GEX workspace JSON whose embedded accountKey matches that same
+verified user. Never preserve another account's late storage. Real hydration
+tests suspend the cloud read, edit GEX, release the read and prove same-owner
+edits survive while unrelated newer cloud settings win; foreign edits do not.
+Six new startup/ownership tests and existing+deferred hydration checks pass.
+This requires one corrective deployment beyond the initial scoped release;
+no repeated provider acquisition, poller increase or VPS restart is involved.
+Corrective final verification:153GEX/startup/ownership/integration/reference
+tests pass, deferred hydration script passes, helper/preference ESLint passes,
+and the final production build/TypeScript/84static pages passes. The enormous
+KwantifyWorkspace file is build/type checked; no whole-file ESLint pass claimed.
