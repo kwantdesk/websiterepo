@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-23 — Bulk Journal removal manager
+
+- Journal header Manage journals opens a themed, searchable checkbox list of
+  active and archived custom/demo/manual/imported journals. Select all shown
+  adds only filtered results; Clear selection and selected count are explicit.
+  ZYON/Overall built-ins cannot be removed through this workflow.
+- Remove selected opens an exact-name review and typed DELETE N JOURNALS
+  confirmation. It discloses permanent removal of journals, trades, imports,
+  evidence, analysis and linked Socials posts; trading accounts/balances/fills/
+  open positions and unselected journals are unaffected. No reset/delete was
+  submitted against user data while implementing or testing.
+- Reuses authenticated owned-account delete endpoint sequentially; no bulk SQL
+  mutation or polling. Only server-confirmed successes get persistent deletion
+  tombstones and functional current-state purges, preserving incoming live data.
+  Failures remain selected with per-journal errors; successful deletes are not
+  rolled back. Account switch stops new requests and keeps confirmed in-flight
+  deletion tombstones under the original owner without mutating the new UI.
+- Six bulk tests and fifteen adjacent reset/deletion/detail checks pass; scoped
+  ESLint passes. Existing per-journal reset behavior is unchanged.
+
 ## 2026-10-23 — Expanded per-trade Journal execution details
 
 - Clicking a trade now shows exact hold time (milliseconds/seconds, not rounded

@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
 import { formatTradeHoldDuration, journalTradeDetails } from "@/lib/journalTradeDetails";
+import { deleteJournalSelection } from "@/lib/journalBulkDelete";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
   applyJournalAccountResets,
@@ -924,12 +925,22 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [rawState, setState] = useState<JournalState>(() => initialMemory?.state ?? EMPTY_JOURNAL_STATE);
   const state = useMemo(() => applyJournalAccountResets(rawState), [rawState]);
   const [resetJournalTarget, setResetJournalTarget] = useState<string | null>(null);
+  const [showJournalManager, setShowJournalManager] = useState(false);
+  const [journalSelection, setJournalSelection] = useState<string[]>([]);
+  const [journalManagerQuery, setJournalManagerQuery] = useState("");
+  const [journalBulkConfirm, setJournalBulkConfirm] = useState(false);
+  const [journalBulkPhrase, setJournalBulkPhrase] = useState("");
+  const [journalBulkError, setJournalBulkError] = useState("");
+  const bulkDeleteInFlight = useRef(false);
   const [resetJournalConfirmation, setResetJournalConfirmation] = useState("");
   const [resetJournalError, setResetJournalError] = useState("");
   const accountResetsApplied = useRef<{ accountKey: string; accounts: JournalAccount[] }>({ accountKey: resolvedAccountKey, accounts: [] });
   const journalOwnerRef = useRef(resolvedAccountKey);
   journalOwnerRef.current = resolvedAccountKey;
   useEffect(() => {
+    setShowJournalManager(false);
+    setJournalSelection([]);
+    setJournalBulkConfirm(false);
     setResetJournalTarget(null);
     setResetJournalConfirmation("");
     setResetJournalError("");
@@ -1315,6 +1326,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const accounts = useMemo(() => [ZYON_JOURNAL_ACCOUNT, ...customAccounts], [customAccounts]);
   const accountSource = useMemo(() => new Map(state.accounts.map((account) => [account.name, account.source])), [state.accounts]);
   const accountRecord = useMemo(() => new Map(state.accounts.map((account) => [account.name, account])), [state.accounts]);
+  const manageableJournals = useMemo(() => [...new Set([...customAccounts, ...archivedAccounts.map(account => account.name)])]
+    .filter(name => !isZyonJournalAccountName(name))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })), [customAccounts, archivedAccounts]);
+  const visibleManageableJournals = manageableJournals.filter(name => name.toLocaleLowerCase().includes(journalManagerQuery.trim().toLocaleLowerCase()));
+  const selectedJournals = manageableJournals.filter(name => journalSelection.includes(name));
   const allTrades = useMemo(
     () => [...zyonTrades, ...state.trades.filter((trade) => !isZyonJournalAccountName(trade.account) && !archivedAccountNames.has(trade.account))],
     [archivedAccountNames, state.trades, zyonTrades],
@@ -2381,6 +2397,47 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }
   };
 
+  const deleteSelectedJournals = async () => {
+    if (!journalBulkConfirm || journalBulkPhrase !== `DELETE ${selectedJournals.length} JOURNALS` || !selectedJournals.length || journalLifecycleBusy || bulkDeleteInFlight.current) return;
+    bulkDeleteInFlight.current = true;
+    setJournalLifecycleBusy("bulk-delete");
+    setJournalBulkError("");
+    const targets = selectedJournals.map(name => ({ id: accountRecord.get(name)?.id ?? "", name }));
+    try {
+      const result = await deleteJournalSelection(targets, async target => {
+        const response = await fetch("/api/journal", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete-account", account: target.name, accountId: target.id }),
+        });
+        const payload = await response.json() as { cloud?: boolean; error?: string };
+        if (!response.ok || !payload.cloud) throw new Error(payload.error || "Journal could not be deleted.");
+      }, target => {
+        const tombstone = { ...target, deletedAt: new Date().toISOString() };
+        markJournalAccountDeleted(resolvedAccountKey, target);
+        if (journalOwnerRef.current !== resolvedAccountKey) return;
+        setState(current => purgeDeletedJournalAccounts(current, [tombstone]));
+        setJournalSelection(current => current.filter(name => name !== target.name));
+        setAccountFilter(current => current === target.name ? "all" : current);
+      }, () => journalOwnerRef.current === resolvedAccountKey);
+      if (journalOwnerRef.current !== resolvedAccountKey) return;
+      if (result.deleted.length) {
+        setSelectedTradeId(null);
+        ++analysisRequestRef.current;
+        analysisAbortRef.current?.abort();
+        setJournalAnalysis(null);
+        setAnalysisLoadedAccount("");
+      }
+      setJournalLifecycleMessage(`${result.deleted.length} journal${result.deleted.length === 1 ? "" : "s"} permanently deleted.${result.failed.length ? ` ${result.failed.length} could not be deleted; they remain selected.` : ""}`);
+      setJournalBulkConfirm(false);
+      setJournalBulkPhrase("");
+      if (result.failed.length) setJournalBulkError(result.failed.map(item => `${item.target.name}: ${item.error}`).join("\n"));
+      else setShowJournalManager(false);
+    } finally {
+      bulkDeleteInFlight.current = false;
+      setJournalLifecycleBusy(null);
+    }
+  };
+
   const deleteJournalForever = async (account: string) => {
     if (isZyonJournalAccountName(account) || journalLifecycleBusy) return;
     const snapshot = state;
@@ -2570,6 +2627,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <button type="button" onClick={() => setShowArchive(true)} className="relative flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><FolderArchive className="h-3.5 w-3.5" />Archive{archivedAccounts.length ? <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[7px] font-semibold text-on-primary">{archivedAccounts.length}</span> : null}</button>
             <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
             <button type="button" onClick={openAddAccountDialog} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><BookPlus className="h-3.5 w-3.5" />Add account</button>
+            <button type="button" disabled={!ready || Boolean(journalLifecycleBusy)} onClick={() => { setJournalSelection([]); setJournalManagerQuery(""); setJournalBulkConfirm(false); setJournalBulkPhrase(""); setJournalBulkError(""); setShowJournalManager(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Manage journals</button>
           </div>
         </div>
         {journalLifecycleMessage ? <div className="mx-4 mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-2 text-[8px] text-muted"><Check className="h-3.5 w-3.5 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{journalLifecycleMessage}</span><button type="button" onClick={() => setJournalLifecycleMessage("")} className="text-muted hover:text-foreground"><X className="h-3.5 w-3.5" /></button></div> : null}
@@ -3193,6 +3251,29 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               {!archivedAccountViews.length ? <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 text-center"><FolderArchive className="h-7 w-7 text-muted" /><h3 className="mt-4 text-[12px] font-semibold text-foreground">Archive is empty</h3><p className="mt-2 max-w-sm text-[9px] leading-4 text-muted">Right-click a Journal account or use its three-dot menu to archive it without losing its record.</p></div> : null}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {showJournalManager ? (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !journalLifecycleBusy) setShowJournalManager(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="journal-manager-title" className="flex max-h-[85vh] w-full max-w-[560px] flex-col rounded-3xl border border-border bg-panel p-5 shadow-2xl">
+            <div className="flex items-center justify-between gap-3"><h2 id="journal-manager-title" className="text-[17px] font-semibold text-foreground">{journalBulkConfirm ? `Delete ${selectedJournals.length} journals?` : "Manage journals"}</h2><button type="button" aria-label="Close journal manager" disabled={Boolean(journalLifecycleBusy)} onClick={() => setShowJournalManager(false)} className="rounded-lg p-2 text-muted hover:bg-surface disabled:opacity-35"><X className="h-4 w-4" /></button></div>
+            <p className="mt-2 text-[10px] leading-5 text-muted">{journalBulkConfirm ? "Permanently removes the selected journals, their trades, imports, evidence, analysis and linked Socials trade posts. This cannot be undone. Export a backup first if needed." : "Select the journals you want to remove. Active and archived journals are listed together. ZYON Journal is managed separately with its Reset option."}</p>
+            {!journalBulkConfirm ? <>
+              <input autoFocus aria-label="Search journals to remove" value={journalManagerQuery} onChange={event => setJournalManagerQuery(event.target.value)} placeholder="Search journals…" className="mt-4 h-10 shrink-0 rounded-xl border border-border bg-background px-3 text-[11px] text-foreground outline-none focus:border-primary" />
+              <div className="my-3 flex items-center gap-3 text-[10px]"><button type="button" onClick={() => setJournalSelection(current => [...new Set([...current, ...visibleManageableJournals])])} disabled={!visibleManageableJournals.length} className="text-primary disabled:opacity-35">Select all shown</button><button type="button" onClick={() => setJournalSelection([])} className="text-muted hover:text-foreground">Clear selection</button><span className="ml-auto text-muted">{selectedJournals.length} selected</span></div>
+            </> : null}
+            <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto">
+              {(journalBulkConfirm ? selectedJournals : visibleManageableJournals).map(name => <label key={name} className="flex cursor-pointer items-center gap-3 rounded-xl border border-border p-3 hover:bg-surface"><input type="checkbox" aria-label={`Select journal ${name}`} checked={journalSelection.includes(name)} disabled={journalBulkConfirm || Boolean(journalLifecycleBusy)} onChange={event => setJournalSelection(current => event.target.checked ? [...current, name] : current.filter(candidate => candidate !== name))} className="h-4 w-4 accent-[var(--primary)]" /><span className="min-w-0 flex-1 break-words text-[11px] text-foreground">{name}</span><span className="text-[9px] text-muted">{accountRecord.get(name)?.archivedAt ? "Archived" : "Active"}</span></label>)}
+              {!visibleManageableJournals.length && !journalBulkConfirm ? <p className="py-6 text-center text-[11px] text-muted">No journals found.</p> : null}
+            </div>
+            {journalBulkConfirm ? <><p className="mt-3 text-[10px] leading-5 text-muted">Trading accounts, balances, fills, open positions and unselected journals are not removed.</p><label className="mt-3 text-[10px] text-muted">Type DELETE {selectedJournals.length} JOURNALS to confirm<input autoFocus aria-label="Bulk journal deletion confirmation" value={journalBulkPhrase} disabled={Boolean(journalLifecycleBusy)} onChange={event => setJournalBulkPhrase(event.target.value)} className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3 text-foreground outline-none focus:border-danger" /></label></> : null}
+            {journalBulkError ? <p role="alert" className="mt-3 whitespace-pre-line text-[10px] text-danger">{journalBulkError}</p> : null}
+            <div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-border pt-4">
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => journalBulkConfirm ? setJournalBulkConfirm(false) : setShowJournalManager(false)} className="h-9 rounded-xl border border-border px-4 text-[10px] text-muted disabled:opacity-35">{journalBulkConfirm ? "Back" : "Cancel"}</button>
+              <button type="button" disabled={!selectedJournals.length || Boolean(journalLifecycleBusy) || (journalBulkConfirm && journalBulkPhrase !== `DELETE ${selectedJournals.length} JOURNALS`)} onClick={() => journalBulkConfirm ? void deleteSelectedJournals() : (setJournalBulkPhrase(""), setJournalBulkConfirm(true))} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-white disabled:opacity-35">{journalLifecycleBusy ? "Removing…" : journalBulkConfirm ? "Delete selected permanently" : `Remove selected (${selectedJournals.length})`}</button>
+            </div>
+          </section>
         </div>
       ) : null}
 
