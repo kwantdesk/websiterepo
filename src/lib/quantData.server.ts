@@ -1,4 +1,5 @@
 import "server-only";
+import { optionsOpeningClock } from "./optionsOpeningRefresh.ts";
 import type { UnderlyingHistoryCoverage } from "@/lib/underlyingHistoryCoverage";
 import { unstable_cache } from "next/cache";
 import { fetchInstitutionalMarketData, isInstitutionalMarketDataConfigured } from "@/lib/institutionalMarketData.server";
@@ -2792,6 +2793,16 @@ async function buildGexMapPanel(
   const sessionDate = requestedSessionDate || currentSession.sessionDate;
   const historical = sessionDate !== currentSession.sessionDate;
   const endpointTtl = historical ? 300_000 : OPTIONS_SURFACE_REFRESH_MS;
+  const opening = !historical && currentSession.marketOpen && optionsOpeningClock().opening;
+  // A real current strike snapshot is usable before the first minute-history
+  // bucket exists. Only explicit no-data responses are optional at the open;
+  // auth, quota, transport and historical replay failures remain failures.
+  const openingHistory = (error: unknown) => {
+    if (opening && error instanceof QuantDataError && [404, 422].includes(error.status)) {
+      return { payload: null as unknown, remaining: error.remaining };
+    }
+    throw error;
+  };
 
   const [exposureResult, candleResult] = await Promise.all([
     quantDataPost("/options/tool/exposure-by-strike", {
@@ -2804,7 +2815,7 @@ async function buildGexMapPanel(
       sessionDate,
       aggregationPeriod: "1m",
       filter: { ticker: providerTicker },
-    }, historical ? 300_000 : 2_000),
+    }, historical ? 300_000 : 2_000).catch(openingHistory),
   ]);
 
   const fullExposure = parseExposure(
@@ -2836,7 +2847,7 @@ async function buildGexMapPanel(
     filter: expiryScope === "ALL_EXPIRIES"
       ? { ticker: providerTicker }
       : { ticker: providerTicker, expirationDate: expiration },
-  }, endpointTtl);
+  }, endpointTtl).catch(openingHistory);
   const frames = expiryScope === "ALL_EXPIRIES"
     ? parseFullChainGexMapFrames(intervalResult.payload)
     : parseGexMapFrames(intervalResult.payload, expiration);
@@ -2849,7 +2860,8 @@ async function buildGexMapPanel(
     : null;
   const frameAsOf = Math.max(frames.at(-1)?.timestamp ?? 0, latestCandle?.timestamp ?? 0) || Date.now();
   const marketIsLive = !historical && currentSession.marketOpen;
-  const stale = marketIsLive && Date.now() - frameAsOf > 3 * 60_000;
+  const historyPending = opening && (!frames.length || !candles.length);
+  const stale = marketIsLive && (historyPending || Date.now() - frameAsOf > 3 * 60_000);
   // After the close, the expired front-expiry key can remain present while
   // its exposure-by-strike rows are cleared. The interval map is still the
   // authoritative session record, so rebuild the frozen close from every
@@ -2882,6 +2894,7 @@ async function buildGexMapPanel(
     latestStrikes,
     frames,
     candles,
+    historyPending,
     netExposure: latestStrikes.reduce((sum, row) => sum + row.net, 0),
     grossExposure: latestStrikes.reduce((sum, row) => sum + Math.abs(row.call) + Math.abs(row.put), 0),
     rateLimitRemaining: [exposureResult.remaining, candleResult.remaining, intervalResult.remaining]

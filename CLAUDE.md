@@ -1,5 +1,37 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-23 — GEX opening delivery and reachable-but-busy recovery
+
+- Live owner report: first five opening minutes unavailable, then unreachable
+  messages and options/GEX ticks freezing/recovering. Read-only VPS check found
+  Rithmic connected/authenticated, but event-loop guard repeatedly overloaded
+  (max observed lag 3,396ms, trip count rising 29→44). Main container healthy,
+  restart count0/OOM false, started13:32:38Z; no restart was performed here.
+  QuantData snapshots alternated aborted requests and successful live updates.
+  This is real gateway load, NOT proof of a provider disconnection. Root VPS
+  event-loop pressure is not resolved/certified by the delivery changes below.
+- Institutional fetch now returns explicit JSON503 live_feed_priority without
+  tripping the whole-origin breaker. Other 502/503/504/HTML failures retain
+  their outage protection. Vendor transport preserves caller abort and deadline
+  through response-body consumption, rather than replacing the caller signal
+  and clearing its own deadline after headers. Explicit busy responses remain
+  scoped; no error is relabelled as successful market data.
+- GEX Map publishes healthy panels individually as soon as they settle; removes
+  serial45s sibling retry barriers. Failed cycle retries after5s. Refresh delay
+  is assigned outside React state updaters. Existing interval-map backoff is
+  capped during the first five opening minutes, and closed-session timers wake
+  at weekday09:30 New York (DST aware) rather than sleeping across it.
+- During opening only, provider404/422 on minute-price/interval HISTORY cannot
+  blank a genuine current strike ladder. No exposure remains an error; no fake
+  interval frame or historical replay is generated. Partial history is marked
+  historyPending and DELAYED; other auth/quota/transport errors remain errors.
+- Six new recovery tests, existing deadline/failure isolation/loader checks
+  pass. Five legacy hydration source gates fail on unchanged HEAD too; the
+  serial retry gate is updated for the new publishing design, other four stale
+  assertions are left alone. Build/typecheck passes; ESLint has one pre-existing
+  ARIA slider warning. No new service, provider subscription, poller, spend-limit
+  change, VPS mutation or market-data gateway restart.
+
 ## 2026-10-23 — Candle rollover and redraw integrity
 
 - Reproduced mergeLiveMidIntoCandles deleting a genuine current bar when a

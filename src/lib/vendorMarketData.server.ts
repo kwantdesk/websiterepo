@@ -7,6 +7,8 @@ import {
   marketDataGatewayToken,
   marketDataGatewayUrlCandidates,
 } from "@/lib/marketDataGatewayEnv";
+import { fetchWithDeadline } from "./marketDataRequest.ts";
+import { isGatewayBusyResponse } from "./gatewayBusyResponse.ts";
 
 export type VendorMarketDataProvider = "databento" | "quantdata" | "massive";
 
@@ -119,13 +121,16 @@ export async function vendorMarketDataFetch(
       lastGatewayError = new Error(`${provider} gateway is cooling down after repeated failures.`);
       continue;
     }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), gatewayTimeoutMs(provider, normalizedPath));
     try {
-      const response = await fetch(
+      const response = await fetchWithDeadline(
         `${origin}/v1/vendors/${provider}${normalizedPath}`,
-        { ...init, headers: gatewayHeaders(token, init.headers), signal: controller.signal },
+        { ...init, headers: gatewayHeaders(token, init.headers) },
+        gatewayTimeoutMs(provider, normalizedPath),
       );
+      if (await isGatewayBusyResponse(response)) {
+        recordOriginSuccess(breakerKey);
+        return response;
+      }
       const requestProblem = response.headers.get("x-kwantdesk-vendor-error");
       if (requestProblem && ["response_too_large", "request_too_large", "queue_full", "request_timeout", "ABORT_ERR"].includes(requestProblem)) {
         // A single too-wide tool or queued request cannot black out every
@@ -144,8 +149,6 @@ export async function vendorMarketDataFetch(
     } catch (error) {
       lastGatewayError = error;
       recordOriginFailure(breakerKey);
-    } finally {
-      clearTimeout(timeout);
     }
   }
 

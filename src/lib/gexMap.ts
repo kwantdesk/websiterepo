@@ -57,6 +57,8 @@ export type GexMapPanelPayload = {
   latestStrikes: ExposureStrike[];
   frames: GexMapFrame[];
   candles: OptionsCandle[];
+  /** Current strike snapshot exists but opening minute history is not ready. */
+  historyPending?: boolean;
   netExposure: number;
   grossExposure: number;
   rateLimitRemaining: number | null;

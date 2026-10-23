@@ -1,4 +1,5 @@
 "use client";
+import { optionsOpeningRefreshDelay, publishPanelResults } from "@/lib/optionsOpeningRefresh";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
@@ -1984,19 +1985,19 @@ function GexMapWorkspace({
           );
           return { id: panel.id, payload };
         };
-        const results = await Promise.allSettled(panels.map(loadPanel));
-        // Once the initial concurrent load has settled, retry only failed
-        // surfaces in isolation. This prevents a brief VPS/serverless reset
-        // from permanently leaving the final QQQ panel blank while NDX is
-        // already healthy, without re-requesting successful panels.
+        const results = await publishPanelResults(panels.map(loadPanel), ({ id, payload }) => {
+          if (cancelled) return;
+          if (Number.isFinite(payload.refreshAfterMs) && payload.refreshAfterMs > 0) nextRefreshDelay = Math.min(nextRefreshDelay, payload.refreshAfterMs);
+          setPanelData(current => ({ ...current, [id]: payload }));
+          setPanelErrors(current => ({ ...current, [id]: null }));
+          setLoading(current => ({ ...current, [id]: false }));
+          if (!replayMode) setLatestSessionDate(payload.sessionDate);
+        });
+        // Healthy panels have already published. Failed panels retry on the
+        // short next cycle, not serial 45-second retries that hold all panels.
         const failedIndexes = results.flatMap((result, index) =>
           result.status === "rejected" ? [index] : []);
-        for (const index of failedIndexes) {
-          if (cancelled) return;
-          await new Promise<void>((resolve) => window.setTimeout(resolve, 700));
-          const retried = await Promise.allSettled([loadPanel(panels[index])]);
-          results[index] = retried[0];
-        }
+        if (failedIndexes.length) nextRefreshDelay = 5_000;
         if (cancelled) return;
 
         const nextErrors: Record<string, string | null> = {};
@@ -2007,10 +2008,6 @@ function GexMapWorkspace({
             if (result.status === "fulfilled") {
               next[id] = result.value.payload;
               nextErrors[id] = null;
-              const refreshAfterMs = result.value.payload.refreshAfterMs;
-              if (Number.isFinite(refreshAfterMs) && refreshAfterMs > 0) {
-                nextRefreshDelay = Math.min(nextRefreshDelay, refreshAfterMs);
-              }
             } else {
               nextErrors[id] = result.reason instanceof Error ? result.reason.message : "Panel data is unavailable.";
             }
@@ -2039,7 +2036,7 @@ function GexMapWorkspace({
       } finally {
         requestInFlight = false;
         if (!cancelled && !replayMode) {
-          timer = window.setTimeout(() => void load(), Math.max(5_000, nextRefreshDelay));
+          timer = window.setTimeout(() => void load(), optionsOpeningRefreshDelay(Math.max(5_000, nextRefreshDelay)));
         }
       }
     };

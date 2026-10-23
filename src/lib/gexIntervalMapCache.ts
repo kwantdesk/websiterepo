@@ -1,6 +1,7 @@
 "use client";
 
 import { fetchWorkspaceData } from "@/lib/workspaceDataCache";
+import { optionsOpeningRefreshDelay } from "./optionsOpeningRefresh.ts";
 import { isGexIntervalProviderSurface, type GexIntervalProviderSurface } from "@/lib/gexIntervalMap";
 
 type Listener = (state: { data: GexIntervalProviderSurface | null; loading: boolean; error: string | null }) => void;
@@ -28,7 +29,7 @@ function schedule(entry: Entry) {
   if (!entry.listeners.size || typeof window === "undefined") return;
   if (entry.timer !== null) window.clearTimeout(entry.timer);
   const backoff = entry.error ? Math.min(60_000, entry.refreshMs * 2 ** Math.min(4, entry.attempts)) : entry.refreshMs;
-  entry.timer = window.setTimeout(() => void refresh(entry, true), backoff);
+  entry.timer = window.setTimeout(() => void refresh(entry, true), optionsOpeningRefreshDelay(backoff, Boolean(entry.error)));
 }
 
 async function refresh(entry: Entry, force: boolean) {

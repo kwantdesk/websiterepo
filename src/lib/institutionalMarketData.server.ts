@@ -6,6 +6,7 @@ import {
 } from "@/lib/marketDataGatewayEnv";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 import { fetchWithDeadline, MarketDataResponseError } from "./marketDataRequest.ts";
+import { isGatewayBusyResponse } from "./gatewayBusyResponse.ts";
 import type { MarketIndexSnapshot } from "@/lib/marketIndices.server";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -46,6 +47,7 @@ async function fetchFromOrigin(
     }, timeoutMs);
   // A relay/holding page can answer 200 while its collector is unavailable.
   // Do not remember that origin as healthy or forward HTML into JSON callers.
+  if (await isGatewayBusyResponse(response)) return response;
   if ([502, 503, 504].includes(response.status)
     || /\b(?:text\/html|application\/xhtml\+xml)\b/i.test(response.headers.get("content-type") ?? "")) {
     await response.body?.cancel().catch(() => undefined);
