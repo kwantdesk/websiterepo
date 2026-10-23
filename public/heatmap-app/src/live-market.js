@@ -6,6 +6,7 @@ const REQUESTED_DEPTH_TICKS = 320;
 const STREAM_WATCHDOG_INTERVAL_MS = 2_000;
 const STREAM_SILENCE_RECONNECT_MS = 13_000;
 const MARKET_FRAME_PROBE_MS = 8_000;
+const SNAPSHOT_PROBE_TIMEOUT_MS = 4_000;
 // Vercel terminates the same-origin SSE proxy after roughly five minutes.
 // Rotate before that hard edge so the replacement connection is deliberate
 // instead of waiting for a half-closed EventSource to notice the failure.
@@ -538,7 +539,6 @@ export class DepthMarketFeed {
     stream.addEventListener('depth', event => {
       if (!isCurrentConnection()) return;
       this.#markStreamActivity();
-      this.#markMarketFrame();
       const payload = JSON.parse(event.data || '{}');
       const payloadStatus = payload.status || {};
       this.status = {
@@ -553,6 +553,7 @@ export class DepthMarketFeed {
       };
       this.onStatus?.(this.status);
       const snapshot = normalizeLiveSnapshot(payload.snapshot);
+      if (snapshot) this.#markMarketFrame();
       const token = snapshotBookToken(snapshot);
       if (snapshot && token !== this.lastSnapshotToken) {
         this.latestTradeTick = snapshot.lastTick;
@@ -572,7 +573,7 @@ export class DepthMarketFeed {
     stream.addEventListener('tick', event => {
       if (!isCurrentConnection()) return;
       this.#markStreamActivity();
-      this.#markMarketFrame();
+      // A moving price marker does not prove the depth stream is advancing.
       const payload = JSON.parse(event.data || '{}');
       const tick = finite(payload.tick, Number.NaN);
       if (!isPlausiblePresentationTick(tick, this.presentationSnapshot)) return;
@@ -685,6 +686,7 @@ export class DepthMarketFeed {
       const response = await fetch(liveDepthSnapshotUrl(symbol, contractSymbol, exchange), {
         cache: 'no-store',
         headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(SNAPSHOT_PROBE_TIMEOUT_MS),
       });
       if (!response.ok) return;
       const payload = await response.json();
@@ -693,6 +695,8 @@ export class DepthMarketFeed {
       this.status = { ...this.status, ...payloadStatus };
       this.onStatus?.(this.status);
       const snapshot = normalizeLiveSnapshot(payload?.snapshot);
+      // A slow bootstrap/probe can finish after a newer SSE book was painted.
+      if (snapshot && snapshot.timestamp < this.lastAcceptedTimestamp) return;
       const token = snapshotBookToken(snapshot);
       if (!snapshot || token === this.lastSnapshotToken) {
         // A valid probe proves the market edge is still available even when
@@ -712,8 +716,12 @@ export class DepthMarketFeed {
       snapshot.delta = 0;
       snapshot.volume = 0;
       snapshot.eventsSince = 0;
-      this.#markMarketFrame();
+      const depthStreamStalled = !force && Date.now() - this.lastMarketFrameAt > MARKET_FRAME_PROBE_MS;
       this.#emitSnapshot(snapshot, { recovered: true });
+      // A newer real book via HTTP proves the SSE depth path was stranded.
+      // Keep the recovered picture, but replace that socket instead of falling
+      // back to a visibly stuttering eight-second snapshot-only feed.
+      if (depthStreamStalled) this.#restartSilentStream('depth frames stalled');
     } catch {
       // The SSE socket watchdog remains authoritative. A failed health probe
       // must not blank a valid last frame or create a reconnect storm.
@@ -722,9 +730,9 @@ export class DepthMarketFeed {
       const retryLatestBook = this.snapshotProbeQueued
         || (this.running && generation !== this.connectionGeneration);
       this.snapshotProbeQueued = false;
-      if (retryLatestBook && this.running) {
+      if (retryLatestBook && this.running && !this.reconnectTimer) {
         queueMicrotask(() => {
-          if (this.running) void this.#probeLatestSnapshot(true);
+          if (this.running && !this.reconnectTimer) void this.#probeLatestSnapshot(true);
         });
       }
     }

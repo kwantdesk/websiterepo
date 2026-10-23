@@ -1,5 +1,29 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-24 — LIQ Map stalled-depth recovery and bubble paint cost
+
+- Owner reports LIQ Map repeatedly freezing. Read-only gateway check showed
+  connected/advancing messages, no current overload; lifetime50 trips/max1,306ms
+  and MNQ dropped37,864 records remain separate backend limitations.
+- Found browser recovery defect: lightweight price ticks reset depth freshness,
+  masking a dead full-book stream. Only normalized real depth/history frames now
+  reset it. Existing8s stale probe has4s body-aware deadline; a newer recovered
+  book replaces the stranded SSE socket with the existing180ms reconnect/cursor.
+  Same-book probes do not create fake market events. Late bootstrap responses
+  cannot rewind newer accepted SSE depth. Reconnect scheduling avoids an extra
+  immediate probe from the old request's finally block. Healthy cadence unchanged.
+- Bubble paint and incremental refresh performed history.indexOf for every
+  cluster/anchor boundary. One frame→index Map per paint now replaces these
+  O(history × bubbles) scans, with exact rolling-window/removal semantics.
+  No trades, settings, depth rows or history retention removed.
+- Four new runtime tests cover tick/invalid-depth masking, actual socket repair,
+  body timeout/single-flight release, late-probe rewind and2,500 bubble anchors
+  against1,800 frames. Existing feed/anchors/performance/smooth-motion tests pass.
+  Broad LIQ suite98/106 pass:8 legacy controls/assets source assertions fail on
+  unchanged HEAD too; two intentional iframe cache-revision gates updated.
+  Scoped ESLint and production build/typecheck pass. All changed module/iframe
+  entry URLs cache-busted. No gateway restart or new paid service/poller.
+
 ## 2026-10-24 — History-fed wick retention and fresh repaint inputs
 
 - Owner still reports printed historical candle wicks disappearing after feed

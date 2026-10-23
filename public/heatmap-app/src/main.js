@@ -2,7 +2,7 @@ import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261017-aleph-font';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261020-smooth-motion';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261024-freeze-recovery';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -15,7 +15,7 @@ import {
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20261017-aleph-font';
+} from './live-market.js?v=20261024-freeze-recovery';
 import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20261017-aleph-font';
 import {
   DEFAULT_INDICATOR_SETTINGS,

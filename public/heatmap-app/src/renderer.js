@@ -132,9 +132,19 @@ function niceTickStep(totalTicks) {
 
 const TRADE_CLUSTER_REFRESH_MS = 100;
 
-export function resolveTradeClusterAnchorIndex(history, cluster) {
+export function indexHistoryFrames(history) {
+  const indices = new Map();
+  for (let index = 0; index < history.length; index++) {
+    // Match indexOf's first-occurrence semantics if a caller repeats a frame.
+    if (!indices.has(history[index])) indices.set(history[index], index);
+  }
+  return indices;
+}
+
+export function resolveTradeClusterAnchorIndex(history, cluster, frameIndices = null) {
   if (!Array.isArray(history) || !history.length || !cluster) return -1;
-  if (cluster.anchorFrame) return history.indexOf(cluster.anchorFrame);
+  if (cluster.anchorFrame) return frameIndices
+    ? (frameIndices.get(cluster.anchorFrame) ?? -1) : history.indexOf(cluster.anchorFrame);
   const fallback = Number(cluster.index);
   return Number.isInteger(fallback) && fallback >= 0 && fallback < history.length
     ? fallback
@@ -148,19 +158,21 @@ export function planIncrementalTradeClusterRefresh(
   end,
   previousEndFrame,
   overlapFrames = 128,
+  frameIndices = null,
 ) {
-  const previousEnd = history.indexOf(previousEndFrame);
+  const indexFor = frame => frameIndices ? (frameIndices.get(frame) ?? -1) : history.indexOf(frame);
+  const previousEnd = indexFor(previousEndFrame);
   if (previousEnd < start || previousEnd > end || end - previousEnd > 64) return null;
   const candidateStart = Math.max(start, previousEnd - Math.max(1, overlapFrames) + 1);
   let rebuildStart = candidateStart;
   for (const cluster of clusters || []) {
-    const maximumIndex = history.indexOf(cluster.maximumFrame);
+    const maximumIndex = indexFor(cluster.maximumFrame);
     if (maximumIndex < candidateStart) continue;
-    const minimumIndex = history.indexOf(cluster.minimumFrame);
+    const minimumIndex = indexFor(cluster.minimumFrame);
     if (minimumIndex >= start) rebuildStart = Math.min(rebuildStart, minimumIndex);
   }
   const retained = (clusters || []).filter(cluster => {
-    const maximumIndex = history.indexOf(cluster.maximumFrame);
+    const maximumIndex = indexFor(cluster.maximumFrame);
     return maximumIndex >= start && maximumIndex < rebuildStart;
   });
   return { rebuildStart, retained };
@@ -595,6 +607,9 @@ export class DepthRenderer {
 
   #drawTrades(ctx, history, settings, accents) {
     const layout = this.layout;
+    // One linear pass, not a full history.indexOf scan for each bubble and
+    // each incremental-cluster boundary on every animation frame.
+    const frameIndices = indexHistoryFrames(history);
     const clusterOptions = {
       start: layout.start,
       end: layout.end,
@@ -647,6 +662,7 @@ export class DepthRenderer {
           clusterOptions.end,
           this.tradeClusterCache.endFrame,
           overlapFrames,
+          frameIndices,
         )
         : null;
       const rebuilt = this.depthEngine.clusterTrades({
@@ -668,7 +684,7 @@ export class DepthRenderer {
       // Cached clusters outlive individual rolling-window shifts. Resolve the
       // retained frame object against today's array index on every paint so a
       // bubble never jumps one column while the 100 ms cache catches up.
-      const anchorIndex = resolveTradeClusterAnchorIndex(history, cluster);
+      const anchorIndex = resolveTradeClusterAnchorIndex(history, cluster, frameIndices);
       if (anchorIndex < layout.start || anchorIndex > layout.end) continue;
       const x = layout.xForIndex(anchorIndex);
       const y = layout.yForTick(cluster.tick);
