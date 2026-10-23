@@ -1,5 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-24 — Detailed GEX Data re-audit (not blanket parity)
+
+- Fresh sequential UI/source coverage of all22 current GEX Data tools against
+  the signed-in reference. Ledger: docs/GEX-DATA-DETAILED-REAUDIT-2026-10-24.md.
+  Exact row/cell checks and visual-only checks are deliberately distinguished.
+- Fixed Net Drift clicked interval spanning missing buckets; equity LIT_POOL
+  execution-side badges (never classify using later quotes); Date-column
+  latest/historical order and saved layout preservation; table fill contrast;
+  ranking/metric control sort ownership; line domain using invisible wicks;
+  and successful primary map/exposure being discarded on auxiliary failure.
+- MarketMap latest control now uses the dated verified SPY close boundary;
+  no fictitious source minute/price/history is added. All modified module and
+  iframe entry URLs are cache-busted, including normal-chart tool panels.
+- Freshly observed unresolved discrepancies: consolidated API session totals
+  versus private website totals, market-share group ordering, unavailable
+  forecast adapter, missing standalone reference tools,30s refresh floor and
+  full raw bucket/private/live completeness. Do not claim all tools/snapshots
+  are1:1 merely because regression tests pass. No provider math offsets added.
+- No gateway restart, new subscription/service or refresh-rate increase.
+  Standing archive gaps, gateway overload/recorder soak and Kwanty parity
+  issues in IMPORTANT-NOTES remain open; this task does not close them.
+
 ## 2026-10-24 — LIQ Map stalled-depth recovery and bubble paint cost
 
 - Owner reports LIQ Map repeatedly freezing. Read-only gateway check showed

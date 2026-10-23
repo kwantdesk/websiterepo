@@ -2,10 +2,10 @@ import {themePaint} from './site-theme.js?v=1';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {gexStorage,gexTimeZone,gexFetch as fetch} from './site-runtime.js?v=1';
 import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, precedingIntervalSpot, intervalTimeline, averagedIvRank, marketMapColor, squarifyTreemap, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=2";
-import { PRICE_CHART_TYPES, parsePriceRows, priceChartPresentation, drawPriceCandles, drawOptionVolume, drawDarkFlowArea, prepareDarkPoolLevels, DARK_POOL_LEVEL_COLUMNS, EQUITY_PRINT_COLUMNS, EXCHANGE_NOTIFICATION_COLUMNS, NOTIFICATION_TYPES, equitySideColorToken, equityPrintColorToken, notificationColorToken } from "./equity-renderers.js?v=2";
+import { PRICE_CHART_TYPES, parsePriceRows, priceChartPresentation, priceChartBounds, drawPriceCandles, drawOptionVolume, drawDarkFlowArea, prepareDarkPoolLevels, DARK_POOL_LEVEL_COLUMNS, EQUITY_PRINT_COLUMNS, EXCHANGE_NOTIFICATION_COLUMNS, NOTIFICATION_TYPES, equitySideColorToken, equityPrintColorToken, notificationColorToken } from "./equity-renderers.js?v=3";
 import { MARKET_SHARE_MODES, marketShareModel, drawMarketSharePie, drawMarketShareBars, drawProportionChart, contractStatisticsRows, contractSideStatisticsRows, GAINERS_COLUMNS, MARKET_SHARE_COLUMNS, CONSOLIDATED_COLUMNS, gainersModel, marketShareTableModel, netDriftRows, flowStatisticsModel, exchangeColor, exchangeLabel, EXCHANGE_GROUP_COLORS } from "./options-models.js?v=2";
 import { HEAT_METRICS, heatMetricFor, heatCellValue, heatCellColor, niceValueDomain, exposureStrikeWindow, drawExposureBars, MAX_PAIN_STYLES, heatMapInitialWindow } from "./exposure-models.js?v=1";
-import { createTableView } from "./table-view.js?v=2";
+import { createTableView } from "./table-view.js?v=3";
 import { selectedSnapshotSpot, completedMinuteSnapshot, sessionMinuteTimestamp, snapshotControlTimeline, equityOptionSnapshotSchedule } from "./snapshot-model.js?v=2";
 import { timeDomain, timeX, timeTicks, nearestTimeIndex,timeAtIndex } from "./time-axis.js?v=1";
 import { abbreviate, currencyAbbreviated, currencyAuto, abbreviatedTick } from "./number-format.js?v=2";
@@ -867,11 +867,16 @@ await boot();
     if (tool.id === "option-price-over-time" && !getControl("osi") && (!getControl("expiry") || !getControl("strike"))) body = await discoverContract(body);
     if (tool.id === "max-pain" && !getControl("expiry")) body = await discoverExpiration(body);
     if(snapshotTools.includes(tool.id)){
-      const [result,price]=await Promise.all([toolFetch(tool.endpoint,body),toolFetch("stock-price-over-time",{...requestBase(),aggregationPeriod:"1m",filter:{ticker:tool.id==='market-map'?'SPY':getControl("ticker")}})]);
+      // A missing auxiliary price history must not discard genuine primary
+      // exposure/map data. Do not invent a spot or replay timeline in its place.
+      const [result,price]=await Promise.all([toolFetch(tool.endpoint,body),toolFetch("stock-price-over-time",{...requestBase(),aggregationPeriod:"1m",filter:{ticker:tool.id==='market-map'?'SPY':getControl("ticker")}}).catch(error=>{
+        if(activeController?.signal.aborted)throw error;
+        return {data:{},unavailable:true};
+      })]);
       const prices=parsePrices(price),sessionDate=effectiveSessionDate;
-      const entries=tool.id!=='market-map'&&sessionDate?snapshotControlTimeline(prices,{sessionDate,schedule:equityOptionSnapshotSchedule(getControl('ticker'),sessionDate,apiStatus.market?.calendar)}):prices.map(row=>({time:row.time}));
+      const entries=sessionDate?snapshotControlTimeline(prices,{sessionDate,schedule:equityOptionSnapshotSchedule(tool.id==='market-map'?'SPY':getControl('ticker'),sessionDate,apiStatus.market?.calendar)}):prices.map(row=>({time:row.time}));
       const timeline=entries.map(entry=>entry.time),selected=snapshotTime??timeline.at(-1),matching=timeline.length?selectedSnapshotSpot(prices,snapshotTime?completedMinuteSnapshot(selected):selected):null;
-      return {...result,_timeline:timeline,_snapshotEntries:entries,_snapshotTime:selected,_spot:matching?.available?matching.spot:undefined};
+      return {...result,_timeline:timeline,_snapshotEntries:entries,_snapshotTime:selected,_spot:matching?.available?matching.spot:undefined,_priceHistoryUnavailable:price.unavailable===true};
     }
     if (["interval-map", "max-pain-over-time", "option-price-over-time"].includes(tool.id)) {
       const osiRoot=tool.id==='option-price-over-time'?String(body.filter?.osi||'').replaceAll(' ','').match(/^([A-Z.]+)\d{6}[CP]\d{8}$/)?.[1]:null;
@@ -1285,7 +1290,8 @@ await boot();
       title:`Net Drift (Premium) - ${ticker}`,
       legend:legendFor(last),
       items:rows,navigatorValues:rows.map(row=>row.call),height:540,timeScale:true,
-      onClick:(row,index)=>{if(!row)return;const period=getControl('period')||'1m',duration=Number.parseInt(period,10)*(period.endsWith('h')?3600000:60000),end=rows[index+1]?.time??row.time+duration;openTradeDetail({individual:true,title:'Net Drift · Individual Prints',preview:`${ticker} · ${displayChartTime(row.time)} · actual prints in this interval`,timeRange:{startTime:new Date(row.time).toISOString(),endTime:new Date(end).toISOString()}});},
+      // Missing source buckets do not extend the selected interval's trade window.
+      onClick:row=>{if(!row)return;const period=getControl('period')||'1m',duration=Number.parseInt(period,10)*(period.endsWith('h')?3600000:60000),end=row.time+duration;openTradeDetail({individual:true,title:'Net Drift · Individual Prints',preview:`${ticker} · ${displayChartTime(row.time)} · actual prints in this interval`,timeRange:{startTime:new Date(row.time).toISOString(),endTime:new Date(end).toISOString()}});},
       tooltipRows:row=>row?[displayChartTime(row.time),`Calls ${compact(row.call,true)}`,`Puts ${compact(row.put,true)}`,`Volume ${compact(row.callVolume-row.putVolume)}`,`${ticker} ${formatPrice(row.spot)}`]:[],
       draw:(ctx,w,h,state)=>{
         const left=78,right=w-78,top=10,bottom=h-32,paneHeight=Math.min(100,h*.15),gap=Math.min(20,h*.1),volumeTop=bottom-paneHeight,mainBottom=volumeTop-gap;
@@ -1364,7 +1370,7 @@ await boot();
       draw:(ctx,w,h,state)=>{
         const left=78,right=w-(hasUnderlying?78:30),top=12,bottom=h-34,visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1);
         const paneHeight=hasVolume?Math.min(100,h*.15):0,volumeTop=bottom-paneHeight,mainBottom=hasVolume?volumeTop-Math.min(20,h*.1):bottom;
-        const lows=visible.map(row=>row.low).filter(Number.isFinite),highs=visible.map(row=>row.high).filter(Number.isFinite),{min:pmin,max:pmax}=niceValueDomain(Math.min(...lows),Math.max(...highs)),vmax=niceValueDomain(0,Math.max(1,...visible.map(row=>row.volume||0))).max;
+        const bounds=priceChartBounds(visible,chartType),{min:pmin,max:pmax}=niceValueDomain(bounds.min,bounds.max),vmax=niceValueDomain(0,Math.max(1,...visible.map(row=>row.volume||0))).max;
         const domain=timeDomain(rows,state.rawStart??state.start,state.rawEnd??state.end,{padBars:chartType==="candles"||hasVolume}),x=index=>timeX(visible[index]?.time,domain,left,right),py=value=>mainBottom-(value-pmin)/(pmax-pmin)*(mainBottom-top),slot=visible.length>1?(right-left)*(visible.at(-1).time-visible[0].time)/Math.max(1,domain.max-domain.min)/(visible.length-1):(right-left);
         drawHorizontalTicks(ctx,left,right,top,mainBottom,pmin,pmax,chartStrikeLabel);
         ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,mainBottom-top);ctx.clip();
@@ -1590,6 +1596,7 @@ await boot();
       const rows=Array.isArray(data)?data:Object.entries(data).map(([key,row])=>({key,...(row||{})})),historical=getControl("mode")==="historical";
       let schema=tool.id==="order-flow-consolidated"?CONSOLIDATED_COLUMNS.filter(column=>column.id!=="date"||historical):tool.id==="equity-prints"?EQUITY_PRINT_COLUMNS:EXCHANGE_NOTIFICATION_COLUMNS;
       if(tool.id!=="order-flow-consolidated")schema=schema.filter(column=>!column.historicalOnly||historical).map(column=>({...column,id:column.key,key:column.timeField||column.key,type:column.key==="date"?"date":/Time$/.test(column.key)?"time":column.key==="bidAsk"?"bidAsk":column.key==="notionalValue"||column.key==="price"?"money":column.key==="size"?"integer":"text",...(column.key==="notionalValue"?{dot:row=>`var(${equitySideColorToken(row)||"--qd-dot-sentimentNeutralColor"},#AAAAAA)`}:column.key==="ticker"&&tool.id==="equity-prints"?{dot:row=>`var(${equityPrintColorToken(row)||"--qd-dot-equityLitPoolColor"},#AAAAAA)`}:column.key==="type"?{dot:row=>`var(${notificationColorToken(row.type)||"--qd-dot-exchangeNotificationNeutralColor"},#AAAAAA)`}:{})}));
+      if(tool.id==="equity-prints")schema=schema.map(column=>column.key==="price"?{...column,type:"priceSide",sideField:"tradeSide",sideSeparator:" ",sidePrintType:"LIT_POOL"}:column);
       showTable(rows,schema);if(tool.id==="order-flow-consolidated")renderFlowStatistics(payload.statistics);setSummary([["Loaded rows",rows.length.toLocaleString()],["Session",historical?getControl("date"):"Latest"],["Ticker",getControl("ticker")||getControl("tickerOptional")||"All"],["More pages",payload.nextSearchAfter?"Available":"No"]]);return;
     }
     if (tool.view === "marketMap") return renderMarketMap(payload);

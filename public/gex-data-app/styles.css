@@ -195,7 +195,7 @@ button { color: inherit; }
 .tool-heading-row p { margin: 5px 0 0; max-width: 850px; color: var(--gex-23613939376262); font-size: 13px; line-height: 1.45; }
 .tool-actions { display: flex; gap: 8px; }
 .tool-actions button, #loadMore, .chart-toolbar button { border: 1px solid var(--gex-23353732363831); border-radius: 7px; padding: 8px 12px; color: var(--gex-23656665346662); background: var(--gex-23313930353239); cursor: pointer; }
-.tool-actions button:first-child { background: linear-gradient(180deg, var(--gex-23386132346534), var(--gex-23363431306237)); border-color: var(--gex-23396333386565); }
+.tool-actions button:first-child { background: var(--site-surface); color: var(--site-foreground); border-color: var(--site-border); }
 
 .tool-controls { max-width: 1800px; margin: 0 auto 10px; min-height: 54px; display: flex; flex-wrap: wrap; align-items: end; gap: 7px; padding: 9px; background: var(--gex-726762612831352c322c32372c2e383829); border: 1px solid var(--gex-23326531323435); border-radius: 10px; }
 .control { min-width: 105px; display: grid; gap: 4px; }
@@ -367,7 +367,9 @@ button { color: inherit; }
 .qtable-dot { display:inline-block;flex:none;width:7px;height:7px;border-radius:50%; }
 .qtable-numeric { font-variant-numeric:tabular-nums; }
 .qtable-cell-hint { position:relative;z-index:1;float:right;margin-left:8px;color:var(--gex-23613537346463);font-size:10px; }
-.qtable-cell-progress { position:absolute;z-index:0;left:4px;top:4px;bottom:4px;border-radius:8px;max-width:calc(100% - 8px); }
+/* Theme primary may equal foreground (including white in Mono Protocol).
+   Tint only the data fill; the independently layered values stay opaque. */
+.qtable-cell-progress { position:absolute;z-index:0;left:4px;top:4px;bottom:4px;border-radius:8px;max-width:calc(100% - 8px);opacity:.16;pointer-events:none; }
 .qtable-contract { display:inline-grid;grid-template-columns:44px 93px 57px 30px;gap:6px;align-items:center; }
 .qtable-cancelled { opacity:.55;text-decoration:line-through; }
 .qtable-golden { box-shadow:inset 3px 0 var(--gex-23656561643065);background:var(--gex-236565616430653136); }

@@ -32,6 +32,16 @@ test('equity execution prices preserve two cents digits even for whole dollars',
   assert.equal(formatTableValue(775,{type:'money',key:'strikePrice'}),'$775');
 });
 
+test('equity price badges use the provider execution side, not option fields or later quotes',()=>{
+  const column={type:'priceSide',key:'price',sideField:'tradeSide',sideSeparator:' ',sidePrintType:'LIT_POOL'};
+  for(const [side,code] of [['ASK','A'],['ABOVE_ASK','AA'],['BID','B'],['BELOW_BID','BB'],['MID_MARKET','M']]){
+    assert.equal(formatTableValue(869,column,{printType:'LIT_POOL',tradeSide:side,tradeSideCode:'BELOW_BID',bidPrice:900,askPrice:901}),`$869.00 ${code}`);
+  }
+  for(const side of [null,undefined,'NOT_APPLICABLE','UNKNOWN'])assert.equal(formatTableValue(869,column,{tradeSide:side}),'$869.00');
+  assert.equal(formatTableValue(875.7,column,{printType:'DARK_POOL',tradeSide:'BELOW_BID'}),'$875.70');
+  assert.equal(formatTableValue(875.7,column,{tradeSide:'ASK'}),'$875.70');
+});
+
 test('consolidated flow DTE and inapplicable classifications match displayed source units',()=>{
   assert.equal(formatTableValue(3,{type:'decimal',key:'dte'}),'3.00');
   assert.equal(formatTableValue(3.01,{type:'decimal',key:'dte'}),'3.01');

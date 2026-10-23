@@ -6,6 +6,23 @@ import { abbreviate, currencyAbbreviated, currencyAuto } from './number-format.j
 const NUMERIC_TYPES = new Set(['integer', 'abbreviated', 'decimal', 'money', 'percentage', 'percentagePoints', 'greek', 'priceSide', 'bidAsk']);
 const numberOrNull = value => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
 const idOf = column => column.id || column.key;
+// Keep the relative order of existing/custom columns, including columns that
+// are temporarily absent (for example Date in the latest-session tape).
+// New schema columns join beside their nearest default neighbour, not the end.
+function mergeColumnOrder(previous, defaults) {
+  const order = [...new Set(previous.filter(id => typeof id === 'string'))];
+  for (let index = 0; index < defaults.length; index++) {
+    const id = defaults[index];
+    if (order.includes(id)) continue;
+    const next = defaults.slice(index + 1).find(candidate => order.includes(candidate));
+    if (next !== undefined) order.splice(order.indexOf(next), 0, id);
+    else {
+      const preceding = defaults.slice(0, index).reverse().find(candidate => order.includes(candidate));
+      order.splice(preceding === undefined ? order.length : order.indexOf(preceding) + 1, 0, id);
+    }
+  }
+  return order;
+}
 const make = (document, tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = String(text); return node; };
 export function tableValue(row, key) {
   if (Object.hasOwn(row || {}, key)) return row[key];
@@ -63,7 +80,13 @@ export function formatTableValue(value, column = {}, row = {}, { timeZone = gexT
     case 'percentage': return n === null ? '—' : `${(n * 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
     case 'percentagePoints': return n === null ? '—' : `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
     case 'greek': return n === null ? '—' : n.toFixed(5);
-    case 'priceSide': return `${price(value)}${row.tradeSideCode ? ` · ${sideCode(row.tradeSideCode)}` : ''}`;
+    case 'priceSide': {
+      // Equity executions and option executions expose different licensed fields.
+      // Never reclassify an execution using a later bid/ask quote.
+      const side = column.sidePrintType && row.printType !== column.sidePrintType ? null : column.sideField ? row[column.sideField] : row.tradeSideCode;
+      const code = sideCode(side);
+      return `${price(value)}${['AA','A','M','B','BB'].includes(code) ? `${column.sideSeparator ?? ' · '}${code}` : ''}`;
+    }
     case 'bidAsk': return `${price(row.bidPrice)} × ${price(row.askPrice)}`;
     case 'contract': return [row.ticker, row.expirationDate ? expirationLabel(row.expirationDate) : null, row.strikePrice == null ? null : autoPrice(row.strikePrice), row.contractType ? enumLabel(row.contractType) : null].filter(part => part !== null && part !== undefined && part !== '').join(' · ') || '—';
     case 'moneyness': {
@@ -212,18 +235,23 @@ export function createTableView({ table, search = null, count = null, columnHost
     if (count) count.textContent = matching.length > maxRows ? `${matching.length.toLocaleString()} matching · first ${maxRows.toLocaleString()} rendered` : `${matching.length.toLocaleString()} loaded row${matching.length === 1 ? '' : 's'}`;
   }
   function render() { if (destroyed) return; renderHead(); renderBody(); renderColumnControls(); }
+  let configuredSortKey;
   function setRows(nextRows, configuration = {}) {
     const changedTool = (configuration.toolId ?? toolId) !== toolId;
     rows = [...(nextRows || [])].filter(row => row && row.group !== 'TOTAL'); totalRow = configuration.totalRow ?? nextRows?.find(row => row.group === 'TOTAL') ?? null;
     toolId = configuration.toolId ?? toolId;
     if (configuration.columns) {
       columns = configuration.columns.map(column => typeof column === 'string' ? { key: column, label: column, type: 'text' } : { ...column });
-      const valid = new Set(columns.map(idOf));
       if (changedTool || !order.length) { order = columns.map(idOf); hidden.clear(); widths.clear(); filters.clear(); sortId = configuration.sortKey ?? null; sortDirection = configuration.sortDirection ?? -1;
-        try { const saved = storage && toolId ? JSON.parse(storage.getItem(savedKey()) || 'null') : null; if (saved) { order = [...(saved.order || []).filter(id => valid.has(id)), ...order.filter(id => !saved.order?.includes(id))]; hidden = new Set((saved.hidden || []).filter(id => valid.has(id) && columns.find(column => idOf(column) === id)?.canHide !== false)); widths = new Map(Object.entries(saved.widths || {}).filter(([id, width]) => valid.has(id) && Number.isFinite(width) && width >= 60)); } } catch { /* Ignore malformed preferences. */ }
-      } else order = [...order.filter(id => valid.has(id)), ...columns.map(idOf).filter(id => !order.includes(id))];
+        try { const saved = storage && toolId ? JSON.parse(storage.getItem(savedKey()) || 'null') : null; if (saved) { order = mergeColumnOrder(saved.order || [], order); hidden = new Set((saved.hidden || []).filter(id => typeof id === 'string' && columns.find(column => idOf(column) === id)?.canHide !== false)); widths = new Map(Object.entries(saved.widths || {}).filter(([, width]) => Number.isFinite(width) && width >= 60)); } } catch { /* Ignore malformed preferences. */ }
+      } else order = mergeColumnOrder(order, columns.map(idOf));
     }
-    if (configuration.sortKey !== undefined && !sortId) sortId = configuration.sortKey;
+    // An explicit Rank/Metric control change owns sorting. Ordinary refreshes
+    // with the same configured key must preserve the user's column sort.
+    if (configuration.sortKey !== undefined && (changedTool || configuredSortKey !== configuration.sortKey || !sortId)) {
+      sortId = configuration.sortKey; sortDirection = configuration.sortDirection ?? -1;
+    }
+    configuredSortKey = configuration.sortKey;
     render();
   }
   if (search) listen(search, 'input', renderBody);

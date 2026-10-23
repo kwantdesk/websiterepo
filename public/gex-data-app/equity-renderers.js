@@ -40,6 +40,12 @@ export function priceChartPresentation({ option = false, contractType, chartType
 // 1px wicks, green when close >= open. One shared rule for price and volume.
 export function candleBodyWidth(slotWidth) { return Math.max(1, Math.min(.6 * slotWidth, 64)); }
 
+export function priceChartBounds(rows, chartType = 'candles') {
+  const lows=rows.map(row=>chartType==='line'?row.close:row.low).filter(Number.isFinite);
+  const highs=rows.map(row=>chartType==='line'?row.close:row.high).filter(Number.isFinite);
+  return {min:Math.min(...lows),max:Math.max(...highs)};
+}
+
 export function drawPriceCandles(ctx, rows, x, y, slotWidth) {
   const width = candleBodyWidth(slotWidth);
   rows.forEach((row, index) => {
