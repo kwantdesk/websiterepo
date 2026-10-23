@@ -1,7 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-24 — LIQ Map protection dragging and normal-chart labels
+
+- Stable plot owns pointer capture, not the moving/unmountable label. Final
+  release coordinates, iframe scaling, pointer IDs and account/symbol scope
+  are guarded; cancellation always releases protection suspension.
+- TP/SL now match normal-chart label dimensions, typography, theme/candle
+  contrast, signed size, tick precision, projected P&L and removal controls.
+  Partial targets retain remaining quantity/target identity; shared ledger only.
+-12 tests and scoped lint pass; isolated browser SL/TP and off-plot drops commit.
+  Build/typecheck pass. No owner trade changed. See prompt-log/2026-10-24-liq-map-protection-drag.md
+  under docs. Authentication middleware outage remains a separate production
+  acceptance blocker; never claim a real-account drag test was performed.
+
 ## 2026-10-24 — Detailed Kwanty re-audit and demonstrated parity repairs
 
+- Release04f85f5f is READY and public diagnostics report the exact SHA/gateway200;
+  app21/new modules are served. Fresh signed-in `/kwanty` reload instead504s in
+  middleware before shell. Other authenticated routes show the same25s timeout;
+  configured Auth health with its public client key timed out7s then15s. Do NOT
+  call production acceptance passed or bypass auth. Detailed local receipt is
+  in the ledger below; no doc-only second deployment. Requires auth-service
+  recovery and fresh signed-in UI acceptance, in addition to standing parity gates.
 - Ledger: docs/KWANTY-DETAILED-REAUDIT-2026-10-24.md. Full vendor/live/all-tool
   acceptance remains OPEN; fresh reference controls, shipped-source evidence,
   real SPX archive lineage and isolated app QA are explicitly distinguished.
