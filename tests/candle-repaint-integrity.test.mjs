@@ -8,6 +8,90 @@ import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw } from "../src/lib
 const bar = (timestamp, overrides = {}) => ({ timestamp, open: 100, high: 103, low: 98, close: 101, volume: 10, ...overrides });
 const scope = "pane:NQ:1m:live";
 
+test("history extrema accepted for an observed bar survive a subsequent stale history response", () => {
+  const buffer = new ObservedCandleHistory();
+  buffer.observe(scope, bar(60000), 61000);
+  const expanded = buffer.merge(scope, [bar(60000, { high: 115, low: 91 })]);
+  assert.equal(expanded[0].high, 115);
+  const stale = buffer.merge(scope, [bar(60000)]);
+  assert.equal(stale[0].high, 115);
+  assert.equal(stale[0].low, 91);
+  buffer.observe(scope, bar(120000), 121000);
+  assert.equal(buffer.merge(scope, [bar(60000), bar(120000)])[0].high, 115);
+});
+
+test("a history-seeded forming wick survives the first live tick and then a stale refresh", () => {
+  const buffer = new ObservedCandleHistory();
+  const initial = [bar(60000, { high: 118, low: 89 })];
+  buffer.merge(scope, initial);
+  const firstLive = buffer.observe(scope, bar(60000, { close: 102 }), 61500);
+  assert.equal(firstLive.high, 118, "the first live paint must not shrink the seeded wick either");
+  assert.equal(firstLive.low, 89);
+  // Paint the initial history plus the real tick, then receive an older response.
+  buffer.merge(scope, initial);
+  const stale = buffer.merge(scope, [bar(60000)]);
+  assert.equal(stale[0].high, 118);
+  assert.equal(stale[0].low, 89);
+  assert.equal(stale[0].close, 102);
+});
+
+test("reconciling cached render input at paint time includes newer directly observed bars", () => {
+  const buffer = new ObservedCandleHistory();
+  buffer.observe(scope, bar(60000), 61000);
+  const memoized = buffer.merge(scope, [bar(60000)]);
+  buffer.observe(scope, bar(60000, { high: 117, low: 92 }), 62000);
+  buffer.observe(scope, bar(120000, { open: 104, high: 109, close: 108 }), 121000);
+  const repaint = buffer.merge(scope, memoized);
+  assert.equal(repaint[0].high, 117);
+  assert.equal(repaint[0].low, 92);
+  assert.equal(repaint[1].timestamp, 120000);
+});
+
+test("actual chart creation and redraw expressions reconcile the latest buffer rather than stale render arrays", () => {
+  const sourceText = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const source = ts.createSourceFile("Chart.tsx", sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declarations = new Map();
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const name = node.name.text;
+      if (["creationSource", "paintSource", "drawCandles"].includes(name)) declarations.set(name, node);
+      if (name === "chartData" && node.initializer.getText(source).includes("creationSource")) declarations.set("creationData", node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  const buffer = new ObservedCandleHistory();
+  const candles = [bar(60000)];
+  buffer.merge(scope, candles);
+  buffer.observe(scope, bar(60000, { high: 119, low: 90 }), 62000);
+  buffer.observe(scope, bar(120000), 121000);
+  for (const names of [["creationSource", "creationData"], ["paintSource", "drawCandles"]]) {
+    const context = vm.createContext({
+      candles, seriesCandles: candles, candleStyle: "candles", timeframe: "1m", eventBased: false,
+      liveReplayActiveRef: { current: false }, observedCandleScope: scope,
+      observedCandleHistoryRef: { current: buffer }, timeframeToMs: () => 60000,
+      isHeikinAshiStyle: () => false, buildSafeChartData: rows => rows,
+      eventSourceTimeByChartTimeRef: { current: new Map() }, eventChartTimeBySourceTimeRef: { current: new Map() },
+    });
+    for (const name of names) {
+      assert.ok(declarations.has(name), `real ${name} expression must exist`);
+      const code = `var ${declarations.get(name).getText(source)};`;
+      vm.runInContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+    }
+    const rows = context[names[1] === "creationData" ? "chartData" : "drawCandles"];
+    assert.equal(rows[0].high, 119);
+    assert.equal(rows[0].low, 90);
+    assert.equal(rows[1].timestamp, 120000);
+  }
+});
+
+test("unobserved archived bars remain correctable rather than freezing all historical OHLC", () => {
+  const buffer = new ObservedCandleHistory();
+  buffer.merge(scope, [bar(60000, { high: 150 }), bar(120000)]);
+  buffer.observe(scope, bar(120000), 121000);
+  assert.equal(buffer.merge(scope, [bar(60000), bar(120000)])[0].high, 103);
+});
+
 test("a full stale-history redraw preserves every recently observed candle, not just the last wick", () => {
   const buffer = new ObservedCandleHistory();
   buffer.observe(scope, bar(60000, { high: 110, low: 95 }), 61000);

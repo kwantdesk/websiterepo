@@ -1,5 +1,30 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-24 — History-fed wick retention and fresh repaint inputs
+
+- Owner still reports printed historical candle wicks disappearing after feed
+  restart. Reproduced two failures in ObservedCandleHistory: accepted history
+  extended an observed bar but was not remembered, so the next stale response
+  shrank it again; the first live tick lacked the history-seeded forming OHLC.
+- The bounded, source-scoped buffer now seeds that first tick from the known
+  history tail and remembers accepted history/live OHLC unions for observed
+  bars. Unobserved archived bars remain provider-correctable; symbol/contract/
+  interval/replay scope changes clear both history seed and observations.
+- Chart full redraw and recreation now reconcile observations at the actual
+  setData boundary. Memoized render arrays can predate imperative live ticks
+  or a rollover. Recreating the series from that stale array erased printed
+  wicks. Both setData paths use freshly reconciled data, including HA conversion;
+  rendered-tail timestamps/counts follow the data actually painted.
+- Added five regression tests, including executing actual Chart.tsx paint
+  expressions against a stale render plus newer direct ticks. The original two
+  new history-extrema tests failed before repair and pass afterward. This is
+  targeted regression evidence, not certification of all vendor data accuracy.
+  No provider cadence, paid resource, recorder retention or VPS restart changed.
+- Verification:12 repaint tests plus4 render-continuity tests pass; live authority
+  covers19 intervals, live path13 checks, Rithmic integrity2,650 combinations.
+  Production build/typecheck passes. Full Chart.tsx ESLint exceeded its default
+  4GB Node heap; do not report that lint run as a pass.
+
 ## 2026-10-24 — Gateway hot snapshot optimization activated with owner approval
 
 - Freeze investigation continues: public health at14:04Z connected/authenticated,

@@ -14898,9 +14898,14 @@ function Chart({
       (prevFirstTimestampRef.current !== null && observedSourceCandles[0]?.timestamp !== prevFirstTimestampRef.current);
 
     if (needsFullRedraw) {
-      const drawCandles = !isHeikinAshiStyle(candleStyle) && lastSourceCandle !== propLastCandle
-        ? [...seriesCandles.slice(0, -1), lastSourceCandle]
-        : seriesCandles;
+      // Direct ticks mutate the observation buffer without triggering React.
+      // A memoized render array can therefore predate a wick or even rollover.
+      // Reconcile at the actual destructive setData boundary, not just render.
+      const paintSource = !eventBased && !liveReplayActiveRef.current
+        ? observedCandleHistoryRef.current.merge(observedCandleScope, candles)
+        : candles;
+      const drawCandles = isHeikinAshiStyle(candleStyle)
+        ? toHeikinAshi(paintSource) : paintSource;
       const chartData = buildSafeChartData(
         drawCandles,
         timeframeToMs(timeframe) === null,
@@ -14911,7 +14916,7 @@ function Chart({
       lastRenderedCandleTimeRef.current = chartData.length
         ? Number(chartData[chartData.length - 1].time)
         : null;
-      lastRenderedSourceTimestampRef.current = lastSourceCandle.timestamp;
+      lastRenderedSourceTimestampRef.current = drawCandles.at(-1)?.timestamp ?? null;
       const historyExpanded =
         previousCandleCount <= 5
         || candles.length >= Math.max(50, previousCandleCount * 1.5);
@@ -14928,8 +14933,8 @@ function Chart({
           applyMarkers(tradesRef.current);
         }
       }, 100);
-      prevCandlesLengthRef.current = observedSourceCandles.length;
-      prevFirstTimestampRef.current = observedSourceCandles[0]?.timestamp ?? null;
+      prevCandlesLengthRef.current = drawCandles.length;
+      prevFirstTimestampRef.current = drawCandles[0]?.timestamp ?? null;
       return;
     }
 
@@ -14970,7 +14975,7 @@ function Chart({
     if (observedSourceCandles.length > prevCandlesLengthRef.current) {
       prevCandlesLengthRef.current = observedSourceCandles.length;
     }
-  }, [candles, candleStyle, instrument, liveCandleEventKey, observedSourceCandles, seriesCandles, timeframe]);
+  }, [candles, candleStyle, instrument, liveCandleEventKey, observedCandleScope, observedSourceCandles, seriesCandles, timeframe]);
 
   const hasCandles = candles.length > 0;
   useEffect(() => {
@@ -15277,14 +15282,21 @@ function Chart({
     candleSeries.attachPrimitive(paperFillMarkersPrimitive);
     paperFillMarkersPrimitiveRef.current = paperFillMarkersPrimitive;
 
+    // Chart recreation (settings/layout) must include direct ticks received
+    // since the last React candle commit, just like an ordinary full redraw.
+    const creationSource = !liveReplayActiveRef.current && timeframeToMs(timeframe) !== null
+      ? observedCandleHistoryRef.current.merge(observedCandleScope, candles)
+      : candles;
     const chartData = buildSafeChartData(
-      seriesCandles,
+      isHeikinAshiStyle(candleStyle) ? toHeikinAshi(creationSource) : creationSource,
       timeframeToMs(timeframe) === null,
       eventSourceTimeByChartTimeRef.current,
       eventChartTimeBySourceTimeRef.current,
     );
 
     candleSeries.setData(chartData);
+    lastRenderedCandleTimeRef.current = chartData.length ? Number(chartData[chartData.length - 1].time) : null;
+    lastRenderedSourceTimestampRef.current = creationSource.at(-1)?.timestamp ?? null;
     let applyingSynchronizedCrosshair = false;
     // Only the chart physically under the pointer is allowed to originate a
     // linked-crosshair move. Programmatic moves on passive charts can also
