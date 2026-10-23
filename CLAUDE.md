@@ -1,5 +1,26 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-23 — Expanded per-trade Journal execution details
+
+- Clicking a trade now shows exact hold time (milliseconds/seconds, not rounded
+  minutes), local entry/exit timestamps with timezone, recorded maximum gross
+  unrealised profit/loss (MFE/MAE), gross profit giveback, peak capture percentage,
+  direction-aware price movement and initial risk. Existing review/source fields
+  remain. Scale-outs describe the record's closed quantity, not whole-position P&L.
+- New pure journalTradeDetails helper computes like-for-like gross excursion
+  metrics. Missing/invalid excursions stay Not recorded; no fabricated intratrade
+  curve/high/low from entry/exit or post-trade candle history. Unknown timestamps
+  cannot imply a duration; a genuinely recorded hold duration remains valid.
+- Root cause fixed: /api/journal sanitizeTrade previously discarded both excursion
+  fields during cloud sync. They now survive writes. Existing records whose
+  metrics were never recorded cannot be reconstructed by this change.
+- Demo close analytics include final realised gross P&L among excursion extrema,
+  so an immediate manual exit without a prior quote cannot report MFE below its
+  actual exit profit. Fill timing/prices and order matching are unchanged.
+- Six detail tests (including actual demo open/close-to-journal bridge), eight
+  protection checks and fourteen paper-journal checks pass. Scoped ESLint passes.
+  No new live polling, provider request, subscription or VPS restart.
+
 ## 2026-10-23 — Individual journal reset controls
 
 - User clarified: a reset option inside each journal, never a global reset.

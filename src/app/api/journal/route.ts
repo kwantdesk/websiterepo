@@ -270,6 +270,8 @@ function sanitizeTrade(value: unknown, account: string): JournalTrade | null {
     netPnl: finite(trade.netPnl),
     initialRisk: nullableFinite(trade.initialRisk),
     rMultiple: nullableFinite(trade.rMultiple),
+    adverseExcursion: nullableFinite(trade.adverseExcursion),
+    favourableExcursion: nullableFinite(trade.favourableExcursion),
     durationMs: nullableFinite(trade.durationMs),
     setup: cleanText(trade.setup, 160),
     tags: Array.isArray(trade.tags) ? trade.tags.map((tag) => cleanText(tag, 48)).filter(Boolean).slice(0, 24) : [],

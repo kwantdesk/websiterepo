@@ -1120,8 +1120,8 @@ function tradeAnalysis(
     rMultiple: initialRisk && initialRisk > 0 ? realizedPnl / initialRisk : null,
     // Clamped by direction: a trade that never traded against you has an
     // adverse excursion of nothing, not a positive one.
-    adverseExcursion: Math.min(0, calculatePnl(position, worstPrice, closeQuantity)),
-    favourableExcursion: Math.max(0, calculatePnl(position, bestPrice, closeQuantity)),
+    adverseExcursion: Math.min(0, realizedPnl, calculatePnl(position, worstPrice, closeQuantity)),
+    favourableExcursion: Math.max(0, realizedPnl, calculatePnl(position, bestPrice, closeQuantity)),
     holdMs: Math.max(0, timestamp - position.openedAt),
   };
 }

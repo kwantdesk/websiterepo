@@ -58,6 +58,7 @@ import {
   X,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
+import { formatTradeHoldDuration, journalTradeDetails } from "@/lib/journalTradeDetails";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
   applyJournalAccountResets,
@@ -1417,6 +1418,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     [filteredTrades],
   );
   const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
+  const selectedTradeDetails = selectedTrade ? journalTradeDetails(selectedTrade) : null;
   const editingTrade = allTrades.find((trade) => trade.id === editingTradeId) ?? null;
   const deleteTradeTarget = allTrades.find((trade) => trade.id === deleteTradeTargetId) ?? null;
   const tradeMenuTarget = allTrades.find((trade) => trade.id === tradeMenuId?.tradeId) ?? null;
@@ -3508,8 +3510,25 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Net P&amp;L</div><div className={`mt-1 font-mono text-[16px] font-semibold ${selectedTrade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(selectedTrade.netPnl)}</div></div>
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">R multiple</div><div className="mt-1 font-mono text-[16px] font-semibold">{selectedTrade.rMultiple === null ? "—" : `${selectedTrade.rMultiple.toFixed(2)}R`}</div></div>
-                <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Duration</div><div className="mt-1 font-mono text-[16px] font-semibold">{formatDuration(selectedTrade.durationMs)}</div></div>
+                <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Time in trade</div><div className="mt-1 font-mono text-[14px] font-semibold">{formatTradeHoldDuration(selectedTradeDetails?.durationMs)}</div></div>
               </div>
+              {selectedTradeDetails ? <Card className="p-4">
+                <h3 className="text-[10px] font-semibold text-foreground">During this trade</h3>
+                <p className="mt-1 text-[8px] leading-4 text-muted">Recorded unrealised P&amp;L before fees, for this record’s closed quantity. Missing history is not estimated.</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {[
+                    ["Max unrealised profit (MFE)", selectedTradeDetails.peakProfit === null ? "Not recorded" : money(selectedTradeDetails.peakProfit)],
+                    ["Max unrealised loss (MAE)", selectedTradeDetails.worstUnrealised === null ? "Not recorded" : money(selectedTradeDetails.worstUnrealised)],
+                    ["Profit given back at exit", selectedTradeDetails.profitGiveback === null ? "Not recorded" : money(selectedTradeDetails.profitGiveback, false)],
+                    ["Peak profit captured", selectedTradeDetails.capturePercent === null ? "Not available" : `${selectedTradeDetails.capturePercent.toFixed(1)}%`],
+                    ["Price move in your direction", selectedTradeDetails.priceMove === null ? "Not recorded" : `${selectedTradeDetails.priceMove > 0 ? "+" : ""}${selectedTradeDetails.priceMove.toLocaleString("en-US", { maximumFractionDigits: 6 })} price units`],
+                    ["Initial risk", selectedTrade.initialRisk === null ? "Not recorded" : money(selectedTrade.initialRisk, false)],
+                  ].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.06em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-[12px] font-semibold text-foreground">{value}</div></div>)}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 text-[9px]">
+                  {[["Entry time", selectedTrade.entryTimeKnown === false ? null : selectedTrade.openedAt], ["Exit time", selectedTrade.exitTimeKnown === false ? null : selectedTrade.closedAt]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.06em] text-muted">{label} · local time</div><div className="mt-1 font-mono text-foreground">{value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("en-AU", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" }) : "Not recorded"}</div></div>)}
+                </div>
+              </Card> : null}
               <Card className="p-4">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[9px]">
                   {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Stop", selectedTrade.stopPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Target", selectedTrade.targetPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Planned R:R", selectedTrade.plannedRiskReward ? `1 : ${selectedTrade.plannedRiskReward.toFixed(2)}` : "Not recorded"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Contract", selectedTrade.contractClass ?? "—"], ["Fees", selectedTrade.feesKnown === false ? "Not recorded" : money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
