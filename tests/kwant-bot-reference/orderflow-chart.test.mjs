@@ -15,12 +15,21 @@ test('pointer and viewport paints reuse the model; records, mode and thresholds 
  const other=model(options);assert.notEqual(model({...options,settings:{...options.settings,spotViewMode:'candles'}}),other);
 });
 
-test('line mode preserves individual flow velocities despite a saved candle interval',()=>{
+test('selected timeframe aggregates flows independently of the price drawing style',()=>{
  const records=[sample(base+1,{cvroflow:30}),sample(base+2,{cvroflow:40})];
  const line=makeOrderflowSeries({records,metric:'convexity-orderflow',settings:{spotViewMode:'line',candleBucketMs:60000}});
- assert.equal(line.bucketMs,0);assert.deepEqual(line.series[0].values.map(point=>point.raw),[30,40]);
+ assert.equal(line.bucketMs,60000);assert.deepEqual(line.series[0].values.map(point=>point.raw),[70]);
  const candles=makeOrderflowSeries({records,metric:'convexity-orderflow',settings:{spotViewMode:'candles',candleBucketMs:60000}});
  assert.deepEqual(candles.series[0].values.map(point=>point.raw),[70]);
+});
+
+test('line timeframe averages exposures, takes the last actual spot and preserves empty buckets',()=>{
+ const aligned=base-base%60,records=[sample(aligned+1,{zcvr:-26000,spot:7760.1}),sample(aligned+59,{zcvr:-26362.5645,spot:7760.55}),sample(aligned+180,{zcvr:8,spot:7761})];
+ const settings={candleBucketMs:60000},line=makeOrderflowSeries({records,metric:'net-convexity',settings:{...settings,spotViewMode:'line'}}),candles=makeOrderflowSeries({records,metric:'net-convexity',settings:{...settings,spotViewMode:'candles'}});
+ // Synthetic arithmetic fixture uses the previously observed reference minute's
+ // mean, not a claim that these two inputs are the original 40 source records.
+ assert.equal(Number(line.series[0].values[0].raw.toFixed(2)),-26181.28);
+ assert.deepEqual(line.series,candles.series);assert.deepEqual(line.points.map(p=>p.time),[aligned*1000,(aligned+180)*1000]);assert.equal(line.points[0].spot,7760.55);assert.equal(line.sourceObservationCount,3);
 });
 
 test('native units and aggregate values are neither divided nor recumulated', () => {

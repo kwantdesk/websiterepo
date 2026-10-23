@@ -1,5 +1,5 @@
 import {createPriceController} from './price-runtime.js?v=2';
-import {mergeSnapshots,historyRecords,sourceDate} from './models.js';
+import {mergeSnapshots,profileHistoryRecords} from './models.js?v=2';
 import {trimSnapshotRows} from './retention.js';
 import {stateSourceKey,statePanelCategory} from './state-panels.js?v=1';
 
@@ -31,10 +31,9 @@ export function createStateSources({api,history,subscribe,onChange,now=Date.now,
    const envelope=await api((source.date?'history?':'snapshot?')+query,controller.signal);
    if(!current(source)||controller.signal.aborted)return;
    if(envelope.data?.category&&envelope.data.category!==source.category)throw Error('PROFILE_DATA_MISMATCH');
-   const rows=source.date?historyRecords(envelope.data,source.ticker):mergeSnapshots([],[envelope.data],source.ticker);
+   const rows=source.date?profileHistoryRecords(envelope,{ticker:source.ticker,package:'state',category:source.category,date:source.date}):mergeSnapshots([],[envelope.data],source.ticker);
    if(!rows.length)throw Error('INSTRUMENT_DATA_MISMATCH');
    if(rows.some(row=>row.category&&row.category!==source.category))throw Error('PROFILE_DATA_MISMATCH');
-   if(source.date&&rows.some(row=>sourceDate(row.timestamp)!==source.date))throw Error('HISTORY_SESSION_MISMATCH');
    const merged=mergeSnapshots(source.records,rows,source.ticker);
    source.records=envelope.profilePages?trimSnapshotRows(merged,32_000_000,30000):trimSnapshotRows(merged);source.envelope=envelope;source.error=null;notify();
   }catch(error){if(current(source)&&!controller.signal.aborted){source.error=error.message;notify();}}

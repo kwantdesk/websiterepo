@@ -97,9 +97,11 @@ export function makeOrderflowSeries(options = {}) {
   // Never silently stitch different instruments into a single apparent history.
   if (instruments.length > 1) return { metric, expiry, combine, label: descriptor.label, points: [], series: [], instruments, error: 'MIXED_INSTRUMENTS' };
   const actualRecords = sorted.map(point => point.record);
-  // A saved candle interval is a preference, not a transform for line mode.
-  // Native one-second flow velocities must remain separate outside candles.
-  const bucketMs = settings.spotViewMode === 'candles' ? Math.max(1000,finite(settings.candleBucketMs) ?? 60000) : 0;
+  // Timeframe belongs to the metric, not the underlying price's drawing style.
+  // The reference's 1m line averages exposure observations (and sums flows)
+  // exactly as its candle view. Unspecified intervals retain raw model access.
+  const interval = finite(settings.candleBucketMs);
+  const bucketMs = interval !== null ? Math.max(1000,interval) : settings.spotViewMode === 'candles' ? 60000 : 0;
   const priceMultiplier=finite(settings.priceMultiplier)??1,priceOffset=finite(settings.priceOffset)??0;
   const candles = Array.isArray(options.priceHistory)?options.priceHistory.map(c=>({...c,time:orderflowTimestamp(c.time??c.timestamp),open:c.open*priceMultiplier+priceOffset,high:c.high*priceMultiplier+priceOffset,low:c.low*priceMultiplier+priceOffset,close:c.close*priceMultiplier+priceOffset})).filter(c=>c.time!==null&&[c.open,c.high,c.low,c.close].every(Number.isFinite)).sort((a,b)=>a.time-b.time):collectOrderflowCandles(actualRecords,bucketMs,settings);
   if(bucketMs>=1000)sorted=bucketRecords(sorted,bucketMs);

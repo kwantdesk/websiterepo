@@ -1,5 +1,5 @@
 import {createPriceController} from './price-runtime.js?v=2';
-import {mergeSnapshots,historyRecords,sourceDate} from './models.js';
+import {mergeSnapshots,profileHistoryRecords,sourceDate} from './models.js?v=2';
 import {trimSnapshotRows} from './retention.js';
 // Completed provider sessions contain ~23,400 one-second observations. The
 // generic 1,200-row profile budget silently discarded most of that history.
@@ -15,7 +15,7 @@ export function createOrderflowSources({api,history,subscribe,sessionHistory,onC
   for(const ticker of sources.keys())if(!wanted.has(ticker))remove(ticker);
   for(const ticker of wanted){
    let source=sources.get(ticker);
-   if(!source||source.date!==options.date){changed=true;if(source)remove(ticker);source={ticker,date:options.date,records:[],envelope:null,error:null,pending:null,fetched:null,controller:null,restored:new Set(),prices:createPrices({history,subscribe,onChange:notify})};sources.set(ticker,source);}
+   if(!source||source.date!==options.date){changed=true;if(source)remove(ticker);source={ticker,date:options.date,records:[],envelope:null,error:null,pending:null,fetched:null,controller:null,restored:new Map(),restoring:new Map(),prices:createPrices({history,subscribe,onChange:notify})};sources.set(ticker,source);}
    source.prices.setActive(options.active);
    source.prices.select(ticker,{sessionDate:options.date,live:options.live&&!options.date});
   }
@@ -38,21 +38,26 @@ export function createOrderflowSources({api,history,subscribe,sessionHistory,onC
      if(!source.date||![403,404].includes(error.status)||!current(source)||controller.signal.aborted)throw error;
      const recorded=await sessionHistory.read(source.ticker,source.date);
      if(!current(source)||controller.signal.aborted)return;
-     const rows=historyRecords(recorded,source.ticker).filter(row=>sourceDate(row.timestamp)===source.date);
+     const rows=profileHistoryRecords({data:recorded},{ticker:source.ticker,package:'orderflow',category:'orderflow',date:source.date});
      if(!rows.length)throw error;
      envelope={data:rows,ticker:source.ticker,package:'orderflow',category:'orderflow',sessionDate:source.date,availability:'recorded',coverage:'observations-only',providerAsOf:new Date(rows.at(-1).timestamp*1000).toISOString(),fetchedAt:new Date(now()).toISOString(),freshness:{state:'historical'},historySource:'recorded-session',upstreamHistoryError:error.message};
     }
     if(!current(source)||controller.signal.aborted)return;
-    const rows=source.date?historyRecords(envelope.data,source.ticker):mergeSnapshots([], [envelope.data],source.ticker);
+    const rows=source.date?profileHistoryRecords(envelope,{ticker:source.ticker,package:'orderflow',category:'orderflow',date:source.date}):mergeSnapshots([], [envelope.data],source.ticker);
     if(!rows.length)throw Error('INSTRUMENT_DATA_MISMATCH');
     source.records=retainOrderflow(mergeSnapshots(source.records,rows,source.ticker));source.envelope=envelope;source.error=null;notify();
     const date=sourceDate(rows.at(-1).timestamp);
-    if(!source.date&&!source.restored.has(date)){
-     source.restored.add(date);
-     void sessionHistory.read(source.ticker,date).then(history=>{
-      if(!current(source)||sourceDate(source.records.at(-1)?.timestamp)!==date||!history.length)return;
-      source.records=retainOrderflow(mergeSnapshots(history,source.records,source.ticker));notify();
-     });
+    if(!source.date&&!source.restoring.has(date)){
+     // Revisit through the existing snapshot coordinator: the shared session
+     // cache decides when partial observations may retry. Unchanged immutable
+     // arrays do not rebuild the full session on every live refresh.
+     const restore=Promise.resolve().then(()=>sessionHistory.read(source.ticker,date)).then(history=>{
+      if(!current(source)||sourceDate(source.records.at(-1)?.timestamp)!==date||!history.length||source.restored.get(date)===history)return;
+      const rows=profileHistoryRecords({data:history},{ticker:source.ticker,package:'orderflow',category:'orderflow',date});
+      source.records=retainOrderflow(mergeSnapshots(rows,source.records,source.ticker));
+      source.restored.set(date,history);while(source.restored.size>2)source.restored.delete(source.restored.keys().next().value);notify();
+     }).catch(()=>{/* Keep genuine existing observations on a failed refresh. */}).finally(()=>{if(source.restoring.get(date)===restore)source.restoring.delete(date);});
+     source.restoring.set(date,restore);
     }
    }catch(error){if(current(source)&&!controller.signal.aborted){source.error=error.message;notify();}}
    finally{if(source.controller===controller){source.pending=null;source.controller=null;}}

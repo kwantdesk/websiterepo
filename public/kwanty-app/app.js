@@ -5,21 +5,21 @@ import {botStorage,botFetch,botTheme,botTimeZone,botPriceHistory,botSubscribePri
 import {attachStateDrawingTools,botMountStateDrawings} from './state-drawing-tools.js?v=1';
 import {createPriceController} from './price-runtime.js?v=2';
 import {chartRegion,panChartView,zoomChartView} from './chart-interaction.js?v=3';
-import {createSessionHistory} from './session-history.js?v=2';
+import {createSessionHistory} from './session-history.js?v=3';
 import {decodeSessionTransport} from './session-transport.js?v=1';
-import {createProfileReplay} from './profile-replay.js?v=1';
+import {createProfileReplay} from './profile-replay.js?v=2';
 import {candleIntervalFor,priceViewFor,intervalLabel,linkedViewportUpdates,linkedCursor,projectCursor} from './panel-controls.js?v=2';
 import {bindTemplates} from './templates.js';
 import {mountTickerShortcuts} from './ticker-shortcuts.js?v=2';
-import {createOrderflowSources} from './orderflow-sources.js?v=4';
-import {createStateSources} from './state-sources.js?v=3';
+import {createOrderflowSources} from './orderflow-sources.js?v=5';
+import {createStateSources} from './state-sources.js?v=4';
 import {STATE_PROFILES,statePanelCategory,statePanelLabel,selectStateProfile,restoreStatePanels,stateControlTargets,stateViewportUpdates,stateCursor,projectStateCursor,sameStatePriceUnits} from './state-panels.js?v=1';
 import {RetainedSnapshots} from './retention.js';
-import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261021-settings';
-import {renderOrderflow,ORDERFLOW_METRICS,createOrderflowModel} from './orderflow-chart.js?v=4';
-import {mountSettingsEditor} from './settings-editor.js?v=3';
-import {createOverlayEditor} from './overlay-editor.js?v=3';
-import {finite,mergeSnapshots,sourceDate,sourceTime,expiryLabel,historyRecords,seekSnapshot,exposureSummary,exposureSummaryUnit,toggleExpiry,closeOrderPanel,restoreOrderPanel,ORDERFLOW_WINDOWS} from './models.js';
+import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261024-parity';
+import {renderOrderflow,ORDERFLOW_METRICS,createOrderflowModel} from './orderflow-chart.js?v=5';
+import {mountSettingsEditor} from './settings-editor.js?v=4';
+import {createOverlayEditor} from './overlay-editor.js?v=4';
+import {finite,mergeSnapshots,sourceDate,sourceTime,expiryLabel,profileHistoryRecords,seekSnapshot,exposureSummary,exposureSummaryUnit,toggleExpiry,closeOrderPanel,restoreOrderPanel,ORDERFLOW_WINDOWS} from './models.js?v=2';
 
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 // Remove the retired banner if an older cached shell is paired with this app.
@@ -59,7 +59,7 @@ let activePanelId=saved.activePanelId||null;
 function activePanel(){return state.package==='state'?activeStatePanel():state.package==='orderflow'?state.panels.find(panel=>panel.id===activePanelId)||state.panels[0]:null;}
 function panelTicker(panel){return panel?.ticker||state.ticker;}
 function syncOrderflowState(){if(state.package!=='orderflow')return;state.ticker=panelTicker(activePanel());const source=orderSources.get(state.ticker);state.records=source?.records||[];state.payload=state.records.at(-1)||null;state.envelope=source?.envelope||null;state.sourceError=source?.error||null;}
-function priceState(panel=activePanel()){const p=state.package==='state'&&state.replayIndex===null?selectedPayload(panel):selectedPayload(),cutoffTime=state.historyMode||state.replayIndex!==null?(p?.timestamp??0)*1000:Infinity;const owner=state.package==='state'?stateSources.prices(panelTicker(panel)):state.package==='orderflow'?orderSources.get(panelTicker(panel))?.prices:prices;return owner?.snapshot(candleIntervalFor(panel,panel?.settings||settings()),{cutoffTime})||{candles:[],points:[],latest:null};}
+function priceState(panel=activePanel()){const p=selectedPayload(panel),cutoffTime=state.historyMode||state.replayIndex!==null?(p?.timestamp??0)*1000:Infinity;const owner=state.package==='state'?stateSources.prices(panelTicker(panel)):state.package==='orderflow'?orderSources.get(panelTicker(panel))?.prices:prices;return owner?.snapshot(candleIntervalFor(panel,panel?.settings||settings()),{cutoffTime})||{candles:[],points:[],latest:null};}
 function syncActiveChartControls(){
  if(state.package==='state'){const panel=activeStatePanel(),interval=candleIntervalFor(panel,settings());$('#candleInterval').value=String(interval);$('#priceViewMode').value=priceViewFor(panel,settings());$('#activeChartLabel').textContent=`Chart ${state.statePanels.indexOf(panel)+1} · ${statePanelLabel(panel)}`;for(const button of $$('[data-candle-interval]')){const selected=Number(button.dataset.candleInterval)===interval;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));}for(const chart of charts){const selected=chart.panel===panel;chart.wrap.classList.toggle('active-chart',selected);chart.wrap.setAttribute('aria-current',String(selected));chart.intervalLabel.textContent=intervalLabel(candleIntervalFor(chart.panel,chart.panel.settings));}return;}
  const panel=activePanel(),interval=candleIntervalFor(panel,settings());
@@ -234,6 +234,13 @@ function updateStateDrawingTools(c,width,height,price){
  const s=c.panel.settings,t=botTheme();
  c.drawTools?.update({ticker:c.panel.ticker,active:!document.hidden&&window.__kwantyActive!==false,width,height,geometry:c.geometry,candles:price.candles,lastPrice:price.latest?.spot??price.candles.at(-1)?.close??null,multiplier:Number(s.priceMultiplier)||1,offset:Number(s.priceOffset)||0,interval:candleIntervalFor(c.panel,s),bullish:t.bullish||t.primary||'#33b7a5',bearish:t.bearish||t.danger||'#e97995'});
 }
+function majorHistoryFor(chart,records){
+ const source=state.package==='state'?stateSources.get(chart.panel)?.records:state.records;
+ const cutoff=state.replayIndex===null?null:state.records[state.replayIndex]?.timestamp;
+ if(chart.majorHistoryCache&&chart.majorHistoryCache.source===source&&chart.majorHistoryCache.cutoff===cutoff)return chart.majorHistoryCache.value;
+ const value={zeroGamma:records.map(row=>({time:row.timestamp,spot:row.zero_gamma})),majorCall:records.map(row=>({time:row.timestamp,spot:row.major_pos_vol})),majorPut:records.map(row=>({time:row.timestamp,spot:row.major_neg_vol}))};
+ chart.majorHistoryCache={source,cutoff,value};return value;
+}
 function paintStateChart(c,ctx,width,height){
  const panel=c.panel,price=priceState(panel),source=stateSources.get(panel),payload=selectedPayload(panel),s={...panel.settings,spotViewMode:priceViewFor(panel,panel.settings)},records=currentRecords(panel);
  const date=sourceDate(payload?.timestamp);if(c.sessionDate&&date&&c.sessionDate!==date){views.delete(panel.id);c.hover=null;stateLinkedSeedKey=null;}if(date)c.sessionDate=date;
@@ -241,7 +248,7 @@ function paintStateChart(c,ctx,width,height){
  c.status.hidden=Boolean(payload);if(!c.status.hidden)c.status.textContent=source?.error?'Profile data unavailable for '+panel.ticker:'Loading '+panel.ticker+' profile';
  if(!payload&&!price.points.length){ctx.clearRect(0,0,width,height);ctx.fillStyle=s.background;ctx.fillRect(0,0,width,height);c.geometry=null;updateStateDrawingTools(c,width,height,price);return;}
  if(panel.greek){delete s.gex_vol;delete s.gex_vol_neg;}
- c.geometry=drawProfile(ctx,width,height,{payload:payload||{ticker:panel.ticker,strikes:[],spot:price.latest?.spot??price.points.at(-1)?.spot},spotPrice:price.latest?.spot,package:'state',category:statePanelCategory(panel),settings:s,candleInterval:candleIntervalFor(panel,s),conversion:Number(s.priceMultiplier)||1,conversionOffset:Number(s.priceOffset)||0,priceHistory:s.spotViewMode==='candles'?price.candles:price.points,majorHistory:{majorCall:records.map(row=>({time:row.timestamp,spot:row.major_pos_vol})),majorPut:records.map(row=>({time:row.timestamp,spot:row.major_neg_vol}))},view:{...regularWindow(records.length?records:price.points.map(point=>({timestamp:point.time/1000})),23400),...views.get(panel.id)},hover:s.showCrosshairs?c.hover:null});
+c.geometry=drawProfile(ctx,width,height,{payload:payload||{ticker:panel.ticker,strikes:[],spot:price.latest?.spot??price.points.at(-1)?.spot},spotPrice:price.latest?.spot,package:'state',category:statePanelCategory(panel),settings:s,candleInterval:candleIntervalFor(panel,s),conversion:Number(s.priceMultiplier)||1,conversionOffset:Number(s.priceOffset)||0,priceHistory:s.spotViewMode==='candles'?price.candles:price.points,majorHistory:majorHistoryFor(c,records),view:{...regularWindow(records.length?records:price.points.map(point=>({timestamp:point.time/1000})),23400),...views.get(panel.id)},hover:s.showCrosshairs?c.hover:null});
  updateStateDrawingTools(c,width,height,price);
 }
 function seedStateViews(){const linked=charts.filter(chart=>chart.panel.viewportLinked&&chart.geometry&&selectedPayload(chart.panel)&&!priceState(chart.panel).loading&&priceState(chart.panel).candles.length),key=linked.map(chart=>chart.panel.id+':'+chart.panel.ticker+':'+statePanelCategory(chart.panel)+':'+sourceDate(priceState(chart.panel).candles[0]?.time/1000)).join(',');if(linked.length<2||key===stateLinkedSeedKey)return;stateLinkedSeedKey=key;const source=linked.find(chart=>chart.panel===activeStatePanel())||linked[0],g=source.geometry;setChartView(source,{...views.get(source.panel.id),startTime:g.startTime,endTime:g.endTime,minPrice:g.minPrice,maxPrice:g.maxPrice});}
@@ -270,7 +277,7 @@ function paintAll(){
    c.geometry=renderOrderflow(ctx,width,height,{...panel,model:c.orderflowModel,threshold:undefined,thresholds:s.flowThresholds?.[ticker]||{},records,ticker,priceHistory:price.candles,priceLine:price.points,settings:s,view:{...orderflowWindow(price.points,panel.period,records),...views.get(panel.id)},hover:c.hover});c.overlayGeometry=overlays.paint(ctx,c.geometry,panel);
   }else{
    if(state.package==='state'&&state.greek){delete s.gex_vol;delete s.gex_vol_neg;}
-   c.geometry=drawProfile(ctx,width,height,{payload,spotPrice:price.latest?.spot,package:state.package,category:category(),settings:s,candleInterval:interval,conversion:Number(s.priceMultiplier)||1,conversionOffset:Number(s.priceOffset)||0,priceHistory:s.spotViewMode==='candles'?price.candles:price.points,majorHistory:{zeroGamma:records.map(r=>({time:r.timestamp,spot:r.zero_gamma})),majorCall:records.map(r=>({time:r.timestamp,spot:r.major_pos_vol})),majorPut:records.map(r=>({time:r.timestamp,spot:r.major_neg_vol}))},view:{...regularWindow(records.length?records:price.points.map(p=>({timestamp:p.time/1000})),23400),...views.get(c.panel.id)},hover:s.showCrosshairs?c.hover:null});
+c.geometry=drawProfile(ctx,width,height,{payload,spotPrice:price.latest?.spot,package:state.package,category:category(),settings:s,candleInterval:interval,conversion:Number(s.priceMultiplier)||1,conversionOffset:Number(s.priceOffset)||0,priceHistory:s.spotViewMode==='candles'?price.candles:price.points,majorHistory:majorHistoryFor(c,records),view:{...regularWindow(records.length?records:price.points.map(p=>({timestamp:p.time/1000})),23400),...views.get(c.panel.id)},hover:s.showCrosshairs?c.hover:null});
   }
  }
  if(state.package==='state'){seedStateViews();const price=priceState(),uiKey=activeStatePanelId+':'+Boolean(price.candles.length)+':'+state.statePanels.some(panel=>priceState(panel).points.length||selectedPayload(panel));if(uiKey!==statePriceUiKey){statePriceUiKey=uiKey;syncTimeline();renderChartEmpty();}}
@@ -306,6 +313,11 @@ function pauseAt(index){invalidateRequests();stopReplay();state.auto=false;state
 $('#timeline').addEventListener('input',e=>pauseAt(Number(e.target.value)));
 function replayFrameReady(index){
  const cutoff=state.records[index]?.timestamp;
+ if(state.package==='orderflow'){
+  let ready=true;
+  for(const chart of charts){const result=overlays.frameReady(chart.panel,cutoff);if(result.error){stopReplay();message('Replay profile data could not be loaded for this moment.');return false;}if(result.pending)ready=false;}
+  return ready;
+ }
  const selections=state.package==='state'?charts.map(chart=>{const source=stateSources.get(chart.panel),rows=source?.records||[];return [source?.envelope,rows[seekSnapshot(rows,cutoff*1000)]];}):state.package==='classic'?[[state.envelope,state.records[index]]]:[];
  let ready=true;
  for(const [envelope,row]of selections){profileReplay.select(envelope,row);if(profileReplay.error(envelope,row)){stopReplay();message('Replay data could not be loaded for this moment.');return false;}if(!profileReplay.ready(envelope,row))ready=false;}
@@ -332,7 +344,7 @@ $('#playPause').addEventListener('click',()=>{
 $$('[data-seek]').forEach(b=>b.addEventListener('click',()=>{const p=selectedPayload();if(p)pauseAt(seekSnapshot(state.records,p.timestamp*1000+Number(b.dataset.seek)*1000))}));
 $('#liveButton').addEventListener('click',()=>{invalidateRequests();stopReplay();state.historyMode=false;state.replayIndex=null;state.auto=true;state.historyError=null;views.clear();syncShell();load()});
 $('#clearHistory').addEventListener('click',()=>{invalidateRequests();stopReplay();state.historyMode=false;state.replayIndex=null;state.auto=true;state.historyError=null;if(state.package==='state'){for(const panel of state.statePanels){const source=stateSources.get(panel);if(source)source.records=source.records.slice(-1);}views.clear();syncShell();syncTimeline();load();return;}state.records=state.payload?[state.payload]:[];collections.set(identity(),state.records);views.clear();syncTimeline();load()});
-$('#loadHistory').addEventListener('click',async()=>{const date=$('#historyDate').value;if(!date){message('Choose a historical session date.');return}if(state.package==='state'){void loadStateHistory(date);return;}if(state.package==='orderflow'){void loadOrderflowHistory(date);return;}const wasAuto=state.auto;invalidateRequests();stopReplay();state.auto=false;const requested=identity(),generation=modeGeneration;historyController=new AbortController();$('#loadHistory').disabled=true;try{const q=query();q.set('date',date);const envelope=await api('history?'+q,historyController.signal);if(identity()!==requested||generation!==modeGeneration)return;const records=historyRecords(envelope.data,state.ticker);state.historyMode=date;state.records=records;state.payload=records.at(-1);state.envelope=envelope;state.replayIndex=records.length-1;state.historyError=null;views.clear();renderSummary();syncTimeline();drawAll();updateHealth();}catch(error){if(error.name==='AbortError'||generation!==modeGeneration||identity()!==requested)return;state.historyError=error.message;state.auto=wasAuto;message('History is unavailable for this session.');updateHealth();if(state.auto&&!state.historyMode)load();}finally{if(generation===modeGeneration)$('#loadHistory').disabled=false}});
+$('#loadHistory').addEventListener('click',async()=>{const date=$('#historyDate').value;if(!date){message('Choose a historical session date.');return}if(state.package==='state'){void loadStateHistory(date);return;}if(state.package==='orderflow'){void loadOrderflowHistory(date);return;}const wasAuto=state.auto;invalidateRequests();stopReplay();state.auto=false;const requested=identity(),generation=modeGeneration;historyController=new AbortController();$('#loadHistory').disabled=true;try{const q=query();q.set('date',date);const envelope=await api('history?'+q,historyController.signal);if(identity()!==requested||generation!==modeGeneration)return;const records=profileHistoryRecords(envelope,{ticker:state.ticker,package:'classic',category:category(),date});state.historyMode=date;state.records=records;state.payload=records.at(-1);state.envelope=envelope;state.replayIndex=records.length-1;state.historyError=null;views.clear();renderSummary();syncTimeline();drawAll();updateHealth();}catch(error){if(error.name==='AbortError'||generation!==modeGeneration||identity()!==requested)return;state.historyError=error.message;state.auto=wasAuto;message('History is unavailable for this session.');updateHealth();if(state.auto&&!state.historyMode)load();}finally{if(generation===modeGeneration)$('#loadHistory').disabled=false}});
 
 mountSettingsEditor({state,settings,defaults:settingsDefaults,persist,redraw:drawAll,clearViews:()=>{if(state.package==='state')views.delete(activeStatePanel().id);else views.clear();},refresh:()=>{syncTheme();renderSummary();syncTimeline();syncActiveChartControls();},message,setSettings:value=>{if(state.package==='state'){activeStatePanel().settings=value;delete activeStatePanel().priceViewMode;}else state.settings[state.package]=value;}});
 $('#openSettings').addEventListener('click',()=>{$('#settingsTitle').textContent=state.package==='state'?activeStatePanel().ticker+' · '+statePanelLabel(activeStatePanel())+' settings':'settings';});
@@ -346,7 +358,7 @@ async function init(){try{const [c,status]=await Promise.all([api('catalog'),api
 const tickerShortcuts=mountTickerShortcuts({root:$('#tickerFavourites'),select:$('#ticker'),preferences:window.__kwantSelectPreferences,currentTicker:()=>state.ticker,isVisible:()=>state.package==='orderflow'||state.package==='state',reselect:()=>state.package==='state'&&chartControlTargets().some(panel=>panel.ticker!==state.ticker)});
 $('.chart-top-controls').insertBefore($('#addStateChart'),$('#toggleSidebar'));$('#addStateChart').addEventListener('click',addStateChart);
 $('#chartPanels').addEventListener('scroll',drawAll,{passive:true});
-window.addEventListener('pagehide',()=>tickerShortcuts.dispose());
+window.addEventListener('pagehide',()=>{tickerShortcuts.dispose();overlays.dispose();});
 window.addEventListener('pagehide',()=>{for(const chart of charts)chart.drawTools?.dispose();});
 function syncStateDrawingActivity(){if(state.package==='state')for(const c of charts)updateStateDrawingTools(c,c.canvas.clientWidth,c.canvas.clientHeight,priceState(c.panel));}
 window.addEventListener('kwanty-activity',syncStateDrawingActivity);

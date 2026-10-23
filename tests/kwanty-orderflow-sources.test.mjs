@@ -78,7 +78,7 @@ test('actual linked viewport seed waits for real history and does not reseed on 
 test('denied provider history restores only genuine exact-session archive observations with provenance',async()=>{
  for(const status of [403,404]){
   let reads=0,requests=0;const error=Object.assign(Error('UPSTREAM_ENTITLEMENT_REQUIRED'),{status});
-  const pool=createOrderflowSources({api:async()=>{requests++;throw error;},sessionHistory:{read:async(ticker,date)=>{reads++;assert.equal(ticker,'NDX');assert.equal(date,'2026-10-19');return [frame('NDX',20000),{...frame('NDX',19000),timestamp:timestamp-86400}];}},history(){},subscribe(){},onChange(){},createPrices:()=>({setActive(){},select(){},dispose(){}})});
+  const pool=createOrderflowSources({api:async()=>{requests++;throw error;},sessionHistory:{read:async(ticker,date)=>{reads++;assert.equal(ticker,'NDX');assert.equal(date,'2026-10-19');return [frame('NDX',20000)];}},history(){},subscribe(){},onChange(){},createPrices:()=>({setActive(){},select(){},dispose(){}})});
   pool.reconcile(['NDX','NDX'],{active:true,date:'2026-10-19',live:false});await pool.refresh();
   const source=pool.get('NDX');assert.equal(source.error,null);assert.equal(source.records.length,1);assert.equal(source.records[0].spot,20000);assert.equal(source.envelope.historySource,'recorded-session');assert.equal(source.envelope.coverage,'observations-only');assert.equal(source.envelope.upstreamHistoryError,error.message);assert.equal(reads,1);assert.equal(requests,1);pool.dispose();
  }

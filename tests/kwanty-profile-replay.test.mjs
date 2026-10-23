@@ -26,6 +26,10 @@ test('wrong instrument and category cannot contaminate replay; failed frames rem
  replay.select(envelope,row);await new Promise(resolve=>setImmediate(resolve));assert.equal(replay.error(envelope,row),true);assert.equal(replay.ready(envelope,row),false);assert.equal(replay.select(envelope,row),row);
  assert.equal(replay.select(null,row),row);assert.equal(replay.ready(null,row),true);
 });
+test('a loaded page missing its declared observation errors instead of spinning forever',async()=>{
+ const replay=createProfileReplay({api:async()=>({...envelope,page:0,data:[{...row,timestamp:row.timestamp-1,mini_contracts:[]}]}),onChange(){}});
+ replay.select(envelope,row);await new Promise(resolve=>setImmediate(resolve));assert.equal(replay.error(envelope,row),true);assert.equal(replay.ready(envelope,row),false);
+});
 const app=readFileSync(new URL('../public/kwanty-app/app.js',import.meta.url),'utf8');
 test('history retries only a bounded in-progress index, not auth or ordinary failures',async()=>{
  let calls=0;const context={DOMException,Date,AbortSignal,clearTimeout(){},setTimeout(callback){queueMicrotask(callback);return 0;},decodeSessionTransport:value=>value,botFetch:async()=>{calls++;return calls<3?Response.json({error:calls===1?'EOD_INDEX_BUSY':'EOD_INDEX_BUILDING'},{status:503}):Response.json({data:[row]});}};

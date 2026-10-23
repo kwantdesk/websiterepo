@@ -1,5 +1,33 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-24 — Detailed Kwanty re-audit and demonstrated parity repairs
+
+- Ledger: docs/KWANTY-DETAILED-REAUDIT-2026-10-24.md. Full vendor/live/all-tool
+  acceptance remains OPEN; fresh reference controls, shipped-source evidence,
+  real SPX archive lineage and isolated app QA are explicitly distinguished.
+- Line price style no longer bypasses Orderflow interval aggregation. The
+  observed SPX1m Net Convexity40-row minute now matches-26181.28 exactly.
+  Classic's three history trails gain source-evidenced Scatter/Line(300MA),
+  conversion-before-mean and bounded weak caches; null prices remain gaps.
+- Historical Orderflow profile slots use exact-session manifests/lazy pages,
+  bounded sharing, causal marker/replay selection and enabled-page playback
+  readiness. Missing/incorrect pages stop replay; no invented profile surface.
+  Added observed seven signed vertical-offset step actions.
+- State/Orderflow target panel owns replay price cutoff. Classic/State/Flow
+  validate every raw history row before latest-session merging can conceal a
+  wrong date/category. Partial session cache can upgrade on existing coordinator;
+  complete verified EOD stays cached, errors retain valid prior observations.
+- Browser found Kwanty history504 MIDDLEWARE_INVOCATION_TIMEOUT, while direct
+  VPS same archive returned200. Known GET operations skip duplicate middleware
+  remote refresh only after valid site gate; route getRouteActor remains required.
+-297 focused tests pass; scoped lint0errors/one existing cleanup-ref warning.
+  Archive comparator matches15,739rows/251,824metricvalues and539 sampled full
+  profiles each for Classic/Gamma/Charm. Not all pages/tickers/private frames.
+- No cadence increase, new paid resource, provider socket negotiation or VPS
+  restart.30s REST, classified-field gaps, historical futures-price bridge,
+  full history breadth, alerts/pop-out and multi-panel live soak remain open.
+  Standing gateway overload/recording/restore/capacity gates are not closed.
+
 ## 2026-10-24 — Detailed GEX Data re-audit (not blanket parity)
 
 - Post-release signed-in QA revealed an independent blank startup gate:

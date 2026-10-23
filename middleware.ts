@@ -111,6 +111,17 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // KWANTY read routes independently verify the account with getRouteActor.
+  // Do not perform a second remote auth refresh in routing middleware first:
+  // a stalled refresh prevents the authenticated handler from running at all.
+  // This is not a site-access-only data grant; handler authorization is retained.
+  if (
+    request.method === "GET" && siteAccessConfigured && siteAccessGranted
+    && /^\/api\/kwanty\/(status|catalog|snapshot|history|session)$/.test(pathname)
+  ) {
+    return response;
+  }
+
   if (pathname === "/login") return response;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

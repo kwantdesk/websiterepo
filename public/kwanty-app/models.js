@@ -12,6 +12,16 @@ export function sourceTime(timestamp,timeZone='America/New_York'){if(finite(time
 export function expiryLabel(payload,next=false){const date=sourceDate(payload?.timestamp),dte=finite(payload?.[next?'sec_min_dte':'min_dte']);if(!date||dte===null)return next?'next':'latest';const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+dte);return `${next?'next':'latest'} (${d.getUTCMonth()+1}/${d.getUTCDate()})`;}
 export function collectCandles(records,period=60000){const buckets=new Map();for(const r of records){const spot=finite(r.spot),t=finite(r.timestamp);if(spot===null||t===null)continue;const time=Math.floor(t*1000/period)*period;let b=buckets.get(time);if(!b){b={time,open:spot,high:spot,low:spot,close:spot,spot,first:t,last:t,count:0};buckets.set(time,b);}if(t<b.first){b.open=spot;b.first=t;}if(t>=b.last){b.close=spot;b.spot=spot;b.last=t;}b.high=Math.max(b.high,spot);b.low=Math.min(b.low,spot);b.count++;}return [...buckets.values()].sort((a,b)=>a.time-b.time);}
 export function historyRecords(value,ticker){const rows=Array.isArray(value)?value:Array.isArray(value?.data)?value.data:Array.isArray(value?.snapshots)?value.snapshots:null;if(!rows)throw new Error('UNSUPPORTED_HISTORY_SHAPE');if(rows.some(r=>r?.ticker&&r.ticker!==ticker))throw new Error('HISTORY_INSTRUMENT_MISMATCH');const valid=mergeSnapshots([],rows,ticker);if(!valid.length)throw new Error('NO_HISTORY_SNAPSHOTS');return valid;}
+// Validate the requested selection before mergeSnapshots removes older sessions.
+// A wrong-day response must not become a plausible, silently truncated replay.
+export function profileHistoryRecords(envelope,{ticker,package:pkg,category,date}){
+ for(const [key,expected]of Object.entries({ticker,package:pkg,category,sessionDate:date}))if(envelope?.[key]!==undefined&&envelope[key]!==expected)throw Error('PROFILE_DATA_MISMATCH');
+ const value=envelope?.data,rows=Array.isArray(value)?value:Array.isArray(value?.data)?value.data:Array.isArray(value?.snapshots)?value.snapshots:null;
+ if(!rows)throw Error('UNSUPPORTED_HISTORY_SHAPE');
+ if(rows.some(row=>row?.category!==undefined&&row.category!==category))throw Error('PROFILE_DATA_MISMATCH');
+ if(rows.some(row=>sourceDate(row?.timestamp)!==date))throw Error('HISTORY_SESSION_MISMATCH');
+ return historyRecords(value,ticker);
+}
 export function seekSnapshot(rows,timeMs){if(!rows.length)return -1;let lo=0,hi=rows.length-1;while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(rows[mid].timestamp*1000<=timeMs)lo=mid;else hi=mid-1;}return lo;}
 export function toggleExpiry(current,clicked){const values=new Set(current==='both'?['zero','one']:[current==='one'?'one':'zero']);if(values.has(clicked)){if(values.size>1)values.delete(clicked);}else values.add(clicked);return values.size===2?'both':[...values][0];}
 export function closeOrderPanel(panels,closed,id){const index=panels.findIndex(p=>p.id===id);if(index<0||panels.length<2)return {panels,closed};return {panels:panels.filter(p=>p.id!==id),closed:[...closed,{chart:{...panels[index]},index}].slice(-12)};}
