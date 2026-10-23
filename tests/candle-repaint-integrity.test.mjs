@@ -8,6 +8,32 @@ import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw } from "../src/lib
 const bar = (timestamp, overrides = {}) => ({ timestamp, open: 100, high: 103, low: 98, close: 101, volume: 10, ...overrides });
 const scope = "pane:NQ:1m:live";
 
+test("the initial history-seeded bar cannot have its open rewritten after rollover", () => {
+  const buffer = new ObservedCandleHistory();
+  buffer.merge(scope, [bar(60000, { open: 99 })]);
+  buffer.observe(scope, bar(60000, { close: 102 }), 119900);
+  buffer.observe(scope, bar(120000, { open: 103 }), 120100);
+  const changed = buffer.merge(scope, [bar(60000, { open: 94, close: 95 }), bar(120000)]);
+  assert.equal(changed[0].open, 99);
+  assert.equal(changed[0].close, 102);
+});
+
+test("a receipt-time watermark from a newer bucket cannot rewrite an already closed candle", () => {
+  const buffer = new ObservedCandleHistory();
+  buffer.observe(scope, bar(60000, { close: 105 }), 119900);
+  buffer.observe(scope, bar(120000), 120100);
+  assert.equal(buffer.observe(scope, bar(60000, { open: 90, close: 91 }), 121000).close, 105);
+  // An actual later exchange print inside the old bucket is still accepted.
+  assert.equal(buffer.observe(scope, bar(60000, { close: 106 }), 119950).close, 106);
+});
+
+test("an unseeded partial first candle still accepts its first genuine historical open after rollover", () => {
+  const buffer = new ObservedCandleHistory();
+  buffer.observe(scope, bar(60000, { open: 105 }), 119900);
+  buffer.observe(scope, bar(120000), 120100);
+  assert.equal(buffer.merge(scope, [bar(60000, { open: 99 }), bar(120000)])[0].open, 99);
+});
+
 test("history extrema accepted for an observed bar survive a subsequent stale history response", () => {
   const buffer = new ObservedCandleHistory();
   buffer.observe(scope, bar(60000), 61000);

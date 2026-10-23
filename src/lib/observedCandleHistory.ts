@@ -6,7 +6,8 @@ export class ObservedCandleHistory {
   private scope = "";
   private firstTimestamp: number | null = null;
   private historyTail: Candle | null = null;
-  private bars = new Map<number, { candle: Candle; sourceTime: number }>();
+  private latestTimestamp = -Infinity;
+  private bars = new Map<number, { candle: Candle; sourceTime: number; seededOpen: boolean }>();
   private readonly limit: number;
   constructor(limit = 2048) { this.limit = Math.max(1, Math.floor(limit)); }
 
@@ -16,19 +17,29 @@ export class ObservedCandleHistory {
     this.bars.clear();
     this.firstTimestamp = null;
     this.historyTail = null;
+    this.latestTimestamp = -Infinity;
   }
 
   observe(scope: string, incoming: Candle, sourceTime: number) {
     this.selectScope(scope);
     sourceTime = Number.isFinite(sourceTime) ? sourceTime : incoming.timestamp;
     const previous = this.bars.get(incoming.timestamp);
+    // A receipt time stamped after a known rollover is not an exchange close
+    // watermark for an older candle. Do not let it poison the saved clock.
+    let invalidClosedClock = false;
+    if (previous && incoming.timestamp < this.latestTimestamp) {
+      let nextBucket = Infinity;
+      for (const timestamp of this.bars.keys()) if (timestamp > incoming.timestamp) nextBucket = Math.min(nextBucket, timestamp);
+      invalidClosedClock = sourceTime >= nextBucket;
+    }
     const seed = !previous && this.historyTail?.timestamp === incoming.timestamp
       ? this.historyTail : null;
     const merged = retainFormingCandleExtrema(previous?.candle ?? seed, incoming);
     // Older same-bar packets may add a true extremum, but cannot rewind close.
-    const candle = previous && sourceTime < previous.sourceTime ? { ...merged, close: previous.candle.close } : merged;
+    const candle = previous && (sourceTime < previous.sourceTime || invalidClosedClock) ? { ...merged, close: previous.candle.close } : merged;
     this.firstTimestamp ??= incoming.timestamp;
-    this.bars.set(incoming.timestamp, { candle, sourceTime: Math.max(sourceTime, previous?.sourceTime ?? -Infinity) });
+    this.latestTimestamp = Math.max(this.latestTimestamp, incoming.timestamp);
+    this.bars.set(incoming.timestamp, { candle, seededOpen: previous?.seededOpen ?? Boolean(seed), sourceTime: invalidClosedClock ? previous!.sourceTime : Math.max(sourceTime, previous?.sourceTime ?? -Infinity) });
     while (this.bars.size > this.limit) this.bars.delete(this.bars.keys().next().value!);
     return candle;
   }
@@ -52,11 +63,12 @@ export class ObservedCandleHistory {
         else high = middle;
       }
       const archived = result[low]?.timestamp === timestamp ? result[low] : null;
-      const merged = archived ? mergeHistoricalAndLiveCandle(archived, observed.candle, timestamp, timestamp !== this.firstTimestamp) : observed.candle;
+      const merged = archived ? mergeHistoricalAndLiveCandle(archived, observed.candle, timestamp,
+        timestamp !== this.firstTimestamp || timestamp < this.latestTimestamp && observed.seededOpen) : observed.candle;
       // An accepted history response can extend a live-observed bar too.
       // Remember that union: otherwise the next stale refresh shrinks its wick
       // back to the smaller direct-tick-only observation.
-      this.bars.set(timestamp, { candle: merged, sourceTime: observed.sourceTime });
+      this.bars.set(timestamp, { candle: merged, sourceTime: observed.sourceTime, seededOpen: observed.seededOpen || Boolean(archived) });
       if (archived && archived.open === merged.open && archived.high === merged.high && archived.low === merged.low && archived.close === merged.close && archived.volume === merged.volume) continue;
       if (result === history) result = [...history];
       if (archived) result[low] = merged;

@@ -54,12 +54,14 @@ const MAX_SERVED_BARS = 200_000;
  * between ~40 bytes and ~140 bytes a bar across every instrument and every
  * session, for a file nothing reads by hand.
  */
-const encodeBar = (bar) => [bar.t, bar.o, bar.h, bar.l, bar.c, bar.v];
+// Optional source-order watermarks preserve real first/last execution order
+// across restarts. Six-column legacy/import rows remain readable.
+const encodeBar = (bar) => [bar.t, bar.o, bar.h, bar.l, bar.c, bar.v, bar.f ?? null, bar.e ?? null];
 const decodeBar = (row) => (Array.isArray(row)
-  ? { t: row[0], o: row[1], h: row[2], l: row[3], c: row[4], v: row[5] }
+  ? { t: row[0], o: row[1], h: row[2], l: row[3], c: row[4], v: row[5], f: row[6], e: row[7] }
   // Accept the object form too, so a file written by a future version - or
   // hand-repaired - still loads rather than being silently dropped.
-  : { t: row.t ?? row.timestamp, o: row.o ?? row.open, h: row.h ?? row.high, l: row.l ?? row.low, c: row.c ?? row.close, v: row.v ?? row.volume });
+  : { t: row.t ?? row.timestamp, o: row.o ?? row.open, h: row.h ?? row.high, l: row.l ?? row.low, c: row.c ?? row.close, v: row.v ?? row.volume, f: row.f, e: row.e });
 
 function validArchivedBar(bar) {
   return [bar?.t, bar?.o, bar?.h, bar?.l, bar?.c, bar?.v].every(Number.isFinite)
@@ -287,15 +289,27 @@ export class FuturesBarArchive {
     const tradingDate = chicagoTradingDate(trade.timestamp);
     const bars = this.barsFor(tradingDate, exchange, symbol);
     const bucket = Math.floor(trade.timestamp / BAR_MS) * BAR_MS;
+    const payload = record?.payload || record;
+    const seconds = Number(payload?.ssboe ?? payload?.sourceSsboe);
+    const micros = Number(payload?.usecs ?? payload?.sourceUsecs ?? 0);
+    const sourceTimeUs = Number.isFinite(seconds) && seconds > 0
+      ? seconds * 1_000_000 + (Number.isFinite(micros) ? micros : 0)
+      : trade.timestamp * 1000;
     const existing = bars.get(bucket);
     if (!existing) {
       bars.set(bucket, {
         t: bucket, o: trade.price, h: trade.price, l: trade.price, c: trade.price, v: trade.size,
+        f: sourceTimeUs, e: sourceTimeUs,
       });
     } else {
       if (trade.price > existing.h) existing.h = trade.price;
       if (trade.price < existing.l) existing.l = trade.price;
-      existing.c = trade.price;
+      if (Number.isFinite(existing.f) && sourceTimeUs < existing.f) {
+        existing.o = trade.price; existing.f = sourceTimeUs;
+      }
+      if (!Number.isFinite(existing.e) || sourceTimeUs >= existing.e) {
+        existing.c = trade.price; existing.e = sourceTimeUs;
+      }
       existing.v += trade.size;
     }
     this.dirty.add(`${tradingDate} ${exchange} ${symbol}`);
@@ -436,7 +450,14 @@ export class FuturesBarArchive {
         const bars = await this.readFile(join(dayDir, name));
         if (!bars.length) continue;
         const target = this.barsFor(tradingDate, match[1].toUpperCase(), match[2].toUpperCase());
-        for (const bar of bars) target.set(bar.t, bar);
+        for (const bar of bars) {
+          // Legacy files lack source clocks. Their existing open stays known;
+          // a delayed pre-restore print must not replace their saved close.
+          // These are conservative order bounds, not invented executions.
+          if (!Number.isFinite(bar.f)) bar.f = bar.t * 1000;
+          if (!Number.isFinite(bar.e)) bar.e = Math.min(nowMs, bar.t + BAR_MS - .001) * 1000;
+          target.set(bar.t, bar);
+        }
       }
     }
   }

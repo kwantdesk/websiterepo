@@ -1,5 +1,21 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-24 — Closed candle body integrity; gateway activation pending
+
+- Four failing regressions reproduced initial seeded open changes after close,
+  stale receipt-clock close rewinds, arrival-ordered archive OHLC and lost
+  sub-ms ordering on restore. Browser buffer protects seeded closed opens and
+  rejects cross-bucket receipt clocks without blocking a real exchange print.
+  Unseeded first-bar history and unobserved archive corrections still work.
+- FuturesBarArchive persists optional first/last source clocks and orders OHLC
+  by microseconds, retaining true extremes/volume and six-column compatibility.
+ 69 focused tests plus19 authority intervals, scoped lint and build pass.
+- VPS still runs old exact source5ee5eed775cc40deb4075744e7c03477dcbd1cd0b51e1900882d12f91d2d5074.
+  DO NOT claim archive repair active until approved brief gateway-only restart.
+  Preserve all existing vendor/book-store mounts, image, secrets and recordings.
+  Old bad archive bodies require a separate source-backed reconciliation.
+  Record: docs/prompt-log/2026-10-24-closed-candle-body-integrity.md.
+
 ## 2026-10-24 — LIQ Map protection dragging and normal-chart labels
 
 - Stable plot owns pointer capture, not the moving/unmountable label. Final

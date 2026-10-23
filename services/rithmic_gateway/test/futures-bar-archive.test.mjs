@@ -83,6 +83,41 @@ test("prints in one minute become one bar with true OHLCV", async () => {
   });
 });
 
+test("out-of-order prints cannot turn arrival order into the candle open or close", async () => {
+  await withArchive(async archive => {
+    for (const [offset,price] of [[2000,102],[59000,105],[1000,99],[3000,98]]) archive.record(print(offset,price,1));
+    const {candles}=await archive.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000});
+    assert.equal(candles[0].open,99);assert.equal(candles[0].close,105);
+    assert.equal(candles[0].high,105);assert.equal(candles[0].low,98);assert.equal(candles[0].volume,4);
+  });
+});
+
+test("sub-millisecond source ordering survives archive flush and restore", async () => {
+  await withArchive(async (archive,dir) => {
+    const tick=(usecs,price)=>{const record=print(0,price,1);record.payload.usecs=usecs;return record;};
+    archive.record(tick(900,105));archive.record(tick(200,99));archive.record(tick(600,102));
+    await archive.flush();
+    const restored=new FuturesBarArchive({dir});await restored.restore(T0+30000);
+    restored.record(tick(100,98));restored.record(tick(500,101));
+    const {candles}=await restored.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000});
+    assert.equal(candles[0].open,98);assert.equal(candles[0].close,105);
+  });
+});
+
+test("legacy restore keeps its known open and rejects pre-restore closes without freezing fresh prints", async () => {
+  await withArchive(async (archive,dir) => {
+    const day=join(dir,'bars',chicagoTradingDate(T0));mkdirSync(day,{recursive:true});
+    writeFileSync(join(day,'CME-NQU6.json'),JSON.stringify({bars:[[T0,100,110,95,105,5]]}));
+    await archive.restore(T0+30000);
+    archive.record(print(10000,99,1));
+    let result=await archive.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000});
+    assert.equal(result.candles[0].close,105);
+    archive.record(print(40000,108,1));
+    result=await archive.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000});
+    assert.equal(result.candles[0].open,100);assert.equal(result.candles[0].close,108);
+  });
+});
+
 test("a print is never counted twice when both streams are live", async () => {
   /*
    * The recorder listens to rawMessage AND marketData, preferring the first.
