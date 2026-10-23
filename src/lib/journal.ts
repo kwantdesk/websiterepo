@@ -74,7 +74,27 @@ export type JournalAccount = {
   updatedAt: string;
   archivedAt?: string | null;
   sortOrder?: number | null;
+  resetAt?: string | null;
 };
+
+/** A journal reset changes reporting only, never the underlying trading ledger. */
+export function applyJournalAccountResets(state: JournalState): JournalState {
+  const cutoffs = new Map(state.accounts.flatMap(account => {
+    const cutoff = Date.parse(account.resetAt ?? "");
+    return Number.isFinite(cutoff) ? [[account.name, cutoff] as const] : [];
+  }));
+  if (!cutoffs.size) return state;
+  const visible = (account: string, timestamp: string | null | undefined) => {
+    const cutoff = cutoffs.get(account);
+    return cutoff === undefined || Date.parse(timestamp ?? "") > cutoff;
+  };
+  return {
+    ...state,
+    trades: state.trades.filter(trade => visible(trade.account, trade.closedAt ?? trade.openedAt)),
+    imports: state.imports.filter(batch => visible(batch.account, batch.importedAt)),
+    evidence: state.evidence.filter(item => visible(item.account, item.importedAt)),
+  };
+}
 
 type ZyonSocialRecord = {
   id: string;

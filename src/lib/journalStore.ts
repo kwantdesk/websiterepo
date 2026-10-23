@@ -1,4 +1,6 @@
 import {
+  applyJournalAccountResets,
+  latestZyonJournalReset,
   EMPTY_JOURNAL_STATE,
   type JournalState,
 } from "./journal.ts";
@@ -181,7 +183,14 @@ export async function loadJournalState(accountKey: string) {
 
 export async function saveJournalState(accountKey: string, state: JournalState) {
   const key = storageKey(accountKey);
-  const normalized = normalizeState(state);
+  const previous = memoryStore.get(key);
+  const previousAccounts = new Map(previous?.accounts.map(account => [account.id, account]));
+  const normalized = applyJournalAccountResets(normalizeState({
+    ...state,
+    accounts: state.accounts.map(account => ({ ...account,
+      resetAt: latestZyonJournalReset(account.resetAt, previousAccounts.get(account.id)?.resetAt),
+    })),
+  }));
   memoryStore.set(key, normalized);
   try {
     const database = await openDatabase();

@@ -1,5 +1,23 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-23 — Individual journal reset controls
+
+- User clarified: a reset option inside each journal, never a global reset.
+  Journal header now exposes Reset journal for imported/manual/demo journals;
+  existing ZYON reset remains separate. Overall Journal has no reset-all action.
+- Exact typed confirmation names the target. Authenticated reset-account writes
+  a private per-account timestamp in existing social_objects account metadata,
+  preserving archive/order state. No deletion of account, trades, public posts,
+  trading balances, fills or open positions. No reset was submitted during tests.
+- Reporting excludes trades closed on/before cutoff (open date fallback), old
+  imports/evidence and consolidated contributions. Older historical re-imports
+  remain excluded; future closes continue. This is reporting reset, not erasure.
+  Cloud GET, client projection, IndexedDB saves and stale hydrate guards enforce
+  it, so demo ledger backfill cannot resurrect the old reporting history.
+- Tests: 18 focused account reset/deletion/ZYON/demo-link checks pass; journal
+  suite 28/29 with the already-documented stale equity palette source assertion.
+  Scoped ESLint passes. No paid resource, stream, poller or VPS change.
+
 ## 2026-10-23 — GEX Vue snapshot lineage and causal replay
 
 - Audit ledger: `docs/GEX-VUE-SNAPSHOT-PARITY-AUDIT-2026-10-23.md`.

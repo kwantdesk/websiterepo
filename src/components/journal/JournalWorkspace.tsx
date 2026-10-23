@@ -60,6 +60,7 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
+  applyJournalAccountResets,
   calculateJournalAdvancedStats,
   calculateJournalExecutionStats,
   calculateJournalStats,
@@ -919,7 +920,19 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const outcomeColors = useOutcomeColors();
   const resolvedAccountKey = accountKey || "local";
   const initialMemory = JOURNAL_MEMORY_CACHE.get(resolvedAccountKey);
-  const [state, setState] = useState<JournalState>(() => initialMemory?.state ?? EMPTY_JOURNAL_STATE);
+  const [rawState, setState] = useState<JournalState>(() => initialMemory?.state ?? EMPTY_JOURNAL_STATE);
+  const state = useMemo(() => applyJournalAccountResets(rawState), [rawState]);
+  const [resetJournalTarget, setResetJournalTarget] = useState<string | null>(null);
+  const [resetJournalConfirmation, setResetJournalConfirmation] = useState("");
+  const [resetJournalError, setResetJournalError] = useState("");
+  const accountResetsApplied = useRef<{ accountKey: string; accounts: JournalAccount[] }>({ accountKey: resolvedAccountKey, accounts: [] });
+  const journalOwnerRef = useRef(resolvedAccountKey);
+  journalOwnerRef.current = resolvedAccountKey;
+  useEffect(() => {
+    setResetJournalTarget(null);
+    setResetJournalConfirmation("");
+    setResetJournalError("");
+  }, [resolvedAccountKey]);
   const [zyonTrades, setZyonTrades] = useState<JournalTrade[]>(() => initialMemory?.zyonTrades ?? []);
   const [zyonLoading, setZyonLoading] = useState(() => !initialMemory);
   const [showZyonReset, setShowZyonReset] = useState(false);
@@ -1074,8 +1087,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       const cloudImports = filteredCloud.imports;
       const cloudEvidence = filteredCloud.evidence;
       const accounts = new Map(stored.accounts.map((account) => [account.id, account]));
-      remembered?.accounts.forEach((account) => accounts.set(account.id, account));
-      cloudAccounts.forEach((account) => accounts.set(account.id, account));
+      remembered?.accounts.forEach((account) => accounts.set(account.id, { ...account,
+        resetAt: latestZyonJournalReset(accounts.get(account.id)?.resetAt, account.resetAt),
+      }));
+      cloudAccounts.forEach((account) => accounts.set(account.id, { ...account,
+        resetAt: latestZyonJournalReset(accounts.get(account.id)?.resetAt, account.resetAt),
+      }));
       const trades = new Map(stored.trades.map((trade) => [trade.id, trade]));
       remembered?.trades.forEach((trade) => trades.set(trade.id, trade));
       cloudTrades.forEach((trade) => trades.set(trade.id, trade));
@@ -1098,6 +1115,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       const merged = paperRecords.ok ? appendPaperTradesToJournal(mergedSources,
         paperRecords.accounts.filter(record => !deletedNames.has(paperJournalAccountName(record).normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase())),
         loadPaperTradingLedger()) : normalizePaperJournalAccounts(mergedSources);
+      if (accountResetsApplied.current.accountKey === resolvedAccountKey) {
+        for (const resetAccount of accountResetsApplied.current.accounts) {
+          merged.accounts = merged.accounts.map(account => account.id === resetAccount.id
+            ? { ...account, resetAt: latestZyonJournalReset(account.resetAt, resetAccount.resetAt) } : account);
+        }
+      }
       setState({ ...merged, zyonResetAt: latestZyonJournalReset(merged.zyonResetAt,
         zyonResetApplied.current?.accountKey === resolvedAccountKey ? zyonResetApplied.current.resetAt : null) });
       setCloudState(cloud.cloud ? "cloud" : "local");
@@ -2182,6 +2205,40 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     return result;
   };
 
+  const resetSelectedJournal = async () => {
+    const target = resetJournalTarget;
+    const targetAccount = target ? accountRecord.get(target) : undefined;
+    if (!targetAccount || journalLifecycleBusy || resetJournalConfirmation !== `RESET ${target}`) return;
+    setJournalLifecycleBusy(target);
+    setResetJournalError("");
+    try {
+      const response = await fetch("/api/journal", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset-account", accountId: targetAccount.id, account: target, confirmation: resetJournalConfirmation }),
+      });
+      const result = await response.json() as { cloud?: boolean; account?: JournalAccount; error?: string };
+      if (journalOwnerRef.current !== resolvedAccountKey) return;
+      if (!response.ok || !result.cloud || result.account?.id !== targetAccount.id || !Number.isFinite(Date.parse(result.account?.resetAt ?? ""))) {
+        throw new Error(result.error || "The Journal could not be reset. Nothing was changed.");
+      }
+      const resetAccount = result.account!;
+      const previous = accountResetsApplied.current.accountKey === resolvedAccountKey ? accountResetsApplied.current.accounts : [];
+      accountResetsApplied.current = { accountKey: resolvedAccountKey, accounts: [...previous.filter(account => account.id !== resetAccount.id), resetAccount] };
+      setState(current => ({ ...current, accounts: current.accounts.map(account => account.id === resetAccount.id ? { ...account, resetAt: resetAccount.resetAt } : account) }));
+      setSelectedTradeId(null);
+      ++analysisRequestRef.current;
+      analysisAbortRef.current?.abort();
+      setJournalAnalysis(null);
+      setAnalysisLoadedAccount("");
+      setResetJournalTarget(null);
+      setJournalLifecycleMessage(`${target} reset. Other journals, trading balances and open positions are unchanged.`);
+    } catch (error) {
+      setResetJournalError(error instanceof Error ? error.message : "Journal reset failed.");
+    } finally {
+      setJournalLifecycleBusy(null);
+    }
+  };
+
   const renameJournal = async () => {
     const account = renameJournalTarget;
     const nextName = renameJournalDraft.replace(/\s+/g, " ").trim().slice(0, 80);
@@ -2500,6 +2557,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {zyonJournalSelected ? <button type="button" disabled={!ready || zyonLoading || Boolean(journalLifecycleBusy)} onClick={() => { setZyonResetConfirmation(""); setZyonResetError(""); setShowZyonReset(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:border-danger/40 hover:text-danger disabled:opacity-35"><RefreshCw className="h-3.5 w-3.5" />Reset journal</button> : null}
+            {accountFilter !== "all" && !zyonJournalSelected && accountRecord.has(accountFilter) ? <button type="button" disabled={!ready || Boolean(journalLifecycleBusy)} onClick={() => { setResetJournalTarget(accountFilter); setResetJournalConfirmation(""); setResetJournalError(""); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:border-danger/40 hover:text-danger disabled:opacity-35"><RefreshCw className="h-3.5 w-3.5" />Reset journal</button> : null}
             <span className={`flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 text-[9px] ${saveStatus === "error" ? "text-danger" : "text-muted"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${cloudState === "cloud" ? "bg-primary" : cloudState === "error" || saveStatus === "error" ? "bg-danger" : cloudState === "loading" || saveStatus === "loading" ? "animate-pulse bg-warning" : "bg-muted"}`} />
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
@@ -3085,6 +3143,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           <div className="fixed w-[200px] overflow-hidden rounded-2xl border border-border bg-panel p-1.5 shadow-2xl shadow-black/70" style={{ left: accountMenu.x, top: accountMenu.y }} onMouseDown={(event) => event.stopPropagation()}>
             <div className="truncate border-b border-border px-3 py-2 text-[8px] font-semibold text-foreground">{accountMenu.account}</div>
             <button type="button" onClick={() => { setRenameJournalTarget(accountMenu.account); setRenameJournalDraft(accountMenu.account); setRenameJournalError(""); setAccountMenu(null); }} disabled={Boolean(journalLifecycleBusy)} className="mt-1 flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-primary/[0.08] hover:text-primary disabled:opacity-40"><Pencil className="h-3.5 w-3.5" />Rename Journal</button>
+            <button type="button" onClick={() => { setResetJournalTarget(accountMenu.account); setResetJournalConfirmation(""); setResetJournalError(""); setAccountMenu(null); }} disabled={Boolean(journalLifecycleBusy)} className="flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"><RefreshCw className="h-3.5 w-3.5" />Reset journal</button>
             <button type="button" onClick={() => void archiveJournal(accountMenu.account)} disabled={Boolean(journalLifecycleBusy)} className="flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-primary/[0.08] hover:text-primary disabled:opacity-40"><FolderArchive className="h-3.5 w-3.5" />Archive Journal</button>
             <button type="button" onClick={() => { setDeleteJournalTarget(accountMenu.account); setAccountMenu(null); }} disabled={Boolean(journalLifecycleBusy)} className="flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />Delete permanently</button>
           </div>
@@ -3132,6 +3191,22 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               {!archivedAccountViews.length ? <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 text-center"><FolderArchive className="h-7 w-7 text-muted" /><h3 className="mt-4 text-[12px] font-semibold text-foreground">Archive is empty</h3><p className="mt-2 max-w-sm text-[9px] leading-4 text-muted">Right-click a Journal account or use its three-dot menu to archive it without losing its record.</p></div> : null}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {resetJournalTarget ? (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !journalLifecycleBusy) setResetJournalTarget(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="account-journal-reset-title" className="w-full max-w-[470px] rounded-3xl border border-border bg-panel p-5 shadow-2xl">
+            <h2 id="account-journal-reset-title" className="text-[17px] font-semibold text-foreground">Reset {resetJournalTarget}?</h2>
+            <p className="mt-3 text-[10px] leading-5 text-muted">Start only this journal fresh from now. Trades dated before this reset, existing imports and evidence will be excluded from this journal and Overall Journal totals. Historical trades from before the reset will stay excluded if synced again.</p>
+            <p className="mt-2 text-[10px] leading-5 text-muted">The journal account stays available. Your trading account balance, fills, open positions, public posts and every other journal stay unchanged. Export a backup first if needed.</p>
+            <label className="mt-4 block text-[10px] text-muted">Type RESET {resetJournalTarget} to confirm<input autoFocus aria-label="Selected journal reset confirmation" value={resetJournalConfirmation} onChange={event => setResetJournalConfirmation(event.target.value)} disabled={Boolean(journalLifecycleBusy)} className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3 text-foreground outline-none focus:border-primary" /></label>
+            {resetJournalError ? <p role="alert" className="mt-3 text-[10px] text-danger">{resetJournalError}</p> : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setResetJournalTarget(null)} className="h-9 rounded-xl border border-border px-4 text-[10px] text-muted">Cancel</button>
+              <button type="button" disabled={resetJournalConfirmation !== `RESET ${resetJournalTarget}` || Boolean(journalLifecycleBusy)} onClick={() => void resetSelectedJournal()} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-white disabled:opacity-35">{journalLifecycleBusy ? "Resetting…" : "Reset this journal"}</button>
+            </div>
+          </section>
         </div>
       ) : null}
 

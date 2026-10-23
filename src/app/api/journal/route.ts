@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getJournalRouteActor } from "@/lib/serverAuth";
 import {
+  applyJournalAccountResets,
   isZyonJournalAccountName,
   type JournalAccount,
   type JournalEvidence,
@@ -47,12 +48,14 @@ type AccountStateRow = {
     archivedAt?: unknown;
     sortOrder?: unknown;
     zyonResetAt?: unknown;
+    resetAt?: unknown;
   };
 };
 
 type AccountState = {
   archivedAt: string | null;
   sortOrder: number | null;
+  resetAt: string | null;
 };
 
 const JOURNAL_EVIDENCE_KIND = "journal-evidence-v1";
@@ -322,6 +325,7 @@ function fromAccountRow(row: AccountRow, state?: AccountState): JournalAccount {
     updatedAt: row.updated_at,
     archivedAt: state?.archivedAt ?? null,
     sortOrder: state?.sortOrder ?? null,
+    resetAt: state?.resetAt ?? null,
   };
 }
 
@@ -329,6 +333,7 @@ function accountStateFromPayload(payload: AccountStateRow["payload"] | null | un
   const sortOrder = finite(payload?.sortOrder, Number.NaN);
   return {
     archivedAt: isoDate(payload?.archivedAt, null),
+    resetAt: isoDate(payload?.resetAt, null),
     sortOrder: Number.isFinite(sortOrder) && sortOrder >= 0 ? Math.round(sortOrder) : null,
   };
 }
@@ -435,16 +440,20 @@ export async function GET(request: NextRequest) {
   });
   const accountNames = new Map(accountRows.map((row) => [row.id, row.name]));
 
-  return NextResponse.json({
-    cloud: true,
-    zyonResetAt: ((accountStateResult.data ?? []) as AccountStateRow[])
-      .find((row) => row.payload?.accountId === "zyon-journal-reset")?.payload.zyonResetAt ?? null,
+  const visibleState = applyJournalAccountResets({
+    version: 1,
     accounts: accountRows.map((row) => fromAccountRow(row, accountStates.get(row.id))),
     trades: ((tradeResult.data ?? []) as TradeRow[]).map((row) => ({ ...row.payload, account: accountNames.get(row.account_id) ?? row.payload.account })),
     imports: ((importResult.data ?? []) as ImportRow[]).map((row) => ({ ...row.payload, account: accountNames.get(row.account_id) ?? row.payload.account })),
     evidence: evidenceResult.error
       ? []
       : ((evidenceResult.data ?? []) as EvidenceRow[]).map((row) => row.payload),
+  });
+  return NextResponse.json({
+    ...visibleState,
+    cloud: true,
+    zyonResetAt: ((accountStateResult.data ?? []) as AccountStateRow[])
+      .find((row) => row.payload?.accountId === "zyon-journal-reset")?.payload.zyonResetAt ?? null,
   }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
 }
 
@@ -616,7 +625,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ cloud: true, account: fromAccountRow(updatedRow as AccountRow, accountStateFromPayload(existingPayload)) });
   }
 
-  if (action === "archive-account" || action === "restore-account" || action === "delete-account") {
+  if (action === "reset-account" || action === "archive-account" || action === "restore-account" || action === "delete-account") {
     const account = cleanText(body.account, 80);
     const requestedId = cleanId(body.accountId);
     if ((!account && !requestedId) || isZyonJournalAccountName(account)) {
@@ -662,13 +671,34 @@ export async function POST(request: NextRequest) {
     if (!accountRow) return NextResponse.json({ error: "That Journal account no longer exists." }, { status: 404 });
     const storedAccount = accountRow as AccountRow;
     const stateId = `journal-account-state:${id}`;
-    const { data: existingState } = await supabase
+    const { data: existingState, error: stateReadError } = await supabase
       .from("social_objects")
       .select("payload")
       .eq("user_id", actor.userId)
       .eq("id", stateId)
       .maybeSingle();
     const existingPayload = (existingState?.payload ?? {}) as AccountStateRow["payload"];
+
+    if (action === "reset-account") {
+      if (body.confirmation !== `RESET ${storedAccount.name}`) {
+        return NextResponse.json({ error: "Confirm the selected Journal reset." }, { status: 400 });
+      }
+      if (stateReadError) return NextResponse.json({ error: "Journal state could not be checked. Nothing was changed." }, { status: 502 });
+      const resetAt = new Date().toISOString();
+      const { error } = await supabase.from("social_objects").upsert({
+        user_id: actor.userId,
+        id: stateId,
+        author_label: actor.label,
+        object_type: "progress",
+        scope: "private",
+        desk_id: null,
+        parent_id: null,
+        payload: { ...existingPayload, kind: JOURNAL_ACCOUNT_STATE_KIND, accountId: id, account: storedAccount.name, resetAt },
+        updated_at: resetAt,
+      }, { onConflict: "user_id,id" });
+      if (error) return NextResponse.json({ error: "The Journal could not be reset. Nothing was changed." }, { status: 502 });
+      return NextResponse.json({ cloud: true, account: fromAccountRow(storedAccount, { ...accountStateFromPayload(existingPayload), resetAt }) }, { headers: { "Cache-Control": "private, no-store" } });
+    }
 
     if (action === "archive-account") {
       const archivedAt = new Date().toISOString();
