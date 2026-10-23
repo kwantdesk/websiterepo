@@ -3323,6 +3323,10 @@ function mergeLiveMidIntoCandles(
   if (liveBucketStart < lastBucketStart) {
     const timeframeMs = getTimeframeMs(timeframe);
     if (lastBucketStart - liveBucketStart > timeframeMs) return updated;
+    // A delayed print just behind a genuine bucket rollover is not proof of
+    // a mislabelled historical tail. Only repair a tail ahead of wall-clock
+    // time; otherwise this branch deletes a real candle already painted live.
+    if (lastBucketStart <= getTimeframeBucketStart(Date.now(), timeframe)) return updated;
 
     // Some cached/provider OHLC tails can label the forming higher-timeframe
     // bar with its closing boundary. In that case a valid live tick appears to
@@ -8346,6 +8350,10 @@ function WorkspaceChartPaneComponent({
           detail: { ...executionQuote, timestamp: executionQuote.receivedAt },
         }));
       }
+      // Bid/ask-only packets still mark the trading UI above, but cannot form
+      // futures OHLC. Painting a book midpoint here invents a trade/wick that
+      // disappears when execution-based history arrives.
+      if (usingDatabentoPaneFeed && price.isTrade === false) return;
       pendingLiveTicksRef.current.push({
         sourceTimestamp: chartSourceTimestamp(price.timestamp),
         mid: price.mid,
@@ -9760,6 +9768,7 @@ function WorkspaceChartPaneComponent({
           onToggleValueAreaLevels={onToggleValueAreaLevels}
           onRemoveGameplanOverlay={kwantLevelsEnabled && gameplanOverlay ? onRemoveGameplanOverlay : undefined}
           liveCandleEventKey={pane.id}
+          candleSourceIdentity={`${pane.broker}:${resolvedContractSymbol ?? pane.symbol}`}
           gexBotFlow={gammaInstrument === "NQ" || gammaInstrument === "MNQ" ? gexBotFlow : null}
           onIndicatorPaneHeightChange={setLowerIndicatorHeight}
           paperPositions={paperPositions}

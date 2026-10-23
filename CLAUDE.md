@@ -1,5 +1,31 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-23 — Candle rollover and redraw integrity
+
+- Reproduced mergeLiveMidIntoCandles deleting a genuine current bar when a
+  previous-bucket delayed print arrived near rollover. A mislabelled history
+  tail may now be trimmed only if ahead of wall-clock time, not merely ahead
+  of an old packet timestamp. Delayed ticks cannot erase the new live candle.
+- Explicitly isTrade=false futures packets retain trading mark dispatch but
+  cannot paint trade OHLC. Legacy packets without a trade flag are unchanged.
+- Renderer retains up to 2,048 observed clock bars per scoped pane/symbol/
+  interval/provider/contract/live-replay identity; full history redraws cannot discard earlier
+  observed extrema or omit an already observed latest bar. Older same-bar
+  source times cannot rewind close; equal-ms prints retain arrival order.
+  Startup partial bucket keeps archive-open authority. Unobserved historical
+  bars and event-chart rebuild authority remain unchanged; scope switches clear
+  retention and replay never reads live observations.
+- Earlier OHLC corrections and batches of 2–5 new bars force actual series
+  replacement; updating only the newest bar previously skipped these changes.
+  Retention runs on existing React history commits, not a new per-tick full
+  history render, subscription, poller or provider request. No VPS restart.
+- Seven targeted tests cover rollover deletion, quote-only prints, closed wick
+  retention, stale-close ordering, scope isolation, bounded storage and redraw
+  detection. Existing 19 interval live-authority checks, 13 visual path checks,
+  2,650 Rithmic instrument/interval combinations and 12 continuity/CVD/VWAP
+  regressions passed. New helper lint passed; full chart files are build/type
+  checked instead of invoking the previously memory-exhausting whole-chart lint.
+
 ## 2026-10-23 — Bulk Journal removal manager
 
 - Journal header Manage journals opens a themed, searchable checkbox list of

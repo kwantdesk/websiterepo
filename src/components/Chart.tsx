@@ -133,6 +133,7 @@ import {
   type LiveChartExecutionDetail,
 } from "@/lib/chartLiveEvents";
 import { mergeHistoricalAndLiveCandle, retainFormingCandleExtrema } from "@/lib/liveCandleAuthority";
+import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw } from "@/lib/observedCandleHistory";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   CHART_INDICATOR_BY_ID,
@@ -839,6 +840,7 @@ interface ChartProps {
   onToggleValueAreaLevels?: () => void;
   onRemoveGameplanOverlay?: () => void;
   liveCandleEventKey?: string | null;
+  candleSourceIdentity?: string | null;
   gexBotFlow?: GexBotFlowPayload | null;
   onIndicatorPaneHeightChange?: (height: number) => void;
   paperPositions?: PaperPosition[];
@@ -3330,6 +3332,7 @@ function Chart({
   onToggleValueAreaLevels,
   onRemoveGameplanOverlay,
   liveCandleEventKey,
+  candleSourceIdentity,
   gexBotFlow = null,
   onIndicatorPaneHeightChange,
   paperPositions = EMPTY_CHART_ITEMS,
@@ -4320,6 +4323,16 @@ function Chart({
     timeframe: string | undefined;
     candle: Candle;
   } | null>(null);
+  const observedCandleHistoryRef = useRef(new ObservedCandleHistory());
+  const previousPaintCandlesRef = useRef<Candle[]>([]);
+  const observedCandleScope = `${liveCandleEventKey ?? ""}:${candleSourceIdentity ?? ""}:${instrument}:${timeframe ?? ""}:${replayTimestampMs !== null && replayTimestampMs > 0 ? "replay" : "live"}`;
+  const previousObservedScopeRef = useRef(observedCandleScope);
+  if (previousObservedScopeRef.current !== observedCandleScope) {
+    latestDirectLiveCandleRef.current = null;
+    previousPaintCandlesRef.current = [];
+    previousObservedScopeRef.current = observedCandleScope;
+  }
+  observedCandleHistoryRef.current.selectScope(observedCandleScope);
   const drawingCandlesRef = useRef(candles);
   const drawingMarketTradesRef = useRef(marketTrades);
   const drawingDataRefreshTimerRef = useRef<number | null>(null);
@@ -4641,10 +4654,16 @@ function Chart({
         && previousDirectRecord.timeframe === timeframe
         ? previousDirectRecord.candle
         : null;
-      const authoritativeCandle = retainFormingCandleExtrema(
+      let authoritativeCandle = retainFormingCandleExtrema(
         previousDirectCandle,
         detail.candle,
       );
+      if (timeframeToMs(timeframe) !== null) {
+        authoritativeCandle = observedCandleHistoryRef.current.observe(
+          observedCandleScope, authoritativeCandle,
+          Number.isFinite(detail.sourceTimestampMs) ? Number(detail.sourceTimestampMs) : detail.candle.timestamp,
+        );
+      }
       pendingCandles = enqueueLiveCandleSnapshot(pendingCandles, authoritativeCandle);
       latestDirectLiveCandleRef.current = {
         key: liveCandleEventKey,
@@ -4690,7 +4709,7 @@ function Chart({
       }
       pendingLiveVolumeCandleRef.current = null;
     };
-  }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, nonFootprintOrderFlowIndicatorEnabled, timeframe, volumeIndicatorEnabled]);
+  }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, nonFootprintOrderFlowIndicatorEnabled, observedCandleScope, timeframe, volumeIndicatorEnabled]);
 
   useEffect(() => {
     if (!liveCandleEventKey) return;
@@ -6904,9 +6923,16 @@ function Chart({
     heikinAshiActiveRef.current = isHeikinAshiStyle(candleStyle);
   }, [candleStyle]);
 
+  const observedSourceCandles = useMemo(
+    () => {
+      return liveReplayActiveRef.current || timeframeToMs(timeframe) === null
+        ? candles : observedCandleHistoryRef.current.merge(observedCandleScope, candles);
+    },
+    [candles, observedCandleScope, timeframe],
+  );
   const seriesCandles = useMemo(
-    () => (isHeikinAshiStyle(candleStyle) ? toHeikinAshi(candles) : candles),
-    [candleStyle, candles],
+    () => isHeikinAshiStyle(candleStyle) ? toHeikinAshi(observedSourceCandles) : observedSourceCandles,
+    [candleStyle, observedSourceCandles],
   );
 
   const resolvedCandleColors = useMemo(() => resolveCandleSeriesColors(candleSettings, {
@@ -14811,7 +14837,7 @@ function Chart({
       setChartVisualReady(false);
       return;
     }
-    const propLastCandle = candles[candles.length - 1];
+    const propLastCandle = observedSourceCandles[observedSourceCandles.length - 1];
     const directLiveRecord = latestDirectLiveCandleRef.current;
     const directLiveCandle = directLiveRecord
       && directLiveRecord.key === liveCandleEventKey
@@ -14841,7 +14867,9 @@ function Chart({
      */
     const styleChanged = lastDrawnCandleStyleRef.current !== candleStyle;
     lastDrawnCandleStyleRef.current = candleStyle;
-    if (!styleChanged && lastCandleKey === prevDataRef.current) return;
+    const changedClockHistory = !eventBased && clockCandleHistoryNeedsRedraw(previousPaintCandlesRef.current, seriesCandles);
+    previousPaintCandlesRef.current = seriesCandles;
+    if (!styleChanged && !changedClockHistory && lastCandleKey === prevDataRef.current) return;
     prevDataRef.current = lastCandleKey;
 
     const previousCandleCount = prevCandlesLengthRef.current;
@@ -14853,7 +14881,7 @@ function Chart({
        * chart visually stuck in the old style even though the dialog reports
        * the new selection.
        */
-      styleChanged ||
+      styleChanged || changedClockHistory ||
       /*
        * An averaged bar has no incremental form: every Heikin Ashi bar is
        * computed from the one before it, so advancing the series means
@@ -14865,9 +14893,9 @@ function Chart({
       // ANY shrink must redraw: series.update() can never remove bars, so a
       // small backward replay scrub (1-5 bars) previously left ghost future
       // candles on screen until the next big jump.
-      candles.length < prevCandlesLengthRef.current ||
-      Math.abs(candles.length - prevCandlesLengthRef.current) > 5 ||
-      (prevFirstTimestampRef.current !== null && candles[0]?.timestamp !== prevFirstTimestampRef.current);
+      observedSourceCandles.length < prevCandlesLengthRef.current ||
+      Math.abs(observedSourceCandles.length - prevCandlesLengthRef.current) > 5 ||
+      (prevFirstTimestampRef.current !== null && observedSourceCandles[0]?.timestamp !== prevFirstTimestampRef.current);
 
     if (needsFullRedraw) {
       const drawCandles = !isHeikinAshiStyle(candleStyle) && lastSourceCandle !== propLastCandle
@@ -14900,8 +14928,8 @@ function Chart({
           applyMarkers(tradesRef.current);
         }
       }, 100);
-      prevCandlesLengthRef.current = candles.length;
-      prevFirstTimestampRef.current = candles[0]?.timestamp ?? null;
+      prevCandlesLengthRef.current = observedSourceCandles.length;
+      prevFirstTimestampRef.current = observedSourceCandles[0]?.timestamp ?? null;
       return;
     }
 
@@ -14939,10 +14967,10 @@ function Chart({
       }
     }
 
-    if (candles.length > prevCandlesLengthRef.current) {
-      prevCandlesLengthRef.current = candles.length;
+    if (observedSourceCandles.length > prevCandlesLengthRef.current) {
+      prevCandlesLengthRef.current = observedSourceCandles.length;
     }
-  }, [candles, candleStyle, instrument, liveCandleEventKey, seriesCandles, timeframe]);
+  }, [candles, candleStyle, instrument, liveCandleEventKey, observedSourceCandles, seriesCandles, timeframe]);
 
   const hasCandles = candles.length > 0;
   useEffect(() => {
