@@ -1,5 +1,45 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-24 — Gateway hot snapshot optimization activated with owner approval
+
+- Freeze investigation continues: public health at14:04Z connected/authenticated,
+  fresh source messages and QuantData snapshot success, but cumulative overload
+  trips reached99 (max lag3,396ms). Recovery at one instant is not a soak pass.
+- A bounded five-second host perf sample (no inspector, no feed restart) found
+  network-write/compression and V8 allocation/marking pressure. Unsymbolized JIT
+  samples do NOT identify one proven root-cause function.
+- Concrete hot-path waste removed locally in book-store.mjs: depth1 snapshots
+  select the best price without sorting full ladders; incremental trade snapshots
+  walk only their bounded newest tail instead of filtering the retained ring.
+  Normalized sequences increase on append; restored history has negative cursors.
+  Full history, recording, exact trades and price ordering are unchanged.
+- Tests cover old/new output equivalence, source immutability, bounded record
+  reads and restored negative cursors. Related book/flow/replay/provider-stream
+  suite passes43 tests, including the restored-history test.
+- Owner explicitly approved restart (“YES GO”). Recreated only gateway at
+  2026-10-23T14:19:27Z (24 October Brisbane), preserving the image and both vendor
+  runtime overrides. Runtime baseline matched HEAD before replacement. Added
+  one read-only book-store mount in /opt/kwantdesk/compose.yml; exact deployed
+  SHA25676a27418b75b1a6a847511e45ac6859363ab97a6db5ba512d06797de9132fbc8.
+- Rollback files on VPS: compose.before-hotpath-20261024.yml and runtime-overrides/
+  book-store.before-hotpath-20261024.mjs. Removing this mount via the backup
+  compose and recreating gateway restores the prior image implementation.
+  Do NOT use legacy ship script over current production compose/credentials.
+- Verified healthy/authenticated, advancing source and QuantData timestamps;
+  NQ recorded count64k→101k→175k, no recorder errors/drops. Vendor override
+  hashes still match their host files. No other service restarted or extra
+  provider login was created. 43 focused local tests pass.
+- NOT a full freeze-resolution acceptance: after startup observed5 overload
+  trips, max851ms (prior max3,396ms; different observation windows, not a valid
+  performance benchmark). Live ticks continued. Vendor edge also reported
+  “The provider response is too large.” This remains to diagnose; do not remove
+  response limits or pretend oversized option history is successful data.
+  Follow-up14:22Z: recorder count NQ313k; MNQ reported14,056 dropped records
+  after the initially clean checks. Count stayed unchanged on the next check,
+  backlog drained below1MB and overload cleared. This is an explicit archive
+  gap, not lossless history; do not conceal it or certify recording completeness.
+  No additional Vercel build was triggered for this server-only activation.
+
 ## 2026-10-23 — GEX opening delivery and reachable-but-busy recovery
 
 - Live owner report: first five opening minutes unavailable, then unreachable

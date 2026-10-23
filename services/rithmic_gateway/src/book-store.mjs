@@ -2,6 +2,30 @@ function instrumentKey(exchange, symbol) {
   return `${String(exchange || "").toUpperCase()}:${String(symbol || "").toUpperCase()}`;
 }
 
+function snapshotLevels(levels, depth, descending) {
+  if (depth !== 1) return [...levels.values()].sort((a, b) => descending ? b.price - a.price : a.price - b.price).slice(0, depth);
+  let best = null;
+  for (const level of levels.values()) {
+    if (!best || (descending ? level.price > best.price : level.price < best.price)) best = level;
+  }
+  return best ? [best] : [];
+}
+
+function snapshotTrades(source, afterSequence, limit) {
+  if (limit <= 0) return [];
+  if (afterSequence <= 0) return source.slice(-limit);
+  // Live sequence numbers increase on append; restored history uses negative
+  // cursors. A heatmap needs only its newest bounded tail, not a full-ring
+  // filter/allocation on every frame. Retention and archive records are intact.
+  const trades = [];
+  for (let index = source.length - 1; index >= 0 && trades.length < limit; index--) {
+    const trade = source[index];
+    if (Number(trade.sequence) <= afterSequence) break;
+    if (Number(trade.sequence) > afterSequence) trades.push(trade);
+  }
+  return trades.reverse();
+}
+
 function eventTimestampMs(payload) {
   const seconds = Number(payload.sourceSsboe ?? payload.ssboe ?? 0);
   const microseconds = Number(payload.sourceUsecs ?? payload.usecs ?? 0);
@@ -702,18 +726,11 @@ export class RithmicBookStore {
   snapshot(exchange, symbol, depth = 100, options = {}) {
     const instrument = this.instruments.get(instrumentKey(exchange, symbol));
     if (!instrument) return null;
-    const bids = [...instrument.bids.values()]
-      .sort((left, right) => right.price - left.price)
-      .slice(0, depth);
-    const asks = [...instrument.asks.values()]
-      .sort((left, right) => left.price - right.price)
-      .slice(0, depth);
+    const bids = snapshotLevels(instrument.bids, depth, true);
+    const asks = snapshotLevels(instrument.asks, depth, false);
     const afterSequence = Math.max(0, Number(options.afterSequence) || 0);
     const tradeLimit = Math.max(0, Math.floor(Number(options.tradeLimit ?? 2_500) || 0));
-    const matchingTrades = afterSequence > 0
-      ? instrument.trades.filter((trade) => Number(trade.sequence) > afterSequence)
-      : instrument.trades;
-    const trades = tradeLimit > 0 ? matchingTrades.slice(-tradeLimit) : [];
+    const trades = snapshotTrades(instrument.trades, afterSequence, tradeLimit);
     const includeOrders = options.includeOrders === true;
     const orderLimit = Math.min(50_000, Math.max(1, Math.floor(Number(options.orderLimit) || 50_000)));
     let orders;
