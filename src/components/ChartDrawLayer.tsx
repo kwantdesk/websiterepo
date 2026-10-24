@@ -63,6 +63,8 @@ type Props = {
   viewportVersion: number;
   chartReady: number;
   subscribeViewport: (callback: () => void) => (() => void);
+  /** Changes before the native series timeline is replaced (not on ticks). */
+  projectionRevision?: () => number;
   onCommit: (drawing: Drawing) => void;
   onUpdate: (drawing: Drawing) => void;
   onDelete: (id: string) => void;
@@ -96,7 +98,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "
 
 export default function ChartDrawLayer({
   width, height, priceScaleWidth = 0, activeTool, emoji, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, volumeProfiles = {}, requireExactVolumeProfiles = false, volumeProfileMessages = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport,
+  toX, toY, fromXY, candles, volumeProfiles = {}, requireExactVolumeProfiles = false, volumeProfileMessages = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, projectionRevision,
   plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor, currentPrice,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -493,6 +495,10 @@ export default function ChartDrawLayer({
     xA: number; xB: number; yA: number; yB: number;
   } | null>(null);
   const drawingsGroupRef = useRef<SVGGElement | null>(null);
+  const renderedTimelineRef = useRef<number | undefined>(undefined);
+  const timelineRedrawPendingRef = useRef(false);
+  const projectionRevisionRef = useRef(projectionRevision);
+  projectionRevisionRef.current = projectionRevision;
 
   // Chart.tsx supplies these projectors as inline callbacks. Their identity
   // therefore changes on every live candle render even though they always
@@ -535,10 +541,14 @@ export default function ChartDrawLayer({
   // React may yield between render and commit while the imperative chart keeps
   // moving. Capture the basis alongside the JSX coordinates, NOT at commit.
   const renderedProjection = readProjection();
+  const renderedTimeline = projectionRevision?.();
   const alignViewportRef = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     // Fresh coordinates: drop any compensating transform from the last pan.
     projectionBasisRef.current = renderedProjection;
+    renderedTimelineRef.current = renderedTimeline;
+    timelineRedrawPendingRef.current = false;
+    drawingsGroupRef.current?.removeAttribute("visibility");
     drawingsGroupRef.current?.removeAttribute("transform");
     alignViewportRef.current?.();
   });
@@ -569,7 +579,21 @@ export default function ChartDrawLayer({
     const onViewport = () => {
       const basis = projectionBasisRef.current;
       const group = drawingsGroupRef.current;
-      if (!basis || !group) return;
+      if (!group) return;
+      // Reaggregation/history replacement is not an affine pan/zoom. Its
+      // compressed session gaps and bar indices can change independently.
+      // Never stretch the old SVG across that map. Reproject every saved
+      // time/price anchor once; hide only the obsolete geometry until commit.
+      if (renderedTimelineRef.current !== projectionRevisionRef.current?.()) {
+        group.removeAttribute("transform");
+        group.setAttribute("visibility", "hidden");
+        if (!timelineRedrawPendingRef.current) {
+          timelineRedrawPendingRef.current = true;
+          forceRedraw((value) => value + 1);
+        }
+        return;
+      }
+      if (!basis) return;
       const projection = viewportProjectionRef.current;
       const xA = projection.toX(basis.timeA);
       const xB = projection.toX(basis.timeB);

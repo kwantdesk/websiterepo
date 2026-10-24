@@ -499,6 +499,7 @@ import {
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
+import { drawingCoordinateToTime, drawingTimeToCoordinate, type DrawingTimeScale } from "@/lib/chartDrawingCoordinates";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
 import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
@@ -3407,6 +3408,7 @@ function Chart({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const drawingTimelineRevisionRef = useRef(0);
   const candleSeriesRef = useRef<ReturnType<IChartApi["addCandlestickSeries"]> | null>(null);
   const overlayChartSeriesRef = useRef(new Map<string,
     | { kind: "line"; series: ReturnType<IChartApi["addLineSeries"]> }
@@ -13966,69 +13968,16 @@ function Chart({
   function timeToX(time: number) {
     const timeScale = chartRef.current?.timeScale();
     if (!timeScale) return null;
-    const direct = timeScale.timeToCoordinate(time as Time);
-    if (direct != null) return direct;
-    // timeToCoordinate only answers for exact visible bar times. A moved
-    // position calculator carries arbitrary anchor times (and anchors can sit
-    // beyond the last bar or inside a session gap), which made the whole
-    // drawing vanish. Resolve those through the logical scale instead:
-    // interpolate between the neighbouring bars, or extrapolate past the ends
-    // by the bar interval.
-    if (!candles.length) return null;
-    const barTime = (index: number) => Math.floor(candles[index].timestamp / 1000);
-    const logicalFor = (index: number) => {
-      const coordinate = timeScale.timeToCoordinate(barTime(index) as Time);
-      if (coordinate == null) return null;
-      const logical = timeScale.coordinateToLogical(coordinate);
-      return logical == null ? null : Number(logical);
-    };
-    const intervalSeconds = candleIntervalMs && candleIntervalMs > 0
-      ? candleIntervalMs / 1000
-      : Math.max(1, candles.length > 1 ? barTime(1) - barTime(0) : 60);
-    let low = 0;
-    let high = candles.length - 1;
-    while (low < high) {
-      const mid = (low + high + 1) >> 1;
-      if (barTime(mid) <= time) low = mid;
-      else high = mid - 1;
-    }
-    const anchorIndex = low;
-    const anchorTime = barTime(anchorIndex);
-    const anchorLogical = logicalFor(anchorIndex);
-    if (anchorLogical == null) return null;
-    let logical: number;
-    if (time >= anchorTime && anchorIndex < candles.length - 1) {
-      const nextTime = barTime(anchorIndex + 1);
-      const nextLogical = logicalFor(anchorIndex + 1);
-      if (nextLogical == null) return null;
-      logical = anchorLogical
-        + ((time - anchorTime) / Math.max(1, nextTime - anchorTime)) * (nextLogical - anchorLogical);
-    } else {
-      logical = anchorLogical + (time - anchorTime) / intervalSeconds;
-    }
-    return timeScale.logicalToCoordinate(logical as Parameters<typeof timeScale.logicalToCoordinate>[0]) ?? null;
+    // These native charts use numeric seconds, including event-chart display
+    // times. Pending candles/timeframe props are not the painted timeline.
+    return drawingTimeToCoordinate(timeScale as unknown as DrawingTimeScale, time);
   }
 
   function xToTime(x: number) {
     const timeScale = chartRef.current?.timeScale();
     if (!timeScale) return null;
 
-    const directTime = normalizeTimeValue(timeScale.coordinateToTime(x));
-    if (directTime != null) return directTime;
-
-    const lastCandle = candles[candles.length - 1];
-    const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1000 : null;
-    if (!lastCandle || !intervalSeconds || intervalSeconds <= 0) return null;
-
-    const lastTime = Math.floor(lastCandle.timestamp / 1000);
-    const lastCoordinate = timeScale.timeToCoordinate(lastTime as Time);
-    const pointerLogical = timeScale.coordinateToLogical(x);
-    if (lastCoordinate == null || pointerLogical == null) return null;
-
-    const lastLogical = timeScale.coordinateToLogical(lastCoordinate);
-    if (lastLogical == null) return null;
-
-    return Math.round(lastTime + (Number(pointerLogical) - Number(lastLogical)) * intervalSeconds);
+    return drawingCoordinateToTime(timeScale as unknown as DrawingTimeScale, x);
   }
 
   function priceToY(price: number) {
@@ -14912,6 +14861,7 @@ function Chart({
         eventSourceTimeByChartTimeRef.current,
         eventChartTimeBySourceTimeRef.current,
       );
+      drawingTimelineRevisionRef.current += 1;
       candleSeriesRef.current.setData(chartData);
       lastRenderedCandleTimeRef.current = chartData.length
         ? Number(chartData[chartData.length - 1].time)
@@ -15294,6 +15244,7 @@ function Chart({
       eventChartTimeBySourceTimeRef.current,
     );
 
+    drawingTimelineRevisionRef.current += 1;
     candleSeries.setData(chartData);
     lastRenderedCandleTimeRef.current = chartData.length ? Number(chartData[chartData.length - 1].time) : null;
     lastRenderedSourceTimestampRef.current = creationSource.at(-1)?.timestamp ?? null;
@@ -18802,6 +18753,7 @@ function Chart({
             viewportVersion={viewportVersion}
             chartReady={chartReadyRevision}
             subscribeViewport={subscribeDrawViewport}
+            projectionRevision={() => drawingTimelineRevisionRef.current}
             onOpenSettings={(id) => { setDrawSelectedId(id); setDrawTool("cursor"); setDrawSettingsOpen(true); }}
             onCommit={(drawing) => { commitDrawings([...chartingDrawings, drawing]); setDrawSelectedId(drawing.id); }}
             onUpdate={(drawing) => commitDrawings(chartingDrawings.map((d) => d.id === drawing.id ? drawing : d))}
