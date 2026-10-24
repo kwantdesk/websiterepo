@@ -165,7 +165,7 @@ test("old sessions fall back from today's contract to History Plant root bars", 
       exchange: "CME",
       symbol: "NQ",
       source: "Rithmic History Plant minute bars",
-      bars: [[timestamp, 21_000, 21_010, 20_995, 21_005, 123]],
+      bars: [[timestamp + 60000, 21_000, 21_010, 20_995, 21_005, 123]],
     }));
     const result = await archive.load({
       exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: timestamp - 1, toMs: timestamp + 1,
@@ -271,6 +271,51 @@ test("structurally impossible archived OHLC is rejected", () => {
   const valid = { t: T0, o: 100, h: 102, l: 99, c: 101, v: 10 };
   const impossible = { t: T0 + 60_000, o: 100, h: 99, l: 98, c: 101, v: 20 };
   assert.deepEqual(mergeRithmicHistoryBars([valid], [impossible]), [valid]);
+});
+
+test("legacy History Plant close markers become bar-open times before merging recorded wicks", async () => {
+  await withArchive(async (archive, dir) => {
+    const day = chicagoTradingDate(T0), folder = join(dir, "bars", day);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "CME-NQ.json"), JSON.stringify({
+      source: "Rithmic History Plant minute bars",
+      bars: [[T0 + 60000, 100, 115, 90, 102, 200], [T0 + 120000, 102, 104, 101, 103, 100]],
+    }));
+    archive.record(print(0, 100, 1));
+    archive.record(print(60000, 102, 1));
+    const result = await archive.load({ exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: T0, toMs: T0 + 180000 });
+    assert.equal(result.candles.length, 2);
+    assert.deepEqual(result.candles.map(c => [c.timestamp, c.open, c.high, c.low, c.close]), [
+      [T0, 100, 115, 90, 102], [T0 + 60000, 102, 104, 101, 103],
+    ]);
+  });
+});
+
+test("explicit bar-open History Plant files are never shifted twice", async () => {
+  await withArchive(async (archive, dir) => {
+    const folder = join(dir, "bars", chicagoTradingDate(T0));
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "CME-NQU6.json"), JSON.stringify({
+      source: "Rithmic History Plant minute bars", markerConvention: "bar-open",
+      bars: [[T0, 100, 115, 90, 102, 200]],
+    }));
+    const result = await archive.load({ exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: T0, toMs: T0 + 60000 });
+    assert.equal(result.candles[0].timestamp, T0);
+  });
+});
+
+test("close-marker normalization happens before 3m aggregation, not after", async () => {
+  await withArchive(async (archive, dir) => {
+    const folder = join(dir, "bars", chicagoTradingDate(T0));
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "CME-NQ.json"), JSON.stringify({ source: "Rithmic History Plant minute bars", bars: [
+      [T0 + 60000, 100, 105, 99, 103, 20],
+      [T0 + 120000, 103, 108, 102, 107, 30],
+      [T0 + 180000, 107, 115, 90, 102, 40],
+    ] }));
+    const result = await archive.load({ exchange: "CME", symbol: "NQU6", interval: "3m", fromMs: T0, toMs: T0 + 180000 });
+    assert.deepEqual(result.candles, [{ timestamp: T0, open: 100, high: 115, low: 90, close: 102, volume: 90 }]);
+  });
 });
 
 test("a flush merges with the session already on disk", async () => {

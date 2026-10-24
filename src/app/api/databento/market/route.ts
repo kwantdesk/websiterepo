@@ -169,7 +169,7 @@ async function getDurableTimeHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-time-flow-v6", symbol, timeframe, cacheScope, includeAuctionGap ? "gap-v2" : "base"],
+    ["cme-time-flow-v7", symbol, timeframe, cacheScope, includeAuctionGap ? "gap-v2" : "base"],
     { revalidate: DURABLE_TIME_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<TimeHistoryPayload>(encoded);

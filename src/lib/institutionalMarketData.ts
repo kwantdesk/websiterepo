@@ -753,7 +753,7 @@ export async function readCachedInstitutionalChartCandles(
   contractSymbol?: string,
 ) {
   const cached = await readPersistentIndicatorCache<Candle[]>(
-    `chart-candles:${orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)}:${period}`,
+    `chart-candles-bar-open-v2:${orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)}:${period}`,
     15 * 60_000,
   );
   return repairInstitutionalCandleSeries(normalizeCandles(cached, 500_000), timeframe, symbol);
@@ -768,7 +768,7 @@ export function cacheInstitutionalChartCandles(
 ) {
   if (!candles.length) return;
   void writePersistentIndicatorCache(
-    `chart-candles:${orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)}:${period}`,
+    `chart-candles-bar-open-v2:${orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)}:${period}`,
     repairInstitutionalCandleSeries(candles, timeframe, symbol).slice(-500_000),
   );
 }

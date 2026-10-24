@@ -49,6 +49,16 @@ const DEFAULT_FLUSH_MS = 15_000;
 const MAX_OPEN_TRADING_DATES = 2;
 const MAX_SERVED_BARS = 200_000;
 
+/** History Plant time-bar markers name the closing boundary. Older minute
+ * imports saved that marker verbatim; live/replayed trades use bar-open time.
+ * Normalize only the explicitly identified minute importer, never recorded
+ * trades or files already migrated to the bar-open convention.
+ */
+export function historyPlantBarOpenTime(timestamp, source, markerConvention) {
+  return source === "Rithmic History Plant minute bars" && markerConvention !== "bar-open"
+    ? Number(timestamp) - BAR_MS : Number(timestamp);
+}
+
 /**
  * Rows are stored positionally rather than as objects. It is the difference
  * between ~40 bytes and ~140 bytes a bar across every instrument and every
@@ -420,6 +430,7 @@ export class FuturesBarArchive {
       if (!Array.isArray(rows)) return [];
       return rows
         .map(decodeBar)
+        .map((bar) => ({ ...bar, t: historyPlantBarOpenTime(bar.t, parsed?.source, parsed?.markerConvention) }))
         .filter(validArchivedBar);
     } catch {
       // Absent or unreadable is simply "no bars for that session".

@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { loadConfig } from "../src/config.mjs";
 import { RithmicHistoryPlantClient } from "../src/history-plant-client.mjs";
 import { chicagoTradingDate } from "../src/trading-session.mjs";
+import { historyPlantBarOpenTime } from "../src/futures-bar-archive.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name, fallback = null) => {
@@ -80,7 +81,7 @@ try {
         startSec: Math.floor(windowStartMs / 1_000),
         finishSec: Math.floor(windowEndMs / 1_000),
         onBar: (row) => {
-          const t = Number(row.marker) * 1_000;
+          const t = historyPlantBarOpenTime(Number(row.marker) * 1_000, "Rithmic History Plant minute bars");
           const bar = [t, Number(row.openPrice), Number(row.highPrice), Number(row.lowPrice), Number(row.closePrice), Number(row.volume || 0)];
           if (!Number.isFinite(t) || t <= 0 || !bar.slice(1, 5).every(Number.isFinite)
             || bar[2] < Math.max(bar[1], bar[4]) || bar[3] > Math.min(bar[1], bar[4]) || bar[2] < bar[3]) {
@@ -101,7 +102,10 @@ try {
         if (existsSync(file)) {
           try {
             const parsed = JSON.parse(await readFile(file, "utf8"));
-            for (const bar of parsed.bars || []) merged.set(Number(bar[0]), bar);
+            for (const bar of parsed.bars || []) {
+              const timestamp = historyPlantBarOpenTime(bar[0], parsed.source, parsed.markerConvention);
+              merged.set(timestamp, [timestamp, ...bar.slice(1)]);
+            }
           } catch {}
         }
         for (const [timestamp, bar] of incoming) merged.set(timestamp, bar);
@@ -111,6 +115,7 @@ try {
           exchange: EXCHANGE,
           symbol: SYMBOL,
           source: "Rithmic History Plant minute bars",
+          markerConvention: "bar-open",
           bars: [...merged.values()].sort((a, b) => a[0] - b[0]),
         });
       }

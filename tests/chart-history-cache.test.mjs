@@ -4,7 +4,45 @@ import assert from "node:assert/strict";
 import {
   mergeAuthoritativeChartHistory,
   mergeChartHistory,
+  readChartHistoryCache,
+  writeChartHistoryCache,
+  peekCompatibleChartHistoryCache,
 } from "../src/lib/chartHistoryCache.ts";
+
+test("an older wick correction is persisted when the newest candle is unchanged", async () => {
+  const timestamp = Math.floor((Date.now() - 600_000) / 60_000) * 60_000;
+  const symbol = "WICK-CACHE-REGRESSION";
+  const original = Array.from({ length: 6 }, (_, i) => ({ timestamp: timestamp + i * 60000, open: 100, high: 102, low: 99, close: 101, volume: 10 }));
+  await writeChartHistoryCache(symbol, "1m", original);
+  const corrected = original.map((c, i) => i === 1 ? { ...c, high: 109, low: 94 } : c);
+  await writeChartHistoryCache(symbol, "1m", corrected);
+  const restored = await readChartHistoryCache(symbol, "1m");
+  assert.equal(restored.candles[1].high, 109);
+  assert.equal(restored.candles[1].low, 94);
+  // Real provider corrections can remove an erroneous spike too. Do not fix
+  // persistence by applying a permanently expanding OHLC envelope.
+  await writeChartHistoryCache(symbol, "1m", original);
+  assert.equal((await readChartHistoryCache(symbol, "1m")).candles[1].high, 102);
+});
+
+test("higher-timeframe warm caches are rebuilt after their source history changes", async () => {
+  const timestamp = Math.floor((Date.now() - 600_000) / 180_000) * 180_000;
+  const symbol = "WICK-DERIVED-CACHE-REGRESSION";
+  const original = Array.from({ length: 6 }, (_, i) => ({ timestamp: timestamp + i * 60000, open: 100, high: 102, low: 99, close: 101, volume: 10 }));
+  await writeChartHistoryCache(symbol, "1m", original);
+  assert.equal(peekCompatibleChartHistoryCache(symbol, "3m").candles[0].high, 102);
+  await writeChartHistoryCache(symbol, "1m", original.map((c, i) => i === 1 ? { ...c, high: 110 } : c));
+  assert.equal(peekCompatibleChartHistoryCache(symbol, "3m").candles[0].high, 110);
+});
+
+test("internal flow corrections survive a cache write with unchanged OHLC endpoints", async () => {
+  const timestamp = Math.floor((Date.now() - 600_000) / 60000) * 60000;
+  const symbol = "FLOW-CACHE-REGRESSION";
+  const original = Array.from({ length: 3 }, (_, i) => ({ timestamp: timestamp + i * 60000, open: 100, high: 102, low: 99, close: 101, volume: 10, askVolume: 6, bidVolume: 4 }));
+  await writeChartHistoryCache(symbol, "1m", original);
+  await writeChartHistoryCache(symbol, "1m", original.map((c, i) => i === 0 ? { ...c, askVolume: 9, bidVolume: 1 } : c));
+  assert.equal((await readChartHistoryCache(symbol, "1m")).candles[0].askVolume, 9);
+});
 
 test("a base candle refresh preserves cached order-flow enrichment", () => {
   const timestamp = Date.now() - 60_000;

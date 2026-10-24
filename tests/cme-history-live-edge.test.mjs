@@ -83,6 +83,6 @@ test('history refresh revalidates privately and continuity safety gates remain i
   assert.doesNotMatch(base,/&& !cachedBase.length/);
   assert.match(workspace,/if \(cmeChartTailNeedsReconciliation\(repaired, pane.timeframe\)\) return/);
   assert.match(workspace,/if \(historyHydratedRef.current\) \{[\s\S]*?setSettledChartRequestKey/);
-  assert.match(route,/cme-time-flow-v6/);
+  assert.match(route,/cme-time-flow-v7/);
   assert.match(route,/hasMinimumChartHistory\(candles, timeframe\)/);
 });

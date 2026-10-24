@@ -8,6 +8,8 @@ type CachedHistory = {
   timeframe: string;
   candles: Candle[];
   updatedAt: number;
+  /** Memory-only projection, invalidated when this symbol's source changes. */
+  derived?: boolean;
 };
 
 type CachedExecutionTape = {
@@ -79,6 +81,25 @@ function candleFingerprint(candles: Candle[]) {
   ].join(":");
 }
 
+function sameCandleHistory(left: Candle[], right: Candle[]) {
+  if (left.length !== right.length) return false;
+  // Tail identity is only a cheap prefilter. Closed OHLC/flow corrections
+  // anywhere in the history must reach memory AND IndexedDB, even on a quiet
+  // market with an unchanged last candle. No allocation/hash collision here.
+  // Explicit fields avoid millions of dynamic key lookups on deep histories.
+  for (let index = 0; index < left.length; index++) {
+    const a = left[index], b = right[index];
+    if (a.timestamp !== b.timestamp || a.open !== b.open || a.high !== b.high
+      || a.low !== b.low || a.close !== b.close || a.volume !== b.volume
+      || a.trades !== b.trades || a.bidVolume !== b.bidVolume || a.askVolume !== b.askVolume
+      || a.bidTrades !== b.bidTrades || a.askTrades !== b.askTrades || a.delta !== b.delta
+      || a.deltaOpen !== b.deltaOpen || a.deltaHigh !== b.deltaHigh || a.deltaLow !== b.deltaLow
+      || a.deltaClose !== b.deltaClose || a.sourceStartTimestamp !== b.sourceStartTimestamp
+      || a.sourceEndTimestamp !== b.sourceEndTimestamp) return false;
+  }
+  return true;
+}
+
 function executionFingerprint(records: InstitutionalTrade[]) {
   const first = records[0];
   const last = records.at(-1);
@@ -101,10 +122,9 @@ function cacheKey(symbol: string, timeframe: string) {
   // the malformed volume/range/Renko history this pipeline replaces.
   return isEventBasedChartInterval(timeframe)
     ? `event-v7::${symbol}::${timeframe}`
-    // Time-flow v2 replaces the old six-hour-only aggressor enrichment. Keep
-    // the partial cache isolated so returning browsers cannot restore a CVD
-    // line that begins in the middle of the visible chart.
-    : `time-v2::${symbol}::${timeframe}`;
+    // v3 excludes close-marked minute imports and discarded older-wick
+    // corrections. Event history has its independent execution-time schema.
+    : `time-v3::${symbol}::${timeframe}`;
 }
 
 function executionTapeCacheKey(symbol: string, _timeframe: string) {
@@ -450,7 +470,7 @@ async function readAllCachedHistory(symbol: string) {
     const matchingKeys = storedKeys
       .map(String)
       .filter((key) => (
-        key.startsWith(`time-v2::${symbol}::`)
+        key.startsWith(`time-v3::${symbol}::`)
         || key.startsWith(`event-v7::${symbol}::`)
       ));
     // Read only this symbol's candle series, sequentially. The former getAll
@@ -507,6 +527,7 @@ function buildCompatibleRecord(
     timeframe,
     candles,
     updatedAt: source.updatedAt,
+    derived: true,
   } satisfies CachedHistory;
 }
 
@@ -549,13 +570,14 @@ export async function writeChartHistoryCache(symbol: string, timeframe: string, 
   const inputFingerprint = candleFingerprint(candles);
   if (lastWriteFingerprintByKey.get(writeKey) === inputFingerprint) {
     const existing = memoryCache.get(key);
-    if (existing) return existing;
+    if (existing && !existing.derived && sameCandleHistory(existing.candles, candles)) return existing;
   }
   // Claim this snapshot before any IndexedDB await. Sibling panes commonly
   // flush the same shared series together; only the first should serialize it.
   rememberWriteFingerprint(writeKey, inputFingerprint);
   const previous = await readChartHistoryCache(symbol, timeframe);
-  if (previous && candleFingerprint(previous.candles) === inputFingerprint) {
+  if (previous && !previous.derived && candleFingerprint(previous.candles) === inputFingerprint
+    && sameCandleHistory(previous.candles, candles)) {
     return previous;
   }
   const normalizedCandles = mergeAuthoritativeChartHistory(
@@ -572,6 +594,12 @@ export async function writeChartHistoryCache(symbol: string, timeframe: string, 
     candles: normalizedCandles,
     updatedAt: Date.now(),
   };
+  // A synthesized 3m/5m/etc warm entry is not an independent authority. Without
+  // invalidation a switch could resurrect a wick already repaired in 1m.
+  // Independently downloaded native intervals and other symbols are untouched.
+  for (const [cachedKey, cached] of memoryCache) {
+    if (cached.symbol === symbol && cached.derived) memoryCache.delete(cachedKey);
+  }
   storeBounded(memoryCache, key, record, MAX_MEMORY_HISTORY_RECORDS);
 
   try {
