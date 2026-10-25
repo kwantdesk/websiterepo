@@ -105,11 +105,12 @@ export function paintZeroGammaLineOnBars(
   barTimesSeconds: number[],
   barIntervalSeconds: number | null,
   sourceBarTimesSeconds: number[] = barTimesSeconds,
+  replayTimestampMs?: number | null,
 ): Array<{ time: number; value: number }> {
   if (!barTimesSeconds.length) return paintZeroGammaLine(points);
   const sessionTrails = new Map<string, Array<{ time: number; value: number }>>();
   for (const point of points
-    .filter((item) => Number.isFinite(item.timestampMs) && Number.isFinite(item.value))
+    .filter((item) => Number.isFinite(item.timestampMs) && Number.isFinite(item.value) && (replayTimestampMs == null || item.timestampMs + (item.status === "HISTORICAL" ? 60_000 : 0) <= replayTimestampMs))
     .sort((left, right) => left.timestampMs - right.timestampMs)) {
     const trail = sessionTrails.get(point.sessionDate) ?? [];
     const time = Math.floor(point.timestampMs / 1_000);
@@ -160,10 +161,11 @@ export function paintZeroGammaLineOnBars(
     if (!trail?.length) continue;
     let cursor = cursorBySession.get(clock.sessionDate) ?? 0;
     const barClose = sourceBarTime + interval;
-    while (cursor + 1 < trail.length && trail[cursor + 1].time < barClose) cursor += 1;
+    const through = replayTimestampMs == null ? barClose : Math.min(barClose, replayTimestampMs / 1_000);
+    while (cursor + 1 < trail.length && (replayTimestampMs == null ? trail[cursor + 1].time < through : trail[cursor + 1].time <= through)) cursor += 1;
     cursorBySession.set(clock.sessionDate, cursor);
     const observation = trail[cursor];
-    if (observation.time >= barClose) continue;
+    if (replayTimestampMs == null ? observation.time >= through : observation.time > through) continue;
     // Straight-line the level between two verified observations. Holding the
     // earlier value until the next one lands claims the flip point stood
     // perfectly still and then teleported, and with observations minutes (or
@@ -173,7 +175,7 @@ export function paintZeroGammaLineOnBars(
     // of them is drawn as the gradual move it was.
     const next = trail[cursor + 1];
     const span = next ? next.time - observation.time : 0;
-    const value = next && span > 0
+    const value = replayTimestampMs == null && next && span > 0
       ? observation.value
         + (next.value - observation.value)
           * Math.min(1, Math.max(0, (barClose - observation.time) / span))

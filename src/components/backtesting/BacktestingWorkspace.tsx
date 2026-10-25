@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import type { Candle } from "@/lib/backtester";
+import { replaySpeedLabel, replayTimestampAfterElapsed, startReplayTicker } from "@/lib/replayPlayback";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
 import type { ChartGammaLevelsPayload, ChartGammaSourceLevelKind } from "@/lib/chartGammaLevels";
 import { mergeGammaLevelsAtSamePrice } from "@/lib/chartGammaLevels";
@@ -294,7 +295,7 @@ const INSTRUMENTS: Array<{ id: ReplayInstrument; symbol: string; label: string }
   { id: "MES", symbol: "MES.v.0", label: "MES · Micro S&P 500" },
 ];
 const DEFAULT_FAVOURITE_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1D"];
-const SPEEDS = [1, 2, 8, 10, 20, 40, 100, 200] as const;
+const SPEEDS = [0.25, 0.5, 1, 2, 8, 10, 20, 40, 100, 200] as const;
 const REPLAY_TIME_ZONE_STORAGE_KEY = "kwantdesk:backtesting-timezone:v1";
 const REPLAY_LOOKBACK_MS = 7 * 24 * 60 * 60_000;
 const REPLAY_FORWARD_MS = 24 * 60 * 60_000;
@@ -348,14 +349,19 @@ function historicalCandlesAtClock(
 ) {
   if (!candles.length || clock === null) return [];
   const intervalMs = replayIntervalMs(timeframe);
-  if (!intervalMs) return candles.filter((candle) =>
-    Number(candle.sourceEndTimestamp ?? candle.timestamp) <= clock);
+  if (!intervalMs) return candles.filter((candle, index) =>
+    Number(candle.sourceEndTimestamp ?? candles[index + 1]?.timestamp ?? Number.POSITIVE_INFINITY) <= clock);
 
-  const bucketStart = Math.floor(clock / intervalMs) * intervalMs;
-  const completedEnd = firstCandleAtOrAfter(candles, bucketStart);
-  const completed = candles.slice(0, completedEnd);
+  const visibleEnd = firstCandleAfter(candles, clock);
+  const latest = candles[visibleEnd - 1];
+  const forming = latest && latest.timestamp + intervalMs > clock ? latest : null;
+  const completed = candles.slice(0, forming ? visibleEnd - 1 : visibleEnd)
+    .filter(candle => candle.timestamp + intervalMs <= clock);
+  if (!forming) return completed;
+  const bucketStart = forming.timestamp;
   const tickStart = firstCandleAtOrAfter(oneSecondBars, bucketStart);
-  const tickEnd = firstCandleAfter(oneSecondBars, clock);
+  // A second OHLC is final only after that second closes.
+  const tickEnd = firstCandleAfter(oneSecondBars, clock - 1_000);
   const intrabar = oneSecondBars.slice(tickStart, tickEnd);
   if (intrabar.length) {
     let high = intrabar[0].high;
@@ -379,19 +385,8 @@ function historicalCandlesAtClock(
     ];
   }
 
-  const source = candles[completedEnd]?.timestamp === bucketStart ? candles[completedEnd] : undefined;
-  if (!source || bucketStart > clock) return completed;
-  return [
-    ...completed,
-    {
-      timestamp: bucketStart,
-      open: source.open,
-      high: source.open,
-      low: source.open,
-      close: source.open,
-      volume: 0,
-    },
-  ];
+  // No observed intrabar data: do not borrow the future bar's opening print.
+  return completed;
 }
 
 function replayExecutionTrades(executions: ReplayExecutionTuple[] | undefined): InstitutionalTrade[] {
@@ -789,6 +784,9 @@ export default function BacktestingWorkspace({
   const [levelError, setLevelError] = useState<Record<LevelFamily, string>>({ gamma: "", quant: "", valueArea: "" });
   const [gammaLevels, setGammaLevels] = useState<ChartLevel[]>([]);
   const [gammaPositioning, setGammaPositioning] = useState<ChartGammaLevelsPayload | null>(null);
+  const [gammaDataClock, setGammaDataClock] = useState(Number.POSITIVE_INFINITY);
+  const [quantDataClock, setQuantDataClock] = useState(Number.POSITIVE_INFINITY);
+  const [valueAreaDataClock, setValueAreaDataClock] = useState(Number.POSITIVE_INFINITY);
   const [showGexPanel, setShowGexPanel] = useState(false);
   const [showZyonPanel, setShowZyonPanel] = useState(false);
   const [replayDockOrder, setReplayDockOrder] = useState<ReplayDockKind[]>([]);
@@ -882,7 +880,7 @@ export default function BacktestingWorkspace({
     thresholds: replayVixThresholds,
   });
   const activeOptionsSnapshot = replayClock ? replayOptionsSnapshot(replayClock) : null;
-  const replayGammaEnvironment = useMemo(() => gammaPositioning ? {
+  const replayGammaEnvironment = useMemo(() => gammaPositioning && replayDataClock != null && gammaDataClock <= replayDataClock ? {
     label: gammaPositioning.environment.gammaStateLabel,
     regime: gammaPositioning.environment.gammaRegime,
     checkedAt: gammaPositioning.checkedAt,
@@ -890,7 +888,7 @@ export default function BacktestingWorkspace({
     // Every backtesting snapshot is deliberately point-in-time and must never
     // present itself as the current live options environment.
     stale: true,
-  } : null, [gammaPositioning]);
+  } : null, [gammaPositioning, gammaDataClock, replayDataClock]);
   const visibleCandles = useMemo(
     () => historicalCandlesAtClock(candles, oneSecondBars, timeframe, replayDataClock),
     [candles, oneSecondBars, replayDataClock, timeframe],
@@ -1083,11 +1081,11 @@ export default function BacktestingWorkspace({
     return (candles.at(-1)?.timestamp ?? 0) + (replayIntervalMs(timeframe) ?? 1_000);
   }, [candles, timeframe]);
   const activeLevels = useMemo(() => [
-    ...(levelState.gamma ? gammaLevels : []),
-    ...(levelState.quant ? quantLevels : []),
-    ...(levelState.valueArea ? valueAreaLevels : []),
-  ], [gammaLevels, levelState, quantLevels, valueAreaLevels]);
-  const activeZones = levelState.quant ? quantZones : [];
+    ...(levelState.gamma && replayDataClock != null && gammaDataClock <= replayDataClock ? gammaLevels : []),
+    ...(levelState.quant && replayDataClock != null && quantDataClock <= replayDataClock ? quantLevels : []),
+    ...(levelState.valueArea && replayDataClock != null && valueAreaDataClock <= replayDataClock ? valueAreaLevels : []),
+  ], [gammaLevels, levelState, quantLevels, valueAreaLevels, gammaDataClock, quantDataClock, valueAreaDataClock, replayDataClock]);
+  const activeZones = levelState.quant && replayDataClock != null && quantDataClock <= replayDataClock ? quantZones : [];
   const availableReplayIntervalGroups = useMemo(
     () => CHART_INTERVAL_GROUPS
       .map((group) => ({
@@ -1104,7 +1102,7 @@ export default function BacktestingWorkspace({
 
   const loadLevels = useCallback(async (clock: number, force = false, futuresPrice: number | null = null) => {
     const snapshot = replayOptionsSnapshot(clock);
-    if (!force && snapshot.key === levelSnapshotKey) return;
+    if (!force && snapshot.key === levelSnapshotKey && ![gammaDataClock, quantDataClock, valueAreaDataClock].some(value => Number.isFinite(value) && value > clock)) return;
     if (levelLoadingRef.current) {
       pendingLevelRefreshRef.current = { clock, futuresPrice };
       return;
@@ -1162,7 +1160,7 @@ export default function BacktestingWorkspace({
           },
         )
       : Promise.resolve(null);
-    const valueAreaRequest = valueAreaSnapshotKey === snapshot.sessionDate && valueAreaLevels.length
+    const valueAreaRequest = valueAreaSnapshotKey === snapshot.sessionDate && valueAreaLevels.length && valueAreaDataClock <= clock
       ? Promise.resolve(null)
       : requestJson<ValueAreaPayload>(
           `/api/databento/value-area?symbol=${encodeURIComponent(selectedDefinition.symbol)}&asOf=${encodeURIComponent(new Date(clock).toISOString())}`,
@@ -1194,9 +1192,11 @@ export default function BacktestingWorkspace({
           intradayApplied = true;
           setGammaLevels(gammaSnapshot(intradayGamma.value, settings));
           setGammaPositioning(intradayGamma.value);
+          setGammaDataClock(clock);
           const livePlan = quantSnapshotFromGamma(intradayGamma.value, root, settings);
           setQuantLevels(livePlan.levels);
           setQuantZones(livePlan.zones);
+          setQuantDataClock(clock);
         }
         return intradayGamma;
       });
@@ -1207,6 +1207,7 @@ export default function BacktestingWorkspace({
           if (!intradayApplied) {
             setGammaLevels(gammaSnapshot(eodGamma.value, settings));
             setGammaPositioning(eodGamma.value);
+            setGammaDataClock(clock);
           }
         }
         return eodGamma;
@@ -1217,6 +1218,7 @@ export default function BacktestingWorkspace({
           const completedPlan = quantSnapshot(kwant.value, settings);
           setQuantLevels(completedPlan.levels);
           setQuantZones(completedPlan.zones);
+          setQuantDataClock(clock);
         }
         return kwant;
       });
@@ -1225,6 +1227,7 @@ export default function BacktestingWorkspace({
         if (valueArea.status === "fulfilled" && valueArea.value) {
           setValueAreaLevels(valueAreaSnapshot(valueArea.value));
           setValueAreaSnapshotKey(snapshot.sessionDate);
+          setValueAreaDataClock(clock);
         } else if (valueArea.status === "rejected") {
           setValueAreaLevels([]);
         }
@@ -1244,6 +1247,7 @@ export default function BacktestingWorkspace({
       if (!eligibleIntraday && eodGamma.status === "rejected" && intradayGamma.status === "fulfilled" && intradayGamma.value) {
         setGammaLevels(gammaSnapshot(intradayGamma.value, settings));
         setGammaPositioning(intradayGamma.value);
+        setGammaDataClock(clock);
       }
 
       const gammaAvailable = eodGamma.status === "fulfilled"
@@ -1271,7 +1275,7 @@ export default function BacktestingWorkspace({
       levelLoadingRef.current = false;
       setLevelLoading(false);
     }
-  }, [levelSnapshotKey, root, selectedDefinition.symbol, settings, valueAreaLevels.length, valueAreaSnapshotKey]);
+  }, [levelSnapshotKey, root, selectedDefinition.symbol, settings, valueAreaLevels.length, valueAreaSnapshotKey, gammaDataClock, quantDataClock, valueAreaDataClock]);
 
   const loadReplayCandles = useCallback(async (
     requestedTimeframe: ReplayTimeframe,
@@ -1547,24 +1551,23 @@ export default function BacktestingWorkspace({
     if (!playing || !candles.length) return;
     const intervalMs = replayIntervalMs(timeframe) ?? 1_000;
     const replayEnd = (candles.at(-1)?.timestamp ?? 0) + intervalMs;
-    let previousUpdate = performance.now();
-
-    const advance = () => {
-      const updateTime = performance.now();
-      const elapsed = Math.min(500, Math.max(0, updateTime - previousUpdate));
-      previousUpdate = updateTime;
+    const pauseHiddenReplay = () => { if (document.hidden) setPlaying(false); };
+    if (document.hidden) { pauseHiddenReplay(); return; }
+    const stop = startReplayTicker((elapsed) => {
       setPlaybackClock((current) => {
         if (current === null) return current;
         const availableEnd = tickerCoverageEnd > 0
           ? Math.min(replayEnd, tickerCoverageEnd)
           : current;
-        const next = Math.min(availableEnd, current + elapsed * speed);
+        const next = replayTimestampAfterElapsed(current, elapsed, speed, availableEnd);
         return next;
       });
+    }, pauseHiddenReplay);
+    document.addEventListener("visibilitychange", pauseHiddenReplay);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", pauseHiddenReplay);
     };
-
-    const timer = window.setInterval(advance, 100);
-    return () => window.clearInterval(timer);
   }, [candles, playing, speed, tickerCoverageEnd, timeframe]);
 
   useEffect(() => {
@@ -1592,7 +1595,7 @@ export default function BacktestingWorkspace({
   useEffect(() => {
     if (!replayClock || !started) return;
     const snapshot = replayOptionsSnapshot(replayClock);
-    if (snapshot.key === levelSnapshotKey) return;
+    if (snapshot.key === levelSnapshotKey && ![gammaDataClock, quantDataClock, valueAreaDataClock].some(value => Number.isFinite(value) && value > replayClock)) return;
     pendingLevelRefreshRef.current = {
       clock: replayClock,
       futuresPrice: visibleCandles.at(-1)?.close ?? null,
@@ -1607,7 +1610,7 @@ export default function BacktestingWorkspace({
       lastLevelLoadAtRef.current = Date.now();
       void loadLevels(pending.clock, false, pending.futuresPrice);
     }, delay);
-  }, [levelSnapshotKey, loadLevels, replayClock, started, visibleCandles]);
+  }, [levelSnapshotKey, loadLevels, replayClock, started, visibleCandles, gammaDataClock, quantDataClock, valueAreaDataClock]);
 
   useEffect(() => {
     if (levelLoading || !started || levelLoadingRef.current) return;
@@ -2177,7 +2180,7 @@ export default function BacktestingWorkspace({
                     onClick={() => setSpeed(option)}
                     className={`h-7 shrink-0 rounded-lg px-2 font-mono text-[9px] ${speed === option ? "bg-primary text-on-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}
                   >
-                    {option}×
+                    {replaySpeedLabel(option)}
                   </button>
                 ))}
               </div>

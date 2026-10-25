@@ -94,6 +94,7 @@ export type GexIntervalMapSnapshot = {
 };
 
 export type GexIntervalMapBuildSettings = {
+  causalMapping?: boolean;
   mode: GexIntervalMapMode;
   baseline: GexIntervalMapBaseline;
   rollingBuckets: number;
@@ -190,7 +191,7 @@ export function normalizeGexIntervalProviderPayload(input: {
   };
 }
 
-function interpolatedPrice(points: DisplayPricePoint[], timestamp: number, edgeToleranceMs = 15 * 60_000) {
+function interpolatedPrice(points: DisplayPricePoint[], timestamp: number, edgeToleranceMs = 15 * 60_000, causal = false) {
   if (!points.length) return null;
   let low = 0;
   let high = points.length - 1;
@@ -203,6 +204,7 @@ function interpolatedPrice(points: DisplayPricePoint[], timestamp: number, edgeT
   }
   const before = high >= 0 ? points[high] : null;
   const after = low < points.length ? points[low] : null;
+  if (causal) return before && timestamp - before.timestamp <= edgeToleranceMs ? before.price : null;
   if (before && after) {
     const span = after.timestamp - before.timestamp;
     if (span <= 0) return before.price;
@@ -362,7 +364,7 @@ export function buildGexIntervalMapSnapshot(
   const displayTick = /^(NQ|MNQ|ES|MES)$/.test(displayInstrument) ? 0.25 : 0.01;
   for (let bucketIndex = 0; bucketIndex < filteredBuckets.length; bucketIndex += 1) {
     const bucket = filteredBuckets[bucketIndex];
-    const displayPrice = interpolatedPrice(displayPrices, bucket.timestamp);
+    const displayPrice = interpolatedPrice(displayPrices, bucket.timestamp, 15 * 60_000, settings.causalMapping);
     const directRoot = (surface.sourceTicker === "NQ" && /^(NQ|MNQ)$/.test(displayInstrument))
       || (surface.sourceTicker === "ES" && /^(ES|MES)$/.test(displayInstrument));
     const sourcePrice = bucket.sourcePrice ?? (directRoot ? displayPrice : null);

@@ -1,5 +1,10 @@
 "use client";
 
+import { clipReplayIndicatorSeries, replayCausalCandles, replayCausalTrades, replaySafeIndicators, replayRetentionMustReset, REPLAY_UNAVAILABLE_INDICATORS } from "@/lib/replayIndicatorSafety";
+import { replayProfileWithinClock } from "@/lib/replayVolumeProfiles";
+import { useReplayFrameState } from "@/lib/useReplayFrameState";
+import { replayIndicatorCandles } from "@/lib/replayChartHistory";
+
 import { SuperTrendLabels } from "@/lib/superTrendLabels";
 import { BigBlocksLiveState, type LiveBigBlockZone } from "@/lib/bigBlocksLiveState";
 import { PivotPointLabels } from "@/lib/pivotPointLabels";
@@ -3261,8 +3266,8 @@ function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
 }
 
 function Chart({
-  candles,
-  marketTrades = EMPTY_CHART_ITEMS,
+  candles: rawCandles,
+  marketTrades: rawMarketTrades = EMPTY_CHART_ITEMS,
   marketTradesVersion = 0,
   trades,
   levels,
@@ -3350,6 +3355,9 @@ function Chart({
   onRemovePaperFills,
   onResetPaperTrading,
 }: ChartProps) {
+  const candles = useMemo(() => replayCausalCandles(rawCandles, replayTimestampMs), [rawCandles, replayTimestampMs]);
+  const marketTrades = useMemo(() => replayCausalTrades(rawMarketTrades, replayTimestampMs), [rawMarketTrades, marketTradesVersion, replayTimestampMs]);
+  const unavailableReplayIndicators = replayTimestampMs == null ? [] : rawIndicators.filter(instance => instance.replayUnavailable || instance.enabled && REPLAY_UNAVAILABLE_INDICATORS.has(instance.indicatorId));
   const indicatorPaletteThemeValue = useMemo(() => ({
     up: settings.upColor,
     down: settings.downColor,
@@ -3387,7 +3395,7 @@ function Chart({
     settings.borderDownColor, settings.gridColor, settings.backgroundColor,
   ]);
   const indicators = useMemo(
-    () => rawIndicators.map((instance) => settingsWithPalette(
+    () => replaySafeIndicators(rawIndicators, replayTimestampMs).map((instance) => settingsWithPalette(
       /*
        * The theme first, then the scheme on top of it.
        *
@@ -3402,7 +3410,7 @@ function Chart({
       settingsWithThemeColours(instance, indicatorThemeSettings),
       indicatorPaletteThemeValue,
     )),
-    [rawIndicators, indicatorPaletteThemeValue, indicatorThemeSettings],
+    [rawIndicators, indicatorPaletteThemeValue, indicatorThemeSettings, replayTimestampMs],
   );
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -4167,43 +4175,45 @@ function Chart({
   const [gammaHeatmapPayload, setGammaHeatmapPayload] = useState<GammaHeatmapPayload | null>(null);
   const [gammaHeatmapLoading, setGammaHeatmapLoading] = useState(false);
   const [gammaHeatmapError, setGammaHeatmapError] = useState<string | null>(null);
-  const [gammaHeatmapTooltip, setGammaHeatmapTooltip] = useState<GammaHeatmapHit | null>(null);
+  const [gammaHeatmapTooltip, setGammaHeatmapTooltip] = useReplayFrameState<GammaHeatmapHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [pullingStackingStatus, setPullingStackingStatus] = useState<RithmicLiquidityStatus>("checking");
-  const [pullingStackingFrame, setPullingStackingFrame] = useState<PullingStackingFrame | null>(null);
-  const [pullingStackingTooltip, setPullingStackingTooltip] = useState<PullingStackingHit | null>(null);
+  const [pullingStackingFrame, setPullingStackingFrame] = useReplayFrameState<PullingStackingFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [pullingStackingTooltip, setPullingStackingTooltip] = useReplayFrameState<PullingStackingHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [absorptionStatus, setAbsorptionStatus] = useState<RithmicLiquidityStatus>("checking");
-  const [absorptionFrame, setAbsorptionFrame] = useState<AbsorptionFrame | null>(null);
-  const [absorptionTooltip, setAbsorptionTooltip] = useState<AbsorptionHit | null>(null);
-  const [stackedImbalanceFrame, setStackedImbalanceFrame] = useState<StackedImbalanceFrame | null>(null);
-  const [stackedImbalanceTooltip, setStackedImbalanceTooltip] = useState<StackedImbalanceHit | null>(null);
+  const [absorptionFrame, setAbsorptionFrame] = useReplayFrameState<AbsorptionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [absorptionTooltip, setAbsorptionTooltip] = useReplayFrameState<AbsorptionHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [stackedImbalanceFrame, setStackedImbalanceFrame] = useReplayFrameState<StackedImbalanceFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [stackedImbalanceTooltip, setStackedImbalanceTooltip] = useReplayFrameState<StackedImbalanceHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [icebergRefreshStatus, setIcebergRefreshStatus] = useState<RithmicLiquidityStatus>("checking");
-  const [icebergRefreshFrame, setIcebergRefreshFrame] = useState<IcebergRefreshFrame | null>(null);
-  const [icebergRefreshTooltip, setIcebergRefreshTooltip] = useState<IcebergRefreshHit | null>(null);
+  const [icebergRefreshFrame, setIcebergRefreshFrame] = useReplayFrameState<IcebergRefreshFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [icebergRefreshTooltip, setIcebergRefreshTooltip] = useReplayFrameState<IcebergRefreshHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [liquidityStopSweepStatus, setLiquidityStopSweepStatus] = useState<RithmicLiquidityStatus>("checking");
-  const [liquidityStopSweepFrame, setLiquidityStopSweepFrame] = useState<LiquidityStopSweepFrame | null>(null);
-  const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useState<LiquidityStopSweepHit | null>(null);
+  const [liquidityStopSweepFrame, setLiquidityStopSweepFrame] = useReplayFrameState<LiquidityStopSweepFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useReplayFrameState<LiquidityStopSweepHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [cumulativeIcebergStopStreamStatus, setCumulativeIcebergStopStreamStatus] = useState<RithmicLiquidityStatus>("checking");
-  const [cumulativeIcebergStopFrame, setCumulativeIcebergStopFrame] = useState<CumulativeIcebergStopFrame | null>(null);
+  const [cumulativeIcebergStopFrame, setCumulativeIcebergStopFrame] = useReplayFrameState<CumulativeIcebergStopFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [bookSpeedStreamStatus, setBookSpeedStreamStatus] = useState<RithmicLiquidityStatus>("checking");
-  const [bookSpeedFrame, setBookSpeedFrame] = useState<BookSpeedFrame | null>(null);
-  const [pocAuctionFrame, setPocAuctionFrame] = useState<PocAuctionFrame | null>(null);
-  const [unfinishedAuctionFrame, setUnfinishedAuctionFrame] = useState<UnfinishedAuctionFrame | null>(null);
-  const [barPocFrame, setBarPocFrame] = useState<BarPocFrame | null>(null);
-  const [dynamicPocFrame, setDynamicPocFrame] = useState<DynamicPocFrame | null>(null);
-  const [ratioHighlightFrame, setRatioHighlightFrame] = useState<RatioHighlightFrame | null>(null);
-  const [stopSpotterFrame, setStopSpotterFrame] = useState<StopSpotterFrame | null>(null);
-  const [deepWallFrame, setDeepWallFrame] = useState<DeepWallFrame | null>(null);
-  const [deepVTrackerFrame, setDeepVTrackerFrame] = useState<DeepVTrackerFrame | null>(null);
-  const [deepProfileSwingFrame, setDeepProfileSwingFrame] = useState<DeepProfileSwingFrame | null>(null);
-  const [deepProfileValuesFrame, setDeepProfileValuesFrame] = useState<DeepProfileValuesFrame | null>(null);
-  const [marketStatisticsFrame, setMarketStatisticsFrame] = useState<MarketStatisticsFrame | null>(null);
-  const [confluenceIdentifierFrame, setConfluenceIdentifierFrame] = useState<ConfluenceIdentifierFrame | null>(null);
-  const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
-  const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
+  const [bookSpeedFrame, setBookSpeedFrame] = useReplayFrameState<BookSpeedFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [pocAuctionFrame, setPocAuctionFrame] = useReplayFrameState<PocAuctionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const pocAuctionReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
+  const stackedImbalanceReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
+  const [unfinishedAuctionFrame, setUnfinishedAuctionFrame] = useReplayFrameState<UnfinishedAuctionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [barPocFrame, setBarPocFrame] = useReplayFrameState<BarPocFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [dynamicPocFrame, setDynamicPocFrame] = useReplayFrameState<DynamicPocFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [ratioHighlightFrame, setRatioHighlightFrame] = useReplayFrameState<RatioHighlightFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [stopSpotterFrame, setStopSpotterFrame] = useReplayFrameState<StopSpotterFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [deepWallFrame, setDeepWallFrame] = useReplayFrameState<DeepWallFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [deepVTrackerFrame, setDeepVTrackerFrame] = useReplayFrameState<DeepVTrackerFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [deepProfileSwingFrame, setDeepProfileSwingFrame] = useReplayFrameState<DeepProfileSwingFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [deepProfileValuesFrame, setDeepProfileValuesFrame] = useReplayFrameState<DeepProfileValuesFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [marketStatisticsFrame, setMarketStatisticsFrame] = useReplayFrameState<MarketStatisticsFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [confluenceIdentifierFrame, setConfluenceIdentifierFrame] = useReplayFrameState<ConfluenceIdentifierFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [pocAuctionTooltip, setPocAuctionTooltip] = useReplayFrameState<PocAuctionHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [tapeSpeedTooltip, setTapeSpeedTooltip] = useReplayFrameState<TapeSpeedHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
-  const [netGammaTooltip, setNetGammaTooltip] = useState<NetGammaExposureHit | null>(null);
+  const [netGammaTooltip, setNetGammaTooltip] = useReplayFrameState<NetGammaExposureHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [bounceLevelsState, setBounceLevelsState] = useState<{ snapshot: BounceLevelsSnapshot | null; scope: string }>({ snapshot: null, scope: "" });
   const bounceLevelsSnapshot = bounceLevelsState.snapshot;
   const bounceLevelsSnapshotScope = bounceLevelsState.scope;
@@ -4232,15 +4242,15 @@ function Chart({
   } | null>(null);
   const [, setBounceLevelsLoading] = useState(false);
   const [, setBounceLevelsError] = useState<string | null>(null);
-  const [bounceLevelsTooltip, setBounceLevelsTooltip] = useState<BounceLevelsHit | null>(null);
+  const [bounceLevelsTooltip, setBounceLevelsTooltip] = useReplayFrameState<BounceLevelsHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [gexIntervalSurface, setGexIntervalSurface] = useState<GexIntervalProviderSurface | null>(null);
   const [gexIntervalLoading, setGexIntervalLoading] = useState(false);
   const [gexIntervalError, setGexIntervalError] = useState<string | null>(null);
-  const [gexIntervalTooltip, setGexIntervalTooltip] = useState<GexIntervalMapHit | null>(null);
+  const [gexIntervalTooltip, setGexIntervalTooltip] = useReplayFrameState<GexIntervalMapHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [darkPoolMapPayload, setDarkPoolMapPayload] = useState<DarkPoolMapPayload | null>(null);
   const [darkPoolMapLoading, setDarkPoolMapLoading] = useState(false);
   const [darkPoolMapError, setDarkPoolMapError] = useState<string | null>(null);
-  const [darkPoolMapTooltip, setDarkPoolMapTooltip] = useState<DarkPoolMapHit | null>(null);
+  const [darkPoolMapTooltip, setDarkPoolMapTooltip] = useReplayFrameState<DarkPoolMapHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [darkPoolGexPayload, setDarkPoolGexPayload] = useState<DarkPoolMapPayload | null>(null);
   // Scope = instrument + indicator settings, deliberately excluding the replay
   // bucket: a request superseded only by clock movement must still paint.
@@ -4248,25 +4258,25 @@ function Chart({
   const [darkPoolGexSnapshot, setDarkPoolGexSnapshot] = useState<BounceLevelsSnapshot | null>(null);
   const [, setDarkPoolGexLoading] = useState(false);
   const [, setDarkPoolGexError] = useState<string | null>(null);
-  const [darkPoolGexTooltip, setDarkPoolGexTooltip] = useState<DarkPoolGexHit | null>(null);
+  const [darkPoolGexTooltip, setDarkPoolGexTooltip] = useReplayFrameState<DarkPoolGexHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [ivRankByInstance, setIvRankByInstance] = useState<Record<string, IvRankResourceState>>({});
   const [zeroGammaLinePayload, setZeroGammaLinePayload] = useState<ZeroGammaLinePayload | null>(null);
   const [tpoPayload, setTpoPayload] = useState<TpoLevelsPayload | null>(null);
   const [tpoLoading, setTpoLoading] = useState(false);
   const [tpoError, setTpoError] = useState<string | null>(null);
-  const [tpoTooltip, setTpoTooltip] = useState<{ x: number; y: number; zone: TpoZone } | null>(null);
+  const [tpoTooltip, setTpoTooltip] = useReplayFrameState<{ x: number; y: number; zone: TpoZone } | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [expectedMovePayload, setExpectedMovePayload] = useState<ExpectedMoveApiPayload | null>(null);
   const [expectedMoveLoading, setExpectedMoveLoading] = useState(false);
   const [expectedMoveError, setExpectedMoveError] = useState<string | null>(null);
   const [expectedMoveNow, setExpectedMoveNow] = useState(() => Date.now());
   const [expectedMoveLiveAnchor, setExpectedMoveLiveAnchor] = useState<number | null>(() => candles.at(-1)?.close ?? null);
-  const [expectedMoveTooltip, setExpectedMoveTooltip] = useState<{ x: number; y: number; band: ExpectedMoveBand } | null>(null);
+  const [expectedMoveTooltip, setExpectedMoveTooltip] = useReplayFrameState<{ x: number; y: number; band: ExpectedMoveBand } | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [hedgeLevelsPayload, setHedgeLevelsPayload] = useState<HedgeLevelsPayload | null>(null);
   const [hedgeLevelsLoading, setHedgeLevelsLoading] = useState(false);
   const [hedgeLevelsError, setHedgeLevelsError] = useState<string | null>(null);
   const [hedgeLevelsNow, setHedgeLevelsNow] = useState(() => Date.now());
   const [hedgeLevelsPulseIds, setHedgeLevelsPulseIds] = useState<string[]>([]);
-  const [hedgeLevelsTooltip, setHedgeLevelsTooltip] = useState<{ x: number; y: number; level: HedgeChartLevel } | null>(null);
+  const [hedgeLevelsTooltip, setHedgeLevelsTooltip] = useReplayFrameState<{ x: number; y: number; level: HedgeChartLevel } | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const previousHedgeLevelsRef = useRef<HedgeChartLevel[] | null>(null);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
   useBigBlocksOptions({ seriesRef: candleSeriesRef, revision: chartReadyRevision,
@@ -4293,9 +4303,12 @@ function Chart({
       horzLineRef.current.style.opacity = String(crosshairStyle.opacity);
     }
   }, [chartReadyRevision, crosshairStyle]);
-  const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
+  const [storedIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
+  // Replay bypasses the delayed live sampler, including on backward seeks.
+  const sampledIndicatorCandles = useMemo(() => replayTimestampMs == null ? storedIndicatorCandles : replayCausalCandles(candles, replayTimestampMs), [candles, replayTimestampMs, storedIndicatorCandles]);
   const [annotationRegistryRevision, setAnnotationRegistryRevision] = useState(0);
-  const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
+  const [storedIndicatorTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
+  const sampledIndicatorMarketTrades = useMemo(() => replayTimestampMs == null ? storedIndicatorTrades : replayCausalTrades(marketTrades, replayTimestampMs), [marketTrades, replayTimestampMs, storedIndicatorTrades]);
   const [sampledIndicatorMarketTradesVersion, setSampledIndicatorMarketTradesVersion] = useState(marketTradesVersion);
   const [smtComparisonCandles, setSmtComparisonCandles] = useState<Candle[]>([]);
   const [indicatorPaneHeights, setIndicatorPaneHeights] = useState<Record<string, number>>({});
@@ -5711,6 +5724,7 @@ function Chart({
     return () => window.clearTimeout(timer);
   }, [tpoCalculationSignature]);
   const indicatorHistoryLimit = useMemo(() => {
+    if (replayTimestampMs != null) return sampledIndicatorCandles.length;
     const intervalMs = timeframeToMs(timeframe);
     const orderFlowLimit = intervalMs === null
       ? 6_000
@@ -5734,20 +5748,20 @@ function Chart({
       : smtDivergenceEnabled
         ? Math.max(1_500, Math.min(5_000, smtDivergenceSettings.maximumLookbackBars))
         : 1_500;
-  }, [indicatorSignature, indicators, smtDivergenceEnabled, smtDivergenceSettings.maximumLookbackBars, timeframe]);
+  }, [indicatorSignature, indicators, replayTimestampMs != null, sampledIndicatorCandles.length, smtDivergenceEnabled, smtDivergenceSettings.maximumLookbackBars, timeframe]);
   const indicatorWindowCandles = useMemo(
-    () => sampledIndicatorCandles.slice(-indicatorHistoryLimit),
-    [indicatorHistoryLimit, sampledIndicatorCandles],
+    () => replayIndicatorCandles(sampledIndicatorCandles, indicatorHistoryLimit, replayTimestampMs),
+    [indicatorHistoryLimit, replayTimestampMs, sampledIndicatorCandles],
   );
   // Non-order-flow studies (MA, RSI, VWAP...) never need the 48h order-flow
   // lookback. When an order-flow indicator inflates the window to 4-6k candles,
   // simple studies stay on a 1.5k window so they don't pay a 4x recompute cost
   // every sample — the dominant multi-indicator OOM/churn multiplier.
   const indicatorWindowCandlesLite = useMemo(
-    () => indicatorHistoryLimit <= 1_500
+    () => replayTimestampMs != null || indicatorHistoryLimit <= 1_500
       ? indicatorWindowCandles
       : sampledIndicatorCandles.slice(-1_500),
-    [indicatorHistoryLimit, indicatorWindowCandles, sampledIndicatorCandles],
+    [indicatorHistoryLimit, indicatorWindowCandles, replayTimestampMs, sampledIndicatorCandles],
   );
   // Studies cheap enough to span the whole loaded history instead of the
   // 1,500-bar lite window, which on a one-minute chart stopped roughly a day
@@ -5762,10 +5776,8 @@ function Chart({
   // would block five frames on every sample and bring back the stutter this
   // window was introduced to prevent.
   const indicatorWindowCandlesDeep = useMemo(
-    () => (sampledIndicatorCandles.length > DEEP_HISTORY_INDICATOR_MAX_BARS
-      ? sampledIndicatorCandles.slice(-DEEP_HISTORY_INDICATOR_MAX_BARS)
-      : sampledIndicatorCandles),
-    [sampledIndicatorCandles],
+    () => replayIndicatorCandles(sampledIndicatorCandles, DEEP_HISTORY_INDICATOR_MAX_BARS, replayTimestampMs),
+    [replayTimestampMs, sampledIndicatorCandles],
   );
   const indicatorMarketTrades = useMemo(() => {
     if (!indicatorWindowCandles.length || !sampledIndicatorMarketTrades.length) return [];
@@ -6578,7 +6590,7 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.ladderFontSize ?? 8)), 6, 14),
     };
   }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator ?? deepProfileSwingIndicator
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator ?? deepProfileSwingIndicator ?? deepProfileValuesIndicator
     ?? (deltaLadderSide ? deltaBarIndicator : null);
   const footprintCandles = useMemo(
     () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
@@ -6656,8 +6668,8 @@ function Chart({
     return footprintVisibleCandles;
   }, [footprintDataConsumer, footprintVisibleCandles]);
   const exactFootprintHistory = useExactFootprintHistory(contractSymbol,
-    footprintSourceCandles, timeframeToMs(timeframe), Boolean(footprintDataConsumer) && replayTimestampMs === null,
-    marketIsActive === true, Number(footprintSettings.minimumTradeVolume ?? 0), Number(footprintSettings.maximumTradeVolume ?? 0));
+    footprintSourceCandles, timeframeToMs(timeframe), Boolean(footprintDataConsumer),
+    marketIsActive === true, Number(footprintSettings.minimumTradeVolume ?? 0), Number(footprintSettings.maximumTradeVolume ?? 0), replayTimestampMs);
   const footprintMarketTrades = useMemo(() => {
     if (exactFootprintHistory.active) {
       const end = (footprintSourceCandles.at(-1)?.timestamp ?? 0) + (timeframeToMs(timeframe) ?? 0);
@@ -6830,13 +6842,13 @@ function Chart({
     })), [footprintBars, footprintProfileRowsByTimestamp]);
   const footprintDataKey = `${instrument}:${timeframe}`;
   const liveFootprintRenderBars = useMemo(
-    () => retainLiveFootprintRows(
+    () => replayTimestampMs != null ? footprintRenderBars : retainLiveFootprintRows(
       footprintRenderBars,
       retainedFootprintBarsRef.current?.key === footprintDataKey
         ? retainedFootprintBarsRef.current.bars
         : [],
     ),
-    [footprintDataKey, footprintRenderBars],
+    [footprintDataKey, footprintRenderBars, replayTimestampMs],
   );
   const rawPocAuctionBars = useMemo(() => {
     if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !deepProfileValuesIndicator && !confluenceIdentifierIndicator && !deepPatternBuilderNeedsOrderFlow) || !footprintSourceCandles.length) return [];
@@ -7171,7 +7183,7 @@ function Chart({
       liveFootprintBaseBuildCacheRef.current = null;
       liveFootprintProfileBuildCacheRef.current = null;
     }
-    liveFootprintRenderBarsRef.current = retainLiveFootprintRows(
+    liveFootprintRenderBarsRef.current = replayTimestampMs != null ? liveFootprintRenderBars : retainLiveFootprintRows(
       liveFootprintRenderBars,
       liveFootprintRenderBarsRef.current,
     );
@@ -7557,7 +7569,7 @@ function Chart({
     const frame = buildRatioHighlightFrame(rawPocAuctionBars, instrument, ratioHighlightSettings);
     ratioHighlightPrimitiveRef.current?.update({ frame, settings: ratioHighlightSettings });
     const now = performance.now();
-    if (ratioHighlightLastReactPublishRef.current === 0 || now - ratioHighlightLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+    if (replayTimestampMs != null || ratioHighlightLastReactPublishRef.current === 0 || now - ratioHighlightLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       ratioHighlightLastReactPublishRef.current = now;
       setRatioHighlightFrame(frame);
     }
@@ -7572,10 +7584,10 @@ function Chart({
       setStopSpotterFrame(null);
       return;
     }
-    const frame = buildStopSpotterFrame(rawPocAuctionBars, instrument, priceFormat.minMove, stopSpotterSettings, Date.now(), timeframeToMs(timeframe));
+    const frame = buildStopSpotterFrame(rawPocAuctionBars, instrument, priceFormat.minMove, stopSpotterSettings, replayTimestampMs ?? Date.now(), timeframeToMs(timeframe));
     stopSpotterPrimitiveRef.current?.update({ frame, settings: stopSpotterSettings });
     const now = performance.now();
-    if (stopSpotterLastReactPublishRef.current === 0 || now - stopSpotterLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+    if (replayTimestampMs != null || stopSpotterLastReactPublishRef.current === 0 || now - stopSpotterLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       stopSpotterLastReactPublishRef.current = now;
       setStopSpotterFrame(frame);
     }
@@ -7599,7 +7611,7 @@ function Chart({
         } }));
       }
     }
-  }, [instrument, priceFormat.minMove, rawPocAuctionBars, stopSpotterIndicator, stopSpotterSettings, timeframe]);
+  }, [instrument, priceFormat.minMove, rawPocAuctionBars, replayTimestampMs, stopSpotterIndicator, stopSpotterSettings, timeframe]);
 
   useEffect(() => {
     if (!deepWallIndicator) {
@@ -7613,7 +7625,7 @@ function Chart({
     const frame = buildDeepWallFrame(rawPocAuctionBars, instrument, priceFormat.minMove, deepWallSettings);
     deepWallPrimitiveRef.current?.update({ frame, settings: deepWallSettings });
     const now = performance.now();
-    if (deepWallLastReactPublishRef.current === 0 || now - deepWallLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+    if (replayTimestampMs != null || deepWallLastReactPublishRef.current === 0 || now - deepWallLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       deepWallLastReactPublishRef.current = now;
       setDeepWallFrame(frame);
     }
@@ -7648,7 +7660,7 @@ function Chart({
     const frame = buildDeepVTrackerFrame(rawPocAuctionBars, instrument, priceFormat.minMove, deepVTrackerSettings);
     deepVTrackerPrimitiveRef.current?.update({ frame, settings: deepVTrackerSettings });
     const now = performance.now();
-    if (deepVTrackerLastReactPublishRef.current === 0 || now - deepVTrackerLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+    if (replayTimestampMs != null || deepVTrackerLastReactPublishRef.current === 0 || now - deepVTrackerLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       deepVTrackerLastReactPublishRef.current = now;
       setDeepVTrackerFrame(frame);
     }
@@ -7681,6 +7693,9 @@ function Chart({
       setPocAuctionTooltip(null);
       return;
     }
+    const replayScope = `${instrument}:${timeframe}:${pocAuctionIndicator.instanceId}:${resolvedFootprintGroupTicks}`;
+    if (pocAuctionReplayScopeRef.current.scope !== replayScope || replayRetentionMustReset(pocAuctionReplayScopeRef.current.clock, replayTimestampMs)) pocAuctionEngineRef.current.reset();
+    pocAuctionReplayScopeRef.current = { clock: replayTimestampMs, scope: replayScope };
     const frame = pocAuctionEngineRef.current.update(
       liveFootprintRenderBars,
       rawPocAuctionBars,
@@ -7690,7 +7705,7 @@ function Chart({
       pocAuctionSettings,
     );
     const now = performance.now();
-    if (now - pocAuctionLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+    if (replayTimestampMs != null || now - pocAuctionLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       pocAuctionLastReactPublishRef.current = now;
       setPocAuctionFrame(frame);
     }
@@ -7738,15 +7753,19 @@ function Chart({
       setStackedImbalanceTooltip(null);
       return;
     }
+    const replayScope = `${instrument}:${timeframe}:${stackedImbalanceIndicator.instanceId}:${resolvedFootprintGroupTicks}`;
+    if (stackedImbalanceReplayScopeRef.current.scope !== replayScope || replayRetentionMustReset(stackedImbalanceReplayScopeRef.current.clock, replayTimestampMs)) stackedImbalanceEngineRef.current.reset();
+    stackedImbalanceReplayScopeRef.current = { clock: replayTimestampMs, scope: replayScope };
     const frame = stackedImbalanceEngineRef.current.update(
       liveFootprintRenderBars,
       instrument,
       priceFormat.minMove,
       resolvedFootprintGroupTicks,
       stackedImbalanceSettings,
+      replayTimestampMs ?? Date.now(),
     );
     const now = performance.now();
-    if (now - stackedImbalanceLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+    if (replayTimestampMs != null || now - stackedImbalanceLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       stackedImbalanceLastReactPublishRef.current = now;
       setStackedImbalanceFrame(frame);
     }
@@ -7790,7 +7809,7 @@ function Chart({
     if (!primitive || !series || !chart) return;
     const presentationScope = `${footprintDataKey}:${contractSymbol}`;
     const stableFootprintBars = footprintIndicator && liveFootprintRenderBars.length
-      ? retainLiveFootprintRows(liveFootprintRenderBars,
+      ? replayTimestampMs != null ? liveFootprintRenderBars : retainLiveFootprintRows(liveFootprintRenderBars,
         footprintPresentationScopeRef.current === presentationScope ? liveFootprintRenderBarsRef.current : [])
       : [];
     footprintPresentationScopeRef.current = presentationScope;
@@ -8216,7 +8235,7 @@ function Chart({
         // Resolved so a study is never painted the chart's own colour: a
         // hollow-candle theme makes downColor the background.
         visibleIndicatorTheme(settings),
-        { instrument, tickSize: priceFormat.minMove, footprintBars: instance.indicatorId === "shift-candle" || instance.indicatorId === "important-levels" ? shiftCandleBars : undefined },
+        { instrument, tickSize: priceFormat.minMove, replayTimestampMs, footprintBars: instance.indicatorId === "shift-candle" || instance.indicatorId === "important-levels" ? shiftCandleBars : undefined },
       ).map((series) => ({ ...series, groupKey: instance.instanceId }));
     }),
     [
@@ -8279,7 +8298,7 @@ function Chart({
     labelPrefix: string,
   ): CalculatedIndicatorSeries | null => {
     if (!indicatorInstance || !payload) return null;
-    const points = buildOptionsDeltaSeries(payload);
+    const points = buildOptionsDeltaSeries(payload).filter(point => replayTimestampMs == null || point.timestampMs + 60_000 <= replayTimestampMs);
     if (!points.length) return null;
     const useThemeColors = indicatorInstance.settings?.useThemeColors !== false;
     const positiveColor = useThemeColors ? settings.upColor : String(indicatorInstance.settings?.positiveColor ?? settings.upColor);
@@ -8300,7 +8319,7 @@ function Chart({
         color: point.net >= 0 ? positiveColor : negativeColor,
       })),
     };
-  }, [settings.downColor, settings.upColor]);
+  }, [settings.downColor, settings.upColor, replayTimestampMs]);
   const optionsDeltaSeries = useMemo<CalculatedIndicatorSeries | null>(
     () => buildOptionsSurfacePaneSeries(optionsDeltaIndicator, optionsDeltaPayload, "options-delta", "Options Delta"),
     [buildOptionsSurfacePaneSeries, optionsDeltaIndicator, optionsDeltaPayload],
@@ -8346,10 +8365,10 @@ function Chart({
 
   const chartAlignedIndicatorSeries = useMemo(() => {
     return alignIndicatorSeriesToEventBars(
-      [...baseCalculatedIndicatorSeries, ...annotationOverlaySeries],
+      clipReplayIndicatorSeries([...baseCalculatedIndicatorSeries, ...annotationOverlaySeries], replayTimestampMs),
       eventChartIndicatorTimeMap,
     );
-  }, [annotationOverlaySeries, baseCalculatedIndicatorSeries, eventChartIndicatorTimeMap]);
+  }, [annotationOverlaySeries, baseCalculatedIndicatorSeries, eventChartIndicatorTimeMap, replayTimestampMs]);
 
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,
@@ -8405,6 +8424,7 @@ function Chart({
           ? (timeframeToMs(timeframe) ?? 60_000) / 1_000
           : null,
         candles.map((candle) => candle.timestamp / 1_000),
+        replayTimestampMs,
       );
       // The crossing is the boundary between the two dealer-Gamma
       // environments: while price holds above it market makers are net long
@@ -8938,14 +8958,6 @@ function Chart({
           settings: instance.settings,
           series,
           showHeader: instance.settings?.showName !== false,
-          statusLabel: cumulativeDeltaStudy
-            && Number(indicatorCandles.at(-1)?.volume ?? 0) > 0
-            && Number(series[0]?.data.at(-1)?.time ?? -Infinity) < (
-              eventChartIndicatorTimeMap?.exact.get(Number(indicatorCandles.at(-1)?.timestamp ?? 0))
-              ?? Number(indicatorCandles.at(-1)?.timestamp ?? 0) / 1_000
-            )
-              ? "WAITING FOR EXECUTIONS"
-              : undefined,
           showLegend: instance.indicatorId === "delta-bar" || instance.indicatorId === "deep-delta" ? false : undefined,
         }];
       }
@@ -9154,19 +9166,9 @@ function Chart({
     };
   }, [gammaHeatmapIndicator, instrument]);
 
-  // During session replay the heat surface follows the replay clock at the
-  // same granularity as candles. A candle is fully revealed the moment the
-  // clock enters its bar, so heat frames captured inside that same bar must
-  // be revealed with it — gating them on the raw clock left the newest heat
-  // column one bar behind the price, which never happens live. Rounding the
-  // boundary up to the bar close keeps heat inline with the forming candle
-  // without leaking anything beyond what the revealed candle already shows,
-  // and re-filters once per bar instead of on every 200ms clock tick.
-  const replayHeatBoundaryMs = useMemo(() => {
-    if (!replayTimestampMs) return null;
-    const intervalMs = timeframeToMs(timeframe) ?? 60_000;
-    return Math.ceil(replayTimestampMs / intervalMs) * intervalMs;
-  }, [replayTimestampMs, timeframe]);
+  // A forming candle is not permission to reveal later options observations.
+  // Use the exact clock, including the mapping snapshot's availability time.
+  const replayHeatBoundaryMs = replayTimestampMs;
   const gammaHeatmapPrimitiveData = useMemo<GammaHeatmapPrimitiveData | null>(() => {
     if (!gammaHeatmapIndicator || !gammaHeatmapPayload) return null;
     const indicatorSettings = gammaHeatmapIndicator.settings ?? {};
@@ -9174,7 +9176,7 @@ function Chart({
     // The level overlay is derived from the latest live surface, so it stays
     // hidden inside a replay.
     const replayVisibleSnapshots = replayHeatBoundaryMs
-      ? gammaHeatmapPayload.snapshots.filter((snapshot) => snapshot.timestamp <= replayHeatBoundaryMs)
+      ? gammaHeatmapPayload.snapshots.filter((snapshot) => snapshot.timestamp + 60_000 <= replayHeatBoundaryMs && Date.parse(snapshot.mapping.asOf) <= replayHeatBoundaryMs)
       : gammaHeatmapPayload.snapshots;
     if (replayHeatBoundaryMs && !replayVisibleSnapshots.length) return null;
     return {
@@ -9277,10 +9279,10 @@ function Chart({
     // Interval-map alignment only needs the bounded indicator history. Using
     // the raw live candle array here rebuilt the complete exposure surface on
     // every tick in every pane.
-    const displayPrices = indicatorCandles.map((candle) => ({ timestamp: candle.timestamp, price: candle.close }));
+    const displayPrices = indicatorCandles.map((candle) => ({ timestamp: replayTimestampMs == null ? candle.timestamp : Math.min(replayTimestampMs, candle.timestamp + (timeframeToMs(timeframe) ?? 60_000)), price: candle.close }));
     const expirationDates = String(indicatorSettings.expirationDates ?? "").split(",").map((value) => value.trim()).filter(Boolean);
     return buildGexIntervalMapSnapshot(
-      gexIntervalSurface,
+      replayTimestampMs == null ? gexIntervalSurface : { ...gexIntervalSurface, buckets: gexIntervalSurface.buckets.filter(bucket => bucket.timestamp + (timeframeToMs(gexIntervalSurface.aggregationPeriod) ?? 60_000) <= replayTimestampMs) },
       instrument,
       displayPrices,
       {
@@ -9304,9 +9306,10 @@ function Chart({
         maximumPoints: Math.max(500, Number(indicatorSettings.maximumPoints ?? 40000)),
         maximumStrikesPerBucket: Math.max(0, Number(indicatorSettings.maximumStrikesPerBucket ?? 80)),
         hideZeroValues: indicatorSettings.hideZeroValues !== false,
+        causalMapping: replayTimestampMs != null,
       },
     );
-  }, [gexIntervalMapIndicator, gexIntervalSurface, indicatorCandles, instrument]);
+  }, [gexIntervalMapIndicator, gexIntervalSurface, indicatorCandles, instrument, replayTimestampMs, timeframe]);
   const gexIntervalPrimitiveData = useMemo<GexIntervalMapPrimitiveData | null>(() => {
     if (!gexIntervalMapIndicator || !gexIntervalSnapshot) return null;
     const indicatorSettings = gexIntervalMapIndicator.settings ?? {};
@@ -10613,7 +10616,7 @@ function Chart({
   // every trade was the dominant four-chart GEX VUE stall.
   const darkPoolGexPriceSamples = useMemo(
     () => candles.map((candle) => ({
-      timestampMs: candle.timestamp,
+      timestampMs: replayTimestampMs == null ? candle.timestamp : Math.min(replayTimestampMs, candle.timestamp + (timeframeToMs(timeframe) ?? 60_000)),
       open: candle.open,
       high: candle.high,
       low: candle.low,
@@ -10623,13 +10626,13 @@ function Chart({
     // The current bar may mutate in place many times per second; a finalized
     // reaction sample is captured when the next timestamp arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [overlayTimelineKey, timeframe],
+    [overlayTimelineKey, timeframe, replayTimestampMs],
   );
   const darkPoolGexFrame = useMemo<DarkPoolGexFrame | null>(() => {
     if (!darkPoolGexIndicator || !darkPoolGexPayload) return null;
     const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
     return buildDarkPoolGexFrame({
-      darkPool: darkPoolGexPayload,
+      darkPool: replayTimestampMs == null ? darkPoolGexPayload : { ...darkPoolGexPayload, prints: darkPoolGexPayload.prints.filter(print => darkPoolGexPayload.direct || Number.isFinite(print.mapping?.calculatedAtMs) && print.mapping.calculatedAtMs <= replayTimestampMs) },
       gex: darkPoolGexSnapshot,
       settings: indicatorSettings,
       asOfMs: darkPoolGexAsOfMs,
@@ -11768,8 +11771,8 @@ function Chart({
     return sampledIndicatorCandles.map((candle, index) => ({
       instrumentId: instrument,
       startTimeMs: candle.timestamp,
-      endTimeMs: sampledIndicatorCandles[index + 1]?.timestamp
-        ?? candle.timestamp + (candleIntervalMs ?? 60_000),
+      endTimeMs: Math.min(replayTimestampMs ?? Number.POSITIVE_INFINITY, sampledIndicatorCandles[index + 1]?.timestamp
+        ?? candle.timestamp + (candleIntervalMs ?? 60_000)),
       open: candle.open,
       high: candle.high,
       low: candle.low,
@@ -11830,6 +11833,7 @@ function Chart({
   );
   const retainedDeepContractsRef = useRef<DeepContractEvent[]>([]);
   const deepContractFullScanIdentityRef = useRef("");
+  const deepContractReplayClockRef = useRef<number | null>(null);
   const deepContractTapeWatermarkRef = useRef(0);
   const deepContractCommittedRef = useRef<{ zones: BigBlockRenderZone[]; watermark: number }>({
     zones: [], watermark: 0,
@@ -11853,7 +11857,9 @@ function Chart({
     if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return [];
     const settings = bigTradesIndicator.settings ?? {};
     const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}`;
-    const requiresFullScan = deepContractFullScanIdentityRef.current !== fullScanIdentity;
+    const replayReset = replayRetentionMustReset(deepContractReplayClockRef.current, replayTimestampMs);
+    deepContractReplayClockRef.current = replayTimestampMs;
+    const requiresFullScan = replayReset || deepContractFullScanIdentityRef.current !== fullScanIdentity;
     deepContractFullScanIdentityRef.current = fullScanIdentity;
     const next = calculateDeepContractEvents(
       requiresFullScan ? indicatorMarketTrades : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
@@ -11868,7 +11874,7 @@ function Chart({
       Number(indicatorCandles.at(-1)?.timestamp ?? 0),
     );
     const retained = retainDeepContractEvents(
-      retainedDeepContractsRef.current,
+      replayTimestampMs != null && requiresFullScan ? [] : retainedDeepContractsRef.current,
       next,
       (newestKnown || Date.now()) - days * 86_400_000,
     );
@@ -11883,6 +11889,7 @@ function Chart({
   );
   const bigTradeLiveContextRef = useRef<BigTradeLiveContext | null>(null);
   const bigTradeFullScanIdentityRef = useRef("");
+  const bigTradeReplayClockRef = useRef<number | null>(null);
   // How far along the TAPE the last full pass got, which is not the same thing
   // as the newest print it decided was big. The live edge admits prints newer
   // than this; keying that off the newest marker instead meant a chart with no
@@ -11905,7 +11912,9 @@ function Chart({
       }
       const settings = bigTradesIndicator.settings ?? {};
       const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}`;
-      const requiresFullScan = bigTradeFullScanIdentityRef.current !== fullScanIdentity;
+      const replayReset = replayRetentionMustReset(bigTradeReplayClockRef.current, replayTimestampMs);
+      bigTradeReplayClockRef.current = replayTimestampMs;
+      const requiresFullScan = replayReset || bigTradeFullScanIdentityRef.current !== fullScanIdentity;
       bigTradeFullScanIdentityRef.current = fullScanIdentity;
       const { prints, context } = calculateBigTradePrintsWithContext(
         indicatorCandles,
@@ -11932,7 +11941,7 @@ function Chart({
       );
       const anchor = newestKnown > 0 ? newestKnown : (replayTimestampMs ?? Date.now());
       const retained = retainBigTradePrints(
-        retainedBigTradePrintsRef.current,
+        replayTimestampMs != null && requiresFullScan ? [] : retainedBigTradePrintsRef.current,
         prints,
         context,
         anchor - lookbackDays * 86_400_000,
@@ -16886,8 +16895,8 @@ function Chart({
     const variants = Object.values(ownedVariantProfiles).map((profile) => (
       applyInstitutionalTradesToVolumeProfile(profile, indicatorMarketTrades)
     ));
-    return [...volumeProfiles, ...variants];
-  }, [indicatorMarketTrades, ownedVariantProfiles, volumeProfiles]);
+    return [...volumeProfiles, ...variants].filter(profile => replayTimestampMs == null || replayProfileWithinClock(profile, replayTimestampMs));
+  }, [indicatorMarketTrades, ownedVariantProfiles, replayTimestampMs, volumeProfiles]);
   const deepProfileValuesViewportRevision = deepProfileValuesSettings.periodMode === "visible"
     ? viewportVersion
     : 0;
@@ -17361,7 +17370,7 @@ function Chart({
         && cached.calculationKey === calculationKey;
       // A settings change rebuilds immediately; a live-data identity change
       // reuses the recent grid and rebuilds on the trailing clock below.
-      const throttledHit = !exactHit
+      const throttledHit = replayTimestampMs == null && !exactHit
         && cached
         && cached.calculationKey === calculationKey
         && now - cached.builtAt < rebuildThrottleMs;
@@ -17376,13 +17385,14 @@ function Chart({
       } else {
         const developing = cached?.profiles.at(-1);
         const canRefreshDevelopingOnly = Boolean(
-          cached
+          replayTimestampMs == null && cached
           && developing?.developing
           && cached.calculationKey === calculationKey
           && calculationSettings.periodMode !== "custom-range",
         );
         if (canRefreshDevelopingOnly && developing) {
           const liveProfiles = buildTpoProfiles({
+            nowMs: replayTimestampMs ?? Date.now(),
             trades: sourceTrades.filter((trade) => trade.timestampMs >= developing.startTimeMs),
             bars: sourceBars.filter((bar) => bar.endTimeMs > developing.startTimeMs),
             settings: { ...calculationSettings, profileCount: 1 },
@@ -17393,7 +17403,7 @@ function Chart({
             ? [...cached!.profiles.slice(0, -1), refreshed]
             : cached!.profiles;
         } else {
-          profiles = buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: calculationSettings });
+          profiles = buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: calculationSettings, nowMs: replayTimestampMs ?? Date.now() });
         }
       }
       if (profiles !== cached?.profiles) {
@@ -17610,7 +17620,7 @@ function Chart({
 
     for (const key of superTrendPlotBuffersRef.current.keys()) if (!nextKeys.has(key)) superTrendPlotBuffersRef.current.delete(key);
     indicatorSeriesRefs.current = overlayDefinitions.map((baseDefinition) => {
-      const definition = superTrendPlotBuffersRef.current.get(baseDefinition.key)?.merge(baseDefinition) ?? baseDefinition;
+      const definition = replayTimestampMs != null ? baseDefinition : superTrendPlotBuffersRef.current.get(baseDefinition.key)?.merge(baseDefinition) ?? baseDefinition;
       const kind = definition.kind === "histogram" ? "histogram" : "line";
       const existing = reusable.get(definition.key);
       const options = kind === "histogram"
@@ -18675,6 +18685,9 @@ function Chart({
           activeChartKeyboardTargetId = chartInstanceId;
         }}
       >
+        {unavailableReplayIndicators.length ? <div className="absolute left-2 top-2 z-50 rounded border border-border bg-panel px-2 py-1 text-[10px] text-muted" title={unavailableReplayIndicators.map(instance => CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.name ?? instance.indicatorId).join(", ")}>
+          {unavailableReplayIndicators.length} studies unavailable in replay · no verified historical adapter
+        </div> : null}
         {superTrendAlertNotice ? <div role="status" aria-live="polite"
           className="pointer-events-none absolute right-3 top-3 z-50 max-w-xs border border-primary bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
           {superTrendAlertNotice}
@@ -20628,7 +20641,7 @@ function Chart({
           bottom={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
           width={nativePriceScaleWidth}
           backgroundColor={settings.backgroundColor}
-          eventKey={liveCandleEventKey}
+          eventKey={replayTimestampMs == null ? liveCandleEventKey : undefined}
         />
       ) : null}
 

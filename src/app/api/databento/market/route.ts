@@ -57,7 +57,10 @@ const DEFAULT_HISTORY_DAYS = DEFAULT_CHART_HISTORY_CALENDAR_DAYS;
 // shows nothing for the extra days. Payloads stay bounded by gzip on the wire
 // and by the browser tape's own compaction once decoded.
 const MAX_HISTORY_DAYS = 30;
-const MAX_EXPLICIT_RANGE_MS = 4 * 24 * 60 * 60_000;
+// An explicit replay range may include the same thirty calendar days already
+// supported by the ordinary history route. Four days rejected five-session
+// pre-roll before the archive could be read.
+const MAX_EXPLICIT_RANGE_MS = MAX_HISTORY_DAYS * 24 * 60 * 60_000;
 const MAX_EXPLICIT_LOOKBACK_MS = 120 * 24 * 60 * 60_000;
 const HISTORICAL_SESSION_CACHE_MS = 6 * 60 * 60_000;
 const DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS = 5 * 60;

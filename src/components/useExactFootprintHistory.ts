@@ -7,18 +7,21 @@ import { futuresVenue } from "@/lib/futuresVenue";
 import { loadSharedFootprintHistory } from "@/lib/sharedFootprintHistory";
 import { fetchWithDeadline } from "@/lib/marketDataRequest";
 import { recoverFootprintHistory } from "@/lib/footprintHistoryRecovery";
+import { completedReplayFootprintCandles, replayFootprintRecords } from "@/lib/replayChartHistory";
 const EMPTY: InstitutionalTrade[] = [];
 
-export function useExactFootprintHistory(contract: string | null, candles: Candle[], intervalMs: number | null, enabled: boolean, live: boolean,
-  minimumTradeVolume = 0, maximumTradeVolume = 0) {
+export function useExactFootprintHistory(contract: string | null, sourceCandles: Candle[], intervalMs: number | null, enabled: boolean, live: boolean,
+  minimumTradeVolume = 0, maximumTradeVolume = 0, replayTimestampMs: number | null = null) {
+  const candles = useMemo(() => completedReplayFootprintCandles(sourceCandles, intervalMs, replayTimestampMs),
+    [sourceCandles, intervalMs, replayTimestampMs]);
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
   const fromMs = candles[0]?.timestamp ?? 0;
   const last = candles.at(-1)?.timestamp ?? 0;
   // An active market does not make a candle in a scrolled-back viewport live.
-  const forming = live && last + (intervalMs ?? 0) > Date.now();
+  const forming = replayTimestampMs == null && live && last + (intervalMs ?? 0) > Date.now();
   const toMs = forming ? last : last + (intervalMs ?? 0);
-  const active = enabled && Boolean(contract && /[FGHJKMNQUVXZ]\d{1,2}$/.test(contract)) && intervalMs !== null && intervalMs >= 60000 && toMs > fromMs;
+  const active = enabled && candles.length > 0 && fromMs > 0 && Boolean(contract && /[FGHJKMNQUVXZ]\d{1,2}$/.test(contract)) && intervalMs !== null && intervalMs >= 60000 && toMs > fromMs;
   const signature = active ? candles.filter(c => c.timestamp < toMs)
     .map(c => `${c.timestamp}:${c.open}:${c.high}:${c.low}:${c.close}:${c.volume}`).join(";") : "";
   const scope = active ? `${contract}:${intervalMs}:${fromMs}:${toMs}:${minimumTradeVolume}:${maximumTradeVolume}:${signature}` : "";
@@ -51,8 +54,8 @@ export function useExactFootprintHistory(contract: string | null, candles: Candl
   }, [scope, contract, fromMs, toMs, minimumTradeVolume, maximumTradeVolume]);
   // A new live minute must not blank every settled footprint while its exact
   // history loads. Retain only overlapping, same-contract proven executions.
-  const records = useMemo(() => state.contract === contract
-    ? state.records.filter(row => row.timestamp >= fromMs && row.timestamp < toMs) : EMPTY,
-  [state.contract, state.records, contract, fromMs, toMs]);
+  const records = useMemo(() => state.contract === contract && (replayTimestampMs == null || state.scope === scope)
+    ? replayFootprintRecords(state.records.filter(row => row.timestamp >= fromMs && row.timestamp < toMs), intervalMs, replayTimestampMs) : EMPTY,
+  [state.contract, state.records, state.scope, scope, contract, fromMs, toMs, intervalMs, replayTimestampMs]);
   return { active, boundary: toMs, records, error: state.scope === scope ? state.error : null };
 }

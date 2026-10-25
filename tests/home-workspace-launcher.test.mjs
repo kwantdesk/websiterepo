@@ -25,7 +25,6 @@ test("home launcher exposes the complete primary workspace set with visual previ
     "/gamma",
     "/gexmap",
     "/liqmap",
-    "/levelz",
     "/gameplan",
     "/zyon",
     "/news",

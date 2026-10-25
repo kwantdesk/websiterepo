@@ -146,20 +146,23 @@ export function buildVixEnvironmentSnapshot(options: {
   thresholds?: Partial<VixEnvironmentThresholds>;
   replay?: boolean;
 }): VixEnvironmentSnapshot | null {
-  const historyAtClock = options.history.filter((row) => row.timestamp <= options.asOfMs);
+  // Daily bars carry a day-open timestamp but contain that day's FINAL range.
+  // Replay may use completed prior days, not today's EOD high/low/close.
+  const historyAtClock = options.history.filter((row) => row.timestamp + (options.replay ? 86_400_000 : 0) <= options.asOfMs);
+  const live = options.replay ? null : options.live;
   const historical = historyAtClock.at(-1) ?? null;
   const previous = historyAtClock.at(-2) ?? null;
-  const liveValue = options.live && options.live.timestamp <= options.asOfMs + 60_000
-    ? finite(options.live.lastPrice)
+  const liveValue = live && live.timestamp <= options.asOfMs + 60_000
+    ? finite(live.lastPrice)
     : null;
   const value = liveValue ?? historical?.close ?? null;
   if (value === null || value <= 0) return null;
 
-  const stats = calculateVixHistoryStats(options.history, value, options.asOfMs);
-  const open = finite(options.live?.openPrice) ?? historical?.open ?? null;
-  const change = finite(options.live?.change)
+  const stats = calculateVixHistoryStats(historyAtClock, value, options.asOfMs);
+  const open = finite(live?.openPrice) ?? historical?.open ?? null;
+  const change = finite(live?.change)
     ?? (historical && previous ? historical.close - previous.close : open !== null ? value - open : null);
-  const changePercent = finite(options.live?.changePercent)
+  const changePercent = finite(live?.changePercent)
     ?? (change !== null && value - change > 0 ? (change / (value - change)) * 100 : null);
   const sessionHigh = historical ? Math.max(historical.high, value) : value;
   const sessionLow = historical ? Math.min(historical.low, value) : value;
@@ -167,8 +170,8 @@ export function buildVixEnvironmentSnapshot(options: {
     ? ((value - sessionLow) / (sessionHigh - sessionLow)) * 100
     : 50;
   const marketOpen = !options.replay && options.live?.marketOpen === true;
-  const timestamp = options.live?.timestamp ?? historical?.timestamp ?? options.asOfMs;
-  const provider = options.live?.provider?.trim() || (historical ? "official daily history" : "server market-index feed");
+  const timestamp = live?.timestamp ?? historical?.timestamp ?? options.asOfMs;
+  const provider = live?.provider?.trim() || (historical ? options.replay ? "completed daily history (not intraday)" : "official daily history" : "server market-index feed");
 
   return {
     symbol: options.symbol,

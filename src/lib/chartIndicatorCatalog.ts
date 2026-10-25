@@ -23,6 +23,8 @@ export type ChartIndicatorInstance = {
   instanceId: string;
   indicatorId: string;
   enabled: boolean;
+  /** Derived replay-only availability flag; never changes saved settings. */
+  replayUnavailable?: boolean;
   settings?: Record<string, number | string | boolean>;
 };
 

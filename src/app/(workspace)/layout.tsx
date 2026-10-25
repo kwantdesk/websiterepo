@@ -15,7 +15,6 @@ const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
   "/kwanty": "kwanty",
   "/gex-box": "gexdata",
   "/gamma": "gamma",
-  "/levelz": "levelz",
   "/gexmap": "gexmap",
   "/liqmap": "liqmap",
   "/heatmap": "heatmap",

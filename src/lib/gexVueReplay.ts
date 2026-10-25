@@ -87,7 +87,7 @@ export function createGexVueReplayState(nowMs = Date.now()): GexVueReplayState {
     endMs,
     timestampMs: startMs,
     playing: false,
-    speed: 10,
+    speed: 1,
   };
 }
 

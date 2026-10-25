@@ -1362,7 +1362,7 @@ function ChartIndicatorPanes({
         ...group,
         series: previous,
         unavailableReason: undefined,
-        statusLabel: "SYNCING EXECUTIONS",
+        statusLabel: undefined,
       };
     }
     if (group.series.length) cvdSeriesCacheRef.current.series.set(group.key, { identity, series: group.series });

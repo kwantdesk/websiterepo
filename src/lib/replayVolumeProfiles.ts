@@ -124,7 +124,7 @@ export function replayProfileWithinClock(
   if (!profile || !Number.isFinite(replayClock)) return false;
   const coverage = Number(profile.coverageEndMs ?? profile.endMs ?? NaN);
   if (!Number.isFinite(coverage)) return false;
-  // An hour of slack absorbs the gateway's own session-boundary rounding on a
-  // COMPLETED session, whose data is wholly in the past regardless.
-  return coverage <= replayClock + 60 * 60_000;
+  // No tolerance may admit a later developing profile. Boundary discrepancies
+  // must be repaired at the source, never by revealing an hour of future flow.
+  return coverage <= replayClock;
 }

@@ -44,8 +44,8 @@ const replay = buildVixEnvironmentSnapshot({
   replay: true,
 });
 assert.ok(replay);
-assert.equal(replay.value, 22.5);
-assert.equal(replay.checkedAt, new Date(clock).toISOString());
+assert.equal(replay.value, 22.45);
+assert.equal(replay.checkedAt, new Date(clock - dayMs).toISOString());
 assert.equal(replay.stale, true);
 assert.equal(replay.marketOpen, false);
 

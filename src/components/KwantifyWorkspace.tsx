@@ -11,6 +11,9 @@ import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import WorkspaceReplayDialog from "@/components/WorkspaceReplayDialog";
 import { replayObservationCount, selectWorkspaceReplaySession, WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS } from "@/lib/workspaceReplay";
 import { replayFormingCandle } from "@/lib/replayFormingCandle";
+import { chartProgressCopy } from "@/lib/chartProgressCopy";
+import { replayChartHistoryRange } from "@/lib/replayChartHistory";
+import { REPLAY_SPEEDS, replaySpeedLabel, replayTimestampAfterElapsed, startReplayTicker } from "@/lib/replayPlayback";
 import { OPTIONS_FLOW_TOOLS, optionsFlowTool, normalizeOptionsFlowState, type OptionsFlowPanelKind, type OptionsFlowState } from "@/lib/optionsFlowTools";
 import { normalizeDrawings, type Drawing } from "@/lib/chartDrawTools";
 import KwantLoader from "@/components/KwantLoader";
@@ -431,7 +434,6 @@ const loadNewsWorkspace = () => import("@/components/news/NewsWorkspace");
 const loadZyonWorkspace = () => import("@/components/zyon/ZyonWorkspace");
 const loadJournalWorkspace = () => import("@/components/journal/JournalWorkspace");
 const loadBacktestingWorkspace = () => import("@/components/backtesting/BacktestingWorkspace");
-const loadLevelzWorkspace = () => import("@/components/levelz/LevelzWorkspace");
 const loadSocialsWorkspace = () => import("@/components/socials/SocialsWorkspace");
 const loadKwantBotWorkspace = () => import("@/components/kwantbot/KwantBotIntelligenceWorkspace");
 
@@ -455,7 +457,6 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   zyon: loadZyonWorkspace,
   journal: loadJournalWorkspace,
   backtesting: loadBacktestingWorkspace,
-  levelz: loadLevelzWorkspace,
   socials: loadSocialsWorkspace,
   kwantbot: loadKwantBotWorkspace,
 };
@@ -544,10 +545,6 @@ const JournalWorkspace = dynamic(loadJournalWorkspace, {
 const BacktestingWorkspace = dynamic(loadBacktestingWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Backtesting", "Preparing the historical replay engine."),
-});
-const LevelzWorkspace = dynamic(loadLevelzWorkspace, {
-  ssr: false,
-  loading: () => workspaceLoader("Opening LEVELZ", "Restoring the level workspaces."),
 });
 const SocialsWorkspace = dynamic(loadSocialsWorkspace, {
   ssr: false,
@@ -1142,7 +1139,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexdata" | "kwanty" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexdata" | "kwanty" | "gamma" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -1176,7 +1173,6 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "gexdata" as const, label: "GEX DATA" },
   { id: "kwanty" as const, label: "KWANTY" },
   { id: "gamma" as const, label: "Gamma" },
-  { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
   { id: "liqmap" as const, label: "LIQ MAP" },
   { id: "heatmap" as const, label: "Heat Map" },
@@ -5509,22 +5505,14 @@ function WorkspaceChartPaneComponent({
     if (!replayActive || !replaySessionDate) return null;
     if (pane.broker === "Databento") {
       const window = cmeSessionWindowForDate(replaySessionDate);
-      return window
-        ? {
-            fromMs: Math.min(window.startMs, getTimeframeBucketStart(window.startMs, pane.timeframe)),
-            toMs: window.endMs,
-            key: `replay-${replaySessionDate}-${window.startMs}-${window.endMs}`,
-          }
-        : null;
+      if (!window) return null;
+      const range = replayChartHistoryRange(window, period);
+      return { ...range, fromMs: Math.min(range.fromMs, getTimeframeBucketStart(range.fromMs, pane.timeframe)) };
     }
     const fromMs = newYorkSessionTimestamp(replaySessionDate, GEX_VUE_REPLAY_OPEN_MINUTE - 30);
     const toMs = newYorkSessionTimestamp(replaySessionDate, GEX_VUE_REPLAY_CLOSE_MINUTE + 5);
-    return {
-      fromMs,
-      toMs,
-      key: `replay-${replaySessionDate}-${fromMs}-${toMs}`,
-    };
-  }, [pane.broker, pane.timeframe, replayActive, replaySessionDate]);
+    return replayChartHistoryRange({ startMs: fromMs, endMs: toMs }, period);
+  }, [pane.broker, pane.timeframe, period, replayActive, replaySessionDate]);
   const replayVisibleCandleCount = useMemo(() => {
     if (!replayActive || !replayTimestampMs) return -1;
     return replayObservationCount(plottedCandles, replayTimestampMs);
@@ -5570,7 +5558,9 @@ function WorkspaceChartPaneComponent({
     const last = replayCandles[replayCandles.length - 1];
     const bucketMs = getTimeframeMs(pane.timeframe);
     if (bucketMs <= 0) return replayCandles;
-    const bucketStart = getTimeframeBucketStart(last.timestamp, pane.timeframe);
+    // The archive timestamp is the actual bar open. UTC flooring can declare
+    // a CME daily/session-aligned bar closed hours before its real close.
+    const bucketStart = last.timestamp;
     if (replayTimestampMs >= bucketStart + bucketMs) return replayCandles;
     const forming = replayFormingCandle(bucketStart, replayTimestampMs, replayMarketTrades);
     if (!forming) return replayCandles.slice(0, -1);
@@ -5754,7 +5744,9 @@ function WorkspaceChartPaneComponent({
         replayHistoryRange?.key ?? `${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}d`,
       )) ?? null
     : null;
-  const replayOrderFlowRequired = Boolean(replayHistoryRange && needsOrderFlowHistory);
+  // A plain replay price chart also needs archived executions to build its
+  // forming candle. Do not make real intrabar movement depend on adding CVD.
+  const replayOrderFlowRequired = Boolean(replayHistoryRange && pane.broker === "Databento");
   // Big Contracts is the one study with an explicit lookback in days; the
   // execution archive request has to cover it.
   const historicalExecutionDays = indicators.reduce((days, instance) => (
@@ -5841,7 +5833,7 @@ function WorkspaceChartPaneComponent({
         setChartOverlaySeries((current) => current.map((series) => series.id === instance.instanceId
           // The history response may arrive after live executions. Merge it
           // behind the live seam instead of replacing the live overlay tail.
-          ? { ...series, candles: mergeChartHistory(loaded, series.candles).slice(-2_500) }
+          ? { ...series, candles: replayHistoryRange ? loaded : mergeChartHistory(loaded, series.candles).slice(-2_500) }
           : series));
       }).catch(() => {
         // An overlay remains installed and empty while its selected source is
@@ -5956,6 +5948,9 @@ function WorkspaceChartPaneComponent({
    * one place that decided, so it is the one place that has to ask.
    */
   const dailyProfileCount = resolveDailyVolumeProfileCount(dailyProfileSettings.numberOfProfiles);
+  // Exact archive profiles use completed-minute checkpoints in replay. Never
+  // fan out a history HTTP request for every 200 ms transport tick.
+  const replayProfileClockMs = replayTimestampMs == null ? null : Math.floor(replayTimestampMs / 60_000) * 60_000;
   const dailyTradingDates = useMemo(() => {
     const dates = new Set<string>();
     candles.forEach((candle) => dates.add(chicagoTradingDate(candle.timestamp)));
@@ -6599,8 +6594,8 @@ function WorkspaceChartPaneComponent({
       }, Math.max(minimumDelay, repairGate.delay()));
     };
 
-    // A replay pane is a closed, immutable historical session. Hydrate that
-    // precise window once and stop here: reading today's IndexedDB cache,
+    // Replay owns the selected period ending at its historical session.
+    // Hydrate that precise window once: reading today's IndexedDB cache,
     // opening the live seam and starting tail reconciliation used to make a
     // three-month-old date download months of bars and then compete with the
     // current session. It also let current executions leak into old Big
@@ -6626,7 +6621,7 @@ function WorkspaceChartPaneComponent({
             pane.broker,
             period,
             2_000,
-            needsOrderFlowHistory,
+            replayOrderFlowRequired,
             requestController.signal,
             false,
             false,
@@ -6635,13 +6630,13 @@ function WorkspaceChartPaneComponent({
             needsAuctionGapHistory ? resolvedContractSymbol : null,
           );
           if (cancelled) return;
-          const clean = sanitizeCandles(replayCandles, pane.symbol, pane.timeframe)
+          const clean = trimChartHistoryForPeriod(sanitizeCandles(replayCandles, pane.symbol, pane.timeframe)
             .filter((candle) => (
               candle.timestamp >= replayHistoryRange.fromMs
               && candle.timestamp <= replayHistoryRange.toMs
-            ));
+            )), period, replayHistoryRange.fromMs);
           if (!clean.length) throw new Error("No candles were recorded for this replay session.");
-          const replayTape = needsOrderFlowHistory
+          const replayTape = replayOrderFlowRequired
             ? workspaceExecutionTape.get(
                 workspaceOrderFlowKey(pane.symbol, pane.timeframe, replayHistoryRange.key),
               ) ?? []
@@ -9230,7 +9225,7 @@ function WorkspaceChartPaneComponent({
       // Reapply the current execution tape before replacing the profile so a
       // reconciliation cannot erase prints that already developed the live
       // session.
-      replacement = applyInstitutionalTradesToVolumeProfile(
+      if (replayProfileClockMs == null) replacement = applyInstitutionalTradesToVolumeProfile(
         replacement,
         latestMarketTradesRef.current,
       );
@@ -9336,14 +9331,18 @@ function WorkspaceChartPaneComponent({
             // A selected London/NY window that has not opened cannot have
             // executions yet. Do not queue known-empty future history ahead
             // of the developing Asia profile (or cache it as a failure).
-            if (job.startMs !== undefined && job.startMs >= Date.now()) return;
+            const profileClockMs = replayProfileClockMs ?? Date.now();
+            const replaySession = replayProfileClockMs == null ? null : cmeSessionWindowForDate(tradingDate);
+            const startMs = job.startMs ?? replaySession?.startMs;
+            const endMs = replayProfileClockMs == null ? job.endMs : Math.min(job.endMs ?? replaySession?.endMs ?? profileClockMs, profileClockMs);
+            if (startMs !== undefined && (startMs >= profileClockMs || endMs !== undefined && endMs <= startMs)) return;
             const requestArgs = {
               symbol: displayCmeSymbol(pane.symbol),
               contractSymbol: resolvedContractSymbol ?? undefined,
               period: "daily",
               tradingDate: job.tradingDate,
-              startMs: job.startMs,
-              endMs: job.endMs,
+              startMs,
+              endMs,
               groupTicks: requestedDailyGroupTicks,
               valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
               minTradeVolume: requestedDailyMinVolume,
@@ -9380,12 +9379,13 @@ function WorkspaceChartPaneComponent({
         });
       }
       if (weeklyProfileInstance && includeCompletedProfiles) {
+        const profileClockMs = replayProfileClockMs ?? Date.now();
         // Stock weekly behaviour is one rolling calculation over the latest
         // five real trading dates. Current/previous calendar week remain user
         // choices in settings.
         const selection = String(weeklyProfileSettings.weekSelection ?? "rolling-five");
         const { startMs: weekStartMs, endMs: weekEndMs } = cmeWeekRange(
-          Date.now(),
+          profileClockMs,
           selection === "previous" ? "previous" : selection === "current" ? "current" : "rolling-five",
           tradingDates,
         );
@@ -9402,7 +9402,7 @@ function WorkspaceChartPaneComponent({
           // Including the latest candle timestamp here made every load a cold
           // cache miss, so the chart waited for a full five-session archive
           // aggregation even when it had an exact weekly snapshot locally.
-          endMs: weekEndMs ?? undefined,
+          endMs: replayProfileClockMs == null ? weekEndMs ?? undefined : Math.min(weekEndMs ?? profileClockMs, profileClockMs),
           groupTicks: requestedWeeklyGroupTicks,
           valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
           minTradeVolume: requestedWeeklyMinVolume,
@@ -9424,12 +9424,13 @@ function WorkspaceChartPaneComponent({
         })());
       }
       if (compositeProfileInstance && compositeProfileRange && includeCompletedProfiles) {
+        const profileClockMs = replayProfileClockMs ?? Date.now();
         const compositeRequestArgs = {
           symbol: displayCmeSymbol(pane.symbol),
           contractSymbol: resolvedContractSymbol ?? undefined,
           period: "custom",
           startMs: compositeProfileRange.startMs,
-          endMs: compositeProfileRange.endMs,
+          endMs: replayProfileClockMs == null ? compositeProfileRange.endMs : Math.min(compositeProfileRange.endMs, profileClockMs),
           groupTicks: 1,
           valueAreaPercent: Number(compositeProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
           minTradeVolume: requestedCompositeMinVolume,
@@ -9462,7 +9463,7 @@ function WorkspaceChartPaneComponent({
         // server refresh is a reconciliation, not a second live feed. On an
         // outage, back off rather than synchronising every open pane into a
         // two-second retry storm.
-        refreshTimer = window.setTimeout(
+        if (replayProfileClockMs == null) refreshTimer = window.setTimeout(
           () => {
             const includeCompletedProfiles = Date.now() >= nextCompletedProfilesRefreshAt;
             if (includeCompletedProfiles) {
@@ -9482,6 +9483,7 @@ function WorkspaceChartPaneComponent({
     };
   }, [
     dailyProfileInstance?.instanceId,
+    replayProfileClockMs,
     dailyProfileInstance?.indicatorId,
     dailyProfileSettings.autoGroupFactor,
     dailyProfileSettings.filterMode,
@@ -9755,12 +9757,12 @@ function WorkspaceChartPaneComponent({
           onResetPaperTrading={onResetPaperTrading}
         />
       )}
-      {loadingMessage ? (
+      {chartProgressCopy(loadingMessage, replayActive) ? (
         <div
           className="pointer-events-none absolute left-1/2 z-30 max-w-[calc(100%-32px)] -translate-x-1/2 truncate rounded-lg border border-border bg-panel/92 px-3 py-1.5 text-[10px] text-muted shadow-lg shadow-black/25 backdrop-blur"
           style={{ bottom: 86 + lowerIndicatorHeight }}
         >
-          {loadingMessage}
+          {chartProgressCopy(loadingMessage, replayActive)}
         </div>
       ) : null}
       {intervalCommandOpen && (
@@ -10154,7 +10156,6 @@ export default function KwantifyWorkspace({
     if (times) replayTimelines.current.set(paneId, times); else replayTimelines.current.delete(paneId);
   }, []);
   const closeReplayPicker = useCallback(() => setShowReplayPicker(false), []);
-  const gexVueReplayTickRef = useRef<number | null>(null);
   // Scrubbing the replay slider fires dozens of input events per second; each
   // one re-rendered the entire workspace and every pane's reveal pipeline,
   // which is what made fast scrubs hang. Coalesce to one commit per frame.
@@ -10372,28 +10373,27 @@ export default function KwantifyWorkspace({
   }, [chartWorkspaceScope, workspacePanes]);
   useEffect(() => {
     if (!gexVueReplay.active || !gexVueReplay.playing || !["charts", "gamvue"].includes(optimisticWorkspaceSection)) {
-      gexVueReplayTickRef.current = null;
       return;
     }
-    gexVueReplayTickRef.current = performance.now();
-    const timer = window.setInterval(() => {
-      const now = performance.now();
-      const previous = gexVueReplayTickRef.current ?? now;
-      gexVueReplayTickRef.current = now;
-      const elapsedMs = Math.max(0, now - previous);
+    const pauseHiddenReplay = () => {
+      if (document.hidden) setGexVueReplay(current => current.playing ? { ...current, playing: false } : current);
+    };
+    if (document.hidden) { pauseHiddenReplay(); return; }
+    const stop = startReplayTicker((elapsedMs) => {
       setGexVueReplay((current) => {
         if (!current.active || !current.playing) return current;
-        const timestampMs = clampGexVueReplayTimestamp(current, current.timestampMs + elapsedMs * current.speed);
+        const timestampMs = replayTimestampAfterElapsed(current.timestampMs, elapsedMs, gexVueReplay.speed, current.endMs);
         return timestampMs >= current.endMs
           ? { ...current, timestampMs: current.endMs, playing: false }
           : { ...current, timestampMs };
       });
-    }, 200);
+    }, pauseHiddenReplay);
+    document.addEventListener("visibilitychange", pauseHiddenReplay);
     return () => {
-      window.clearInterval(timer);
-      gexVueReplayTickRef.current = null;
+      stop();
+      document.removeEventListener("visibilitychange", pauseHiddenReplay);
     };
-  }, [optimisticWorkspaceSection, gexVueReplay.active, gexVueReplay.playing]);
+  }, [optimisticWorkspaceSection, gexVueReplay.active, gexVueReplay.playing, gexVueReplay.speed]);
   const [workspaceTree, setWorkspaceTree] = useState<WorkspaceLayoutNode>(initialChartWorkspaceRuntime.tree);
   const [workspaceFloatingWindows, setWorkspaceFloatingWindows] = useState<WorkspaceFloatingWindow[]>(initialChartWorkspaceRuntime.floatingWindows);
   const [workspacePresets, setWorkspacePresets] = useState<WorkspacePreset[]>(initialChartWorkspaceRuntime.presets);
@@ -11676,7 +11676,7 @@ export default function KwantifyWorkspace({
     if (!gexVueReplay.active) return paneIndicators;
     return Object.fromEntries(Object.entries(paneIndicators).map(([id, instances]) => [id,
       instances.some(instance => instance.enabled && WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS.has(instance.indicatorId))
-        ? instances.map(instance => WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS.has(instance.indicatorId) ? { ...instance, enabled: false } : instance)
+        ? instances.map(instance => WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS.has(instance.indicatorId) ? { ...instance, enabled: false, replayUnavailable: instance.enabled } : instance)
         : instances,
     ]));
   }, [gexVueReplay.active, paneIndicators]);
@@ -20554,10 +20554,10 @@ export default function KwantifyWorkspace({
                   <KwantSelect
                     value={String(gexVueReplay.speed)}
                     onChange={(event) => setGexVueReplay((current) => ({ ...current, speed: Number(event.target.value) }))}
-                    className="h-7 w-[74px] shrink-0 border border-border bg-surface px-2 font-mono text-[9px] text-foreground outline-none"
+                    className="h-7 w-[124px] shrink-0 border border-border bg-surface px-2 font-mono text-[9px] text-foreground outline-none"
                     aria-label="Replay speed"
                   >
-                    {[1, 5, 15, 30, 60, 120].map((speed) => <option key={speed} value={speed}>{speed}x</option>)}
+                    {REPLAY_SPEEDS.map((speed) => <option key={speed} value={speed}>{replaySpeedLabel(speed)}</option>)}
                   </KwantSelect>
                   <button
                     type="button"
@@ -20737,13 +20737,6 @@ export default function KwantifyWorkspace({
               <ReactActivity mode={bottomWorkspaceSection === "gamma" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="gamma" label="Gamma">
                   <GammaWorkspace />
-                </WorkspaceFailureBoundary>
-              </ReactActivity>
-            ) : null}
-            {visitedWorkspaceSections.has("levelz") ? (
-              <ReactActivity mode={bottomWorkspaceSection === "levelz" ? "visible" : "hidden"}>
-                <WorkspaceFailureBoundary resetKey="levelz" label="Levelz">
-                  <LevelzWorkspace />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

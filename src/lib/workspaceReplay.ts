@@ -77,9 +77,4 @@ export function replayObservationCount(rows: readonly { timestamp: number }[], c
 export const WORKSPACE_REPLAY_SNAPSHOT_TOOLS = ["heat-map", "exposure-by-strike", "exposure-by-expiration", "market-map"] as const;
 
 /** These chart engines currently consume the live book/current-only resources. */
-export const WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS = new Set([
-  "pulling-stacking", "absorption-detector", "iceberg-refresh-detector",
-  "liquidity-stop-sweep-detector", "cumulative-iceberg-stop", "book-speed",
-  "depth-of-market", "mini-dom", "big-blocks-options", "implied-volatility-rank",
-  "classic-gex-profile", "expected-move", "gamma-environment",
-]);
+export { REPLAY_UNAVAILABLE_INDICATORS as WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS } from "@/lib/replayIndicatorSafety";

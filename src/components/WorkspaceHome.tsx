@@ -54,7 +54,6 @@ const destinations: LaunchDestination[] = [
   { href: "/gamma", title: "Gamma", eyebrow: "Options intelligence", description: "Dealer regime, structure and positioning data.", preview: "gamma", icon: Crosshair },
   { href: "/gexmap", title: "GEX Map", eyebrow: "Strike exposure", description: "Live GEX, DEX and VEX strike ladders.", preview: "gexmap", icon: ScanLine },
   { href: "/liqmap", title: "Liquidity Map", eyebrow: "Level 3 order flow", description: "Resting liquidity, trades, bubbles and DOM.", preview: "liquidity", icon: Waves },
-  { href: "/levelz", title: "Levelz", eyebrow: "Price intelligence", description: "Institutional levels, zones and reactions.", preview: "levels", icon: Crosshair },
   { href: "/gameplan", title: "Gameplan", eyebrow: "Session preparation", description: "Build, hold and score your trading plan.", preview: "gameplan", icon: CalendarDays },
   { href: "/zyon", title: "Zyon", eyebrow: "Trading intelligence", description: "Live market context, research and reasoning.", preview: "zyon", icon: Sparkles },
   { href: "/news", title: "News", eyebrow: "Macro calendar", description: "Events, releases and market-moving context.", preview: "news", icon: BookOpen },

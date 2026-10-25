@@ -1,34 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import ts from "typescript";
 
 const root = process.cwd();
 
 async function loadTpoModules() {
-  const outputDirectory = await mkdtemp(path.join(tmpdir(), "kwantdesk-tpo-"));
-  const compile = async (sourcePath, outputName) => {
-    const source = await readFile(path.join(root, sourcePath), "utf8");
-    const result = ts.transpileModule(source, {
-      compilerOptions: {
-        target: ts.ScriptTarget.ES2022,
-        module: ts.ModuleKind.ES2022,
-      },
-      fileName: sourcePath,
-    });
-    const rewritten = result.outputText
-      .replaceAll('"@/lib/tpo/types"', '"./types.mjs"')
-      .replaceAll('"@/lib/tpo/settings"', '"./settings.mjs"');
-    await writeFile(path.join(outputDirectory, outputName), rewritten, "utf8");
-  };
-  await compile("src/lib/tpo/types.ts", "types.mjs");
-  await compile("src/lib/tpo/settings.ts", "settings.mjs");
-  await compile("src/lib/tpo/engine.ts", "engine.mjs");
   return {
-    engine: await import(`${new URL(`file:///${path.join(outputDirectory, "engine.mjs").replaceAll("\\", "/")}`).href}?v=${Date.now()}`),
-    settings: await import(`${new URL(`file:///${path.join(outputDirectory, "settings.mjs").replaceAll("\\", "/")}`).href}?v=${Date.now()}`),
+    engine: await import("../src/lib/tpo/engine.ts"),
+    settings: await import("../src/lib/tpo/settings.ts"),
   };
 }
 
@@ -66,7 +46,7 @@ test("TPO and Weekly TPO are registered beside Daily Profile without replacing T
   const catalog = await readFile(path.join(root, "src/lib/chartIndicatorCatalog.ts"), "utf8");
   const workspace = await readFile(path.join(root, "src/components/KwantifyWorkspace.tsx"), "utf8");
   assert.match(catalog, /indicator\("TPO Daily",\s*"Volume & Profiles"/);
-  assert.match(catalog, /indicator\("Weekly TPO",\s*"Volume & Profiles"/);
+  assert.match(catalog, /indicator\("TPO Weekly",\s*"Volume & Profiles"/);
   assert.match(workspace, /indicatorId:\s*"tpo-chart"/);
   assert.match(workspace, /indicatorId:\s*"weekly-tpo"/);
   assert.match(catalog, /indicator\("TPO Levels",\s*"Volume & Profiles"/);
@@ -224,7 +204,7 @@ test("value area expands contiguously and includes both sides on a tie", () => {
 
 test("single prints exclude profile extremes unless explicitly enabled", () => {
   const rows = [row(100, 1), row(101, 3), row(102, 1), row(103, 1), row(104, 4), row(105, 1)];
-  assert.deepEqual(engine.detectSinglePrints(rows, 2, false), [{ lowTick: 102, highTick: 103, tested: false }]);
+  assert.deepEqual(engine.detectSinglePrints(rows, 2, false), [{ lowTick: 102, highTick: 103, tested: false, volumePerTick: null }]);
   assert.equal(engine.detectSinglePrints(rows, 1, true).length, 3);
 });
 

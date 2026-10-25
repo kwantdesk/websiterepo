@@ -1,3 +1,5 @@
+import { causalArrayView } from "@/lib/causalArrayView";
+
 export interface Candle {
   timestamp: number;
   open: number;
@@ -649,6 +651,10 @@ function executeBacktest(
   }
 
   const indicators = createIndicators(candles);
+  let strategyThrough = 0;
+  const strategyCandles = causalArrayView(candles, () => strategyThrough);
+  const strategyIndicators = Object.fromEntries(Object.entries(indicators)
+    .map(([key, values]) => [key, causalArrayView(values, () => strategyThrough)]));
   const trades: Trade[] = [];
   const equityCurve: { timestamp: number; equity: number }[] = [];
   const openTrades: OpenTrade[] = [];
@@ -805,7 +811,8 @@ function executeBacktest(
       openTrades.length === 0 || openTrades.every((trade) => trade.direction === direction);
 
     try {
-      const signal = strategyFn(candles, i, indicators);
+      strategyThrough = i + 1;
+      const signal = strategyFn(strategyCandles, i, strategyIndicators);
       if (signal && typeof signal === "object" && (signal.action === "LONG" || signal.action === "SHORT") && canOpenDirection(signal.action)) {
         pendingOrder = {
           direction: signal.action,

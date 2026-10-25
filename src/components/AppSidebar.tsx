@@ -36,7 +36,6 @@ type SidebarKey =
   | "gexdata"
   | "kwanty"
   | "gamma"
-  | "levelz"
   | "gexmap"
   | "liqmap"
   | "heatmap"
@@ -105,7 +104,6 @@ const navItems: Array<{
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
   { key: "liqmap", href: "/liqmap", label: "LIQ MAP", title: "Liquidity Heatmap", icon: Waves },
-  { key: "levelz", href: "/levelz", label: "LEVELZ", title: "LEVELZ", icon: Crosshair },
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
   { key: "zyon", href: "/zyon", label: "ZYON", title: "ZYON Trading Intelligence", icon: Sparkles },
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
@@ -128,7 +126,6 @@ const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "liqmap",
   "heatmap",
   "gexdesk",
-  "levelz",
   "news",
   "socials",
   "journal",

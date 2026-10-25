@@ -67,7 +67,7 @@ test("historical replay includes the requested three-month backtesting studies",
 });
 
 test("Gamma Environment receives the historical options snapshot used by replay", () => {
-  assert.match(replay, /const replayGammaEnvironment = useMemo\(\(\) => gammaPositioning \? \{/);
+  assert.match(replay, /const replayGammaEnvironment = useMemo\(\(\) => gammaPositioning && replayDataClock != null && gammaDataClock <= replayDataClock \? \{/);
   assert.match(replay, /label: gammaPositioning\.environment\.gammaStateLabel/);
   assert.match(replay, /regime: gammaPositioning\.environment\.gammaRegime/);
   assert.match(replay, /stale: true/);
@@ -88,12 +88,12 @@ test("Bounce Levels binds historical replay to the selected New York session", (
 });
 
 test("order-flow studies receive replay-clock-clipped historical executions", () => {
-  assert.match(replay, /orderFlow=1&executions=1/);
+  assert.match(replay, /orderFlow=1&executions=\$\{includeExecutions \? "1" : "0"\}/);
   assert.match(replay, /marketTrades=\{visibleReplayTrades\}/);
   assert.match(replay, /replayTimestampMs=\{replayDataClock\}/);
   assert.match(replay, /orderFlowHistoryReady=\{orderFlowHistoryReady\}/);
-  assert.match(replay, /trade\.timestamp <= replayDataClock/);
-  assert.match(replay, /sourceEndTimestamp \?\? candle\.timestamp/);
+  assert.match(replay, /sliceReplayExecutionWindow\(replayTrades, replayDataClock, REPLAY_LOOKBACK_MS\)/);
+  assert.match(replay, /sourceEndTimestamp \?\? candles\[index \+ 1\]\?\.timestamp \?\? Number.POSITIVE_INFINITY/);
 });
 
 test("historical session route uses executions for time and event bars without an OHLC order-flow fallback", () => {

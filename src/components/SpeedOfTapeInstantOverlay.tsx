@@ -31,7 +31,8 @@ export default function SpeedOfTapeInstantOverlay({
   backgroundColor,
   eventKey,
 }: Props) {
-  const [liveFrame, setLiveFrame] = useState(frame);
+  const [retainedLiveFrame, setLiveFrame] = useState(frame);
+  const liveFrame = eventKey ? retainedLiveFrame : frame;
   useEffect(() => setLiveFrame(frame), [frame]);
   useEffect(() => {
     if (!eventKey) return;

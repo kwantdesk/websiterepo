@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { clipReplayIndicatorSeries, replayCausalCandles, replaySafeIndicators } from "@/lib/replayIndicatorSafety";
 import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
 import { calculatePivotPoints } from "@/lib/pivotPoints";
 import type { PivotPointLabelOptions } from "@/lib/pivotPointLabels";
@@ -347,6 +348,22 @@ export function calculateDeltaPercentHighlights(
  * untouched indicator returns exactly what it always did.
  */
 export function calculateIndicatorSeries(
+  instance: ChartIndicatorInstance,
+  candles: Candle[],
+  theme: IndicatorTheme,
+  context: { instrument?: string; tickSize?: number; footprintBars?: readonly FootprintBarModel[]; replayTimestampMs?: number | null } = {},
+): CalculatedIndicatorSeries[] {
+  const clock = context.replayTimestampMs;
+  const [safeInstance] = replaySafeIndicators([instance], clock);
+  if (!safeInstance.enabled) return [];
+  const safeContext = clock == null ? context : { ...context,
+    footprintBars: context.footprintBars?.filter(bar => bar.timestamp <= clock),
+  };
+  return clipReplayIndicatorSeries(calculateUnclippedIndicatorSeries(safeInstance,
+    replayCausalCandles(candles, clock), theme, safeContext), clock);
+}
+
+function calculateUnclippedIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
   theme: IndicatorTheme,
