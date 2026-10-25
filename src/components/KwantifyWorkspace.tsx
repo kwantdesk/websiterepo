@@ -19368,6 +19368,8 @@ export default function KwantifyWorkspace({
   }
 
   const replayScope = bottomWorkspaceSection === "liqmap" ? "charts" : chartWorkspaceScope;
+  // Futures complete at 17:00 New York, one hour after the cash close.
+  const latestLiquidityReplaySession = latestCompletedNewYorkSession(Date.now() - 60 * 60_000);
   const renderReplayTransport = () => (gexVueReplay.active ? (
             <div className="flex w-full shrink-0 items-center gap-2 overflow-x-auto border-t border-primary/25 bg-panel/95 px-3 py-2 backdrop-blur-xl [scrollbar-width:thin]">
                   <span className="shrink-0 font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">
@@ -19376,7 +19378,7 @@ export default function KwantifyWorkspace({
                   <span className="shrink-0 text-[9px] text-muted" title="Live-only tools and book indicators are paused. Forming candles require recorded executions; complete historical profiles appear only after their recorded end time.">Recorded data only</span>
                   <KwantDatePicker
                     value={gexVueReplay.sessionDate}
-                    max={latestCompletedNewYorkSession()}
+                    max={bottomWorkspaceSection === "liqmap" ? latestLiquidityReplaySession : latestCompletedNewYorkSession()}
                     min={earliestGexVueReplaySessionDate()}
                     onChange={(sessionDate) => {
                       const normalizedSessionDate = normalizeGexVueReplaySessionDate(sessionDate);
@@ -20769,7 +20771,7 @@ export default function KwantifyWorkspace({
                       menuLabel="Replay timezone" compact className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME} />
                     {gexVueReplay.active ? <span className="text-[10px] text-muted">Recorded depth · 2-second snapshots · read only</span> : null}
                   </div>
-                  {showReplayPicker ? <WorkspaceReplayDialog state={gexVueReplay} scope="charts" initialTimeZone={chartSettings.timezone} onClose={closeReplayPicker} onGo={(next, timeZone) => { changeChartTimeZone(timeZone); setGexVueReplay(next); setShowReplayPicker(false); }} /> : null}
+                  {showReplayPicker ? <WorkspaceReplayDialog state={gexVueReplay} scope="charts" maxSessionDate={latestLiquidityReplaySession} initialTimeZone={chartSettings.timezone} onClose={closeReplayPicker} onGo={(next, timeZone) => { changeChartTimeZone(timeZone); setGexVueReplay(next); setShowReplayPicker(false); }} /> : null}
                   <div className="min-h-0 flex-1">
                 <LiquidityMapWorkspace
                   instrument={selectedLiquidityMapInstrument}

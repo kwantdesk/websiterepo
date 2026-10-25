@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { normalizeLiveSnapshot, isFullDepthSource } from '../public/heatmap-app/src/live-market.js';
+import { SYMBOLS } from '../public/heatmap-app/src/market-simulator.js';
 
 // Execute the actual shipped replay methods, without booting a live feed or
 // replacing their ownership/cache/seek logic with a test-only implementation.
 const source = readFileSync(new URL('../public/heatmap-app/src/main.js', import.meta.url), 'utf8');
 const methods = source.slice(source.indexOf('  #postReplayStatus('), source.indexOf('  #ingestDepthSnapshot(')).replaceAll('#', '');
-const Harness = new Function('normalizeLiveSnapshot', 'isFullDepthSource', 'MAX_HISTORY', 'INSTITUTIONAL_MARKET_DATA_ORIGIN', `return class {
+const Harness = new Function('normalizeLiveSnapshot', 'isFullDepthSource', 'SYMBOLS', '$', 'MAX_HISTORY', 'INSTITUTIONAL_MARKET_DATA_ORIGIN', `return class {
   constructor() {
-    this.symbol = 'NQ'; this.settings = { autoCenter: true }; this.view = {};
+    this.symbol = 'NQ'; this.settings = { autoCenter: true }; this.view = {}; this.instrumentSubscriptions = new Map();
     this.replay = { active: false, tradingDate: '', clockMs: 0, chunks: new Map() };
     this.depthEngine = { frames: [], reset() { this.frames = []; }, append(row) { this.frames.push(row); if(this.frames.length > 1800) this.frames.shift(); } };
     this.history = this.depthEngine.frames; this.tape = []; this.cvdHistory = [{timestamp:Infinity}];
@@ -18,7 +19,7 @@ const Harness = new Function('normalizeLiveSnapshot', 'isFullDepthSource', 'MAX_
   }
   updateSymbolUi() {} renderTape() {} requestRender() {} appendTrades(rows) { this.tape.push(...rows); }
   ${methods}
-}`)(normalizeLiveSnapshot, isFullDepthSource, 1800, '/api/institutional-market-data');
+}`)(normalizeLiveSnapshot, isFullDepthSource, SYMBOLS, () => null, 1800, '/api/institutional-market-data');
 
 const DATE = '2026-10-23';
 const BASE = Date.parse(`${DATE}T14:00:00Z`);
@@ -36,7 +37,7 @@ const frame = (timestamp, root = 'NQ') => ({ snapshot: {
 function pack(root = 'NQ', tradingDate = DATE, start = BASE) {
   const rows = [frame(start+2000, root), frame(start+4000, root), frame(start+6000, root)];
   const chunk = { startMs:start, endMs:start+CHUNK, frames:rows.length };
-  return { manifest:{root,tradingDate,frameMs:2000,gaps:0,chunks:[chunk]}, chunk, frames:rows };
+  return { manifest:{root,tradingDate,exchange:SYMBOLS[root]?.venue||'CME',frameMs:2000,gaps:0,chunks:[chunk]}, chunk, frames:rows };
 }
 async function withReplay(fetcher, run) {
   const oldFetch = globalThis.fetch; const oldWindow = globalThis.window;
@@ -170,4 +171,15 @@ test('exiting replay aborts in-flight downloads and their late completion cannot
     delayed.resolve(response(data));await settle();
     assert.equal(app.replay.active,false);assert.equal(app.history.length,0);assert.equal(app.sourceMode,'connecting');
   });
+});
+
+test('non-CME instruments retain their actual archive exchange on manifest AND chunk requests',async()=>{
+ for(const [symbol,exchange] of [['YM','CBOT'],['CL','NYMEX'],['GC','COMEX']]){
+  const data=pack(symbol);const queries=[];
+  await withReplay(async url=>{queries.push(new URL(url,'https://test'));return response(url.includes('/chunk?')?data:{manifest:data.manifest});},async app=>{
+   app.symbol=symbol;seek(app,BASE+4500);await settle();
+   assert.equal(queries.length,2);assert.ok(queries.every(url=>url.searchParams.get('exchange')===exchange));
+   assert.ok(app.history.every(row=>row.symbol===symbol));assert.equal(app.history.length,2);
+  });
+ }
 });

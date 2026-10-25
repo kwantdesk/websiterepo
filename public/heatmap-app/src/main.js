@@ -952,6 +952,13 @@ class DepthForgeApp {
     $('depthSymbol').textContent = this.currentContractSymbol || config.contract;
     $('symbolDescription').textContent = config.description;
     $('symbolIcon').textContent = config.key[0];
+    if (this.replay.active) {
+      if ($('modeStatus')) $('modeStatus').lastChild.textContent = ' REPLAY';
+      if ($('footerModeStatus')) $('footerModeStatus').textContent = 'RECORDED BOOK · READ-ONLY';
+      $('feedStatus').textContent = 'ARCHIVE REPLAY · 2-SECOND SNAPSHOTS · READ-ONLY';
+      if ($('sourceBanner')) $('sourceBanner').textContent = `Recorded ${this.symbol} depth · ${this.replay.tradingDate} · no live data mixed in`;
+      return;
+    }
     if ($('modeStatus')) $('modeStatus').lastChild.textContent = isLiveDepth ? ' LIVE L3' : ' CONNECTING';
     if ($('footerModeStatus')) $('footerModeStatus').textContent = isLiveDepth ? `${provider} L3 · READ-ONLY` : `CONNECTING TO ${provider}`;
     if (isLiveDepth) {
@@ -1210,6 +1217,13 @@ class DepthForgeApp {
     this.indicatorAnalysis = null;
     this.indicatorAnalysisKey = '';
     this.indicatorTradeRevision = 0;
+    this.depthLadderHtml = '';
+    const ladder = $('depthLadder');
+    if (ladder) ladder.innerHTML = '';
+    for (const id of ['lastPrice', 'priceChange', 'spreadValue', 'volumeValue', 'cvdValue', 'eventCount', 'replayTime', 'rangeStart']) {
+      const node = $(id);
+      if (node) node.textContent = '—';
+    }
     // The renderer skips empty history; explicitly erase its last picture so
     // a rewind cannot keep future pixels/axes/bubbles while an older chunk loads.
     for (const canvas of [this.renderer.canvas, this.renderer.cvdCanvas]) {
@@ -1247,6 +1261,7 @@ class DepthForgeApp {
       manifest: null, chunks: new Map(), appliedThroughMs: 0,
       syncing: false, pending: false, retryTimer: null, retryAt: 0,
       abort: new AbortController(), symbol: this.symbol,
+      exchange: this.instrumentSubscriptions.get(this.symbol)?.exchange || SYMBOLS[this.symbol]?.venue || 'CME',
     };
     this.liveFeed.stop();
     this.sourceMode = 'replay';
@@ -1292,9 +1307,9 @@ class DepthForgeApp {
     }
     session.syncing = true;
     try {
-      const { symbol, tradingDate } = session;
+      const { symbol, tradingDate, exchange } = session;
       if (!session.manifest) {
-        const query = new URLSearchParams({ symbol, tradingDate });
+        const query = new URLSearchParams({ symbol, tradingDate, exchange });
         const response = await fetch(
           `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay?${query}`,
           { cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]) },
@@ -1315,7 +1330,7 @@ class DepthForgeApp {
           throw new Error(body?.error || 'Replay pack unavailable.');
         }
         const manifest = body.manifest;
-        if (manifest.tradingDate !== tradingDate || manifest.root !== symbol
+        if (manifest.tradingDate !== tradingDate || manifest.root !== symbol || manifest.exchange !== exchange
           || !Number.isFinite(manifest.frameMs) || manifest.frameMs <= 0
           || !Array.isArray(manifest.chunks) || !manifest.chunks.length
           || manifest.chunks.some(chunk => !Number.isFinite(chunk.startMs) || !Number.isFinite(chunk.endMs)
@@ -1323,6 +1338,8 @@ class DepthForgeApp {
           throw new Error('Recorded session identity or index is invalid.');
         }
         session.manifest = manifest;
+        this.currentContractSymbol = manifest.contractSymbol || this.currentContractSymbol;
+        this.#updateSymbolUi();
       }
       await this.#applyReplayWindow(session);
     } catch (error) {
@@ -1354,6 +1371,7 @@ class DepthForgeApp {
     if (cached) return cached;
     const query = new URLSearchParams({
       symbol: session.symbol,
+      exchange: session.exchange,
       tradingDate: session.tradingDate,
       chunk: String(startMs),
     });
@@ -1807,7 +1825,7 @@ class DepthForgeApp {
     $('volumeValue').textContent = snapshot.totalVolume.toLocaleString();
     $('cvdValue').textContent = `${snapshot.cvd >= 0 ? '+' : ''}${Math.round(snapshot.cvd).toLocaleString()}`;
     $('eventCount').textContent = this.#compactNumber(this.eventCount);
-    $('utcClock').innerHTML = `${new Date().toISOString().slice(11, 19)} <small>UTC</small>`;
+    $('utcClock').innerHTML = `${new Date(this.replay.active ? this.replay.clockMs : Date.now()).toISOString().slice(11, 19)} <small>UTC</small>`;
     $('replayTime').textContent = timeLabel(snapshot.timestamp, true);
     $('rangeStart').textContent = timeLabel(this.history[0].timestamp, true);
     const timelineValue = this.history.length <= 1 ? 1000 : Math.round(this.viewEnd / (this.history.length - 1) * 1000);

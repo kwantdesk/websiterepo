@@ -10,14 +10,15 @@ import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
 import { selectWorkspaceReplaySession, workspaceReplayClockParts, workspaceReplaySessionBounds } from "@/lib/workspaceReplay";
 import { normalizeTimeZone, timeZoneCity } from "@/lib/timeZones";
 
-export default function WorkspaceReplayDialog({ state, scope, initialTimeZone = "America/New_York", onGo, onClose }: {
+export default function WorkspaceReplayDialog({ state, scope, initialTimeZone = "America/New_York", maxSessionDate = latestCompletedNewYorkSession(), onGo, onClose }: {
   state: GexVueReplayState; scope: "charts" | "gamma";
   initialTimeZone?: string;
+  maxSessionDate?: string;
   onGo(value: GexVueReplayState, timeZone: string): void; onClose(): void;
 }) {
   const [timeZone, setTimeZone] = useState(() => normalizeTimeZone(initialTimeZone));
-  const [date, setDate] = useState(state.sessionDate);
-  const [initialClock] = useState(() => workspaceReplayClockParts(newYorkSessionTimestamp(state.sessionDate, 9 * 60 + 30), normalizeTimeZone(initialTimeZone)));
+  const [date, setDate] = useState(state.sessionDate > maxSessionDate ? maxSessionDate : state.sessionDate);
+  const [initialClock] = useState(() => workspaceReplayClockParts(newYorkSessionTimestamp(date, 9 * 60 + 30), normalizeTimeZone(initialTimeZone)));
   const [hour, setHour] = useState(initialClock.hour);
   const [minute, setMinute] = useState(initialClock.minute);
   const [error, setError] = useState("");
@@ -60,9 +61,9 @@ export default function WorkspaceReplayDialog({ state, scope, initialTimeZone = 
     <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="workspace-replay-title" className="w-full max-w-md rounded-lg border border-border bg-panel p-5 text-foreground shadow-2xl outline-none">
       <div className="flex items-center justify-between"><h2 id="workspace-replay-title" className="text-sm font-semibold">Replay workspace</h2><button onClick={onClose} aria-label="Close replay picker" className="px-2 text-muted">×</button></div>
       <p className="my-4 text-xs text-muted">One historical clock for all panels. Choose the trading session and your time zone. Only recorded data is replayed; missing history is shown as unavailable.</p>
-      <form onSubmit={event => { event.preventDefault(); try { onGo(selectWorkspaceReplaySession(state, date, scope, `${hour}:${minute}`, timeZone), timeZone); } catch (reason) { setError(reason instanceof Error ? reason.message : "Invalid replay selection."); } }}>
+      <form onSubmit={event => { event.preventDefault(); try { if (date > maxSessionDate) throw new Error("Choose a completed exchange session."); onGo(selectWorkspaceReplaySession(state, date, scope, `${hour}:${minute}`, timeZone), timeZone); } catch (reason) { setError(reason instanceof Error ? reason.message : "Invalid replay selection."); } }}>
         <label className="mb-2 block text-xs">Trading date · exchange session</label>
-        <KwantDatePicker value={date} onChange={setDate} min={earliestGexVueReplaySessionDate()} max={latestCompletedNewYorkSession()} label="Replay trading date" />
+        <KwantDatePicker value={date} onChange={setDate} min={earliestGexVueReplaySessionDate()} max={maxSessionDate} label="Replay trading date" />
         <label className="mb-2 mt-4 block text-xs">Time zone</label>
         <TimeZoneSelect value={timeZone} onChange={changeTimeZone} menuLabel="Replay timezone" referenceTimestampMs={selection?.timestampMs ?? bounds.startMs} />
         <label className="mb-2 mt-4 block text-xs">Start time · {timeZoneCity(timeZone)}</label>

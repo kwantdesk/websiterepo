@@ -30,7 +30,7 @@ Request: "same replay needs to be added to liiq map and i expect it to work prop
 
 ## Verification and limits
 
-- 111 scoped regressions pass, covering map/trading, archive construction,
+- 113 scoped regressions pass, covering map/trading, archive construction,
   races/rewinds/exit, missing coverage, gap/resnapshot, direct-edge security,
   timezone and real-time shared playback. Scoped ESLint is clean. Next.js
   production build succeeds, including TypeScript.
@@ -65,3 +65,12 @@ Request: "same replay needs to be added to liiq map and i expect it to work prop
   edge. Optional KWANTDESK_BROWSER_REPLAY_DIRECT=false disables them with 503;
   it never falls back to large Vercel response bodies. A regression executes
   the actual redirect helper with live-SSE disabled to verify this boundary.
+
+- Exchange routing is part of the session identity: YM/CBOT, CL/NYMEX and
+  GC/COMEX are tested on both manifest and chunk reads, not assumed CME.
+  The standalone picker waits for the 17:00 New York futures close rather
+  than treating 16:00 cash close as a completed book archive.
+- NQ October22 pack prepared on the actual VPS:33722 frames,40 chunks,11
+  gap/drop markers. A real middle chunk returned881/881 valid two-sided
+  books. Signed public TLS delivered the same chunk directly:8719682 bytes,
+  application/json, HTTP200, X-KwantDesk-Market-Transport:direct-vps.
