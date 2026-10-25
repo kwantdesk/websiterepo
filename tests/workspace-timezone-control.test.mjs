@@ -8,7 +8,7 @@ const workspace = await fs.readFile(
 );
 
 test("workspace timezone remains interactive for every selected panel type", () => {
-  const start = workspace.indexOf("<TimeZoneSelect\n            value={chartSettings.timezone}");
+  const start = workspace.search(/<TimeZoneSelect\s+value=\{chartSettings.timezone\}/);
   assert.notEqual(start, -1);
   const control = workspace.slice(start, workspace.indexOf("/>", start) + 2);
 

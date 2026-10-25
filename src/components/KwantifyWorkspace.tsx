@@ -154,7 +154,7 @@ import {
 import { readStoredTheme, saveTheme, type ThemeColors } from "@/lib/theme";
 import { DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, saveCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 import { loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
-import { normalizeTimeZone } from "@/lib/timeZones";
+import { normalizeTimeZone, timeZoneCity } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, applyActiveThemeToWorkspaceChartSettings, chartSettingsEqual, chartSettingsFromChangeEvent, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartOverlaySeries, ChartZone } from "@/components/Chart";
@@ -20223,7 +20223,7 @@ export default function KwantifyWorkspace({
         </div>
         )}
 
-        {showReplayPicker ? <WorkspaceReplayDialog state={gexVueReplay} scope={chartWorkspaceScope} onClose={closeReplayPicker} onGo={next => { setGexVueReplay(next); setShowReplayPicker(false); }} /> : null}
+        {showReplayPicker ? <WorkspaceReplayDialog state={gexVueReplay} scope={chartWorkspaceScope} initialTimeZone={chartSettings.timezone} onClose={closeReplayPicker} onGo={(next, timeZone) => { changeChartTimeZone(timeZone); setGexVueReplay(next); setShowReplayPicker(false); }} /> : null}
         {showLevelsExport && typeof document !== "undefined"
           ? createPortal(
             <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -20542,14 +20542,14 @@ export default function KwantifyWorkspace({
                     className="h-1.5 min-w-48 flex-1 accent-primary"
                     aria-label="Replay timeline"
                   />
-                  <span className="w-[74px] shrink-0 text-center font-mono text-[9px] font-semibold text-foreground">
+                  <span className="min-w-[104px] shrink-0 text-center font-mono text-[9px] font-semibold text-foreground" title={chartSettings.timezone}>
                     {new Intl.DateTimeFormat("en-US", {
-                      timeZone: "America/New_York",
+                      timeZone: chartSettings.timezone,
                       hour: "2-digit",
                       minute: "2-digit",
                       second: "2-digit",
-                      hour12: false,
-                    }).format(new Date(gexVueReplay.timestampMs))} ET
+                      hourCycle: "h23",
+                    }).format(new Date(gexVueReplay.timestampMs))} · {timeZoneCity(chartSettings.timezone)}
                   </span>
                   <KwantSelect
                     value={String(gexVueReplay.speed)}

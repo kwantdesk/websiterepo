@@ -154,7 +154,11 @@ export default function KwantSelect({
         triggerRef.current?.focus();
       }
     };
-    const closeOnViewportChange = () => closeMenu();
+    const closeOnViewportChange = (event: Event) => {
+      // Scrolling long hour/minute lists is selection, not a host layout move.
+      if (event.type === "scroll" && event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+      closeMenu();
+    };
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape);
     window.addEventListener("resize", closeOnViewportChange);

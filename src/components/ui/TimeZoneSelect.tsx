@@ -18,12 +18,15 @@ export default function TimeZoneSelect({
   className = "",
   menuLabel = "Chart timezone",
   compact = false,
+  referenceTimestampMs,
 }: {
   value: string;
   onChange: (timeZone: string) => void;
   className?: string;
   menuLabel?: string;
   compact?: boolean;
+  /** Historical pickers must display offsets for their selected instant. */
+  referenceTimestampMs?: number;
 }) {
   const normalizedValue = normalizeTimeZone(value);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -32,7 +35,8 @@ export default function TimeZoneSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [position, setPosition] = useState({ left: 8, top: 8, width: 350 });
-  const options = useMemo(() => timeZoneOptions(), []);
+  const referenceDate = useMemo(() => new Date(referenceTimestampMs ?? Date.now()), [referenceTimestampMs]);
+  const options = useMemo(() => timeZoneOptions(referenceDate), [referenceDate]);
   const filteredOptions = useMemo(() => {
     const search = query.trim().toLowerCase();
     if (!search) return options;
@@ -105,7 +109,7 @@ export default function TimeZoneSelect({
         onClick={() => open ? close() : openMenu()}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={compactTimeZoneLabel(normalizedValue)}
+        title={compactTimeZoneLabel(normalizedValue, referenceDate)}
         className={`group inline-flex items-center justify-between gap-2 border text-left outline-none transition-colors ${
           open
             ? compact ? "border-transparent text-primary" : "border-primary/40 bg-surface text-primary"
@@ -116,7 +120,7 @@ export default function TimeZoneSelect({
       >
         <Clock3 className={`h-3.5 w-3.5 shrink-0 ${compact ? "text-current" : "text-primary"}`} />
         <span className={`min-w-0 flex-1 truncate ${compact ? "font-semibold uppercase tracking-[0.075em]" : "font-mono"}`}>
-          {compactTimeZoneLabel(normalizedValue)}
+          {compactTimeZoneLabel(normalizedValue, referenceDate)}
         </span>
         <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -155,7 +159,7 @@ export default function TimeZoneSelect({
               className="mb-2 flex w-full items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.07] px-3 py-2.5 text-left text-[11px] text-primary hover:bg-primary/10"
             >
               <Clock3 className="h-3.5 w-3.5" />
-              <span className="min-w-0 flex-1 truncate">Use my device · {compactTimeZoneLabel(browserTimeZone())}</span>
+              <span className="min-w-0 flex-1 truncate">Use my device · {compactTimeZoneLabel(browserTimeZone(), referenceDate)}</span>
             </button>
             <div className="max-h-[320px] space-y-0.5 overflow-y-auto">
               {filteredOptions.length ? filteredOptions.map((option) => {
