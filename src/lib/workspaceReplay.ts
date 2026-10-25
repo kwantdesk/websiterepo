@@ -57,7 +57,10 @@ export function selectWorkspaceReplaySession(state: GexVueReplayState, date: str
   if (!Number.isFinite(requested) || requested < startMs || requested > endMs) throw new Error(timeZone === "America/New_York"
     ? scope === "charts" ? "Choose a time in the session (18:00 previous evening–17:00 New York)." : "Choose a time between 09:30 and 16:00 New York."
     : "Choose a start time within the session range shown in your selected time zone.");
-  return { ...next, active: true, startMs, endMs, timestampMs: requested, playing: false };
+  // The transport covers the chosen replay interval, not elapsed pre-roll.
+  // Session bounds above still validate the clock and history loads retain
+  // the full exchange session independently of this playback origin.
+  return { ...next, active: true, startMs: requested, endMs, timestampMs: requested, playing: false };
 }
 
 /** Count is stable between observations; binary search never selects a future row. */

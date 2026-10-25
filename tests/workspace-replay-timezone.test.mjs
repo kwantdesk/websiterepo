@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createGexVueReplayState } from '../src/lib/gexVueReplay.ts';
-import { selectWorkspaceReplaySession, workspaceReplayClockParts } from '../src/lib/workspaceReplay.ts';
+import { selectWorkspaceReplaySession, workspaceReplaySessionBounds, workspaceReplayClockParts } from '../src/lib/workspaceReplay.ts';
 import { compactTimeZoneLabel } from '../src/lib/timeZones.ts';
 
 const state = createGexVueReplayState(Date.parse('2026-10-25T03:00Z'));
@@ -36,7 +36,7 @@ test('winter New York offset and half-hour/quarter-hour zones are date accurate'
 });
 
 test('every hourly session observation round-trips across supported representative zones', () => {
-  const session = at('2026-10-23','charts','09:30','America/New_York');
+  const session = workspaceReplaySessionBounds(state,'2026-10-23','charts');
   for(const zone of ['UTC','America/New_York','America/Chicago','America/Los_Angeles','Europe/London','Europe/Berlin','Asia/Dubai','Asia/Kolkata','Asia/Kathmandu','Asia/Tokyo','Australia/Brisbane','Australia/Adelaide','Pacific/Auckland','Pacific/Chatham']) {
     for(let timestamp=session.startMs;timestamp<=session.endMs;timestamp+=3_600_000){
       const local=workspaceReplayClockParts(timestamp,zone);

@@ -1,16 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { selectWorkspaceReplaySession, replayObservationCount, WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS } from '../src/lib/workspaceReplay.ts';
+import { selectWorkspaceReplaySession, workspaceReplaySessionBounds, replayObservationCount, WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS } from '../src/lib/workspaceReplay.ts';
 import { replayFormingCandle } from '../src/lib/replayFormingCandle.ts';
-import { createGexVueReplayState } from '../src/lib/gexVueReplay.ts';
+import { createGexVueReplayState, clampGexVueReplayTimestamp } from '../src/lib/gexVueReplay.ts';
 const base = createGexVueReplayState(Date.parse('2026-10-25T03:00Z'));
 test('Charts session spans Globex previous evening to venue close, not only RTH', () => {
-  const state = selectWorkspaceReplaySession(base, '2026-10-23', 'charts');
+  const state = workspaceReplaySessionBounds(base, '2026-10-23', 'charts');
   assert.equal(new Date(state.startMs).toISOString(), '2026-10-22T22:00:00.000Z');
   assert.equal(new Date(state.endMs).toISOString(), '2026-10-23T21:00:00.000Z');
-  assert.equal(new Date(state.timestampMs).toISOString(), '2026-10-23T13:30:00.000Z');
-  assert.equal(state.active, true); assert.equal(state.playing, false);
+  const selected = selectWorkspaceReplaySession(base, '2026-10-23', 'charts');
+  assert.equal(new Date(selected.timestampMs).toISOString(), '2026-10-23T13:30:00.000Z');
+  assert.equal(selected.active, true); assert.equal(selected.playing, false);
 });
 test('Evening selection is previous calendar evening and winter offset is accurate', () => {
   const summer = selectWorkspaceReplaySession(base, '2026-10-23', 'charts', '20:15');
@@ -21,11 +22,34 @@ test('Evening selection is previous calendar evening and winter offset is accura
 });
 test('GEX Vue preserves RTH bounds and invalid choices fail explicitly', () => {
   const state = selectWorkspaceReplaySession(base, '2026-10-23', 'gamma', '10:15');
-  assert.equal(new Date(state.startMs).toISOString(), '2026-10-23T13:30:00.000Z');
+  assert.equal(new Date(workspaceReplaySessionBounds(base, '2026-10-23', 'gamma').startMs).toISOString(), '2026-10-23T13:30:00.000Z');
+  assert.equal(state.startMs, state.timestampMs);
   assert.throws(() => selectWorkspaceReplaySession(base, '2026-10-23', 'gamma', '18:00'));
   assert.throws(() => selectWorkspaceReplaySession(base, '2026-02-31', 'charts'));
   assert.throws(() => selectWorkspaceReplaySession(base, '2026-10-23', 'charts', '17:30'));
   assert.throws(() => selectWorkspaceReplaySession(base, '2026-10-23', 'charts', '24:00'));
+});
+
+test('selected replay time is the left edge, rewind floor and step/scrub floor; close stays the right edge', () => {
+  for (const [scope, time, close] of [['charts', '11:45', '21:00'], ['gamma', '11:45', '20:00']]) {
+    const selected = selectWorkspaceReplaySession(base, '2026-10-23', scope, time);
+    assert.equal(selected.startMs, Date.parse('2026-10-23T15:45Z'));
+    assert.equal(selected.timestampMs, selected.startMs);
+    assert.equal(selected.endMs, Date.parse(`2026-10-23T${close}Z`));
+    assert.equal(clampGexVueReplayTimestamp(selected, selected.startMs - 60_000), selected.startMs);
+    assert.equal(clampGexVueReplayTimestamp(selected, selected.endMs + 60_000), selected.endMs);
+    const midpoint = selected.startMs + (selected.endMs - selected.startMs) / 2;
+    assert.equal(clampGexVueReplayTimestamp(selected, midpoint), midpoint);
+    const reselected = selectWorkspaceReplaySession(selected, '2026-10-23', scope, '10:00');
+    assert.equal(reselected.startMs, Date.parse('2026-10-23T14:00Z'), 'new selection can start earlier');
+  }
+  const closed = selectWorkspaceReplaySession(base, '2026-10-23', 'charts', '17:00');
+  assert.equal(closed.startMs, closed.endMs);
+  assert.equal(clampGexVueReplayTimestamp(closed, 0), closed.endMs);
+  const source = fs.readFileSync(new URL('../src/components/KwantifyWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(source, /min=\{gexVueReplay.startMs\}\s+max=\{gexVueReplay.endMs\}/);
+  assert.match(source, /timestampMs: current.startMs, playing: false/);
+  assert.match(source, /aria-label="Jump to replay start"/);
 });
 test('Observation lookup handles empty, before-first, duplicates and backwards without future selection', () => {
   const rows = [10, 20, 20, 30].map(timestamp => ({ timestamp }));

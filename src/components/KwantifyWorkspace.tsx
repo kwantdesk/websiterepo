@@ -20500,8 +20500,8 @@ export default function KwantifyWorkspace({
                     type="button"
                     onClick={() => setGexVueReplay((current) => ({ ...current, timestampMs: current.startMs, playing: false }))}
                     className="flex h-7 w-7 shrink-0 items-center justify-center border border-border text-muted hover:border-primary/40 hover:text-primary"
-                    title="Session open"
-                    aria-label="Jump to session open"
+                    title="Replay start"
+                    aria-label="Jump to replay start"
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
