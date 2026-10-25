@@ -29,9 +29,10 @@ test('actual priceState uses each target panel payload, not active-panel price c
  for(const pkg of ['state','orderflow'])for(const activeTime of [100,150]){
   const a={id:'a',ticker:'SPX',timestamp:activeTime},b={id:'b',ticker:'QQQ',timestamp:250-activeTime};let cutoff;
   const owner={snapshot:(interval,options)=>(cutoff=options.cutoffTime,{candles:[],points:[]})};
-  const context={state:{package:pkg,historyMode:date,replayIndex:1},activePanel:()=>a,selectedPayload:panel=>panel||a,panelTicker:panel=>panel.ticker,stateSources:{prices:()=>owner},orderSources:{get:()=>({prices:owner})},candleIntervalFor:()=>60000,settings:()=>({})};
+  const context={masterReplay:null,state:{package:pkg,historyMode:date,replayIndex:1},activePanel:()=>a,selectedPayload:panel=>panel||a,panelTicker:panel=>panel.ticker,stateSources:{prices:()=>owner},orderSources:{get:()=>({prices:owner})},candleIntervalFor:()=>60000,settings:()=>({})};
   vm.runInNewContext(app.slice(app.indexOf('function priceState('),app.indexOf('function syncActiveChartControls(')),context);
   context.priceState(b);assert.equal(cutoff,b.timestamp*1000,`${pkg} target owns its observation cutoff`);
+  context.masterReplay={timestampMs:120000};context.priceState(b);assert.equal(cutoff,120000,'master replay owns every target price cutoff');
  }
 });
 test('actual Classic load handler admits only the validated requested selection',()=>{
@@ -49,8 +50,9 @@ test('Orderflow playback waits for enabled exact profile pages and stops on a re
 });
 test('profile history arrays retain identity across pointer paints, but invalidate at replay/source changes',()=>{
  const chart={panel:{}},rows=[{timestamp:100,zero_gamma:5,major_pos_vol:6,major_neg_vol:4}],state={package:'classic',replayIndex:null,records:rows};
- const context={state};vm.runInNewContext(app.slice(app.indexOf('function majorHistoryFor('),app.indexOf('function paintStateChart(')),context);
+ const context={state,masterReplay:null};vm.runInNewContext(app.slice(app.indexOf('function majorHistoryFor('),app.indexOf('function paintStateChart(')),context);
  const initial=context.majorHistoryFor(chart,rows);assert.equal(context.majorHistoryFor(chart,rows.slice()),initial);
+ context.masterReplay={timestampMs:100000};const master=context.majorHistoryFor(chart,rows);assert.notEqual(master,initial);context.masterReplay.timestampMs=90000;assert.notEqual(context.majorHistoryFor(chart,[]),master);context.masterReplay=null;
  state.replayIndex=0;const replay=context.majorHistoryFor(chart,rows);assert.notEqual(replay,initial);assert.equal(context.majorHistoryFor(chart,rows.slice()),replay);
  state.records=rows.slice();assert.notEqual(context.majorHistoryFor(chart,rows),replay);
 });

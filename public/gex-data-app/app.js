@@ -1,6 +1,6 @@
 import {themePaint} from './site-theme.js?v=1';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
-import {gexStorage,gexTimeZone,gexFetch as fetch} from './site-runtime.js?v=1';
+import {gexStorage,gexTimeZone,gexFetch as fetch,gexWorkspaceReplay} from './site-runtime.js?v=1';
 import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, precedingIntervalSpot, intervalTimeline, averagedIvRank, marketMapColor, squarifyTreemap, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=2";
 import { PRICE_CHART_TYPES, parsePriceRows, priceChartPresentation, priceChartBounds, drawPriceCandles, drawOptionVolume, drawDarkFlowArea, prepareDarkPoolLevels, DARK_POOL_LEVEL_COLUMNS, EQUITY_PRINT_COLUMNS, EXCHANGE_NOTIFICATION_COLUMNS, NOTIFICATION_TYPES, equitySideColorToken, equityPrintColorToken, notificationColorToken } from "./equity-renderers.js?v=3";
 import { MARKET_SHARE_MODES, marketShareModel, drawMarketSharePie, drawMarketShareBars, drawProportionChart, contractStatisticsRows, contractSideStatisticsRows, GAINERS_COLUMNS, MARKET_SHARE_COLUMNS, CONSOLIDATED_COLUMNS, gainersModel, marketShareTableModel, netDriftRows, flowStatisticsModel, exchangeColor, exchangeLabel, EXCHANGE_GROUP_COLORS } from "./options-models.js?v=2";
@@ -588,6 +588,7 @@ await boot();
   let storedWindows=[];try{storedWindows=JSON.parse(gexStorage.getItem(`gex-data-chart-windows:${VIEW_PARAMETERS.get('instance')||'standalone'}`)||'[]');}catch{}
   const chartWindows = new Map(Array.isArray(storedWindows)?storedWindows:[]);
   const snapshotSelections = new Map();
+  let masterReplay=gexWorkspaceReplay(),masterSnapshotKey=null;
   const snapshotKey=tool=>`${tool.id}|${getControl("mode")}|${getControl("date")}|${getControl("ticker")}`;
   const instanceKey=VIEW_PARAMETERS.get('instance')||'standalone';
   const controlsStorageKey=`gex-data-tool-controls:${instanceKey}`;
@@ -761,6 +762,7 @@ await boot();
 
   function requestBase() {
     const body = {};
+    if(masterReplay){body.sessionDate=masterReplay.sessionDate;return body;}
     if (getControl("mode") === "historical" && getControl("date")) body.sessionDate = getControl("date");
     else if(activeTool?.id!=='iv-rank'&&apiStatus.market?.sessionDate)body.sessionDate=activeTool?.group==='Equities'?apiStatus.market.sessionDate:(apiStatus.market.optionsSessionDate||apiStatus.market.sessionDate);
     return body;
@@ -893,6 +895,12 @@ await boot();
   function updateInitialToolLoading(busy){const target=q('#initialToolLoading');target.hidden=!busy;if(busy)showWorkspaceLoading(target,'Loading '+(activeTool?.title||'GEX DATA'));}
   async function loadActiveTool({append=false}={}) {
     if(!activeTool||window.__gexDataActive===false||!frameVisible)return;
+    if(masterReplay){
+      if(!['heat-map','exposure-by-strike','exposure-by-expiration','market-map'].includes(activeTool.id))return;
+      // Provider marks a minute snapshot at its END, never request the minute
+      // containing the clock (which would expose the following 60 seconds).
+      snapshotSelections.set(snapshotKey(activeTool),Math.floor(masterReplay.timestampMs/60000)*60000-60000);
+    }
     const tool=activeTool,requestId=++toolRequestId;
     if(!append)toolCursor=null;
     clearTimeout(pollTimer);pollTimer=null;activeController?.abort();activeController=new AbortController();
@@ -938,6 +946,7 @@ await boot();
   }
 
   function schedulePoll() {
+    if(masterReplay){clearTimeout(pollTimer);pollTimer=null;return;}
     let requestedDate;try{const request=activeTool?buildRequest(activeTool):{};requestedDate=request.sessionDate??request.sessionDateRange?.endDate??request.sessionDateRange?.startDate;}catch{clearTimeout(pollTimer);pollTimer=null;return;}
     const currentDate=activeTool?.group==='Equities'?apiStatus.market?.sessionDate:(apiStatus.market?.optionsSessionDate||apiStatus.market?.sessionDate);
     if (!activeTool || !frameVisible || window.__gexDataActive===false || document.hidden || getControl("mode") === "historical" || (requestedDate&&currentDate&&requestedDate<currentDate) || snapshotSelections.has(snapshotKey(activeTool)) || !toolMarketOpen()) {clearTimeout(pollTimer);pollTimer=null;return;}
@@ -1683,6 +1692,17 @@ await boot();
     else if(presentationChanged&&activeTool&&toolPayload){renderToolPayload(activeTool,toolPayload);renderSnapshotControl(toolPayload);}
   };
   window.addEventListener('storage',preferencesChanged);window.addEventListener('gex-data-preferences',preferencesChanged);
+  let masterReplayTimer;
+  window.addEventListener('message',event=>{
+    if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='kwantdesk-workspace-replay')return;
+    const next=event.data.replay;
+    if(next&&(!/^\d{4}-\d{2}-\d{2}$/.test(next.sessionDate)||!Number.isFinite(next.timestampMs)))return;
+    const key=next?`${next.sessionDate}:${Math.floor(next.timestampMs/60000)}`:null;
+    masterReplay=next;if(key===masterSnapshotKey)return;masterSnapshotKey=key;
+    clearTimeout(masterReplayTimer);clearTimeout(pollTimer);activeController?.abort();toolRequestId++;
+    if(activeTool){snapshotSelections.delete(snapshotKey(activeTool));toolPayload=null;resetStage();masterReplayTimer=setTimeout(()=>loadActiveTool(),100);}
+  });
+  window.addEventListener('pagehide',()=>clearTimeout(masterReplayTimer));
   window.addEventListener('message',event=>{if(!EMBEDDED||event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='gex-data-preferences')preferencesChanged();if(event.data?.type==='gex-data-refresh')loadActiveTool();if(event.data?.type==='gex-data-save-state')saveToolControls();if(event.data?.type==='gex-data-visibility'){frameVisible=event.data.visible===true;if(frameVisible){if(activeTool&&!toolPayload)loadActiveTool();schedulePoll();}else{clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}}});
   window.addEventListener("hashchange", () => {
     const id = location.hash.startsWith("#tool=") ? location.hash.slice(6) : null;
