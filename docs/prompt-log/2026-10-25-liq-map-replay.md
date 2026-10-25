@@ -56,3 +56,12 @@ Request: "same replay needs to be added to liiq map and i expect it to work prop
 - Recreated only gateway and browser-stream; gexbot-relay/Caddy untouched.
   Post-activation health, archive preparation and website release results
   must be checked before claiming live acceptance.
+
+## Production configuration verification
+
+- Read only the existing live-SSE rollout flag via the authenticated project
+  API: it is false. Do not enable/reconfigure the existing live streams.
+- Finite signed replay reads are independent and always use the verified VPS
+  edge. Optional KWANTDESK_BROWSER_REPLAY_DIRECT=false disables them with 503;
+  it never falls back to large Vercel response bodies. A regression executes
+  the actual redirect helper with live-SSE disabled to verify this boundary.

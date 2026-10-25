@@ -3,11 +3,34 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {once} from 'node:events';
 import {createHmac} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {signBrowserStreamTicket} from '../src/lib/browserStreamTicket.ts';
 import {verifyBrowserStreamTicket,createBrowserStreamServer} from '../services/rithmic_gateway/src/browser-stream-edge.mjs';
 
 const key='private-test-key-not-a-production-key',origin='https://www.kwantdesk.com',now=1792537200000;
 const make=(extra={})=>signBrowserStreamTicket({key,origin,path:'/v1/market-data/quotes',search:'?symbols=NQZ6,ESZ6&priority=NQZ6',now,...extra});
+
+test('archive reads never fall through to Vercel when the older live-stream rollout flag is off',()=>{
+ const code=readFileSync(new URL('../src/lib/browserStreamRedirect.server.ts',import.meta.url),'utf8');
+ const makeResponse=new Function('marketDataGatewayUrlCandidatesForPath','marketDataGatewayToken','signBrowserStreamTicket',
+  code.slice(code.indexOf('export function')).replace('export function','return function').replace('request: Request, path: string, search: string): Response | null','request, path, search)'));
+ const route=makeResponse(()=>['https://feed.kwantdesk.com'],()=>key,signBrowserStreamTicket);
+ const before={live:process.env.KWANTDESK_BROWSER_STREAM_DIRECT,replay:process.env.KWANTDESK_BROWSER_REPLAY_DIRECT};
+ try{
+  process.env.KWANTDESK_BROWSER_STREAM_DIRECT='false'; delete process.env.KWANTDESK_BROWSER_REPLAY_DIRECT;
+  const request=new Request(origin+'/api/institutional-market-data/v1/heatmap/replay');
+  assert.equal(route(request,'/v1/heatmap/stream','?symbol=NQ'),null,'existing live flag is unchanged');
+  for(const path of ['/v1/heatmap/replay','/v1/heatmap/replay/chunk']){
+   const response=route(request,path,'?symbol=NQ&tradingDate=2026-10-22');
+   assert.equal(response.status,307);assert.equal(new URL(response.headers.get('location')).origin,'https://feed.kwantdesk.com');
+  }
+  process.env.KWANTDESK_BROWSER_REPLAY_DIRECT='false';
+  assert.equal(route(request,'/v1/heatmap/replay','?symbol=NQ').status,503,'no hidden Vercel transfer fallback');
+ }finally{
+  if(before.live===undefined)delete process.env.KWANTDESK_BROWSER_STREAM_DIRECT;else process.env.KWANTDESK_BROWSER_STREAM_DIRECT=before.live;
+  if(before.replay===undefined)delete process.env.KWANTDESK_BROWSER_REPLAY_DIRECT;else process.env.KWANTDESK_BROWSER_REPLAY_DIRECT=before.replay;
+ }
+});
 test('web signer and standalone VPS verifier share exact scope and five-minute expiry',()=>{
  const ticket=make();const payload=verifyBrowserStreamTicket(ticket,key,origin,now);
  assert.equal(payload.path,'/v1/market-data/quotes');assert.equal(payload.exp-payload.iat,300);

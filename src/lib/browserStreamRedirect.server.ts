@@ -4,9 +4,14 @@ import { signBrowserStreamTicket } from "./browserStreamTicket";
 
 /** Existing middleware still authenticates the original same-origin route. */
 export function directBrowserStreamResponse(request: Request, path: string, search: string): Response | null {
-  if (process.env.KWANTDESK_BROWSER_STREAM_DIRECT !== "true") return null;
+  // Large archive JSON is a new, finite read contract, independent of the
+  // existing live-SSE rollout flag. Never proxy those bodies through Vercel.
+  // Disabling replay delivery fails closed; it does not enable a paid fallback.
+  const replayRead = path === "/v1/heatmap/replay" || path === "/v1/heatmap/replay/chunk";
+  if (!replayRead && process.env.KWANTDESK_BROWSER_STREAM_DIRECT !== "true") return null;
   const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
   try {
+    if (replayRead && process.env.KWANTDESK_BROWSER_REPLAY_DIRECT === "false") throw new Error("Replay edge disabled.");
     const origin = marketDataGatewayUrlCandidatesForPath(path)[0];
     // This production rollout is deliberately pinned to our verified TLS edge.
     if (origin !== "https://feed.kwantdesk.com") throw new Error("Unverified stream edge.");
