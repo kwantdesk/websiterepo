@@ -1530,36 +1530,54 @@ header.kwant-command-rail .kwant-primary-nav-control {
   box-sizing: border-box;
 }
 
-/* Each chart toolbar lane owns its scrolling. A native horizontal scrollbar
-   must never subtract height from the 36px button lane (and then create a
-   second, vertical scrollbar). Use unlayered scoped rules: the global `*`
-   scrollbar rule otherwise wins over Tailwind's hidden-scrollbar utilities. */
+/* Each chart toolbar lane owns its scrolling. Reserve a scrollbar gutter in
+   addition to the compact button lane: native thin bars are platform-sized
+   (10px in Windows), not necessarily the WebKit fallback's 7px. Scoped rules
+   keep the bar draggable without clipping controls or adding vertical scroll. */
 .kwant-chart-toolbar-shell {
+  --kwant-chart-toolbar-row-height: calc(var(--kwant-shell-bar-height) + 8px);
   container: chart-toolbar / inline-size;
   min-width: 0;
   flex-shrink: 0;
 }
 
 .kwant-chart-toolbar-shell .kwant-chart-command-deck {
-  height: var(--kwant-shell-bar-height);
+  height: var(--kwant-chart-toolbar-row-height);
   grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
-  grid-template-rows: var(--kwant-shell-bar-height);
+  grid-template-rows: var(--kwant-chart-toolbar-row-height);
+  box-sizing: content-box;
   overflow: hidden;
 }
 
 .kwant-chart-toolbar-shell .kwant-chart-toolbar-scrollport {
   min-width: 0;
-  height: var(--kwant-shell-bar-height);
+  height: var(--kwant-chart-toolbar-row-height);
+  min-height: var(--kwant-chart-toolbar-row-height);
+  max-height: var(--kwant-chart-toolbar-row-height);
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   box-sizing: border-box;
 }
 
 .kwant-chart-toolbar-shell .kwant-chart-toolbar-scrollport::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  display: block;
+  width: 7px;
+  height: 7px;
+}
+
+.kwant-chart-toolbar-shell .kwant-chart-toolbar-scrollport::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.kwant-chart-toolbar-shell .kwant-chart-toolbar-scrollport::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+.kwant-chart-toolbar-shell .kwant-chart-toolbar-scrollport::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 .kwant-chart-toolbar-shell .kwant-chart-toolbar-track {
@@ -1590,9 +1608,9 @@ header.kwant-command-rail .kwant-primary-nav-control {
    rather than only the device width. Each extra row retains the same rhythm. */
 @container chart-toolbar (max-width: 1279px) {
   .kwant-chart-toolbar-shell .kwant-chart-command-deck {
-    height: calc(2 * var(--kwant-shell-bar-height));
+    height: calc(2 * var(--kwant-chart-toolbar-row-height));
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: repeat(2, var(--kwant-shell-bar-height));
+    grid-template-rows: repeat(2, var(--kwant-chart-toolbar-row-height));
   }
   .kwant-chart-command-deck .kwant-chart-shortcuts { grid-column: 1 / -1; grid-row: 1; }
   .kwant-chart-command-deck .kwant-chart-layout-controls { grid-column: 1; grid-row: 2; }
@@ -1601,9 +1619,9 @@ header.kwant-command-rail .kwant-primary-nav-control {
 
 @container chart-toolbar (max-width: 640px) {
   .kwant-chart-toolbar-shell .kwant-chart-command-deck {
-    height: calc(3 * var(--kwant-shell-bar-height));
+    height: calc(3 * var(--kwant-chart-toolbar-row-height));
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: repeat(3, var(--kwant-shell-bar-height));
+    grid-template-rows: repeat(3, var(--kwant-chart-toolbar-row-height));
   }
   .kwant-chart-command-deck .kwant-chart-layout-controls { grid-column: 1; grid-row: 2; }
   .kwant-chart-command-deck .kwant-chart-actions { grid-column: 1; grid-row: 3; }

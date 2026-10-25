@@ -19561,7 +19561,7 @@ export default function KwantifyWorkspace({
           <div
             aria-disabled={!activePaneIsChart}
             title={activePaneIsChart ? "Controls apply to the selected chart" : `${ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
-            className={`kwant-chart-shortcuts kwant-chart-toolbar-scrollport relative col-start-1 row-start-1 flex min-w-0 items-center justify-start overflow-x-auto pl-2 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}>
+            className={`kwant-chart-shortcuts kwant-chart-toolbar-scrollport relative col-start-1 row-start-1 flex min-w-0 items-center justify-start overflow-x-auto pl-2 pr-1 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}>
           {chartTrades.length > 0 && (
             <div className="mr-2 flex shrink-0 items-center gap-2 rounded-lg bg-primary/10 px-2 py-1">
               <div className="h-2 w-2 rounded-full bg-primary" />
@@ -19762,7 +19762,7 @@ export default function KwantifyWorkspace({
             ) : null}
           </div>
           </div>
-          <div className="kwant-chart-layout-controls kwant-chart-toolbar-scrollport col-start-2 row-start-1 flex h-8 min-w-0 items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="kwant-chart-layout-controls kwant-chart-toolbar-scrollport col-start-2 row-start-1 flex h-8 min-w-0 items-center gap-1 overflow-x-auto px-1">
             <div className="kwant-chart-toolbar-track flex items-center gap-1">
             {[
               {

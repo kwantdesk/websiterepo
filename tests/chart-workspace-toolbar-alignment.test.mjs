@@ -12,11 +12,12 @@ test("workspace controls remain centred in their command row", () => {
   assert.match(styles, /grid-template-columns:\s*minmax\(0, 1fr\) max-content minmax\(0, 1fr\);/);
 });
 
-test("all chart shell rows share the CHARTS workspace-header height", () => {
+test("chart headers stay compact while scrolling toolbar lanes reserve scrollbar space", () => {
   assert.match(styles, /--kwant-shell-bar-height:\s*36px;/);
   assert.match(styles, /header\.kwant-command-rail\s*\{[\s\S]*?height:\s*var\(--kwant-shell-bar-height\);/);
   assert.match(styles, /\.kwant-chart-command-deck\s*\{[\s\S]*?grid-template-rows:\s*var\(--kwant-shell-bar-height\);/);
-  assert.match(styles, /@container chart-toolbar \(max-width: 1279px\)[\s\S]*?grid-template-rows:\s*repeat\(2, var\(--kwant-shell-bar-height\)\);/);
+  assert.match(styles, /--kwant-chart-toolbar-row-height:\s*calc\(var\(--kwant-shell-bar-height\) \+ 8px\)/);
+  assert.match(styles, /@container chart-toolbar \(max-width: 1279px\)[\s\S]*?grid-template-rows:\s*repeat\(2, var\(--kwant-chart-toolbar-row-height\)\);/);
   assert.match(styles, /\.kwant-workspace-pane-header\s*\{[\s\S]*?height:\s*var\(--kwant-shell-bar-height\);/);
   assert.ok((source.match(/kwant-workspace-pane-header/g) ?? []).length >= 3);
 });
