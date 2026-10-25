@@ -864,8 +864,8 @@ export default function GammaWorkspace() {
       if (!canRenderOptionsPayload(payload)) {
         const active = dataRef.current;
         setError(active
-          ? "The live Gamma refresh returned no usable frame. Holding the last verified snapshot."
-          : "Gamma data is unavailable right now.");
+          ? "The live Options refresh returned no usable frame. Holding the last verified snapshot."
+          : "Options data is unavailable right now.");
         return;
       }
       const active = dataRef.current;
@@ -1056,7 +1056,7 @@ export default function GammaWorkspace() {
             <ScanLine className="h-[17px] w-[17px]" />
           </span>
           <div className="hidden min-w-0 sm:block">
-            <h1 className="truncate text-[13px] font-semibold">Options Flow · Gamma</h1>
+            <h1 className="truncate text-[13px] font-semibold">Options</h1>
             <p className="truncate text-[10px] text-muted">Dealer positioning, gamma intelligence and consolidated tape</p>
           </div>
           <div className="hidden h-5 w-px bg-border sm:block" />
@@ -1147,7 +1147,7 @@ export default function GammaWorkspace() {
             <Panel className="max-w-md p-6 text-center">
               <Database className="mx-auto h-6 w-6 text-danger" />
               <h2 className="mt-3 text-[15px] font-semibold">Live options data unavailable</h2>
-              <p className="mt-2 text-[12px] leading-5 text-muted">{error || "Gamma data is unavailable right now."}</p>
+              <p className="mt-2 text-[12px] leading-5 text-muted">{error || "Options data is unavailable right now."}</p>
               <button type="button" onClick={() => void loadData(symbol, priceMode)} className="mt-4 rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-on-primary">Try again</button>
             </Panel>
           </div>

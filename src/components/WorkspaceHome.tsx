@@ -51,7 +51,7 @@ const destinations: LaunchDestination[] = [
   { href: "/gamvue", title: "GEX Vue", eyebrow: "Gamma charting", description: "Multi-panel underlying and options context.", preview: "vue", icon: BarChart3 },
   { href: "/gex-cal", title: "GEX Calendar", eyebrow: "Expiry structure", description: "Exposure across dates, strikes and expirations.", preview: "calendar", icon: CalendarRange },
   { href: "/gex-flow", title: "GEX Flow", eyebrow: "Options movement", description: "Track live positioning as exposure builds.", preview: "flow", icon: Workflow },
-  { href: "/gamma", title: "Gamma", eyebrow: "Options intelligence", description: "Dealer regime, structure and positioning data.", preview: "gamma", icon: Crosshair },
+  { href: "/gamma", title: "Options", eyebrow: "Options intelligence", description: "Dealer regime, structure and positioning data.", preview: "gamma", icon: Crosshair },
   { href: "/gexmap", title: "GEX Map", eyebrow: "Strike exposure", description: "Live GEX, DEX and VEX strike ladders.", preview: "gexmap", icon: ScanLine },
   { href: "/liqmap", title: "Liquidity Map", eyebrow: "Level 3 order flow", description: "Resting liquidity, trades, bubbles and DOM.", preview: "liquidity", icon: Waves },
   { href: "/gameplan", title: "Gameplan", eyebrow: "Session preparation", description: "Build, hold and score your trading plan.", preview: "gameplan", icon: CalendarDays },

@@ -101,7 +101,7 @@ const navItems: Array<{
   { key: "gamvue", href: "/gamvue", label: "GEX VUE", title: "GEX charting", icon: BarChart3 },
   { key: "gexdata", href: "/gex-data", label: "GEX DATA", title: "Options and equities data workspace", icon: BarChart3 },
   { key: "kwanty", href: "/kwanty", label: "KWANTY", title: "Classic, State and Orderflow", icon: Bot },
-  { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
+  { key: "gamma", href: "/gamma", label: "OPTIONS", title: "Options", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
   { key: "liqmap", href: "/liqmap", label: "LIQ MAP", title: "Liquidity Heatmap", icon: Waves },
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },

@@ -476,7 +476,7 @@ const Chart = dynamic(loadChartWorkspace, {
 });
 const GammaWorkspace = dynamic(loadGammaWorkspace, {
   ssr: false,
-  loading: () => workspaceLoader("Opening Gamma", "Restoring the latest options view."),
+  loading: () => workspaceLoader("Opening Options", "Restoring the latest options view."),
 });
 const GexFlowWorkspace = dynamic(loadGexFlowWorkspace, {
   ssr: false,
@@ -1172,7 +1172,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "gamvue" as const, label: "GEX Vue" },
   { id: "gexdata" as const, label: "GEX DATA" },
   { id: "kwanty" as const, label: "KWANTY" },
-  { id: "gamma" as const, label: "Gamma" },
+  { id: "gamma" as const, label: "Options" },
   { id: "gexmap" as const, label: "GEXMAP" },
   { id: "liqmap" as const, label: "LIQ MAP" },
   { id: "heatmap" as const, label: "Heat Map" },
@@ -1403,7 +1403,7 @@ const WORKSPACE_PANEL_OPTIONS: Array<WorkspacePanelOption<WorkspacePagePanelKind
   { id: "charts", label: "CHARTS", description: "Live chart and indicators", icon: BarChart3 },
   { id: "zyon", label: "ZYON", description: "AI quant analyst", icon: Sparkles },
   { id: "gameplan", label: "GAMEPLAN", description: "Live session plan", icon: FileText },
-  { id: "gamma", label: "GAMMA", description: "Options positioning", icon: Zap },
+  { id: "gamma", label: "OPTIONS", description: "Options positioning", icon: Zap },
   { id: "gexmap", label: "GEX MAP", description: "Strike exposure map", icon: Layers3 },
   { id: "liqmap", label: "LIQ MAP", description: "Live Level 3 liquidity", icon: List },
   { id: "news", label: "NEWS", description: "Calendar and macro", icon: Bell },
@@ -18511,7 +18511,7 @@ export default function KwantifyWorkspace({
       case "gameplan":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gameplan`} label="Game Plan"><GameplanWorkspace initialInstrument={displayCmeSymbol(pane.symbol)} /></WorkspaceFailureBoundary>;
       case "gamma":
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Gamma"><GammaWorkspace /></WorkspaceFailureBoundary>;
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Options"><GammaWorkspace /></WorkspaceFailureBoundary>;
       case "gexmap": {
         const gexMarket = ["ES", "MES"].includes(normalizePaperSymbol(pane.symbol)) ? "ES" : "NQ";
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace key={`${pane.id}-${gexMarket}`} market={gexMarket} enableDealerModel persistedState={pane.gexMapState ?? null} onStateChange={(state) => {
@@ -20747,7 +20747,7 @@ export default function KwantifyWorkspace({
           >
             {visitedWorkspaceSections.has("gamma") ? (
               <ReactActivity mode={bottomWorkspaceSection === "gamma" ? "visible" : "hidden"}>
-                <WorkspaceFailureBoundary resetKey="gamma" label="Gamma">
+                <WorkspaceFailureBoundary resetKey="gamma" label="Options">
                   <GammaWorkspace />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
