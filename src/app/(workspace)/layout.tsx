@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useMemo } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { activeWorkspaceSection, isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 
 import KwantifyWorkspace, {
   type PrimaryWorkspaceSection,
@@ -31,7 +32,7 @@ const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
 
 function workspaceLocation(pathname: string) {
   const direct = SECTION_BY_PATH[pathname];
-  if (direct) return { section: direct, socialProfileHandle: "" };
+  if (direct) return { section: activeWorkspaceSection(direct), socialProfileHandle: "" };
 
   if (pathname.startsWith("/gex-box/")) {
     return { section: "gexdata" as const, socialProfileHandle: "" };
@@ -55,6 +56,10 @@ export default function PersistentWorkspaceLayout({
   children: _children,
 }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
+  const router = useRouter();
+  useEffect(() => {
+    if (isWorkspaceFeatureArchived(SECTION_BY_PATH[pathname])) router.replace("/charts");
+  }, [pathname, router]);
   const location = useMemo(() => workspaceLocation(pathname), [pathname]);
 
   return (

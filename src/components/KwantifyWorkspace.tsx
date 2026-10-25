@@ -1,5 +1,7 @@
 "use client";
 
+import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
+
 import KwantSelect from "@/components/ui/KwantSelect";
 import { beginChartHistoryRead, readChartCacheWithin } from "@/lib/chartHistoryRead";
 import { fetchJsonWithBudget, readMarketDataJson } from "@/lib/marketDataRequest";
@@ -462,6 +464,7 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
 };
 
 function preloadWorkspaceModule(section: string) {
+  if (isWorkspaceFeatureArchived(section)) return Promise.resolve(null);
   if (optionsFlowTool(section)) return import("@/components/options-flow/OptionsFlowToolPanel");
   return workspaceModulePreloaders[section]?.() ?? Promise.resolve(null);
 }
@@ -10216,6 +10219,7 @@ export default function KwantifyWorkspace({
   const supabase = useMemo(() => createClient(), []);
   const [authChecked, setAuthChecked] = useState(false);
   const warmWorkspaceSection = useCallback((target: string) => {
+    if (isWorkspaceFeatureArchived(target)) return;
     void preloadWorkspaceModule(target).catch(() => null);
     void preloadWorkspaceData(target).catch(() => null);
   }, []);
@@ -10625,7 +10629,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     const validPanels: RightPanel[] = ["order", "watchlist", "gex", "zyon", "kwantbot", "optionstape", "alerts", "alertslog", "friends", "messages"];
-    if (saved !== null && (validPanels as string[]).includes(saved)) {
+    if (saved !== null && !isWorkspaceFeatureArchived(saved) && (validPanels as string[]).includes(saved)) {
       setRightPanel(saved as RightPanel);
       setLastOpenRightPanel(saved as RightPanel);
     } else if (saved === null) {
@@ -15180,7 +15184,7 @@ export default function KwantifyWorkspace({
   }, [isResizingAI]);
 
   const handleWorkspaceNavigationStart = useCallback((target: string) => {
-    const nextSection = BOTTOM_WORKSPACE_SECTIONS.some(({ id }) => id === target)
+    const nextSection = !isWorkspaceFeatureArchived(target) && BOTTOM_WORKSPACE_SECTIONS.some(({ id }) => id === target)
       ? target as PrimaryWorkspaceSection
       : null;
     const previousSection = activeWorkspaceSectionRef.current;
@@ -17031,6 +17035,7 @@ export default function KwantifyWorkspace({
   };
 
   const toggleRightPanel = (panel: RightPanel) => {
+    if (isWorkspaceFeatureArchived(panel)) return;
     if (panel === "gex") {
       setRightPanelWidth((current) => Math.max(360, current));
     }
@@ -17140,6 +17145,7 @@ export default function KwantifyWorkspace({
   };
 
   const reopenRightPanel = () => {
+    if (isWorkspaceFeatureArchived(lastOpenRightPanel)) return;
     if (lastOpenRightPanel === "gex") {
       setRightPanelWidth((current) => Math.max(360, current));
     }
@@ -18294,6 +18300,7 @@ export default function KwantifyWorkspace({
   };
 
   const selectWorkspacePanelContent = async (paneId: string, content: WorkspacePanelKind) => {
+    if (isWorkspaceFeatureArchived(content)) return;
     setWorkspacePanelTransition({ paneId, content });
     setActivePaneId(paneId);
     const tool = WORKSPACE_TOOL_OPTIONS.find((option) => option.id === content);
@@ -18382,7 +18389,7 @@ export default function KwantifyWorkspace({
             <span>Workspaces</span>
           </div>
           <div className="grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
-            {WORKSPACE_PANEL_OPTIONS.map((option) => {
+            {WORKSPACE_PANEL_OPTIONS.filter(option => !isWorkspaceFeatureArchived(option.id)).map((option) => {
               const Icon = option.icon;
               return (
                 <button
@@ -18497,6 +18504,9 @@ export default function KwantifyWorkspace({
   });
 
   function renderEmbeddedWorkspace(pane: WorkspacePane) {
+    if (isWorkspaceFeatureArchived(pane.content)) {
+      return <div role="status" className="flex h-full items-center justify-center bg-background p-6 text-center text-xs text-muted">This workspace is archived. Its saved settings are preserved.</div>;
+    }
     if (optionsFlowTool(pane.content)) {
       return <WorkspaceFailureBoundary resetKey={`options-flow-${preferenceUserId}-${pane.id}-${pane.content}`} label="Options Flow Tool">
         <OptionsFlowToolPanel kind={pane.content as OptionsFlowPanelKind} panelId={pane.id} accountKey={preferenceUserId}
@@ -22089,7 +22099,7 @@ export default function KwantifyWorkspace({
           { id: "optionstape" as const, title: "Options Tape", icon: FileText },
           { id: "friends" as const, title: "Friends", icon: UsersRound },
           { id: "messages" as const, title: "Messages", icon: MessageCircle },
-        ].map((item) => {
+        ].filter(item => !isWorkspaceFeatureArchived(item.id)).map((item) => {
           const Icon = item.icon;
           const active = rightPanel === item.id;
           return (

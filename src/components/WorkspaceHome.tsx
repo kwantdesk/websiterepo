@@ -1,5 +1,7 @@
 "use client";
 
+import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
+
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { memo, useCallback, useEffect, useState, type ComponentType } from "react";
@@ -152,7 +154,7 @@ export default function WorkspaceHome({ username = "", userId = "", displayName 
           aria-label="Workspace launcher"
         >
           <div className="grid min-h-full w-full auto-rows-[minmax(162px,1fr)] grid-cols-1 gap-[clamp(16px,1.6vw,26px)] sm:grid-cols-2 lg:grid-cols-4">
-            {destinations.map((destination) => (
+            {destinations.filter(destination => !isWorkspaceFeatureArchived(destination.href.slice(1))).map((destination) => (
               <LaunchCard
                 key={destination.href + destination.title}
                 destination={destination}
