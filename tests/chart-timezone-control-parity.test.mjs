@@ -21,15 +21,17 @@ test("GEX VUE and GEX DATA use identical compact trigger sizing and menu heading
   for(const token of ['height: 28px','font-family: "Aleph", sans-serif','font-size: 10px','font-weight: 600','letter-spacing: .075em'])assert.ok(styles.includes(token),token);
 });
 
-test("scrolling choices keeps the time menu open, while external viewport changes close it",() => {
+test("scrolling choices keeps the time menu open, while external viewport changes reanchor it",() => {
   class FakeNode {}
   const inside=new FakeNode(),outside=new FakeNode(),listeners=new Map(),changes=[],selected=[],cleanup=[];
-  const refs=[{focus(){}},{contains:node=>node===inside},{focus(){}}];let refIndex=0,stateIndex=0;
+  const refs=[{focus(){},getBoundingClientRect:()=>({right:400,bottom:100,top:70})},{contains:node=>node===inside},{focus(){}}];let refIndex=0,stateIndex=0;
+  const frames=[];
   const jsx=(type,props)=>({type,props});
   const context={exports:{},Node:FakeNode,document:{addEventListener(){},removeEventListener(){}},window:{
-    addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name),requestAnimationFrame:fn=>fn(),
+    innerWidth:1000,innerHeight:800,
+    addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name),requestAnimationFrame:fn=>{frames.push(fn);return frames.length;},cancelAnimationFrame(){},
   },require:name=>{
-    if(name==="react")return {useRef:()=>({current:refs[refIndex++]}),useMemo:fn=>fn(),useEffect:fn=>cleanup.push(fn()),useState:initial=>{
+    if(name==="react")return {useCallback:fn=>fn,useRef:()=>({current:refs[refIndex++]}),useMemo:fn=>fn(),useEffect:fn=>cleanup.push(fn()),useState:initial=>{
       const index=stateIndex++;return [index===0?true:initial,value=>changes.push([index,value])];
     }};
     if(name==="react/jsx-runtime")return {jsx,jsxs:jsx};
@@ -41,8 +43,9 @@ test("scrolling choices keeps the time menu open, while external viewport change
   vm.runInNewContext(ts.transpileModule(read("src/components/ui/TimeZoneSelect.tsx"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,context);
   const tree=context.exports.default({value:"UTC",onChange:value=>selected.push(value),compact:true});
   listeners.get("scroll")({type:"scroll",target:inside});assert.equal(changes.length,0);
-  listeners.get("scroll")({type:"scroll",target:outside});assert.deepEqual(changes,[[0,false],[1,""]]);
-  changes.length=0;listeners.get("resize")({type:"resize",target:{}});assert.equal(changes[0][1],false);
+  listeners.get("scroll")({type:"scroll",target:outside});frames.shift()();
+  assert.equal(changes.length,1);assert.equal(changes[0][0],2);assert.equal(changes[0][1].top,107);
+  changes.length=0;listeners.get("resize")({type:"resize",target:{}});frames.shift()();assert.equal(changes[0][0],2);
   const walk=node=>{
     if(!node||typeof node!=="object")return;
     if(node.props?.role==="option")node.props.onClick();

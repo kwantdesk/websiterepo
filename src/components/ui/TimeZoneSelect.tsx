@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, Clock3, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   browserTimeZone,
@@ -48,7 +48,7 @@ export default function TimeZoneSelect({
     setQuery("");
   };
 
-  const openMenu = () => {
+  const updateMenuPosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const width = Math.min(370, Math.max(240, window.innerWidth - 16));
@@ -62,6 +62,10 @@ export default function TimeZoneSelect({
       top,
       width,
     });
+  }, []);
+
+  const openMenu = () => {
+    updateMenuPosition();
     setOpen(true);
     window.requestAnimationFrame(() => searchRef.current?.focus());
   };
@@ -78,22 +82,28 @@ export default function TimeZoneSelect({
         triggerRef.current?.focus();
       }
     };
-    const handleViewportChange = (event: Event) => {
-      // Scrolling the timezone choices is not a viewport/layout change.
+    let positionFrame: number | null = null;
+    const followViewport = (event: Event) => {
+      // Keep the portal anchored through page scroll and touchpad momentum.
       if (event.type === "scroll" && event.target instanceof Node && menuRef.current?.contains(event.target)) return;
-      close();
+      if (positionFrame !== null) return;
+      positionFrame = window.requestAnimationFrame(() => {
+        positionFrame = null;
+        updateMenuPosition();
+      });
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("scroll", handleViewportChange, true);
+    window.addEventListener("resize", followViewport);
+    window.addEventListener("scroll", followViewport, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("scroll", handleViewportChange, true);
+      window.removeEventListener("resize", followViewport);
+      window.removeEventListener("scroll", followViewport, true);
+      if (positionFrame !== null) window.cancelAnimationFrame(positionFrame);
     };
-  }, [open]);
+  }, [open, updateMenuPosition]);
 
   const choose = (timeZone: string) => {
     onChange(normalizeTimeZone(timeZone));
@@ -161,7 +171,7 @@ export default function TimeZoneSelect({
               <Clock3 className="h-3.5 w-3.5" />
               <span className="min-w-0 flex-1 truncate">Use my device · {compactTimeZoneLabel(browserTimeZone(), referenceDate)}</span>
             </button>
-            <div className="max-h-[320px] space-y-0.5 overflow-y-auto">
+            <div className="max-h-[320px] space-y-0.5 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
               {filteredOptions.length ? filteredOptions.map((option) => {
                 const active = option.value === normalizedValue;
                 return (

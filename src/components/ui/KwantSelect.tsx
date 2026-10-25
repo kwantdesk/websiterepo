@@ -4,6 +4,7 @@ import {
   Children,
   Fragment,
   isValidElement,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -110,7 +111,7 @@ export default function KwantSelect({
 
   const closeMenu = () => setOpen(false);
 
-  const positionAndOpenMenu = () => {
+  const updateMenuPosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect || disabled) return;
     const longestLabel = options.reduce((longest, option) => Math.max(longest, option.label.length), 0);
@@ -128,6 +129,10 @@ export default function KwantSelect({
       top,
       width,
     });
+  }, [disabled, options]);
+
+  const positionAndOpenMenu = () => {
+    updateMenuPosition();
     setOpen(true);
   };
 
@@ -154,22 +159,28 @@ export default function KwantSelect({
         triggerRef.current?.focus();
       }
     };
-    const closeOnViewportChange = (event: Event) => {
-      // Scrolling long hour/minute lists is selection, not a host layout move.
+    let positionFrame: number | null = null;
+    const followViewport = (event: Event) => {
+      // Menu scrolling and scroll chaining must never dismiss a selection.
       if (event.type === "scroll" && event.target instanceof Node && menuRef.current?.contains(event.target)) return;
-      closeMenu();
+      if (positionFrame !== null) return;
+      positionFrame = window.requestAnimationFrame(() => {
+        positionFrame = null;
+        updateMenuPosition();
+      });
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("resize", closeOnViewportChange);
-    window.addEventListener("scroll", closeOnViewportChange, true);
+    window.addEventListener("resize", followViewport);
+    window.addEventListener("scroll", followViewport, true);
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsidePointer);
       document.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("resize", closeOnViewportChange);
-      window.removeEventListener("scroll", closeOnViewportChange, true);
+      window.removeEventListener("resize", followViewport);
+      window.removeEventListener("scroll", followViewport, true);
+      if (positionFrame !== null) window.cancelAnimationFrame(positionFrame);
     };
-  }, [open]);
+  }, [open, updateMenuPosition]);
 
   return (
     <>
@@ -231,7 +242,7 @@ export default function KwantSelect({
               <span>{menuLabel}</span>
               <span>{options.length}</span>
             </div>
-            <div className="max-h-[274px] space-y-0.5 overflow-y-auto">
+            <div className="max-h-[274px] space-y-0.5 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
               {options.map((option) => {
                 const active = option.value === selectedValue;
                 return (
