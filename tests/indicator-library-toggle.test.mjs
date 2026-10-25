@@ -14,7 +14,7 @@ test("indicator library uses Add and Added as a chart-scoped toggle", () => {
   );
   assert.match(source, /onClick=\{\(\) => toggleLibraryIndicator\(definition\.id\)\}/);
   assert.match(source, /aria-pressed=\{added\}/);
-  assert.match(source, /\{added \? "Added" : live \? "Add" : "Pending"\}/);
+  assert.match(source, /\{added \? "Added" : !live \? "Pending" : available \? "Add" : "Unavailable"\}/);
   assert.doesNotMatch(source, /disabled=\{!live \|\| added\}/);
 });
 

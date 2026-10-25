@@ -1826,6 +1826,114 @@ body.kwant-cockpit-ui select {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.015);
 }
 
+/* The library is a reading/search dialog, not a compact chart toolbar. Own
+   its spacing and corners so cockpit utility compression cannot flatten it. */
+.kwant-indicator-library-overlay { padding: 20px; }
+.kwant-indicator-library {
+  border-radius: 16px;
+  min-height: 0;
+}
+.kwant-indicator-library-header {
+  flex-shrink: 0;
+  gap: 16px;
+  padding: 20px 24px;
+}
+.kwant-indicator-library-icon,
+.kwant-indicator-library-close,
+.kwant-indicator-library-star,
+.kwant-indicator-library-add,
+.kwant-indicator-library-done {
+  border-radius: 8px;
+}
+.kwant-indicator-library-search {
+  width: min(360px, 42%);
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+}
+body .kwant-indicator-library .kwant-indicator-library-search input {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+body .kwant-indicator-library .kwant-indicator-library-search input:focus,
+body .kwant-indicator-library .kwant-indicator-library-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.kwant-indicator-library-sidebar {
+  width: 190px;
+  padding: 18px 12px;
+  overflow-y: auto;
+}
+.kwant-indicator-library-category {
+  min-height: 36px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+.kwant-indicator-library-note {
+  padding: 12px;
+  border-radius: 10px;
+}
+.kwant-indicator-library-results {
+  padding: 18px 20px;
+}
+.kwant-indicator-library-heading {
+  margin-bottom: 10px;
+  padding-inline: 12px;
+}
+.kwant-indicator-library-row {
+  gap: 12px;
+  padding: 14px 12px;
+  border-radius: 12px;
+}
+.kwant-indicator-library-name {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.kwant-indicator-library-description {
+  white-space: normal;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.kwant-indicator-library-metadata {
+  width: 120px;
+  line-height: 1.6;
+}
+.kwant-indicator-library-add { padding-inline: 12px; }
+.kwant-indicator-library-empty {
+  padding: 36px 20px;
+  border-radius: 12px;
+}
+.kwant-indicator-library-footer {
+  flex-shrink: 0;
+  gap: 16px;
+  padding: 16px 24px;
+}
+.kwant-indicator-library-done { padding: 9px 18px; }
+
+@media (max-width: 800px) {
+  .kwant-indicator-library-row { flex-wrap: wrap; }
+  .kwant-indicator-library-row > .min-w-0 { flex-basis: calc(100% - 44px); }
+  .kwant-indicator-library-metadata { margin-left: 44px; flex: 1; width: auto; text-align: left; }
+}
+@media (max-width: 640px) {
+  .kwant-indicator-library-overlay { padding: 12px; }
+  .kwant-indicator-library-header { flex-wrap: wrap; gap: 12px; padding: 16px; }
+  .kwant-indicator-library-search { order: 4; width: 100%; margin-left: 0; }
+  .kwant-indicator-library-close { margin-left: auto; }
+  .kwant-indicator-library-body { flex-direction: column; }
+  .kwant-indicator-library-sidebar { display: flex; gap: 6px; width: auto; padding: 12px 16px; border-right: 0; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; }
+  .kwant-indicator-library-category { flex-shrink: 0; width: auto; margin-bottom: 0; white-space: nowrap; }
+  .kwant-indicator-library-note { display: none; }
+  .kwant-indicator-library-results { padding: 14px 16px; }
+  .kwant-indicator-library-footer { padding: 14px 16px; }
+}
+
 body.kwant-cockpit-ui input::placeholder,
 body.kwant-cockpit-ui textarea::placeholder {
   color: color-mix(in srgb, var(--muted) 74%, transparent);
@@ -1840,6 +1948,11 @@ body.kwant-cockpit-ui [role="dialog"],
 body.kwant-cockpit-ui [aria-modal="true"] {
   border-color: #2a2f35;
   background-color: #060708;
+}
+
+body.kwant-cockpit-ui .kwant-indicator-library {
+  border-color: var(--border);
+  background-color: var(--panel);
 }
 
 body.kwant-cockpit-ui [role="tab"] {

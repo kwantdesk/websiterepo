@@ -1970,28 +1970,33 @@ export default function ChartIndicatorsControl({
 
       {libraryOpen && typeof document !== "undefined" ? createPortal(
         <div
-          className="fixed inset-0 z-[260] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[3px]"
+          className="kwant-indicator-library-overlay fixed inset-0 z-[260] flex items-center justify-center bg-black/70 backdrop-blur-[3px]"
           onClick={() => setLibraryOpen(false)}
         >
           <div
-            className="flex h-[min(760px,88vh)] w-full max-w-[980px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
+            data-indicator-library
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="indicator-library-title"
+            className="kwant-indicator-library flex h-[min(760px,88vh)] w-full max-w-[980px] flex-col overflow-hidden border border-border bg-panel shadow-2xl shadow-black/60"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <div className="kwant-indicator-library-header flex items-center border-b border-border">
+              <span className="kwant-indicator-library-icon flex h-9 w-9 shrink-0 items-center justify-center bg-primary/10 text-primary">
                 <BarChart3 className="h-4 w-4" />
               </span>
-              <div>
-                <div className="text-[15px] font-semibold text-foreground">Indicator library</div>
+              <div className="min-w-0">
+                <div id="indicator-library-title" className="text-[15px] font-semibold text-foreground">Indicator library</div>
                 <div className="mt-0.5 text-[8px] uppercase tracking-[0.12em] text-muted">{instrument} · instrument-aware data</div>
               </div>
-              <div className="ml-auto flex h-8 w-[360px] items-center gap-2 border border-border bg-surface px-2.5 transition-colors focus-within:border-primary/50">
-                <Search className="h-3.5 w-3.5 text-muted" />
+              <div className="kwant-indicator-library-search ml-auto flex items-center gap-2 border border-border bg-surface">
+                <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
                 <input
                   autoFocus
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search CVD, volume, VWAP..."
+                  aria-label="Search indicators"
                   spellCheck={false}
                   // Chrome ignores autoComplete="off" on a plain text input and
                   // still offers its own suggestion list; an unknown token and
@@ -2006,30 +2011,30 @@ export default function ChartIndicatorsControl({
                   className="h-full min-w-0 flex-1 appearance-none border-0 bg-transparent font-mono text-[11px] text-foreground outline-none placeholder:text-muted/55"
                 />
               </div>
-              <button type="button" onClick={() => setLibraryOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
+              <button type="button" aria-label="Close indicator library" onClick={() => setLibraryOpen(false)} className="kwant-indicator-library-close flex h-9 w-9 shrink-0 items-center justify-center text-muted hover:bg-surface hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1">
-              <aside className="w-[190px] shrink-0 border-r border-border p-3">
+            <div className="kwant-indicator-library-body flex min-h-0 flex-1">
+              <aside className="kwant-indicator-library-sidebar shrink-0 border-r border-border">
                 {(["All", INDICATOR_LIBRARY_FAVORITES_CATEGORY, ...CHART_INDICATOR_CATEGORIES] as const).map((item) => (
                   <button
                     key={item}
                     type="button"
                     onClick={() => setCategory(item)}
-                    className={`mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] ${
+                    className={`kwant-indicator-library-category mb-1 flex w-full items-center justify-between text-left text-[10px] ${
                       category === item ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"
                     }`}
                   >
                     <span>{item}</span>
                   </button>
                 ))}
-                <div className="mt-4 rounded-xl border border-border bg-surface/35 p-3 text-[9px] leading-4 text-muted">
+                <div className="kwant-indicator-library-note mt-4 border border-border bg-surface/35 text-[9px] leading-4 text-muted">
                   All is always A–Z. Starred studies live in Favorites. Live studies inherit the chart theme.
                 </div>
               </aside>
-              <section className="min-w-0 flex-1 overflow-y-auto p-3">
-                <div className="mb-2 px-2 text-[9px] font-medium uppercase tracking-[0.14em] text-muted">
+              <section className="kwant-indicator-library-results min-w-0 flex-1 overflow-y-auto">
+                <div className="kwant-indicator-library-heading text-[9px] font-medium uppercase tracking-[0.14em] text-muted">
                   {search.trim() ? "Search" : category}
                 </div>
                 <div className="space-y-1">
@@ -2042,19 +2047,21 @@ export default function ChartIndicatorsControl({
                     const compatibility = indicatorCompatibility(definition, instrument, broker);
                     const available = live && compatibility.canAdd;
                     return (
-                      <div key={definition.id} title={compatibility.reason} className={`group flex items-center gap-3 rounded-xl border border-transparent px-3 py-3 hover:border-border hover:bg-surface/55 ${!compatibility.canAdd ? "opacity-60" : ""}`}>
+                      <div key={definition.id} title={compatibility.reason} className={`kwant-indicator-library-row group flex items-center border border-transparent hover:border-border hover:bg-surface/55 ${!compatibility.canAdd ? "opacity-60" : ""}`}>
                         <button
                           type="button"
+                          aria-label={`${favourite ? "Unstar" : "Star"} ${definition.name}`}
+                          aria-pressed={favourite}
                           onClick={() => toggleFavourite(definition.id)}
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                          className={`kwant-indicator-library-star flex h-8 w-8 shrink-0 items-center justify-center ${
                             favourite ? "bg-primary/10 text-primary" : "text-muted hover:bg-background hover:text-primary"
                           }`}
                         >
                           <Star className={`h-3.5 w-3.5 ${favourite ? "fill-current" : ""}`} />
                         </button>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-[11px] font-medium text-foreground">{definition.name}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="kwant-indicator-library-name text-[11px] font-medium text-foreground">{definition.name}</span>
                             {definition.requiresOrderFlow ? (
                               <span className="rounded-md border border-primary/15 bg-primary/8 px-1.5 py-0.5 text-[7px] font-medium uppercase tracking-[0.12em] text-primary">Order flow</span>
                             ) : null}
@@ -2065,16 +2072,16 @@ export default function ChartIndicatorsControl({
                               <span className={`rounded-md border px-1.5 py-0.5 text-[7px] font-medium uppercase tracking-[0.12em] ${compatibility.status === "adapted" ? "border-sky-400/20 bg-sky-400/10 text-sky-300" : "border-border bg-surface text-muted"}`}>{compatibility.label}</span>
                             ) : null}
                           </div>
-                          <div className="mt-1 truncate text-[9px] text-muted">{live && !compatibility.canAdd ? compatibility.reason : definition.description}</div>
+                          <div className="kwant-indicator-library-description mt-1 text-[9px] text-muted">{live && !compatibility.canAdd ? compatibility.reason : definition.description}</div>
                         </div>
-                        <div className="w-[150px] shrink-0 text-right text-[8px] uppercase tracking-[0.12em] text-muted/70">{definition.category}{definition.subcategory ? ` / ${definition.subcategory}` : ""}</div>
+                        <div className="kwant-indicator-library-metadata shrink-0 text-right text-[8px] uppercase tracking-[0.12em] text-muted/70">{definition.category}{definition.subcategory ? ` / ${definition.subcategory}` : ""}</div>
                         <button
                           type="button"
                           disabled={!added && !available}
                           aria-pressed={added}
                           aria-label={`${added ? "Remove" : "Add"} ${definition.name}`}
                           onClick={() => toggleLibraryIndicator(definition.id)}
-                          className={`flex h-8 min-w-[76px] items-center justify-center gap-1.5 rounded-lg px-3 text-[10px] font-medium ${
+                          className={`kwant-indicator-library-add flex h-8 min-w-[76px] shrink-0 items-center justify-center gap-1.5 text-[10px] font-medium ${
                             added
                               ? "bg-primary/10 text-primary hover:bg-primary/15"
                               : available
@@ -2089,7 +2096,7 @@ export default function ChartIndicatorsControl({
                     );
                   })}
                   {!filtered.length ? (
-                    <div className="rounded-xl border border-dashed border-border px-5 py-10 text-center text-[10px] text-muted">
+                    <div className="kwant-indicator-library-empty border border-dashed border-border text-center text-[10px] text-muted">
                       {category === INDICATOR_LIBRARY_FAVORITES_CATEGORY && !search.trim()
                         ? "No favorite indicators yet. Star an indicator to keep it here."
                         : "No indicators match this search."}
@@ -2098,9 +2105,9 @@ export default function ChartIndicatorsControl({
                 </div>
               </section>
             </div>
-            <div className="flex items-center justify-between border-t border-border px-5 py-3">
+            <div className="kwant-indicator-library-footer flex items-center justify-between border-t border-border">
               <span className="text-[9px] text-muted">{indicators.length} saved to this chart</span>
-              <button type="button" onClick={() => setLibraryOpen(false)} className="rounded-lg bg-primary px-4 py-2 text-[10px] font-semibold text-on-primary">Done</button>
+              <button type="button" onClick={() => setLibraryOpen(false)} className="kwant-indicator-library-done bg-primary text-[10px] font-semibold text-on-primary">Done</button>
             </div>
           </div>
         </div>,
