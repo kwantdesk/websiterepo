@@ -9,11 +9,15 @@ const timezone = fs.readFileSync(new URL("../src/components/ui/TimeZoneSelect.ts
 const styles = fs.readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
 
 test("chart command-row controls use one compact visual contract", () => {
-  assert.match(styles, /\.kwant-chart-command-deck \.kwant-chart-row-control\s*\{[\s\S]*?height:\s*28px;[\s\S]*?border-radius:\s*3px/);
+  const sharedRule = styles.match(/body\.kwant-cockpit-ui \.kwant-chart-command-deck \.kwant-chart-row-control,[^{}]*\{([^}]+)\}/)?.[1];
+  assert.ok(sharedRule, "chart, timezone and workspace controls share their existing grouped rule");
+  assert.match(sharedRule, /height:\s*28px;/);
+  assert.match(sharedRule, /border-radius:\s*3px/);
   assert.match(indicators, /kwant-chart-row-control flex h-7/);
   assert.match(sourceIndicators, /kwant-chart-row-control flex h-7/);
-  assert.match(timezone, /compact \? "kwant-chart-row-control h-7/);
-  assert.equal((workspace.match(/kwant-chart-row-control flex h-7 w-7/g) ?? []).length, 2);
+  assert.match(timezone, /compact \? "[^"]*kwant-chart-row-control h-7/);
+  assert.match(workspace, /title="Export chart levels"[\s\S]*?kwant-chart-row-control flex h-7 w-7/);
+  assert.match(workspace, /aria-pressed=\{gexVueReplay.active\}/);
 });
 
 test("download and account triggers are square rather than legacy pills", () => {

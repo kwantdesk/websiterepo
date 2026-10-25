@@ -1516,8 +1516,8 @@ header.kwant-command-rail .kwant-primary-nav-control {
 }
 
 .kwant-chart-command-deck {
-  /* One consolidated control row: the deck reserves exactly one bar height,
-     returning the old second row's space to the charts. */
+  /* One compact desktop row; the named workspace-width queries below add
+     complete lanes only when the available width needs them. */
   height: var(--kwant-shell-bar-height);
   grid-template-rows: var(--kwant-shell-bar-height);
 }
@@ -1528,6 +1528,85 @@ header.kwant-command-rail .kwant-primary-nav-control {
   min-height: var(--kwant-shell-bar-height);
   max-height: var(--kwant-shell-bar-height);
   box-sizing: border-box;
+}
+
+/* Each chart toolbar lane owns its scrolling. A native horizontal scrollbar
+   must never subtract height from the 36px button lane (and then create a
+   second, vertical scrollbar). Use unlayered scoped rules: the global `*`
+   scrollbar rule otherwise wins over Tailwind's hidden-scrollbar utilities. */
+.kwant-chart-toolbar-shell {
+  container: chart-toolbar / inline-size;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.kwant-chart-toolbar-shell .kwant-chart-command-deck {
+  height: var(--kwant-shell-bar-height);
+  grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
+  grid-template-rows: var(--kwant-shell-bar-height);
+  overflow: hidden;
+}
+
+.kwant-chart-toolbar-shell .kwant-chart-toolbar-scrollport {
+  min-width: 0;
+  height: var(--kwant-shell-bar-height);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  box-sizing: border-box;
+}
+
+.kwant-chart-toolbar-shell .kwant-chart-toolbar-scrollport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.kwant-chart-toolbar-shell .kwant-chart-toolbar-track {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: max-content;
+  height: 28px;
+  white-space: nowrap;
+}
+
+.kwant-chart-toolbar-shell .kwant-chart-command-deck .kwant-chart-toolbar-track button {
+  flex-shrink: 0;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  padding-block: 0;
+  box-sizing: border-box;
+}
+
+/* Auto margins center/end-align only when the track fits. Overflow always
+   starts at zero, keeping the first layout and Indicators buttons reachable. */
+.kwant-chart-layout-controls > .kwant-chart-toolbar-track { margin-inline: auto; }
+.kwant-chart-actions > .kwant-chart-toolbar-track { margin-inline-start: auto; }
+
+/* Respond to the AVAILABLE workspace width, including sidebars/window zoom,
+   rather than only the device width. Each extra row retains the same rhythm. */
+@container chart-toolbar (max-width: 1279px) {
+  .kwant-chart-toolbar-shell .kwant-chart-command-deck {
+    height: calc(2 * var(--kwant-shell-bar-height));
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: repeat(2, var(--kwant-shell-bar-height));
+  }
+  .kwant-chart-command-deck .kwant-chart-shortcuts { grid-column: 1 / -1; grid-row: 1; }
+  .kwant-chart-command-deck .kwant-chart-layout-controls { grid-column: 1; grid-row: 2; }
+  .kwant-chart-command-deck .kwant-chart-actions { grid-column: 2; grid-row: 2; }
+}
+
+@container chart-toolbar (max-width: 640px) {
+  .kwant-chart-toolbar-shell .kwant-chart-command-deck {
+    height: calc(3 * var(--kwant-shell-bar-height));
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(3, var(--kwant-shell-bar-height));
+  }
+  .kwant-chart-command-deck .kwant-chart-layout-controls { grid-column: 1; grid-row: 2; }
+  .kwant-chart-command-deck .kwant-chart-actions { grid-column: 1; grid-row: 3; }
 }
 
 body:has(.kwant-command-rail) .rounded-3xl { border-radius: 6px !important; }
@@ -2131,20 +2210,6 @@ body.kwant-cockpit-ui .kwant-one-liner-glow {
   /* The nav already scrolls; give the utility rail breathing room. */
   .kwant-primary-workspace-nav {
     width: calc(100% - 196px);
-  }
-
-  /* The chart command deck scrolls sideways instead of crushing its groups. */
-  .kwant-chart-command-deck {
-    grid-template-columns: repeat(3, max-content);
-    justify-content: flex-start;
-    column-gap: 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-  }
-
-  .kwant-chart-command-deck::-webkit-scrollbar {
-    display: none;
   }
 
   /* Dialogs and floating menus never exceed the phone viewport. */

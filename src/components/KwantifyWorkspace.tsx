@@ -19556,11 +19556,12 @@ export default function KwantifyWorkspace({
         ) : null}
 
         {chartSurfaceActive && (
+        <div className="kwant-chart-toolbar-shell shrink-0">
         <header className="@container kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center overflow-hidden border-b border-border bg-panel">
           <div
             aria-disabled={!activePaneIsChart}
             title={activePaneIsChart ? "Controls apply to the selected chart" : `${ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
-            className={`relative col-start-1 row-start-1 flex min-w-0 items-center justify-start overflow-x-auto pl-2 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}>
+            className={`kwant-chart-shortcuts kwant-chart-toolbar-scrollport relative col-start-1 row-start-1 flex min-w-0 items-center justify-start overflow-x-auto pl-2 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}>
           {chartTrades.length > 0 && (
             <div className="mr-2 flex shrink-0 items-center gap-2 rounded-lg bg-primary/10 px-2 py-1">
               <div className="h-2 w-2 rounded-full bg-primary" />
@@ -19572,7 +19573,7 @@ export default function KwantifyWorkspace({
               here — the interval picker itself moved to each chart pane's own
               header dropdown, so this row stays a one-click switcher. Stars are
               global: whatever a trader pins on any chart shows up here. */}
-          <div ref={timeframeMenuRef} className="relative flex min-w-0 items-center gap-0.5">
+          <div ref={timeframeMenuRef} className="kwant-chart-toolbar-track relative flex min-w-0 items-center gap-0.5">
             {/* Every interval the feed supports, the custom builders, and how
                 much history this chart loads. The favourites to the right are
                 a shortcut to a handful of these, not a replacement for them. */}
@@ -19761,7 +19762,8 @@ export default function KwantifyWorkspace({
             ) : null}
           </div>
           </div>
-          <div className="col-start-2 row-start-1 flex h-8 min-w-0 items-center justify-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="kwant-chart-layout-controls kwant-chart-toolbar-scrollport col-start-2 row-start-1 flex h-8 min-w-0 items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="kwant-chart-toolbar-track flex items-center gap-1">
             {[
               {
                 layout: "single" as Exclude<WorkspaceLayout, "custom">,
@@ -20103,9 +20105,11 @@ export default function KwantifyWorkspace({
               ) : null}
             </div>
           </div>
+          </div>
           <div
-            className="col-start-3 row-start-1 flex min-w-0 items-center justify-end gap-2 overflow-hidden px-3"
+            className="kwant-chart-actions kwant-chart-toolbar-scrollport col-start-3 row-start-1 flex min-w-0 items-center gap-2 overflow-x-auto px-3"
           >
+          <div className="kwant-chart-toolbar-track flex items-center gap-2">
           <div className="flex shrink-0 items-center gap-2">
           {activePaneIsChart ? <ChartIndicatorsControl
             chartInstanceId={activePaneId}
@@ -20195,7 +20199,7 @@ export default function KwantifyWorkspace({
             </button>
           }
           </div>
-          <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex shrink-0 items-center gap-2">
           <TimeZoneSelect
             value={chartSettings.timezone}
             onChange={changeChartTimeZone}
@@ -20214,7 +20218,9 @@ export default function KwantifyWorkspace({
           </button>
           </div>
           </div>
+          </div>
         </header>
+        </div>
         )}
 
         {showReplayPicker ? <WorkspaceReplayDialog state={gexVueReplay} scope={chartWorkspaceScope} onClose={closeReplayPicker} onGo={next => { setGexVueReplay(next); setShowReplayPicker(false); }} /> : null}
