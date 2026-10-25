@@ -21,7 +21,8 @@ const settings={spotViewMode:'candles',candleUp:{color:up},candleDown:{color:dow
 const payload={ticker:'QQQ',spot:100,strikes:[[100,2,3,[]]]};
 const view={startTime:time,endTime:time+120*minute,minPrice:90,maxPrice:120,minExposure:-5,maxExposure:5};
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-9,`${a} != ${b}`);
-const priceBodies=calls=>calls.filter(c=>['roundRect','fillRect'].includes(c.method)&&[up,down].includes(c.fill));
+const priceBodies=calls=>calls.filter(c=>c.method==='fillRect'&&c.args[2]>1&&[up,down].includes(c.fill));
+const priceWicks=(calls,colors=[up,down])=>calls.filter(c=>c.method==='fillRect'&&c.args[2]===1&&colors.includes(c.fill));
 const order=(options={})=>{const result=canvas();return {...result,geometry:renderOrderflow(result.ctx,1000,500,{ticker:'QQQ',metric:'net-gex',records:[record()],priceHistory:prices,priceLine:line,settings,view,...options})};};
 const profile=(options={})=>{const result=canvas();return {...result,geometry:drawProfile(result.ctx,1000,500,{package:'classic',payload,priceHistory:prices,settings,candleInterval:minute,view,...options})};};
 
@@ -35,11 +36,11 @@ test('Classic, State and Orderflow default candle bodies and wicks follow live t
       const plain={spotViewMode:'candles',showGrid:false,showMajorLevels:false,show_volume:false,show_oi:false};
       for(const pkg of ['classic','state','orderflow']){
         const result=pkg==='orderflow'?order({settings:plain}):profile({package:pkg,settings:plain});
-        const bodies=result.calls.filter(c=>['roundRect','fillRect'].includes(c.method)&&[palette.bullish,palette.bearish].includes(c.fill));
+        const bodies=result.calls.filter(c=>c.method==='fillRect'&&c.args[2]>1&&[palette.bullish,palette.bearish].includes(c.fill));
         assert.equal(bodies.length,3,pkg);
         assert.deepEqual(bodies.map(c=>c.fill),[palette.bullish,palette.bullish,palette.bearish]);
-        const wicks=result.calls.filter(c=>c.method==='lineTo'&&[palette.bullish,palette.bearish].includes(c.stroke));
-        assert.deepEqual(wicks.map(c=>c.stroke),[palette.bullish,palette.bullish,palette.bearish]);
+        const wicks=priceWicks(result.calls,[palette.bullish,palette.bearish]);
+        assert.deepEqual(wicks.map(c=>c.fill),[palette.bullish,palette.bullish,palette.bullish,palette.bullish,palette.bearish,palette.bearish]);
       }
     }
   }finally{globalThis.document=previousDocument;globalThis.fetch=previousFetch;}
@@ -63,8 +64,8 @@ test('Classic and State draw explicit real OHLC wicks and bodies rather than pos
   for(const pkg of ['classic','state']){
     const {geometry:g,calls}=profile({package:pkg});assert.deepEqual(g.history.map(c=>[c.open,c.high,c.low,c.close]),prices.map(c=>[c.open,c.high,c.low,c.close]));
     assert.equal(priceBodies(calls).length,3);
-    const wicks=calls.filter(c=>c.method==='lineTo'&&[up,down].includes(c.stroke));
-    assert.equal(wicks.length,3);near(wicks[0].args[1],g.priceY(98));
+    const wicks=priceWicks(calls);
+    assert.equal(wicks.length,6);near(wicks[1].args[1]+wicks[1].args[3],Math.round(g.priceY(98))+1);
   }
 });
 
@@ -74,12 +75,12 @@ test('State candles have square bodies at exact OHLC coordinates, including doji
   const bodies=priceBodies(calls);assert.equal(bodies.length,4);
   for(const [i,body] of bodies.entries()){
     assert.equal(body.method,'fillRect');
-    near(body.args[0]+body.args[2]/2,g.timeX(history[i].time));
-    near(body.args[1],Math.min(g.priceY(history[i].open),g.priceY(history[i].close)));
-    near(body.args[3],Math.max(1,Math.abs(g.priceY(history[i].open)-g.priceY(history[i].close))));
+    near(body.args[0]+Math.floor(body.args[2]/2),Math.round(g.timeX(history[i].time)));
+    near(body.args[1],Math.round(Math.min(g.priceY(history[i].open),g.priceY(history[i].close))));
+    near(body.args[3],Math.round(Math.max(g.priceY(history[i].open),g.priceY(history[i].close)))-body.args[1]+1);
   }
-  const wicks=calls.filter(c=>c.method==='lineTo'&&[up,down].includes(c.stroke));
-  assert.equal(wicks.length,4);for(const [i,wick]of wicks.entries())near(wick.args[1],g.priceY(history[i].low));
+  const wicks=priceWicks(calls);
+  assert.equal(wicks.length,8);for(let i=0;i<history.length;i++)near(wicks[i*2+1].args[1]+wicks[i*2+1].args[3],Math.round(g.priceY(history[i].low))+1);
 });
 
 test('square State candles leave profile circles and rounded profile bars unchanged',()=>{
@@ -95,8 +96,8 @@ test('square State candles leave profile circles and rounded profile bars unchan
 test('Orderflow real OHLC input is not reconstructed from positioning snapshots',()=>{
   const {geometry:g,calls}=order({records:[record(0,{spot:999}),record(1,{spot:1})]});
   assert.deepEqual(g.data.candles.map(c=>[c.open,c.high,c.low,c.close]),prices.map(c=>[c.open,c.high,c.low,c.close]));
-  assert.equal(priceBodies(calls).length,3);const wicks=calls.filter(c=>c.method==='lineTo'&&[up,down].includes(c.stroke));
-  near(wicks[0].args[1],g.spotY(98));
+  assert.equal(priceBodies(calls).length,3);const wicks=priceWicks(calls);
+  near(wicks[1].args[1]+wicks[1].args[3],Math.round(g.spotY(98))+1);
 });
 
 test('explicit empty authoritative candle arrays never fall back to spot-only snapshot OHLC',()=>{

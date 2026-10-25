@@ -1,5 +1,6 @@
 import {themePaint,themeInk} from './site-theme.js';
 import {botStorage,botFetch} from './site-runtime.js';
+import {paintCandlestick} from './candlestick-paint.js?v=1';
 // Independent implementation of the observed shipped Orderflow semantics.
 // Inputs are native REST units, NOT the website's scaled protobuf transport.
 export const ORDERFLOW_METRICS = Object.freeze({
@@ -347,14 +348,13 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   if (options.showSpot !== false) {
     if(candleMode)for(let index=0;index<(data.candles||[]).length;index++){
       const candle=data.candles[index];if(candle.time<startTime||candle.time>endTime)continue;
-      const x=timeX(candle.time),previous=index>0?timeX(data.candles[index-1].time):index<data.candles.length-1?2*x-timeX(data.candles[index+1].time):x-48,next=index<data.candles.length-1?timeX(data.candles[index+1].time):index>0?2*x-timeX(data.candles[index-1].time):x+48;
-      const halfWidth=Math.min(12,Math.max(1.5,.38*Math.min(x-previous,next-x)));
+      const x=timeX(candle.time),interval=finite(settings.candleBucketMs)??data.bucketMs??60000,spacing=(right-left)*Math.max(60000,interval)/(endTime-startTime);
       const metricPoint=data.series[0]?.values.find(point=>point.time===candle.time);
       const metricColor=metricPoint?.raw>=0?data.series[0]?.positiveColor:data.series[0]?.negativeColor;
       const up=candle.close>=candle.open;
       if((up?settings.candleUp:settings.candleDown)?.display===false)continue;
       const color=settings.candleColorMode==='metric'&&metricColor?metricColor:up?settings.candleUp?.color||themePaint("#00ff00"):settings.candleDown?.color||themePaint("#ff0000");
-      ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,spotY(candle.high));ctx.lineTo(x,spotY(candle.low));ctx.stroke();ctx.fillStyle=color;ctx.fillRect(x-halfWidth,Math.min(spotY(candle.open),spotY(candle.close)),halfWidth*2,Math.max(1,Math.abs(spotY(candle.close)-spotY(candle.open))));
+      paintCandlestick(ctx,{x,openY:spotY(candle.open),highY:spotY(candle.high),lowY:spotY(candle.low),closeY:spotY(candle.close),spacing,color});
     }
     else {ctx.strokeStyle = spotColor; ctx.lineWidth = 1; pathLine(ctx, (data.pricePoints||data.points).map(point => ({ time: point.time, value: point.spot })), timeX, spotY);}
     const observed = visiblePrices.filter(point => point.spot !== null);

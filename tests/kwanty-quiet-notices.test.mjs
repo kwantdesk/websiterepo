@@ -34,9 +34,9 @@ test("snapshot banner is removed rather than regenerated in any KWANTY surface",
   assert.doesNotMatch(app,/actual snapshot|no full-session history loaded|no invented curve|history-limited/);
   assert.match(app,/document\.getElementById\('historyNotice'\)\?\.remove\(\)/);
   assert.doesNotMatch(app,/\$\('#historyNotice'\)/);
-  assert.match(read("public/kwanty-app/index.html"),/app\.js\?v=22/);
-  assert.match(read("src/components/kwanty/KwantyWorkspace.tsx"),/params\.set\("v", "14"\)/);
-  assert.match(read("src/components/options-flow/OptionsFlowToolPanel.tsx"),/v: source === "kwanty" \? "15" : "5"/);
+  assert.match(read("public/kwanty-app/index.html"),/app\.js\?v=23/);
+  assert.match(read("src/components/kwanty/KwantyWorkspace.tsx"),/params\.set\("v", "15"\)/);
+  assert.match(read("src/components/options-flow/OptionsFlowToolPanel.tsx"),/v: source === "kwanty" \? "16" : "5"/);
 });
 
 test("automatic provider failure retains error and backoff without a toast",async()=>{
