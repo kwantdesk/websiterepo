@@ -155,7 +155,7 @@ test('app passes independent authoritative price history to every renderer, neve
   assert.match(app,/drawProfile\([\s\S]*?priceHistory:s\.spotViewMode==='candles'\?price\.candles:price\.points/);
   assert.doesNotMatch(app,/collectCandles\(/);assert.match(app,/active=!document\.hidden&&window\.__kwantyActive!==false/);
   assert.match(app,/prices\.setActive\(active&&!orderflow\)/);
-  assert.match(app,/cutoffTime=state\.historyMode\|\|state\.replayIndex!==null/);
+  assert.match(app,/cutoffTime=masterReplay\?\.timestampMs\?\?\(state\.historyMode\|\|state\.replayIndex!==null/);
 });
 
 test('Candles/Line toolbar uses linked control targets with package settings as the default',async()=>{
@@ -170,7 +170,10 @@ test('Candles/Line toolbar uses linked control targets with package settings as 
 
 test('standalone and independently mounted chart-grid tools expose the shared host price bridge',async()=>{
   const [main,embedded,runtime]=await Promise.all(['../src/components/kwanty/KwantyWorkspace.tsx','../src/components/options-flow/OptionsFlowToolPanel.tsx','../public/kwanty-app/site-runtime.js'].map(path=>readFile(new URL(path,import.meta.url),'utf8')));
-  for(const source of [main,embedded]){assert.match(source,/priceHistory:\s*prices\.priceHistory/);assert.match(source,/subscribePrice:\s*prices\.subscribePrice/);assert.match(source,/kwantyPriceBridge/);}
+  assert.match(main,/priceHistory:\s*prices\.priceHistory/);assert.match(main,/subscribePrice:\s*prices\.subscribePrice/);
+  assert.match(embedded,/priceHistory:\s*\(symbol, date\) => prices\.priceHistory\(symbol, replayRef\.current\?\.sessionDate \?\? date\)/);
+  assert.match(embedded,/subscribePrice:\s*\(symbol, listener, onError\) => replayRef\.current \? \(\) => \{\} : prices\.subscribePrice/);
+  for(const source of [main,embedded])assert.match(source,/kwantyPriceBridge/);
   assert.match(runtime,/hostId\?window\.parent\?\.__kwantOptionsToolHosts\?\.\[hostId\]:window\.parent\?\.__kwantyHost/);
   assert.match(runtime,/botPriceHistory=\(symbol,date\)=>host\?\.priceHistory/);assert.match(runtime,/botSubscribePrice=\(symbol,listener,onError\)=>host\?\.subscribePrice/);
 });

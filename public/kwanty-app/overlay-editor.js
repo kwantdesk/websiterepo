@@ -69,5 +69,6 @@ export function createOverlayEditor({state,api,persist,redraw,message,selectedPa
  function dragTo(p,index,timeMs){const slot=slots(p)[index],cache=caches.get(keyFor(slot,p)),target=selectedPayload(p);if(!target)return;const picked=selection(slot,p,cache?.records||[]),timestamp=picked.historical?nearestArchivedProfileTime(picked.records||[],timeMs,target.timestamp):nearestActualProfileTime(picked.records||[],timeMs,target.timestamp,tickerFor(p));if(timestamp!==null){slot.time=timestamp;persist();}}
  function frameReady(p,timestamp){let pending=false;for(const slot of slots(p)){if(!slot.show)continue;const time=profileSelectionTime(slot.time,timestamp);if(time===null)continue;const result=archive.select(profileSelector(slot,tickerFor(p)),sourceDate(timestamp),time);if(result.error)return {pending:false,error:result.error};pending=pending||!!result.pending;}return {pending,error:null};}
  function open(p){panel=p;active=0;render();dialog.show();}
- return {paint,open,markerAt,dragTo,frameReady,close:()=>dialog.close(),dispose:()=>{archive.dispose();dialog.remove();}};
+ function retryHistory(date){const seen=new Set();for(const p of state.panels){for(const slot of slots(p)){if(!slot.show)continue;const selector=profileSelector(slot,tickerFor(p)),key=JSON.stringify(selector);if(seen.has(key))continue;seen.add(key);archive.retry(selector,date);}}}
+ return {paint,open,markerAt,dragTo,frameReady,retryHistory,close:()=>dialog.close(),dispose:()=>{archive.dispose();dialog.remove();}};
 }

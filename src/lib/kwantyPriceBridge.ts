@@ -4,6 +4,7 @@ import { getMarketIndexDefinition } from "@/lib/marketIndices";
 import { subscribeMarketIndexSnapshot } from "@/lib/marketIndexLiveClient";
 import { fetchInstitutionalFrontMonth, fetchInstitutionalSnapshot, type InstitutionalTrade } from "@/lib/institutionalMarketData";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
+import { cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 
 export type KwantyPriceBar = { time: number; open: number; high: number; low: number; close: number; volume?: number };
 export type KwantyPriceFrame = { symbol: string; timestamp: number; lastPrice: number; candle?: KwantyPriceBar; sessionDate?: string };
@@ -67,9 +68,23 @@ export function createKwantyPricePool(overrides: Partial<PriceDependencies> = {}
         let value: KwantyPriceBar[];
         if (symbol === "ES" || symbol === "NQ") {
           // Never substitute the cash index for a futures-converted price axis.
-          if (date !== "latest") throw new Error("Historical futures price is unavailable for this date.");
-          const snapshot = await dependencies.snapshot({ symbol, contractSymbol: await contract(symbol), timeframe: "1m", lookbackBars: 2_000, timeoutMs: 20_000 });
-          value = bars(snapshot?.candles);
+          if (date !== "latest") {
+            const window = cmeSessionWindowForDate(date);
+            if (!window) throw new Error("Invalid historical futures session.");
+            const controller = new AbortController(); controllers.add(controller);
+            const timeout = setTimeout(() => controller.abort(), 35_000);
+            try {
+              const query = new URLSearchParams({ symbol: `${symbol}.c.0`, timeframe: "1m", days: "2", exec: "0",
+                from: String(window.startMs), to: String(window.endMs - 60 * 60_000) });
+              const response = await dependencies.fetch(`/api/cme-history?${query}`, { signal: controller.signal, credentials: "same-origin" });
+              const payload = await response.json();
+              if (!response.ok) throw new Error("Historical futures price is unavailable for this session.");
+              value = bars(payload.candles).filter(row => row.time >= window.startMs && row.time < window.endMs - 60 * 60_000);
+            } finally { clearTimeout(timeout); controllers.delete(controller); }
+          } else {
+            const snapshot = await dependencies.snapshot({ symbol, contractSymbol: await contract(symbol), timeframe: "1m", lookbackBars: 2_000, timeoutMs: 20_000 });
+            value = bars(snapshot?.candles);
+          }
         } else {
           const now = Date.now(), to = date === "latest" ? Math.floor(now / 60_000) * 60_000 + 59_999 : Math.min(now, Date.parse(`${date}T00:00:00Z`) + 30 * 3_600_000);
           const from = date === "latest" ? to - 5 * 86_400_000 : Date.parse(`${date}T00:00:00Z`);

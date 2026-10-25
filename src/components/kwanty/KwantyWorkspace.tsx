@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import {usePathname,useRouter,useSearchParams} from "next/navigation";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
-import { loadStoredChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, loadStoredChartSettings } from "@/lib/chartSettings";
+import type { WorkspaceReplayClock } from "@/lib/workspaceReplay";
 import { acquireKwantyPrices, type KwantyPriceHost } from "@/lib/kwantyPriceBridge";
 import type { StateDrawingApi, StateDrawingMount } from "@/lib/kwantyStateDrawingAdapter";
 
@@ -12,6 +13,7 @@ const STORAGE_KEY = "kwantdesk:kwanty:workspace:v1";
 type BotSiteHost = KwantyPriceHost & {
   mountStateDrawings(element: HTMLElement, api: StateDrawingApi): Promise<StateDrawingMount>;
   active: boolean;
+  replay: () => WorkspaceReplayClock | null;
   read: (key: string) => string | null;
   write: (key: string, value: string | null) => void;
   theme: () => Record<string, string>;
@@ -30,7 +32,12 @@ function broadcast(frame: Window | null, type: string, detail = {}) {
   } catch { /* Closed popouts and navigating frames need no notification. */ }
 }
 
-export default function KwantyWorkspace({ accountKey, active: sectionActive = true }: { accountKey: string; active?: boolean }) {
+export default function KwantyWorkspace({ accountKey, active: sectionActive = true, replay = null, onReplayRequest, onReplayReadyChange, onReplayStepChange }: {
+  accountKey: string; active?: boolean; replay?: WorkspaceReplayClock | null;
+  onReplayRequest?: (action: "open" | "exit") => void;
+  onReplayReadyChange?: (ready: boolean) => void;
+  onReplayStepChange?: (intervalMs: number) => void;
+}) {
   const search=useSearchParams(),router=useRouter(),pathname=usePathname(),legacyCalendar=pathname==='/kwanty'&&search.get('view')==='calendar',active=sectionActive&&!legacyCalendar;
   useEffect(()=>{if(legacyCalendar)router.replace('/news?view=options-expirations');},[legacyCalendar,router]);
   const frame = useRef<HTMLIFrameElement>(null);
@@ -38,6 +45,29 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
   const [generation, setGeneration] = useState(0);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const replayRef = useRef(replay);
+  replayRef.current = replay;
+
+  useEffect(() => {
+    broadcast(frame.current?.contentWindow ?? null, "kwantdesk-workspace-replay", { replay });
+  }, [replay]);
+  useEffect(() => { onReplayReadyChange?.(false); }, [replay?.sessionDate, onReplayReadyChange]);
+
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== location.origin || event.source !== frame.current?.contentWindow) return;
+      if (event.data?.type === "kwanty-replay-request" && ["open", "exit"].includes(event.data.action)) onReplayRequest?.(event.data.action);
+      if (event.data?.type === "kwanty-replay-ready") broadcast(frame.current?.contentWindow ?? null, "kwantdesk-workspace-replay", { replay: replayRef.current });
+      if (event.data?.type === "kwanty-replay-status" && replayRef.current
+        && event.data.sessionDate === replayRef.current.sessionDate
+        && event.data.timestampMs === replayRef.current.timestampMs) {
+        onReplayReadyChange?.(event.data.ready === true);
+        if (Number.isInteger(event.data.stepMs) && event.data.stepMs >= 60_000 && event.data.stepMs <= 14_400_000) onReplayStepChange?.(event.data.stepMs);
+      }
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [onReplayRequest, onReplayReadyChange, onReplayStepChange]);
 
   useEffect(() => {
     if (!accountKey) return;
@@ -57,6 +87,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
       priceHistory: prices.priceHistory,
       subscribePrice: prices.subscribePrice,
       active: activeRef.current,
+      replay: () => replayRef.current,
       timezone: () => loadStoredChartSettings().timezone,
       read: key => readValues()[key] ?? null,
       write: (key, value) => {
@@ -100,6 +131,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
               const timeout = window.setTimeout(() => controller.abort(), 35_000);
               try {
                 if (disposed || !activeRef.current) throw new Error("This workspace is paused.");
+                // A superseded consumer must not abort a coalesced request another panel still needs.
                 const response = await fetch(url, { ...options, signal: controller.signal, credentials: "same-origin" });
                 const text = await response.text();
                 if (text.length > 12_000_000) throw new Error("The data response is too large. Narrow the selected range.");
@@ -117,6 +149,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
           }
           entry = await job;
         }
+        if (options.signal?.aborted) throw new DOMException("The request was aborted.", "AbortError");
         return new Response(entry.text, { status: entry.status, headers: entry.headers });
       },
     };
@@ -126,6 +159,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
     const hydrated = () => { cache.clear(); setGeneration(value => value + 1); };
     window.addEventListener("kwantdesk:theme-change", themeChanged);
     window.addEventListener("olisa-theme-change", themeChanged);
+    window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, themeChanged);
     window.addEventListener(PREFERENCES_HYDRATED_EVENT, hydrated);
     const observer = new MutationObserver(themeChanged);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
@@ -134,6 +168,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
       waiting.splice(0).forEach(resolve => resolve()); cache.clear(); pending.clear(); observer.disconnect();
       window.removeEventListener("kwantdesk:theme-change", themeChanged);
       window.removeEventListener("olisa-theme-change", themeChanged);
+      window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, themeChanged);
       window.removeEventListener(PREFERENCES_HYDRATED_EVENT, hydrated);
       if (window.__kwantyHost === host) delete window.__kwantyHost;
     };
@@ -145,13 +180,16 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("botView"); params.delete("botView"); params.delete("view"); params.set("v", "13");
+  const requestedTool = params.get("botView"); params.delete("botView"); params.delete("view"); params.set("v", "14");
   const src = `/kwanty-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#${requestedTool}` : "#orderflow"}`;
   return <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background" aria-label="KWANTY workspace">
     <div className="flex min-h-0 flex-1">
     {ready && !legacyCalendar ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
       title="KWANTY tools and workspace" className="h-full w-full border-0" allow="fullscreen"
-      onLoad={() => broadcast(frame.current?.contentWindow ?? null, "kwanty-site-activity", { active: activeRef.current })} />
+      onLoad={() => {
+        broadcast(frame.current?.contentWindow ?? null, "kwanty-site-activity", { active: activeRef.current });
+        broadcast(frame.current?.contentWindow ?? null, "kwantdesk-workspace-replay", { replay: replayRef.current });
+      }} />
       : null}
     </div>
   </section>;

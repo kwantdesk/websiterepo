@@ -1,4 +1,4 @@
-import {createPriceSeries} from './price-series.js?v=2';
+import {createPriceSeries} from './price-series.js?v=3';
 
 const canonical=ticker=>ticker==='ES_SPX'?'ES':ticker==='NQ_NDX'?'NQ':ticker==='SPXW'?'SPX':ticker;
 // One underlying series per iframe; all its Classic/State/Orderflow panels share
@@ -39,7 +39,7 @@ export function createPriceController({history,subscribe,onChange,now=Date.now})
   },
   setActive(value){if(active===value)return;active=value;generation++;pending=false;queuedRepair=false;stop?.();stop=null;if(active){connect();void restore();}},
   snapshot(interval=60000,{cutoffTime=Infinity}={}){
-   const key=`${interval}:${cutoffTime}`;let result=cache.get(key);
+   const key=`${interval}:${series.replayCacheKey(cutoffTime)}`;let result=cache.get(key);
    if(!result){const candles=series.candles(interval,{cutoffTime}),points=new Map(candles.map(c=>[c.time,{time:c.time,spot:c.close}]));for(const point of series.quoteLine({cutoffTime}))points.set(point.time,point);result={candles,points:[...points.values()].sort((a,b)=>a.time-b.time),latest:cutoffTime===Infinity?series.current:null};cache.set(key,result);if(cache.size>8)cache.delete(cache.keys().next().value);}
    return {...result,loading,error};
   },

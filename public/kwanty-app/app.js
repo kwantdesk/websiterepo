@@ -2,8 +2,9 @@ import {themePaint,themeIsLight} from './site-theme.js';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {syncThemeSettings} from './theme-settings.js';
 import {botStorage,botFetch,botTheme,botTimeZone,botPriceHistory,botSubscribePrice,botWorkspaceReplay} from './site-runtime.js';
+import {createReplayPrefixReader} from './replay-cursor.js?v=1';
 import {attachStateDrawingTools,botMountStateDrawings} from './state-drawing-tools.js?v=1';
-import {createPriceController} from './price-runtime.js?v=2';
+import {createPriceController} from './price-runtime.js?v=3';
 import {chartRegion,panChartView,zoomChartView} from './chart-interaction.js?v=3';
 import {createSessionHistory} from './session-history.js?v=3';
 import {decodeSessionTransport} from './session-transport.js?v=1';
@@ -11,20 +12,21 @@ import {createProfileReplay} from './profile-replay.js?v=2';
 import {candleIntervalFor,priceViewFor,intervalLabel,linkedViewportUpdates,linkedCursor,projectCursor} from './panel-controls.js?v=2';
 import {bindTemplates} from './templates.js';
 import {mountTickerShortcuts} from './ticker-shortcuts.js?v=2';
-import {createOrderflowSources} from './orderflow-sources.js?v=5';
-import {createStateSources} from './state-sources.js?v=4';
+import {createOrderflowSources} from './orderflow-sources.js?v=6';
+import {createStateSources} from './state-sources.js?v=5';
 import {STATE_PROFILES,statePanelCategory,statePanelLabel,selectStateProfile,restoreStatePanels,stateControlTargets,stateViewportUpdates,stateCursor,projectStateCursor,sameStatePriceUnits} from './state-panels.js?v=1';
 import {RetainedSnapshots} from './retention.js';
 import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261024-parity';
 import {renderOrderflow,ORDERFLOW_METRICS,createOrderflowModel} from './orderflow-chart.js?v=5';
 import {mountSettingsEditor} from './settings-editor.js?v=4';
-import {createOverlayEditor} from './overlay-editor.js?v=4';
+import {createOverlayEditor} from './overlay-editor.js?v=5';
 import {finite,mergeSnapshots,sourceDate,sourceTime,expiryLabel,profileHistoryRecords,seekSnapshot,exposureSummary,exposureSummaryUnit,toggleExpiry,closeOrderPanel,restoreOrderPanel,ORDERFLOW_WINDOWS} from './models.js?v=2';
 
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 // Remove the retired banner if an older cached shell is paired with this app.
 document.getElementById('historyNotice')?.remove();
 const STORE='kwanty:v1';
+const standaloneReplayControls=!new URLSearchParams(location.search).has('hostId');
 const defaults=()=>({get background(){return themePaint("#111111");},showCrosshairs:true,showCursorTooltip:true,showAxisTooltips:true,show_volume:true,show_oi:true,show_spot_history:{display:true,get color(){return themePaint("#00ffff");},size:1},spotViewMode:'candles',candleColorMode:'spot',priceMultiplier:1,priceOffset:0,profileBarAlignment:'center',timeZone:'America/New_York',zero_gamma:{display:true,get color(){return themePaint("#fcb103");},size:1},major_pos_vol:{display:true,get color(){return themePaint("#00ff00");},size:1},major_neg_vol:{display:true,get color(){return themePaint("#ff0000");},size:1},major_pos_oi:{display:false,get color(){return themePaint("#00942a");},size:1},major_neg_oi:{display:false,get color(){return themePaint("#940d0d");},size:1},gex_vol:{display:true,get color(){return themePaint("#2be05c");},size:8},gex_vol_neg:{display:true,get color(){return themePaint("#ff4747");},size:8},gex_oi:{display:true,get color(){return themePaint("#00942a");},size:8},gex_oi_neg:{display:true,get color(){return themePaint("#940d0d");},size:8},one:{display:true,get color(){return themePaint("#add8e6");}},five:{display:true,get color(){return themePaint("#5dd6f5");}},ten:{display:true,get color(){return themePaint("#00a2de");}},fifteen:{display:true,get color(){return themePaint("#006cc0");}},thirty:{display:true,get color(){return themePaint("#003494");}},show_zero_gamma_history:{display:true,get color(){return themePaint("#fcb103");},size:1},show_call_major_history:{display:true,get color(){return themePaint("#00ff00");},size:1},show_put_major_history:{display:true,get color(){return themePaint("#ff0000");},size:1},candleUp:{display:true,get color(){return themePaint("#00ff00");}},candleDown:{display:true,get color(){return themePaint("#ff0000");}},call_skew:{display:true,get color(){return themePaint("#f67c0a");}},put_skew:{display:true,get color(){return themePaint("#9f36ca");}},expected_move:{display:true,get color(){return themePaint("#808080");},size:1},showGrid:true});
 const initialPanels=()=>[{id:crypto.randomUUID(),metric:'net-convexity',expiry:'zero',combine:false,showSpot:true,threshold:0,period:23400},{id:crypto.randomUUID(),metric:'net-gex',expiry:'zero',combine:false,showSpot:true,threshold:0,period:23400}];
 function settingsDefaults(pkg){const s=structuredClone(defaults());for(const key of ['gex_vol','gex_vol_neg','gex_oi','gex_oi_neg'])s[key].size=6.5;s.call_skew.color=themePaint("#61ff00");s.put_skew.color=themePaint("#ff0000");for(const[key,token]of Object.entries({delta:'#4caf50',gamma:'#00ffff',vanna:'#3682f0',charm:'#daa520',major_call_gamma:'#00ff00',major_put_gamma:'#ff0000',major_long_gamma:'#00ffff',major_short_gamma:'#ae4ad5',time_marker:'#ff9800'}))s[key]={color:themePaint(token)};for(const key of ['delta_neg','gamma_neg','vanna_neg','charm_neg'])s[key]={color:themePaint('#ae4ad5')};if(pkg==='orderflow')s.spotColor=themePaint("#ffffff");return s;}
@@ -33,9 +35,10 @@ const startPackage=['classic','state','orderflow'].includes(location.hash.slice(
 if(!saved.ticker){const initialTicker=new URLSearchParams(location.search).get('ticker');if(initialTicker&&/^[A-Z_]{1,12}$/.test(initialTicker))saved.ticker=initialTicker;}
 const scopes={classic:{gexCategory:'gex_full',greek:null,greekExpiry:'zero',...saved.scopes?.classic},state:{gexCategory:'gex_full',greek:null,greekExpiry:'zero',...saved.scopes?.state}};
 const state={package:startPackage,ticker:typeof saved.ticker==='string'?saved.ticker:'SPX',...(scopes[startPackage]||scopes.classic),settings:{classic:{...defaults(),...saved.settings?.classic},state:{...defaults(),...saved.settings?.state},orderflow:{...defaults(),get spotColor(){return themePaint("#ffffff");},...saved.settings?.orderflow}},panels:Array.isArray(saved.panels)&&saved.panels.length?saved.panels.filter(p=>ORDERFLOW_METRICS[p.metric]).slice(0,3):initialPanels(),closedPanels:Array.isArray(saved.closedPanels)?saved.closedPanels.filter(p=>ORDERFLOW_METRICS[p.chart?.metric]).slice(-12):[],payload:null,envelope:null,records:[],historyMode:false,auto:true,replayIndex:null,playing:false,historyError:null,sourceError:null,authenticated:false};
-let masterReplay=botWorkspaceReplay(),masterReplayKey=null,masterReplaySerial=0;
+let masterReplay=botWorkspaceReplay(),masterReplayKey=null,masterReplaySerial=0,masterReplayLoading=false,masterReplayError=null,masterBootReady=false;
 if(masterReplay){state.historyMode=masterReplay.sessionDate;state.auto=false;}
-const beforeMaster=rows=>masterReplay?rows.filter(row=>row.timestamp*1000<=masterReplay.timestampMs):rows;
+const replayPrefix=createReplayPrefixReader();
+const beforeMaster=rows=>masterReplay?replayPrefix(rows,masterReplay.timestampMs):rows;
 if(!state.panels.length)state.panels=initialPanels();
 for(const panel of state.panels)if(!panel.ticker)panel.ticker=state.ticker;
 for(const pkg of ['classic','state','orderflow']){state.settings[pkg]={...settingsDefaults(pkg),...saved.settings?.[pkg]};if(!saved.schemaVersion){for(const key of ['gex_vol','gex_vol_neg','gex_oi','gex_oi_neg'])if(state.settings[pkg][key]?.size===8)state.settings[pkg][key].size=6.5;state.settings[pkg].call_skew={display:true,get color(){return themePaint("#61ff00");}};state.settings[pkg].put_skew={display:true,get color(){return themePaint("#ff0000");}};}}
@@ -45,7 +48,7 @@ let activeStatePanelId=saved.activeStatePanelId||state.statePanels[0].id,stateLo
 let catalog=null,requestId=0,modeGeneration=0,controller=null,historyController=null,pollTimer=null,playTimer=null,views=new Map(),charts=[],observer=null,noticeTimer=null;
 let restoredSessionKey=null;
 const sessionHistory=createSessionHistory((ticker,date)=>api('session?'+new URLSearchParams({ticker,date}),AbortSignal.timeout(40000)));
-const profileReplay=createProfileReplay({api,onChange:failure=>{if(failure)message('A replay page could not be loaded. Click Load history to retry.');renderSummary();drawAll();}});
+const profileReplay=createProfileReplay({api,onChange:failure=>{if(failure)message('A replay page could not be loaded. Use Retry replay to try again.');renderSummary();drawAll();}});
 const collections=new RetainedSnapshots();
 const prices=createPriceController({history:botPriceHistory,subscribe:botSubscribePrice,onChange:()=>{syncTimeline();renderChartEmpty();drawAll();}});
 const orderSources=createOrderflowSources({api,history:botPriceHistory,subscribe:botSubscribePrice,sessionHistory,onChange:()=>{if(state.package==='orderflow'){syncOrderflowState();syncTimeline();renderChartEmpty();drawAll();}}});
@@ -115,7 +118,17 @@ async function api(path,signal){
 }
 function query(){return new URLSearchParams({ticker:state.ticker,package:state.package,category:category()})}
 function currentRecords(panel){if(state.package==='state')return stateRecords(panel);const records=beforeMaster(state.package==='orderflow'&&panel?orderSources.get(panelTicker(panel))?.records||[]:state.records);if(masterReplay||state.replayIndex===null)return records;const time=state.records[state.replayIndex]?.timestamp;return records.filter(row=>time!==undefined&&row.timestamp<=time);}
-function selectedPayload(panel){if(state.package==='state'){const selected=panel||activeStatePanel();return profileReplay.select(stateSources.get(selected)?.envelope,stateRecords(selected).at(-1)||null);}const row=masterReplay?currentRecords(panel).at(-1)||null:panel&&state.package==='orderflow'?currentRecords(panel).at(-1)||null:state.replayIndex===null?state.payload:state.records[state.replayIndex]||state.payload;return state.package==='classic'?profileReplay.select(state.envelope,row):row;}
+function selectedPayload(panel){
+ if(state.package==='state'){
+  const selected=panel||activeStatePanel(),envelope=stateSources.get(selected)?.envelope,row=stateRecords(selected).at(-1)||null;
+  const payload=profileReplay.select(envelope,row);
+  return profileReplay.ready(envelope,row)&&!profileReplay.error(envelope,row)?payload:null;
+ }
+ const row=masterReplay?currentRecords(panel).at(-1)||null:panel&&state.package==='orderflow'?currentRecords(panel).at(-1)||null:state.replayIndex===null?state.payload:state.records[state.replayIndex]||state.payload;
+ if(state.package!=='classic')return row;
+ const payload=profileReplay.select(state.envelope,row);
+ return profileReplay.ready(state.envelope,row)&&!profileReplay.error(state.envelope,row)?payload:null;
+}
 async function restoreOrderflowSession(key,generation,date,ticker){
  const rows=await sessionHistory.read(ticker,date);
  if(generation!==modeGeneration||key!==identity()||state.package!=='orderflow'||state.historyMode||!state.auto||sourceDate(state.payload?.timestamp)!==date||!rows.length)return;
@@ -132,8 +145,8 @@ function syncShell(){
  $('#ticker').value=state.ticker;const root=state.ticker==='ES_SPX'?'SPX':state.ticker==='NQ_NDX'?'NDX':state.ticker;const future=root==='SPX'?'ES_SPX':root==='NDX'?'NQ_NDX':null;$('#futureMode').disabled=!future||!catalog?.tickers.includes(future);$('#futureMode').textContent=future||'futures';$('#futureMode').classList.toggle('selected',state.ticker.includes('_'));$('#spotMode').classList.toggle('selected',!state.ticker.includes('_'));
  $('#liveButton').classList.toggle('selected',state.auto&&!state.historyMode&&state.replayIndex===null);$('#addStateChart').hidden=state.package!=='state';$('#statePanelControls').hidden=state.package!=='state';syncActiveChartControls();tickerShortcuts.render();if(state.package==='orderflow')renderOrderControls();if(state.package==='state'){renderStateControls();renderSummary();updateLabels();}
 }
-function renderChartEmpty(){const target=$('#chartEmpty');target.hidden=state.package==='state'?state.statePanels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):state.package==='orderflow'?state.panels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):Boolean(state.payload)||priceState().points.length>0;if(state.sourceError)target.textContent='Data unavailable.';else showWorkspaceLoading(target,'Loading KWANTY');}
-function resetSelection(){invalidateRequests();state.payload=null;state.envelope=null;state.historyMode=false;state.historyError=null;state.sourceError=null;state.replayIndex=null;state.auto=true;stopReplay();$('#summary').replaceChildren();renderChartEmpty();state.records=collections.get(identity())||[];views=new Map();syncShell();syncTimeline();buildCharts();load();persist()}
+function renderChartEmpty(){const target=$('#chartEmpty');target.hidden=state.package==='state'?state.statePanels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):state.package==='orderflow'?state.panels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):Boolean(selectedPayload())||priceState().points.length>0;if(state.sourceError)target.textContent='Data unavailable.';else showWorkspaceLoading(target,'Loading KWANTY');}
+function resetSelection(){invalidateRequests();state.payload=null;state.envelope=null;state.historyMode=masterReplay?.sessionDate||false;state.historyError=null;state.sourceError=null;state.replayIndex=null;state.auto=!masterReplay;stopReplay();$('#summary').replaceChildren();renderChartEmpty();state.records=masterReplay?[]:collections.get(identity())||[];views=new Map();syncShell();syncTimeline();buildCharts();load();persist()}
 function selectPackage(pkg){if(pkg===state.package)return;saveScope();state.package=pkg;Object.assign(state,scopes[pkg]||{gexCategory:'gex_full',greek:null,greekExpiry:'zero'});$('#settingsDialog').close();overlays.close();location.hash=pkg;resetSelection()}
 async function load(){
  if(masterReplay){void applyMasterReplay();return;}
@@ -233,14 +246,14 @@ function wirePanelDividers(){if(state.package==='classic')return;for(let i=0;i<c
 function regularWindow(records,seconds){const last=records.at(-1);if(!last)return {};const t=last.timestamp*1000;if(seconds!==23400)return {startTime:t-seconds*1000,endTime:t};const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'numeric',second:'numeric',hourCycle:'h23'}).formatToParts(new Date(t)).map(p=>[p.type,p.value]));const open=t-(Number(parts.hour)*3600+Number(parts.minute)*60+Number(parts.second))*1000+34200000;return {startTime:open,endTime:open+23400000};}
 function orderflowWindow(points,seconds,records=[]){const last=points.at(-1),window=regularWindow(records.length?records:last?[{timestamp:last.time/1000}]:[],seconds);return window.endTime?{...window,endTime:window.endTime+Math.max(60000,(window.endTime-window.startTime)*.04)}:window;}
 function exportChartImage(){if(!state.payload||!charts.length)return;const canvas=document.createElement('canvas');canvas.width=Math.max(...charts.map(c=>c.canvas.width));canvas.height=charts.reduce((sum,c)=>sum+c.canvas.height,0);const ctx=canvas.getContext('2d');ctx.fillStyle=settings().background||themePaint("#111111");ctx.fillRect(0,0,canvas.width,canvas.height);let y=0;for(const chart of charts){ctx.drawImage(chart.canvas,0,y);y+=chart.canvas.height;}const a=document.createElement('a');a.download=`kwanty-${state.package}-${state.ticker}-${sourceDate(state.payload.timestamp)}.png`;a.href=canvas.toDataURL('image/png');a.click();}
-let paintFrame=null,linkedViewportSeedKey=null;function drawAll(){if(paintFrame===null)paintFrame=requestAnimationFrame(()=>{paintFrame=null;paintAll();});}
+let paintFrame=null,linkedViewportSeedKey=null;function drawAll(){if(paintFrame===null)paintFrame=requestAnimationFrame(()=>{paintFrame=null;paintAll();reportMasterReplayStatus();});}
 function updateStateDrawingTools(c,width,height,price){
  const s=c.panel.settings,t=botTheme();
  c.drawTools?.update({ticker:c.panel.ticker,active:!document.hidden&&window.__kwantyActive!==false,width,height,geometry:c.geometry,candles:price.candles,lastPrice:price.latest?.spot??price.candles.at(-1)?.close??null,multiplier:Number(s.priceMultiplier)||1,offset:Number(s.priceOffset)||0,interval:candleIntervalFor(c.panel,s),bullish:t.bullish||t.primary||'#33b7a5',bearish:t.bearish||t.danger||'#e97995'});
 }
 function majorHistoryFor(chart,records){
  const source=state.package==='state'?stateSources.get(chart.panel)?.records:state.records;
- const cutoff=masterReplay?masterReplay.timestampMs/1000:state.replayIndex===null?null:state.records[state.replayIndex]?.timestamp;
+ const cutoff=masterReplay?records.at(-1)?.timestamp??null:state.replayIndex===null?null:state.records[state.replayIndex]?.timestamp;
  if(chart.majorHistoryCache&&chart.majorHistoryCache.source===source&&chart.majorHistoryCache.cutoff===cutoff)return chart.majorHistoryCache.value;
  const value={zeroGamma:records.map(row=>({time:row.timestamp,spot:row.zero_gamma})),majorCall:records.map(row=>({time:row.timestamp,spot:row.major_pos_vol})),majorPut:records.map(row=>({time:row.timestamp,spot:row.major_neg_vol}))};
  chart.majorHistoryCache={source,cutoff,value};return value;
@@ -359,7 +372,7 @@ document.addEventListener('visibilitychange',syncPrices);window.addEventListener
 $$('[data-package]').forEach(b=>b.addEventListener('click',()=>selectPackage(b.dataset.package)));$$('[data-category]').forEach(b=>b.addEventListener('click',()=>{if(state.package==='state'){changeStateProfile({gexCategory:b.dataset.category,greek:null});return;}state.gexCategory=b.dataset.category;state.greek=null;resetSelection()}));$$('[name=greek]').forEach(input=>input.addEventListener('change',()=>{if(state.package==='state'){changeStateProfile({greek:input.checked?input.value:null});return;}state.greek=input.checked?input.value:null;resetSelection()}));$$('[data-greek-expiry]').forEach(b=>b.addEventListener('click',()=>{if(state.package==='state'){changeStateProfile({greekExpiry:b.dataset.greekExpiry,greek:state.greek||'gamma'});return;}state.greekExpiry=b.dataset.greekExpiry;if(!state.greek)state.greek='gamma';resetSelection()}));
 $('#ticker').addEventListener('change',e=>changeTicker(e.target.value));$('#futureMode').addEventListener('click',()=>{changeTicker(state.ticker==='NDX'||state.ticker==='NQ_NDX'?'NQ_NDX':'ES_SPX')});$('#spotMode').addEventListener('click',()=>{changeTicker(state.ticker==='NQ_NDX'?'NDX':state.ticker==='ES_SPX'?'SPX':state.ticker)});$('#candleInterval').addEventListener('change',event=>changeCandleInterval(event.target.value));$('#toggleSidebar').addEventListener('click',()=>document.body.classList.toggle('sidebar-collapsed'));$('#themeToggle').addEventListener('click',()=>{const s=settings();s.lightMode=!s.lightMode;if([themePaint("#111111"),themePaint("#ffffff")].includes(s.background))s.background=s.lightMode?themePaint("#ffffff"):themePaint("#111111");syncTheme();persist();drawAll()});$('#fullscreen').addEventListener('click',()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen());$('#screenshot').addEventListener('click',exportChartImage);
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(pollTimer);controller?.abort()}else if(state.auto&&!state.historyMode)load()});window.addEventListener('online',()=>{if(state.auto)load()});window.addEventListener('hashchange',()=>{const pkg=location.hash.slice(1);if(['classic','state','orderflow'].includes(pkg))selectPackage(pkg)});const healthTimer=setInterval(()=>{if(!document.hidden&&window.__kwantyActive!==false)updateHealth()},1000);window.addEventListener('kwanty-theme',()=>{syncTheme();renderSummary();drawAll()});window.addEventListener('kwanty-activity',()=>{if(window.__kwantyActive===false){invalidateRequests();stopReplay();cancelAnimationFrame(paintFrame);paintFrame=null;}else if(state.auto&&!state.historyMode)load();});window.addEventListener('pagehide',()=>{invalidateRequests();stopReplay();clearTimeout(noticeTimer);clearInterval(healthTimer);cancelAnimationFrame(paintFrame);observer?.disconnect();});
-async function init(){try{const [c,status]=await Promise.all([api('catalog'),api('status')]);catalog=c;state.authenticated=status.authenticated;const select=$('#ticker');select.replaceChildren();for(const ticker of c.tickers){const option=el('option','',ticker);option.value=ticker;select.append(option)}if(!c.tickers.includes(state.ticker))state.ticker='SPX';syncShell();buildCharts();await load()}catch(error){state.sourceError=error.message;renderChartEmpty();updateHealth();}}
+async function init(){try{const [c,status]=await Promise.all([api('catalog'),api('status')]);catalog=c;state.authenticated=status.authenticated;const select=$('#ticker');select.replaceChildren();for(const ticker of c.tickers){const option=el('option','',ticker);option.value=ticker;select.append(option)}if(!c.tickers.includes(state.ticker))state.ticker='SPX';masterBootReady=true;syncShell();buildCharts();await load()}catch(error){state.sourceError=error.message;masterReplayError=error.message;renderChartEmpty();updateHealth();reportMasterReplayStatus();}}
 const tickerShortcuts=mountTickerShortcuts({root:$('#tickerFavourites'),select:$('#ticker'),preferences:window.__kwantSelectPreferences,currentTicker:()=>state.ticker,isVisible:()=>state.package==='orderflow'||state.package==='state',reselect:()=>state.package==='state'&&chartControlTargets().some(panel=>panel.ticker!==state.ticker)});
 $('.chart-top-controls').insertBefore($('#addStateChart'),$('#toggleSidebar'));$('#addStateChart').addEventListener('click',addStateChart);
 $('#chartPanels').addEventListener('scroll',drawAll,{passive:true});
@@ -369,13 +382,44 @@ function syncStateDrawingActivity(){if(state.package==='state')for(const c of ch
 window.addEventListener('kwanty-activity',syncStateDrawingActivity);
 document.addEventListener('visibilitychange',syncStateDrawingActivity);
 function masterSelectionKey(){return JSON.stringify([masterReplay?.sessionDate,identity(),state.package==='state'?state.statePanels.map(p=>[p.ticker,statePanelCategory(p)]):state.package==='orderflow'?state.panels.map(panelTicker):null]);}
-async function applyMasterReplay(){
+function syncMasterReplayControls(){
+ const button=$('#workspaceReplay');if(!button)return;
+ button.hidden=!standaloneReplayControls;button.setAttribute('aria-pressed',String(Boolean(masterReplay)));
+ button.title=masterReplay?'Exit synchronized workspace replay':'Choose a replay session and time';
+ button.querySelector('span').textContent=masterReplay?'Exit':'Replay';
+ button.querySelector('svg').innerHTML=masterReplay?'<path d="m18 6-12 12M6 6l12 12"/>':'<path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-3v2a3 3 0 0 1-3 3H3"/>';
+}
+function reportMasterReplayStatus(){
  if(!masterReplay)return;
+ let pending=masterReplayLoading||!masterBootReady,error=masterReplayError||state.historyError;
+ const selections=state.package==='state'?state.statePanels.map(panel=>({panel,source:stateSources.get(panel)})):
+  state.package==='orderflow'?state.panels.map(panel=>({panel,source:orderSources.get(panelTicker(panel))})):[{panel:null,source:{records:state.records,envelope:state.envelope,error:state.sourceError}}];
+ for(const {panel,source}of selections){
+  pending=pending||!!source?.pending||priceState(panel).loading;
+  if(source?.error)error||=source.error;
+  if(!source?.records?.length&&!pending)error||='No recorded options history for this selection.';
+  const row=beforeMaster(source?.records||[]).at(-1);
+  if(!row)continue; // A real gap before the first observation is not future data.
+  if(state.package!=='orderflow'){
+   profileReplay.select(source?.envelope,row);
+   if(profileReplay.error(source?.envelope,row))error||='Recorded profile page could not be loaded.';
+   else pending=pending||!profileReplay.ready(source?.envelope,row);
+  }else{
+   const status=overlays.frameReady(panel,masterReplay.timestampMs/1000);
+   error||=status.error;pending=pending||status.pending;
+  }
+ }
+ const retry=$('#workspaceReplayRetry');if(retry){retry.hidden=!error;retry.title=error||'Retry recorded session';}
+ parent.postMessage({type:'kwanty-replay-status',sessionDate:masterReplay.sessionDate,timestampMs:masterReplay.timestampMs,ready:!pending&&!error,error:error||null,stepMs:candleIntervalFor(activePanel(),settings())},location.origin);
+}
+async function applyMasterReplay(){
+ if(!masterReplay||!masterBootReady)return;
  const key=masterSelectionKey();if(key===masterReplayKey)return;
  masterReplayKey=key;const serial=++masterReplaySerial,date=masterReplay.sessionDate;
+ masterReplayLoading=true;masterReplayError=null;
  invalidateRequests();stopReplay();state.auto=false;state.historyMode=date;state.replayIndex=null;
- state.records=[];state.payload=null;state.envelope=null;state.historyError=null;views.clear();
- $('#historyDate').value=date;$('#historyDate').disabled=true;$('#clearHistory').disabled=true;$('#playbar').hidden=true;syncPrices();renderChartEmpty();drawAll();
+ state.records=[];state.payload=null;state.envelope=null;state.historyError=null;state.sourceError=null;views.clear();
+ $('#historyDate').value=date;$('#historyDate').disabled=true;$('#clearHistory').disabled=true;$('#playbar').hidden=true;syncPrices();renderChartEmpty();drawAll();reportMasterReplayStatus();
  try{
   if(state.package==='state')await loadStateHistory(date);
   else if(state.package==='orderflow')await loadOrderflowHistory(date);
@@ -385,15 +429,19 @@ async function applyMasterReplay(){
    if(serial!==masterReplaySerial||!masterReplay||key!==masterSelectionKey())return;
    state.envelope=envelope;state.records=profileHistoryRecords(envelope,{ticker:state.ticker,package:'classic',category:category(),date});state.payload=null;
   }
- }catch(error){if(serial===masterReplaySerial&&error.name!=='AbortError'){state.historyError=error.message;state.sourceError=error.message;}}
- finally{if(serial===masterReplaySerial&&masterReplay){state.auto=false;state.historyMode=date;state.replayIndex=null;$('#loadHistory').disabled=true;syncPrices();syncShell();renderSummary();syncTimeline();drawAll();renderChartEmpty();}}
+ }catch(error){if(serial===masterReplaySerial&&error.name!=='AbortError'){masterReplayError=error.message;state.historyError=error.message;state.sourceError=error.message;}}
+ finally{if(serial===masterReplaySerial&&masterReplay){masterReplayLoading=false;state.auto=false;state.historyMode=date;state.replayIndex=null;$('#loadHistory').disabled=true;syncPrices();syncShell();renderSummary();syncTimeline();drawAll();renderChartEmpty();reportMasterReplayStatus();}}
 }
 window.addEventListener('message',event=>{
  if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='kwantdesk-workspace-replay')return;
  const next=event.data.replay;
  if(next&&(!/^\d{4}-\d{2}-\d{2}$/.test(next.sessionDate)||!Number.isFinite(next.timestampMs)))return;
- const was=masterReplay;masterReplay=next;
- if(next){void applyMasterReplay();renderSummary();drawAll();}
- else if(was){masterReplaySerial++;masterReplayKey=null;$('#playbar').hidden=false;$('#historyDate').disabled=false;$('#clearHistory').disabled=false;$('#loadHistory').disabled=false;resetSelection();}
+ const was=masterReplay;masterReplay=next;syncMasterReplayControls();
+ if(next){void applyMasterReplay();renderSummary();drawAll();reportMasterReplayStatus();}
+ else if(was){masterReplaySerial++;masterReplayKey=null;masterReplayLoading=false;masterReplayError=null;const retry=$('#workspaceReplayRetry');if(retry)retry.hidden=true;$('#historyDate').disabled=false;$('#clearHistory').disabled=false;$('#loadHistory').disabled=false;resetSelection();}
 });
+$('#workspaceReplay')?.addEventListener('click',()=>parent.postMessage({type:'kwanty-replay-request',action:masterReplay?'exit':'open'},location.origin));
+$('#workspaceReplayRetry')?.addEventListener('click',()=>{if(!masterReplay)return;profileReplay.retry();if(state.package==='orderflow')overlays.retryHistory(masterReplay.sessionDate);masterReplayKey=null;masterReplayError=null;if(!masterBootReady)void init();else void applyMasterReplay();});
+syncMasterReplayControls();
+parent.postMessage({type:'kwanty-replay-ready'},location.origin);
 bindTemplates(message,persist);buildCharts();syncPrices();init();

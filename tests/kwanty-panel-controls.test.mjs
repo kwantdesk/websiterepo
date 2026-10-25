@@ -18,7 +18,7 @@ test('per-panel interval/type survive serialization and do not change neighbouri
 test('actual active-panel handlers update only the clicked panel and reuse local price aggregation',()=>{
  const nodes=Object.fromEntries(['#candleInterval','#priceViewMode','#activeChartLabel'].map(id=>[id,{}])),calls=[],settings={spotViewMode:'candles'},panels=[{id:'a',metric:'a'},{id:'b',metric:'b'}];
  let saves=0;
- const context={saved:{},state:{package:'orderflow',panels},settings:()=>settings,prices:{snapshot:interval=>{calls.push(interval);return {candles:[],points:[]};}},selectedPayload:()=>null,$:id=>nodes[id],$$:()=>[],charts:[],ORDERFLOW_METRICS:{a:{label:'GEX'},b:{label:'DEX'}},candleIntervalFor,priceViewFor,linkedViewportUpdates,linkedCursor,projectCursor,intervalLabel:value=>String(value),persist:()=>saves++,syncTimeline(){},drawAll(){}};
+ const context={masterReplay:null,saved:{},state:{package:'orderflow',panels},settings:()=>settings,prices:{snapshot:interval=>{calls.push(interval);return {candles:[],points:[]};}},selectedPayload:()=>null,$:id=>nodes[id],$$:()=>[],charts:[],ORDERFLOW_METRICS:{a:{label:'GEX'},b:{label:'DEX'}},candleIntervalFor,priceViewFor,linkedViewportUpdates,linkedCursor,projectCursor,intervalLabel:value=>String(value),persist:()=>saves++,syncTimeline(){},drawAll(){}};
  context.orderSources={get:()=>({prices:context.prices,records:[]})};context.stopReplay=()=>{};context.syncShell=()=>context.syncActiveChartControls();
  vm.runInNewContext(app.slice(app.indexOf('let activePanelId='),app.indexOf('function syncPrices()')),context);
  context.activateChart({panel:panels[1]});context.changeCandleInterval(300000);context.priceState();

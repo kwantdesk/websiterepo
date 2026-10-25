@@ -107,6 +107,12 @@ export function createPriceSeries({maxBars = 6_000, maxQuotes = 3_000} = {}) {
       return [...result.values()].map(candle => ({...candle,
         partial: candle.sourceBars !== intervalMs / MINUTE || !!candle.observationOnly}));
     },
+    replayCacheKey(cutoffTime){
+      if(cutoffTime===Infinity)return 'live';
+      let lo=0,hi=quotes.length;
+      while(lo<hi){const mid=(lo+hi)>>>1;if(quotes[mid].time<=cutoffTime)lo=mid+1;else hi=mid;}
+      return `${Math.floor(cutoffTime/MINUTE)}:${lo}`;
+    },
     quoteLine({cutoffTime = Infinity} = {}) { return quotes.filter(point => point.time <= cutoffTime).map(point => ({...point})); },
     get current() { return latest ? {...latest} : null; },
     get identity() { return {...scope}; },

@@ -83,7 +83,7 @@ test('Master clock wiring, non-live tool controls and ledger isolation remain co
 test('Embedded source replay is authenticated, causal and snapshot cadence is completed-minute', () => {
   const kwanty = fs.readFileSync(new URL('../public/kwanty-app/app.js', import.meta.url), 'utf8');
   const data = fs.readFileSync(new URL('../public/gex-data-app/app.js', import.meta.url), 'utf8');
-  assert.match(kwanty, /row.timestamp\*1000<=masterReplay.timestampMs/);
+  assert.match(kwanty, /replayPrefix\(rows,masterReplay.timestampMs\)/);
   assert.match(kwanty, /cutoffTime=masterReplay\?\.timestampMs/);
   assert.match(kwanty, /masterReplaySerial/);
   assert.match(kwanty, /event.origin!==location.origin\|\|event.source!==parent/);

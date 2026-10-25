@@ -34,15 +34,15 @@ test("snapshot banner is removed rather than regenerated in any KWANTY surface",
   assert.doesNotMatch(app,/actual snapshot|no full-session history loaded|no invented curve|history-limited/);
   assert.match(app,/document\.getElementById\('historyNotice'\)\?\.remove\(\)/);
   assert.doesNotMatch(app,/\$\('#historyNotice'\)/);
-  assert.match(read("public/kwanty-app/index.html"),/app\.js\?v=21/);
-  assert.match(read("src/components/kwanty/KwantyWorkspace.tsx"),/params\.set\("v", "13"\)/);
-  assert.match(read("src/components/options-flow/OptionsFlowToolPanel.tsx"),/v: source === "kwanty" \? "14" : "5"/);
+  assert.match(read("public/kwanty-app/index.html"),/app\.js\?v=22/);
+  assert.match(read("src/components/kwanty/KwantyWorkspace.tsx"),/params\.set\("v", "14"\)/);
+  assert.match(read("src/components/options-flow/OptionsFlowToolPanel.tsx"),/v: source === "kwanty" \? "15" : "5"/);
 });
 
 test("automatic provider failure retains error and backoff without a toast",async()=>{
   const state={historyMode:false,auto:true,sourceError:null,envelope:null};
   const delays=[],renders=[],failure=Object.assign(Error("UPSTREAM_ENTITLEMENT_REQUIRED"),{status:403});
-  const context={state,requestId:0,modeGeneration:0,pollTimer:null,controller:null,
+  const context={masterReplay:null,state,requestId:0,modeGeneration:0,pollTimer:null,controller:null,
     document:{hidden:false},window:{__kwantyActive:true},AbortController,
     clearTimeout(){},setTimeout:(_,delay)=>delays.push(delay),identity:()=>"QQQ/orderflow",
     api:async()=>{throw failure;},query:()=>"ticker=QQQ",updateHealth:()=>renders.push("health"),renderChartEmpty:()=>renders.push("chart"),
@@ -53,7 +53,7 @@ test("automatic provider failure retains error and backoff without a toast",asyn
   assert.deepEqual(delays,[60000]);assert.deepEqual(renders,["health","chart"]);
   const init=app.slice(app.indexOf("async function init()"),app.indexOf("\nbindTemplates("));
   assert.doesNotMatch(init,/message\(/);
-  assert.match(init,/state\.sourceError=error.message;renderChartEmpty\(\);updateHealth\(\)/);
+  assert.match(init,/state\.sourceError=error.message;masterReplayError=error.message;renderChartEmpty\(\);updateHealth\(\);reportMasterReplayStatus\(\)/);
 });
 
 test("missing-data safeguards and actual source timestamps remain",()=>{

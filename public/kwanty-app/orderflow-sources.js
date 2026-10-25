@@ -1,4 +1,4 @@
-import {createPriceController} from './price-runtime.js?v=2';
+import {createPriceController} from './price-runtime.js?v=3';
 import {mergeSnapshots,profileHistoryRecords,sourceDate} from './models.js?v=2';
 import {trimSnapshotRows} from './retention.js';
 // Completed provider sessions contain ~23,400 one-second observations. The

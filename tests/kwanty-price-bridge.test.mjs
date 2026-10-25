@@ -7,6 +7,18 @@ const time = Date.UTC(2026, 9, 20, 14);
 const candle = {timestamp: time, open: 100, high: 105, low: 98, close: 101};
 const response = () => new Response(JSON.stringify({candles: [candle]}), {status: 200});
 
+test('historical converted futures use date-bounded CME history, coalesce and never substitute live cash',async()=>{
+ const requests=[];let release;const host=createKwantyPricePool({fetch:async(url,options)=>{requests.push({url,options});await new Promise(resolve=>release=resolve);return response();},frontMonth:async()=>{throw Error('Must not resolve a live contract');},snapshot:async()=>{throw Error('Must not use live snapshots');}});
+ try{const a=host.priceHistory('NQ_NDX','2026-10-20'),b=host.priceHistory('NQ','2026-10-20');assert.equal(requests.length,1);release();assert.equal((await a).length,1);assert.deepEqual(await b,await host.priceHistory('NQ','2026-10-20'));assert.equal(requests.length,1);
+ const url=new URL(requests[0].url,'https://fixture.invalid');assert.equal(url.pathname,'/api/cme-history');assert.equal(url.searchParams.get('symbol'),'NQ.c.0');assert.equal(url.searchParams.get('exec'),'0');assert.equal(Number(url.searchParams.get('from')),Date.parse('2026-10-19T22:00:00Z'));assert.equal(Number(url.searchParams.get('to')),Date.parse('2026-10-20T21:00:00Z'));assert.ok(requests[0].options.signal);
+ }finally{host.dispose();}
+});
+
+test('unavailable historical futures fail closed without a cash or latest-session fallback',async()=>{
+ let calls=0;const host=createKwantyPricePool({fetch:async()=>{calls++;return new Response('{}',{status:503});},frontMonth:async()=>{throw Error('Must not request live');}});
+ try{await assert.rejects(host.priceHistory('ES_SPX','2026-10-20'),/Historical futures price/);await assert.rejects(host.priceHistory('ES_SPX','2026-10-20'),/Historical futures price/);assert.equal(calls,2);}finally{host.dispose();}
+});
+
 test('underlying symbols remain distinct and converted profiles use explicit futures roots', () => {
   assert.equal(kwantyPriceSymbol('QQQ'), 'QQQ');
   assert.equal(kwantyPriceSymbol('NDX'), 'NDX');
@@ -94,7 +106,6 @@ test('rejected front-month lookup recovers instead of poisoning the shared contr
     await assert.rejects(host.priceHistory('NQ'), /fixture/);
     assert.equal((await host.priceHistory('NQ')).length, 1);
     assert.equal(calls, 2);
-    await assert.rejects(host.priceHistory('NQ', '2026-10-19'), /Historical futures/);
   } finally {host.dispose();}
 });
 

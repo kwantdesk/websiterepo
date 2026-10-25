@@ -10,6 +10,9 @@ button,select,input,dialog{border-radius:3px!important;background:var(--site-sur
 button.selected,button[aria-pressed=true]{color:var(--site-primary)!important;border-color:var(--site-primary)!important}
 aside,dialog,.dialog-head,.side-heading{background:var(--site-panel)!important;color:var(--site-foreground)!important}
 #themeToggle{display:none!important}[data-kwanty-diagnostic]{display:none!important}
+#legacyReplayControls,#workspaceReplay[hidden],#workspaceReplayRetry[hidden]{display:none!important}
+header>nav .workspace-replay-trigger{display:inline-flex;align-items:center;justify-content:center;gap:6px;line-height:1;font-weight:600;border-color:transparent;background:transparent!important}
+header>nav .workspace-replay-trigger svg{flex-shrink:0;stroke-width:2}
 .bot-template-actions{display:flex;gap:5px;margin-left:auto}.bot-template-actions button{font-size:11px}
 #chartEmpty{inset:0;top:0;width:100%;height:100%;padding:0}
 @media(max-width:700px){header{flex-wrap:nowrap;gap:4px;padding:4px}header nav{gap:3px}.bot-template-actions{overflow:auto;min-width:0}}
