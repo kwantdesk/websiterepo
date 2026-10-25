@@ -857,7 +857,7 @@ export async function fetchInstitutionalFrontMonth(
     const contractSymbol = String(payload.contractSymbol || payload.symbol || "").toUpperCase();
     const resolvedRoot = String(payload.root || "").toUpperCase();
     const exchange = normalizeExchange(payload.exchange);
-    if (!contractSymbol || futuresContractRoot(contractSymbol) !== resolvedRoot || !exchange) return null;
+    if (!contractSymbol || resolvedRoot !== root || futuresContractRoot(contractSymbol) !== resolvedRoot || !exchange) return null;
     return {
       root: resolvedRoot,
       contractSymbol,

@@ -3,6 +3,7 @@
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 import { subscribeMarketIndexSnapshot } from "@/lib/marketIndexLiveClient";
 import { fetchInstitutionalFrontMonth, fetchInstitutionalSnapshot, type InstitutionalTrade } from "@/lib/institutionalMarketData";
+import { watchFrontMonth } from "@/lib/frontMonthWatcher";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
 import { cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 
@@ -39,22 +40,23 @@ type PriceDependencies = {
   snapshot: typeof fetchInstitutionalSnapshot;
   subscribeIndices: typeof subscribeMarketIndexSnapshot;
   subscribeTrades: typeof subscribeRithmicIndicatorTrades;
+  watchContracts: typeof watchFrontMonth;
 };
 /** Exported for deterministic transport/lifecycle tests; production uses shared clients. */
 export function createKwantyPricePool(overrides: Partial<PriceDependencies> = {}) {
   const dependencies = {fetch: (...args: Parameters<typeof fetch>) => fetch(...args), frontMonth: fetchInstitutionalFrontMonth,
     snapshot: fetchInstitutionalSnapshot, subscribeIndices: subscribeMarketIndexSnapshot,
-    subscribeTrades: subscribeRithmicIndicatorTrades, ...overrides};
+    subscribeTrades: subscribeRithmicIndicatorTrades, watchContracts: watchFrontMonth, ...overrides};
   const history = new Map<string, { until: number; bucket: number; value: KwantyPriceBar[] }>();
   const pending = new Map<string, Promise<KwantyPriceBar[]>>();
-  const contracts = new Map<string, Promise<string>>();
+  const contracts = new Map<string, {until:number;job:Promise<string>}>();
   const disposers = new Set<() => void>();
   const controllers = new Set<AbortController>();
   let disposed = false;
   const contract = (symbol: string) => {
-    let job = contracts.get(symbol);
-    if (!job) { job = dependencies.frontMonth(symbol).then(result => { if (!result) throw new Error("Futures price data unavailable."); return result.contractSymbol; }).catch(error => { contracts.delete(symbol); throw error; }); contracts.set(symbol, job); }
-    return job;
+    let cached = contracts.get(symbol);
+    if (!cached || cached.until<=Date.now()) { const job = dependencies.frontMonth(symbol).then(result => { if (!result) throw new Error("Futures price data unavailable."); return result.contractSymbol; }).catch(error => { contracts.delete(symbol); throw error; }); cached={until:Date.now()+600_000,job};contracts.set(symbol,cached); }
+    return cached.job;
   };
   const priceHistory = async (input: string, sessionDate?: string) => {
     if (disposed) throw new Error("Price workspace is closed.");
@@ -111,15 +113,17 @@ export function createKwantyPricePool(overrides: Partial<PriceDependencies> = {}
   const subscribePrice = (input: string, listener: (frame: KwantyPriceFrame) => void, onError?: (error: Error) => void) => {
     if (disposed) throw new Error("Price workspace is closed.");
     const symbol = kwantyPriceSymbol(input);
-    let closed = false, stop: (() => void) | undefined;
+    let closed = false, stop: (() => void) | undefined,stopContracts:(()=>void)|undefined,generation=0;
     const send = (frame: KwantyPriceFrame) => { if (!closed && !disposed) listener(frame); };
-    const end = () => { closed = true; stop?.(); disposers.delete(end); }; disposers.add(end);
+    const end = () => { closed = true;generation++;stopContracts?.();stop?.(); disposers.delete(end); }; disposers.add(end);
     if (symbol === "ES" || symbol === "NQ") {
-      void contract(symbol).then(contractSymbol => {
+      const watcher=dependencies.watchContracts(()=>contract(symbol),contractSymbol => {
         if (closed || disposed) return;
+        stop?.();const serial=++generation;history.delete(`${symbol}:latest`);
         const candles = new Map<number, KwantyPriceBar>();
         let continuous = false, firstCompleteMinute: number | null = null, lastTimestamp = -Infinity;
         const ingest = (records: InstitutionalTrade[], seed = false) => {
+          if(closed||disposed||serial!==generation)return;
           if (seed) { candles.clear(); firstCompleteMinute = null; lastTimestamp = -Infinity; }
           const changed = new Map<number, KwantyPriceFrame>();
           for (const record of records) {
@@ -145,7 +149,7 @@ export function createKwantyPricePool(overrides: Partial<PriceDependencies> = {}
           onContinuity: value => { continuous = value === "continuous"; if (!continuous) {firstCompleteMinute = null; candles.clear();} },
           onStatus: status => {if (status !== "connected") {continuous = false; firstCompleteMinute = null; candles.clear();}},
         });
-      }).catch(error => { if (!closed) onError?.(error); });
+      },error => { if (!closed) onError?.(error); });stopContracts=()=>watcher.dispose();
     } else stop = dependencies.subscribeIndices(symbol, snapshot => send({ ...snapshot, candle: bars([snapshot.candle])[0] }), onError);
     return end;
   };

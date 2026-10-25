@@ -1,5 +1,7 @@
 "use client";
 
+import ReplayWatchlistNumbers, { type ReplayWatchlistLoader } from "@/components/ReplayWatchlistNumbers";
+
 import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -190,6 +192,7 @@ import {
   healClosedCandleIntegrity,
   enrichCandlesWithInstitutionalTrades,
   fetchInstitutionalFrontMonth,
+  futuresContractRoot,
   fetchInstitutionalSnapshot,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
@@ -1532,7 +1535,7 @@ const FUTURES_CONTRACT_ROLLOVER_EVENT = "kwantdesk:futures-contract-rollover";
 function rememberResolvedCmeContract(symbol: string, contractSymbol: string) {
   const root = displayCmeSymbol(symbol).toUpperCase();
   const normalized = contractSymbol.trim().toUpperCase();
-  if (!root || !normalized || !contractMatchesChartInstrument(root, normalized)) return null;
+  if (!root || !normalized || futuresContractRoot(normalized)!==root) return null;
   const previous = resolvedCmeContracts.get(root) ?? null;
   resolvedCmeContracts.set(root, normalized);
   return previous;
@@ -4104,6 +4107,27 @@ async function fetchWorkspaceCandles(
   );
   const data = await readMarketDataJson<WorkspaceHistoryPayload>(res);
   return sanitizeCandles((data.candles || []) as Candle[], symbol, timeframe);
+}
+
+const loadReplayWatchlistHistory: ReplayWatchlistLoader = async (row, fromMs, toMs, key) => {
+  if (row.broker === "Databento" || row.broker === "Market Index") {
+    return fetchWorkspaceCandles(row.symbol,"1m",row.broker,"1D",2500,false,undefined,false,false,2,{fromMs,toMs,key:`watchlist-${key}`});
+  }
+  // Other brokers must have genuinely recorded, date-bounded history. Never
+  // use fetchWorkspaceCandles' current-price/provider fallback for replay.
+  const {response,payload}=await fetchJsonWithBudget<WorkspaceHistoryPayload>(
+    `/api/market-data/history?broker=${encodeURIComponent(row.broker)}&symbol=${encodeURIComponent(row.symbol)}&timeframe=1m&from=${fromMs}&to=${toMs}&limit=2500`,20_000);
+  if(!response.ok||!payload.configured||!Array.isArray(payload.candles))return [];
+  return sanitizeCandles(payload.candles as Candle[],row.symbol,"1m");
+};
+function readReplayWatchlistPrints(row: Pick<WatchlistItem,"symbol"|"broker">,startMs:number,endMs:number) {
+  if(row.broker!=="Databento")return [];
+  let selected: InstitutionalTrade[]=[];
+  for(const[key,tape]of workspaceExecutionTape) {
+    if(!key.startsWith(`${row.symbol}::`)||!key.includes("::flow::replay-")||!tape.length)continue;
+    if(tape[0].timestamp<endMs&&tape[tape.length-1].timestamp>=startMs)selected=tape;
+  }
+  return selected;
 }
 
 async function warmDatabentoChartHistory(symbol: string, timeframe: string) {
@@ -7641,7 +7665,7 @@ function WorkspaceChartPaneComponent({
   }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
-    if (pane.broker !== "Databento" || !isContinuousFuture(pane.symbol)) return;
+    if (replayActive || pane.broker !== "Databento" || !isContinuousFuture(pane.symbol)) return;
     let cancelled = false;
     let timer: number | null = null;
 
@@ -7688,7 +7712,7 @@ function WorkspaceChartPaneComponent({
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onVisible);
     };
-  }, [pane.broker, pane.symbol]);
+  }, [pane.broker, pane.symbol, replayActive]);
 
   useEffect(() => {
     if (!gammaEnvironmentIndicator || !directGammaEnvironmentConversion) {
@@ -13817,6 +13841,12 @@ export default function KwantifyWorkspace({
         }
 
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
+        if(usingDatabentoFeed && price.contractSymbol){
+          const root=futuresContractRoot(displayName)??displayCmeSymbol(displayName).toUpperCase();
+          if(futuresContractRoot(price.contractSymbol)!==root)return;
+          const previous=isContinuousFuture(displayName)?rememberResolvedCmeContract(displayName,price.contractSymbol):null;
+          if(previous&&previous!==price.contractSymbol)window.dispatchEvent(new CustomEvent(FUTURES_CONTRACT_ROLLOVER_EVENT,{detail:{root,previous,contractSymbol:price.contractSymbol}}));
+        }
         const previousItem = watchlistRef.current.find(
           (item) => item.broker === activeChartBrokerLabel && item.symbol === displayName,
         );
@@ -13868,7 +13898,8 @@ export default function KwantifyWorkspace({
             if (!nextPrice) return item;
             const prevMid = item.lastPrice || nextPrice.mid;
             const moveRatio = prevMid > 0 ? Math.abs(nextPrice.mid - prevMid) / prevMid : 0;
-            if (moveRatio > 0.2) return item;
+            const contractChanged=Boolean(item.contractSymbol&&nextPrice.contractSymbol&&item.contractSymbol!==nextPrice.contractSymbol);
+            if (moveRatio > 0.2 && !contractChanged) return item;
             const openPrice = item.openPrice || nextPrice.mid;
             const nextBroker = nextPrice.broker || activeChartBrokerLabel;
             const nextContractSymbol = nextPrice.contractSymbol || item.contractSymbol;
@@ -15835,13 +15866,13 @@ export default function KwantifyWorkspace({
           <span className="flex items-center gap-1.5">
             {watchlistFlags[row.key] && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: watchlistFlags[row.key] }} />}
             <span className="block truncate text-[9px] uppercase tracking-wider text-muted">{displayMarketSource(row.broker)}</span>
-            {row.delayed && (
+            {row.delayed && !(chartSurfaceActive && gexVueReplay.active) && (
               <AlertTriangle className="h-3 w-3 shrink-0 text-orange-300/90" aria-label="Delayed market data" />
             )}
           </span>
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="block truncate text-[13px] font-medium text-foreground">{displayCmeSymbol(row.symbol)}</span>
-            {row.contractSymbol ? <span className="shrink-0 font-mono text-[9px] text-muted">{row.contractSymbol}</span> : null}
+            {row.contractSymbol && !(chartSurfaceActive && gexVueReplay.active) ? <span className="shrink-0 font-mono text-[9px] text-muted">{row.contractSymbol}</span> : null}
             {isFavorite && (
               <span
                 role="button"
@@ -15865,7 +15896,9 @@ export default function KwantifyWorkspace({
             )}
           </span>
         </span>
-        <LiveWatchlistNumbers row={row} />
+        {chartSurfaceActive && gexVueReplay.active
+          ? <ReplayWatchlistNumbers row={row} sessionDate={gexVueReplay.sessionDate} timestampMs={gexVueReplay.timestampMs} load={loadReplayWatchlistHistory} readPrints={readReplayWatchlistPrints} format={formatPrice} />
+          : <LiveWatchlistNumbers row={row} />}
       </button>
     );
   };
@@ -21562,6 +21595,7 @@ export default function KwantifyWorkspace({
             >
               <div className="flex h-14 min-w-[340px] shrink-0 items-center justify-between border-b border-border px-4">
                 <button className="flex items-center gap-1 text-[14px] font-semibold">Watchlist <ChevronDown className="h-3.5 w-3.5 text-muted" /></button>
+                {chartSurfaceActive && gexVueReplay.active ? <span className="text-[9px] font-semibold uppercase tracking-wider text-primary" title="Recorded prices follow the replay clock. Hover a price for its source time and resolution.">Replay</span> : null}
                 <div className="flex items-center gap-1">
                   <button onClick={() => setShowInstrumentSearch(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
                   <button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Grid3X3 className="h-3.5 w-3.5" /></button>
@@ -22869,7 +22903,7 @@ export default function KwantifyWorkspace({
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate text-[14px] font-medium text-foreground">{displayCmeSymbol(entry.symbol)}</span>
-                          {currentCmeContract(entry.symbol) ? (
+                          {currentCmeContract(entry.symbol) && !(chartSurfaceActive && gexVueReplay.active) ? (
                             <span className="shrink-0 font-mono text-[9px] text-muted">{currentCmeContract(entry.symbol)}</span>
                           ) : null}
                         </div>
