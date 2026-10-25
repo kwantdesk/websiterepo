@@ -5,7 +5,7 @@ import {stateSourceKey,statePanelCategory} from './state-panels.js?v=1';
 
 // One price owner per ticker, one retained positioning source per selector.
 // The existing workspace coordinator calls refresh; panels never own timers.
-export function createStateSources({api,history,subscribe,onChange,now=Date.now,createPrices=createPriceController}){
+export function createStateSources({api,history,subscribe,onChange,now=Date.now,createPrices=createPriceController,packageName='state'}){
  const sources=new Map(),prices=new Map();let options={active:false,date:null,live:true},disposed=false;
  const notify=(kind='snapshot')=>{if(!disposed)onChange(kind);};
  const remove=key=>{sources.get(key)?.controller?.abort();sources.delete(key);};
@@ -27,11 +27,11 @@ export function createStateSources({api,history,subscribe,onChange,now=Date.now,
   if(!force&&source.fetched!==null&&now()-source.fetched<(source.error?60000:30000))return;
   source.fetched=now();const controller=new AbortController();source.controller=controller;
   const job=(async()=>{try{
-   const query=new URLSearchParams({ticker:source.ticker,package:'state',category:source.category});if(source.date)query.set('date',source.date);
+   const query=new URLSearchParams({ticker:source.ticker,package:packageName,category:source.category});if(source.date)query.set('date',source.date);
    const envelope=await api((source.date?'history?':'snapshot?')+query,controller.signal);
    if(!current(source)||controller.signal.aborted)return;
    if(envelope.data?.category&&envelope.data.category!==source.category)throw Error('PROFILE_DATA_MISMATCH');
-   const rows=source.date?profileHistoryRecords(envelope,{ticker:source.ticker,package:'state',category:source.category,date:source.date}):mergeSnapshots([],[envelope.data],source.ticker);
+   const rows=source.date?profileHistoryRecords(envelope,{ticker:source.ticker,package:packageName,category:source.category,date:source.date}):mergeSnapshots([],[envelope.data],source.ticker);
    if(!rows.length)throw Error('INSTRUMENT_DATA_MISMATCH');
    if(rows.some(row=>row.category&&row.category!==source.category))throw Error('PROFILE_DATA_MISMATCH');
    const merged=mergeSnapshots(source.records,rows,source.ticker);

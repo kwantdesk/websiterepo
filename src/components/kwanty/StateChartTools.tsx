@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChartDrawLayer, { type DrawCandle } from "@/components/ChartDrawLayer";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
+import KwantyIndicators from "./KwantyIndicators";
 import { DrawingToolIcon } from "@/components/ChartDrawToolbar";
 import { DRAW_TOOL_GROUPS, DRAW_TOOL_LIST, DRAW_TOOL_SPECS, createDrawing, normalizeDrawings, type Drawing, type DrawToolId, type DrawPoint } from "@/lib/chartDrawTools";
 import { fetchInstitutionalFrontMonth, fetchInstitutionalVolumeProfile, isExecutionBackedVolumeProfile, type InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
@@ -133,6 +134,7 @@ function StateTools({ session }: { session: Session }) {
   const styleDrawing = drawings.find(drawing => drawing.id === editing) ?? null;
   const panelWindow = session.element.ownerDocument.defaultView!;
   return <>
+    <KwantyIndicators element={session.element} api={api} getFrame={() => session.frame} subscribe={subscribe} />
     <div className="state-draw-rail" role="toolbar" aria-label={"Drawing tools for " + frame.ticker}>
       {DRAW_TOOL_GROUPS.map(entry => {
         const tools = DRAW_TOOL_LIST.filter(spec => spec.group === entry.id);
@@ -187,6 +189,13 @@ function StateTools({ session }: { session: Session }) {
 }
 
 export function mountStateChartTools(element: HTMLElement, api: StateDrawingApi, dependencies = { frontMonth: fetchInstitutionalFrontMonth, profile: fetchInstitutionalVolumeProfile }): StateDrawingMount {
+  // Reuse the site's actual component stylesheet inside the same-origin canvas
+  // frame; copy links once, not styles or network requests on every paint.
+  const doc = element.ownerDocument;
+  if (doc !== document) for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')) {
+    if ([...doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].some(candidate => candidate.href === link.href)) continue;
+    const copy = doc.createElement("link"); copy.rel = "stylesheet"; copy.href = link.href; doc.head.prepend(copy);
+  }
   const root = createRoot(element);
   let disposed = false, scheduled: number | null = null, key = "", lastCandles: StateDrawingFrame["candles"] | null = null;
   const session: Session = { element, api, dependencies, listeners: new Set(), frame: null!, render: () => {
@@ -196,7 +205,7 @@ export function mountStateChartTools(element: HTMLElement, api: StateDrawingApi,
   return {
     update(frame) {
       if (disposed) return;
-      const nextKey = [frame.ticker, frame.width, frame.height, !!frame.geometry, frame.multiplier, frame.offset, frame.bullish, frame.bearish, frame.lastPrice, frame.active].join(":");
+      const nextKey = [frame.ticker, frame.width, frame.height, !!frame.geometry, frame.multiplier, frame.offset, frame.bullish, frame.bearish, frame.lastPrice, frame.active, frame.candlesVisible].join(":");
       session.frame = frame;
       if (nextKey !== key || frame.candles !== lastCandles) { key = nextKey; lastCandles = frame.candles; session.render(); }
       for (const listener of session.listeners) listener();

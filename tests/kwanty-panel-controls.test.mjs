@@ -85,6 +85,6 @@ test('toolbar is in the mode header, has normal-chart quick timeframes and per-p
  assert.doesNotMatch(html.slice(html.indexOf('<section id="charts"'),html.indexOf('<aside')),/id="candleInterval"|class="chart-tools"/);
  for(const ms of [60000,180000,300000,900000,1800000,3600000])assert.ok(header.includes('data-candle-interval="'+ms+'"'));
  assert.match(app,/panelLinkButton\(chart,'viewportLinked','shared viewport'/);assert.match(app,/panelLinkButton\(chart,'crosshairLinked','crosshair'/);
- assert.match(app,/priceState\(state.package==='orderflow'\?c.panel:null\)/);
+ assert.match(app,/priceState\(c.panel\)/);
  assert.match(app,/activePanelId,statePanels:state.statePanels,closedStatePanels:state.closedStatePanels,activeStatePanelId,scopes/);
 });

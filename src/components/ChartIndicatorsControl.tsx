@@ -682,6 +682,9 @@ type Props = {
   chartSettings: ChartSettings;
   levelControls?: ChartLevelControl[];
   settingsOpenRequest?: { instanceId: string; requestId: number } | null;
+  openRequest?: number;
+  externalAnchor?: HTMLElement | null;
+  unavailableReason?: (indicatorId: string) => string | null;
   onChange: (next: ChartIndicatorInstance[]) => void;
   /**
    * Whether this chart is painting its candles.
@@ -1165,6 +1168,9 @@ export default function ChartIndicatorsControl({
   chartSettings,
   levelControls = [],
   settingsOpenRequest = null,
+  openRequest = 0,
+  externalAnchor = null,
+  unavailableReason,
   onChange,
   candlesVisible = true,
   onToggleCandles,
@@ -1187,6 +1193,7 @@ export default function ChartIndicatorsControl({
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  useEffect(() => { if (openRequest > 0) setOpen(current => !current); }, [openRequest]);
   const [settingsInstanceId, setSettingsInstanceId] = useState<string | null>(null);
   const [candleSettingsOpen, setCandleSettingsOpen] = useState(false);
   /*
@@ -1265,12 +1272,15 @@ export default function ChartIndicatorsControl({
       document.removeEventListener("pointerdown", close, true);
       document.removeEventListener("keydown", escape);
     };
-  }, [open]);
+  }, [open, externalAnchor]);
 
   useEffect(() => {
     if (!open) return;
     const positionMenu = () => {
-      const trigger = rootRef.current?.getBoundingClientRect();
+      const anchor = externalAnchor ?? rootRef.current;
+      const rect = anchor?.getBoundingClientRect();
+      const frame = anchor?.ownerDocument !== document ? anchor?.ownerDocument.defaultView?.frameElement?.getBoundingClientRect() : null;
+      const trigger = rect ? { right: rect.right + (frame?.left ?? 0), bottom: rect.bottom + (frame?.top ?? 0) } : null;
       if (!trigger) return;
       const viewportPadding = 8;
       const width = Math.min(380, window.innerWidth - viewportPadding * 2);
@@ -1290,7 +1300,7 @@ export default function ChartIndicatorsControl({
       window.removeEventListener("resize", positionMenu);
       window.removeEventListener("scroll", positionMenu, true);
     };
-  }, [open]);
+  }, [open, externalAnchor]);
 
   useEffect(() => {
     if (!settingsInstanceId?.startsWith("deep-print-footprint-")) return;
@@ -1696,7 +1706,7 @@ export default function ChartIndicatorsControl({
   const add = (indicatorId: string) => {
     if (!RENDERED_CHART_INDICATOR_IDS.has(indicatorId)) return;
     const definition = CHART_INDICATOR_BY_ID.get(indicatorId);
-    if (!definition || !indicatorCompatibility(definition, instrument, broker).canAdd) return;
+    if (!definition || unavailableReason?.(indicatorId) || !indicatorCompatibility(definition, instrument, broker).canAdd) return;
     // A draw-on profile is a placement tool, not a study that can exist with
     // no anchors. Arm the real fixed-range profile on the active chart. The
     // resulting drawing is what persists and owns its settings/templates.
@@ -2045,9 +2055,10 @@ export default function ChartIndicatorsControl({
                     const favourite = favourites.includes(definition.id);
                     const live = LIVE_CHART_INDICATOR_IDS.has(definition.id) && RENDERED_CHART_INDICATOR_IDS.has(definition.id);
                     const compatibility = indicatorCompatibility(definition, instrument, broker);
-                    const available = live && compatibility.canAdd;
+                    const sourceReason = unavailableReason?.(definition.id);
+                    const available = live && compatibility.canAdd && !sourceReason;
                     return (
-                      <div key={definition.id} title={compatibility.reason} className={`kwant-indicator-library-row group flex items-center border border-transparent hover:border-border hover:bg-surface/55 ${!compatibility.canAdd ? "opacity-60" : ""}`}>
+                      <div key={definition.id} title={sourceReason || compatibility.reason} className={`kwant-indicator-library-row group flex items-center border border-transparent hover:border-border hover:bg-surface/55 ${!compatibility.canAdd || sourceReason ? "opacity-60" : ""}`}>
                         <button
                           type="button"
                           aria-label={`${favourite ? "Unstar" : "Star"} ${definition.name}`}
@@ -2072,7 +2083,7 @@ export default function ChartIndicatorsControl({
                               <span className={`rounded-md border px-1.5 py-0.5 text-[7px] font-medium uppercase tracking-[0.12em] ${compatibility.status === "adapted" ? "border-sky-400/20 bg-sky-400/10 text-sky-300" : "border-border bg-surface text-muted"}`}>{compatibility.label}</span>
                             ) : null}
                           </div>
-                          <div className="kwant-indicator-library-description mt-1 text-[9px] text-muted">{live && !compatibility.canAdd ? compatibility.reason : definition.description}</div>
+                          <div className="kwant-indicator-library-description mt-1 text-[9px] text-muted">{sourceReason || (live && !compatibility.canAdd ? compatibility.reason : definition.description)}</div>
                         </div>
                         <div className="kwant-indicator-library-metadata shrink-0 text-right text-[8px] uppercase tracking-[0.12em] text-muted/70">{definition.category}{definition.subcategory ? ` / ${definition.subcategory}` : ""}</div>
                         <button

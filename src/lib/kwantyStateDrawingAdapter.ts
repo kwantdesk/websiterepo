@@ -12,10 +12,18 @@ export type StateDrawingFrame = {
   multiplier: number; offset: number; interval: number; bullish: string; bearish: string;
   lastPrice?: number | null;
   active?: boolean;
+  replayTimestampMs?: number | null;
+  panelId?: string;
+  indicatorPaneHost?: HTMLElement | null;
+  candlesVisible?: boolean;
 };
 export type StateDrawingApi = {
   read(ticker?: string): Drawing[]; write(drawings: Drawing[], ticker?: string): void; activate(): void;
   zoom(event: { x: number; y: number; deltaY: number; deltaMode: number; ctrlKey: boolean }): void;
+  readIndicators?(ticker: string): import("@/lib/chartIndicatorCatalog").ChartIndicatorInstance[];
+  writeIndicators?(indicators: import("@/lib/chartIndicatorCatalog").ChartIndicatorInstance[], ticker: string): void;
+  reserveIndicatorHeight?(height: number): void;
+  setPriceVisible?(visible: boolean): void;
 };
 export type StateDrawingMount = {
   update(frame: StateDrawingFrame): void; dispose(): void;

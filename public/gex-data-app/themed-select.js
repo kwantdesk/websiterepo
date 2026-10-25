@@ -1,6 +1,7 @@
 // Shared by GEX DATA and KWANTY. Preserve the select data/form contract.
 // No timers or chart-frame work. Dynamically mounted settings are supported.
 export function installThemedSelects(doc = document) {
+  if (!doc.body) { doc.addEventListener('DOMContentLoaded', () => installThemedSelects(doc), {once:true}); return; }
   const controls = new Map();
   let active = null;
   const close = (restore = false) => {

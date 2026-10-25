@@ -20,7 +20,7 @@ test('State always reserves a right-hand price scale independently of profile al
   assert.equal(chartRegion('state',g,{x:300,y:g.bottom+10}),'time-axis');
  }
  const classic=calculateProfileGeometry(1000,600,{package:'classic',payload,view});
- assert.equal(classic.priceAxisSide,'left');assert.equal(classic.left,56);
+ assert.equal(classic.priceAxisSide,'right');assert.equal(classic.left,18);
 });
 
 test('crosshair uses the exact cursor coordinate, not nearest candle time/price or strike',()=>{

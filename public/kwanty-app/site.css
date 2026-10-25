@@ -17,6 +17,8 @@ header>nav .workspace-replay-trigger svg{flex-shrink:0;stroke-width:2}
 #chartEmpty{inset:0;top:0;width:100%;height:100%;padding:0}
 @media(max-width:700px){header{flex-wrap:nowrap;gap:4px;padding:4px}header nav{gap:3px}.bot-template-actions{overflow:auto;min-width:0}}
 
+.workspace-header-actions .bot-template-actions{overflow:visible;flex-shrink:0}.template-overflow{position:relative}.template-overflow summary{cursor:pointer;list-style:none;padding:7px 8px;font-size:10px;font-weight:600;text-transform:uppercase}.template-overflow-menu{position:absolute;right:0;top:100%;min-width:100px;z-index:100;display:flex;flex-direction:column;padding:4px;background:var(--site-panel);border:1px solid var(--site-border);border-radius:8px}
+
 .state-chart-content{position:absolute;inset:32px 0 0;min-height:0}
 .state-chart-content canvas{margin-left:36px;width:calc(100% - 36px);height:100%}
 .state-drawing-host{position:absolute;inset:0;pointer-events:none;z-index:24}
@@ -61,3 +63,26 @@ header>.header-links{display:none}.bot-template-actions{grid-column:3;justify-se
 .state-panel-control>button,.state-panel-control>select{width:100%;margin:3px 0;text-align:left}
 .state-panel-control>button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #addStateChart{flex-shrink:0}
+/* Shared Charts chrome: instrument/timeframes left, modes truly centered. */
+header>nav{grid-column:2;grid-row:1;justify-self:center}
+.chart-top-controls{grid-column:1;grid-row:1;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
+.chart-top-controls>*{flex-shrink:0}
+.chart-top-controls .instrument-trigger{min-width:76px;max-width:140px}
+.workspace-header-actions{grid-column:3;grid-row:1;display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
+.workspace-header-actions .bot-template-actions{display:flex;grid-column:auto;overflow-x:auto;min-width:0}
+.workspace-header-actions button{height:28px;padding:0 8px;font-size:10px;font-weight:600;letter-spacing:.075em;text-transform:uppercase;background:transparent!important;border-color:transparent!important}
+#workspaceLayout{width:70px}
+#addStateChart{display:none!important}
+.kwanty-indicator-panes{position:absolute;left:36px;right:0;bottom:0;height:0;overflow:hidden;pointer-events:auto;z-index:25;background:var(--site-background)}
+#chartPanels{overflow:auto;overscroll-behavior:contain}
+.state-chart-content>canvas{height:100%;flex:none}
+.panel-column-resize{position:absolute;right:-2px;top:30px;bottom:0;width:6px;z-index:28;cursor:col-resize;touch-action:none}
+.panel-column-resize:hover,.panel-column-resize:focus-visible{background:color-mix(in srgb,var(--site-primary) 40%,transparent)}
+#chartPanels:not([data-layout=columns]) .panel-column-resize{display:none}
+:root{--foreground:var(--site-foreground);--primary:var(--site-primary);--surface:var(--site-surface);--chart-background:var(--site-background);--panel:var(--site-panel)}
+#chartPanels[data-layout=columns],#chartPanels[data-layout=grid]{display:grid;grid-template-columns:repeat(var(--workspace-columns,2),minmax(240px,1fr));grid-auto-rows:minmax(220px,1fr);gap:2px;overflow:auto;overscroll-behavior:contain}
+#chartPanels[data-layout=columns]>.panel-divider,#chartPanels[data-layout=grid]>.panel-divider{display:none}
+#chartPanels[data-layout=columns]>.chart-panel,#chartPanels[data-layout=grid]>.chart-panel{min-width:0;min-height:220px}
+.panel-drag-handle{cursor:grab;touch-action:none}.chart-panel[data-drag-over=true]{outline:2px solid var(--site-primary);outline-offset:-2px}
+@media(max-width:1200px){header{height:72px;min-height:72px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-rows:34px 34px;gap:0 6px}header>nav{grid-column:2;grid-row:1}.workspace-header-actions{grid-column:3;grid-row:1}.chart-top-controls{grid-column:1/-1;grid-row:2;justify-content:flex-start;overflow-x:auto}main{height:calc(100vh - 72px)}}
+@media(max-width:600px){header{grid-template-columns:auto minmax(0,1fr)}header>nav{grid-column:1;justify-self:start}.workspace-header-actions{grid-column:2}.workspace-header-actions .bot-template-actions{display:none}.chart-top-controls{grid-column:1/-1}.timeframe-buttons{display:flex!important}#chartPanels[data-layout=grid]{grid-template-columns:minmax(240px,1fr)}}

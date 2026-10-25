@@ -57,6 +57,18 @@ test('drawing edits stay per ticker/panel, including late old-ticker events, and
  const restored=restoreStatePanels([JSON.parse(JSON.stringify({id:'saved',...panel}))],{ticker:'SPX',settings:{}})[0];
  assert.deepEqual(restored.drawingsByTicker.QQQ,JSON.parse(JSON.stringify(qqq)));
 });
+test('indicator settings persist per panel/ticker and reserve real chart space',async()=>{
+ let api,saves=0,redraws=0;
+ const panel={ticker:'QQQ',settings:{}},chart={panel,toolsHost:{},wrap:{style:{}},content:{style:{}},indicatorPaneHost:{style:{}}};
+ const mounted=attachStateDrawingTools(chart,{mount:(_host,value)=>{api=value;return{update(){},dispose(){}}},persist(){saves++},activate(){},zoom(){},redraw(){redraws++}});
+ await mounted.ready;
+ const studies=[{instanceId:'ma',indicatorId:'moving-average',enabled:true,settings:{length:5}}];
+ api.writeIndicators(studies,'QQQ');assert.deepEqual(api.readIndicators('QQQ'),studies);assert.deepEqual(api.readIndicators('SPX'),[]);
+ api.reserveIndicatorHeight(120);assert.equal(chart.content.style.bottom,'120px');assert.equal(chart.indicatorPaneHost.style.height,'120px');
+ api.setPriceVisible(false);assert.equal(panel.settings.show_spot_history.display,false);assert.equal(redraws,1);assert.equal(saves,2);
+ mounted.dispose();api.writeIndicators([],'QQQ');assert.deepEqual(panel.indicatorsByTicker.QQQ,studies);
+});
+
 test('real reported volume survives series aggregation; missing volume is never inferred',()=>{
  const series=createPriceSeries();series.reset({symbol:'QQQ'});
  const candle=i=>({time:start+i*60000,open:100,high:102,low:99,close:101,volume:10+i});

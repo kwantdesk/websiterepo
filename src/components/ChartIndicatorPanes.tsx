@@ -731,6 +731,7 @@ function ChartIndicatorPaneSurface({
                 event.preventDefault();
                 event.stopPropagation();
                 const handle = event.currentTarget;
+                const paneWindow = handle.ownerDocument.defaultView ?? window;
                 const pointerId = event.pointerId;
                 handle.setPointerCapture(pointerId);
                 const startY = event.clientY;
@@ -741,14 +742,14 @@ function ChartIndicatorPaneSurface({
                 };
                 const finish = (upEvent: PointerEvent) => {
                   if (upEvent.pointerId !== pointerId) return;
-                  window.removeEventListener("pointermove", move);
-                  window.removeEventListener("pointerup", finish);
-                  window.removeEventListener("pointercancel", finish);
+                  paneWindow.removeEventListener("pointermove", move);
+                  paneWindow.removeEventListener("pointerup", finish);
+                  paneWindow.removeEventListener("pointercancel", finish);
                   if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
                 };
-                window.addEventListener("pointermove", move);
-                window.addEventListener("pointerup", finish);
-                window.addEventListener("pointercancel", finish);
+                paneWindow.addEventListener("pointermove", move);
+                paneWindow.addEventListener("pointerup", finish);
+                paneWindow.addEventListener("pointercancel", finish);
               }}
             >
               <GripHorizontal className="h-3 w-3" />
@@ -834,6 +835,7 @@ function ChartIndicatorPaneSurface({
               event.stopPropagation();
               if (event.button !== 0 || fixedVolumePane) return;
               const target = event.currentTarget;
+              const paneWindow = target.ownerDocument.defaultView ?? window;
               const pointerId = event.pointerId;
               const startY = event.clientY;
               const startPan = verticalPanByPane[group.key] ?? 0;
@@ -864,15 +866,15 @@ function ChartIndicatorPaneSurface({
               };
               const finish = (upEvent: PointerEvent) => {
                 if (upEvent.pointerId !== pointerId) return;
-                window.removeEventListener("pointermove", move);
-                window.removeEventListener("pointerup", finish);
-                window.removeEventListener("pointercancel", finish);
+                paneWindow.removeEventListener("pointermove", move);
+                paneWindow.removeEventListener("pointerup", finish);
+                paneWindow.removeEventListener("pointercancel", finish);
                 if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
                 setDraggingPane((current) => current === group.key ? null : current);
               };
-              window.addEventListener("pointermove", move, { passive: false });
-              window.addEventListener("pointerup", finish);
-              window.addEventListener("pointercancel", finish);
+              paneWindow.addEventListener("pointermove", move, { passive: false });
+              paneWindow.addEventListener("pointerup", finish);
+              paneWindow.addEventListener("pointercancel", finish);
             }}
             onPointerMove={(event) => {
               if (!group.tooltipPoints?.length || draggingPane === group.key) return;
@@ -1470,6 +1472,7 @@ function ChartIndicatorPanes({
   const beginPaneDrag = (key: string, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     event.stopPropagation();
+    const paneWindow = event.currentTarget.ownerDocument.defaultView ?? window;
     const originClientX = event.clientX;
     const originClientY = event.clientY;
     const currentDock = paneLayout[key]?.dock ?? "bottom";
@@ -1489,18 +1492,18 @@ function ChartIndicatorPanes({
       });
     };
     const finish = (upEvent: PointerEvent) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
+      paneWindow.removeEventListener("pointermove", move);
+      paneWindow.removeEventListener("pointerup", finish);
+      paneWindow.removeEventListener("pointercancel", finish);
       if (moved) {
         const dock = dockForPoint(upEvent.clientX, upEvent.clientY, currentDock);
         onMovePane(key, dock, targetIndexFor(dock, upEvent.clientX, upEvent.clientY, key));
       }
       setDrag(null);
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
+    paneWindow.addEventListener("pointermove", move);
+    paneWindow.addEventListener("pointerup", finish);
+    paneWindow.addEventListener("pointercancel", finish);
   };
 
   const renderSurface = (
