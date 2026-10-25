@@ -65,3 +65,24 @@ test('expiry closes a live upstream and releases capacity; excess sockets fail c
  assert.equal(await response.text(),'data: actual\n\n');
  assert.equal((await (await fetch(base+'/health')).json()).active,0);
 });
+
+test('exact signed replay reads stream JSON directly from the VPS without disclosing credentials',async t=>{
+ const seen=[];
+ const upstream=http.createServer((req,res)=>{
+  seen.push({url:req.url,auth:req.headers.authorization,accept:req.headers.accept});
+  res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({frames:[{actual:true}]}));
+ });
+ upstream.listen(0,'127.0.0.1');await once(upstream,'listening');
+ const edge=createBrowserStreamServer({key,now:()=>now,upstream:'http://127.0.0.1:'+upstream.address().port});
+ edge.listen(0,'127.0.0.1');await once(edge,'listening');
+ t.after(()=>{edge.closeAllConnections();edge.close();upstream.closeAllConnections();upstream.close();});
+ for(const path of ['/v1/heatmap/replay','/v1/heatmap/replay/chunk']){
+  const search='?symbol=NQ&tradingDate=2026-10-23&chunk=1792764000000';
+  const ticket=make({path,search});
+  const response=await fetch('http://127.0.0.1:'+edge.address().port+'/browser-stream?ticket='+ticket,{headers:{Origin:origin}});
+  assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/application\/json/);
+  assert.equal(response.headers.get('x-kwantdesk-market-transport'),'direct-vps');
+  assert.deepEqual(await response.json(),{frames:[{actual:true}]});
+  assert.deepEqual(seen.at(-1),{url:path+search,auth:'Bearer '+key,accept:'application/json'});
+ }
+});

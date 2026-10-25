@@ -337,6 +337,7 @@ class DepthForgeApp {
     $('resetSettings').addEventListener('click', () => this.#resetSettings());
     window.addEventListener('message', event => {
       if (event.origin !== window.location.origin) return;
+      if (event.source !== window.parent) return;
       if (event.data?.type === 'kwantdesk:liquidity-map-trading') {
         if (event.source !== window.parent) return;
         this.tradingIntent = event.data;
@@ -822,13 +823,7 @@ class DepthForgeApp {
     // archive pack (built on demand) instead of resuming the live stream —
     // the feed stays stopped, so setSymbol above did not reconnect it.
     if (this.replay.active) {
-      this.sourceMode = 'replay';
-      this.playing = false;
-      this.replay.manifest = null;
-      this.replay.chunks = new Map();
-      this.replay.appliedThroughMs = 0;
-      this.#postReplayStatus('loading');
-      void this.#syncReplay();
+      this.#enterReplay();
     }
   }
 
@@ -1157,6 +1152,7 @@ class DepthForgeApp {
   }
 
   #setLiveStatus(status) {
+    if (this.replay.active) return;
     this.liveStatus = { ...this.liveStatus, ...status };
     if (status.contractSymbol) this.currentContractSymbol = status.contractSymbol;
     if (this.symbolLoadActive) {
@@ -1174,7 +1170,7 @@ class DepthForgeApp {
   #postReplayStatus(state, detail = '') {
     if (window.parent === window) return;
     window.parent.postMessage(
-      { type: 'kwantdesk:liquidity-map-replay-status', state, detail, symbol: this.symbol },
+      { type: 'kwantdesk:liquidity-map-replay-status', state, detail, symbol: this.symbol, tradingDate: this.replay.tradingDate },
       window.location.origin,
     );
   }
@@ -1186,32 +1182,75 @@ class DepthForgeApp {
     }
     const tradingDate = String(data.tradingDate || '');
     const clockMs = Number(data.timestampMs) || 0;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || clockMs <= 0) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || !Number.isFinite(clockMs) || clockMs <= 0) return;
     const dateChanged = this.replay.tradingDate !== tradingDate;
+    const rewound = this.replay.active && clockMs < this.replay.clockMs;
     this.replay.tradingDate = tradingDate;
     this.replay.clockMs = clockMs;
     if (!this.replay.active || dateChanged) this.#enterReplay();
-    else void this.#syncReplay();
+    else {
+      // Remove future columns immediately, before any earlier chunk can load.
+      if (rewound) {
+        this.replay.appliedThroughMs = 0;
+        this.#resetReplayBook();
+        this.#postReplayStatus('loading');
+      }
+      void this.#syncReplay();
+    }
   }
 
-  #enterReplay() {
-    clearTimeout(this.replay.retryTimer);
-    this.replay.active = true;
-    this.replay.manifest = null;
-    this.replay.chunks = new Map();
-    this.replay.appliedThroughMs = 0;
-    this.replay.syncing = false;
-    this.replay.pending = false;
-    this.liveFeed.stop();
-    this.sourceMode = 'replay';
+  #resetReplayBook() {
     this.depthEngine.reset();
     this.history = this.depthEngine.frames;
     this.tape = [];
+    this.cvdHistory = [];
+    this.cvdTradingDate = '';
     this.viewEnd = 0;
     this.eventCount = 0;
     this.indicatorAnalysis = null;
     this.indicatorAnalysisKey = '';
     this.indicatorTradeRevision = 0;
+    // The renderer skips empty history; explicitly erase its last picture so
+    // a rewind cannot keep future pixels/axes/bubbles while an older chunk loads.
+    for (const canvas of [this.renderer.canvas, this.renderer.cvdCanvas]) {
+      const context = canvas?.getContext('2d');
+      if (!context) continue;
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.restore();
+    }
+    this.renderer.layout = null;
+    this.renderer.cameraCenterTick = null;
+    this.renderer.endInteraction();
+    this.#renderTape();
+    this.requestRender();
+  }
+
+  #postReplayReady(session) {
+    const last = Number(this.history.at(-1)?.timestamp) || 0;
+    if (!last || session.clockMs - last > Math.max(10_000, session.manifest.frameMs * 5)) {
+      this.#resetReplayBook();
+      this.#postReplayStatus('gap', 'No recorded depth at the selected time.');
+      return;
+    }
+    this.#postReplayStatus('ready', session.manifest.gaps ? `archive contains ${session.manifest.gaps} gap/drop markers` : '');
+  }
+
+  #enterReplay() {
+    clearTimeout(this.replay.retryTimer);
+    this.replay.abort?.abort();
+    // The object is the request generation. A replaced session can never
+    // write into, unlock, or report an error against its successor.
+    this.replay = {
+      active: true, tradingDate: this.replay.tradingDate, clockMs: this.replay.clockMs,
+      manifest: null, chunks: new Map(), appliedThroughMs: 0,
+      syncing: false, pending: false, retryTimer: null, retryAt: 0,
+      abort: new AbortController(), symbol: this.symbol,
+    };
+    this.liveFeed.stop();
+    this.sourceMode = 'replay';
+    this.#resetReplayBook();
     this.atLive = true;
     this.playing = false;
     this.#updateSymbolUi();
@@ -1223,6 +1262,7 @@ class DepthForgeApp {
   #exitReplay() {
     if (!this.replay.active) return;
     clearTimeout(this.replay.retryTimer);
+    this.replay.abort?.abort();
     this.replay = {
       active: false,
       tradingDate: '',
@@ -1235,14 +1275,7 @@ class DepthForgeApp {
       retryTimer: null,
     };
     this.sourceMode = 'connecting';
-    this.depthEngine.reset();
-    this.history = this.depthEngine.frames;
-    this.tape = [];
-    this.viewEnd = 0;
-    this.eventCount = 0;
-    this.indicatorAnalysis = null;
-    this.indicatorAnalysisKey = '';
-    this.indicatorTradeRevision = 0;
+    this.#resetReplayBook();
     this.atLive = true;
     this.playing = true;
     this.liveFeed.start();
@@ -1251,137 +1284,165 @@ class DepthForgeApp {
   }
 
   async #syncReplay() {
-    if (!this.replay.active) return;
-    if (this.replay.syncing) {
-      this.replay.pending = true;
+    const session = this.replay;
+    if (!session.active || Date.now() < session.retryAt) return;
+    if (session.syncing) {
+      session.pending = true;
       return;
     }
-    this.replay.syncing = true;
+    session.syncing = true;
     try {
-      const symbol = this.symbol;
-      const tradingDate = this.replay.tradingDate;
-      if (!this.replay.manifest) {
+      const { symbol, tradingDate } = session;
+      if (!session.manifest) {
         const query = new URLSearchParams({ symbol, tradingDate });
         const response = await fetch(
           `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay?${query}`,
-          { cache: 'no-store', headers: { Accept: 'application/json' } },
+          { cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]) },
         );
         const body = await response.json().catch(() => null);
-        if (!this.replay.active || this.symbol !== symbol || this.replay.tradingDate !== tradingDate) return;
+        if (this.replay !== session || !session.active) return;
         if (!response.ok) {
-          this.#postReplayStatus('unavailable', body?.error || 'No recorded session archive.');
-          return;
+          throw new Error(body?.error || 'No recorded session archive.');
         }
         if (body?.building) {
           // The one-time pack build for a full session takes minutes. Report
           // progress honestly and check back rather than pretending.
           this.#postReplayStatus('building', `${Number(body.frames || 0).toLocaleString()} frames prepared`);
-          clearTimeout(this.replay.retryTimer);
-          this.replay.retryTimer = setTimeout(() => {
-            if (this.replay.active) void this.#syncReplay();
-          }, 5_000);
+          this.#retryReplay(session);
           return;
         }
         if (!body?.manifest) {
-          this.#postReplayStatus('unavailable', body?.error || 'Replay pack unavailable.');
-          return;
+          throw new Error(body?.error || 'Replay pack unavailable.');
         }
-        this.replay.manifest = body.manifest;
+        const manifest = body.manifest;
+        if (manifest.tradingDate !== tradingDate || manifest.root !== symbol
+          || !Number.isFinite(manifest.frameMs) || manifest.frameMs <= 0
+          || !Array.isArray(manifest.chunks) || !manifest.chunks.length
+          || manifest.chunks.some(chunk => !Number.isFinite(chunk.startMs) || !Number.isFinite(chunk.endMs)
+            || chunk.endMs <= chunk.startMs || !Number.isInteger(chunk.frames) || chunk.frames < 1)) {
+          throw new Error('Recorded session identity or index is invalid.');
+        }
+        session.manifest = manifest;
       }
-      await this.#applyReplayWindow();
-    } catch {
-      if (this.replay.active) this.#postReplayStatus('unavailable', 'Replay data could not be loaded.');
+      await this.#applyReplayWindow(session);
+    } catch (error) {
+      if (this.replay === session && session.active) {
+        this.#postReplayStatus('unavailable', error?.message || 'Replay data could not be loaded.');
+        this.#retryReplay(session, 30_000);
+      }
     } finally {
-      this.replay.syncing = false;
-      if (this.replay.pending) {
-        this.replay.pending = false;
+      session.syncing = false;
+      if (this.replay === session && session.pending) {
+        session.pending = false;
         void this.#syncReplay();
       }
     }
   }
 
-  async #fetchReplayChunk(startMs) {
-    const cached = this.replay.chunks.get(startMs);
+  #retryReplay(session, delayMs = 5_000) {
+    session.retryAt = Date.now() + delayMs;
+    clearTimeout(session.retryTimer);
+    session.retryTimer = setTimeout(() => {
+      if (this.replay !== session || !session.active) return;
+      session.retryAt = 0;
+      void this.#syncReplay();
+    }, delayMs);
+  }
+
+  async #fetchReplayChunk(startMs, session) {
+    const cached = session.chunks.get(startMs);
     if (cached) return cached;
     const query = new URLSearchParams({
-      symbol: this.symbol,
-      tradingDate: this.replay.tradingDate,
+      symbol: session.symbol,
+      tradingDate: session.tradingDate,
       chunk: String(startMs),
     });
     const response = await fetch(
       `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay/chunk?${query}`,
-      { cache: 'no-store', headers: { Accept: 'application/json' } },
+      { cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]) },
     );
-    if (!response.ok) return null;
+    if (!response.ok) throw new Error('A recorded liquidity chunk could not be loaded.');
     const body = await response.json().catch(() => null);
+    if (this.replay !== session || !session.active) return null;
     const frames = Array.isArray(body?.frames) ? body.frames : null;
-    if (!frames) return null;
-    this.replay.chunks.set(startMs, frames);
+    const indexed = session.manifest.chunks.find(chunk => chunk.startMs === startMs);
+    if (!frames || body.chunk?.startMs !== startMs || frames.length !== indexed?.frames
+      || frames.some(row => !Number.isFinite(row?.snapshot?.timestamp)
+        || row.snapshot.timestamp < indexed.startMs || row.snapshot.timestamp >= indexed.endMs
+        || row.snapshot.root !== session.symbol || row.snapshot.bookValid !== true
+        || row.snapshot.fullDepth !== true || row.snapshot.readOnly !== true || !isFullDepthSource(row.snapshot.source)
+        || !Array.isArray(row.snapshot.bids) || !row.snapshot.bids.length
+        || !Array.isArray(row.snapshot.asks) || !row.snapshot.asks.length)) {
+      throw new Error('Recorded liquidity chunk is incomplete or belongs to another instrument.');
+    }
+    session.chunks.set(startMs, frames);
     // Hold only the window around the clock; a whole session of packed books
     // is exactly the heap pattern that used to freeze embedded maps.
-    if (this.replay.chunks.size > 4) {
-      const keys = [...this.replay.chunks.keys()].sort((a, b) => a - b);
+    if (session.chunks.size > 4) {
+      const keys = [...session.chunks.keys()].sort((a, b) => a - b);
       for (const key of keys) {
-        if (this.replay.chunks.size <= 4) break;
-        if (key !== startMs) this.replay.chunks.delete(key);
+        if (session.chunks.size <= 4) break;
+        if (key !== startMs) session.chunks.delete(key);
       }
     }
     return frames;
   }
 
-  async #applyReplayWindow() {
-    const manifest = this.replay.manifest;
+  async #applyReplayWindow(session) {
+    const manifest = session.manifest;
     if (!manifest || !Array.isArray(manifest.chunks) || !manifest.chunks.length) {
       this.#postReplayStatus('unavailable', 'The replay pack holds no frames.');
       return;
     }
-    const clockMs = this.replay.clockMs;
+    const clockMs = session.clockMs;
     const frameMs = Number(manifest.frameMs) || 2_000;
     const windowStartMs = clockMs - MAX_HISTORY * frameMs;
     const wanted = manifest.chunks.filter(chunk => chunk.endMs > windowStartMs && chunk.startMs <= clockMs);
-    const scrubbedBack = clockMs < this.replay.appliedThroughMs;
+    const rebuild = !session.appliedThroughMs || session.appliedThroughMs <= windowStartMs;
     const frames = [];
     for (const chunk of wanted) {
-      const rows = await this.#fetchReplayChunk(chunk.startMs);
-      if (!this.replay.active || this.replay.clockMs !== clockMs) return;
-      if (!rows) continue;
+      const rows = await this.#fetchReplayChunk(chunk.startMs, session);
+      if (this.replay !== session || !session.active || session.clockMs !== clockMs) return;
+      if (!rows) throw new Error('Recorded liquidity chunk is unavailable.');
       for (const row of rows) {
         const timestamp = Number(row?.snapshot?.timestamp) || 0;
         if (timestamp <= 0 || timestamp > clockMs || timestamp <= windowStartMs) continue;
-        if (!scrubbedBack && timestamp <= this.replay.appliedThroughMs) continue;
+        if (!rebuild && timestamp <= session.appliedThroughMs) continue;
         frames.push(row);
       }
     }
-    if (scrubbedBack) {
+    if (rebuild) {
       // series-style appends cannot remove columns; rebuild the bounded
       // window so scrubbing backwards shows the true earlier book.
-      this.depthEngine.reset();
-      this.history = this.depthEngine.frames;
-      this.tape = [];
-      this.indicatorAnalysis = null;
-      this.indicatorAnalysisKey = '';
-      this.indicatorTradeRevision = 0;
+      this.#resetReplayBook();
     } else if (!frames.length) {
-      if (!this.history.length) this.#postReplayStatus('ready', 'Waiting for the first recorded frame in range.');
+      session.appliedThroughMs = clockMs;
+      this.#postReplayReady(session);
       return;
     }
     frames.sort((left, right) => Number(left.snapshot.timestamp) - Number(right.snapshot.timestamp));
     for (const row of frames) {
       const snapshot = normalizeLiveSnapshot(row.snapshot);
-      if (!snapshot) continue;
+      if (!snapshot) throw new Error('Recorded liquidity frame has no valid two-sided book.');
+      snapshot.trades = snapshot.trades.filter(trade => Number.isFinite(trade.timestamp) && trade.timestamp <= snapshot.timestamp && trade.timestamp <= clockMs);
       this.depthEngine.append(snapshot);
+      // Recorded scalar observations only; never carry over today's live CVD
+      // seed or invent an intra-snapshot path/OHLC extremum.
+      this.cvdHistory.push({ timestamp: snapshot.timestamp, value: snapshot.cvd,
+        open: snapshot.cvd, high: snapshot.cvd, low: snapshot.cvd, close: snapshot.cvd });
+      if (this.cvdHistory.length > MAX_HISTORY) this.cvdHistory.shift();
       if (snapshot.trades.length) {
         this.indicatorTradeRevision += 1;
         this.#appendTrades(snapshot.trades);
       }
       this.eventCount += snapshot.eventsSince || 1;
     }
-    this.replay.appliedThroughMs = clockMs;
+    session.appliedThroughMs = clockMs;
     this.viewEnd = Math.max(0, this.history.length - 1);
     this.atLive = true;
     if (this.settings.autoCenter) this.view.centerTick = null;
     this.renderRequested = true;
-    this.#postReplayStatus('ready');
+    this.#postReplayReady(session);
   }
 
   #ingestDepthSnapshot(snapshot, metadata = {}) {
@@ -1491,6 +1552,7 @@ class DepthForgeApp {
   }
 
   #replaceCvdHistory(points, tradingDate, asOfMs = 0) {
+    if (this.replay.active) return;
     const nextTradingDate = String(tradingDate || '');
     this.cvdHistory = mergeLiveCvdHistory(this.cvdHistory, points, {
       sameSession: Boolean(this.cvdTradingDate && this.cvdTradingDate === nextTradingDate),
@@ -1882,6 +1944,7 @@ class DepthForgeApp {
   }
 
   togglePlayback() {
+    if (this.replay.active) return;
     this.playing = !this.playing;
     if (this.sourceMode === 'live' && !this.playing) this.atLive = false;
     this.accumulator = 0;
@@ -1901,7 +1964,7 @@ class DepthForgeApp {
   goLive() {
     this.atLive = true;
     this.viewEnd = this.history.length - 1;
-    this.playing = true;
+    this.playing = !this.replay.active;
     this.accumulator = 0;
     if (this.settings.autoCenter) this.view.centerTick = null;
     this.#updatePlaybackUi();

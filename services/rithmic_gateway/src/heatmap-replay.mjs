@@ -1,4 +1,7 @@
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { once } from "node:events";
+import { pipeline } from "node:stream/promises";
+import { isMainThread, Worker } from "node:worker_threads";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
@@ -29,7 +32,7 @@ const TEMPLATE_DEPTH_SNAPSHOT = 116;
 const TEMPLATE_DEPTH_SNAPSHOT_END = 161;
 const TEMPLATE_DEPTH_UPDATE = 160;
 
-const PACK_VERSION = 2;
+const PACK_VERSION = 3;
 const PACK_FRAME_MS = 2_000;
 const PACK_DEPTH_LEVELS = 320;
 const PACK_TRADE_LIMIT = 256;
@@ -59,17 +62,21 @@ function archiveFileFor(archiveDir, tradingDate, exchange, symbol) {
 // only the root (NQ). Find the day's file for the root when no exact match.
 function resolveArchiveFile(archiveDir, tradingDate, exchange, symbol) {
   const exact = archiveFileFor(archiveDir, tradingDate, exchange, symbol);
-  if (exact) return { path: exact, symbol: String(symbol).toUpperCase() };
   const dayDir = join(archiveDir, tradingDate);
   if (!existsSync(dayDir)) return null;
   const wantedExchange = String(exchange).toUpperCase();
   const root = String(symbol).toUpperCase();
+  if (!/^[A-Z0-9]+$/.test(wantedExchange) || !/^[A-Z0-9]+$/.test(root)) return null;
   const pattern = new RegExp(`^${wantedExchange}-(${root}[FGHJKMNQUVXZ]\\d{1,2})\\.ndjson(\\.gz)?$`);
-  for (const name of readdirSync(dayDir)) {
+  // Root files contain subscription acknowledgements/gap markers, while
+  // actual depth is recorded under the concrete contract. Prefer that book.
+  // If a roll records multiple contracts, use the most-recorded contract and
+  // identify it explicitly in the manifest; never mix two different books.
+  for (const name of readdirSync(dayDir).sort((a, b) => statSync(join(dayDir, b)).size - statSync(join(dayDir, a)).size || a.localeCompare(b))) {
     const match = pattern.exec(name);
     if (match) return { path: join(dayDir, name), symbol: match[1] };
   }
-  return null;
+  return exact ? { path: exact, symbol: root } : null;
 }
 
 // Standalone heatmap frame builder: the same shape the live /v1/heatmap
@@ -221,10 +228,23 @@ export class HeatmapReplayStore {
     if (!archive) {
       return { error: `No recorded session archive for ${exchange}:${symbol} on ${tradingDate}.` };
     }
+    // Replaying GBs of JSON on the gateway's event loop stalls live trading.
+    // One bounded worker at a time; other callers retry the queue normally.
+    if (isMainThread && this.builds.size) return { building: true, queued: true, events: 0, frames: 0 };
     const key = `${tradingDate}:${instrumentBase(exchange, symbol)}`;
     const build = { progress: { events: 0, frames: 0 } };
     this.builds.set(key, build);
-    build.promise = this.#buildPack(tradingDate, exchange, symbol, archive, build.progress)
+    build.promise = (isMainThread ? new Promise((resolve, reject) => {
+      const worker = new Worker(new URL('./heatmap-replay-worker.mjs', import.meta.url), {
+        workerData: { dir: this.dir, tradingDate, exchange, symbol, tickSize: this.tickSizeFor(archive.symbol) },
+        execArgv: [], resourceLimits: { maxOldGenerationSizeMb: 512 },
+      });
+      worker.on('message', message => {
+        for (const key of ['events', 'frames']) if (Number.isFinite(message?.[key])) build.progress[key] = message[key];
+      });
+      worker.once('error', reject);
+      worker.once('exit', code => code === 0 ? resolve() : reject(new Error(`Replay worker exited ${code}`)));
+    }) : this.#buildPack(tradingDate, exchange, symbol, archive, build.progress))
       .catch((error) => {
         this.log(`[heatmap-replay] build failed for ${key}: ${error?.message || error}`);
       })
@@ -268,21 +288,22 @@ export class HeatmapReplayStore {
     let gaps = 0;
     let lastFrameMarketMs = 0;
     let lastFrameSequence = 0;
+    let awaitingResnapshot = false;
 
     const openChunk = (frameTimestamp) => {
       const startMs = Math.floor(frameTimestamp / CHUNK_MS) * CHUNK_MS;
       const file = `${base}.chunk-${startMs}.ndjson.gz`;
       const gzip = createGzip({ level: 6 });
-      gzip.pipe(createWriteStream(join(dir, `${file}.partial`)));
-      currentChunk = { startMs, endMs: startMs + CHUNK_MS, file, frames: 0, stream: gzip };
+      const done = pipeline(gzip, createWriteStream(join(dir, `${file}.partial`)));
+      void done.catch(() => {}); // observed below before publishing the index
+      currentChunk = { startMs, endMs: startMs + CHUNK_MS, file, frames: 0, stream: gzip, done };
       return currentChunk;
     };
     const closeChunk = async () => {
       if (!currentChunk) return;
-      const { stream, file, ...meta } = currentChunk;
-      await new Promise((resolve) => {
-        stream.end(() => resolve());
-      });
+      const { stream, done, file, ...meta } = currentChunk;
+      stream.end();
+      await done; // destination is complete, not merely the gzip's input side
       await rename(join(dir, `${file}.partial`), join(dir, file));
       chunks.push({ ...meta, file });
       currentChunk = null;
@@ -293,7 +314,7 @@ export class HeatmapReplayStore {
         afterSequence: lastFrameSequence,
         tradeLimit: PACK_TRADE_LIMIT,
       });
-      if (!snapshot || !snapshot.bookValid) return;
+      if (awaitingResnapshot || !snapshot || !snapshot.bookValid) return;
       // A one-sided ladder mid-build is not a market state worth replaying.
       if (!snapshot.bids.length || !snapshot.asks.length) return;
       const frame = replayFrame(snapshot, tick, lastFrameSequence);
@@ -304,7 +325,7 @@ export class HeatmapReplayStore {
         await closeChunk();
         openChunk(marketMs);
       }
-      currentChunk.stream.write(`${JSON.stringify(frame)}\n`);
+      if (!currentChunk.stream.write(`${JSON.stringify(frame)}\n`)) await once(currentChunk.stream, 'drain');
       if (typeof currentChunk.stream.flush === "function" && currentChunk.frames % 64 === 0) {
         currentChunk.stream.flush(zlibConstants.Z_SYNC_FLUSH);
       }
@@ -327,6 +348,9 @@ export class HeatmapReplayStore {
         }
         if (record.type === "GAP" || record.type === "DROPPED") {
           gaps += 1;
+          book.resetDepth(exchange, archive.symbol);
+          lastFrameMarketMs = 0;
+          awaitingResnapshot = true;
           continue;
         }
         const payload = record.payload;
@@ -336,8 +360,12 @@ export class HeatmapReplayStore {
           case TEMPLATE_BBO: book.applyBbo(payload); break;
           case TEMPLATE_ORDER_BOOK: book.applyOrderBook(payload); break;
           case TEMPLATE_DEPTH_SNAPSHOT:
-          case TEMPLATE_DEPTH_SNAPSHOT_END: book.applyDepthSnapshot(payload); break;
-          case TEMPLATE_DEPTH_UPDATE: book.applyDepthUpdate(payload); break;
+          case TEMPLATE_DEPTH_SNAPSHOT_END:
+            if (book.applyDepthSnapshot(payload)?.snapshotComplete) awaitingResnapshot = false;
+            break;
+          case TEMPLATE_DEPTH_UPDATE:
+            if (!awaitingResnapshot) book.applyDepthUpdate(payload);
+            break;
           default: continue;
         }
         progress.events += 1;

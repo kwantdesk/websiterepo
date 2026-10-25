@@ -3,7 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { gzipSync } from "node:zlib";
+import { gzipSync, gunzipSync } from "node:zlib";
+import { readFileSync } from "node:fs";
 
 import { HeatmapReplayStore } from "../src/heatmap-replay.mjs";
 import { chicagoTradingDate } from "../src/trading-session.mjs";
@@ -125,5 +126,37 @@ test("second manifest request returns the cached pack without rebuilding", async
   await builtManifest(store);
   const again = await store.manifestOrBuild(TRADING_DATE, "CME", "NQ");
   assert.ok(again.manifest, "cached manifest is returned directly");
-  assert.equal(again.manifest.version, 2);
+  assert.equal(again.manifest.version, 3);
 });
+
+test('administrative root files cannot shadow the actual recorded contract', async () => {
+  const dir = syntheticArchive();
+  writeFileSync(join(dir, TRADING_DATE, 'CME-NQ.ndjson.gz'), gzipSync(JSON.stringify({type:'GAP'})+'\n'));
+  const store = new HeatmapReplayStore({dir,tickSizeFor:()=>0.25});
+  await store.manifestOrBuild(TRADING_DATE,'CME','NQ');
+  const manifest = await builtManifest(store);
+  assert.equal(manifest.contractSymbol,'NQU6');
+  assert.ok(manifest.frames >= 5);
+});
+
+test('gap invalidates the book until a complete real resnapshot, never a few incremental updates', async () => {
+  const dir=syntheticArchive(); const file=join(dir,TRADING_DATE,'CME-NQU6.ndjson.gz');
+  const lines=gunzipSync(readFileSync(file)).toString('utf8').trim().split('\n');
+  lines.push(JSON.stringify({type:'GAP'}));
+  lines.push(depthAdd(BASE_SSBOE+30,1,29500,5,'after-gap-bid'));
+  lines.push(depthAdd(BASE_SSBOE+31,2,29500.25,5,'after-gap-ask'));
+  lines.push(tradeLine(BASE_SSBOE+32,29500,1,1,'gap-trade'));
+  for(const side of [1,2]) lines.push(JSON.stringify({templateId:116,payload:{exchange:'CME',symbol:'NQU6',depthSide:side,depthPrice:29500+(side-1)*.25,depthSize:[7],exchangeOrderId:['new'+side],sequenceNumber:'999999',ssboe:BASE_SSBOE+35}}));
+  lines.push(JSON.stringify({templateId:161,payload:{exchange:'CME',symbol:'NQU6',rqHandlerRpCode:['0'],ssboe:BASE_SSBOE+36}}));
+  lines.push(tradeLine(BASE_SSBOE+38,29500,1,1,'recovered'));
+  writeFileSync(file,gzipSync(lines.join('\n')+'\n'));
+  const store=new HeatmapReplayStore({dir,tickSizeFor:()=>.25});
+  await store.manifestOrBuild(TRADING_DATE,'CME','NQ');const manifest=await builtManifest(store);
+  const times=[];
+  for(const indexed of manifest.chunks){const chunk=await store.readChunk(TRADING_DATE,'CME','NQ',indexed.startMs);times.push(...chunk.frames.map(row=>row.snapshot.timestamp));}
+  assert.equal(manifest.gaps,1);
+  assert.ok(times.some(time=>time<(BASE_SSBOE+30)*1000));
+  assert.ok(!times.some(time=>time>=(BASE_SSBOE+30)*1000&&time<(BASE_SSBOE+36)*1000));
+  assert.ok(times.some(time=>time>=(BASE_SSBOE+36)*1000));
+});
+

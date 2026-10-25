@@ -3,7 +3,8 @@ import {createHmac,timingSafeEqual} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 
 const ORIGINS=new Set(['https://www.kwantdesk.com','https://kwantdesk.com']);
-const PATHS=new Set(['/v1/market-data/quotes','/v1/market-data/trades','/v1/market-data/index-stream','/v1/heatmap/stream']);
+const REPLAY_PATHS=new Set(['/v1/heatmap/replay','/v1/heatmap/replay/chunk']);
+const PATHS=new Set(['/v1/market-data/quotes','/v1/market-data/trades','/v1/market-data/index-stream','/v1/heatmap/stream',...REPLAY_PATHS]);
 export function verifyBrowserStreamTicket(ticket,key,origin,now=Date.now()) {
  if(!key||!ORIGINS.has(origin)||typeof ticket!=='string'||ticket.length>8192)throw Error('Invalid lease');
  const parts=ticket.split('.');
@@ -44,13 +45,14 @@ export function createBrowserStreamServer({key,upstream='http://gateway:8793',ma
   active++;accepted++;
   let released=false,expiry,headersDeadline;
   const release=()=>{if(released)return;released=true;active--;clearTimeout(expiry);clearTimeout(headersDeadline);};
+  const contentType=REPLAY_PATHS.has(lease.path)?'application/json':'text/event-stream';
   const relay=http.get({hostname:target.hostname,port:target.port||80,path:lease.path+lease.search,
-   headers:{Authorization:'Bearer '+key,Accept:'text/event-stream'}},upstreamResponse=>{
+   headers:{Authorization:'Bearer '+key,Accept:contentType}},upstreamResponse=>{
    clearTimeout(headersDeadline);
-   if(upstreamResponse.statusCode!==200||!String(upstreamResponse.headers['content-type']).includes('text/event-stream')){
+   if(upstreamResponse.statusCode!==200||!String(upstreamResponse.headers['content-type']).includes(contentType)){
     upstreamResponse.destroy();if(!response.headersSent)fail(502);release();return;
    }
-   response.writeHead(200,{...cors,'Content-Type':'text/event-stream','Cache-Control':'private, no-store, no-transform',
+   response.writeHead(200,{...cors,'Content-Type':contentType,'Cache-Control':'private, no-store, no-transform',
     'X-Accel-Buffering':'no','Referrer-Policy':'no-referrer','X-KwantDesk-Market-Transport':'direct-vps'});
    response.flushHeaders();
    upstreamResponse.on('error',()=>response.destroy());

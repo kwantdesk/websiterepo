@@ -3,6 +3,7 @@ import { createHmac, randomBytes } from "node:crypto";
 export const BROWSER_STREAM_PATHS = new Set([
   "/v1/market-data/quotes", "/v1/market-data/trades",
   "/v1/market-data/index-stream", "/v1/heatmap/stream",
+  "/v1/heatmap/replay", "/v1/heatmap/replay/chunk",
 ]);
 export const BROWSER_STREAM_ORIGINS = new Set([
   "https://www.kwantdesk.com", "https://kwantdesk.com",

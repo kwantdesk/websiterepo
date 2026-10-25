@@ -115,7 +115,10 @@ async function proxy(request: NextRequest, context: RouteContext) {
   // upstream request starts, otherwise the default 30s abort makes quotes
   // disappear and reconnect in a loop at precisely the busiest time of day.
   const isLongLivedStream = path.endsWith("/trades") || path.includes("stream");
-  if (request.method === "GET" && isLongLivedStream) {
+  // Replay packs are generated on the VPS and can exceed function response
+  // limits. Authenticate here, then lease the exact read to the same VPS edge.
+  const isReplayRead = path === "v1/heatmap/replay" || path === "v1/heatmap/replay/chunk";
+  if (request.method === "GET" && (isLongLivedStream || isReplayRead)) {
     const direct = directBrowserStreamResponse(request, `/${path}`, forwarded.search);
     if (direct) return direct;
   }

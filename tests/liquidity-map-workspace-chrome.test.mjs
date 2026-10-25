@@ -15,7 +15,7 @@ test('presentation waits for the final theme stylesheet, with the existing retry
  assert.match(html,/data-liquidity-style="site"[\s\S]*?__kwantLiquidityStyleLoaded\('site'\)/);
  assert.match(html,/__kwantLiquidityStyleFailed\('site', this\)/);
  assert.match(workspace,/loadedStyleSheets.some\(\(href\) => href.includes\("\/heatmap-app\/site.css"\)\)/);
- assert.match(workspace,/index.html\?v=20261024-freeze-recovery/);
+ assert.match(workspace,/index.html\?v=20261025-session-replay/);
 });
 test('toolbar and popup colours follow website tokens, without decorative gradients or hardcoded ink',()=>{
  for(const token of ['--ui-bg','--ui-panel','--ui-surface','--ui-line','--ui-muted','--ui-text','--ui-accent'])assert.ok(css.includes(`var(${token})`));
