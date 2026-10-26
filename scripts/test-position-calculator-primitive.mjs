@@ -50,6 +50,6 @@ assert.match(chart, /const leftPointIndex = basePoints\[0\]\.time <= basePoints\
 assert.match(chart, /basePoints\[leftPointIndex\] = \{ \.\.\.basePoints\[leftPointIndex\], time: nextTime \};/);
 assert.match(chart, /basePoints\[rightPointIndex\] = \{ \.\.\.basePoints\[rightPointIndex\], time: nextTime \};/);
 assert.match(chart, /if \(isTarget\) \{[\s\S]{0,500}price: targetPrice/);
-assert.match(chart, /\} else \{[\s\S]{0,500}price: snapPositionPrice/);
+assert.match(chart, /\} else \{[\s\S]{0,500}price: clampPositionStopPrice/);
 
 console.log("position calculator primitive: 6/6 checks passed");

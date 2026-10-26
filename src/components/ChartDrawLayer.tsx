@@ -1,5 +1,7 @@
 "use client";
 
+import { clampPositionStopPrice, nearestPositionHandle } from "@/lib/positionToolConstraints";
+
 import { fineVolumeProfileWidth } from "@/lib/volumeProfileWidth";
 
 import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -736,7 +738,7 @@ export default function ChartDrawLayer({
       if (price == null && time == null) return;
       const next = origin.map((entry) => ({ ...entry }));
       if (price != null) {
-        if (corner.edge === "stop") next[1].price = price;
+        if (corner.edge === "stop") next[1].price = clampPositionStopPrice(drawing.tool, origin[0].price, price);
         else next[2].price = price;
       }
       if (time != null) {
@@ -957,6 +959,11 @@ export default function ChartDrawLayer({
       const hit = hitTest(point);
       if (hit) {
         onSelect(hit.id);
+        if (hit.positionCorner) {
+          const drawing = drawings.find(d => d.id === hit.id);
+          if (drawing) beginPositionCornerDrag(drawing, hit.positionCorner, event);
+          return;
+        }
         event.currentTarget.setPointerCapture(event.pointerId);
         if (hit.handleIndex != null) dragRef.current = { kind: "handle", id: hit.id, index: hit.handleIndex };
         else {
@@ -1114,12 +1121,17 @@ export default function ChartDrawLayer({
   };
 
   // ---- hit testing ----
-  const hitTest = (point: DrawPoint): { id: string; handleIndex: number | null } | null => {
+  const hitTest = (point: DrawPoint): { id: string; handleIndex: number | null; positionCorner?: { side: "left" | "right"; edge: "stop" | "target" } } | null => {
     const px = toX(point.time); const py = toY(point.price);
     if (px == null || py == null) return null;
     for (let i = drawings.length - 1; i >= 0; i -= 1) {
       const drawing = drawings[i];
       const coords = drawing.points.map((p) => ({ x: toX(p.time), y: toY(p.price) }));
+      if (drawing.tool === "longPosition" || drawing.tool === "shortPosition") {
+        const corners = positionToolScreenGeometry(coords)?.corners ?? [];
+        const corner = nearestPositionHandle([...corners].sort((a, b) => Number(a.edge === "stop") - Number(b.edge === "stop")), px, py);
+        if (corner) return { id: drawing.id, handleIndex: corner.edge === "stop" ? 1 : 2, positionCorner: corner };
+      }
       for (let h = 0; h < coords.length; h += 1) {
         const c = coords[h];
         if (c.x != null && c.y != null && Math.hypot(c.x - px, c.y - py) <= 8) return { id: drawing.id, handleIndex: h };
@@ -1367,7 +1379,7 @@ export default function ChartDrawLayer({
           // risk/reward ratio.
           const lastClose = currentPrice != null && Number.isFinite(currentPrice) ? currentPrice : candles.length ? candles[candles.length - 1].close : null;
           const openPnl = lastClose == null ? null : (long ? lastClose - entryP : entryP - lastClose);
-          const stats = `${openPnl == null ? "" : `Open P&L: ${openPnl >= 0 ? "+" : ""}${openPnl.toFixed(2)} · `}Risk/Reward Ratio: ${rr.toFixed(2)}`;
+          const stats = `${openPnl == null ? "" : `Open P&L: ${openPnl >= 0 ? "+" : ""}${openPnl.toFixed(2)} · `}${risk === 0 ? "Break-even · Risk/Reward Ratio: —" : `Risk/Reward Ratio: ${rr.toFixed(2)}`}`;
           return (
             <g>
               <rect x={xL} y={Math.min(entryY, targetY)} width={xR - xL} height={Math.max(1, Math.abs(targetY - entryY))} fill={green} fillOpacity={0.18} />
@@ -1791,7 +1803,7 @@ export default function ChartDrawLayer({
           (event) => beginEmojiResize(drawing, event),
         )
       : positionCorners
-        ? positionCorners.map((corner) => grabHandle(
+        ? [...positionCorners].sort((a, b) => Number(a.edge === "stop") - Number(b.edge === "stop")).map((corner) => grabHandle(
           `c${corner.id}`,
           corner.x,
           corner.y,

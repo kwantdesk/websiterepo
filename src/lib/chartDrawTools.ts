@@ -1,3 +1,5 @@
+import { clampPositionStopPrice } from "./positionToolConstraints";
+
 /**
  * Brand-new charting-tool subsystem, built from the TradingView tool taxonomy
  * (tool names, groupings, point-geometry, and the standard Fibonacci levels).
@@ -548,10 +550,12 @@ export function updateDrawingHandle(
 ): Drawing {
   const sharesRightEdge = (drawing.tool === "longPosition" || drawing.tool === "shortPosition")
     && (index === 1 || index === 2);
+  const entry = drawing.points[0]?.price;
+  const constrained = index === 1 && entry != null ? { ...point, price: clampPositionStopPrice(drawing.tool, entry, point.price) } : point;
   return {
     ...drawing,
     points: drawing.points.map((existing, i) => {
-      if (i === index) return point;
+      if (i === index) return constrained;
       if (sharesRightEdge && (i === 1 || i === 2)) return { ...existing, time: point.time };
       return existing;
     }),

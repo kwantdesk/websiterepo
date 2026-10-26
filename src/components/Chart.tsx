@@ -1,5 +1,7 @@
 "use client";
 
+import { clampPositionStopPrice, nearestPositionHandle } from "@/lib/positionToolConstraints";
+
 import { clipReplayIndicatorSeries, replayCausalCandles, replayCausalTrades, replaySafeIndicators, replayRetentionMustReset, REPLAY_UNAVAILABLE_INDICATORS } from "@/lib/replayIndicatorSafety";
 import { replayProfileWithinClock } from "@/lib/replayVolumeProfiles";
 import { useReplayFrameState } from "@/lib/useReplayFrameState";
@@ -13259,10 +13261,10 @@ function Chart({
       const risk = Math.max(Math.abs(entryPrice - stopPrice), priceFormat.minMove);
       const targetPrice = drawing.points[2]?.price
         ?? (isLong ? entryPrice + risk * 2 : entryPrice - risk * 2);
-      const stopDistance = Math.max(Math.abs(entryPrice - stopPrice), priceFormat.minMove);
+      const stopDistance = Math.abs(entryPrice - stopPrice);
       const targetDistance = Math.max(Math.abs(targetPrice - entryPrice), priceFormat.minMove);
-      const rewardRisk = targetDistance / stopDistance;
-      const rewardRiskLabel = (rewardRisk >= 10 ? rewardRisk.toFixed(1) : rewardRisk.toFixed(2))
+      const rewardRisk = stopDistance > 0 ? targetDistance / stopDistance : 0;
+      const rewardRiskLabel = stopDistance === 0 ? "—" : (rewardRisk >= 10 ? rewardRisk.toFixed(1) : rewardRisk.toFixed(2))
         .replace(/\.0+$/, "")
         .replace(/(\.\d*[1-9])0+$/, "$1");
       const visualStyle = drawing.positionStyle ?? {};
@@ -13278,7 +13280,7 @@ function Chart({
         showLabels: visualStyle.showLabels ?? positionStyleDefaults.showLabels,
         targetText: `Target ${targetDistance.toFixed(priceFormat.precision)} pts · ${Math.round(targetDistance / priceFormat.minMove)} ticks`,
         stopText: `Stop ${stopDistance.toFixed(priceFormat.precision)} pts · ${Math.round(stopDistance / priceFormat.minMove)} ticks`,
-        rewardRiskText: `1:${rewardRiskLabel} R:R`,
+        rewardRiskText: stopDistance === 0 ? "Break-even · R:R —" : `1:${rewardRiskLabel} R:R`,
         profitColor: visualStyle.targetColor ?? settings.upColor,
         lossColor: visualStyle.stopColor ?? settings.downColor,
         entryLineColor: visualStyle.entryLineColor ?? "#A1A1AA",
@@ -14113,10 +14115,13 @@ function Chart({
     const py = priceToY(point.price);
     if (px == null || py == null) return null;
 
-    if (Math.hypot(px - geometry.targetLeftHandle.x, py - geometry.targetLeftHandle.y) <= 14) return { mode: "positionTargetLeft" as const };
-    if (Math.hypot(px - geometry.targetRightHandle.x, py - geometry.targetRightHandle.y) <= 14) return { mode: "positionTargetRight" as const };
-    if (Math.hypot(px - geometry.stopLeftHandle.x, py - geometry.stopLeftHandle.y) <= 14) return { mode: "positionStopLeft" as const };
-    if (Math.hypot(px - geometry.stopRightHandle.x, py - geometry.stopRightHandle.y) <= 14) return { mode: "positionStopRight" as const };
+    const handle = nearestPositionHandle([
+      { ...geometry.targetLeftHandle, mode: "positionTargetLeft" as const },
+      { ...geometry.targetRightHandle, mode: "positionTargetRight" as const },
+      { ...geometry.stopLeftHandle, mode: "positionStopLeft" as const },
+      { ...geometry.stopRightHandle, mode: "positionStopRight" as const },
+    ], px, py);
+    if (handle) return { mode: handle.mode };
 
     if (
       px >= geometry.bounds.left &&
@@ -14336,9 +14341,7 @@ function Chart({
             } else {
               basePoints[1] = {
                 ...basePoints[1],
-                price: snapPositionPrice(isLong
-                  ? Math.min(point.price, basePoints[0].price - priceFormat.minMove)
-                  : Math.max(point.price, basePoints[0].price + priceFormat.minMove)),
+                price: clampPositionStopPrice(drawing.tool, basePoints[0].price, snapPositionPrice(point.price)),
               };
             }
             return { ...drawing, points: basePoints };
