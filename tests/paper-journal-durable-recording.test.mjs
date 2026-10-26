@@ -64,14 +64,16 @@ test("cloud recording sends new rows once and retries failed batches without ope
     return { ok: success, json: async () => ({ cloud: success }) };
   };
   try {
-    assert.equal(await syncPaperJournalCloud("recording-regression-owner", state), false);
+    const owner = "12345678-1234-4123-8123-123456789012";
+    assert.equal(await syncPaperJournalCloud(owner, state), false);
     success = true;
-    assert.equal(await syncPaperJournalCloud("recording-regression-owner", state), true);
-    assert.equal(await syncPaperJournalCloud("recording-regression-owner", state), true);
+    assert.equal(await syncPaperJournalCloud(owner, state), true);
+    assert.equal(await syncPaperJournalCloud(owner, state), true);
     assert.equal(requests.length, 2);
     assert.equal(requests[1].action, "append-paper");
     assert.equal(requests[1].trades.length, 1);
     assert.equal(await syncPaperJournalCloud("local", state), false);
+    assert.equal(await syncPaperJournalCloud("kwanty", state), false);
     assert.equal(requests.length, 2);
   } finally { globalThis.fetch = original; }
 });

@@ -8,7 +8,9 @@ const pending = new Map<string, Promise<boolean>>();
  * journal edits. Failed batches remain unacknowledged for the next retry.
  */
 export async function syncPaperJournalCloud(owner: string, rawState: JournalState): Promise<boolean> {
-  if (!owner || owner === "local") return false;
+  // The workspace temporarily uses a username while preferences hydrate.
+  // Only the authenticated UUID can match the server's identity boundary.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(owner)) return false;
   const previous = pending.get(owner);
   if (previous) await previous;
   const task = (async () => {

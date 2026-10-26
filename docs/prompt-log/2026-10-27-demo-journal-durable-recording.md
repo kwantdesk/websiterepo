@@ -34,6 +34,15 @@ Validation:
   source-regex integration failures reproduce against unmodified HEAD (16/21),
   confirming no newly failing integration expectations.
 -Scoped ESLint passes; production build checked before release.
+-Release853978bb READY and exact public SHA verified, gateway healthy. After
+  reloading the owner Journal, “20 october” increased from16to17closed records
+  without an agent-placed/closed trade. The new27Oct00:24local NQ stop exit has
+  entry29,374.50,exit29,355.25,size2,P&L-770,duration2m. Existing16rows remain.
+-Request-log verification caught403responses from the temporary username used
+  before preferences finish hydrating. Follow-up skips all non-UUID owners
+  client-side; the authenticated UUID key change triggers the deferred sync.
+  Owner-bound API validation remains in force.41tests/scoped lint pass again.
+-Screenshot: local visualization demo-journal-recording-20261027.png.
 
 Limits: existing cleared/missing fills were not reconstructed from account P&L.
 No actual owner trade was opened/closed to test this, and no account, balance,
