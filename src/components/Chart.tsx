@@ -1,5 +1,7 @@
 "use client";
 
+import { mergeBigContractHistory } from "@/lib/bigContractHistory";
+
 import { clampPositionStopPrice, nearestPositionHandle } from "@/lib/positionToolConstraints";
 
 import { clipReplayIndicatorSeries, replayCausalCandles, replayCausalTrades, replaySafeIndicators, replayRetentionMustReset, REPLAY_UNAVAILABLE_INDICATORS } from "@/lib/replayIndicatorSafety";
@@ -759,6 +761,7 @@ interface ChartProps {
   candles: Candle[];
   marketTrades?: InstitutionalTrade[];
   marketTradesVersion?: number;
+  bigContractHistory?: InstitutionalTrade[];
   trades?: (Trade & { markerVisible?: boolean })[];
   levels?: ChartLevel[];
   zones?: ChartZone[];
@@ -3272,6 +3275,7 @@ function Chart({
   candles: rawCandles,
   marketTrades: rawMarketTrades = EMPTY_CHART_ITEMS,
   marketTradesVersion = 0,
+  bigContractHistory = EMPTY_CHART_ITEMS,
   trades,
   levels,
   zones = EMPTY_CHART_ITEMS,
@@ -5756,7 +5760,7 @@ function Chart({
         : days
     ), 0);
     const bigTradeLimit = bigTradeDays > 0 && intervalMs !== null
-      ? Math.max(1_500, Math.min(20_000, Math.ceil((bigTradeDays * 86_400_000) / intervalMs)))
+      ? Math.max(1_500, Math.min(43_200, Math.ceil((bigTradeDays * 86_400_000) / intervalMs)))
       : 0;
     return indicators.some((instance) =>
       instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow)
@@ -11867,18 +11871,18 @@ function Chart({
     const tapeWindow = replayTimestampMs == null
       ? Math.floor(latestTrade / 5_000)
       : replayTimestampMs;
-    return `${firstTrade}:${historyStart}:${tapeWindow}`;
+    return `${firstTrade}:${historyStart}:${tapeWindow}:${bigContractHistory.length}:${bigContractHistory[0]?.timestamp ?? 0}`;
   })();
   const deepContractEvents = useMemo(() => {
     if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return [];
     const settings = bigTradesIndicator.settings ?? {};
-    const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}`;
+    const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}:${bigContractHistory.length}`;
     const replayReset = replayRetentionMustReset(deepContractReplayClockRef.current, replayTimestampMs);
     deepContractReplayClockRef.current = replayTimestampMs;
     const requiresFullScan = replayReset || deepContractFullScanIdentityRef.current !== fullScanIdentity;
     deepContractFullScanIdentityRef.current = fullScanIdentity;
     const next = calculateDeepContractEvents(
-      requiresFullScan ? indicatorMarketTrades : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
+      requiresFullScan ? mergeBigContractHistory(replayTimestampMs == null ? bigContractHistory : [], indicatorMarketTrades) : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
       settings,
       priceFormat.minMove,
       replayTimestampMs ?? Date.now(),
@@ -11927,14 +11931,14 @@ function Chart({
         return [];
       }
       const settings = bigTradesIndicator.settings ?? {};
-      const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}`;
+      const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}:${bigContractHistory.length}`;
       const replayReset = replayRetentionMustReset(bigTradeReplayClockRef.current, replayTimestampMs);
       bigTradeReplayClockRef.current = replayTimestampMs;
       const requiresFullScan = replayReset || bigTradeFullScanIdentityRef.current !== fullScanIdentity;
       bigTradeFullScanIdentityRef.current = fullScanIdentity;
       const { prints, context } = calculateBigTradePrintsWithContext(
         indicatorCandles,
-        requiresFullScan ? indicatorMarketTrades : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
+        requiresFullScan ? mergeBigContractHistory(replayTimestampMs == null ? bigContractHistory : [], indicatorMarketTrades) : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
         { ...settings, tickSize: priceFormat.minMove },
         replayTimestampMs ?? Date.now(),
       );

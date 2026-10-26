@@ -1,3 +1,4 @@
+import { distributeContractMarkers } from "./bigContractHistory";
 import { exchangeMinuteOfDay } from "@/lib/exchangeClock";
 import type { Candle } from "@/lib/backtester";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
@@ -383,7 +384,7 @@ export function calculateBigTradePrintsWithContext(
     maxOpacity,
   };
   return {
-    prints: qualified.slice(-12_000).map((candidate) => sizeBigTradePrint(candidate, context)),
+    prints: distributeContractMarkers(qualified, 12_000).map((candidate) => sizeBigTradePrint(candidate, context)),
     context,
   };
 }
@@ -523,8 +524,8 @@ export function retainBigTradePrints(
     merged.set(print.id, print);
   }
   const ordered = [...merged.values()].sort((left, right) => left.timestamp - right.timestamp);
-  // Bounded from the NEWEST end, like every other retained series here.
-  return ordered.length > cap ? ordered.slice(-cap) : ordered;
+  // Bound drawings across the selected time span instead of dropping its left edge.
+  return distributeContractMarkers(ordered, cap);
 }
 
 export function admitsBigTrade(context: BigTradeLiveContext, timestamp: number, volume: number) {

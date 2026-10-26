@@ -1,3 +1,4 @@
+import { distributeContractMarkers } from "./bigContractHistory";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
 export type DeepContractEvent = {
@@ -102,7 +103,7 @@ export function calculateDeepContractEvents(
     result.push(candidate);
   }
 
-  return result.filter((event) => event.volume >= minimum).slice(-6_000);
+  return distributeContractMarkers(result.filter((event) => event.volume >= minimum), 6_000);
 }
 
 /** Immediate O(new executions) admission between authoritative full passes. */
@@ -135,5 +136,5 @@ export function retainDeepContractEvents(
   for (const event of previous) if (event.timestamp >= windowStartMs) merged.set(event.id, event);
   for (const event of next) if (event.timestamp >= windowStartMs) merged.set(event.id, event);
   const ordered = [...merged.values()].sort((left, right) => left.timestamp - right.timestamp);
-  return ordered.length > cap ? ordered.slice(-cap) : ordered;
+  return distributeContractMarkers(ordered, cap);
 }

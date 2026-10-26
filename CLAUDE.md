@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-26 — Big Contracts selected history
+
+- Days to load now triggers bounded daily archive requests (two concurrent),
+  preserving historical candidate executions separately from dense live tape.
+  Sparse candidates feed only Big/Deep Contracts; never CVD or replay live data.
+- Multi-day requests no longer lose their left edge to the archive's response
+  ceiling or newest-only drawing limits. Drawing budgets distribute markers
+  across the selected span, preserving both edges; not every low-threshold print
+  is drawn when those budgets are exceeded. Longer periods extend price history
+  without replacing visible candles. Calendar days retain their existing meaning.
+- Recorded archive remains a strongest-executions sample, not a complete raw
+  tape. Missing recording periods/weekends cannot be fabricated. No VPS restart.
+- Receipt: docs/prompt-log/2026-10-26-big-contracts-selected-history.md.
+
 ## 2026-10-24 — Closed candle body integrity; gateway activation pending
 
 - Four failing regressions reproduced initial seeded open changes after close,

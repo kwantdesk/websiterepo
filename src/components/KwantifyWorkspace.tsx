@@ -1,5 +1,7 @@
 "use client";
 
+import { bigContractHistoryWindows } from "@/lib/bigContractHistory";
+
 import ReplayWatchlistNumbers, { type ReplayWatchlistLoader } from "@/components/ReplayWatchlistNumbers";
 
 import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
@@ -5552,6 +5554,7 @@ function WorkspaceChartPaneComponent({
     [plottedCandles, replayActive, replayVisibleCandleCount],
   );
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
+  const [bigContractHistory, setBigContractHistory] = useState<{ symbol: string; records: InstitutionalTrade[] }>({ symbol: "", records: [] });
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
   // The live contract tape is a single bounded mutable array shared by every
   // pane for that instrument. A revision lets React consumers observe an
@@ -5782,6 +5785,46 @@ function WorkspaceChartPaneComponent({
       ? Math.max(days, Math.min(30, Math.max(1, Number(instance.settings?.daysToLoad ?? 1))))
       : days
   ), DEFAULT_CHART_HISTORY_CALENDAR_DAYS);
+  const bigContractDays = indicators.reduce((days, instance) => instance.enabled && instance.indicatorId === "big-trades"
+    ? Math.max(days, Math.min(30, Math.max(1, Number(instance.settings?.daysToLoad ?? 1)))) : days, 0);
+  useEffect(() => {
+    if (!bigContractDays || replayHistoryRange || pane.broker !== "Databento") return;
+    let cancelled = false;
+    const windows = bigContractHistoryWindows(bigContractDays, Math.floor(Date.now() / 60_000) * 60_000);
+    if (bigContractDays > DEFAULT_CHART_HISTORY_CALENDAR_DAYS) {
+      void fetchWorkspaceCandles(pane.symbol, pane.timeframe, pane.broker, period, 500, false, undefined, false, false, bigContractDays)
+        .then((history) => {
+          if (cancelled) return;
+          // Extend the left edge without replacing any already-visible candle.
+          const first = latestCandlesRef.current[0]?.timestamp ?? Infinity;
+          const older = history.filter((bar) => bar.timestamp < first);
+          if (!older.length) return;
+          const extended = [...older, ...latestCandlesRef.current];
+          latestCandlesRef.current = extended;
+          setCandles(extended);
+        }).catch(() => {});
+    }
+    const batches: InstitutionalTrade[][] = [];
+    let cursor = 0;
+    const load = async () => {
+      while (!cancelled && cursor < windows.length) {
+        const index = cursor++;
+        const range = windows[index];
+        try {
+          const result = await fetchWorkspaceHistoricalExecutions(pane.symbol, 1, {
+            ...range, toMs: range.toMs - 1, key: `big-contracts:${range.fromMs}:${range.toMs}`,
+          });
+          if (cancelled) return;
+          batches[index] = result.records;
+          // Preserve archived candidates independently of dense live-tape trimming.
+          setBigContractHistory({ symbol: pane.symbol, records: batches.flat().sort((a, b) => a.timestamp - b.timestamp || a.recordIndex - b.recordIndex) });
+        } catch { /* Preserve successful slices; never fabricate missing executions. */ }
+      }
+    };
+    void load();
+    void load();
+    return () => { cancelled = true; };
+  }, [bigContractDays, pane.broker, pane.symbol, pane.timeframe, period, replayHistoryRange]);
   const footprintLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "deep-print-footprint");
   const instantTapeLiveActive = indicators.some((instance) =>
@@ -7465,7 +7508,7 @@ function WorkspaceChartPaneComponent({
     return () => {
       cancelled = true;
     };
-  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, replayHistoryRange, resolvedContractSymbol]);
+  }, [historicalExecutionDays, needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, replayHistoryRange, resolvedContractSymbol]);
 
   // Closed-bar integrity heal. History is otherwise consumed exactly once at
   // pane load, so a bar built while the live stream missed one or more prints
@@ -9692,6 +9735,7 @@ function WorkspaceChartPaneComponent({
       ) : (
         <Chart
           candles={replayDisplayCandles}
+          bigContractHistory={replayHistoryRange || bigContractHistory.symbol !== pane.symbol ? undefined : bigContractHistory.records}
           marketTrades={replayMarketTrades}
           marketTradesVersion={marketTradesVersion}
           trades={trades}
