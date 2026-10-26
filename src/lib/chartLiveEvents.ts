@@ -1,6 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
+import { retainFormingCandleExtrema } from "./liveCandleAuthority.ts";
 
 export const LIVE_CHART_CANDLE_EVENT = "kwantdesk:live-chart-candle";
 export const LIVE_CHART_EXECUTION_EVENT = "kwantdesk:live-chart-executions";
@@ -145,13 +146,20 @@ export function compactChronologicalLiveTicks<T extends { timestamp: number; mid
   return ticks.filter((_, index) => retained.has(index));
 }
 
-/** Keep a very short truthful visual path without allowing burst backlog. */
+/** Clock charts paint the newest real snapshot in the next frame, retaining
+ * its accumulated extrema. Event bars retain their distinct queued snapshots. */
 export function enqueueLiveCandleSnapshot(
   queue: Candle[],
   candle: Candle,
   limit = 4,
+  coalesceSameBar = false,
 ) {
   const last = queue.at(-1);
+  if (coalesceSameBar && last?.timestamp === candle.timestamp) {
+    const next = [...queue];
+    next[next.length - 1] = retainFormingCandleExtrema(last, candle);
+    return next;
+  }
   if (last
     && last.timestamp === candle.timestamp
     && last.open === candle.open

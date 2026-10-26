@@ -41,6 +41,23 @@ assert.equal(queue.length, 4, "the visible path must remain bounded during a bur
 assert.equal(queue[0].close, 100, "the first pending real observation must be retained");
 assert.deepEqual(queue.slice(1).map((candle) => candle.close), [90, 95, 100]);
 
+// A clock candle must not play stale intra-frame prices over later frames.
+let clockQueue = [];
+for (const close of [100, 110, 90, 95, 104]) {
+  clockQueue = enqueueLiveCandleSnapshot(clockQueue, {
+    timestamp: minute, open: 100,
+    high: Math.max(100, close), low: Math.min(100, close), close,
+  }, 4, true);
+}
+assert.equal(clockQueue.length, 1);
+assert.deepEqual([clockQueue[0].open, clockQueue[0].high, clockQueue[0].low, clockQueue[0].close], [100, 110, 90, 104]);
+clockQueue = enqueueLiveCandleSnapshot(clockQueue, {
+  timestamp: minute + 60000, open: 105, high: 106, low: 105, close: 106,
+}, 4, true);
+assert.equal(clockQueue.length, 2, "a real rollover must retain the finalized prior candle");
+assert.equal(clockQueue[0].close, 104);
+assert.equal(clockQueue[1].close, 106);
+
 const observedWick = {
   timestamp: minute,
   open: 100,
@@ -77,7 +94,7 @@ assert.match(workspaceSource, /for \(const point of liveTickPath\.path\)/);
 assert.match(workspaceSource, /for \(const point of timeBasedPath\.path\)/);
 const chartSource = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 assert.match(chartSource, /authoritativeCandle = retainFormingCandleExtrema/);
-assert.match(chartSource, /pendingCandles = enqueueLiveCandleSnapshot\(pendingCandles, authoritativeCandle\)/);
+assert.match(chartSource, /pendingCandles = enqueueLiveCandleSnapshot\(\s*pendingCandles, authoritativeCandle, 4, timeframeToMs\(timeframe\) !== null/);
 assert.match(chartSource, /const candle = pendingCandles\.shift\(\)/);
 
-console.log("Live candle visual path: 13/13 checks passed");
+console.log("Live candle visual path checks passed, including latest-frame coalescing and rollover retention");

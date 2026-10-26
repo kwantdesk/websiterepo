@@ -4681,7 +4681,9 @@ function Chart({
           Number.isFinite(detail.sourceTimestampMs) ? Number(detail.sourceTimestampMs) : detail.candle.timestamp,
         );
       }
-      pendingCandles = enqueueLiveCandleSnapshot(pendingCandles, authoritativeCandle);
+      pendingCandles = enqueueLiveCandleSnapshot(
+        pendingCandles, authoritativeCandle, 4, timeframeToMs(timeframe) !== null,
+      );
       latestDirectLiveCandleRef.current = {
         key: liveCandleEventKey,
         instrument,
