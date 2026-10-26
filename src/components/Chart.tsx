@@ -18031,10 +18031,6 @@ function Chart({
     for (const item of laidOut) rightAlignedZoneLabelYs.set(item.id, item.y);
   }
 
-  const flowVerdictY = gexBotFlow?.status === "LIVE" && gexBotFlow.sponsorship.active
-    ? candleSeriesRef.current?.priceToCoordinate(candles.at(-1)?.close ?? gexBotFlow.sample?.spot ?? 0) ?? null
-    : null;
-
   const precisionTheme = useMemo<PrecisionTheme>(() => ({
     background: settings.backgroundColor,
     panel: "#090f17",
@@ -19790,15 +19786,6 @@ function Chart({
           {darkPoolMapPayload.levels.map((level, index) => (
             <div key={level.id} className="grid grid-cols-[26px_1fr_1fr_56px_44px] gap-2 border-b border-border/45 px-2 py-1 text-foreground"><span>{index + 1}</span><span>{level.mappedPrice.toFixed(priceFormat.precision)}</span><span>{level.totalNotional.toLocaleString("en-US", { notation: "compact", style: "currency", currency: "USD" })}</span><span>{level.tradeCount}</span><span>{Math.round(level.strengthScore)}</span></div>
           ))}
-        </div>
-      ) : null}
-      {flowVerdictY !== null && gexBotFlow?.sponsorship.active ? (
-        <div
-          className={`pointer-events-none absolute right-[70px] z-[25] rounded-md border bg-panel/94 px-2 py-1 font-mono text-[8px] font-semibold shadow-lg backdrop-blur ${gexBotFlow.sponsorship.active.state === "SPONSORED" ? "border-primary/40 text-primary" : "border-warning/40 text-warning"}`}
-          style={{ top: Math.max(8, Math.min(overlaySize.height - 64, flowVerdictY - 12)) }}
-          title={`Price ${(gexBotFlow.sponsorship.active.priceChangePercent * 100).toFixed(3)}% · ΔDEX ${gexBotFlow.sponsorship.active.dexChange.toLocaleString("en-US", { maximumFractionDigits: 0 })} · age ${Math.round((gexBotFlow.dataAgeMs ?? 0) / 1_000)}s`}
-        >
-          {gexBotFlow.sponsorship.active.label}
         </div>
       ) : null}
       {paperOverlayLevels.map((level) => (
