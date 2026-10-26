@@ -1,38 +1,14 @@
-"use client";
-
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { safeAuthReturn } from "@/lib/authRedirect";
 
 export default function GoogleLoginButton({ returnTo = "/" }: { returnTo?: string }) {
-  const [message, setMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function signIn() {
-    setLoading(true);
-    setMessage(null);
-
-    try {
-      const supabase = createClient();
-      const callback = new URL("/auth/callback", window.location.origin);
-      callback.searchParams.set("returnTo", returnTo);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: callback.toString() },
-      });
-      if (error) throw error;
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to start Google sign-in.");
-      setLoading(false);
-    }
-  }
+  const search = new URLSearchParams({ returnTo: safeAuthReturn(returnTo) });
 
   return (
     <div className="login-action">
-      <button className="google-button" type="button" onClick={signIn} disabled={loading}>
-        <span className="google-g">G</span>
-        {loading ? "Opening Google…" : "Continue with Google"}
-      </button>
-      {message ? <p className="login-error">{message}</p> : null}
+      <a className="google-button" href={`/auth/signin?${search}`}>
+        <span className="google-g" aria-hidden="true">G</span>
+        Continue with Google
+      </a>
     </div>
   );
 }

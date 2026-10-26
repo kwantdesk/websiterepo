@@ -1,4 +1,5 @@
 import GoogleLoginButton from "@/components/GoogleLoginButton";
+import { safeAuthReturn } from "@/lib/authRedirect";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ const messages: Record<string, string> = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { error, returnTo } = await searchParams;
-  const safeReturnTo = safeRelativeReturn(returnTo);
+  const safeReturnTo = safeAuthReturn(returnTo);
 
   return (
     <main className="login-page">
@@ -35,9 +36,4 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       </section>
     </main>
   );
-}
-
-function safeRelativeReturn(value?: string) {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.length > 2_000) return "/";
-  return value;
 }

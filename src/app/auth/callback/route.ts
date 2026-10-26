@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAllowedEmail } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
+import { safeAuthReturn } from "@/lib/authRedirect";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const origin = requestUrl.origin;
-  const returnTo = safeRelativeReturn(requestUrl.searchParams.get("returnTo"));
+  const returnTo = safeAuthReturn(requestUrl.searchParams.get("returnTo"));
 
   if (!code) return NextResponse.redirect(`${origin}/login?error=auth`);
 
@@ -25,9 +26,4 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.redirect(new URL(returnTo, origin));
-}
-
-function safeRelativeReturn(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.length > 2_000) return "/";
-  return value;
 }
