@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — TP/SL exact drag placement
+
+-Stable plot captures protection drags with scaled chart coordinates/grab offset.
+  Temporarily locks native gestures/autoscale; restores their prior settings.
+  Active preview ref prevents stale per-frame DOM positioning. Final pointerup
+  wins; cancel/blur/source disposal release capture and execution suspension.
+-Workspace no longer silently re-clamps the released stop to a later quote:
+  actual update is the preview's tick-snapped price. Release itself still only
+  arms the stop; subsequent real execution events evaluate working protection.
+-36scoped drag/execution/journal tests pass. No owner trades manipulated.
+  Receipt: docs/prompt-log/2026-10-27-paper-protection-placement.md.
+
+
 ## 2026-10-27 — Durable demo journal recording
 
 - Owner's “20 october” demo account preserved. Live Journal already had16rows,

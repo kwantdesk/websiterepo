@@ -1,5 +1,7 @@
 "use client";
 
+import { beginPaperProtectionDrag } from "@/lib/paperProtectionDrag";
+
 import { mergeBigContractHistory } from "@/lib/bigContractHistory";
 
 import { clampPositionStopPrice, nearestPositionHandle } from "@/lib/positionToolConstraints";
@@ -3668,8 +3670,8 @@ function Chart({
   const repositionPaperOverlays = useCallback(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
-    for (const node of paperOverlayNodesRef.current.values()) {
-      const price = Number(node.dataset.paperPrice);
+    for (const [id, node] of paperOverlayNodesRef.current) {
+      const price = paperActiveDragRef.current?.id === id ? paperActiveDragRef.current.price : Number(node.dataset.paperPrice);
       if (!Number.isFinite(price)) continue;
       const y = series.priceToCoordinate(price);
       if (y == null) {
@@ -3689,6 +3691,9 @@ function Chart({
    * stop and target labels while the pointer is still down. Matching on the
    * level id alone only ever reaches the line under the cursor.
    */
+  const paperActiveDragRef = useRef<{ id: string; price: number } | null>(null);
+  const paperDragCancelRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { paperDragCancelRef.current?.(); }, [instrument, timeframe]);
   const [paperDragPreview, setPaperDragPreview] = useState<
     { id: string; price: number; kind: "entry" | "stop_loss" | "take_profit"; positionId: string } | null
   >(null);
@@ -16348,6 +16353,7 @@ function Chart({
       // Always dispose the effect-local chart, even if a newer instance has
       // already replaced chartRef.current. Lightweight Charts releases its
       // canvas layers from remove(); losing this local handle leaks them.
+      paperDragCancelRef.current?.();
       try { chart.remove(); } catch { /* chart may already be disposed */ }
       if (!ownsCurrentChart) return;
       chartRef.current = null;
@@ -18515,19 +18521,21 @@ function Chart({
     if (level.kind === "entry" && !restingEntry) return;
     if (restingEntry ? !onUpdatePaperOrderPrice : !onUpdatePaperProtection) return;
     const protectionKind = level.kind === "entry" ? null : level.kind;
+    if (event.button !== 0 || paperDragCancelRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     const container = chartContainerRef.current;
     const series = candleSeriesRef.current;
-    if (!container || !series) return;
+    const chart = chartRef.current;
+    if (!container || !series || !chart) return;
     const pointerId = event.pointerId;
+    const gesture = beginPaperProtectionDrag(container, chart, series, pointerId, event.clientY, level.price);
     onPaperProtectionDragStateChange?.(level.position.id, true);
     let latestPrice = level.price;
     let pendingClientY = event.clientY;
     let animationFrame: number | null = null;
     const updatePreview = (clientY: number) => {
-      const bounds = container.getBoundingClientRect();
-      const price = series.coordinateToPrice(clientY - bounds.top);
+      const price = gesture.priceAt(clientY);
       if (price === null || !Number.isFinite(price)) return;
       if (restingEntry) {
         // The order can be filled or cancelled by a quote mid-drag. If it is no
@@ -18541,6 +18549,8 @@ function Chart({
       } else {
         return;
       }
+      paperActiveDragRef.current = { id: level.id, price: latestPrice };
+      repositionPaperOverlays();
       setPaperDragPreview({
         id: level.id,
         price: latestPrice,
@@ -18558,10 +18568,15 @@ function Chart({
       if (animationFrame === null) animationFrame = window.requestAnimationFrame(flushPreview);
     };
     const cleanup = () => {
+      paperDragCancelRef.current = null;
+      paperActiveDragRef.current = null;
+      window.removeEventListener("blur", cancelGesture);
+      container.removeEventListener("lostpointercapture", cancelGesture);
       document.removeEventListener("pointermove", handleMove);
       document.removeEventListener("pointerup", handleUp);
       document.removeEventListener("pointercancel", handleCancel);
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      gesture.dispose();
       setPaperDragPreview(null);
     };
     const handleUp = (upEvent: PointerEvent) => {
@@ -18587,6 +18602,13 @@ function Chart({
       cleanup();
       onPaperProtectionDragStateChange?.(level.position.id, false);
     };
+    const cancelGesture = () => {
+      cleanup();
+      onPaperProtectionDragStateChange?.(level.position.id, false);
+    };
+    paperDragCancelRef.current = cancelGesture;
+    window.addEventListener("blur", cancelGesture);
+    container.addEventListener("lostpointercapture", cancelGesture);
     document.addEventListener("pointermove", handleMove);
     document.addEventListener("pointerup", handleUp);
     document.addEventListener("pointercancel", handleCancel);
@@ -18598,23 +18620,27 @@ function Chart({
     kind: "stop_loss" | "take_profit",
   ) => {
     if (!onUpdatePaperProtection) return;
+    if (event.button !== 0 || paperDragCancelRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     const container = chartContainerRef.current;
     const series = candleSeriesRef.current;
-    if (!container || !series) return;
+    const chart = chartRef.current;
+    if (!container || !series || !chart) return;
 
     const pointerId = event.pointerId;
+    const gesture = beginPaperProtectionDrag(container, chart, series, pointerId, event.clientY, position.entryPrice);
     onPaperProtectionDragStateChange?.(position.id, true);
     const draftId = `${position.id}-new-${kind}`;
     let latestPrice = constrainedPaperProtectionPrice(position, kind, position.entryPrice);
     let pendingClientY = event.clientY;
     let animationFrame: number | null = null;
     const updatePreview = (clientY: number) => {
-      const bounds = container.getBoundingClientRect();
-      const price = series.coordinateToPrice(clientY - bounds.top);
+      const price = gesture.priceAt(clientY);
       if (price === null || !Number.isFinite(price)) return;
       latestPrice = constrainedPaperProtectionPrice(position, kind, price);
+      paperActiveDragRef.current = { id: draftId, price: latestPrice };
+      repositionPaperOverlays();
       setPaperDraftProtection({ id: draftId, kind, price: latestPrice, position });
     };
     const flushPreview = () => {
@@ -18627,10 +18653,15 @@ function Chart({
       if (animationFrame === null) animationFrame = window.requestAnimationFrame(flushPreview);
     };
     const cleanup = () => {
+      paperDragCancelRef.current = null;
+      paperActiveDragRef.current = null;
+      window.removeEventListener("blur", cancelGesture);
+      container.removeEventListener("lostpointercapture", cancelGesture);
       document.removeEventListener("pointermove", handleMove);
       document.removeEventListener("pointerup", handleUp);
       document.removeEventListener("pointercancel", handleCancel);
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      gesture.dispose();
       setPaperDraftProtection(null);
     };
     const handleUp = (upEvent: PointerEvent) => {
@@ -18656,6 +18687,13 @@ function Chart({
     };
 
     updatePreview(event.clientY);
+    const cancelGesture = () => {
+      cleanup();
+      onPaperProtectionDragStateChange?.(position.id, false);
+    };
+    paperDragCancelRef.current = cancelGesture;
+    window.addEventListener("blur", cancelGesture);
+    container.addEventListener("lostpointercapture", cancelGesture);
     document.addEventListener("pointermove", handleMove);
     document.addEventListener("pointerup", handleUp);
     document.addEventListener("pointercancel", handleCancel);

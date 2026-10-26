@@ -290,7 +290,6 @@ import {
   cancelPaperOrder,
   clearPaperAccountFills,
   closePaperPosition,
-  constrainDraggedPaperStop,
   dailyRealizedPaperPnl,
   emptyPaperTradingLedger,
   ensurePaperAccountLedger,
@@ -18153,10 +18152,9 @@ export default function KwantifyWorkspace({
     }
     const position = current.accounts[accountId]?.positions.find((candidate) => candidate.id === positionId);
     const quote = position ? resolvePaperExecutionQuote(position.symbol) : null;
-    const committedUpdate = update.kind === "stop_loss" && update.price != null && position && quote
-      ? { ...update, price: constrainDraggedPaperStop(position, update.price, quote) }
-      : update;
-    const result = updatePaperProtection(current, accountId, positionId, committedUpdate);
+    // The preview and release must use exactly the same tick-snapped price.
+    // A fresh quote must not silently relocate the handle on pointerup.
+    const result = updatePaperProtection(current, accountId, positionId, update);
     if (result.error) {
       showPaperOrderMessage("error", result.error);
       return;
