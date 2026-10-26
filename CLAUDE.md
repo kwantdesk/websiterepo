@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Verified paper order receipts
+
+-Order panel success requires matched ledger order/entry fill/open position and
+  immediate durable save. Message reports actual side/size/price/account;
+  pending orders stay “working”. Ticket changes clear stale notifications.
+-Removed static/watchlist fake-fresh execution fallback. Validate both source
+  and arrival timestamps. Live placement uses click time so pre-click ticks
+  cannot instantly trigger a new position's protection; replay clock unchanged.
+-Existing warmed execution fan-out publishes genuine last-trade simulation
+  prices even without an open chart/position; seeds/summary rows never execute.
+  No extra stream subscription or polling. Account restoration gates placement.
+-39targeted tests, scoped lint and production build pass; no owner orders sent.
+  Receipt: docs/prompt-log/2026-10-27-paper-order-fill-receipts.md.
+
+
 ## 2026-10-27 — TP/SL exact drag placement
 
 -Stable plot captures protection drags with scaled chart coordinates/grab offset.

@@ -1,5 +1,7 @@
 "use client";
 
+import { freshPaperExecutionQuote, paperOrderReceipt, paperTradeExecutionQuote } from "@/lib/paperOrderReceipt";
+
 import { syncPaperJournalCloud } from "@/lib/paperJournalCloud";
 
 import { bigContractHistoryWindows } from "@/lib/bigContractHistory";
@@ -11724,6 +11726,8 @@ export default function KwantifyWorkspace({
       const [symbol, contractSymbol] = key.split(":");
       subscriptions.set(key, subscribeRithmicIndicatorTrades({ symbol, contractSymbol, onTrades: (records) => {
         if (!paperLiveExecutionEnabledRef.current) return;
+        const printQuote = paperTradeExecutionQuote(symbol, records, Date.now());
+        if (printQuote) publishLiveExecutionQuote({ ...printQuote, source: "live", paneId: `paper-execution:${symbol}`, mid: printQuote.last });
         const current = paperLedgerRef.current;
         if (!Object.values(current.accounts).some((account) =>
           account.positions.some((position) => position.status === "open" && normalizePaperSymbol(position.symbol) === symbol)
@@ -12159,7 +12163,7 @@ export default function KwantifyWorkspace({
   // Only expose an actionable submit button when the selected account has a
   // verified execution adapter. Paper execution is complete; broker routing is
   // deliberately gated until its submit/cancel/liquidate adapter is wired.
-  const tradingUnlocked = paperExecutionRequested && !gexVueReplay.active;
+  const tradingUnlocked = paperExecutionRequested && preferencesReady && paperAccountsHydrated && !gexVueReplay.active;
   const selectedPaperSummary = selectedPaperTradingAccount
     ? summarizePaperAccount(paperLedger, selectedPaperTradingAccount)
     : null;
@@ -12168,6 +12172,7 @@ export default function KwantifyWorkspace({
     // A picked price belongs to one instrument/account, never the next tab.
     setPendingChartOrder(null);
   }, [paperTradingInstrument, selectedPaperTradingAccount?.id, mapTicketContext]);
+  useEffect(() => { setOrderTicketMessage(null); }, [orderSide, orderType, orderUnits, orderPrice, paperTradingInstrument, selectedPaperTradingAccount?.id]);
   const selectedOrderQuantity = paperOrderQuantity(paperTradingInstrument, orderUnits);
   /**
    * Choosing limit or stop arms the chart. There is no second button to press:
@@ -18051,6 +18056,10 @@ export default function KwantifyWorkspace({
     const submitSide = intent?.side ?? orderSide;
     const submitType = intent?.type ?? orderType;
     const submitQuantity = intent?.quantity ?? selectedOrderQuantity;
+    if (!preferencesReady || !paperAccountsHydrated) {
+      showPaperOrderMessage("error", "Your account is still restoring. No order was sent.");
+      return;
+    }
     if (!selectedPaperTradingAccount) {
       showPaperOrderMessage("error", "Create or select a sim account first.");
       return;
@@ -18099,14 +18108,20 @@ export default function KwantifyWorkspace({
       },
       quote,
     );
+    const receipt = paperOrderReceipt(result);
     commitPaperLedger(result.ledger);
-    if (result.error) {
-      showPaperOrderMessage("error", result.error);
+    if (receipt.status === "error") {
+      showPaperOrderMessage("error", receipt.error);
+      return;
+    }
+    const saved = savePaperTradingLedger(result.ledger);
+    if (!saved.ok) {
+      showPaperOrderMessage("error", "Order recorded in this session, but browser storage could not save it. Do not refresh yet.");
       return;
     }
     showPaperOrderMessage(
       "success",
-      `${submitSide === "buy" ? "Buy" : "Sell"} ${submitQuantity} ${displayCmeSymbol(paperTradingInstrument)} ${submitType === "market" ? "filled" : "working"}.`,
+      `${receipt.order.side === "buy" ? "Buy" : "Sell"} ${receipt.order.quantity} ${displayCmeSymbol(receipt.order.symbol)} ${receipt.status === "filled" ? `filled at ${formatPrice(receipt.fill.price, receipt.order.symbol)}` : "working"} · ${selectedPaperTradingAccount.name}.`,
     );
   };
 
@@ -18219,29 +18234,14 @@ export default function KwantifyWorkspace({
       }
       return null;
     }
-    if (
-      activeQuote
-      && activeQuote.source === "live"
-      && activeQuote.paneId === activePaneId
-      && normalizePaperSymbol(activeQuote.symbol) === normalized
-      && Date.now() - activeQuote.receivedAt <= 5_000
-      && (!mapTicketContext || Date.now() - activeQuote.timestamp <= 5_000)
-      && activeQuote.bid > 0
-      && activeQuote.ask > 0
-    ) {
-      return { bid: activeQuote.bid, ask: activeQuote.ask, last: activeQuote.last, timestamp: activeQuote.timestamp };
-    }
-    // LIQ MAP may execute only from its validated fresh stream, not a cached
-    // watchlist or static display price stamped as if it had just arrived.
+    const now = Date.now();
+    const active = activeQuote?.paneId === activePaneId
+      ? freshPaperExecutionQuote(activeQuote, symbol, now) : null;
+    if (active) return active;
+    // A map ticket belongs to its own validated stream. Other chart panes
+    // may supply a fresh quote for normal Charts, never static watchlist data.
     if (mapTicketContext) return null;
-    if (normalized === normalizePaperSymbol(paperTradingInstrument) && currentLivePrice.bid > 0 && currentLivePrice.ask > 0) {
-      return { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };
-    }
-    const watchQuote = watchlist.find((item) =>
-      normalizePaperSymbol(item.symbol) === normalized && item.bid > 0 && item.ask > 0);
-    return watchQuote
-      ? { bid: watchQuote.bid, ask: watchQuote.ask, timestamp: Date.now() }
-      : null;
+    return freshPaperExecutionQuote(liveExecutionQuotesBySymbol.get(normalized), symbol, now);
   };
 
   const handleFlattenPaperPosition = (position: PaperPosition) => {
