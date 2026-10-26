@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import vm from "node:vm";
 import ts from "typescript";
-import { safeAuthReturn } from "../src/lib/authRedirect.ts";
+import { safeAuthReturn, OAUTH_RETURN_COOKIE } from "../src/lib/authRedirect.ts";
 
 const require = createRequire(import.meta.url);
 const { NextResponse } = require("next/server.js");
@@ -18,7 +18,7 @@ function route(createClient) {
   const exports = {};
   vm.runInNewContext(code, { exports, URL, Error, require: name => {
     if (name === "next/server") return { NextResponse };
-    if (name === "@/lib/authRedirect") return { safeAuthReturn };
+    if (name === "@/lib/authRedirect") return { safeAuthReturn, OAUTH_RETURN_COOKIE };
     if (name === "@/lib/supabase/server") return { createClient };
     throw Error(name);
   } });
@@ -40,7 +40,9 @@ test("server initiation generates a real PKCE redirect and verifier cookie witho
   const callback = new URL(target.searchParams.get("redirect_to"));
   assert.equal(callback.origin, "https://www.kwantdesk.com");
   assert.equal(callback.pathname, "/auth/callback");
-  assert.equal(callback.searchParams.get("returnTo"), "/charts?workspace=test");
+  assert.equal(callback.search, "", "the allowlisted provider callback must remain exact");
+  assert.equal(response.cookies.get(OAUTH_RETURN_COOKIE).value, "/charts?workspace=test");
+  assert.equal(response.cookies.get(OAUTH_RETURN_COOKIE).httpOnly, true);
   assert.ok(writes.some(c => c.name.includes("code-verifier") && c.value.length > 20));
 });
 
@@ -100,6 +102,11 @@ test("new OAuth starts ignore old session cookies while normal server clients re
   assert.equal(settings[1].cookies.getAll().length, 0);
   settings[1].cookies.setAll([{ name: "pkce", value: "new-verifier", options: { path: "/" } }]);
   assert.equal(writes[0][0], "pkce");
+  const finalResponse = NextResponse.redirect("https://www.kwantdesk.com/charts");
+  await exports.createClient({ cookieResponse: finalResponse });
+  settings[2].cookies.setAll([{ name: "test-session", value: "test-only", options: { path: "/", httpOnly: true } }]);
+  assert.equal(finalResponse.cookies.get("test-session").value, "test-only");
+  assert.equal(finalResponse.cookies.get("test-session").httpOnly, true);
   let received;
   await route(async options => {
     received = options;
@@ -108,7 +115,7 @@ test("new OAuth starts ignore old session cookies while normal server clients re
   assert.equal(received.freshOAuth, true);
 });
 
-test("normal login automatically starts OAuth; explicit errors keep a retry screen without looping", async () => {
+test("normal login and explicit errors are stable retry screens with no automatic OAuth loop", async () => {
   const source = readFileSync(new URL("../src/app/login/page.tsx", import.meta.url), "utf8");
   const exports = {};
   const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -120,9 +127,8 @@ test("normal login automatically starts OAuth; explicit errors keep a retry scre
     if (name === "next/navigation") return { redirect: to => { throw Object.assign(Error("redirect"), { to }); } };
     return require(name);
   } });
-  for (const [returnTo, expected] of [[undefined, "/"], ["/charts", "/charts"], ["//elsewhere.test", "/"]]) {
-    await assert.rejects(exports.default({ searchParams: Promise.resolve({ returnTo }) }),
-      error => error.to === `/auth/signin?${new URLSearchParams({ returnTo: expected })}`);
+  for (const returnTo of [undefined, "/charts", "//elsewhere.test"]) {
+    assert.ok(await exports.default({ searchParams: Promise.resolve({ returnTo }) }));
   }
   for (const error of ["auth", "configuration", "restricted"]) {
     const result = await exports.default({ searchParams: Promise.resolve({ error, returnTo: "/charts" }) });

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
 
 function getPublicKey() {
   return (
@@ -9,7 +10,7 @@ function getPublicKey() {
   );
 }
 
-export async function createClient({ freshOAuth = false }: { freshOAuth?: boolean } = {}) {
+export async function createClient({ freshOAuth = false, cookieResponse }: { freshOAuth?: boolean; cookieResponse?: NextResponse } = {}) {
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = getPublicKey();
@@ -27,6 +28,10 @@ export async function createClient({ freshOAuth = false }: { freshOAuth?: boolea
         return freshOAuth ? [] : cookieStore.getAll();
       },
       setAll(cookiesToSet) {
+        if (cookieResponse) {
+          cookiesToSet.forEach(({ name, value, options }) => cookieResponse.cookies.set(name, value, options));
+          return;
+        }
         try {
           cookiesToSet.forEach(({ name, value, options }) =>
             cookieStore.set(name, value, options),

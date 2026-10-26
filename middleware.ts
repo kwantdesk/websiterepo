@@ -79,6 +79,20 @@ export async function middleware(request: NextRequest) {
 
   if (isDesktopProtocolRequest(pathname)) return response;
 
+  // Supabase can fall back to its configured Site URL when a requested
+  // callback is not allowlisted. Preserve that one-time PKCE code rather than
+  // letting homepage/session routing discard it and start login again.
+  if (pathname === "/" || pathname === "/login") {
+    const oauthCode = request.nextUrl.searchParams?.get("code");
+    const oauthError = request.nextUrl.searchParams?.get("error");
+    if (oauthCode || oauthError) {
+      const callback = new URL("/auth/callback", request.url);
+      if (oauthCode && oauthCode.length <= 2048) callback.searchParams.set("code", oauthCode);
+      else callback.searchParams.set("error", "auth");
+      return NextResponse.redirect(callback, { status: 303, headers: { "Cache-Control": "private, no-store" } });
+    }
+  }
+
   if (
     pathname === "/" ||
     pathname === "/api/site-access" ||
