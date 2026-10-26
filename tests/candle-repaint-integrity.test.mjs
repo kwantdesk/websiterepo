@@ -118,6 +118,21 @@ test("unobserved archived bars remain correctable rather than freezing all histo
   assert.equal(buffer.merge(scope, [bar(60000), bar(120000)])[0].high, 103);
 });
 
+test("a verified closed history repair supersedes incorrect live body/wicks and survives stale packets", () => {
+  const buffer = new ObservedCandleHistory();
+  const wrong = bar(60000, { open: 102, high: 150, low: 80, close: 102 });
+  buffer.observe(scope, wrong, 119900);
+  buffer.observe(scope, bar(120000), 121000);
+  const correct = bar(60000, { open: 99, high: 110, low: 95, close: 104 });
+  buffer.acceptClosedHistory(scope, [correct, bar(120000, { high: 999 })], 120000);
+  const merged = buffer.merge(scope, [wrong, bar(120000)]);
+  assert.deepEqual([merged[0].open, merged[0].high, merged[0].low, merged[0].close], [99, 110, 95, 104]);
+  assert.equal(merged[1].high, 103, "forming history must remain stream-owned");
+  assert.equal(buffer.observe(scope, wrong, 119950).close, 104);
+  buffer.acceptClosedHistory(scope, [bar(60000, { close: 105 })], 120000);
+  assert.equal(buffer.merge(scope, [wrong])[0].close, 105, "new verified corrections still apply");
+});
+
 test("a full stale-history redraw preserves every recently observed candle, not just the last wick", () => {
   const buffer = new ObservedCandleHistory();
   buffer.observe(scope, bar(60000, { high: 110, low: 95 }), 61000);

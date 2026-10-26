@@ -424,8 +424,9 @@ export class FuturesBarArchive {
     try {
       const text = await readFile(file, "utf8");
       const parsed = JSON.parse(text);
-      if (metadata) metadata.authoritativeSession = parsed?.source === "Rithmic History Plant individual trades"
-        && parsed?.markerConvention === "bar-open";
+      if (metadata) metadata.authoritativeSession = parsed?.markerConvention === "bar-open"
+        && (parsed?.source === "Rithmic History Plant individual trades"
+          || parsed?.source === "Rithmic History Plant minute bars" && parsed?.completedSession === true);
       const rows = Array.isArray(parsed) ? parsed : parsed?.bars;
       if (!Array.isArray(rows)) return [];
       return rows

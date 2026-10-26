@@ -1,0 +1,10 @@
+[Unit]
+Description=Reconcile completed futures candles against Rithmic History Plant
+After=docker.service network-online.target
+Requires=docker.service
+RequiresMountsFor=/srv/kwantdesk-recordings
+
+[Service]
+Type=oneshot
+TimeoutStartSec=600
+ExecStart=/usr/bin/docker exec -w /app kwantdesk-production-gateway-1 node scripts/reconcile-recent-candle-history.mjs --apply

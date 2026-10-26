@@ -211,6 +211,7 @@ import {
 } from "@/lib/liveExecutionTape";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
+import { CLOSED_CHART_HISTORY_EVENT } from "@/lib/chartLiveEvents";
 import { processPaperExecutionTape } from "@/lib/paperExecutionTape";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
@@ -7517,6 +7518,9 @@ function WorkspaceChartPaneComponent({
           needsOrderFlowHistory,
         );
         if (!healed) return;
+        window.dispatchEvent(new CustomEvent(CLOSED_CHART_HISTORY_EVENT, {
+          detail: { key: pane.id, candles: healed, beforeMs: liveEdgeFromMs },
+        }));
         latestCandlesRef.current = healed;
         if (needsOrderFlowHistory && hasUsableOrderFlowHistory(healed)) {
           setOrderFlowHistoryReady(true);

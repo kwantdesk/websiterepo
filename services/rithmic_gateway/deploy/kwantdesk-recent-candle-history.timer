@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for unreconciled completed candle sessions hourly
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=60
+Persistent=true
+Unit=kwantdesk-recent-candle-history.service
+
+[Install]
+WantedBy=timers.target

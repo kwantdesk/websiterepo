@@ -86,5 +86,15 @@ assert.equal(healClosedCandleOhlc(baked.map((b) => ({ ...b })), baked, liveEdge)
   assert.equal(healClosedCandleOhlc(held, baked, liveEdge), null);
 }
 
+// Real missing closed minutes must be inserted, without inventing a live edge.
+{
+  const held = baked.filter((_, index) => index !== 8 && index !== 9);
+  const healed = healClosedCandleIntegrity(held, baked, liveEdge, true);
+  assert.equal(healed.length, baked.length);
+  assert.deepEqual(healed[8], baked[8]);
+  assert.deepEqual(healed[9], baked[9]);
+  const edgeGap = held.filter((b) => b.timestamp !== baked.at(-1).timestamp);
+  assert.equal(healClosedCandleOhlc(edgeGap, baked, liveEdge).length, baked.length - 1);
+}
 rmSync(outDir, { recursive: true, force: true });
-console.log("candle OHLC heal: 7/7 checks passed");
+console.log("candle OHLC heal: 8/8 checks passed");

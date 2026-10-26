@@ -1937,6 +1937,17 @@ export function healClosedCandleOhlc(
       close: authoritative.close,
     };
   });
+  // A map over held bars alone can never heal an actual missing minute.
+  // Insert only real downloaded closed bars within the already loaded range.
+  const heldTimes = new Set(held.map((candle) => candle.timestamp));
+  const first = held[0].timestamp;
+  for (const candle of baked) {
+    if (candle.timestamp < first || candle.timestamp >= liveEdgeFromMs || heldTimes.has(candle.timestamp)) continue;
+    healed.push(candle);
+    heldTimes.add(candle.timestamp);
+    repaired = true;
+  }
+  if (repaired) healed.sort((left, right) => left.timestamp - right.timestamp);
   return repaired ? healed : null;
 }
 

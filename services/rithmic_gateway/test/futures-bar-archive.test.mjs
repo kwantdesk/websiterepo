@@ -418,6 +418,23 @@ test("an unknown instrument never becomes a bar", async () => {
   });
 });
 
+test("completed exact minute replay supersedes partial root/live data and survives flush", async () => {
+  await withArchive(async (archive) => {
+    const day = chicagoTradingDate(T0), folder = archive.dayDir(day);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "CME-NQU6.json"), JSON.stringify({
+      source: "Rithmic History Plant minute bars", markerConvention: "bar-open", completedSession: true,
+      bars: [[T0, 100, 110, 90, 104, 50]],
+    }));
+    writeFileSync(join(folder, "CME-NQ.json"), JSON.stringify({ bars: [[T0, 999, 999, 999, 999, 999]] }));
+    archive.record(print(0, 105, 100));
+    archive.record(print(60000, 999, 100));
+    await archive.flush();
+    const result = await archive.load({ exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: T0, toMs: T0 + 120000 });
+    assert.deepEqual(result.candles, [{ timestamp: T0, open: 100, high: 110, low: 90, close: 104, volume: 50 }]);
+  });
+});
+
 test("the served window is bounded and keeps the most recent bars", async () => {
   await withArchive(async (archive) => {
     for (let minute = 0; minute < 50; minute += 1) {

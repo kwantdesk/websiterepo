@@ -7,7 +7,7 @@ export class ObservedCandleHistory {
   private firstTimestamp: number | null = null;
   private historyTail: Candle | null = null;
   private latestTimestamp = -Infinity;
-  private bars = new Map<number, { candle: Candle; sourceTime: number; seededOpen: boolean }>();
+  private bars = new Map<number, { candle: Candle; sourceTime: number; seededOpen: boolean; verifiedClosed?: boolean }>();
   private readonly limit: number;
   constructor(limit = 2048) { this.limit = Math.max(1, Math.floor(limit)); }
 
@@ -24,6 +24,7 @@ export class ObservedCandleHistory {
     this.selectScope(scope);
     sourceTime = Number.isFinite(sourceTime) ? sourceTime : incoming.timestamp;
     const previous = this.bars.get(incoming.timestamp);
+    if (previous?.verifiedClosed) return previous.candle;
     // A receipt time stamped after a known rollover is not an exchange close
     // watermark for an older candle. Do not let it poison the saved clock.
     let invalidClosedClock = false;
@@ -42,6 +43,20 @@ export class ObservedCandleHistory {
     this.bars.set(incoming.timestamp, { candle, seededOpen: previous?.seededOpen ?? Boolean(seed), sourceTime: invalidClosedClock ? previous!.sourceTime : Math.max(sourceTime, previous?.sourceTime ?? -Infinity) });
     while (this.bars.size > this.limit) this.bars.delete(this.bars.keys().next().value!);
     return candle;
+  }
+
+  /** A completed history repair supersedes partial live observations. It must
+   * not compete with the additive forming-bar/stale-response merge below. */
+  acceptClosedHistory(scope: string, history: Candle[], beforeMs: number) {
+    this.selectScope(scope);
+    for (const candle of history) {
+      if (candle.timestamp >= beforeMs) continue;
+      const observed = this.bars.get(candle.timestamp);
+      if (!observed) continue;
+      this.bars.set(candle.timestamp, {
+        ...observed, candle, seededOpen: true, verifiedClosed: true,
+      });
+    }
   }
 
   merge(scope: string, history: Candle[]) {
@@ -63,12 +78,15 @@ export class ObservedCandleHistory {
         else high = middle;
       }
       const archived = result[low]?.timestamp === timestamp ? result[low] : null;
-      const merged = archived ? mergeHistoricalAndLiveCandle(archived, observed.candle, timestamp,
-        timestamp !== this.firstTimestamp || timestamp < this.latestTimestamp && observed.seededOpen) : observed.candle;
+      const merged = archived && observed.verifiedClosed
+        ? { ...archived, open: observed.candle.open, high: observed.candle.high,
+          low: observed.candle.low, close: observed.candle.close }
+        : archived ? mergeHistoricalAndLiveCandle(archived, observed.candle, timestamp,
+          timestamp !== this.firstTimestamp || timestamp < this.latestTimestamp && observed.seededOpen) : observed.candle;
       // An accepted history response can extend a live-observed bar too.
       // Remember that union: otherwise the next stale refresh shrinks its wick
       // back to the smaller direct-tick-only observation.
-      this.bars.set(timestamp, { candle: merged, sourceTime: observed.sourceTime, seededOpen: observed.seededOpen || Boolean(archived) });
+      this.bars.set(timestamp, { ...observed, candle: merged, seededOpen: observed.seededOpen || Boolean(archived) });
       if (archived && archived.open === merged.open && archived.high === merged.high && archived.low === merged.low && archived.close === merged.close && archived.volume === merged.volume) continue;
       if (result === history) result = [...history];
       if (archived) result[low] = merged;

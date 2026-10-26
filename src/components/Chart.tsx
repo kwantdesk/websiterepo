@@ -141,6 +141,7 @@ import {
 } from "@/lib/chartLiveEvents";
 import { mergeHistoricalAndLiveCandle, retainFormingCandleExtrema } from "@/lib/liveCandleAuthority";
 import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw, clockCandleTimelineChanged } from "@/lib/observedCandleHistory";
+import { CLOSED_CHART_HISTORY_EVENT, type ClosedChartHistoryDetail } from "@/lib/chartLiveEvents";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   CHART_INDICATOR_BY_ID,
@@ -4577,6 +4578,17 @@ function Chart({
   // the replay clock advances every 200ms and must not resubscribe listeners.
   const liveReplayActiveRef = useRef(false);
   liveReplayActiveRef.current = replayTimestampMs !== null && replayTimestampMs > 0;
+
+  useEffect(() => {
+    if (!liveCandleEventKey) return;
+    const acceptHistory = (event: Event) => {
+      const detail = (event as CustomEvent<ClosedChartHistoryDetail>).detail;
+      if (!detail || detail.key !== liveCandleEventKey || liveReplayActiveRef.current) return;
+      observedCandleHistoryRef.current.acceptClosedHistory(observedCandleScope, detail.candles, detail.beforeMs);
+    };
+    window.addEventListener(CLOSED_CHART_HISTORY_EVENT, acceptHistory);
+    return () => window.removeEventListener(CLOSED_CHART_HISTORY_EVENT, acceptHistory);
+  }, [liveCandleEventKey, observedCandleScope]);
 
   useEffect(() => {
     if (!liveCandleEventKey) return;

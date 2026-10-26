@@ -4,6 +4,7 @@ import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity"
 import { retainFormingCandleExtrema } from "./liveCandleAuthority.ts";
 
 export const LIVE_CHART_CANDLE_EVENT = "kwantdesk:live-chart-candle";
+export const CLOSED_CHART_HISTORY_EVENT = "kwantdesk:closed-chart-history";
 export const LIVE_CHART_EXECUTION_EVENT = "kwantdesk:live-chart-executions";
 export const WORKSPACE_LAYOUT_SETTLED_EVENT = "kwantdesk:workspace-layout-settled";
 export const DATABENTO_LIVE_TICK_EVENT = "kwantdesk:databento-tick";
@@ -15,6 +16,8 @@ export type LiveChartCandleDetail = {
   /** Provider observation time in milliseconds; absent is not evidence of freshness. */
   sourceTimestampMs?: number;
 };
+
+export type ClosedChartHistoryDetail = { key: string; candles: Candle[]; beforeMs: number };
 
 /**
  * Live execution batches bypass React props/state. The canonical tape is a
