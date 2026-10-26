@@ -22,3 +22,17 @@ No provider settings, credentials, account permissions, live feeds or data jobs
 changed. Release through the single main-only production Git integration. Owner
 must complete account selection/sign-in on their laptop; no account action was
 performed on their behalf. Public redirect/cookie verification follows release.
+
+Follow-up: owner still reports a spinner on their other laptop. Live fresh
+requests consistently return303 to Supabase in459–671ms; Supabase returns302
+to accounts.google.com, with a PKCE verifier cookie on the initial response.
+Apex correctly redirects308 to www. This does not reproduce the owner's hang.
+Asked which hostname remains in their address bar; answer pending.
+
+Removed another startup dependency: new OAuth initiation now uses freshOAuth
+cookie reads, so an existing expired account session cannot cause Supabase
+initialization to wait for token recovery before issuing the Google redirect.
+Normal server clients/callback still read and validate existing cookies; verifier
+writes remain enabled.9 auth/navigation/cookie tests, build and scoped lint pass.
+Treat this as a verified isolation improvement, not proof the other laptop's
+remaining issue has been reproduced or resolved.

@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   try {
     // Save PKCE in response cookies. Normal same-tab navigation works before
     // hydration, without popups or a browser auth-client initialization lock.
-    const supabase = await createClient();
+    const supabase = await createClient({ freshOAuth: true });
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: callback.toString(), skipBrowserRedirect: true },

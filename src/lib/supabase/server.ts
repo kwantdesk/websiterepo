@@ -9,7 +9,7 @@ function getPublicKey() {
   );
 }
 
-export async function createClient() {
+export async function createClient({ freshOAuth = false }: { freshOAuth?: boolean } = {}) {
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = getPublicKey();
@@ -21,7 +21,10 @@ export async function createClient() {
   return createServerClient(url, key, {
     cookies: {
       getAll() {
-        return cookieStore.getAll();
+        // Starting a new login needs only a new PKCE verifier. Recovering an
+        // expired JWT here makes the sign-in redirect wait for a token refresh
+        // before the person can even choose their Google account.
+        return freshOAuth ? [] : cookieStore.getAll();
       },
       setAll(cookiesToSet) {
         try {

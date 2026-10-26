@@ -77,3 +77,33 @@ test("Google button is a real server-rendered link that does not wait for hydrat
   assert.match(html, /<a[^>]+href="\/auth\/signin\?returnTo=%2Fcharts"/);
   assert.doesNotMatch(source, /use client|onClick|useState|disabled=/);
 });
+
+test("new OAuth starts ignore old session cookies while normal server clients retain them", async () => {
+  const source = readFileSync(new URL("../src/lib/supabase/server.ts", import.meta.url), "utf8");
+  const exports = {}, settings = [];
+  const oldCookies = [{ name: "sb-test-auth-token", value: "old-session" }];
+  const writes = [];
+  const compiled = ts.transpileModule(source, { compilerOptions: {
+    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
+  } }).outputText;
+  vm.runInNewContext(compiled, { exports,
+    process: { env: { NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "public-test-key" } },
+    require: name => {
+      if (name === "next/headers") return { cookies: async () => ({ getAll: () => oldCookies, set: (...args) => writes.push(args) }) };
+      if (name === "@supabase/ssr") return { createServerClient: (_url, _key, options) => { settings.push(options); return {}; } };
+      throw Error(name);
+    },
+  });
+  await exports.createClient();
+  await exports.createClient({ freshOAuth: true });
+  assert.equal(settings[0].cookies.getAll(), oldCookies);
+  assert.equal(settings[1].cookies.getAll().length, 0);
+  settings[1].cookies.setAll([{ name: "pkce", value: "new-verifier", options: { path: "/" } }]);
+  assert.equal(writes[0][0], "pkce");
+  let received;
+  await route(async options => {
+    received = options;
+    return { auth: { signInWithOAuth: async () => ({ data: { url: "https://test.supabase.co/auth/v1/authorize" }, error: null }) } };
+  })(new Request("https://www.kwantdesk.com/auth/signin"));
+  assert.equal(received.freshOAuth, true);
+});
