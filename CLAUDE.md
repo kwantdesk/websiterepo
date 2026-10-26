@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Protection drag navigation regression
+
+-3838acd6 saved references to Lightweight Charts' live interaction options.
+  Its real boolean normalization/deep merge mutated those saved references to
+  disabled flags, so restoring them left charts permanently locked after drag.
+-Clone both option trees before disabling. Restore nested axis/touch/wheel
+  preferences exactly. Do not revert to reference snapshots or a replacement-
+  only option mock. Real installed library merge tests reproduced both failures
+  before the fix;39drag/execution/receipt tests pass afterward.
+-Receipt: docs/prompt-log/2026-10-27-protection-drag-navigation-restore.md.
+  Existing locked chart instances require reload. Owner trades untouched.
+
+
 ## 2026-10-27 — Verified paper order receipts
 
 -Order panel success requires matched ledger order/entry fill/open position and

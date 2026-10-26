@@ -31,8 +31,11 @@ export function beginPaperProtectionDrag<TScroll, TScale>(
   const scale = series.priceScale();
   const autoScale = scale.options().autoScale;
   const options = chart.options();
-  const handleScroll = options.handleScroll;
-  const handleScale = options.handleScale;
+  // options() exposes the library's live object. applyOptions(false) merges
+  // disabled flags into that same object, including nested axis settings.
+  // Retaining references would therefore restore disabled navigation forever.
+  const handleScroll = structuredClone(options.handleScroll);
+  const handleScale = structuredClone(options.handleScale);
   scale.setAutoScale(false);
   chart.applyOptions({ handleScroll: false, handleScale: false });
   plot.setPointerCapture(pointerId);

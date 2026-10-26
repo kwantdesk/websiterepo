@@ -7,16 +7,42 @@ import { beginPaperProtectionDrag } from "../src/lib/paperProtectionDrag.ts";
 import { snapPaperPrice, updatePaperProtection, emptyPaperTradingLedger, placePaperOrder } from "../src/lib/paperTrading.ts";
 
 const source = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-function fixture({ scale = 2, autoScale = true } = {}) {
+
+// Use the installed chart library's real normalization and in-place merge,
+// rather than the replacement-only mock used by the geometry tests below.
+const chartLibrary = readFileSync(new URL("../node_modules/lightweight-charts/dist/lightweight-charts.development.mjs", import.meta.url), "utf8");
+const mergeSource = chartLibrary.slice(chartLibrary.indexOf("function merge(dst,"), chartLibrary.indexOf("function isNumber("));
+const migrateSource = chartLibrary.slice(chartLibrary.indexOf("function migrateHandleScaleScrollOptions("), chartLibrary.indexOf("function toInternalOptions("));
+const realOptionsUpdate = Function(`${mergeSource}\nconst isBoolean = value => typeof value === 'boolean';\n${migrateSource}\nreturn (current, patch) => { migrateHandleScaleScrollOptions(patch); merge(current, patch); };`)();
+
+for (const finish of ["release", "cancel"]) {
+  test(`chart pan, wheel, touch and nested axis settings restore after ${finish} with the real library merge`, () => {
+    const h = fixture({ realMerge: true });
+    for (let pass = 0; pass < 3; pass++) {
+      h.handlers.startPaperProtectionDrag(h.event(310), { id: "level", kind: "stop_loss", price: 29900, position: h.position });
+      assert.equal(h.interactions().handleScroll.pressedMouseMove, false);
+      assert.equal(h.interactions().handleScale.axisPressedMouseMove.price, false);
+      h.listeners.get(finish === "release" ? "pointerup" : "pointercancel")(h.event(370));
+      assert.deepEqual(h.interactions(), h.originalInteractions);
+      assert.equal(h.autoScale(), true);
+      assert.equal(h.capture.size, 0);
+    }
+  });
+}
+
+function fixture({ scale = 2, autoScale = true, realMerge = false } = {}) {
   const capture = new Set(), listeners = new Map(), events = [], frames = new Map();
-  let auto = autoScale, interactions = { handleScroll: { pressedMouseMove: true }, handleScale: { mouseWheel: true } };
+  let auto = autoScale, interactions = {
+    handleScroll: { pressedMouseMove: true, mouseWheel: true, horzTouchDrag: true, vertTouchDrag: false },
+    handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: false, price: true } },
+  };
   const plot = { clientHeight: 400, getBoundingClientRect: () => ({ top: 100, height: 400 * scale }),
     setPointerCapture: id => capture.add(id), hasPointerCapture: id => capture.has(id), releasePointerCapture: id => capture.delete(id),
     addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   const priceScale = { options: () => ({ autoScale: auto }), setAutoScale: value => { auto = value; } };
   const series = { priceToCoordinate: price => 30000 - price, coordinateToPrice: y => 30000 - y, priceScale: () => priceScale };
-  const chart = { options: () => interactions, applyOptions: value => { interactions = value; } };
-  const originalInteractions = interactions;
+  const chart = { options: () => interactions, applyOptions: value => { if (realMerge) realOptionsUpdate(interactions, value); else interactions = value; } };
+  const originalInteractions = structuredClone(interactions);
   const event = (clientY, pointerId = 7) => ({ button: 0, clientY, pointerId, preventDefault() {}, stopPropagation() {} });
   const context = { beginPaperProtectionDrag, chartContainerRef: { current: plot }, candleSeriesRef: { current: series }, chartRef: { current: chart },
     paperActiveDragRef: { current: null }, paperDragCancelRef: { current: null },
