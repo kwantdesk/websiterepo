@@ -14930,7 +14930,7 @@ function Chart({
     // tick may already have appended that successor, so use the library's
     // historical-update flag in that case rather than replacing all history.
     if (!eventBased && seriesCandles.length === previousPaintCandles.length + 1) {
-      const closing = seriesCandles.at(-2);
+      const closing = observedCandleHistoryRef.current.merge(observedCandleScope, seriesCandles).at(-2);
       if (closing) {
         const closingTime = Math.floor(closing.timestamp / 1_000);
         candleSeriesRef.current.update({

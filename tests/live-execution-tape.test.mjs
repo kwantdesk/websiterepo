@@ -1,16 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
-
-const source = readFileSync(new URL("../src/lib/liveExecutionTape.ts", import.meta.url), "utf8")
-  .replace(/^import type .*\n/m, "")
-  .replace(/: InstitutionalTrade\[\]/g, "")
-  .replace(/: InstitutionalTrade/g, "")
-  .replace(/: Set<number>/g, "")
-  .replace(/new Map<string, InstitutionalTrade>\(\)/g, "new Map()")
-  .replace(/ as const/g, "")
-  .replace(/export /g, "");
-const api = Function(`${source}; return { mergeInstitutionalTradeTape, LIVE_EXECUTION_TAPE_LIMITS };`)();
+import { mergeInstitutionalTradeTape, LIVE_EXECUTION_TAPE_LIMITS } from '../src/lib/liveExecutionTape.ts';
+const api = { mergeInstitutionalTradeTape, LIVE_EXECUTION_TAPE_LIMITS };
 
 const trade = (index, flowOnly = false) => ({
   eventId: `${flowOnly ? "flow" : "exact"}-${index}`,

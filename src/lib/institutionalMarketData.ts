@@ -1552,6 +1552,7 @@ export function applyInstitutionalTradesToCandles(
         : timestamp;
       next.push({
         timestamp: candleTimestamp,
+        ...(bucketMs ? { sourceStartTimestamp: record.timestamp, sourceEndTimestamp: record.timestamp } : {}),
         open: (eventPrice ?? record.open) || record.close,
         high: eventPrice ?? Math.max(record.high || record.close, record.close),
         low: eventPrice ?? Math.min(record.low || record.close, record.close),
@@ -1575,9 +1576,13 @@ export function applyInstitutionalTradesToCandles(
     const deltaClose = (last.deltaClose ?? last.delta ?? 0) + recordDelta;
     next[next.length - 1] = {
       ...last,
+      ...(bucketMs ? {
+        sourceStartTimestamp: Math.min(last.sourceStartTimestamp ?? record.timestamp, record.timestamp),
+        sourceEndTimestamp: Math.max(last.sourceEndTimestamp ?? record.timestamp, record.timestamp),
+      } : {}),
       high: Math.max(last.high, record.high || record.close, record.close),
       low: Math.min(last.low, record.low || record.close, record.close),
-      close: record.close,
+      close: bucketMs && record.timestamp < (last.sourceEndTimestamp ?? -Infinity) ? last.close : record.close,
       volume: (last.volume || 0) + (record.volume || 0),
       trades: (last.trades || 0) + (record.trades || 0),
       bidVolume: (last.bidVolume || 0) + (record.bidVolume || 0),

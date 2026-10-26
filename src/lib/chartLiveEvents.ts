@@ -301,6 +301,9 @@ function tickTimestamp(value: unknown) {
  * jumping from the historical endpoint straight to the first post-mount tick.
  */
 export function recordDatabentoLiveTick(tick: DatabentoLiveTick) {
+  // Only the lossless execution subscriber populates this cache. Book marks,
+  // watchlist batches and cached quotes are not evidence of a candle print.
+  if (tick.isTrade !== true || tick.cached) return;
   const symbol = String(tick.instrument ?? "").trim();
   const price = Number(tick.mid);
   const timestamp = tickTimestamp(tick.timestamp);
@@ -325,9 +328,12 @@ export function recordDatabentoLiveTick(tick: DatabentoLiveTick) {
     const nextDeltaClose = previousDeltaClose + executedDelta;
     seconds.set(second, {
       ...existing,
+      sourceStartTimestamp: Math.min(existing.sourceStartTimestamp ?? timestamp, timestamp),
+      sourceEndTimestamp: Math.max(existing.sourceEndTimestamp ?? timestamp, timestamp),
+      open: timestamp < (existing.sourceStartTimestamp ?? Infinity) ? price : existing.open,
       high: Math.max(existing.high, price),
       low: Math.min(existing.low, price),
-      close: price,
+      close: timestamp < (existing.sourceEndTimestamp ?? -Infinity) ? existing.close : price,
       volume: Math.max(0, Number(existing.volume ?? 0)) + executedSize,
       trades: Math.max(0, Number(existing.trades ?? 0)) + executedTrades,
       delta: Number(existing.delta ?? 0) + executedDelta,
@@ -341,6 +347,8 @@ export function recordDatabentoLiveTick(tick: DatabentoLiveTick) {
   } else {
     seconds.set(second, {
       timestamp: second,
+      sourceStartTimestamp: timestamp,
+      sourceEndTimestamp: timestamp,
       open: price,
       high: price,
       low: price,
@@ -362,6 +370,16 @@ export function recordDatabentoLiveTick(tick: DatabentoLiveTick) {
   // filled. Prune on a bounded cadence instead; retention remains identical.
   pruneLiveTail(symbol, seconds, now);
   liveSecondsBySymbol.set(symbol, seconds);
+}
+
+/** Called once before shared execution fan-out, never once per chart pane. */
+export function recordDatabentoLiveExecutions(instrument: string, records: InstitutionalTrade[]) {
+  for (const record of records) {
+    if (record.flowOnly || record.footprintSummary) continue;
+    recordDatabentoLiveTick({ instrument, mid: record.close,
+      timestamp: record.timestamp, isTrade: true, size: record.volume,
+      trades: record.trades, delta: record.delta });
+  }
 }
 
 export function readDatabentoLiveTail(symbol: string) {

@@ -361,7 +361,6 @@ import {
   publishDatabentoLiveStatus,
   compactChronologicalLiveTicks,
   readDatabentoLiveTail,
-  recordDatabentoLiveTick,
   type DatabentoLiveStatus,
 } from "@/lib/chartLiveEvents";
 import {
@@ -5994,7 +5993,10 @@ function WorkspaceChartPaneComponent({
   // and, once painted, could stop developing until the next 15-second poll.
   // The shared subscriber is deduplicated by contract, so this does not open
   // one upstream connection per indicator or per profile.
-  const requiresExecutionStream = needsOrderFlowHistory
+  // Quote fan-out retains only the last price per batch. Every futures candle
+  // needs the lossless tape, even when no execution-based study is selected.
+  const requiresExecutionStream = pane.broker === "Databento"
+    || needsOrderFlowHistory
     || needsLiveVolumeProfiles
     || isEventBasedChartInterval(pane.timeframe);
   useEffect(() => {
@@ -8395,10 +8397,10 @@ function WorkspaceChartPaneComponent({
           detail: { ...executionQuote, timestamp: executionQuote.receivedAt },
         }));
       }
-      // Bid/ask-only packets still mark the trading UI above, but cannot form
-      // futures OHLC. Painting a book midpoint here invents a trade/wick that
-      // disappears when execution-based history arrives.
-      if (usingDatabentoPaneFeed && price.isTrade === false) return;
+      // These coalesced quotes still mark the trading UI above. Futures OHLC
+      // comes only from the lossless execution subscriber: even trade quotes
+      // omit intermediate prints and cannot supply a bar's true extrema/open.
+      if (usingDatabentoPaneFeed) return;
       pendingLiveTicksRef.current.push({
         sourceTimestamp: chartSourceTimestamp(price.timestamp),
         mid: price.mid,
@@ -11571,7 +11573,6 @@ export default function KwantifyWorkspace({
         if (!price || typeof price !== "object" || price.error || !price.instrument) return;
         const mid = Number(price.mid);
         if (!Number.isFinite(mid) || mid <= 0) return;
-        recordDatabentoLiveTick(price);
         window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
         publishLiveWatchlistQuote(
           makeWatchlistKey(price.instrument, "Databento"),
@@ -13759,7 +13760,6 @@ export default function KwantifyWorkspace({
 
       animationFrame = window.requestAnimationFrame(() => {
         for (const quote of quotes.values()) {
-          recordDatabentoLiveTick(quote);
           window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, {
             detail: { ...quote, cached: true } satisfies LiveFeedPrice,
           }));
@@ -13928,7 +13928,6 @@ export default function KwantifyWorkspace({
           receivedPriceMessage = true;
         }
         if (usingDatabentoFeed) {
-          recordDatabentoLiveTick(price);
           pendingLiveQuoteCacheRef.current.set(displayName, {
             ...price,
             openPrice: previousItem?.openPrice || price.mid,

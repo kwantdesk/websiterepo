@@ -3,6 +3,7 @@
 import { createExecutionTapeEngine, type ExecutionTapeEngine, type ExecutionTapeStatus } from "@/lib/executionTapeEngine";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
+import { recordDatabentoLiveExecutions } from "@/lib/chartLiveEvents";
 
 export type RithmicIndicatorStreamStatus = ExecutionTapeStatus;
 
@@ -65,6 +66,7 @@ function ensureWorker(): Worker | null {
     if (message?.type === "trades") {
       try {
         if (!stream) return;
+        recordDatabentoLiveExecutions(stream.symbol, message.records);
         // The worker owns the authoritative tape; this copy exists only to
         // seed a pane that attaches later, so it is bounded the same way.
         for (const record of message.records) stream.records.push(record);
@@ -124,6 +126,7 @@ function startInlineEngine(key: string, stream: SharedStream) {
       stream.subscribers.forEach((subscriber) => subscriber.onSeed?.(records.slice()));
     },
     onTrades: (records) => {
+      recordDatabentoLiveExecutions(stream.symbol, records);
       for (const record of records) stream.records.push(record);
       if (stream.records.length > 29_096) stream.records.splice(0, stream.records.length - 25_000);
       stream.subscribers.forEach((subscriber) => subscriber.onTrades(records));

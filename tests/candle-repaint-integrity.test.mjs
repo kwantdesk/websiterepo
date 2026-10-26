@@ -223,6 +223,7 @@ test("actual Chart rollover effect finalizes the old candle then appends without
       clockCandleHistoryNeedsRedraw, clockCandleTimelineChanged,
       setChartVisualReady: () => assert.fail("rollover showed loading"),
       drawingTimelineRevisionRef: ref(9),
+      observedCandleHistoryRef: ref(new ObservedCandleHistory()), observedCandleScope: "rollover-test",
     });
     vm.runInContext(ts.transpileModule(`(${effect.getText(source)})();`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
     assert.deepEqual(calls.map(call => [call.data.time, call.data.high, call.data.close]), [[120, 110, 108], [180, 103, 101]]);
@@ -255,10 +256,10 @@ test("actual workspace delayed-tick branch cannot delete the candle after a genu
   assert.equal(repaired.at(-1).timestamp, 180000, "genuinely future-mislabelled history still repairs");
 });
 
-test("explicit book-only futures packets cannot create OHLC prints, while trading marks still receive them", () => {
+test("batched futures quotes cannot create OHLC prints, while trading marks still receive them", () => {
   const source = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
   const consume = source.slice(source.indexOf("const consumeLivePrice ="), source.indexOf("pendingLiveTicksRef.current.push({", source.indexOf("const consumeLivePrice =")));
-  assert.match(consume, /if \(usingDatabentoPaneFeed && price.isTrade === false\) return;/);
-  assert.ok(consume.indexOf("onLiveExecutionQuote(executionQuote)") < consume.indexOf("price.isTrade === false"));
+  assert.match(consume, /if \(usingDatabentoPaneFeed\) return;/);
+  assert.ok(consume.indexOf("onLiveExecutionQuote(executionQuote)") < consume.indexOf("if (usingDatabentoPaneFeed) return"));
   assert.ok(consume.includes("PAPER_MARK_QUOTE_EVENT"));
 });

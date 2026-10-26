@@ -17,7 +17,7 @@ export interface Candle {
   deltaHigh?: number;
   deltaLow?: number;
   deltaClose?: number;
-  /** Source-execution watermark used by non-time bar continuations. */
+  /** Source-execution watermarks in milliseconds; preserve chronological OHLC. */
   sourceStartTimestamp?: number;
   sourceEndTimestamp?: number;
 }

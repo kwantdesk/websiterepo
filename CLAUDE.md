@@ -1,5 +1,26 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Execution-authoritative futures candles
+
+- Plain Databento/CME panes must subscribe to the shared Rithmic execution
+  stream even without order-flow studies. Batched quote SSE retains only its
+  last trade; it cannot reconstruct first/high/low prices. Quotes still update
+  trading marks, but may not write futures OHLC or the startup candle cache.
+- Populate the one-second startup cache once before execution fan-out. Reject
+  midpoint/unclassified/cached quotes and aggregate flow records. Time-cache
+  schema is time-v5 to discard old quote-built tails. Historical/event archives
+  remain intact; no gateway restart or provider connection change was required.
+- Closing-bar series.update must merge ObservedCandleHistory at paint time:
+  React's prepared seriesCandles can predate the last direct wick/close update.
+  Current clock bars also retain a source-end watermark against delayed prints.
+- Three regressions failed before fixes.77 checks pass, including349 actual
+  NQ executions matching archive OHLCV across six batch partitions. Build and
+  scoped ESLint pass. A12-second live VPS probe returned128seed records and124
+  incremental executions with a valid stream receipt. These observations do
+  not prove every historical session has a complete raw execution archive.
+- Receipt: docs/prompt-log/2026-10-27-execution-authoritative-candles.md.
+
+
 ## 2026-10-27 — Protection drag navigation regression
 
 -3838acd6 saved references to Lightweight Charts' live interaction options.
