@@ -140,7 +140,7 @@ import {
   type LiveChartExecutionDetail,
 } from "@/lib/chartLiveEvents";
 import { mergeHistoricalAndLiveCandle, retainFormingCandleExtrema } from "@/lib/liveCandleAuthority";
-import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw } from "@/lib/observedCandleHistory";
+import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw, clockCandleTimelineChanged } from "@/lib/observedCandleHistory";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   CHART_INDICATOR_BY_ID,
@@ -14828,7 +14828,8 @@ function Chart({
      */
     const styleChanged = lastDrawnCandleStyleRef.current !== candleStyle;
     lastDrawnCandleStyleRef.current = candleStyle;
-    const changedClockHistory = !eventBased && clockCandleHistoryNeedsRedraw(previousPaintCandlesRef.current, seriesCandles);
+    const previousPaintCandles = previousPaintCandlesRef.current;
+    const changedClockHistory = !eventBased && clockCandleHistoryNeedsRedraw(previousPaintCandles, seriesCandles);
     previousPaintCandlesRef.current = seriesCandles;
     if (!styleChanged && !changedClockHistory && lastCandleKey === prevDataRef.current) return;
     prevDataRef.current = lastCandleKey;
@@ -14873,14 +14874,16 @@ function Chart({
         eventSourceTimeByChartTimeRef.current,
         eventChartTimeBySourceTimeRef.current,
       );
-      drawingTimelineRevisionRef.current += 1;
+      if (eventBased || clockCandleTimelineChanged(previousPaintCandles, drawCandles)) {
+        drawingTimelineRevisionRef.current += 1;
+      }
       candleSeriesRef.current.setData(chartData);
       lastRenderedCandleTimeRef.current = chartData.length
         ? Number(chartData[chartData.length - 1].time)
         : null;
       lastRenderedSourceTimestampRef.current = drawCandles.at(-1)?.timestamp ?? null;
       const historyExpanded =
-        previousCandleCount <= 5
+        previousCandleCount === 0
         || candles.length >= Math.max(50, previousCandleCount * 1.5);
       if (historyExpanded) {
         resetViewportBeforeReveal(
@@ -14900,6 +14903,19 @@ function Chart({
       return;
     }
 
+    // Finalize the closing candle before appending its successor. A direct
+    // tick may already have appended that successor, so use the library's
+    // historical-update flag in that case rather than replacing all history.
+    if (!eventBased && seriesCandles.length === previousPaintCandles.length + 1) {
+      const closing = seriesCandles.at(-2);
+      if (closing) {
+        const closingTime = Math.floor(closing.timestamp / 1_000);
+        candleSeriesRef.current.update({
+          time: closingTime as Time,
+          open: closing.open, high: closing.high, low: closing.low, close: closing.close,
+        }, lastRenderedCandleTimeRef.current !== null && closingTime < lastRenderedCandleTimeRef.current);
+      }
+    }
     const naturalTime = Math.floor(lastSourceCandle.timestamp / 1_000);
     const sameSourceBar = lastRenderedSourceTimestampRef.current === lastSourceCandle.timestamp;
     const incrementalTime = eventBased && lastRenderedCandleTimeRef.current !== null

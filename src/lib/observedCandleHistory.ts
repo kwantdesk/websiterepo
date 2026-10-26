@@ -81,10 +81,28 @@ export class ObservedCandleHistory {
 /** series.update can append one bar, not repair earlier OHLC or fill skipped bars. */
 export function clockCandleHistoryNeedsRedraw(previous: Candle[], next: Candle[]) {
   if (!previous.length || next.length < previous.length || next.length > previous.length + 1) return true;
-  for (let index = 0; index < Math.min(previous.length, Math.max(0, next.length - 1)); index++) {
+  if (next.length === previous.length + 1 && previous.at(-1)?.timestamp !== next.at(-2)?.timestamp) return true;
+  // The previous tail can receive its final print in the same React batch as
+  // the next bar opens. Both can be updated in place; it is not a history reset.
+  for (let index = 0; index < Math.max(0, previous.length - 1); index++) {
     const a = previous[index];
     const b = next[index];
     if (!b || a.timestamp !== b.timestamp || a.open !== b.open || a.high !== b.high || a.low !== b.low || a.close !== b.close) return true;
+  }
+  return false;
+}
+
+/** Only interior timestamp changes invalidate the drawing projection. OHLC
+ * corrections, tail appends and prefix trimming retain an affine timeline. */
+export function clockCandleTimelineChanged(previous: Candle[], next: Candle[]) {
+  if (!previous.length || !next.length) return previous.length !== next.length;
+  let left = 0;
+  let right = 0;
+  while (left < previous.length && previous[left].timestamp < next[0].timestamp) left++;
+  while (right < next.length && next[right].timestamp < previous[0].timestamp) right++;
+  if (left === previous.length || right === next.length) return true;
+  while (left < previous.length && right < next.length) {
+    if (previous[left++].timestamp !== next[right++].timestamp) return true;
   }
   return false;
 }

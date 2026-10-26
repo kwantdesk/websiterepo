@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
-import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw } from "../src/lib/observedCandleHistory.ts";
+import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw, clockCandleTimelineChanged } from "../src/lib/observedCandleHistory.ts";
 
 const bar = (timestamp, overrides = {}) => ({ timestamp, open: 100, high: 103, low: 98, close: 101, volume: 10, ...overrides });
 const scope = "pane:NQ:1m:live";
@@ -166,6 +166,54 @@ test("two-to-five new bars and earlier OHLC corrections require setData, not a l
   for (let count = 2; count <= 5; count++) assert.equal(clockCandleHistoryNeedsRedraw(before, [...before, ...Array.from({ length: count }, (_, i) => bar(180000 + i * 60000))]), true);
   assert.equal(clockCandleHistoryNeedsRedraw(before, [bar(60000, { high: 110 }), bar(120000)]), true);
   assert.equal(clockCandleHistoryNeedsRedraw(before, [bar(60000)]), true);
+});
+
+test("closing print and successor share an incremental rollover without invalidating drawings", () => {
+  const before = [bar(60000), bar(120000)];
+  const after = [before[0], bar(120000, { high: 110, close: 108 }), bar(180000)];
+  assert.equal(clockCandleHistoryNeedsRedraw(before, after), false);
+  assert.equal(clockCandleTimelineChanged(before, after), false);
+  assert.equal(clockCandleHistoryNeedsRedraw(before, [before[0], bar(150000), bar(180000)]), true);
+  assert.equal(clockCandleTimelineChanged(before, [before[0], bar(90000), before[1]]), true);
+  assert.equal(clockCandleTimelineChanged(before, [bar(120000), bar(180000)]), false);
+  assert.equal(clockCandleTimelineChanged(before, [bar(60000, { high: 111 }), before[1]]), false);
+});
+
+test("actual Chart rollover effect finalizes the old candle then appends without setData or loading", () => {
+  const sourceText = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const source = ts.createSourceFile("Chart.tsx", sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let effect;
+  const visit = node => {
+    if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
+        && node.arguments[0]?.getText(source).includes("const previousPaintCandles =")) effect = node.arguments[0];
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  assert.ok(effect);
+  const before = [bar(60000), bar(120000)];
+  const after = [before[0], bar(120000, { high: 110, close: 108 }), bar(180000)];
+  for (const alreadyAppended of [false, true]) {
+    const calls = [];
+    const ref = current => ({ current });
+    const context = vm.createContext({
+      candles: after, observedSourceCandles: after, seriesCandles: after,
+      instrument: "NQ", timeframe: "1m", liveCandleEventKey: "NQ:1m", candleStyle: "candles",
+      latestDirectLiveCandleRef: ref(null), latestCandleRef: ref(null),
+      candleSeriesRef: ref({ update: (data, historical) => calls.push({ data, historical }), setData: () => assert.fail("rollover replaced history") }),
+      chartRef: ref({}), lastDrawnCandleStyleRef: ref("candles"),
+      previousPaintCandlesRef: ref(before), prevDataRef: ref("old"),
+      prevCandlesLengthRef: ref(2), prevFirstTimestampRef: ref(60000),
+      lastRenderedCandleTimeRef: ref(alreadyAppended ? 180 : 120), lastRenderedSourceTimestampRef: ref(alreadyAppended ? 180000 : 120000),
+      timeframeToMs: () => 60000, isHeikinAshiStyle: () => false,
+      clockCandleHistoryNeedsRedraw, clockCandleTimelineChanged,
+      setChartVisualReady: () => assert.fail("rollover showed loading"),
+      drawingTimelineRevisionRef: ref(9),
+    });
+    vm.runInContext(ts.transpileModule(`(${effect.getText(source)})();`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+    assert.deepEqual(calls.map(call => [call.data.time, call.data.high, call.data.close]), [[120, 110, 108], [180, 103, 101]]);
+    assert.equal(calls[0].historical, alreadyAppended);
+    assert.equal(context.drawingTimelineRevisionRef.current, 9);
+  }
 });
 
 test("actual workspace delayed-tick branch cannot delete the candle after a genuine rollover", () => {
