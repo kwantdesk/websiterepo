@@ -1,5 +1,7 @@
 "use client";
 
+import { syncPaperJournalCloud } from "@/lib/paperJournalCloud";
+
 import { bigContractHistoryWindows } from "@/lib/bigContractHistory";
 
 import ReplayWatchlistNumbers, { type ReplayWatchlistLoader } from "@/components/ReplayWatchlistNumbers";
@@ -10849,8 +10851,13 @@ export default function KwantifyWorkspace({
           }
           const next = appendPaperTradesToJournal(state, records, paperLedgerRef.current);
           // Same object back means there was nothing new to record.
-          if (next === state) return;
-          await saveJournalState(key, next);
+          if (next === state) {
+            void syncPaperJournalCloud(key, next);
+            return;
+          }
+          const saved = await saveJournalState(key, next);
+          if (!saved) return;
+          void syncPaperJournalCloud(key, next);
           // An open journal holds its own copy and saves it back, so it has to
           // be told rather than left to overwrite what was just written.
           window.dispatchEvent(new CustomEvent(PAPER_JOURNAL_UPDATED_EVENT));
@@ -10866,6 +10873,13 @@ export default function KwantifyWorkspace({
   useEffect(() => () => {
     if (paperJournalTimerRef.current !== null) window.clearTimeout(paperJournalTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    const retry = () => schedulePaperJournalSync();
+    window.addEventListener("online", retry);
+    window.addEventListener("focus", retry);
+    return () => { window.removeEventListener("online", retry); window.removeEventListener("focus", retry); };
+  }, [schedulePaperJournalSync]);
 
   // A demo account gets its journal as soon as it exists, before it has traded,
   // and again if the key it belongs under changes.

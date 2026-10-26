@@ -187,6 +187,8 @@ export type PaperAccountLedger = {
   positions: PaperPosition[];
   orders: PaperOrder[];
   fills: PaperTradeFill[];
+  /** Durable journal evidence; clearing chart fills must not erase closed trades. */
+  journalFills?: PaperTradeFill[];
   updatedAt: number;
 };
 
@@ -695,6 +697,10 @@ function normalizePosition(value: Partial<PaperPosition>): PaperPosition | null 
   };
 }
 
+export function paperAccountJournalFills(account: Pick<PaperAccountLedger, "fills" | "journalFills">): PaperTradeFill[] {
+  return [...new Map([...(account.journalFills ?? []), ...account.fills].map(fill => [fill.id, fill])).values()];
+}
+
 export function normalizePaperTradingLedger(value: unknown): PaperTradingLedger {
   if (!value || typeof value !== "object") return emptyPaperTradingLedger();
   const source = value as Partial<PaperTradingLedger>;
@@ -713,6 +719,7 @@ export function normalizePaperTradingLedger(value: unknown): PaperTradingLedger 
           : [],
         orders: Array.isArray(account.orders) ? account.orders as PaperOrder[] : [],
         fills: Array.isArray(account.fills) ? account.fills as PaperTradeFill[] : [],
+        journalFills: paperAccountJournalFills({ fills: Array.isArray(account.fills) ? account.fills as PaperTradeFill[] : [], journalFills: Array.isArray(account.journalFills) ? account.journalFills : [] }),
         updatedAt: positive(account.updatedAt, Date.now()),
       } satisfies PaperAccountLedger]];
     }),
@@ -831,6 +838,7 @@ export function resetPaperAccountLedger(
         positions: [],
         orders: [],
         fills: [],
+        journalFills: paperAccountJournalFills(account),
         updatedAt: timestamp,
       },
     },
@@ -853,6 +861,7 @@ export function clearPaperAccountFills(
         // Daily P&L is calculated from today's exit fills, so deleting the
         // account's fill history must clear that readout at the same time.
         // Open positions and working orders remain untouched.
+        journalFills: paperAccountJournalFills(account),
         fills: [],
         updatedAt: timestamp,
       },
@@ -1164,6 +1173,7 @@ function closePositionQuantity(
   };
   return {
     ...account,
+    journalFills: [...paperAccountJournalFills(account), fill],
     cashBalance: account.cashBalance + pnl,
     realizedPnl: account.realizedPnl + pnl,
     positions: account.positions.map((candidate) => candidate.id === position.id ? nextPosition : candidate),
@@ -1763,6 +1773,7 @@ export function clearPaperTradeHistory(ledger: PaperTradingLedger, accountId: st
         ...account,
         positions: account.positions.filter((position) => position.status === "open"),
         orders: account.orders.filter((order) => order.status === "working" || (order.positionId && openPositionIds.has(order.positionId))),
+        journalFills: paperAccountJournalFills(account),
         fills: account.fills.filter((fill) => openPositionIds.has(fill.positionId)),
         updatedAt: Date.now(),
       },

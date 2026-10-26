@@ -8,7 +8,7 @@ import {
 import type { PaperTradingAccountRecord } from "@/lib/paperAccounts";
 import {
   paperContractSpec,
-  type PaperAccountLedger,
+  paperAccountJournalFills,
   type PaperTradeFill,
   type PaperTradingLedger,
 } from "@/lib/paperTrading";
@@ -210,12 +210,6 @@ function paperFillToJournalTrade(
   return { ...trade, fingerprint: journalTradeFingerprint(trade) };
 }
 
-function entryFillFor(account: PaperAccountLedger, exit: PaperTradeFill) {
-  return account.fills.find(
-    (candidate) => candidate.positionId === exit.positionId && candidate.role === "entry",
-  ) ?? null;
-}
-
 /**
  * Copy any closed demo trade the journal has not already recorded.
  *
@@ -243,10 +237,15 @@ export function appendPaperTradesToJournal(
     // but there is no name to file it under, so it is left alone rather than
     // filed somewhere arbitrary.
     if (!accountName) continue;
-    for (const fill of account.fills) {
+    const fills = paperAccountJournalFills(account);
+    const entries = new Map<string, PaperTradeFill>();
+    for (const fill of fills) {
+      if (fill.role === "entry" && !entries.has(fill.positionId)) entries.set(fill.positionId, fill);
+    }
+    for (const fill of fills) {
       if (!isExitFill(fill)) continue;
       if (known.has(`${PAPER_JOURNAL_TRADE_PREFIX}${fill.id}`)) continue;
-      const trade = paperFillToJournalTrade(fill, entryFillFor(account, fill), accountName);
+      const trade = paperFillToJournalTrade(fill, entries.get(fill.positionId) ?? null, accountName);
       if (trade) added.push(trade);
     }
   }

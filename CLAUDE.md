@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Durable demo journal recording
+
+- Owner's “20 october” demo account preserved. Live Journal already had16rows,
+  including26Oct; its P&L does not reconcile to the demo balance. Missing old
+  cleared executions have not been recovered or invented.
+- Closing fills now enter durable ledger journalFills evidence. Clear-fill,
+  chart-history clear, demo reset and JSON hydration retain this evidence.
+- Chart-side journal writer uploads new paper accounts/rows without opening
+  Journal. Authenticated append-paper checks owner and ignores existing trade
+  IDs, protecting reviews from stale device uploads. Focus/online retries.
+-41targeted tests and14legacy checks pass; five old integration source-regex
+  failures reproduce against unmodified HEAD. Receipt:
+  docs/prompt-log/2026-10-27-demo-journal-durable-recording.md.
+
+
 ## 2026-10-26 — Big Contracts selected history
 
 - Days to load now triggers bounded daily archive requests (two concurrent),

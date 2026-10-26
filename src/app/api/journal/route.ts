@@ -466,6 +466,7 @@ export async function POST(request: NextRequest) {
 
   let body: {
     action?: unknown;
+    ownerId?: unknown;
     account?: unknown;
     accountId?: unknown;
     accountIds?: unknown;
@@ -906,7 +907,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ cloud: true, linkedPostsUpdated });
   }
 
-  if (action !== "sync") return NextResponse.json({ error: "Unsupported Journal action." }, { status: 400 });
+  const appendPaper = action === "append-paper";
+  if (action !== "sync" && !appendPaper) return NextResponse.json({ error: "Unsupported Journal action." }, { status: 400 });
+  if (appendPaper && body.ownerId !== actor.userId) {
+    return NextResponse.json({ error: "The journal owner changed. Retry after signing in." }, { status: 403 });
+  }
   const account = cleanText(body.account, 80);
   if (!account || isZyonJournalAccountName(account)) return NextResponse.json({ error: "Choose a custom account name." }, { status: 400 });
   const id = cleanId(body.accountId) || accountId(account);
@@ -914,6 +919,9 @@ export async function POST(request: NextRequest) {
     .map((trade) => sanitizeTrade(trade, account))
     .filter((trade): trade is JournalTrade => Boolean(trade))
     .slice(0, 5_000);
+  if (appendPaper && trades.some(trade => !trade.id.startsWith("paper:"))) {
+    return NextResponse.json({ error: "Choose a linked demo journal with paper execution records." }, { status: 400 });
+  }
   const imports = (Array.isArray(body.imports) ? body.imports : [])
     .map((batch) => sanitizeImport(batch, account))
     .filter((batch): batch is JournalImportBatch => Boolean(batch))
@@ -948,7 +956,7 @@ export async function POST(request: NextRequest) {
       closed_at: trade.closedAt,
       payload: trade,
     }));
-    const { error } = await supabase.from("journal_trades").upsert(rows, { onConflict: "user_id,id" });
+    const { error } = await supabase.from("journal_trades").upsert(rows, { onConflict: "user_id,id", ...(appendPaper ? { ignoreDuplicates: true } : {}) });
     if (error) return NextResponse.json({ error: "Imported trades could not be saved." }, { status: 502 });
   }
 
