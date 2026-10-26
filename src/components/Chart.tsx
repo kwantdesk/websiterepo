@@ -20053,7 +20053,7 @@ function Chart({
         </div>
       ) : null}
       {footprintIndicator && exactFootprintHistory.error ? (
-        <div className="pointer-events-none absolute right-[76px] top-3 z-[19] max-w-[390px] border border-border bg-background px-3 py-2 font-mono text-[10px] text-foreground" role="status">
+        <div hidden data-footprint-history-diagnostic="incomplete">
           {exactFootprintHistory.error}
         </div>
       ) : null}
