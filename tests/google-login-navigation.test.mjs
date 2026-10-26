@@ -107,3 +107,25 @@ test("new OAuth starts ignore old session cookies while normal server clients re
   })(new Request("https://www.kwantdesk.com/auth/signin"));
   assert.equal(received.freshOAuth, true);
 });
+
+test("normal login automatically starts OAuth; explicit errors keep a retry screen without looping", async () => {
+  const source = readFileSync(new URL("../src/app/login/page.tsx", import.meta.url), "utf8");
+  const exports = {};
+  const compiled = ts.transpileModule(source, { compilerOptions: {
+    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
+  } }).outputText;
+  vm.runInNewContext(compiled, { exports, URLSearchParams, require: name => {
+    if (name === "@/components/GoogleLoginButton") return { default: () => null };
+    if (name === "@/lib/authRedirect") return { safeAuthReturn };
+    if (name === "next/navigation") return { redirect: to => { throw Object.assign(Error("redirect"), { to }); } };
+    return require(name);
+  } });
+  for (const [returnTo, expected] of [[undefined, "/"], ["/charts", "/charts"], ["//elsewhere.test", "/"]]) {
+    await assert.rejects(exports.default({ searchParams: Promise.resolve({ returnTo }) }),
+      error => error.to === `/auth/signin?${new URLSearchParams({ returnTo: expected })}`);
+  }
+  for (const error of ["auth", "configuration", "restricted"]) {
+    const result = await exports.default({ searchParams: Promise.resolve({ error, returnTo: "/charts" }) });
+    assert.ok(result, "an error must render a retry page, not start a redirect loop");
+  }
+});

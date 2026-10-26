@@ -1,5 +1,6 @@
 import GoogleLoginButton from "@/components/GoogleLoginButton";
 import { safeAuthReturn } from "@/lib/authRedirect";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,12 @@ const messages: Record<string, string> = {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { error, returnTo } = await searchParams;
   const safeReturnTo = safeAuthReturn(returnTo);
+  // Login is the sign-in action. Do not strand a second laptop on an
+  // intermediate button while waiting for browser code or another click.
+  // Explicit failures stay visible rather than automatically retrying forever.
+  if (!error) {
+    redirect(`/auth/signin?${new URLSearchParams({ returnTo: safeReturnTo })}`);
+  }
 
   return (
     <main className="login-page">

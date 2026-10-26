@@ -36,3 +36,17 @@ Normal server clients/callback still read and validate existing cookies; verifie
 writes remain enabled.9 auth/navigation/cookie tests, build and scoped lint pass.
 Treat this as a verified isolation improvement, not proof the other laptop's
 remaining issue has been reproduced or resolved.
+
+Owner clarified the URL is /login?returnTo=%2F without an error parameter.
+Actual in-app browser click on its existing Continue with Google button reached
+Google's Choose an account screen; no credentials/account selection submitted.
+The remote laptop's failed click is still not reproduced, so no assertion of a
+specific browser/navigation interceptor is made.
+
+Removed the normal intermediate screen altogether: /login without an explicit
+error now server-redirects to /auth/signin with the safe intended destination.
+This bypasses the unresponsive-button symptom and does not rely on hydration or
+an additional click. Explicit auth/configuration/restricted errors still render
+retry UI and never automatically loop.10 auth/navigation/cookie tests, build,
+lint/whitespace checks pass. Live browser /login navigation acceptance follows
+the main-only release; owner's final Google account sign-in remains theirs.
