@@ -2,7 +2,7 @@
 
 ## 2026-10-27 — Navigation and DOM update response
 
-Settings links now use client navigation plus existing chart pointer-down pause handoff. Intent-only route prefetch is bounded to once per30s per sidebar; no global route warming/polling or auth bypass. PrivateTerminologyGuard uses processTerminologyMutations: changed attributes/text only, deduped batch values and highest inserted ancestor traversal. Preserve synchronous copy privacy and iframe initial scrubs.16 focused tests/build pass; lint0errors/2existing img warnings. See docs/prompt-log/2026-10-27-navigation-response.md.
+Settings links now use client navigation plus existing chart pointer-down pause handoff. Intent-only route prefetch is bounded to once per30s per sidebar; no global route warming/polling or auth bypass. PrivateTerminologyGuard uses processTerminologyMutations: changed attributes/text only, deduped batch values and highest inserted ancestor traversal. Preserve synchronous copy privacy and iframe initial scrubs.19 focused tests/build pass; lint0errors/2existing img warnings. SettingsPage verifies claims via Supabase cached signature/expiry checks instead of a second serial getUser; middleware remote getUser stays unchanged, so per-request account validation is retained. Symmetric JWTs retain package getUser fallback. See docs/prompt-log/2026-10-27-navigation-response.md.
 
 
 ## 2026-10-27 — Theme refresh paint
