@@ -4,7 +4,7 @@ import { saveTheme, resetTheme, defaultTheme } from "../src/lib/theme.ts";
 import { themePresets } from "../src/lib/themePresets.ts";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, defaultChartSettings, chartSettingsForTheme, mergeChartSettingsIntoTheme } from "../src/lib/chartSettings.ts";
 import { resolveCandleSeriesColors } from "../src/lib/candleStyle.ts";
-import { hydrateUserPreferences } from "../src/lib/userPreferences.ts";
+import { hydrateUserPreferences, saveUserPreferences, receiveAccountPreferences, readScopedPreferences } from "../src/lib/userPreferences.ts";
 
 const runtimeKeys = ["kwantdesk:chart-workspace-settings:v1", "kwantdesk:gamma-charting:kwantdesk:chart-workspace-settings:v1"];
 function browser() {
@@ -85,7 +85,7 @@ function cloudClient(snapshot, wait = Promise.resolve()) {
   }; } };
 }
 
-test("same-owner hydration retains chart appearance with the local theme but keeps other cloud preferences", async () => {
+test("a newer account theme replaces an older device theme along with chart settings", async () => {
   const { store } = browser();
   const localTheme = themePresets[1].colors;
   const oldTheme = themePresets[2].colors;
@@ -97,11 +97,11 @@ test("same-owner hydration retains chart appearance with the local theme but kee
     ...Object.fromEntries(runtimeKeys.map((key) => [key, JSON.stringify(cloudChart)])),
   } };
   await hydrateUserPreferences(cloudClient(snapshot), { id: "owner", user_metadata: {} });
-  assert.equal(JSON.parse(store.get("olisa-theme")).chartBackground, localTheme.chartBackground);
+  assert.equal(JSON.parse(store.get("olisa-theme")).chartBackground, oldTheme.chartBackground);
   for (const key of [CHART_SETTINGS_STORAGE_KEY, ...runtimeKeys]) {
     const restored = JSON.parse(store.get(key));
-    assert.equal(restored.backgroundColor, localTheme.chartBackground);
-    assert.equal(restored.upColor, localTheme.candleUp);
+    assert.equal(restored.backgroundColor, oldTheme.chartBackground);
+    assert.equal(restored.upColor, oldTheme.candleUp);
     assert.equal(restored.timezone, "Europe/London", "non-colour preferences still follow the chosen account snapshot");
   }
 });
@@ -125,4 +125,51 @@ test("a theme clicked during an in-flight account read cannot be overwritten by 
   for (const key of [CHART_SETTINGS_STORAGE_KEY, ...runtimeKeys]) {
     assert.equal(JSON.parse(store.get(key)).backgroundColor, chosen.chartBackground, key);
   }
+});
+
+test("unsent desktop layout survives restart while a phone theme change is preserved", async () => {
+  const { store } = browser();
+  const base = { version: 1, complete: true, updatedAt: '2026-10-26T00:00:00Z', values: {
+    'olisa-theme': JSON.stringify(defaultTheme), 'olisa-chart-workspace-layout': 'single',
+  } };
+  const remoteTheme = themePresets[2].colors;
+  let cloud = { preferences: { ...base, updatedAt: '2026-10-27T00:00:00Z', values: {
+    ...base.values, 'olisa-theme': JSON.stringify(remoteTheme),
+  } }, updated_at: '2026-10-27T00:00:00Z' };
+  store.set('kwantdesk:active-preferences-owner:v1', 'owner');
+  store.set('kwantdesk:user-preferences:owner:v1', JSON.stringify(base));
+  for (const [key,value] of Object.entries(base.values)) store.set(key,value);
+  store.set('olisa-chart-workspace-layout','quad');
+  const client = { from(table) {
+    let update; const chain = { select(){return chain}, eq(){return chain}, update(value){update=value;return chain},
+      async maybeSingle(){
+        if (table !== 'user_preferences') return {data:null,error:null};
+        if (update) { cloud = update; return {data:{updated_at:update.updated_at},error:null}; }
+        return {data:structuredClone(cloud),error:null};
+      } }; return chain;
+  } };
+  await hydrateUserPreferences(client, { id:'owner', user_metadata:{} });
+  assert.equal(store.get('olisa-chart-workspace-layout'),'quad');
+  assert.deepEqual(JSON.parse(store.get('olisa-theme')),remoteTheme);
+  assert.equal(cloud.preferences.values['olisa-chart-workspace-layout'],'quad');
+});
+
+test("an in-flight local edit is not mistaken for a cloud acknowledgement", () => {
+  const {store} = browser();store.set('kwantdesk:active-preferences-owner:v1','owner');
+  const acknowledged={version:1,complete:true,updatedAt:'2026-10-27T00:00:00Z',values:{'olisa-chart-workspace-layout':'single'}};
+  const pending={...acknowledged,values:{'olisa-chart-workspace-layout':'quad'}};
+  receiveAccountPreferences('owner',pending,acknowledged);
+  assert.equal(store.get('olisa-chart-workspace-layout'),'quad');
+  assert.equal(readScopedPreferences('owner').values['olisa-chart-workspace-layout'],'single');
+  receiveAccountPreferences('different-owner',acknowledged);
+  assert.equal(store.get('olisa-chart-workspace-layout'),'quad');
+});
+
+test("failed cloud saves throw and retain the prior acknowledged base", async () => {
+  const {store} = browser();
+  const base={version:1,complete:true,updatedAt:'2026-10-27T00:00:00Z',values:{'olisa-chart-workspace-layout':'single'}};
+  store.set('kwantdesk:user-preferences:owner:v1',JSON.stringify(base));
+  const client={from(){const chain={select(){return chain},eq(){return chain},async maybeSingle(){return {data:null,error:{code:'offline'}}}};return chain;}};
+  await assert.rejects(saveUserPreferences(client,'owner',{...base,values:{'olisa-chart-workspace-layout':'quad'}}));
+  assert.equal(readScopedPreferences('owner').values['olisa-chart-workspace-layout'],'single');
 });

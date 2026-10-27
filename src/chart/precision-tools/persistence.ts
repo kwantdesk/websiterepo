@@ -50,6 +50,7 @@ export function loadPrecisionDocument(workspaceId: string, chartId: string): Pre
 export function savePrecisionDocument(document: PrecisionDocument): void {
   if (typeof window === "undefined") return;
   writeProtectedItem(precisionObjectStorageKey(document.workspaceId, document.chartId), JSON.stringify({ ...document, savedAt: Date.now() }));
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
 export function loadPrecisionConfigs(identity: string, colors?: { primary?: string; bullish?: string; bearish?: string }): PrecisionToolConfig[] {

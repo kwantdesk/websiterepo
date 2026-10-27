@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import ThemeProvider from "@/components/ThemeProvider";
 import ViewportLock from "@/components/ViewportLock";
 import PrivateTerminologyGuard from "@/components/PrivateTerminologyGuard";
+import StandaloneAccountSync from "@/components/StandaloneAccountSync";
 import { themeBootstrapScript } from "@/lib/theme";
 import "../../public/fonts/aleph/aleph.css";
 import "./globals.css";
@@ -54,7 +55,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <style>{`.kwant-private-copy-pending body { visibility: hidden; }`}</style>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />
       </head>
-      <body><PrivateTerminologyGuard /><ViewportLock /><ThemeProvider>{children}</ThemeProvider></body>
+      <body><PrivateTerminologyGuard /><ViewportLock /><ThemeProvider><StandaloneAccountSync />{children}</ThemeProvider></body>
     </html>
   );
 }

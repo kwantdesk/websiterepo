@@ -880,7 +880,9 @@ function createEntryPosition(
   timestamp: number,
   leverage: number,
 ): PaperAccountLedger {
-  const positionId = uid("paper-position");
+  // A shared resting order may be observed on more than one signed-in device.
+  // Its economic identity must not depend on which browser saw the fill first.
+  const positionId = `paper-position-${order.id}`;
   const quantity = positive(order.quantity);
   let unallocatedQuantity = quantity;
   const takeProfits = order.takeProfits
@@ -890,7 +892,7 @@ function createEntryPosition(
       const targetQuantity = Math.min(unallocatedQuantity, positive(target.quantity, quantity));
       unallocatedQuantity = Math.max(0, unallocatedQuantity - targetQuantity);
       return [{
-        id: uid(`paper-tp-${index + 1}`),
+        id: `paper-tp-${order.id}-${index + 1}`,
         price: snapPaperPrice(order.symbol, target.price),
         quantity: targetQuantity,
         filledQuantity: 0,
@@ -932,7 +934,7 @@ function createEntryPosition(
     positionId,
   };
   const fill: PaperTradeFill = {
-    id: uid("paper-fill"),
+    id: `paper-fill-${order.id}-entry`,
     orderId: order.id,
     positionId,
     accountId: order.accountId,
@@ -1157,7 +1159,7 @@ function closePositionQuantity(
     closedAt: remainingQuantity > 0 ? undefined : timestamp,
   };
   const fill: PaperTradeFill = {
-    id: uid("paper-fill"),
+    id: `paper-fill-${position.id}-exit-${position.quantity - remainingQuantity}`,
     orderId,
     positionId: position.id,
     accountId: position.accountId,

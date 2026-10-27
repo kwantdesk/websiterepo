@@ -1,6 +1,7 @@
 "use client";
 
 import { beginPaperProtectionDrag } from "@/lib/paperProtectionDrag";
+import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 
 import { mergeBigContractHistory } from "@/lib/bigContractHistory";
 
@@ -13744,6 +13745,27 @@ function Chart({
   // Manager replacement reads refs intentionally; the instrument owns hydration.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartInstanceId, drawingPersistenceInstrument, instrument]);
+
+  useEffect(() => {
+    const restore = (event: Event) => {
+      const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys;
+      const professionalKey = drawingsStorageKey(instrument, chartInstanceId);
+      const positionKey = positionDrawingsStorageKey(instrument, chartInstanceId);
+      try {
+        if (!keys || keys.includes(professionalKey)) {
+          const records = normalizeProfessionalDrawings(JSON.parse(window.localStorage.getItem(professionalKey) ?? "[]"));
+          ++professionalDrawingsLoadGenerationRef.current;
+          professionalDrawingsRef.current = records;
+          setProfessionalDrawings(records); replaceProfessionalManagerDrawings(records);
+        }
+        if (!keys || keys.includes(positionKey)) setDrawings(normalizePositionDrawings(JSON.parse(window.localStorage.getItem(positionKey) ?? "[]")));
+      } catch { /* Keep valid mounted drawings if a saved document is malformed. */ }
+    };
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, restore);
+    return () => window.removeEventListener(PREFERENCES_HYDRATED_EVENT, restore);
+  // Manager replacement deliberately uses the active chart refs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartInstanceId, instrument]);
 
   useEffect(() => {
     professionalDrawingsRef.current = professionalDrawings;

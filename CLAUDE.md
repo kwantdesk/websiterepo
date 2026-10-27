@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## Cross-device account/workspace synchronization — 2026-10-27
+
+Replaced upload-only preference upserts with RLS-scoped CAS/rebase and empty realtime change hints plus focus/online/30s visible recovery. Quote-only marks do not trigger cloud saves. Keep acknowledged base separate from in-flight/offline edits. Selected demo account, global favourites, links and professional drawings are tracked; mounted workspace/drawing consumers and standalone Home/Accounts restore revisions. New resting-order/exit-stage IDs are deterministic across devices; existing IDs untouched. 115 focused tests, TypeScript/lint/full build pass. Five legacy paper integration text assertions reproduce on HEAD. Physical phone untested; reload both devices after release. Demo execution is STILL browser-owned: unattended server simulation remains open. See `docs/prompt-log/2026-10-27-cross-device-account-state.md`.
+
 ## Journal profit-only manual entries — 2026-10-27
 
 Selected owned demo/import/manual journals now expose Add trade; only net P&L is required. Reporting date defaults today; execution details collapse and remain unknown unless supplied. `journalManualOutcome` preserves unknown times/quantity and prevents invented duration. Existing HTML/file importer retained as Import trades. Authenticated create-trade checks owned id/name without changing account source or paper ledger. 43 tests, scoped lint and full build pass; see `docs/prompt-log/2026-10-27-journal-profit-only-entry.md`. No owner test trade saved.

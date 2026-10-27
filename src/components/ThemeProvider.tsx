@@ -23,7 +23,10 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
     applyTheme();
     // `applyTheme` with no argument re-reads storage, so the hydrated value is
     // picked up wherever it came from.
-    const reapply = () => applyTheme();
+    const reapply = (event?: Event) => {
+      const keys = (event as CustomEvent<{ keys?: string[] }> | undefined)?.detail?.keys;
+      if (!keys || keys.includes(THEME_STORAGE_KEY)) applyTheme();
+    };
     window.addEventListener(PREFERENCES_HYDRATED_EVENT, reapply);
     /*
      * And when another tab changes it. Two windows on one machine were as out

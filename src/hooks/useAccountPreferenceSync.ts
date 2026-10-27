@@ -1,94 +1,97 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  captureBrowserPreferences,
-  preferenceSnapshotFingerprint,
-  saveUserPreferences,
-} from "@/lib/userPreferences";
+import { captureBrowserPreferences, readScopedPreferences, receiveAccountPreferences } from "@/lib/userPreferences";
+import { accountPreferenceFingerprint, mergeAccountPreferenceChanges } from "@/lib/accountPreferenceMerge";
+import { exchangeAccountPreferences } from "@/lib/accountPreferenceCloud";
 
-export function useAccountPreferenceSync({
-  supabase,
-  userId,
-  enabled,
-}: {
-  supabase: SupabaseClient | null;
-  userId: string;
-  enabled: boolean;
+export function useAccountPreferenceSync({ supabase, userId, enabled }: {
+  supabase: SupabaseClient | null; userId: string; enabled: boolean;
 }) {
-  const lastSavedFingerprintRef = useRef("");
-
   useEffect(() => {
     if (!enabled || !supabase || !userId) return;
-    let active = true;
-    let saving = false;
-    let pending = false;
-    let consecutiveFailures = 0;
-    let retryAfter = 0;
-    let eventTimer: number | null = null;
-
-    const persist = async (force = false) => {
-      if (!active) return;
-      if (!force && Date.now() < retryAfter) return;
-      if (saving) {
-        pending = true;
-        return;
-      }
-      const snapshot = captureBrowserPreferences();
-      const fingerprint = preferenceSnapshotFingerprint(snapshot);
-      if (fingerprint === lastSavedFingerprintRef.current) return;
-
-      saving = true;
+    const owner = window.localStorage.getItem('kwantdesk:active-preferences-owner:v1');
+    if (owner && owner !== userId) return;
+    let active = true, busy = false, queued = false, failures = 0;
+    let retryAfter = 0, timer: number | undefined;
+    let base = readScopedPreferences(userId) ?? captureBrowserPreferences();
+    // Broadcast is a change hint only. The authenticated, RLS-scoped database
+    // read carries the data; no account/workspace/trade payload is broadcast.
+    const channel = supabase.channel(`account-preference-hints:${userId}`, { config: { broadcast: { self: false } } });
+    let channelReady = false;
+    const synchronize = async () => {
+      if (!active || Date.now() < retryAfter) return;
+      if (busy) { queued = true; return; }
+      busy = true;
+      const sent = captureBrowserPreferences();
+      const dirty = accountPreferenceFingerprint(sent) !== accountPreferenceFingerprint(base);
       try {
-        await saveUserPreferences(supabase, userId, snapshot);
-        if (active) {
-          lastSavedFingerprintRef.current = fingerprint;
-          consecutiveFailures = 0;
-          retryAfter = 0;
+        const result = await exchangeAccountPreferences(supabase, userId, base, sent, dirty);
+        if (!active) return;
+        // Preserve edits made while the request was in flight.
+        const latest = captureBrowserPreferences();
+        const applied = mergeAccountPreferenceChanges(sent, latest, result.snapshot);
+        // Local quote marking must not be rewound by an unchanged cloud ledger.
+        const ledgerKey = 'kwantify-paper-trading-ledger-v1';
+        if (latest.values[ledgerKey] && accountPreferenceFingerprint({ ...latest, values: { [ledgerKey]: latest.values[ledgerKey] } })
+          === accountPreferenceFingerprint({ ...applied, values: { [ledgerKey]: applied.values[ledgerKey] } })) {
+          applied.values[ledgerKey] = latest.values[ledgerKey];
         }
+        base = result.remote;
+        receiveAccountPreferences(userId, applied, result.remote);
+        failures = 0; retryAfter = 0;
+        window.dispatchEvent(new CustomEvent('kwantdesk:account-sync-status', { detail: { state: 'saved', userId } }));
+        if (dirty && channelReady) void channel.send({ type: 'broadcast', event: 'changed', payload: {} });
+        if (accountPreferenceFingerprint(applied) !== accountPreferenceFingerprint(base)) queued = true;
       } catch {
-        if (active) {
-          consecutiveFailures += 1;
-          retryAfter = Date.now() + Math.min(
-            60_000,
-            5_000 * (2 ** Math.min(consecutiveFailures - 1, 4)),
-          );
-        }
+        failures++;
+        retryAfter = Date.now() + Math.min(60000, 2000 * 2 ** Math.min(failures - 1, 5));
+        window.dispatchEvent(new CustomEvent('kwantdesk:account-sync-status', { detail: { state: 'offline', userId } }));
       } finally {
-        saving = false;
-        if (pending && active) {
-          pending = false;
-          void persist();
-        }
+        busy = false;
+        if (queued && active) { queued = false; schedule(); }
       }
     };
-
-    lastSavedFingerprintRef.current = preferenceSnapshotFingerprint(captureBrowserPreferences());
-    // Preference writes are event-driven. The old 1.5-second poll repeatedly
-    // enumerated and serialised all localStorage chart state even when nothing
-    // changed, and a failed Supabase write could turn it into a retry storm.
-    const interval = window.setInterval(() => void persist(), 60_000);
-    const handlePreferenceChange = () => {
-      if (eventTimer !== null) window.clearTimeout(eventTimer);
-      eventTimer = window.setTimeout(() => {
-        eventTimer = null;
-        void persist();
-      }, 750);
+    const schedule = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(() => { timer = undefined; void synchronize(); }, 300);
     };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") void persist(true);
+    const onLocalChange = () => {
+      if (accountPreferenceFingerprint(captureBrowserPreferences()) !== accountPreferenceFingerprint(base)) schedule();
     };
-    window.addEventListener("kwantdesk:preferences-changed", handlePreferenceChange);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
+    const reconnect = () => { retryAfter = 0; schedule(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') reconnect(); };
+    const onHidden = () => { if (document.visibilityState === 'hidden') void synchronize(); };
+    channel.on('broadcast', { event: 'changed' }, schedule)
+      .subscribe(status => {
+        channelReady = status === 'SUBSCRIBED';
+        if (channelReady) {
+          schedule();
+          void channel.send({ type: 'broadcast', event: 'changed', payload: {} });
+        }
+      });
+    // Missed notifications / suspended mobile tabs recover on focus and online.
+    // This is bounded account-state traffic directly to storage, never tick data.
+    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void synchronize(); }, 30000);
+    window.addEventListener('kwantdesk:preferences-changed', onLocalChange);
+    window.addEventListener('storage', onLocalChange);
+    window.addEventListener('focus', reconnect);
+    window.addEventListener('online', reconnect);
+    document.addEventListener('visibilitychange', onVisible);
+    document.addEventListener('visibilitychange', onHidden);
+    schedule();
     return () => {
-      if (eventTimer !== null) window.clearTimeout(eventTimer);
-      void persist(true);
+      if (timer !== undefined) window.clearTimeout(timer);
       active = false;
       window.clearInterval(interval);
-      window.removeEventListener("kwantdesk:preferences-changed", handlePreferenceChange);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener('kwantdesk:preferences-changed', onLocalChange);
+      window.removeEventListener('storage', onLocalChange);
+      window.removeEventListener('focus', reconnect);
+      window.removeEventListener('online', reconnect);
+      document.removeEventListener('visibilitychange', onVisible);
+      document.removeEventListener('visibilitychange', onHidden);
+      void supabase.removeChannel(channel);
     };
   }, [enabled, supabase, userId]);
 }

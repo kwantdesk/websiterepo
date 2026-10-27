@@ -13161,6 +13161,7 @@ export default function KwantifyWorkspace({
     // threw. The save now reports instead of throwing, and the trader is told
     // when a filled order will not survive a refresh rather than being shown a
     // green confirmation for something that was never stored.
+    if (paperLedger !== paperLedgerRef.current) return;
     const saved = savePaperTradingLedger(paperLedger);
     // An empty ledger failing to save is not worth interrupting anyone over;
     // one holding real fills is.
@@ -13188,6 +13189,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (selectedPaperTradingAccount?.id) {
       writeProtectedItem("kwantify-selected-paper-account", selectedPaperTradingAccount.id);
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     }
   }, [selectedPaperTradingAccount?.id]);
 
@@ -13327,9 +13329,10 @@ export default function KwantifyWorkspace({
      * them - an account whose balances and positions did not follow it back is
      * not the account the trader left.
      */
-    const handleHydrated = () => {
-      handlePaperAccountsChange();
-      commitPaperLedger(loadPaperTradingLedger());
+    const handleHydrated = (event: Event) => {
+      const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys;
+      if (!keys || keys.includes("kwantify-paper-trading-accounts")) handlePaperAccountsChange();
+      if (!keys || keys.includes("kwantify-paper-trading-ledger-v1")) commitPaperLedger(loadPaperTradingLedger());
     };
     window.addEventListener("storage", handleStorage);
     window.addEventListener(PAPER_TRADING_ACCOUNTS_EVENT, handlePaperAccountsChange);
@@ -15112,6 +15115,55 @@ export default function KwantifyWorkspace({
       window.removeEventListener("kwantdesk:identity-updated", handleIdentityUpdated);
     };
   }, [authChecked, preferenceUserId]);
+
+  useEffect(() => {
+    const restoreAccountRevision = (event: Event) => {
+      const detail = (event as CustomEvent<{ source?: string; userId?: string; keys?: string[] }>).detail;
+      if (detail?.userId && detail.userId !== preferenceUserId) return;
+      const keys = detail?.keys;
+      const changed = (key: string) => !keys || keys.includes(key);
+      const scope = chartWorkspaceScopeRef.current;
+      const workspaceChanged = !keys || keys.some(key => scope === "gamma"
+        ? key.startsWith("kwantdesk:gamma-charting:")
+        : key.startsWith("olisa-chart-workspace-") || key === CHART_INDICATORS_STORAGE_KEY
+          || key === CHART_WORKSPACE_SETTINGS_STORAGE_KEY || key === PANE_LEVEL_VISIBILITY_STORAGE_KEY
+          || key === WORKSPACE_PRESETS_STORAGE_KEY || key === ACTIVE_WORKSPACE_PRESET_STORAGE_KEY
+          || key === CHART_SETTINGS_STORAGE_KEY || key === CHART_TEMPLATES_STORAGE_KEY);
+      if (workspaceChanged) {
+        workspaceScopeHydratingRef.current = true;
+        const next = loadChartWorkspaceRuntime(scope);
+        const pane = next.panes.find(item => item.id === next.activePaneId) ?? next.panes[0];
+        setWorkspaceLayout(next.layout); setWorkspaceLocked(next.locked);
+        setWorkspaceSplitRatio(next.splitRatio); setWorkspaceQuadSplit(next.quadSplit);
+        setWorkspacePanes(current => JSON.stringify(current) === JSON.stringify(next.panes) ? current : next.panes);
+        setWorkspaceTree(next.tree); setWorkspaceFloatingWindows(next.floatingWindows);
+        setWorkspacePresets(next.presets); setActiveWorkspacePresetId(next.activePresetId);
+        setActivePaneId(next.activePaneId); setPaneIndicators(next.indicators);
+        setPaneLevelVisibility(next.levelVisibility); setLinkedViewportPaneIds(new Set(next.linkedPaneIds));
+        setChartSettings(next.chartSettings); setDraftChartSettings(next.chartSettings);
+        setChartSettingsSnapshot(next.chartSettings); setTemplates(next.templates);
+        setSelectedInstrument(pane.symbol); setSelectedTimeframe(pane.timeframe);
+        setSelectedPeriod(pane.period); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
+        window.requestAnimationFrame(() => { workspaceScopeHydratingRef.current = false; });
+      }
+      const read = <T,>(key: string, fallback: T): T => {
+        try { return JSON.parse(window.localStorage.getItem(key) ?? "null") ?? fallback; } catch { return fallback; }
+      };
+      if (changed(CHARTING_DRAWINGS_STORAGE_KEY)) {
+        const stored = read<Record<string, unknown>>(CHARTING_DRAWINGS_STORAGE_KEY, {});
+        setPaneChartDrawings(Object.fromEntries(Object.entries(stored).map(([id, value]) => [id, normalizeDrawings(value)])));
+      }
+      if (changed(GLOBAL_FAVOURITE_INTERVALS_KEY)) setFavTFs(read(GLOBAL_FAVOURITE_INTERVALS_KEY, ["1m", "5m", "15m", "1h", "4h", "1D"]));
+      if (changed(GLOBAL_FAVOURITE_INSTRUMENTS_KEY)) setFavInstruments(read(GLOBAL_FAVOURITE_INSTRUMENTS_KEY, ["ES", "NQ", "YM", "RTY"]));
+      if (changed("olisa-watchlist-favorites")) setWatchlistFavorites(read("olisa-watchlist-favorites", []));
+      if (changed("olisa-watchlist-flags")) setWatchlistFlags(read("olisa-watchlist-flags", {}));
+      if (changed("olisa-watchlist-sections")) setWatchlistSections(read("olisa-watchlist-sections", defaultWatchlistSections));
+      if (changed("kwantify-selected-paper-account")) setSelectedPaperAccountId(window.localStorage.getItem("kwantify-selected-paper-account") ?? "");
+      if (changed("kwantify-hidden-paper-fill-markers-v1")) setHiddenPaperFillMarkers(read("kwantify-hidden-paper-fill-markers-v1", {}));
+    };
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, restoreAccountRevision);
+    return () => window.removeEventListener(PREFERENCES_HYDRATED_EVENT, restoreAccountRevision);
+  }, [preferenceUserId]);
 
   useEffect(() => {
     const syncChartPalette = (event?: Event) => {

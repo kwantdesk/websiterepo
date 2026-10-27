@@ -1,5 +1,10 @@
 # KWANTDESK important notes
 
+## 2026-10-27 — Cross-device sync / unattended demo execution
+
+- Account/workspace state now uses conflict-aware database revisions and live change hints; see the cross-device-account-state receipt. No per-tick cloud replication.
+- OPEN: demo execution/protection remains browser-owned, requiring a connected execution workspace. State synchronization does not establish server-side fills while all clients are closed. Physical-phone acceptance, provider parity, archive completeness and off-box backups remain open.
+
 ## 2026-10-20 — Live quote burst transport and VPS cutover warning
 
 - Current Quick Tunnel returned no live quote bytes in14s while local gateway

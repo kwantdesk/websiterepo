@@ -3,6 +3,7 @@ import { applyTheme } from "./theme.ts";
 import { retainLocalChartAppearance } from "./chartSettings.ts";
 import { writeProtectedItem } from "./browserStorageQuota.ts";
 import { inFlightGexWorkspace } from "./gexDataPreferenceOwnership.ts";
+import { accountPreferenceFingerprint } from "./accountPreferenceMerge";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
@@ -16,6 +17,11 @@ const ACCOUNT_TEMPLATE_STORAGE_KEYS = [
   "kwantdesk:footprint:templates:v1",
   "kwantdesk:tpo-user-presets:v1",
   "kwantdesk:gex-interval-map-presets:v1",
+  "kwantdesk:favourite-intervals:v1",
+  "kwantdesk:favourite-instruments:v1",
+  "olisa-chart-workspace-linked-panes",
+  "kwantify-selected-paper-account",
+  "kwantify-hidden-paper-fill-markers-v1",
 ] as const;
 
 const TRACKED_STORAGE_KEYS = new Set([
@@ -34,6 +40,9 @@ const TRACKED_STORAGE_KEYS = new Set([
   "olisa-chart-workspace-tree",
   "olisa-chart-workspace-floating-windows",
   "olisa-chart-workspace-active-pane",
+  "olisa-chart-workspace-linked-panes",
+  "kwantdesk:favourite-intervals:v1",
+  "kwantdesk:favourite-instruments:v1",
   "olisa-chart-favourite-intervals",
   "olisa-watchlist-favorites",
   "olisa-watchlist-flags",
@@ -99,11 +108,14 @@ const TRACKED_STORAGE_KEYS = new Set([
    */
   "kwantify-paper-trading-accounts",
   "kwantify-paper-trading-ledger-v1",
+  "kwantify-selected-paper-account",
+  "kwantify-hidden-paper-fill-markers-v1",
 ]);
 
 const TRACKED_STORAGE_PREFIXES = [
   "kwantdesk:gamma-charting:",
   "kwantify-chart-drawings:",
+  "kwantdesk:chart-drawings:v1:",
   "kwantdesk:position-drawings:v1:",
   "kwantdesk:chart-toolbar-pinned:v1:",
   "kwantdesk:precision-tools:v1:",
@@ -123,7 +135,7 @@ function isTrackedStorageKey(key: string) {
     || TRACKED_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
-function normalizeSnapshot(value: unknown, fallbackUpdatedAt?: string): UserPreferenceSnapshot | null {
+export function normalizeSnapshot(value: unknown, fallbackUpdatedAt?: string): UserPreferenceSnapshot | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Partial<UserPreferenceSnapshot>;
   if (!candidate.values || typeof candidate.values !== "object" || Array.isArray(candidate.values)) return null;
@@ -147,7 +159,7 @@ function scopedPreferenceKey(userId: string) {
   return `kwantdesk:user-preferences:${userId}:v1`;
 }
 
-function readScopedPreferences(userId: string) {
+export function readScopedPreferences(userId: string) {
   if (typeof window === "undefined") return null;
   try {
     return normalizeSnapshot(JSON.parse(window.localStorage.getItem(scopedPreferenceKey(userId)) ?? "null"));
@@ -156,7 +168,7 @@ function readScopedPreferences(userId: string) {
   }
 }
 
-function saveScopedPreferences(userId: string, snapshot: UserPreferenceSnapshot) {
+export function saveScopedPreferences(userId: string, snapshot: UserPreferenceSnapshot) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(scopedPreferenceKey(userId), JSON.stringify(snapshot));
@@ -220,7 +232,7 @@ function applyBrowserPreferences(snapshot: UserPreferenceSnapshot) {
   window.dispatchEvent(new CustomEvent(PREFERENCES_HYDRATED_EVENT));
 }
 
-async function loadCloudPreferences(
+export async function loadCloudPreferences(
   supabase: SupabaseClient,
   user: User,
 ): Promise<UserPreferenceSnapshot | null> {
@@ -257,45 +269,35 @@ export async function saveUserPreferences(
   supabase: SupabaseClient,
   userId: string,
   snapshot: UserPreferenceSnapshot,
+  base = readScopedPreferences(userId) ?? { version: 1 as const, complete: true, updatedAt: new Date(0).toISOString(), values: {} },
 ) {
-  saveScopedPreferences(userId, snapshot);
-  const { error } = await supabase
-    .from(USER_PREFERENCES_TABLE)
-    .upsert(
-      {
-        user_id: userId,
-        preferences: snapshot,
-        updated_at: snapshot.updatedAt,
-      },
-      { onConflict: "user_id" },
-    );
+  const { exchangeAccountPreferences } = await import("./accountPreferenceCloud");
+  const saved = await exchangeAccountPreferences(supabase, userId, base, snapshot, true);
+  saveScopedPreferences(userId, saved.snapshot);
+  return saved.snapshot;
+}
 
-  if (!error) return;
-
-  const { error: socialFallbackError } = await supabase
-    .from(SOCIAL_OBJECTS_TABLE)
-    .upsert(
-      {
-        user_id: userId,
-        id: SOCIAL_PREFERENCES_ID,
-        author_label: "Kwant Desk account",
-        object_type: "progress",
-        scope: "private",
-        desk_id: null,
-        parent_id: null,
-        payload: { preferences: snapshot },
-        updated_at: snapshot.updatedAt,
-      },
-      { onConflict: "user_id,id" },
-    );
-  if (!socialFallbackError) return;
-
-  // Never put workspace preferences into Supabase auth metadata. The SSR
-  // client serialises the complete user object into its session cookie; chart
-  // layouts, indicators and liquidity-map state can then grow the request
-  // header beyond Vercel's hard limit. Local scoped storage remains the
-  // offline fallback and the database is retried by the sync hook.
-  console.warn("Account preferences could not be saved to either database store.");
+/** Apply a received account revision without reloading chart history. */
+export function receiveAccountPreferences(userId: string, snapshot: UserPreferenceSnapshot, acknowledged = snapshot) {
+  if (typeof window === "undefined") return;
+  const owner = window.localStorage.getItem(ACTIVE_PREFERENCES_OWNER_KEY);
+  if (owner && owner !== userId) return;
+  // The caller has verified this identity; an empty new-device store can bind
+  // on its first successful receive after a temporary initial hydration fault.
+  if (!owner) writeProtectedItem(ACTIVE_PREFERENCES_OWNER_KEY, userId);
+  const previous = captureBrowserPreferences();
+  const keys = [...new Set([...Object.keys(previous.values), ...Object.keys(snapshot.values)])]
+    .filter(key => previous.values[key] !== snapshot.values[key]);
+  if (!keys.length) { saveScopedPreferences(userId, acknowledged); return; }
+  // Write first, then notify every mounted consumer about the same revision.
+  for (const key of keys) {
+    const value = snapshot.values[key];
+    if (value === undefined) window.localStorage.removeItem(key);
+    else writeProtectedItem(key, value);
+  }
+  saveScopedPreferences(userId, acknowledged);
+  if (keys.includes("olisa-theme")) applyTheme();
+  window.dispatchEvent(new CustomEvent(PREFERENCES_HYDRATED_EVENT, { detail: { source: "remote", userId, keys } }));
 }
 
 export async function compactLegacyAuthPreferenceMetadata(
@@ -335,6 +337,11 @@ export async function hydrateUserPreferences(
   );
   const cloud = await loadCloudPreferences(supabase, user);
   const scoped = readScopedPreferences(user.id);
+  let acknowledged = cloud ?? scoped ?? { version: 1 as const, complete: true, updatedAt: new Date(0).toISOString(), values: {} };
+  const persist = async (snapshot: UserPreferenceSnapshot, baseline = acknowledged) => {
+    acknowledged = await saveUserPreferences(supabase, user.id, snapshot, baseline);
+    return acknowledged;
+  };
   let selected = cloud;
 
   if (scoped && selected && !selected.complete) {
@@ -375,21 +382,15 @@ export async function hydrateUserPreferences(
         values: {},
       };
     }
-    await saveUserPreferences(supabase, user.id, selected);
+    selected = await persist(selected);
   } else if (
     activePreferenceOwner === user.id
     && scoped
-    && !(cloud && Date.parse(cloud.updatedAt) > Date.parse(scoped.updatedAt))
-    && preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected)
+    && accountPreferenceFingerprint(current) !== accountPreferenceFingerprint(scoped)
   ) {
-    // This browser is the account's active preference owner and no other
-    // device has written a newer account snapshot since this browser last
-    // synced. Any difference in live storage is therefore unsynced local work
-    // — for example a workspace quick-saved moments before the app closed,
-    // before the debounced upload could complete. Applying the older snapshot
-    // would destroy that work, so keep the live state and upload it instead.
-    selected = { ...current, updatedAt: new Date().toISOString() };
-    await saveUserPreferences(supabase, user.id, selected);
+    // Rebase unsent local work against the last acknowledged snapshot, even
+    // when another device updated a different key while this browser closed.
+    selected = await persist({ ...current, updatedAt: new Date().toISOString() }, scoped);
   }
 
   // These template stores were historically browser-only. On the first
@@ -406,6 +407,9 @@ export async function hydrateUserPreferences(
         migratedTemplateValues[key] = current.values[key];
       }
     }
+    for (const [key, value] of Object.entries(current.values)) {
+      if (key.startsWith("kwantdesk:chart-drawings:v1:") && !selected.values[key]) migratedTemplateValues[key] = value;
+    }
   }
   if (selected && Object.keys(migratedTemplateValues).length) {
     selected = {
@@ -413,7 +417,7 @@ export async function hydrateUserPreferences(
       updatedAt: new Date().toISOString(),
       values: { ...selected.values, ...migratedTemplateValues },
     };
-    await saveUserPreferences(supabase, user.id, selected);
+    selected = await persist(selected);
   }
 
   // A theme click is an immediate user decision. If it happened while the
@@ -431,7 +435,8 @@ export async function hydrateUserPreferences(
           : {}),
       },
     };
-  } else if (localThemeBelongsToUser && themeAtHydrationStart) {
+  } else if (localThemeBelongsToUser && themeAtHydrationStart
+    && !(cloud && (!scoped || Date.parse(cloud.updatedAt) > Date.parse(scoped.updatedAt)))) {
     // The already-painted local theme is the last skin this same account used
     // on this browser. Do not let an older cloud snapshot repaint it during
     // every refresh; new browsers still receive the account-backed theme.
@@ -464,6 +469,6 @@ export async function hydrateUserPreferences(
   applyBrowserPreferences(selected);
   applyTheme();
   writeProtectedItem(ACTIVE_PREFERENCES_OWNER_KEY, user.id);
-  saveScopedPreferences(user.id, selected);
+  saveScopedPreferences(user.id, acknowledged);
   return { changed, snapshot: selected };
 }

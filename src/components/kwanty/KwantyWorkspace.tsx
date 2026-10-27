@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {usePathname,useRouter,useSearchParams} from "next/navigation";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
-import { CHART_SETTINGS_CHANGE_EVENT, loadStoredChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, loadStoredChartSettings } from "@/lib/chartSettings";
 import type { WorkspaceReplayClock } from "@/lib/workspaceReplay";
 import { acquireKwantyPrices, type KwantyPriceHost } from "@/lib/kwantyPriceBridge";
 import type { StateDrawingApi, StateDrawingMount } from "@/lib/kwantyStateDrawingAdapter";
@@ -156,7 +156,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
     window.__kwantyHost = host;
     setGeneration(value => value + 1); setReady(true);
     const themeChanged = () => broadcast(frame.current?.contentWindow ?? null, "kwanty-site-theme");
-    const hydrated = () => { cache.clear(); setGeneration(value => value + 1); };
+    const hydrated = (event: Event) => { const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys; if (keys && !keys.some(key => key.startsWith("kwantdesk:kwanty:") || key === "olisa-theme" || key === CHART_SETTINGS_STORAGE_KEY)) return; cache.clear(); setGeneration(value => value + 1); };
     window.addEventListener("kwantdesk:theme-change", themeChanged);
     window.addEventListener("olisa-theme-change", themeChanged);
     window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, themeChanged);

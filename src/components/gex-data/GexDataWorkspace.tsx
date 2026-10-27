@@ -155,7 +155,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
     window.__kwantGexDataHost = host;
     setGeneration(value => value + 1); setReady(true);
     const themeChanged = () => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme");
-    const hydrated = () => { syncTimeZone(); syncPalette(); cache.clear(); setGeneration(value => value + 1); };
+    const hydrated = (event: Event) => { const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys; if (keys && !keys.some(key => key.startsWith("kwantdesk:gex-data:") || key === "olisa-theme" || key === CHART_SETTINGS_STORAGE_KEY)) return; syncTimeZone(); syncPalette(); cache.clear(); setGeneration(value => value + 1); };
     const storageChanged = (event: StorageEvent) => {
       if (event.key === STORAGE_KEY || event.key === CHART_SETTINGS_STORAGE_KEY || event.key === null) syncTimeZone();
       if (event.key === STORAGE_KEY || event.key === null) syncPalette();

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useChartDrawingClipboard } from '@/components/useChartDrawingClipboard';
+import { PREFERENCES_HYDRATED_EVENT } from '@/lib/userPreferences';
+import { loadPrecisionDocument, precisionObjectStorageKey, precisionConfigStorageKey, precisionToolbarStorageKey } from './persistence';
 import { copyPrecisionDrawings, hasPrecisionDrawingClipboard, pastePrecisionDrawings } from '@/lib/chartDrawingClipboard';
 import { claimChartInteraction, releaseChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
 
@@ -180,6 +182,19 @@ export default function PrecisionToolsLayer({
   liveAdapterRef.current = adapter;
 
   useEffect(() => store.subscribe(() => setRevision((value) => value + 1)), [store]);
+  useEffect(() => {
+    const restore = (event: Event) => {
+      const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys;
+      if (!keys || keys.includes(precisionObjectStorageKey(workspaceId, chartId))) {
+        const document = loadPrecisionDocument(workspaceId, chartId);
+        if (JSON.stringify(document.objects) !== JSON.stringify(store.getSnapshot().objects)) store.replaceDocument(document);
+      }
+      if (!keys || keys.includes(precisionConfigStorageKey(workspaceId))) setConfigs(loadPrecisionConfigs(workspaceId));
+      if (!keys || keys.includes(precisionToolbarStorageKey(workspaceId))) store.setToolbar(loadPrecisionToolbar(workspaceId));
+    };
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, restore);
+    return () => window.removeEventListener(PREFERENCES_HYDRATED_EVENT, restore);
+  }, [chartId, store, workspaceId]);
   useEffect(() => () => { if (interactionFrameRef.current != null) cancelAnimationFrame(interactionFrameRef.current); }, []);
   useEffect(() => {
     const host = canvasRef.current?.parentElement;
