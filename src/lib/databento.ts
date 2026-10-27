@@ -91,7 +91,7 @@ export const DATABENTO_FUTURES: DatabentoInstrument[] = [
   { symbol: "ZT.v.0", label: "2-Year Treasury Note", venue: "CBOT", kind: "future", group: "Rates" },
   { symbol: "TN.v.0", label: "Ultra 10-Year Treasury Note", venue: "CBOT", kind: "future", group: "Rates" },
   { symbol: "UB.v.0", label: "Ultra Treasury Bond", venue: "CBOT", kind: "future", group: "Rates" },
-  { symbol: "10Y.v.0", label: "10-Year Treasury Yield", venue: "CME", kind: "future", group: "Rates" },
+  { symbol: "10Y.v.0", label: "10-Year Treasury Yield", venue: "CBOT", kind: "future", group: "Rates" },
   { symbol: "SR3.v.0", label: "3-Month SOFR", venue: "CME", kind: "future", group: "Rates" },
   { symbol: "6E.v.0", label: "Euro FX", venue: "CME", kind: "future", group: "FX" },
   { symbol: "6J.v.0", label: "Japanese Yen", venue: "CME", kind: "future", group: "FX" },

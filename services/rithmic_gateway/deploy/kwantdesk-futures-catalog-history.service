@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh licensed history for the configured futures catalog
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec -w /app kwantdesk-production-gateway-1 node scripts/hydrate-futures-catalog-history.mjs --apply
+TimeoutStartSec=900
+Nice=10

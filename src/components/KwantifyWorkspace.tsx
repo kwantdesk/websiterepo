@@ -1,4 +1,6 @@
 "use client";
+
+import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
 import { createExecutionPaintScheduler } from '@/lib/executionPaintScheduler';
 
 import { freshPaperExecutionQuote, paperOrderReceipt, paperTradeExecutionQuote } from "@/lib/paperOrderReceipt";
@@ -3590,7 +3592,7 @@ function fetchWorkspaceLiveSeam(
   timeframe: string,
   contractSymbol: string,
 ) {
-  if (isEventBasedChartInterval(timeframe) || isCmeClosedSessionTimestamp(Date.now())) {
+  if (!scopedFuturesContract(symbol, contractSymbol) || isEventBasedChartInterval(timeframe) || isCmeClosedSessionTimestamp(Date.now())) {
     return Promise.resolve([] as Candle[]);
   }
   const key = `${symbol}::${contractSymbol}::${timeframe}`;
@@ -5648,8 +5650,11 @@ function WorkspaceChartPaneComponent({
   const [error, setError] = useState<string | null>(null);
   const [settledChartRequestKey, setSettledChartRequestKey] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
-  const [resolvedContractSymbol, setResolvedContractSymbol] = useState<string | null>(() =>
+  const [resolvedContractCandidate, setResolvedContractSymbol] = useState<string | null>(() =>
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null);
+  // React reuses a pane on instrument changes. Effects must never see the
+  // previous product contract, even before the identity-reset effect runs.
+  const resolvedContractSymbol = scopedFuturesContract(pane.symbol, resolvedContractCandidate);
   const [marketIsActive, setMarketIsActive] = useState(false);
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [intervalCommandOpen, setIntervalCommandOpen] = useState(false);
@@ -7129,7 +7134,7 @@ function WorkspaceChartPaneComponent({
             if (hasUsableOrderFlowHistory(cachedCandles)) {
               setOrderFlowHistoryReady(true);
             }
-            if (historyHydratedRef.current) {
+            if (cachedCandles.length) {
               visibleHistoryReady = true;
               setSettledChartRequestKey(requestedChartHydrationKey);
               setLoading(false);
@@ -7252,13 +7257,11 @@ function WorkspaceChartPaneComponent({
         setCandles(merged);
         setMarketTrades(nextMarketTrades);
         setError(null);
-        if (tailNeedsReconciliation) {
-          setLoading(true);
-        } else {
-          visibleHistoryReady = true;
-          setSettledChartRequestKey(requestedChartHydrationKey);
-          setLoading(false);
-        }
+        // Real downloaded bars remain usable for products that do not trade
+        // in every minute. Seam recovery runs separately from presentation.
+        visibleHistoryReady = true;
+        setSettledChartRequestKey(requestedChartHydrationKey);
+        setLoading(false);
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
           scheduleTailRepair(2_000);
         }
@@ -8303,6 +8306,7 @@ function WorkspaceChartPaneComponent({
         ? price.instrument
         : (nameMap[price.instrument] || price.instrument);
       if (!sameLiveInstrument(displayName, pane.symbol)) return;
+      if (usingDatabentoPaneFeed && price.contractSymbol && !scopedFuturesContract(pane.symbol, price.contractSymbol)) return;
 
       const instrumentIdentity = `${pane.broker}:${pane.symbol}`;
       if (liveInstrumentIdentityRef.current !== instrumentIdentity) {

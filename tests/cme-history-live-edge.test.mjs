@@ -82,7 +82,8 @@ test('history refresh revalidates privately and continuity safety gates remain i
   assert.match(base,/&& !cachedIsHydrated/);
   assert.doesNotMatch(base,/&& !cachedBase.length/);
   assert.match(workspace,/if \(cmeChartTailNeedsReconciliation\(repaired, pane.timeframe\)\) return/);
-  assert.match(workspace,/if \(historyHydratedRef.current\) \{[\s\S]*?setSettledChartRequestKey/);
+  // Sparse products need not trade in every minute to expose genuine history.
+  assert.match(base,/if \(cachedCandles.length\) \{[\s\S]*?setSettledChartRequestKey/);
   assert.match(route,/cme-time-flow-v8/);
   assert.match(route,/hasMinimumChartHistory\(candles, timeframe\)/);
 });

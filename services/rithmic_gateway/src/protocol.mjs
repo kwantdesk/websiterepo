@@ -22,6 +22,8 @@ const PROTO_FILES = [
   "response_depth_by_order_updates.proto",
   "depth_by_order.proto",
   "depth_by_order_end_event.proto",
+  "request_search_symbols.proto",
+  "response_search_symbols.proto",
   "request_front_month_contract.proto",
   "response_front_month_contract.proto",
   "front_month_contract_update.proto",
@@ -49,6 +51,7 @@ const RESPONSE_TYPES = new Map([
   [203, "ResponseTimeBarReplay"],
   [207, "ResponseTickBarReplay"],
   [209, "ResponseVolumeProfileMinuteBars"],
+  [110, "ResponseSearchSymbols"],
   [114, "ResponseFrontMonthContract"],
   [159, "FrontMonthContractUpdate"]
 ]);
@@ -148,6 +151,8 @@ export const TEMPLATE_IDS = Object.freeze({
   MARKET_DATA_REQUEST: 100,
   DEPTH_SNAPSHOT_REQUEST: 115,
   DEPTH_UPDATES_REQUEST: 117,
+  SYMBOL_SEARCH_REQUEST: 109,
+  SYMBOL_SEARCH_RESPONSE: 110,
   FRONT_MONTH_REQUEST: 113,
   FRONT_MONTH_RESPONSE: 114,
   FRONT_MONTH_UPDATE: 159,

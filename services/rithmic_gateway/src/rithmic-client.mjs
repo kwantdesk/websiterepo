@@ -1,3 +1,4 @@
+import { selectReferenceContract } from "./instrument-resolution.mjs";
 import { EventEmitter } from "node:events";
 import WebSocket from "ws";
 import { openProviderSocket } from "./provider-socket.mjs";
@@ -190,6 +191,7 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.frontMonthCache = new Map();
     this.frontMonthPromises = new Map();
     this.pendingFrontMonthRequests = new Map();
+    this.pendingSymbolSearches = new Map();
     this.frontMonthRequestSequence = 0;
     this.status = {
       provider: "Rithmic",
@@ -450,9 +452,16 @@ export class RithmicMarketDataClient extends EventEmitter {
         this.pendingFrontMonthRequests.delete(requestId);
         reject(error);
       }
-    }).catch((error) => {
+    }).catch(async (error) => {
       const live = liveFallback();
-      if (!live?.symbol) throw error;
+      if (!live?.symbol) {
+        if (!/\(7\)/.test(error.message) || this.socket?.readyState !== WebSocket.OPEN) throw error;
+        const rows=await this.searchReferenceContracts(normalizedExchange,normalizedRoot,timeoutMs);
+        const listed=selectReferenceContract(rows,{exchange:normalizedExchange,root:normalizedRoot});
+        if(!listed)throw error;
+        const resolved={exchange:normalizedExchange,root:normalizedRoot,contractSymbol:listed.symbol,resolvedAt:Date.now(),source:'rithmic-reference-expiry-fallback'};
+        this.frontMonthCache.set(key,resolved);this.applyFrontMonthResolution(resolved);return resolved;
+      }
       const resolved = {
         exchange: normalizedExchange,
         root: normalizedRoot,
@@ -467,6 +476,16 @@ export class RithmicMarketDataClient extends EventEmitter {
     });
     this.frontMonthPromises.set(key, request);
     return await request;
+  }
+
+  async searchReferenceContracts(exchange,root,timeoutMs=8000) {
+    const id='reference-contracts:'+exchange+':'+root+':'+(++this.frontMonthRequestSequence);
+    return new Promise((resolve,reject)=>{
+      const timeout=setTimeout(()=>{this.pendingSymbolSearches.delete(id);reject(new Error('Rithmic symbol search timed out.'))},timeoutMs);
+      this.pendingSymbolSearches.set(id,{rows:[],resolve,reject,timeout});
+      try {this.send('RequestSearchSymbols',{templateId:TEMPLATE_IDS.SYMBOL_SEARCH_REQUEST,userMsg:[id],exchange,productCode:root,searchText:root,instrumentType:1,pattern:2});}
+      catch(error){clearTimeout(timeout);this.pendingSymbolSearches.delete(id);reject(error)}
+    });
   }
 
   applyFrontMonthResolution(resolved) {
@@ -647,6 +666,19 @@ export class RithmicMarketDataClient extends EventEmitter {
         // Both paths must commit the staged book exactly once.
         event = this.book.applyDepthSnapshot(decoded.payload);
         break;
+      case 110: {
+        const payload=decoded.payload||{},id=payload.userMsg?.[0],pending=this.pendingSymbolSearches.get(id);
+        if(!pending)break;
+        if(payload.symbol&&pending.rows.length<200)pending.rows.push(payload);
+        const handlerFailure=payload.rqHandlerRpCode?.find(code=>code!=="0");
+        const codes=payload.rpCode?.length?payload.rpCode:handlerFailure?[handlerFailure]:null;
+        if(codes?.length){
+          clearTimeout(pending.timeout);this.pendingSymbolSearches.delete(id);
+          if(codes.some(code=>code!=='0'))pending.reject(new Error('Rithmic symbol search rejected: '+codes.join(', ')));
+          else pending.resolve(pending.rows);
+        }
+        break;
+      }
       case 114: {
         const payload = decoded.payload || {};
         const requestId = payload.userMsg?.[0];
@@ -763,6 +795,8 @@ export class RithmicMarketDataClient extends EventEmitter {
   }
 
   handleClose(code, reason) {
+    for(const pending of this.pendingSymbolSearches.values()){clearTimeout(pending.timeout);pending.reject(new Error("Rithmic disconnected during symbol search."))}
+    this.pendingSymbolSearches.clear();
     clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
     this.socket = null;

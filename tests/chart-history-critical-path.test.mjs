@@ -80,6 +80,7 @@ test("underlying history uses one bounded archive request and rejects wrong symb
 
 test("closed futures sessions do not hold history behind a live-seam network request", async () => {
   const load = loadFunction("../src/components/KwantifyWorkspace.tsx", "fetchWorkspaceLiveSeam", {
+    scopedFuturesContract: () => 'NQZ6',
     isEventBasedChartInterval: () => false,
     isCmeClosedSessionTimestamp: () => true,
     fetchInstitutionalSnapshot: () => { throw new Error("Closed session must not request a live seam"); },

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily bounded futures history refresh, away from the hourly repair job
+
+[Timer]
+OnCalendar=*-*-* 08:20:00 UTC
+Persistent=true
+RandomizedDelaySec=30
+Unit=kwantdesk-futures-catalog-history.service
+
+[Install]
+WantedBy=timers.target

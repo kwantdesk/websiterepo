@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Futures catalogue loading
+
+All 53 futures have verified real seven-calendar-day minute OHLCV on VPS. 371 API checks across 1m/3m/5m/15m/1h/4h/1D: non-empty, ordered, valid geometry; maximum internal response 276 ms. Scope pane contract at render with scopedFuturesContract; ignore preceding-product callbacks/live seams. Sparse real bars paint before optional tail reconciliation; never synthesize missing minutes or executions. 10Y venue CBOT. Code-7 front-month fallback searches actual provider-listed contracts/expiry over the existing socket (exact root/venue), then History Plant replays exact symbol; it is nearest-expiry fallback, not volume selection. Daily VPS catalogue missing-only hydration at 08:20 UTC, bounded 64 roots/64MiB and fatal login stops; existing hourly repair and all runtime overrides preserved. 106 tests/build/lint pass. See docs/prompt-log/2026-10-27-futures-instrument-loading.md for all 53 rows, operational mounts and limitations. Minute replay does not recreate old L3/footprint/CVD execution history.
+
 ## 2026-10-27 — Drawing targets follow visible paint
 
 Owner reported trend lines grabbing far from their stroke and Fibonacci gaps dragging the tool. SVG multi-anchor transparent bounding rectangles removed. Hit targets mirror actual SVG strokes/labels, plus actual filled position/arrow/profile marks; eraser/placement keeps non-intercepting geometry targets. Precision and Professional canvas use their actual painters through drawingPaintedHit; manager and primitive no longer OR broad legacy testHit with bounding geometries. Two CSS-pixel stroke allowance, six-pixel selected handle radius; hidden drawings/anchors cannot capture.
