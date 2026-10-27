@@ -11,26 +11,29 @@
   <script>
     (() => {
       const defaults = {
-        background: '#09090b',
-        foreground: '#fafafa',
-        primary: '#00f5a0',
-        secondary: '#6366f1',
-        muted: '#71717a',
-        border: '#27272a',
-        card: '#0f0f12',
-        danger: '#ef4444',
-        panel: '#0c0c0e',
-        surface: '#18181b',
+        background: '#000000',
+        foreground: '#FFFFFF',
+        primary: '#FFFFFF',
+        secondary: '#9A9A9A',
+        muted: '#777777',
+        border: '#333333',
+        card: '#0E0E0E',
+        danger: '#6B6B6B',
+        panel: '#080808',
+        surface: '#151515',
       };
 
       try {
-        const saved = JSON.parse(localStorage.getItem('olisa-theme') || 'null');
+        let saved;
+        try { saved = JSON.parse(localStorage.getItem('olisa-theme') || 'null'); } catch { /* Use the canonical defaults. */ }
         const theme = saved && typeof saved === 'object' ? { ...defaults, ...saved } : defaults;
         const root = document.documentElement;
         const color = (value, fallback) => (
           typeof value === 'string' && value.trim() ? value.trim() : fallback
         );
         const primary = color(theme.primary, defaults.primary);
+        root.style.backgroundColor = color(theme.background, defaults.background);
+        root.style.color = color(theme.foreground, defaults.foreground);
         const danger = color(theme.danger, defaults.danger);
         const hexRgb = (value, fallback) => {
           const match = String(value).match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);

@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Theme refresh paint
+
+Initial root bootstrap normalizes saved fields/catches unavailable storage before painting; CSS fallbacks match canonical defaultTheme. Sidebar migration must never save a default over the active palette. GEX Data/Kwanty startup seeds saved/same-origin parent colours before React host registration (bootstrap v20261027-theme-paint), retaining live host overrides. Liquidity Map initial canvas/defaults match the active palette too. Nine refresh/font regressions and nine brand checks pass; scoped lint zero errors/two existing warnings, production build passed. See docs/prompt-log/2026-10-27-theme-refresh-paint.md. No owner preference/data changes.
+
+
 ## 2026-10-27 — Stable font transitions
 
 Canonical Aleph @font-face now uses display:block instead of swap, retaining bounded browser failure handling rather than a page-wide hide gate. GEX/Kwanty use the same versioned font stylesheet and preload both Regular/Bold; duplicate swap declarations removed. Liquidity Map/recovery CSS and iframe versions updated to20261027-stable-font. AppSidebar typography ownership moved to useLayoutEffect with acquireCockpitTypography reference counting, preventing post-paint route scope changes or overlapping-shell cleanup. Do not move it back into passive theme/forensics effects. Family, sizes and existing public/marketing scroll behavior retained.9 font checks/build pass; scoped lint0errors/3existing warnings. See docs/prompt-log/2026-10-27-font-transition-stability.md.

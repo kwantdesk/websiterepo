@@ -6,20 +6,20 @@
   /* First-paint fallbacks; theme.ts replaces both with measured palette ink. */
   --brand-mark: var(--primary);
   --chart-brand-mark: var(--primary);
-  --background: #020304;
-  --foreground: #DDE2E7;
-  --primary: #FF1F78;
-  --secondary: #16C7CE;
-  --accent: #16C7CE;
-  --muted: #707780;
-  --border: #24282D;
-  --card: #07090B;
-  --danger: #FF1F78;
+  --background: #000000;
+  --foreground: #FFFFFF;
+  --primary: #FFFFFF;
+  --secondary: #9A9A9A;
+  --accent: #9A9A9A;
+  --muted: #777777;
+  --border: #333333;
+  --card: #0E0E0E;
+  --danger: #6B6B6B;
   /* Text placed on solid action fills must follow the fill, not the page. */
   --on-primary: #000000;
-  --on-danger: #000000;
-  --panel: #050607;
-  --surface: #0B0D10;
+  --on-danger: #FFFFFF;
+  --panel: #080808;
+  --surface: #151515;
   /*
    * Scrollbars are part of the active skin, not browser-default chrome. Keep
    * their track close to the surface and their thumb legible without letting
@@ -29,11 +29,11 @@
   --scrollbar-track: color-mix(in srgb, var(--panel) 82%, var(--background));
   --scrollbar-thumb: color-mix(in srgb, var(--muted) 86%, var(--surface));
   --scrollbar-thumb-hover: color-mix(in srgb, var(--primary) 58%, var(--muted));
-  --chart-background: #020304;
-  --grid-color: #11151A;
-  --crosshair-color: rgba(255,31,120,.72);
-  --candle-up: #16C7CE;
-  --candle-down: #FF1F78;
+  --chart-background: #000000;
+  --grid-color: #1F1F1F;
+  --crosshair-color: rgba(255,255,255,.72);
+  --candle-up: #FFFFFF;
+  --candle-down: #737373;
 }
 
 /* Shared precision rail for every numeric chart/indicator setting. */

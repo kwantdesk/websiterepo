@@ -49,11 +49,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className="kwant-private-copy-pending" suppressHydrationWarning>
       <head>
+        <meta name="theme-color" content="#000000" />
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />
         <link rel="preload" href="/fonts/aleph/Aleph-Regular.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
         <link rel="preload" href="/fonts/aleph/Aleph-Bold.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
-        <meta name="theme-color" content="#303238" />
         <style>{`.kwant-private-copy-pending body { visibility: hidden; }`}</style>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />
       </head>
       <body><PrivateTerminologyGuard /><ViewportLock /><ThemeProvider><StandaloneAccountSync />{children}</ThemeProvider></body>
     </html>

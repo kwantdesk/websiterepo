@@ -26,7 +26,6 @@ import {
   Wallet,
   Workflow,
 } from "lucide-react";
-import { defaultTheme, saveTheme } from "@/lib/theme";
 import { startRendererHealthRecorder } from "@/lib/rendererHealth";
 import HighImpactNewsChip from "@/components/HighImpactNewsChip";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
@@ -163,12 +162,10 @@ function AppSidebar({
     // leaves a final snapshot behind instead of an empty tab.
     startRendererHealthRecorder();
 
-    // Keep the legacy one-time migration marker so existing traders are not
-    // repainted. Fresh browsers receive the current defaultTheme, while the
-    // normal controls and account preference sync own all later selections.
+    // Retire the legacy migration without replacing a trader's saved palette.
+    // The pre-paint bootstrap already owns defaults for fresh browsers.
     const migrationKey = "kwantdesk:midnight-cockpit-theme:v1";
     if (window.localStorage.getItem(migrationKey) !== "applied") {
-      saveTheme(defaultTheme);
       writeProtectedItem(migrationKey, "applied");
     }
 
