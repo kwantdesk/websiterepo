@@ -11,7 +11,6 @@ export type LiveBigBlockZone = { sourceTimestamp: number; endSourceTimestamp?: n
  */
 export class BigBlocksLiveState {
   private source: Candle[] = [];
-  private firstLiveTimestamp: number | null = null;
   private latestLiveTimestamp: number | null = null;
   private forming: LiveBigBlockZone[] = [];
   private readonly confirmed = new Map<string, LiveBigBlockZone>();
@@ -22,7 +21,7 @@ export class BigBlocksLiveState {
 
   constructor(identity: string) { this.identity = identity; }
 
-  synchronizeSnapshot(snapshot: Candle[]) {
+  synchronizeSnapshot(snapshot: Candle[], zones?: LiveBigBlockZone[], minimumBars = 20, sealClosed = true) {
     // Preserve direct observations newer than a sampled React tail. Never
     // replace the live close/flow with an older snapshot of the same candle.
     const snapshotTail = snapshot.at(-1)?.timestamp ?? -Infinity;
@@ -31,6 +30,29 @@ export class BigBlocksLiveState {
     let merged = snapshot.slice(-240);
     for (const candle of directTail) merged = mergeLiveIndicatorCandle(merged, candle);
     this.source = merged.slice(-240);
+    if (zones && sealClosed) {
+      // Snapshot-origin blocks need the same finality as directly observed
+      // blocks. A missing/reclassified full-pass result must not erase a
+      // closed marker that was already published ten bars earlier.
+      const bySource = new Map<number, LiveBigBlockZone[]>();
+      for (const item of zones) {
+        const items = bySource.get(item.sourceTimestamp) ?? [];
+        items.push(item); bySource.set(item.sourceTimestamp, items);
+      }
+      const warmup = Number.isFinite(minimumBars) ? Math.max(12, Math.min(200, Math.round(minimumBars))) : 20;
+      for (let index = warmup - 1; index < snapshot.length - 1; index++) {
+        const candle = snapshot[index];
+        const classified = Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0);
+        if (this.observed.has(candle.timestamp) || candle.timestamp <= this.discardedThrough
+          || !Number.isFinite(classified) || classified <= 0) continue;
+        this.observed.add(candle.timestamp);
+        for (const item of bySource.get(candle.timestamp) ?? []) {
+          this.confirmed.set(item.zone.id, { ...item, zone: { ...item.zone } });
+        }
+      }
+      this.updateConfirmedProjection(zones);
+      this.boundDecisions();
+    }
   }
 
   sourceFor(candle: Candle): Candle[] | null {
@@ -48,23 +70,22 @@ export class BigBlocksLiveState {
     }
     this.latestLiveTimestamp = timestamp;
     if (hasInputs) {
-      this.firstLiveTimestamp ??= timestamp;
       this.observed.add(timestamp);
     }
     // Bound negative decisions as well as positive ones. Older discarded live
     // decisions stay excluded; genuine unobserved gaps in the retained window
     // can still receive ordinary historical backfill after a reconnect.
-    while (this.observed.size > 4096) {
-      const oldest = this.observed.values().next().value!;
-      this.observed.delete(oldest);
-      this.discardedThrough = oldest;
-    }
     // A faded condition or a direction reversal removes/replaces the preview,
     // rather than retaining every side that ever qualified during this bar.
     this.forming = (hasInputs ? candidates : []).filter(item => item.sourceTimestamp === timestamp)
       .map(item => ({ ...item, zone: { ...item.zone } }));
     // Existing projection expiry/close-cross still works. Only its right edge
     // can change after confirmation; origin, side and price bounds are frozen.
+    this.updateConfirmedProjection(candidates);
+    this.boundDecisions();
+  }
+
+  private updateConfirmedProjection(candidates: LiveBigBlockZone[]) {
     for (const item of candidates) {
       const fixed = this.confirmed.get(item.zone.id);
       if (fixed) this.confirmed.set(item.zone.id, {
@@ -73,13 +94,23 @@ export class BigBlocksLiveState {
         zone: { ...fixed.zone, endTime: item.zone.endTime, extensionBars: item.zone.extensionBars },
       });
     }
-    while (this.confirmed.size > 120) this.confirmed.delete(this.confirmed.keys().next().value!);
+  }
+
+  private boundDecisions() {
+    if (this.observed.size > 4096) {
+      const oldest = [...this.observed].sort((a, b) => a - b).slice(0, this.observed.size - 4096);
+      for (const timestamp of oldest) this.observed.delete(timestamp);
+      this.discardedThrough = Math.max(this.discardedThrough, oldest.at(-1)!);
+    }
+    if (this.confirmed.size > 120) {
+      const oldest = [...this.confirmed.values()].sort((a, b) => a.sourceTimestamp - b.sourceTimestamp).slice(0, this.confirmed.size - 120);
+      for (const item of oldest) this.confirmed.delete(item.zone.id);
+    }
   }
 
   display(snapshot: LiveBigBlockZone[], chartTimes?: ReadonlyMap<number, number>): BigBlockRenderZone[] {
-    const historical = this.firstLiveTimestamp === null ? snapshot : snapshot.filter(item =>
-      item.sourceTimestamp < this.firstLiveTimestamp!
-      || (!this.observed.has(item.sourceTimestamp) && item.sourceTimestamp > this.discardedThrough));
+    const historical = snapshot.filter(item =>
+      !this.observed.has(item.sourceTimestamp) && item.sourceTimestamp > this.discardedThrough);
     const zones = new Map(historical.map(item => [item.zone.id, item]));
     for (const item of this.confirmed.values()) zones.set(item.zone.id, item);
     for (const item of this.forming) zones.set(item.zone.id, item);

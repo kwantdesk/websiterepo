@@ -1,5 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Big Blocks historical-marker finality
+
+- Owner observed a block flickering about ten candles after its origin. Live
+  decisions were already latched, but pre-existing snapshot/history decisions
+  bypassed that authority and were replaced on every flow recalculation.
+- Chart's snapshot paint now supplies candidate zones, minimum warm-up and
+  live/replay mode to BigBlocksLiveState.synchronizeSnapshot. Closed historical
+  bars with classified inputs join the existing confirmed/negative decision
+  authority. Missing warm-up/classified data remains unknown until hydration.
+- Once closed, origin/side/top/bottom persist across missing or conflicting
+  recalculations. Existing right-edge projection expiry remains supported.
+  Forming previews can still withdraw; replay snapshots bypass this live latch
+  so rewinding never retains future blocks. Calculation-identity resets remain.
+- Retention is chronological, not insertion order: an older history prepend
+  must not evict a more recent live decision. Limits remain 120 zones/4096
+  decisions, with the existing discarded-history exclusion.
+- Three new regressions failed before the fix. 21 Big Blocks checks pass,
+  including the actual Chart snapshot paint effect with a real calculated
+  signal surviving 20 alternating flow recalculations and causal replay rewind.
+- Receipt: docs/prompt-log/2026-10-27-big-blocks-closed-history-stability.md.
+
+
 ## 2026-10-27 — Drawing copy/paste across chart tool layers
 
 - ChartDrawLayer now provides a themed right-click Drawing actions menu and

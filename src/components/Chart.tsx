@@ -12470,7 +12470,7 @@ function Chart({
       opacity: clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1),
       lineWidth: clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4),
     };
-    bigBlocksLiveState.synchronizeSnapshot(indicatorCandles);
+    bigBlocksLiveState.synchronizeSnapshot(indicatorCandles, bigBlockRenderZones, deepEffortOptions.minimumBars, !liveReplayActiveRef.current);
     bigBlocksPrimitiveOptionsRef.current = options;
     bigBlocksSnapshotZonesRef.current = bigBlockRenderZones;
     const visible = deepEffortIndicator && effortSettings.showZones !== false;
@@ -12478,6 +12478,7 @@ function Chart({
   }, [
     bigBlockRenderZones,
     bigBlocksLiveState,
+    deepEffortOptions.minimumBars,
     chartReadyRevision,
     deepEffortIndicator,
     indicatorCandles,
