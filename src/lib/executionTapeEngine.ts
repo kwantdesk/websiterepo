@@ -22,7 +22,7 @@ import {
 
 export type ExecutionTapeStatus = "checking" | "connected" | "unavailable";
 
-const TRADE_PUBLISH_INTERVAL_MS = 40;
+const TRADE_PUBLISH_INTERVAL_MS = 8;
 /**
  * How long a silent stream is tolerated before it is treated as dead.
  *

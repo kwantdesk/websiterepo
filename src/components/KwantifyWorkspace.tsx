@@ -1,4 +1,5 @@
 "use client";
+import { createExecutionPaintScheduler } from '@/lib/executionPaintScheduler';
 
 import { freshPaperExecutionQuote, paperOrderReceipt, paperTradeExecutionQuote } from "@/lib/paperOrderReceipt";
 
@@ -6292,7 +6293,7 @@ function WorkspaceChartPaneComponent({
     let pendingProfileRecords: InstitutionalTrade[] = [];
     let pendingExecutionRecords: InstitutionalTrade[] = [];
     let profileSyncTimer: number | null = null;
-    let executionSyncTimer: number | null = null;
+
     let marketTradeStateSyncTimer: number | null = null;
     let lastFlowReconcileAt = 0;
     // The incremental candle path adds each execution batch onto the forming
@@ -6391,7 +6392,7 @@ function WorkspaceChartPaneComponent({
     };
 
     const flushExecutionRecords = () => {
-      executionSyncTimer = null;
+
       if (!pendingExecutionRecords.length) return;
       const records = pendingExecutionRecords;
       pendingExecutionRecords = [];
@@ -6477,16 +6478,19 @@ function WorkspaceChartPaneComponent({
         startTransition(() => setCandles(reconciledCandles));
       }
     };
+    const executionPaintScheduler = createExecutionPaintScheduler(flushExecutionRecords, {
+      visible: () => document.visibilityState !== 'hidden',
+      requestFrame: callback => window.requestAnimationFrame(callback),
+      cancelFrame: handle => window.cancelAnimationFrame(handle),
+      delay: (callback, milliseconds) => window.setTimeout(callback, milliseconds),
+      cancelDelay: handle => window.clearTimeout(handle),
+    });
+    const executionVisibilityChanged = () => executionPaintScheduler.visibilityChanged();
+    document.addEventListener('visibilitychange', executionVisibilityChanged);
     const queueExecutionUpdate = (records: InstitutionalTrade[]) => {
       if (!records.length) return;
       appendLosslessPaneRecords(pendingExecutionRecords, records);
-      if (executionSyncTimer !== null) return;
-      // The active footprint paints at the same cadence as the execution-tape
-      // worker. Background panes remain deliberately throttled.
-      const delay = activeRef.current
-        ? footprintLiveActive ? 40 : 120
-        : 750;
-      executionSyncTimer = window.setTimeout(flushExecutionRecords, delay);
+      executionPaintScheduler.schedule();
     };
 
     const unsubscribe = subscribeRithmicIndicatorTrades({
@@ -6590,7 +6594,8 @@ function WorkspaceChartPaneComponent({
     return () => {
       unsubscribe();
       if (profileSyncTimer !== null) window.clearTimeout(profileSyncTimer);
-      if (executionSyncTimer !== null) window.clearTimeout(executionSyncTimer);
+      executionPaintScheduler.cancel();
+      document.removeEventListener('visibilitychange', executionVisibilityChanged);
       if (marketTradeStateSyncTimer !== null) window.clearTimeout(marketTradeStateSyncTimer);
       pendingProfileRecords = [];
       pendingExecutionRecords = [];

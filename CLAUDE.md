@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 Visible execution cadence
+
+Execution worker batches 8 ms (was 40). `createExecutionPaintScheduler` removes selected-pane 120 ms and unselected-visible 750 ms delays: all visible-document panes fold on next RAF. Hidden documents batch losslessly at 750 ms and resume on next RAF; cleanup cancels pending work. Preserve worker ack/backpressure, all execution/closed-OHLC authority and slower React/study checkpoints. Measured VPS source ages ES17/NQ30/GC24 ms in a short Asia sample; not a New York capacity or end-to-end latency claim. 14 tests plus 100k-record backpressure check/build; see `docs/prompt-log/2026-10-27-visible-execution-cadence.md`.
+
+
 ## 2026-10-27 Footprint history/live handoff
 
 Both Footprint sampled and imperative live base/profile builders now use `mergeFootprintHistoryRecords`: exact records own only buckets actually returned; uncovered/newly closed buckets keep raw tape until covered. Never replace exact closed rows with compacted live tape. First exact request uses existing themed loader; `footprintHistoryPresentedScopeRef` prevents reopening it at later candle boundaries. Hook exposes pending. No grouping/filter preference changes; owner currently uses Automatic/Fixed. 62 focused tests, including actual cache and gate; see `docs/prompt-log/2026-10-27-footprint-history-handoff.md`. Cold archival IO still has real latency; no missing flow is fabricated.
