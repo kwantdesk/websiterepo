@@ -512,6 +512,7 @@ import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
 import { clearChartDrawingClipboard } from '@/lib/chartDrawingClipboard';
+import { getChartDrawingContextActions, type ChartDrawingContextActions } from './useChartDrawingClipboard';
 import { buildPaperFillMarkers } from '@/lib/paperFillMarkers';
 import { drawingCoordinateToTime, drawingTimeToCoordinate, type DrawingTimeScale } from "@/lib/chartDrawingCoordinates";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
@@ -3712,6 +3713,7 @@ function Chart({
     price: string;
     drawingHit?: boolean;
     legacyDrawingId?: string;
+    drawingClipboardActions?: ChartDrawingContextActions;
     tpoHit?: { instanceId: string; profileId: string };
   } | null>(null);
   const tpoBaseModelsRef = useRef<TpoPrimitiveModel[]>([]);
@@ -15895,6 +15897,7 @@ function Chart({
         y,
         price,
         drawingHit: Boolean(drawingHit),
+        drawingClipboardActions: getChartDrawingContextActions(e),
         legacyDrawingId,
         tpoHit: tpoHit ? { instanceId: tpoHit.instanceId, profileId: tpoHit.profileId } : undefined,
       });
@@ -18784,6 +18787,7 @@ function Chart({
         ref={chartContainerRef}
         className="relative h-full min-w-0 flex-1 overflow-hidden"
         data-chart-instance-id={chartInstanceId}
+        data-chart-context-menu="full"
         data-volume-profile-count={renderedVolumeProfiles.length}
         data-volume-profile-provider={renderedVolumeProfiles.at(-1)?.provider ?? "none"}
         onPointerDownCapture={() => {
@@ -21445,12 +21449,14 @@ function Chart({
           className="absolute z-50 w-[280px] rounded-xl border border-border bg-panel py-2 shadow-2xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {contextMenu.drawingHit ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+          {contextMenu.drawingClipboardActions?.copy ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+            onClick={() => { contextMenu.drawingClipboardActions?.copy?.(); setContextMenu(null); }}>Copy drawing <span className="text-muted">Ctrl/⌘ C</span></button> : null}
+          {!contextMenu.drawingClipboardActions?.copy && contextMenu.drawingHit ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
             onClick={() => { copySelectedProfessionalDrawing(); setContextMenu(null); }}>Copy drawing <span className="text-muted">Ctrl/⌘ C</span></button> : null}
-          {contextMenu.legacyDrawingId ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+          {!contextMenu.drawingClipboardActions?.copy && contextMenu.legacyDrawingId ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
             onClick={() => { copyLegacyDrawing(contextMenu.legacyDrawingId ?? null); setContextMenu(null); }}>Copy drawing <span className="text-muted">Ctrl/⌘ C</span></button> : null}
-          {professionalClipboardRef.current || legacyDrawingClipboardRef.current ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
-            onClick={() => { pasteLegacyOrProfessionalDrawing(); setContextMenu(null); }}>Paste drawing <span className="text-muted">Ctrl/⌘ V</span></button> : null}
+          {contextMenu.drawingClipboardActions?.paste || professionalClipboardRef.current || legacyDrawingClipboardRef.current ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+            onClick={() => { if (contextMenu.drawingClipboardActions?.paste) contextMenu.drawingClipboardActions.paste(); else pasteLegacyOrProfessionalDrawing(); setContextMenu(null); }}>Paste drawing <span className="text-muted">Ctrl/⌘ V</span></button> : null}
           {contextMenu.tpoHit ? (
             <>
               <div className="px-4 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">

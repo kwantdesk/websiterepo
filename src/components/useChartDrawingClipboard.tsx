@@ -5,6 +5,10 @@ import { createPortal } from 'react-dom';
 import { copyChartDrawing, hasChartDrawingClipboard, isDrawingClipboardTextTarget, pasteChartDrawing } from '@/lib/chartDrawingClipboard';
 import type { Drawing, DrawPoint } from '@/lib/chartDrawTools';
 
+export type ChartDrawingContextActions = { copy: (() => boolean) | null; paste: (() => boolean) | null };
+const chartContextActions = new WeakMap<MouseEvent, ChartDrawingContextActions>();
+export const getChartDrawingContextActions = (event: MouseEvent) => chartContextActions.get(event);
+
 const activeLayers = new WeakMap<Document, string>();
 const layerHits = new WeakMap<Element, Map<string, (event: MouseEvent) => string | null>>();
 
@@ -75,8 +79,19 @@ export function useChartDrawingClipboard(args: {
       // Prefer that hit to a different layer's blank-space Paste menu.
       if (!drawingId && [...hits].some(([key, hit]) => key !== id && hit(event))) return;
       if (!drawingId && !hasClipboard()) return;
-      event.preventDefault(); event.stopImmediatePropagation(); activeLayers.set(doc, id);
+      activeLayers.set(doc, id);
       if (drawingId) live.current.onSelect(drawingId);
+      // The normal chart owns its complete menu. Contribute drawing actions
+      // during capture, then let its existing bubble listener open that menu.
+      if (container.getAttribute?.('data-chart-context-menu') === 'full') {
+        chartContextActions.set(event, {
+          copy: drawingId ? () => actions.current.copy(drawingId) : null,
+          paste: hasClipboard() ? () => actions.current.paste() : null,
+        });
+        setMenu(null);
+        return;
+      }
+      event.preventDefault(); event.stopImmediatePropagation();
       setMenu({ x: Math.max(8, Math.min(event.clientX, (doc.defaultView?.innerWidth ?? 1000) - 230)),
         y: Math.max(8, Math.min(event.clientY, (doc.defaultView?.innerHeight ?? 800) - 110)), drawingId });
     };

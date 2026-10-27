@@ -37,7 +37,7 @@ class Surface {
   }
 }
 let ids=0;
-let compiledHook,hookRuntime;
+let compiledHook,hookRuntime,readContextActions;
 function mountHook(doc,drawing,options={}){
   const effects=[],states=[],container=options.container??new Surface();
   hookRuntime={effects,states};
@@ -54,6 +54,7 @@ function mountHook(doc,drawing,options={}){
     throw Error(name);
   }});
   compiledHook??=exports.useChartDrawingClipboard;
+  readContextActions??=exports.getChartDrawingContextActions;
   compiledHook(args);const cleanup=effects.map(fn=>fn());
   return{args,container,states,cleanup:()=>cleanup.forEach(fn=>fn?.())};
 }
@@ -143,4 +144,26 @@ test('actual legacy position and professional paste functions preserve prices an
   context.copySelectedProfessionalDrawing();context.pasteProfessionalDrawing();context.pasteProfessionalDrawing();
   assert.deepEqual(Array.from(added[0].anchors,p=>p.price),[100,105]);assert.equal(added[1].anchors[0].time,1120);
   added[0].options.levels[0]=99;assert.equal(professional.options.levels[0],1);
+});
+
+test('normal charts retain their complete menu and receive drawing actions additively',()=>{
+  clipboard.clearChartDrawingClipboard();
+  const doc=new Surface();doc.defaultView=new Surface();doc.body={};
+  const container=new Surface();container.getAttribute=key=>key==='data-chart-context-menu'?'full':null;
+  const source=createDrawing('rectangle',[{time:100,price:100},{time:150,price:120}]);
+  const layer=mountHook(doc,source,{container,extra:{findAt:()=>source.id}});
+  let fullMenuEvent;container.addEventListener('contextmenu',event=>{fullMenuEvent=event;event.preventDefault();});
+  const event=container.emit('contextmenu',{clientX:100,clientY:100});
+  assert.equal(fullMenuEvent,event,'the normal menu handler must still receive the original right click');
+  assert.equal(event.stopped,undefined,'drawing capture must not suppress existing chart actions');
+  assert.equal(layer.states.at(-1),null,'no replacement two-item menu opens');
+  assert.equal(readContextActions(event).copy(),true);
+  const blank=mountHook(doc,source,{container,extra:{findAt:()=>null}});
+  // Use the original layer for this pane, with no drawing under the next click.
+  layer.args.findAt=()=>null;
+  const pasteEvent=container.emit('contextmenu',{clientX:150,clientY:100});
+  assert.equal(readContextActions(pasteEvent).copy,null);
+  assert.equal(readContextActions(pasteEvent).paste(),true);
+  assert.equal(blank.args.drawings.length,2);
+  blank.cleanup();layer.cleanup();
 });
