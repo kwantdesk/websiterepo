@@ -189,6 +189,19 @@ export function normalizeLiquidityMapSymbol(value) {
   return LIQUIDITY_MAP_SYMBOLS.has(parent) ? parent : '';
 }
 
+/** UI micro aliases request the parent book; catalog micros must never
+ * overwrite that parent's subscription, tick metadata or description. */
+export function parentLiquidityCatalogRows(rows) {
+  const rawRoot = value => String(value || '').trim().toUpperCase()
+    .replace(/\.[VNC]\.\d+$/i, '').replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, '');
+  return (Array.isArray(rows) ? rows : []).filter(row => {
+    const root = rawRoot(row?.root || row?.symbol);
+    const parent = normalizeLiquidityMapSymbol(root);
+    const contractRoot = rawRoot(row?.contractSymbol || row?.symbol || root);
+    return parent && root === parent && contractRoot === parent;
+  });
+}
+
 export function symbolMatchesSnapshot(requested, snapshotRoot) {
   const want = String(requested || '').toUpperCase();
   const got = String(snapshotRoot || '').toUpperCase();

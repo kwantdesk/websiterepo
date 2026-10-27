@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 ES liquidity price scale and catalog identity
+
+Renderer floor45 conflicted with controller floor24: ES default45 could not zoom inward. Both now use shared `priceScaleRows` min8 with instrument tick/depth-based upper bound. Price rail wheel normalises device deltas, never time zoom. `parentLiquidityCatalogRows` prevents micro catalog rows (MES/MGC etc.) overwriting canonical ES/GC contracts; browser reproduced MESZ6 under ES before fix. Do not conflate micro and parent order books. Asset revision `20261027-instrument-price-scale`. Watchlist ES/NQ retains quarters; normal RTY/M2K minMove is0.1. 43 regression tests/build, see `docs/prompt-log/2026-10-27-es-liquidity-price-scale.md`.
+
+
 ## 2026-10-27 Visible execution cadence
 
 Execution worker batches 8 ms (was 40). `createExecutionPaintScheduler` removes selected-pane 120 ms and unselected-visible 750 ms delays: all visible-document panes fold on next RAF. Hidden documents batch losslessly at 750 ms and resume on next RAF; cleanup cancels pending work. Preserve worker ack/backpressure, all execution/closed-OHLC authority and slower React/study checkpoints. Measured VPS source ages ES17/NQ30/GC24 ms in a short Asia sample; not a New York capacity or end-to-end latency claim. 14 tests plus 100k-record backpressure check/build; see `docs/prompt-log/2026-10-27-visible-execution-cadence.md`.

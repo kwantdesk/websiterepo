@@ -3053,6 +3053,8 @@ function formatPrice(price: number, symbol: string): string {
   const threeDecimal = ["XAUUSD", "OIL"];
   const oneDecimal = ["NAS100", "S&P500", "GER40", "UK100", "DOW30", "NIKKEI", "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY", "MGC", "GC"];
 
+  if (["NQ", "MNQ", "ES", "MES"].includes(root)) return price.toFixed(2);
+  if (["YM", "MYM"].includes(root)) return price.toFixed(0);
   if (root === "10Y") return price.toFixed(3);
   if (fiveDecimal.includes(root)) return price.toFixed(5);
   if (threeDecimalForex.includes(root)) return price.toFixed(3);

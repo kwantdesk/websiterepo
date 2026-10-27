@@ -2783,7 +2783,8 @@ function getPriceFormat(instrument: string) {
 
   if (/^10Y/.test(normalized)) return { type: "price" as const, precision: 3, minMove: 0.001 };
   if (["VIX", "VXN"].includes(normalized)) return { type: "price" as const, precision: 2, minMove: 0.01 };
-  if (/^(MNQ|NQ|MES|ES|M2K|RTY)/.test(normalized)) return { type: "price" as const, precision: 2, minMove: 0.25 };
+  if (/^(MNQ|NQ|MES|ES)/.test(normalized)) return { type: "price" as const, precision: 2, minMove: 0.25 };
+  if (/^(M2K|RTY)/.test(normalized)) return { type: "price" as const, precision: 1, minMove: 0.1 };
   if (/^(MYM|YM)/.test(normalized)) return { type: "price" as const, precision: 0, minMove: 1 };
   if (/^(MGC|GC)/.test(normalized)) return { type: "price" as const, precision: 1, minMove: 0.1 };
   if (/^(MCL|CL)/.test(normalized)) return { type: "price" as const, precision: 2, minMove: 0.01 };

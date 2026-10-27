@@ -1,9 +1,10 @@
+import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261027-instrument-price-scale';
 import { observeLiquidityMapModals } from './modal-overlay-bridge.js?v=20261027-modal-overlays';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261027-stable-trade-bubbles';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261027-stable-trade-bubbles';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261027-instrument-price-scale';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -14,9 +15,10 @@ import {
   liveInstrumentResolveUrl,
   normalizeLiveSnapshot,
   normalizeLiquidityMapSymbol,
+  parentLiquidityCatalogRows,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20261024-freeze-recovery';
+} from './live-market.js?v=20261027-instrument-price-scale';
 import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20261017-aleph-font';
 import {
   DEFAULT_INDICATOR_SETTINGS,
@@ -837,7 +839,7 @@ class DepthForgeApp {
       if (!response.ok) return;
       const payload = await response.json();
       const permitted = new Set();
-      for (const row of payload?.instruments || []) {
+      for (const row of parentLiquidityCatalogRows(payload?.instruments)) {
         const root = normalizeLiquidityMapSymbol(row?.root || row?.symbol);
         if (!root || !SYMBOLS[root] || row?.fullDepth === false) continue;
         permitted.add(root);
@@ -2276,7 +2278,8 @@ class DepthForgeApp {
       // The right price rail behaves like a dedicated vertical scale. Wheel
       // input here stretches/compresses price spacing around the chart centre
       // and must never alter horizontal history density or position.
-      const factor = event.deltaY > 0 ? 1.12 : 0.88;
+      const factor = priceWheelFactor(event);
+      if (factor === 1) return;
       this.#zoom(factor, {
         x: layout.plotWidth,
         y: layout.plotHeight / 2,
@@ -2387,9 +2390,7 @@ class DepthForgeApp {
     if (price) {
       const anchorTick = layout.tickForY(Math.max(0, Math.min(layout.plotHeight, anchor.y)));
       const config = SYMBOLS[this.symbol];
-      const depthRangePoints = config.depthRangePoints ?? config.tickSize * 110;
-      const fullBookRows = Math.round(depthRangePoints * 2 / Math.max(Number.EPSILON, config.tickSize));
-      this.view.visibleRows = Math.max(24, Math.min(Math.max(320, fullBookRows), this.view.visibleRows * factor));
+      this.view.visibleRows = priceScaleRows(this.view.visibleRows * factor, config);
       if (this.settings.autoCenter) {
         // Price zoom may change vertical density, but live price remains
         // locked to the centre until the user explicitly turns Auto-center off.

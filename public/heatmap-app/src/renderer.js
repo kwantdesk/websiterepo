@@ -1,3 +1,4 @@
+import { priceScaleRows } from './price-scale.js?v=20261027-instrument-price-scale';
 import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261017-aleph-font';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
 import { writeHeatRgba } from './heat-raster.js?v=20261020-smooth-motion';
@@ -332,7 +333,7 @@ export class DepthRenderer {
     const plotWidth = Math.max(120, width - priceAxisWidth - volumeRatioWidth - profileWidth);
     const plotHeight = Math.max(80, height - timeAxisHeight);
     const rowTicks = Math.max(1, view.aggregation || 1);
-    const baseRows = Math.max(45, view.visibleRows || 112);
+    const baseRows = priceScaleRows(view.visibleRows, config);
     const visibleTickSpan = baseRows * rowTicks;
     // Auto-centre must follow the price the user is actually watching.  The
     // inside-market midpoint can temporarily diverge from the last traded
