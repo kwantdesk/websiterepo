@@ -1,4 +1,5 @@
 import type { UserPreferenceSnapshot } from './userPreferences';
+import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from './chartDrawingPreferences';
 import { normalizePaperTradingLedger, paperAccountJournalFills, type PaperAccountLedger, type PaperPosition, type PaperTradeFill } from './paperTrading';
 
 export const PAPER_LEDGER_KEY = 'kwantify-paper-trading-ledger-v1';
@@ -115,7 +116,10 @@ export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, loca
   for (const key of keys) {
     if (preferenceValueFingerprint(key, base.values[key]) === preferenceValueFingerprint(key, local.values[key])) continue;
     if (local.values[key] === undefined) delete values[key];
-    else if (key === PAPER_LEDGER_KEY && remote.values[key]) {
+    else if (key === CHART_DRAWING_PREFERENCE_KEY) {
+      const merged = mergeChartDrawingPreferences(base.values[key], local.values[key], remote.values[key]);
+      if (merged !== undefined) values[key] = merged;
+    } else if (key === PAPER_LEDGER_KEY && remote.values[key]) {
       const b = normalizePaperTradingLedger(parse(base.values[key]));
       const l = normalizePaperTradingLedger(parse(local.values[key]));
       const r = normalizePaperTradingLedger(parse(remote.values[key]));

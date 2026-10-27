@@ -11173,7 +11173,7 @@ export default function KwantifyWorkspace({
   // New charting-tool drawings per pane, stored separately from every legacy
   // drawing store and synced to the account through the tracked key below.
   const [paneChartDrawings, setPaneChartDrawings] = useState<Record<string, Drawing[]>>({});
-  const paneChartDrawingsHydratedRef = useRef(false);
+  const [paneChartDrawingsHydrated, setPaneChartDrawingsHydrated] = useState(false);
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(CHARTING_DRAWINGS_STORAGE_KEY);
@@ -11189,17 +11189,17 @@ export default function KwantifyWorkspace({
     } catch {
       // A missing/corrupt store starts with no charting drawings.
     }
-    paneChartDrawingsHydratedRef.current = true;
+    setPaneChartDrawingsHydrated(true);
   }, []);
   useEffect(() => {
-    if (!paneChartDrawingsHydratedRef.current) return;
+    if (!paneChartDrawingsHydrated) return;
     try {
       window.localStorage.setItem(CHARTING_DRAWINGS_STORAGE_KEY, JSON.stringify(paneChartDrawings));
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     } catch {
       // Drawings still apply this session without persistence.
     }
-  }, [paneChartDrawings]);
+  }, [paneChartDrawings, paneChartDrawingsHydrated]);
   const setChartDrawingsForPane = useCallback((paneId: string, drawings: Drawing[]) => {
     setPaneChartDrawings((current) => ({ ...current, [paneId]: drawings }));
   }, []);

@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Drawing persistence race protection
+
+Chart drawing preferences merge by pane and drawing ID, preserving independent device edits and explicit deletes. Same-owner initial cloud hydration preserves drawing edits made during its request. Startup storage save waits for committed hydration state; never set a ref true in the load effect then save the initial empty state in a sibling effect. ChartDrawLayer retained drag callbacks use chartingDrawingsRef, updated synchronously on commit, rather than the array captured at render. Seven new actual callback/effect/hydration and merge regressions;35 account/theme tests pass. See docs/prompt-log/2026-10-28-position-drawing-persistence-races.md. Original missing drawing anchors have not been recovered or reconstructed. No gateway restart or owner trade/preference changes.
+
 ## 2026-10-28 — Execution rollover candle handoff
 
 Clock execution batches must publish the final closing candle before their successor, with each candle's own sourceEndTimestamp. Tail-only publication left the renderer observation buffer holding an older close despite a correct execution writer. executionCandlePaintBatch binary-searches only the affected tail; event bars retain their previous publication behavior. Execution records establish liveTailStartTimestamp without relying on independent quote delivery; reconcileTail uses mergeHistoricalWithLiveTail rather than raw replacement. Recorded349-print NQ fixture matches archive through renderer across six batch sizes; actual publication/recovery regressions cover stale redraws. Two fixed-range VPS reads:119closed NQ1m bars,zeroOHLC changes. See docs/prompt-log/2026-10-28-execution-rollover-candle-authority.md. Gateway restart still deferred until owner finishes trading; no universal live-session resolution claim.

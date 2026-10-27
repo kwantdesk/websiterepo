@@ -4,6 +4,7 @@ import { retainLocalChartAppearance } from "./chartSettings.ts";
 import { writeProtectedItem } from "./browserStorageQuota.ts";
 import { inFlightGexWorkspace } from "./gexDataPreferenceOwnership.ts";
 import { accountPreferenceFingerprint } from "./accountPreferenceMerge";
+import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from "./chartDrawingPreferences";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
@@ -474,6 +475,20 @@ export async function hydrateUserPreferences(
   const gexWorkspace = inFlightGexWorkspace(current.values[gexKey], latest.values[gexKey], user.id);
   if (gexWorkspace) selected = { ...selected, updatedAt: latest.updatedAt,
     values: { ...selected.values, [gexKey]: gexWorkspace } };
+
+  // Cached charts can be used while this same owner's cloud snapshot loads.
+  // Keep drawings placed/edited/deleted during that request, merged by ID so
+  // independent remote drawings survive too. Never import another owner's.
+  if (localPreferencesBelongToUser
+    && latest.values[CHART_DRAWING_PREFERENCE_KEY] !== current.values[CHART_DRAWING_PREFERENCE_KEY]) {
+    const drawings = mergeChartDrawingPreferences(
+      current.values[CHART_DRAWING_PREFERENCE_KEY],
+      latest.values[CHART_DRAWING_PREFERENCE_KEY],
+      selected.values[CHART_DRAWING_PREFERENCE_KEY],
+    );
+    if (drawings !== undefined) selected = { ...selected, updatedAt: latest.updatedAt,
+      values: { ...selected.values, [CHART_DRAWING_PREFERENCE_KEY]: drawings } };
+  }
 
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
   applyBrowserPreferences(selected);

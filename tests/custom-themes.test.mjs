@@ -64,7 +64,7 @@ test('a theme saved during same-account hydration is not rolled back; other owne
   for(const owner of ['owner','other']){
     reset();data.set('kwantdesk:active-preferences-owner:v1',owner);
     let resolveCloud;const cloud=new Promise(resolve=>{resolveCloud=resolve;});
-    const supabase={from:()=>({select:()=>{const chain={eq:()=>chain,maybeSingle:()=>cloud};return chain;},upsert:async()=>({error:null})})};
+    const supabase={from:()=>({select:()=>{const chain={eq:()=>chain,abortSignal:()=>chain,maybeSingle:()=>cloud};return chain;},upsert:async()=>({error:null})})};
     const pending=hydrateUserPreferences(supabase,{id:'owner',user_metadata:{}});
     saveCustomTheme('Created while loading',defaultTheme,palette);
     resolveCloud({data:{preferences:{version:1,complete:true,updatedAt:'2026-10-20T00:00:00Z',values:{}}},error:null});

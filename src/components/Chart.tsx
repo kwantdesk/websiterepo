@@ -4037,7 +4037,9 @@ function Chart({
     };
   }, []);
   const commitDrawings = useCallback((next: Drawing[]) => {
-    onChartingDrawingsChange?.(normalizeDrawings(next));
+    const normalized = normalizeDrawings(next);
+    chartingDrawingsRef.current = normalized;
+    onChartingDrawingsChange?.(normalized);
   }, [onChartingDrawingsChange]);
   // Backspace / Delete removes the selected charting drawing (only on the
   // focused pane, and never while typing into a field).
@@ -18907,10 +18909,10 @@ function Chart({
             subscribeViewport={subscribeDrawViewport}
             projectionRevision={() => drawingTimelineRevisionRef.current}
             onOpenSettings={(id) => { setDrawSelectedId(id); setDrawTool("cursor"); setDrawSettingsOpen(true); }}
-            onCommit={(drawing) => { commitDrawings([...chartingDrawings, drawing]); setDrawSelectedId(drawing.id); }}
-            onUpdate={(drawing) => commitDrawings(chartingDrawings.map((d) => d.id === drawing.id ? drawing : d))}
+            onCommit={(drawing) => { commitDrawings([...chartingDrawingsRef.current, drawing]); setDrawSelectedId(drawing.id); }}
+            onUpdate={(drawing) => commitDrawings(chartingDrawingsRef.current.map((d) => d.id === drawing.id ? drawing : d))}
             onSelect={setDrawSelectedId}
-            onDelete={(id) => { commitDrawings(chartingDrawings.filter((drawing) => drawing.id !== id)); if (drawSelectedId === id) setDrawSelectedId(null); }}
+            onDelete={(id) => { commitDrawings(chartingDrawingsRef.current.filter((drawing) => drawing.id !== id)); if (drawSelectedId === id) setDrawSelectedId(null); }}
             onToolConsumed={() => setDrawTool("cursor")}
             onRequestText={(points, tool) => {
               const anchor = points[points.length - 1];

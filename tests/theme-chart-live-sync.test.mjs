@@ -76,7 +76,7 @@ test("reset publishes the default chart palette without a page refresh", () => {
 
 function cloudClient(snapshot, wait = Promise.resolve()) {
   return { from(table) { return {
-    select() { const chain = { eq() { return chain; }, async maybeSingle() {
+    select() { const chain = { eq() { return chain; }, abortSignal() { return chain; }, async maybeSingle() {
       await wait;
       return table === "user_preferences" ? { data: { preferences: snapshot, updated_at: snapshot.updatedAt }, error: null }
         : { data: null, error: null };
@@ -141,7 +141,7 @@ test("unsent desktop layout survives restart while a phone theme change is prese
   for (const [key,value] of Object.entries(base.values)) store.set(key,value);
   store.set('olisa-chart-workspace-layout','quad');
   const client = { from(table) {
-    let update; const chain = { select(){return chain}, eq(){return chain}, update(value){update=value;return chain},
+    let update; const chain = { select(){return chain}, eq(){return chain}, abortSignal(){return chain}, update(value){update=value;return chain},
       async maybeSingle(){
         if (table !== 'user_preferences') return {data:null,error:null};
         if (update) { cloud = update; return {data:{updated_at:update.updated_at},error:null}; }
