@@ -48,6 +48,7 @@ import {
   isFullyObservedLiveBucket,
   mergeHistoricalAndLiveCandle,
   mergeHistoricalAndLiveCandleSeries,
+  executionCandlePaintBatch,
 } from "@/lib/liveCandleAuthority";
 import { groupByNewYorkDate } from "@/lib/newYorkTradingDay";
 import { resolveCompositeVolumeProfileRange } from "@/lib/compositeVolumeProfile";
@@ -6406,6 +6407,14 @@ function WorkspaceChartPaneComponent({
       if (!pendingExecutionRecords.length) return;
       const records = pendingExecutionRecords;
       pendingExecutionRecords = [];
+      // Execution-only charts must establish live authority too; quote
+      // delivery is independent and may arrive later or not arrive at all.
+      for (const record of records) {
+        if (!Number.isFinite(record.timestamp)) continue;
+        liveTailStartTimestampRef.current = liveTailStartTimestampRef.current === null
+          ? record.timestamp
+          : Math.min(liveTailStartTimestampRef.current, record.timestamp);
+      }
 
       if (needsOrderFlowHistory) {
         // All panes for one contract consume the same canonical tape. The
@@ -6474,11 +6483,18 @@ function WorkspaceChartPaneComponent({
         setOrderFlowHistoryReady(true);
       }
       const latest = reconciledCandles.at(-1)!;
-      window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
-        detail: { key: pane.id, candle: latest,
-          sourceTimestampMs: records.reduce((latestTime, record) => Number.isFinite(record.timestamp)
-            ? Math.max(latestTime, record.timestamp) : latestTime, Number.NEGATIVE_INFINITY) },
-      }));
+      const paintBatch = isEventBasedChartInterval(pane.timeframe)
+        ? [latest]
+        : executionCandlePaintBatch(previousCandles, reconciledCandles);
+      for (const candle of paintBatch) {
+        window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+          detail: { key: pane.id, candle,
+            // A closing candle needs its own exchange watermark. The newest
+            // trade in the batch belongs to the NEXT candle and would make
+            // the renderer reject this final close as a late receipt clock.
+            sourceTimestampMs: candle.sourceEndTimestamp ?? candle.timestamp },
+        }));
+      }
       const newBar = flushedNewBar;
       if (newBar) {
         lastCandleStateSyncRef.current = flushNow;
@@ -7346,9 +7362,14 @@ function WorkspaceChartPaneComponent({
         let repaired = trimChartHistoryForPeriod(
           trimCandlesAfterActiveBucket(
             sanitizeCandles(
-              mergeChartHistory(
-                mergeChartHistory(latestCandlesRef.current, historical),
-                seam,
+              mergeHistoricalWithLiveTail(
+                mergeChartHistory(
+                  mergeChartHistory(latestCandlesRef.current, historical),
+                  seam,
+                ),
+                latestCandlesRef.current,
+                pane.timeframe,
+                liveTailStartTimestampRef.current,
               ),
               pane.symbol,
               pane.timeframe,

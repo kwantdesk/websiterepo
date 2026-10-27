@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Execution rollover candle handoff
+
+Clock execution batches must publish the final closing candle before their successor, with each candle's own sourceEndTimestamp. Tail-only publication left the renderer observation buffer holding an older close despite a correct execution writer. executionCandlePaintBatch binary-searches only the affected tail; event bars retain their previous publication behavior. Execution records establish liveTailStartTimestamp without relying on independent quote delivery; reconcileTail uses mergeHistoricalWithLiveTail rather than raw replacement. Recorded349-print NQ fixture matches archive through renderer across six batch sizes; actual publication/recovery regressions cover stale redraws. Two fixed-range VPS reads:119closed NQ1m bars,zeroOHLC changes. See docs/prompt-log/2026-10-28-execution-rollover-candle-authority.md. Gateway restart still deferred until owner finishes trading; no universal live-session resolution claim.
+
 ## 2026-10-28 — Emoji picker without lazy-load stall
 
 ChartDrawToolbar/StateChartTools statically import ChartEmojiPicker; catalogue was already imported by Chart.tsx. UI stays mounted only while open, but no separate picker/catalogue network promise blocks the click or State quick-pick selection.12catalogue/persistence/scale checks, scoped lint and full1536MiB-capped build pass. See docs/prompt-log/2026-10-28-chart-emoji-loader.md. Backend performance mounts remain NOT activated: owner explicitly requested waiting until no longer trading before any gateway restart.
