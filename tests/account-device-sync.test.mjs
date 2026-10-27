@@ -91,7 +91,7 @@ function database(initial){
  let row={preferences:initial,updated_at:initial.updatedAt},race=null,writes=0;
  const client={from(table){
   const filters={};let payload=null,op='read';
-  const chain={select(){return chain},eq(k,v){filters[k]=v;return chain},update(p){payload=p;op='update';return chain},
+  const chain={abortSignal(signal){assert.ok(signal instanceof AbortSignal);return chain},select(){return chain},eq(k,v){filters[k]=v;return chain},update(p){payload=p;op='update';return chain},
    async maybeSingle(){
     assert.equal(filters.user_id,'owner');
     if(table!=='user_preferences')return {data:null,error:null};

@@ -59,13 +59,26 @@ function chicagoLocalToUtcMs(date, hour) {
 }
 
 export function chicagoTradingDate(timestampMs) {
+  // Thousands of depth/trade records share a minute. CME's Chicago date and
+  // 17:00 session boundary cannot change inside one UTC minute, including DST.
+  // Retain a small exact bucket cache rather than allocating Intl parts and
+  // calendar arrays for every raw message. Function-owned state also permits
+  // a body-only live update without replacing import bindings.
+  const minute = Math.floor(Number(timestampMs) / 60_000);
+  const cache = chicagoTradingDate.minuteCache ??= new Map();
+  if (Number.isFinite(minute) && cache.has(minute)) return cache.get(minute);
   const parts = zonedParts(timestampMs);
   const localDate = [
     String(parts.year).padStart(4, "0"),
     String(parts.month).padStart(2, "0"),
     String(parts.day).padStart(2, "0"),
   ].join("-");
-  return parts.hour < 17 ? addCalendarDays(localDate, -1) : localDate;
+  const result = parts.hour < 17 ? addCalendarDays(localDate, -1) : localDate;
+  if (Number.isFinite(minute)) {
+    cache.set(minute, result);
+    if (cache.size > 128) cache.delete(cache.keys().next().value);
+  }
+  return result;
 }
 
 export function cmeSessionBounds(tradingDate) {

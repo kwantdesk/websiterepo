@@ -6,12 +6,12 @@ const empty = (): UserPreferenceSnapshot => ({ version: 1, complete: true, updat
 
 /** Compare-and-swap prevents a stale phone from replacing a newer desktop row. */
 export async function exchangeAccountPreferences(client: SupabaseClient, userId: string,
-  base: UserPreferenceSnapshot, local: UserPreferenceSnapshot, write: boolean) {
+  base: UserPreferenceSnapshot, local: UserPreferenceSnapshot, write: boolean, signal = AbortSignal.timeout(8_000)) {
   for (const table of ['user_preferences', 'social_objects'] as const) {
     for (let attempt = 0; attempt < 5; attempt++) {
       let query = client.from(table).select(table === 'user_preferences' ? 'preferences,updated_at' : 'payload,updated_at').eq('user_id', userId);
       if (table === 'social_objects') query = query.eq('id', 'account-preferences');
-      const result = await query.maybeSingle();
+      const result = await query.abortSignal(signal).maybeSingle();
       if (result.error) break;
       const row = result.data as unknown as { preferences?: unknown; payload?: { preferences?: unknown }; updated_at: string } | null;
       const raw = table === 'user_preferences' ? row?.preferences : row?.payload?.preferences;
@@ -19,7 +19,7 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
       if (row && !remote) break; // Corrupt cloud state is never permission to erase local work.
       if (!row && table === 'user_preferences') {
         const legacy = await client.from('social_objects').select('payload,updated_at')
-          .eq('user_id', userId).eq('id', 'account-preferences').maybeSingle();
+          .eq('user_id', userId).eq('id', 'account-preferences').abortSignal(signal).maybeSingle();
         remote = normalizeSnapshot(legacy.data?.payload?.preferences, legacy.data?.updated_at);
       }
       remote ??= row ? empty() : base;
@@ -33,7 +33,7 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
       if (row) {
         let update = client.from(table).update(fields).eq('user_id', userId).eq('updated_at', row.updated_at);
         if (table === 'social_objects') update = update.eq('id', 'account-preferences');
-        const saved = await update.select('updated_at').maybeSingle();
+        const saved = await update.select('updated_at').abortSignal(signal).maybeSingle();
         if (saved.error) break;
         if (!saved.data) {
           if (attempt === 4) throw new Error('Account changed concurrently; retrying.');
@@ -41,10 +41,10 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
         }
       } else {
         const saved = table === 'user_preferences'
-          ? await client.from('user_preferences').insert({ user_id: userId, preferences: snapshot, updated_at: snapshot.updatedAt })
+          ? await client.from('user_preferences').insert({ user_id: userId, preferences: snapshot, updated_at: snapshot.updatedAt }).abortSignal(signal)
           : await client.from('social_objects').insert({ user_id: userId, id: 'account-preferences', author_label: 'Kwant Desk account',
               object_type: 'progress', scope: 'private', desk_id: null, parent_id: null,
-              payload: { preferences: snapshot }, updated_at: snapshot.updatedAt });
+              payload: { preferences: snapshot }, updated_at: snapshot.updatedAt }).abortSignal(signal);
         if (saved.error?.code === '23505') {
           if (attempt === 4) throw new Error('Account changed concurrently; retrying.');
           continue;

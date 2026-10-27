@@ -1,0 +1,13 @@
+# Live session performance investigation — 2026-10-28 Brisbane
+
+User reports10–20s navigation and minutes Opening charts midway through NY. Previous cache-startup repair did not resolve this broader incident.
+
+Evidence: VPS8GiB RAM, ~4GiB available, negligible swap, gateway63%CPU sample/3.165GiB of5GiB, load1.76 and no restart/OOM. These averages hid event-loop overload:101 trips, max lag1312ms, active30s recovery/maintenance pause. Paired1day minute-history probes: NQ internal549ms/public276ms; ES162ms/public4423ms; GC9939ms/public106ms (1380real bars each). Warm/cold discrepancy does not establish universal latency. Host Windows16GiB had2GiB available before build; local validation ran BelowNormal with1536MiB JS heap and finished successfully, then available memory4.1GiB.
+
+A short container-loopback Node CPU profile13.431s: GC2541ms; trading-session zonedParts1865ms; addCalendarDays392ms; chicagoTradingDate155ms; stream onwrite1442ms; protocol jsonValue893ms. Profile did not pause execution or restart service. Inspector was closed and verified refused afterwards; no port was published. Raw sender/calendar function source matched repository HEAD after newline normalization. V8 dry-run refused ESM body live edit (BlockedByTopLevelEsModuleChange), so NO live edit applied.
+
+Web repairs: ignore non-account storage notifications; debounce before full account/ledger fingerprint scans, retain remote/focus refresh and no-op/no-network behavior.1000 cache events produce0scans,1000local signals produce1deferred scan. Bound account HTTP/CAS reads/writes to8s perattempt; failures retain local data and retry. Retained GEX/Kwanty frames receive inactive during effect teardown even when React has cleared iframe refs, then existing abort/cleanup occurs.
+
+Backend prepared, NOT activated: Chicago trading-date minute cache bounded128buckets, preserving DST/17:00 boundaries;100000same-minute prints perform1Intl conversion. Futures archive flushes share one writer and use process/UUID temporary names.33gateway tests,21web/account/ownership tests pass; scoped lint clean and full1536MiB-capped production build/TypeScript passed.
+
+VPS preparation: new runtime-overrides trading-session.cached-date-20261028.mjs and futures-bar-archive.serial-flush-20261028.mjs. compose.yml changed only those2gateway mounts, backed up as compose.before-session-performance-20261028.yml, docker compose config --quiet passed. All existing mounts retained. Running gateway unchanged; activation needs brief recreate/reconnect, deferred for owner approval while trading. No recording/account/trade data removed or replaced.

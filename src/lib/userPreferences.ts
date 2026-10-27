@@ -139,7 +139,7 @@ export type UserPreferenceSnapshot = {
   values: Record<string, string>;
 };
 
-function isTrackedStorageKey(key: string) {
+export function isTrackedStorageKey(key: string) {
   return TRACKED_STORAGE_KEYS.has(key)
     || TRACKED_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
@@ -245,11 +245,12 @@ export async function loadCloudPreferences(
   supabase: SupabaseClient,
   user: User,
 ): Promise<UserPreferenceSnapshot | null> {
+  const signal = AbortSignal.timeout(8_000);
   const { data, error } = await supabase
     .from(USER_PREFERENCES_TABLE)
     .select("preferences, updated_at")
     .eq("user_id", user.id)
-    .maybeSingle();
+    .abortSignal(signal).maybeSingle();
 
   if (!error && data?.preferences) {
     return normalizeSnapshot(data.preferences, data.updated_at);
@@ -260,7 +261,7 @@ export async function loadCloudPreferences(
     .select("payload, updated_at")
     .eq("user_id", user.id)
     .eq("id", SOCIAL_PREFERENCES_ID)
-    .maybeSingle();
+    .abortSignal(signal).maybeSingle();
   if (!socialFallbackError && socialFallback?.payload) {
     const payload = socialFallback.payload as Record<string, unknown>;
     const snapshot = normalizeSnapshot(

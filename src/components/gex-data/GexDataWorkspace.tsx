@@ -39,6 +39,7 @@ function broadcast(frame: Window | null, type: string, detail = {}) {
 
 export default function GexDataWorkspace({ accountKey, active = true }: { accountKey: string; active?: boolean }) {
   const frame = useRef<HTMLIFrameElement>(null);
+  const lastFrameWindow = useRef<Window | null>(null);
   const [ready, setReady] = useState(false);
   const [generation, setGeneration] = useState(0);
   const [timeZone, setTimeZone] = useState(defaultChartSettings.timezone);
@@ -168,6 +169,9 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
     const observer = new MutationObserver(themeChanged);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
     return () => {
+      host.active = false;
+      broadcast(frame.current?.contentWindow ?? lastFrameWindow.current, "gex-data-site-activity", { active: false });
+      lastFrameWindow.current = null;
       disposed = true; setReady(false); controllers.forEach(controller => controller.abort());
       waiting.splice(0).forEach(resolve => resolve()); cache.clear(); pending.clear(); observer.disconnect();
       window.removeEventListener("kwantdesk:theme-change", themeChanged);
@@ -196,7 +200,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       <TimeZoneSelect value={timeZone} onChange={next => window.__kwantGexDataHost?.write(TIME_ZONE_KEY, normalizeTimeZone(next))}
         menuLabel="Chart timezone" compact className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME} />
     </div>}
-    {ready ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
+    {ready ? <iframe key={`${accountKey}:${generation}`} ref={node => { frame.current = node; if (node?.contentWindow) lastFrameWindow.current = node.contentWindow; }} src={src}
       title="GEX DATA tools and workspace" className="h-full w-full border-0" allow="fullscreen"
       onLoad={() => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-activity", { active: activeRef.current })} />
       : null}

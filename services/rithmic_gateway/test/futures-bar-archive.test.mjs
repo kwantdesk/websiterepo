@@ -448,3 +448,5 @@ test("the served window is bounded and keeps the most recent bars", async () => 
     assert.equal(candles.at(-1).close, 149, "the limit dropped the live edge instead of the oldest bars");
   });
 });
+
+test('overlapping periodic flush calls share one writer and retain prints arriving mid-write',async()=>{await withArchive(async archive=>{archive.record(print(0,100,1));const original=archive.readFile.bind(archive);let release,reads=0;archive.readFile=async(...args)=>{reads++;await new Promise(r=>release=r);return original(...args)};const first=archive.flush();const second=archive.flush();assert.equal(reads,1);archive.record(print(1000,105,2));release();await Promise.all([first,second]);assert.equal(archive.lastError,null);archive.readFile=original;await archive.flush();const result=await archive.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000});assert.equal(result.candles[0].volume,3);assert.equal(result.candles[0].high,105)})});

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
@@ -374,6 +375,8 @@ export class FuturesBarArchive {
    * through a temporary name so a crash cannot leave a half-written session.
    */
   async flush() {
+    if (this.flushWork) return this.flushWork;
+    this.flushWork = (async () => {
     if (!this.enabled || !this.dirty.size) return;
     const pending = [...this.dirty];
     this.dirty.clear();
@@ -407,7 +410,7 @@ export class FuturesBarArchive {
           // The live bar wins: it is the one still receiving prints.
           for (const bar of live.values()) merged.set(bar.t, bar);
           const rows = [...merged.values()].sort((a, b) => a.t - b.t).map(encodeBar);
-          const temporary = `${file}.tmp`;
+          const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
           await writeFile(temporary, JSON.stringify({ tradingDate, exchange, symbol, bars: rows }));
           await rename(temporary, file);
           this.lastFlushAt = new Date().toISOString();
@@ -418,6 +421,8 @@ export class FuturesBarArchive {
         }
       }
     }
+      })();
+    try { return await this.flushWork; } finally { this.flushWork = null; }
   }
 
   async readFile(file, metadata) {

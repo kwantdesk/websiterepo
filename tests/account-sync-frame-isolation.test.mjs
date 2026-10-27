@@ -19,3 +19,5 @@ for(const [file,workspace] of [['gex-data/GexDataWorkspace.tsx','kwantdesk:gex-d
   assert.equal(generations,1);assert.equal(clears,1);
  });
 }
+
+test('hidden iframe cleanup explicitly stops its runtime before host disposal',()=>{for(const [file,type]of [['gex-data/GexDataWorkspace.tsx','gex-data-site-activity'],['kwanty/KwantyWorkspace.tsx','kwanty-site-activity']]){const s=fs.readFileSync('src/components/'+file,'utf8');const cleanup=s.slice(s.indexOf('return () => {',s.indexOf('observer.observe(document.documentElement')));assert.match(cleanup,/host.active = false/);assert.ok(cleanup.indexOf(type)<cleanup.indexOf('disposed = true'));assert.match(cleanup,/active: false/);}});

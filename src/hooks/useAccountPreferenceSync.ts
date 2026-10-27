@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { captureBrowserPreferences, readScopedPreferences, receiveAccountPreferences } from "@/lib/userPreferences";
+import { captureBrowserPreferences, isTrackedStorageKey, readScopedPreferences, receiveAccountPreferences } from "@/lib/userPreferences";
 import { accountPreferenceFingerprint, mergeAccountPreferenceChanges } from "@/lib/accountPreferenceMerge";
 import { exchangeAccountPreferences } from "@/lib/accountPreferenceCloud";
 
@@ -15,6 +15,7 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
     if (owner && owner !== userId) return;
     let active = true, busy = false, queued = false, failures = 0;
     let retryAfter = 0, timer: number | undefined;
+    let refreshScheduled = false;
     let base = readScopedPreferences(userId) ?? captureBrowserPreferences();
     // Broadcast is a change hint only. The authenticated, RLS-scoped database
     // read carries the data; no account/workspace/trade payload is broadcast.
@@ -53,17 +54,30 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
         if (queued && active) { queued = false; schedule(); }
       }
     };
-    const schedule = () => {
+    const schedule = (localOnly = false) => {
+      if (!localOnly) refreshScheduled = true;
       if (timer !== undefined) window.clearTimeout(timer);
-      timer = window.setTimeout(() => { timer = undefined; void synchronize(); }, 300);
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        const refresh = refreshScheduled;
+        refreshScheduled = false;
+        if (!refresh && accountPreferenceFingerprint(captureBrowserPreferences()) === accountPreferenceFingerprint(base)) return;
+        void synchronize();
+      }, 300);
     };
-    const onLocalChange = () => {
-      if (accountPreferenceFingerprint(captureBrowserPreferences()) !== accountPreferenceFingerprint(base)) schedule();
+    const onLocalChange = (event?: Event) => {
+      // Cache/telemetry writes from another trading tab are not account edits.
+      // Debounce BEFORE scanning storage or parsing the growing paper ledger.
+      if (event?.type === "storage") {
+        const key = (event as StorageEvent).key;
+        if (key && !isTrackedStorageKey(key)) return;
+      }
+      schedule(true);
     };
     const reconnect = () => { retryAfter = 0; schedule(); };
     const onVisible = () => { if (document.visibilityState === 'visible') reconnect(); };
     const onHidden = () => { if (document.visibilityState === 'hidden') void synchronize(); };
-    channel.on('broadcast', { event: 'changed' }, schedule)
+    channel.on('broadcast', { event: 'changed' }, () => schedule())
       .subscribe(status => {
         channelReady = status === 'SUBSCRIBED';
         if (channelReady) {

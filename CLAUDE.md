@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Session performance / pending gateway activation
+
+Measured busy gateway JS loop despite RAM/CPU averages:101overload trips/max1312ms;13.4s profile~2.4s repeated Chicago date work +2.5sGC. Date minute cache128buckets +serialized/unique-temp bar flush prepared on VPS,33gateway tests; NOT activated pending brief gateway restart approval. Inspector closed/no public port. Web debounces BEFORE account fingerprint scan, ignores cache storage events, bounds cloud HTTP8s, and stops retained GEX/Kwanty iframe runtimes during Activity teardown even after refs detach.21web tests, scoped lint/full1536MiB-capped BelowNormal build pass. See docs/prompt-log/2026-10-28-session-performance-investigation.md. No universal near-instant or sustained NY performance claim.
+
+
 ## 2026-10-28 — Charts same-owner cache startup
 
 After getUser verifies identity, canDisplayOwnedWorkspace allows only a complete same-owner local cache to start read-only Chart display/history while cloud preference refresh continues. Do not set preferencesReady early: execution/persistence/account-sync gates remain full hydration. Different/missing/incomplete/blocked cache must wait. Reproduced zero canvases behind Opening charts cloud-sync gate, later63/no loaders.14 ownership/account/frame/theme checks and build pass; scoped lint0errors/19existing warnings. See docs/prompt-log/2026-10-28-charts-owned-cache-startup.md. No gateway/provider restart or owner settings changes.

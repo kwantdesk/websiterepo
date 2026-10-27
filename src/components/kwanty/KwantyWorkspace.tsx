@@ -41,6 +41,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
   const search=useSearchParams(),router=useRouter(),pathname=usePathname(),legacyCalendar=pathname==='/kwanty'&&search.get('view')==='calendar',active=sectionActive&&!legacyCalendar;
   useEffect(()=>{if(legacyCalendar)router.replace('/news?view=options-expirations');},[legacyCalendar,router]);
   const frame = useRef<HTMLIFrameElement>(null);
+  const lastFrameWindow = useRef<Window | null>(null);
   const [ready, setReady] = useState(false);
   const [generation, setGeneration] = useState(0);
   const activeRef = useRef(active);
@@ -164,6 +165,11 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
     const observer = new MutationObserver(themeChanged);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
     return () => {
+      // Activity hides effects before the active=false effect can run. Stop
+      // the retained iframe's own timers/requests before disposing its host.
+      host.active = false;
+      broadcast(frame.current?.contentWindow ?? lastFrameWindow.current, "kwanty-site-activity", { active: false });
+      lastFrameWindow.current = null;
       disposed = true; prices.release(); setReady(false); controllers.forEach(controller => controller.abort());
       waiting.splice(0).forEach(resolve => resolve()); cache.clear(); pending.clear(); observer.disconnect();
       window.removeEventListener("kwantdesk:theme-change", themeChanged);
@@ -184,7 +190,7 @@ export default function KwantyWorkspace({ accountKey, active: sectionActive = tr
   const src = `/kwanty-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#${requestedTool}` : "#orderflow"}`;
   return <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background" aria-label="KWANTY workspace">
     <div className="flex min-h-0 flex-1">
-    {ready && !legacyCalendar ? <iframe key={`${accountKey}:${generation}`} ref={frame} src={src}
+    {ready && !legacyCalendar ? <iframe key={`${accountKey}:${generation}`} ref={node => { frame.current = node; if (node?.contentWindow) lastFrameWindow.current = node.contentWindow; }} src={src}
       title="KWANTY tools and workspace" className="h-full w-full border-0" allow="fullscreen"
       onLoad={() => {
         broadcast(frame.current?.contentWindow ?? null, "kwanty-site-activity", { active: activeRef.current });
