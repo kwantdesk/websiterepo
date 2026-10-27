@@ -1,5 +1,7 @@
 "use client";
 
+import { useChartDrawingClipboard } from './useChartDrawingClipboard';
+
 import { clampPositionStopPrice, nearestPositionHandle } from "@/lib/positionToolConstraints";
 
 import { fineVolumeProfileWidth } from "@/lib/volumeProfileWidth";
@@ -104,6 +106,7 @@ export default function ChartDrawLayer({
   plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor, currentPrice,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const clipboardMenu = useChartDrawingClipboard({ svgRef, drawings, selectedId, toX, toY, fromXY, onCommit, onSelect });
   const eventWindowRef = useRef<Window | null>(null);
   // Cache ownership while mounted so cleanup still targets the iframe window
   // after React has cleared the SVG ref during unmount.
@@ -1827,6 +1830,7 @@ export default function ChartDrawLayer({
     return (
       <g
         key={drawing.id}
+        data-chart-drawing-id={preview ? undefined : drawing.id}
         data-draw-hit={interactive ? "drawing" : undefined}
         opacity={preview ? 0.75 : 1}
         style={interactive ? { pointerEvents: "auto", cursor: bodyMovable ? "move" : "pointer" } : { pointerEvents: "none" }}
@@ -1851,7 +1855,7 @@ export default function ChartDrawLayer({
 
   const captureActive = active || activeTool === "eraser";
   return (
-    <svg
+    <><svg
       ref={svgRef}
       className="absolute inset-0 z-[24] [&_*]:[vector-effect:non-scaling-stroke]"
       width={width}
@@ -1933,7 +1937,7 @@ export default function ChartDrawLayer({
           {previewDrawing ? renderDrawing(previewDrawing, true) : null}
         </g>
       </g>
-    </svg>
+    </svg>{clipboardMenu}</>
   );
 }
 

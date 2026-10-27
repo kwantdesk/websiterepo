@@ -511,6 +511,7 @@ import {
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
+import { clearChartDrawingClipboard } from '@/lib/chartDrawingClipboard';
 import { drawingCoordinateToTime, drawingTimeToCoordinate, type DrawingTimeScale } from "@/lib/chartDrawingCoordinates";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
 import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
@@ -3709,6 +3710,8 @@ function Chart({
     x: number;
     y: number;
     price: string;
+    drawingHit?: boolean;
+    legacyDrawingId?: string;
     tpoHit?: { instanceId: string; profileId: string };
   } | null>(null);
   const tpoBaseModelsRef = useRef<TpoPrimitiveModel[]>([]);
@@ -3765,6 +3768,9 @@ function Chart({
   const professionalUndoStackRef = useRef<ProfessionalDrawingRecord[][]>([]);
   const professionalRedoStackRef = useRef<ProfessionalDrawingRecord[][]>([]);
   const professionalClipboardRef = useRef<ProfessionalDrawingRecord | null>(null);
+  const professionalClipboardPasteCountRef = useRef(0);
+  const legacyDrawingClipboardRef = useRef<ChartDrawing | null>(null);
+  const legacyDrawingPasteCountRef = useRef(0);
   const professionalUpdateHistoryOpenRef = useRef(false);
   const professionalUpdateHistoryTimerRef = useRef<number | null>(null);
   const selectedToolRef = useRef<DrawingToolId>("cursor");
@@ -13365,24 +13371,48 @@ function Chart({
 
   function copySelectedProfessionalDrawing() {
     const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
-    if (selected) professionalClipboardRef.current = selected.toJSON();
+    if (selected) {
+      clearChartDrawingClipboard();
+      legacyDrawingClipboardRef.current = null;
+      professionalClipboardRef.current = structuredClone(selected.toJSON());
+      professionalClipboardPasteCountRef.current = 0;
+    }
+  }
+
+  function copyLegacyDrawing(id: string | null) {
+    const source = drawings.find(drawing => drawing.id === id);
+    if (!source) return;
+    clearChartDrawingClipboard();
+    professionalClipboardRef.current = null;
+    legacyDrawingClipboardRef.current = structuredClone(source);
+    legacyDrawingPasteCountRef.current = 0;
+  }
+
+  function pasteLegacyOrProfessionalDrawing() {
+    const source = legacyDrawingClipboardRef.current;
+    if (!source) { pasteProfessionalDrawing(); return; }
+    const delta = Math.max(1, Math.round((candleIntervalMs ?? 60_000) / 1_000)) * ++legacyDrawingPasteCountRef.current;
+    const copy = { ...structuredClone(source), id: createId("drawing"), points: source.points.map(point => ({ ...point, time: point.time + delta })) };
+    setDrawings(current => [...current, copy]);
+    setSelectedDrawingId(copy.id);
   }
 
   function pasteProfessionalDrawing() {
     const source = professionalClipboardRef.current;
     const manager = professionalDrawingManagerRef.current;
     if (!source || !manager) return;
-    const intervalSeconds = Math.max(1, Math.round((candleIntervalMs ?? 60_000) / 1_000));
+    const ordinal = ++professionalClipboardPasteCountRef.current;
+    const intervalSeconds = Math.max(1, Math.round((candleIntervalMs ?? 60_000) / 1_000)) * ordinal;
     const record: ProfessionalDrawingRecord = {
-      ...source,
+      ...structuredClone(source),
       id: createId("drawing"),
       anchors: source.anchors.map((anchor) => ({
         ...anchor,
         time: typeof anchor.time === "number" ? (anchor.time + intervalSeconds) as Time : anchor.time,
-        price: anchor.price + priceFormat.minMove * 4,
+        price: anchor.price,
       })),
-      style: { ...source.style },
-      options: { ...source.options },
+      style: structuredClone(source.style),
+      options: structuredClone(source.options),
     };
     const drawing = drawingFromSerialized(record);
     if (!drawing) return;
@@ -15852,10 +15882,19 @@ function Chart({
       }
 
       const tpoHit = tpoProfilePrimitiveRef.current?.profileHitTest(x, y);
+      const drawingHit = professionalDrawingManagerRef.current?.hitTest({ x, y });
+      const legacyDrawingId = (e.target as Element | null)?.closest?.('[data-position-drawing-id]')?.getAttribute('data-position-drawing-id') ?? undefined;
+      if (legacyDrawingId) setSelectedDrawingId(legacyDrawingId);
+      if (drawingHit) {
+        professionalDrawingManagerRef.current?.selectDrawing(drawingHit.id);
+        activeChartKeyboardTargetId = chartInstanceId;
+      }
       setContextMenu({
         x,
         y,
         price,
+        drawingHit: Boolean(drawingHit),
+        legacyDrawingId,
         tpoHit: tpoHit ? { instanceId: tpoHit.instanceId, profileId: tpoHit.profileId } : undefined,
       });
     };
@@ -17855,6 +17894,10 @@ function Chart({
       }
 
       const commandKey = event.ctrlKey || event.metaKey;
+      // Sidebar drawing shortcuts are handled once by the focused SVG layer.
+      // Legacy drawing handlers must not paste into every mounted panel.
+      if (commandKey && ["c", "v", "d"].includes(event.key.toLowerCase())
+        && (activeChartKeyboardTargetId !== chartInstanceId || event.defaultPrevented)) return;
       if (!isTypingContext && commandKey && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) redoProfessionalDrawing();
@@ -17867,12 +17910,13 @@ function Chart({
         return;
       }
       if (!isTypingContext && commandKey && event.key.toLowerCase() === "c") {
-        copySelectedProfessionalDrawing();
+        if (selectedDrawingId) copyLegacyDrawing(selectedDrawingId);
+        else copySelectedProfessionalDrawing();
         return;
       }
       if (!isTypingContext && commandKey && event.key.toLowerCase() === "v") {
         event.preventDefault();
-        pasteProfessionalDrawing();
+        pasteLegacyOrProfessionalDrawing();
         return;
       }
       if (!isTypingContext && commandKey && event.key.toLowerCase() === "d") {
@@ -21411,6 +21455,12 @@ function Chart({
           className="absolute z-50 w-[280px] rounded-xl border border-border bg-panel py-2 shadow-2xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {contextMenu.drawingHit ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+            onClick={() => { copySelectedProfessionalDrawing(); setContextMenu(null); }}>Copy drawing <span className="text-muted">Ctrl/⌘ C</span></button> : null}
+          {contextMenu.legacyDrawingId ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+            onClick={() => { copyLegacyDrawing(contextMenu.legacyDrawingId ?? null); setContextMenu(null); }}>Copy drawing <span className="text-muted">Ctrl/⌘ C</span></button> : null}
+          {professionalClipboardRef.current || legacyDrawingClipboardRef.current ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+            onClick={() => { pasteLegacyOrProfessionalDrawing(); setContextMenu(null); }}>Paste drawing <span className="text-muted">Ctrl/⌘ V</span></button> : null}
           {contextMenu.tpoHit ? (
             <>
               <div className="px-4 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">

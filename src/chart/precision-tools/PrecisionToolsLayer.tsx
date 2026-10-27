@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useChartDrawingClipboard } from '@/components/useChartDrawingClipboard';
+import { copyPrecisionDrawings, hasPrecisionDrawingClipboard, pastePrecisionDrawings } from '@/lib/chartDrawingClipboard';
 import { claimChartInteraction, releaseChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
 
 /** Broadcast by the chart when the trader clears every drawing. */
@@ -160,7 +162,6 @@ export default function PrecisionToolsLayer({
   const placedCountRef = useRef(0);
   const dragRef = useRef<DragState | null>(null);
   const pencilScreenPathRef = useRef<PrecisionScreenPoint[]>([]);
-  const clipboardRef = useRef<PrecisionObject[]>([]);
   const previousPriceRef = useRef<number | null>(null);
   const zoomStartRef = useRef<PrecisionAnchor | null>(null);
   const lassoRef = useRef<SelectionBox | null>(null);
@@ -538,6 +539,7 @@ export default function PrecisionToolsLayer({
   useEffect(() => {
     const handleDormantGrab = (event: PointerEvent) => {
       if (event.button !== 0) return;
+      if ((event.target as Element | null)?.closest?.('[data-chart-drawing-ui],[data-chart-drawing-id],button,input,textarea,select')) return;
       const current = dormantGrabStateRef.current;
       const liveSnapshot = current.store.getSnapshot();
       if (current.engaged || liveSnapshot.toolbar.hidden || !liveSnapshot.objects.length) return;
@@ -809,12 +811,6 @@ export default function PrecisionToolsLayer({
       if (meta && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? store.redo() : store.undo(); }
       if (meta && event.key.toLowerCase() === "d") { event.preventDefault(); store.duplicate(); }
       if (meta && event.key.toLowerCase() === "l" && snapshot.selectedIds.length) { event.preventDefault(); snapshot.selectedIds.forEach((id) => store.toggleObjectLock(id)); }
-      if (meta && event.key.toLowerCase() === "c") { clipboardRef.current = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id)).map(copyObject); }
-      if (meta && event.key.toLowerCase() === "v" && clipboardRef.current.length) {
-        event.preventDefault();
-        const document = { schemaVersion: 1 as const, workspaceId, chartId, savedAt: Date.now(), objects: [...snapshot.objects, ...clipboardRef.current.map((object, index) => ({ ...copyObject(object), id: `precision-paste-${Date.now()}-${index}`, anchors: object.anchors.map((anchor) => ({ ...anchor, logicalIndex: anchor.logicalIndex + 2 })) }))] };
-        store.replaceDocument(document);
-      }
       if (event.altKey && /^[1-9]$/.test(event.key)) { event.preventDefault(); setActiveConfigSlot(Number(event.key)); }
       if (event.key === "Alt") snapDisabledRef.current = true;
       if (event.code === "Space" && interactionCanvasRef.current) interactionCanvasRef.current.style.pointerEvents = "none";
@@ -827,6 +823,39 @@ export default function PrecisionToolsLayer({
     return () => { window.removeEventListener("keydown", handle); window.removeEventListener("keyup", up); };
   }, [chartId, engaged, release, setActiveConfigSlot, snapshot.objects, snapshot.selectedIds, store, workspaceId]);
 
+  const clipboardMenu = useChartDrawingClipboard({
+    svgRef: interactionCanvasRef, selectedId: snapshot.selectedIds[0] ?? null,
+    findAt: event => {
+      if ((event.target as Element | null)?.closest?.('[data-chart-drawing-id]')) return null;
+      const rect = interactionCanvasRef.current?.getBoundingClientRect();
+      if (!rect) return null;
+      return hitTestObjects(store.getSnapshot().objects, { x: event.clientX - rect.left, y: event.clientY - rect.top }, adapter)?.objectId ?? null;
+    },
+    onSelect: id => { if (id) { claim(); store.select([id]); } },
+    clipboard: {
+      has: hasPrecisionDrawingClipboard,
+      copy: id => {
+        const current = store.getSnapshot();
+        const objects = current.objects.filter(object => current.selectedIds.includes(object.id) || object.id === id);
+        if (!objects.length) return false;
+        copyPrecisionDrawings(objects); return true;
+      },
+      paste: () => {
+        const objects = pastePrecisionDrawings((source, ordinal) => {
+          const anchor = source.anchors[0]; if (!anchor) return null;
+          const x = adapter.timeToX(anchor.time, anchor.logicalIndex), y = adapter.priceToY(anchor.price);
+          if (x === null || y === null) return null;
+          const next = adapter.xToAnchor(x + 24 * ordinal, y);
+          return next ? { time: next.time - anchor.time, logicalIndex: next.logicalIndex - anchor.logicalIndex } : null;
+        });
+        if (!objects.length) return false;
+        const current = store.getSnapshot();
+        store.replaceDocument({ schemaVersion: 1, workspaceId, chartId, savedAt: Date.now(), objects: [...current.objects, ...objects] });
+        store.select(objects.map(object => object.id)); return true;
+      },
+    },
+  });
+
   const exportObjects = () => {
     const serialized = exportPrecisionDocument({ schemaVersion: 1, workspaceId, chartId, objects: snapshot.objects, savedAt: Date.now() }, adapter.instrument);
     const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([serialized], { type: "application/json" })); link.download = `kwantdesk-precision-${chartId}.json`; link.click(); URL.revokeObjectURL(link.href);
@@ -838,6 +867,7 @@ export default function PrecisionToolsLayer({
 
   if (!enabled) return null;
   return <div className="pointer-events-none absolute inset-0 z-[66] overflow-hidden" data-precision-tools-root data-revision={revision}>
+    {clipboardMenu}
     <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" aria-label="Precision Tools rendering layer" />
     <canvas ref={interactionCanvasRef} className="absolute inset-0 touch-none" style={{ pointerEvents: engaged ? "auto" : "none", cursor: snapshot.toolbar.mode === "select" ? "crosshair" : snapshot.toolbar.mode === "hand" ? "grab" : "crosshair" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => { pointerRef.current = null; resizeCanvas(interactionCanvasRef.current, false); }} aria-label="Precision Tools interaction layer" />
     {selectionBox ? <div className="pointer-events-none absolute z-[72] border border-dashed border-[#78b1ff] bg-[#4f91e9]/10" style={{ left: Math.min(selectionBox.start.x, selectionBox.end.x), top: Math.min(selectionBox.start.y, selectionBox.end.y), width: Math.abs(selectionBox.end.x - selectionBox.start.x), height: Math.abs(selectionBox.end.y - selectionBox.start.y) }} /> : null}

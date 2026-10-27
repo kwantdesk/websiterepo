@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Drawing copy/paste across chart tool layers
+
+- ChartDrawLayer now provides a themed right-click Drawing actions menu and
+  document-capture Ctrl/Cmd+C/V through useChartDrawingClipboard. Routing is
+  scoped to the last clicked chart/layer, respects text editors and ignores
+  key repeats/modified browser shortcuts. A blank plot offers Paste after Copy.
+- Detached clipboard snapshots preserve all styles/settings and prices. Pasted
+  objects get new IDs and step sideways on each paste. SVG drawings move all
+  time anchors together; precision drawings move both absolute time and logical
+  index, including freehand paths. Precision alert IDs are regenerated.
+- The shared hook also handles saved precision objects; real object hits take
+  precedence over a different layer's empty-space menu. Right-drag measurement
+  stays intact. Dormant precision grabs must ignore drawing UI/modern drawings.
+- Professional registry and old SVG position drawings have context actions too;
+  legacy shortcuts are focused-pane scoped and pasted risk prices stay exact.
+- New copies enter existing commit/store paths for persistence and recalculated
+  profiles. No backend/market-feed or owner account/order changes are involved.
+- Receipt: docs/prompt-log/2026-10-27-drawing-copy-paste.md.
+
+
 ## 2026-10-27 — Closed candle background overwrite follow-up
 
 - 8750a5c7 did not resolve the owner's reported closed-candle changes. Two
