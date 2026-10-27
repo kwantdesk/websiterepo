@@ -2,7 +2,8 @@
 
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import dynamic from "next/dynamic";
+import EmojiPicker from "@/components/ChartEmojiPicker";
+import { CHART_QUICK_EMOJI_STORAGE_KEY, CHART_QUICK_EMOJI_EVENT, normalizeChartQuickEmojis, promoteChartQuickEmoji } from "@/lib/chartEmojiCatalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChartDrawLayer, { type DrawCandle } from "@/components/ChartDrawLayer";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
@@ -11,7 +12,7 @@ import { DrawingToolIcon } from "@/components/ChartDrawToolbar";
 import { DRAW_TOOL_GROUPS, DRAW_TOOL_LIST, DRAW_TOOL_SPECS, createDrawing, normalizeDrawings, type Drawing, type DrawToolId, type DrawPoint } from "@/lib/chartDrawTools";
 import { fetchInstitutionalFrontMonth, fetchInstitutionalVolumeProfile, isExecutionBackedVolumeProfile, type InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
 import { stateDrawingCoordinates, stateDrawingSource, stateProfileWindow, type StateDrawingApi, type StateDrawingFrame, type StateDrawingMount } from "@/lib/kwantyStateDrawingAdapter";
-const EmojiPicker = dynamic(() => import("@/components/ChartEmojiPicker"), {ssr:false});
+
 
 type Session = {
   element: HTMLElement; api: StateDrawingApi; frame: StateDrawingFrame;
@@ -42,10 +43,9 @@ function StateTools({ session }: { session: Session }) {
     sync();window.addEventListener("kwantdesk:chart-emoji-quick-picks-changed",sync);
     return () => window.removeEventListener("kwantdesk:chart-emoji-quick-picks-changed",sync);
   }, []);
-  const openEmojis = async () => {
-    const catalog = await import("@/lib/chartEmojiCatalog");
-    let recent: unknown = [];try {recent=JSON.parse(localStorage.getItem(catalog.CHART_QUICK_EMOJI_STORAGE_KEY)||"[]");}catch {}
-    setQuickEmojis(catalog.normalizeChartQuickEmojis(recent));setEmojiPicker(true);
+  const openEmojis = () => {
+    let recent: unknown = [];try {recent=JSON.parse(localStorage.getItem(CHART_QUICK_EMOJI_STORAGE_KEY)||"[]");}catch {}
+    setQuickEmojis(normalizeChartQuickEmojis(recent));setEmojiPicker(true);
   };
   const subscribe = useCallback((listener: () => void) => { session.listeners.add(listener); return () => { session.listeners.delete(listener); }; }, [session]);
   const commit = (next: Drawing[], record = true) => {
@@ -178,11 +178,11 @@ function StateTools({ session }: { session: Session }) {
     {emojiPicker && createPortal(<div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/30" onClick={() => setEmojiPicker(false)}>
       <div className="flex h-[560px] max-h-[90vh] w-[340px] flex-col rounded border border-border bg-panel p-2" onClick={event => event.stopPropagation()}>
         <button className="self-end px-2 text-xs text-muted" onClick={() => setEmojiPicker(false)}>Close</button>
-        <EmojiPicker emoji={emoji} quickEmojis={quickEmojis} onSelect={value => { void import("@/lib/chartEmojiCatalog").then(catalog => {
-          const next=catalog.promoteChartQuickEmoji(quickEmojis,value);setEmoji(value);setQuickEmojis(next);
-          try {localStorage.setItem(catalog.CHART_QUICK_EMOJI_STORAGE_KEY,JSON.stringify(next));localStorage.setItem("kwantdesk:chart-emoji:v1",value);window.dispatchEvent(new Event(catalog.CHART_QUICK_EMOJI_EVENT));window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));}catch {}
+        <EmojiPicker emoji={emoji} quickEmojis={quickEmojis} onSelect={value => {
+          const next=promoteChartQuickEmoji(quickEmojis,value);setEmoji(value);setQuickEmojis(next);
+          try {localStorage.setItem(CHART_QUICK_EMOJI_STORAGE_KEY,JSON.stringify(next));localStorage.setItem("kwantdesk:chart-emoji:v1",value);window.dispatchEvent(new Event(CHART_QUICK_EMOJI_EVENT));window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));}catch {}
           setEmojiPicker(false);choose("emoji");panelWindow.focus();
-        });}} />
+        }} />
       </div>
     </div>,document.body)}
   </>;

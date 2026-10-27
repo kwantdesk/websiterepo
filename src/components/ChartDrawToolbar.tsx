@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
-import dynamic from "next/dynamic";
+import ChartEmojiPicker from "./ChartEmojiPicker";
 import {
   DRAW_TOOL_GROUPS,
   DRAW_TOOL_LAST_USED_EVENT,
@@ -105,11 +105,7 @@ const ICONS: Partial<Record<DrawToolId, ToolIcon>> = {
   anchoredVwap: svg(<><path d="M4 18v2" /><path d="M4 18c4 0 6-9 9-9s3 5 7-4" strokeDasharray="1 0" /></>),
 };
 
-// The full catalogue is a separate chunk, only mounted when its flyout opens.
-const ChartEmojiPicker = dynamic(() => import("./ChartEmojiPicker"), {
-  loading: () => <div className="p-3 text-xs text-muted" role="status">Loading emojis…</div>,
-});
-
+// Mount the picker only when open, without a second network dependency.
 const fallbackIcon = svg(<circle cx="12" cy="12" r="7" />);
 const iconFor = (id: DrawToolId): ToolIcon => ICONS[id] ?? fallbackIcon;
 export function DrawingToolIcon({ tool }: { tool: DrawToolId }) {

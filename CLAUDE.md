@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Emoji picker without lazy-load stall
+
+ChartDrawToolbar/StateChartTools statically import ChartEmojiPicker; catalogue was already imported by Chart.tsx. UI stays mounted only while open, but no separate picker/catalogue network promise blocks the click or State quick-pick selection.12catalogue/persistence/scale checks, scoped lint and full1536MiB-capped build pass. See docs/prompt-log/2026-10-28-chart-emoji-loader.md. Backend performance mounts remain NOT activated: owner explicitly requested waiting until no longer trading before any gateway restart.
+
+
 ## 2026-10-28 — Session performance / pending gateway activation
 
 Measured busy gateway JS loop despite RAM/CPU averages:101overload trips/max1312ms;13.4s profile~2.4s repeated Chicago date work +2.5sGC. Date minute cache128buckets +serialized/unique-temp bar flush prepared on VPS,33gateway tests; NOT activated pending brief gateway restart approval. Inspector closed/no public port. Web debounces BEFORE account fingerprint scan, ignores cache storage events, bounds cloud HTTP8s, and stops retained GEX/Kwanty iframe runtimes during Activity teardown even after refs detach.21web tests, scoped lint/full1536MiB-capped BelowNormal build pass. See docs/prompt-log/2026-10-28-session-performance-investigation.md. No universal near-instant or sustained NY performance claim.
