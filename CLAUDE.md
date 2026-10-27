@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 Big Contracts live/sample stability
+
+Fast admission rejects flow-only and unclassified records like the full pass, and uses canonical event IDs without a live prefix. Chart anchors arriving prints through the shared candle bucket/event-bar mapper and applies `mergeBigTradeLiveMarkers` for identity deduplication and the same per-bar display limit as sampling. Tests execute the actual Chart live handler with a manual minimum of 50, summary/unknown records, and stable minute coordinates. See `docs/prompt-log/2026-10-27-big-contracts-live-stability.md`. Preserve explicit clustering/session/adaptive settings; no VPS changes or trades.
+
+
 ## 2026-10-27 Additive drawing context menu
 
 The clipboard hook must not replace normal Chart context actions. `data-chart-context-menu="full"` marks the existing owner; hook capture contributes callbacks via a WeakMap keyed by the original MouseEvent, then propagates to Chart. Chart includes Copy/Paste alongside all existing menu actions. Standalone drawing menus remain only for surfaces without a full chart menu. Regression in `tests/chart-drawing-clipboard.test.mjs` verifies actual listener delivery and callbacks; see `docs/prompt-log/2026-10-27-additive-chart-drawing-menu.md`.

@@ -189,6 +189,7 @@ import {
   anchorBigTradePrintsToCandles,
   buildEventBarChartTimeMap,
   admitLiveBigTradePrints,
+  mergeBigTradeLiveMarkers,
   calculateBigTradePrintsWithContext,
   retainBigTradePrints,
   type BigTradeLiveContext,
@@ -12130,21 +12131,26 @@ function Chart({
       if (!primitive || !context || !options || !committed.watermark) return;
       const fresh = admitLiveBigTradePrints(context, detail.tape, committed.watermark);
       if (!fresh.length) return;
+      // Immediate prints use the same candle coordinates and display budget
+      // as the sampled pass. Raw execution seconds are not 1m/3m bar times.
+      const eventBars = timeframe && isEventBasedChartInterval(timeframe);
+      const anchored = anchorBigTradePrintsToCandles(
+        fresh, sampledIndicatorCandlesRef.current, eventBars ? null : candleIntervalMs,
+      );
+      const markers = anchored.flatMap(print => {
+        const eventTime = eventBars ? eventChartTimeBySourceTimeRef.current.get(print.chartTimestamp) : undefined;
+        if (eventBars && eventTime === undefined) return [];
+        return [{ ...print, time: (eventTime ?? Math.floor(print.chartTimestamp / 1_000)) as Time }];
+      });
       primitive.update(
-        [
-          ...committed.markers,
-          ...fresh.map((print) => ({
-            ...print,
-            time: (eventChartTimeBySourceTimeRef.current.get(print.timestamp)
-              ?? Math.floor(print.timestamp / 1_000)) as Time,
-          })),
-        ],
+        mergeBigTradeLiveMarkers(committed.markers, markers,
+          Number(bigTradesIndicator.settings?.maxMarkersPerBar ?? 6)),
         options,
       );
     };
     window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
     return () => window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
-  }, [bigTradesIndicator, liveCandleEventKey]);
+  }, [bigTradesIndicator, liveCandleEventKey, timeframe, candleIntervalMs]);
 
   const bigTradeEventChartTimes = useMemo(
     () => timeframe && isEventBasedChartInterval(timeframe)

@@ -461,6 +461,8 @@ export function admitLiveBigTradePrints(
     // The tape is time-ordered, so the first print at or before the watermark
     // ends the scan rather than filtering the whole array.
     if (!Number.isFinite(timestamp) || timestamp <= afterTimestamp) break;
+    // A flow summary or unknown aggressor is not a classified execution.
+    if (trade.flowOnly || (trade.aggressor !== "BUY" && trade.aggressor !== "SELL")) continue;
     const volume = Math.max(0, Number(trade.volume ?? 0));
     const price = Number(trade.close);
     if (!(volume > 0) || !(price > 0)) continue;
@@ -469,7 +471,7 @@ export function admitLiveBigTradePrints(
     const bidVolume = Math.max(0, Number(trade.bidVolume ?? 0));
     const side: "ASK" | "BID" = trade.aggressor === "BUY" || askVolume > bidVolume ? "ASK" : "BID";
     prints.push(sizeBigTradePrint({
-      id: `live-${trade.eventId ?? `${timestamp}-${price}-${volume}`}`,
+      id: trade.eventId ?? `record-${trade.recordIndex}`,
       timestamp,
       price,
       volume,
@@ -651,4 +653,20 @@ export function printSitsInCandle(
   if (!Number.isFinite(high) || !Number.isFinite(low)) return true;
   const tolerance = Math.max((high - low) * 0.001, Number.EPSILON);
   return price >= low - tolerance && price <= high + tolerance;
+}
+
+/** Apply the same per-bar display budget to immediate and sampled markers. */
+export function mergeBigTradeLiveMarkers<T extends { id: string; time: unknown; volume: number }>(
+  committed: readonly T[], fresh: readonly T[], maximumPerBar: number,
+): T[] {
+  const unique = new Map(committed.map(marker => [marker.id, marker]));
+  for (const marker of fresh) unique.set(marker.id, marker);
+  const bars = new Map<unknown, T[]>();
+  for (const marker of unique.values()) {
+    const group = bars.get(marker.time) ?? [];
+    group.push(marker); bars.set(marker.time, group);
+  }
+  const limit = Math.max(1, Math.min(50, Number(maximumPerBar) || 6));
+  return [...bars.values()].flatMap(group => group.sort((a,b)=>b.volume-a.volume).slice(0,limit))
+    .sort((a,b)=>Number(a.time)-Number(b.time));
 }
