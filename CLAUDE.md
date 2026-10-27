@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## Journal profit-only manual entries — 2026-10-27
+
+Selected owned demo/import/manual journals now expose Add trade; only net P&L is required. Reporting date defaults today; execution details collapse and remain unknown unless supplied. `journalManualOutcome` preserves unknown times/quantity and prevents invented duration. Existing HTML/file importer retained as Import trades. Authenticated create-trade checks owned id/name without changing account source or paper ledger. 43 tests, scoped lint and full build pass; see `docs/prompt-log/2026-10-27-journal-profit-only-entry.md`. No owner test trade saved.
+
 ## ES profile granularity — 2026-10-27
 
 Fixed native profile manual grouping being multiplied twice at subpixel source resolution. `resolveVolumeProfileRenderGrouping` measures the requested row before pixel aggregation; ES four-tick rows remain one point when readable. Preserve one-tick source requests and saved grouping preferences. 112 focused tests, production build and scoped lint pass; 127 catalog entries inventoried (50 generic finite calculations, 77 dedicated/no-signal—not universal live proof). VPS ESZ6 response confirmed 0.25-point rows. Seven pre-existing source-regex failures independently reproduced on HEAD. See `docs/prompt-log/2026-10-27-es-profile-granularity.md`.

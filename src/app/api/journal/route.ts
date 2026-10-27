@@ -809,18 +809,20 @@ export async function POST(request: NextRequest) {
   if (action === "create-trade") {
     const account = cleanText(body.account, 80);
     const trade = sanitizeTrade(body.trade, account);
-    if (!account || isZyonJournalAccountName(account) || !trade || !trade.sourceImportId.startsWith("manual:")) {
+    const suppliedPnl = (body.trade as Partial<JournalTrade> | null)?.netPnl;
+    if (!account || isZyonJournalAccountName(account) || !trade || !trade.sourceImportId.startsWith("manual:")
+      || typeof suppliedPnl !== "number" || !Number.isFinite(suppliedPnl)) {
       return NextResponse.json({ error: "Complete the required manual trade details." }, { status: 400 });
     }
     const accountKey = cleanId(body.accountId) || accountId(account);
     const { data: accountRow, error: accountError } = await supabase
       .from("journal_accounts")
-      .select("id,source")
+      .select("id,name,source")
       .eq("user_id", actor.userId)
       .eq("id", accountKey)
       .maybeSingle();
-    if (accountError || !accountRow || accountRow.source !== "manual") {
-      return NextResponse.json({ error: "Choose a native KwantDesk Journal account." }, { status: 400 });
+    if (accountError || !accountRow || accountRow.name !== account) {
+      return NextResponse.json({ error: "Choose one of your Journal accounts." }, { status: 400 });
     }
     const { error } = await supabase.from("journal_trades").upsert({
       user_id: actor.userId,

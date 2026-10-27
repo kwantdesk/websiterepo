@@ -1,5 +1,7 @@
 "use client";
 
+import { journalManualOutcome } from "@/lib/journalManualOutcome";
+
 import Image from "next/image";
 import {
   resolveOutcomeColors,
@@ -259,7 +261,7 @@ function newManualTradeDraft(): ManualTradeDraft {
     tags: "",
     notes: "",
     improvements: "",
-    tradingAccountName: "Prop firm",
+    tradingAccountName: "",
     tradingAccountType: "",
     accountSize: "",
     rating: null,
@@ -275,10 +277,10 @@ function manualTradeDraftFromTrade(trade: JournalTrade): ManualTradeDraft {
   };
   return {
     name: trade.setup,
-    symbol: trade.symbol,
+    symbol: trade.symbol === "UNSPECIFIED" ? "" : trade.symbol,
     side: trade.side === "LONG" || trade.side === "SHORT" ? trade.side : "",
     contractClass: trade.contractClass ?? "",
-    quantity: numberText(trade.quantity),
+    quantity: trade.quantity > 0 ? numberText(trade.quantity) : "",
     openedAt: validLocalTime(trade.openedAt, trade.entryTimeKnown),
     closedAt: validLocalTime(trade.closedAt, trade.exitTimeKnown),
     entryPrice: numberText(trade.entryPrice),
@@ -970,6 +972,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [importDragging, setImportDragging] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const [showManualTrade, setShowManualTrade] = useState(false);
+  const [manualBookingDate, setManualBookingDate] = useState(() => localDateTimeInput().slice(0, 10));
   const [manualTrade, setManualTrade] = useState<ManualTradeDraft>(() => newManualTradeDraft());
   const [manualEvidenceFiles, setManualEvidenceFiles] = useState<File[]>([]);
   const [manualEvidenceDragging, setManualEvidenceDragging] = useState(false);
@@ -1441,7 +1444,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const postTrade = postableTrades.find((trade) => trade.id === postTradeId) ?? null;
   const selectedTradeIsZyon = Boolean(selectedTrade?.sourceImportId.startsWith("zyon:"));
   const selectedEvidence = state.evidence.find((item) => item.id === selectedEvidenceId) ?? null;
-  const selectedAccountIsManual = accountFilter !== "all" && accountSource.get(accountFilter) === "manual";
+  const selectedAccountCanAddTrade = accountFilter !== "all" && !isZyonJournalAccountName(accountFilter) && accountRecord.has(accountFilter);
   const entryExitComplete = stats.tradeCount
     ? filteredTrades.filter((trade) => trade.entryPrice !== null && trade.exitPrice !== null && trade.side !== "UNKNOWN").length / stats.tradeCount
     : null;
@@ -1698,6 +1701,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     manualDictation.clearError();
     setEditingTradeId(null);
     setManualTrade(newManualTradeDraft());
+    setManualBookingDate(localDateTimeInput().slice(0, 10));
     setManualEvidenceFiles([]);
     setManualEvidenceDragging(false);
     setManualTradeError("");
@@ -1721,6 +1725,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     manualDictation.clearError();
     setEditingTradeId(trade.id);
     setManualTrade(manualTradeDraftFromTrade(trade));
+    setManualBookingDate(localDateTimeInput(new Date(trade.openedAt)).slice(0, 10));
     setManualEvidenceFiles([]);
     setManualEvidenceDragging(false);
     setManualTradeError("");
@@ -1834,35 +1839,21 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   }, []);
 
   const submitManualTrade = async () => {
-    if ((!selectedAccountIsManual && !editingTrade) || manualTradeSaving) return;
-    const entryTimeKnown = Boolean(manualTrade.openedAt.trim());
-    const exitTimeKnown = Boolean(manualTrade.closedAt.trim());
-    const openedAt = entryTimeKnown ? Date.parse(manualTrade.openedAt) : Date.now();
-    const closedAt = exitTimeKnown ? Date.parse(manualTrade.closedAt) : null;
-    const quantity = manualTrade.quantity.trim() ? Number(manualTrade.quantity) : 1;
+    if ((!selectedAccountCanAddTrade && !editingTrade) || manualTradeSaving) return;
+    let outcome: ReturnType<typeof journalManualOutcome>;
+    try { outcome = journalManualOutcome(manualTrade, manualBookingDate); }
+    catch (error) { setManualTradeError(error instanceof Error ? error.message : "Check the trade result."); return; }
+    const { netPnl } = outcome;
     const entryPrice = manualTrade.entryPrice.trim() ? Number(manualTrade.entryPrice) : null;
     const exitPrice = manualTrade.exitPrice.trim() ? Number(manualTrade.exitPrice) : null;
     const initialRisk = manualTrade.initialRisk.trim() ? Number(manualTrade.initialRisk) : null;
-    const netPnl = Number(manualTrade.netPnl);
     const fees = Number(manualTrade.fees || 0);
     const stopPrice = manualTrade.stopPrice.trim() ? Number(manualTrade.stopPrice) : null;
     const targetPrice = manualTrade.targetPrice.trim() ? Number(manualTrade.targetPrice) : null;
     const plannedRiskReward = manualTrade.plannedRiskReward.trim() ? Number(manualTrade.plannedRiskReward) : null;
     const accountSize = manualTrade.accountSize.trim() ? Number(manualTrade.accountSize) : null;
-    const missingCoreFields = [
-      !manualTrade.symbol.trim() ? "instrument" : "",
-      !manualTrade.side ? "direction" : "",
-      !manualTrade.entryPrice.trim() ? "entry price" : "",
-      !manualTrade.exitPrice.trim() ? "exit price" : "",
-      !manualTrade.netPnl.trim() ? "profit/loss" : "",
-    ].filter(Boolean);
-    if (missingCoreFields.length) {
-      setManualTradeError(`Add ${missingCoreFields.join(", ")}. Everything else can be left blank.`);
-      return;
-    }
-    if (![openedAt, quantity, netPnl, fees].every(Number.isFinite) || quantity <= 0) {
-      setManualTradeError("Check the entry time, contract quantity and profit/loss values.");
-      return;
+    if (!Number.isFinite(fees) || fees < 0) {
+      setManualTradeError("Fees must be zero or positive when supplied."); return;
     }
     if ([entryPrice, exitPrice].some((value) => value !== null && (!Number.isFinite(value) || value <= 0))) {
       setManualTradeError("Entry and exit prices must be positive numbers when supplied.");
@@ -1870,10 +1861,6 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }
     if (initialRisk !== null && (!Number.isFinite(initialRisk) || initialRisk <= 0)) {
       setManualTradeError("Initial risk must be a positive number when supplied.");
-      return;
-    }
-    if (closedAt !== null && (!Number.isFinite(closedAt) || closedAt < openedAt)) {
-      setManualTradeError("Exit time cannot be before entry time.");
       return;
     }
     if ([stopPrice, targetPrice, plannedRiskReward].some((value) => value !== null && (!Number.isFinite(value) || value <= 0))) {
@@ -1895,13 +1882,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       const trade: JournalTrade = {
         id,
         account: tradeAccount,
-        openedAt: new Date(openedAt).toISOString(),
-        closedAt: closedAt === null ? null : new Date(closedAt).toISOString(),
-        entryTimeKnown,
-        exitTimeKnown,
-        symbol: manualTrade.symbol.trim().toUpperCase().slice(0, 32),
-        side: manualTrade.side === "LONG" ? "LONG" : "SHORT",
-        quantity,
+        ...outcome,
         entryPrice,
         exitPrice,
         stopPrice,
@@ -1913,8 +1894,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         netPnl,
         initialRisk,
         rMultiple: initialRisk === null ? null : netPnl / initialRisk,
-        durationMs: closedAt === null ? null : closedAt - openedAt,
-        setup: manualTrade.name.trim().slice(0, 160) || `${manualTrade.symbol.trim().toUpperCase()} ${manualTrade.side.toLowerCase()} trade`,
+        adverseExcursion: editingTrade?.adverseExcursion ?? null,
+        favourableExcursion: editingTrade?.favourableExcursion ?? null,
+        setup: manualTrade.name.trim().slice(0, 160) || "Manual trade",
         tags: [...new Set(manualTrade.tags.split(",").map((tag) => tag.trim()).filter(Boolean))].slice(0, 24),
         notes: manualTrade.notes.trim().slice(0, 8_000),
         improvements: manualTrade.improvements.trim().slice(0, 8_000),
@@ -2621,8 +2603,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <span className={`h-1.5 w-1.5 rounded-full ${cloudState === "cloud" ? "bg-primary" : cloudState === "error" || saveStatus === "error" ? "bg-danger" : cloudState === "loading" || saveStatus === "loading" ? "animate-pulse bg-warning" : "bg-muted"}`} />
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
             </span>
-            {selectedAccountIsManual ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-on-primary hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
-            {accountFilter !== "all" && !isZyonJournalAccountName(accountFilter) ? <button type="button" onClick={() => openImportIntoJournal(accountFilter)} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 text-[9px] font-semibold text-primary hover:bg-primary/[0.11]"><Upload className="h-3.5 w-3.5" />Import</button> : null}
+            {selectedAccountCanAddTrade ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-on-primary hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
+            {accountFilter !== "all" && !isZyonJournalAccountName(accountFilter) ? <button type="button" onClick={() => openImportIntoJournal(accountFilter)} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 text-[9px] font-semibold text-primary hover:bg-primary/[0.11]"><Upload className="h-3.5 w-3.5" />Import trades</button> : null}
             <button type="button" onClick={() => openTradePost()} disabled={!postableTrades.length} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-on-primary hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"><Share2 className="h-3.5 w-3.5" />Post trade</button>
             <button type="button" onClick={() => setShowArchive(true)} className="relative flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><FolderArchive className="h-3.5 w-3.5" />Archive{archivedAccounts.length ? <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[7px] font-semibold text-on-primary">{archivedAccounts.length}</span> : null}</button>
             <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
@@ -2716,11 +2698,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <div className="relative w-full overflow-hidden rounded-3xl border border-border bg-panel p-8 text-center shadow-2xl shadow-black/20">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,color-mix(in_srgb,var(--primary)_10%,transparent),transparent_42%)]" />
               <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">{accountFilter === "ZYON Journal" ? <Bot className={`h-6 w-6 ${zyonLoading ? "animate-pulse" : ""}`} /> : <Import className="h-6 w-6" />}</div>
-              <h2 className="relative mt-5 text-[22px] font-semibold tracking-[-0.03em] text-foreground">{accountFilter === "ZYON Journal" ? zyonLoading ? "Loading your ZYON outcomes…" : "Your first reviewed Gameplan starts this Journal." : selectedAccountIsManual ? "Document your first trade." : accountFilter === "all" ? "Build your consolidated trading record." : `${accountFilter} is ready for its first import.`}</h2>
-              <p className="relative mx-auto mt-2 max-w-xl text-[11px] leading-5 text-muted">{accountFilter === "ZYON Journal" ? "When a ZYON Gameplan completes its outcome review, it appears here automatically with its execution, P&L, reasoning score, timestamps, and review." : selectedAccountIsManual ? "Record the setup, entry, exit, risk, outcome, screenshots and an optional honest review. The trade will flow into every Journal view automatically." : "Import closed trades, executions, screenshots, or notes. Overall Journal combines every account while each account keeps its own statistics."}</p>
+              <h2 className="relative mt-5 text-[22px] font-semibold tracking-[-0.03em] text-foreground">{accountFilter === "ZYON Journal" ? zyonLoading ? "Loading your ZYON outcomes…" : "Your first reviewed Gameplan starts this Journal." : selectedAccountCanAddTrade ? "Document your first trade." : accountFilter === "all" ? "Build your consolidated trading record." : `${accountFilter} is ready for its first import.`}</h2>
+              <p className="relative mx-auto mt-2 max-w-xl text-[11px] leading-5 text-muted">{accountFilter === "ZYON Journal" ? "When a ZYON Gameplan completes its outcome review, it appears here automatically with its execution, P&L, reasoning score, timestamps, and review." : selectedAccountCanAddTrade ? "Enter just net profit or loss, or add optional execution details and screenshots. Your linked demo trades continue recording automatically." : "Import closed trades, executions, screenshots, or notes. Overall Journal combines every account while each account keeps its own statistics."}</p>
               {accountFilter === "ZYON Journal"
                 ? <button type="button" onClick={() => { window.location.href = "/zyon"; }} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary"><Bot className="h-4 w-4" />Open ZYON</button>
-                : selectedAccountIsManual
+                : selectedAccountCanAddTrade
                   ? <button type="button" onClick={openManualTrade} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary"><Plus className="h-4 w-4" />Add manual trade</button>
                   : <button type="button" onClick={openAddAccountDialog} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary"><Plus className="h-4 w-4" />Add account</button>}
               <div className="relative mx-auto mt-7 grid max-w-3xl gap-2 sm:grid-cols-3">
@@ -2938,7 +2920,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                         <td className="max-w-[140px] truncate px-3 py-2.5 text-muted" title={trade.account}>{trade.account}</td>
                         <td className="px-3 py-2.5 font-semibold text-foreground">{trade.symbol}</td>
                         <td className={`px-3 py-2.5 font-semibold ${trade.side === "LONG" ? "text-[var(--journal-win)]" : trade.side === "SHORT" ? "text-[var(--journal-loss)]" : "text-muted"}`}>{trade.side}</td>
-                        <td className="px-3 py-2.5 font-mono">{trade.quantity.toLocaleString()}</td>
+                        <td className="px-3 py-2.5 font-mono">{trade.quantity > 0 ? trade.quantity.toLocaleString() : "—"}</td>
                         <td className="px-3 py-2.5 font-mono">{trade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"}</td>
                         <td className="px-3 py-2.5 font-mono">{trade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"}</td>
                         <td className={`px-3 py-2.5 font-mono font-semibold ${trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(trade.netPnl)}</td>
@@ -3451,7 +3433,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         </div>
       ) : null}
 
-      {showManualTrade && (selectedAccountIsManual || editingTrade) ? (
+      {showManualTrade && (selectedAccountCanAddTrade || editingTrade) ? (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closeManualTrade(); }}>
           <div className="flex max-h-[94vh] w-full max-w-[880px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/65">
             <div className="relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border px-5 py-4">
@@ -3478,14 +3460,21 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             {manualDictation.enabled || manualDictation.error ? <div className={`border-b px-5 py-2 text-center text-[8px] ${manualDictation.error ? "border-danger/20 bg-danger/[0.06] text-danger" : "border-primary/15 bg-primary/[0.045] text-primary"}`}>{manualDictation.error || `Mic stays on while you move between fields · Speaking into ${MANUAL_TRADE_DICTATION_LABELS[manualDictation.activeField]}`}</div> : null}
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+              <section className="space-y-3">
+                <p className="text-[10px] leading-5 text-muted">Enter net profit or loss to update this journal’s performance. Use a negative amount for a loss. The reporting date defaults to today.</p>
+                  <div><label htmlFor="manual-trade-pnl" className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Net profit / loss ($) *</label><input id="manual-trade-pnl" autoFocus type="number" step="0.01" value={manualTrade.netPnl} onFocus={() => manualDictation.activate("netPnl")} onChange={(event) => updateManualTradeField("netPnl", event.target.value)} placeholder="Use minus for a loss" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                <div><label htmlFor="manual-trade-date" className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Trade date</label><input id="manual-trade-date" type="date" value={manualBookingDate} onChange={(event) => setManualBookingDate(event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[10px] text-foreground outline-none" /></div>
+              </section>
+              <details open={editingTrade ? true : undefined} className="space-y-5 rounded-xl border border-border p-4">
+                <summary className="cursor-pointer text-[10px] font-semibold text-foreground">Optional trade details, notes and screenshots</summary>
               <section>
-                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Trade identity</h3><p className="mt-0.5 text-[8px] text-muted">Only instrument and direction are essential here. A setup name is generated if left blank.</p></div>
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Trade identity</h3><p className="mt-0.5 text-[8px] text-muted">All details below are optional. Add them now or edit the trade later.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Trade / setup name</label><input value={manualTrade.name} onFocus={() => manualDictation.activate("name")} onChange={(event) => updateManualTradeField("name", event.target.value)} placeholder="Generated automatically when blank" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Instrument *</label><input value={manualTrade.symbol} onFocus={() => manualDictation.activate("symbol")} onChange={(event) => updateManualTradeField("symbol", event.target.value.toUpperCase())} placeholder="NQ" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Direction *</label><KwantSelect value={manualTrade.side} onFocus={() => manualDictation.activate("side")} onChange={(event) => updateManualTradeField("side", event.target.value as ManualTradeDraft["side"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="" disabled>Select direction</option><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Instrument</label><input value={manualTrade.symbol} onFocus={() => manualDictation.activate("symbol")} onChange={(event) => updateManualTradeField("symbol", event.target.value.toUpperCase())} placeholder="NQ" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Direction</label><KwantSelect value={manualTrade.side} onFocus={() => manualDictation.activate("side")} onChange={(event) => updateManualTradeField("side", event.target.value as ManualTradeDraft["side"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="" disabled>Select direction</option><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contract class</label><KwantSelect value={manualTrade.contractClass} onFocus={() => manualDictation.activate("contractClass")} onChange={(event) => updateManualTradeField("contractClass", event.target.value as ManualTradeDraft["contractClass"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="">Not specified</option><option value="MICRO">Micro</option><option value="MINI">Mini</option><option value="OTHER">Other</option></KwantSelect></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contracts</label><input type="number" min="0.01" step="0.01" value={manualTrade.quantity} onFocus={() => manualDictation.activate("quantity")} onChange={(event) => updateManualTradeField("quantity", event.target.value)} placeholder="Defaults to 1" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contracts</label><input type="number" min="0.01" step="0.01" value={manualTrade.quantity} onFocus={() => manualDictation.activate("quantity")} onChange={(event) => updateManualTradeField("quantity", event.target.value)} placeholder="Not recorded" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Tags</label><input value={manualTrade.tags} onFocus={() => manualDictation.activate("tags")} onChange={(event) => updateManualTradeField("tags", event.target.value)} placeholder="reclaim, patient, New York" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                 </div>
               </section>
@@ -3500,16 +3489,15 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </section>
 
               <section className="border-t border-border pt-5">
-                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Execution and risk</h3><p className="mt-0.5 text-[8px] text-muted">Only entry price, exit price and P&amp;L are required. Contracts default to one and the remaining context can stay blank.</p></div>
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Execution and risk</h3><p className="mt-0.5 text-[8px] text-muted">Known execution details improve the breakdown. Missing details stay unrecorded.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry time</label><input type="datetime-local" value={manualTrade.openedAt} onFocus={() => manualDictation.activate("openedAt")} onChange={(event) => updateManualTradeField("openedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit time</label><input type="datetime-local" value={manualTrade.closedAt} onFocus={() => manualDictation.activate("closedAt")} onChange={(event) => updateManualTradeField("closedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry price *</label><input type="number" step="any" value={manualTrade.entryPrice} onFocus={() => manualDictation.activate("entryPrice")} onChange={(event) => updateManualTradeField("entryPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit price *</label><input type="number" step="any" value={manualTrade.exitPrice} onFocus={() => manualDictation.activate("exitPrice")} onChange={(event) => updateManualTradeField("exitPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry price</label><input type="number" step="any" value={manualTrade.entryPrice} onFocus={() => manualDictation.activate("entryPrice")} onChange={(event) => updateManualTradeField("entryPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit price</label><input type="number" step="any" value={manualTrade.exitPrice} onFocus={() => manualDictation.activate("exitPrice")} onChange={(event) => updateManualTradeField("exitPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Stop price</label><input type="number" step="any" value={manualTrade.stopPrice} onFocus={() => manualDictation.activate("stopPrice")} onChange={(event) => updateManualTradeField("stopPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Target price</label><input type="number" step="any" value={manualTrade.targetPrice} onFocus={() => manualDictation.activate("targetPrice")} onChange={(event) => updateManualTradeField("targetPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Initial risk ($)</label><input type="number" min="0" step="0.01" value={manualTrade.initialRisk} onFocus={() => manualDictation.activate("initialRisk")} onChange={(event) => updateManualTradeField("initialRisk", event.target.value)} placeholder="250.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Net profit / loss ($) *</label><input type="number" step="0.01" value={manualTrade.netPnl} onFocus={() => manualDictation.activate("netPnl")} onChange={(event) => updateManualTradeField("netPnl", event.target.value)} placeholder="Use minus for a loss" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Fees ($)</label><input type="number" min="0" step="0.01" value={manualTrade.fees} onFocus={() => manualDictation.activate("fees")} onChange={(event) => updateManualTradeField("fees", event.target.value)} placeholder="Leave blank if unknown" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Planned risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/45"><span className="font-mono text-[9px] text-muted">1 :</span><input type="number" min="0" step="0.01" value={manualTrade.plannedRiskReward} onFocus={() => manualDictation.activate("plannedRiskReward")} onChange={(event) => updateManualTradeField("plannedRiskReward", event.target.value)} placeholder="3.00" className="h-full min-w-0 flex-1 bg-transparent pl-2 font-mono text-[9px] text-foreground outline-none" /></div></div>
                   <div className="sm:col-span-2 lg:col-span-4"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Realized risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-surface/45 px-3 font-mono text-[11px] font-semibold text-primary">{Number(manualTrade.initialRisk) > 0 && Number.isFinite(Number(manualTrade.netPnl)) ? riskReward(Number(manualTrade.netPnl) / Number(manualTrade.initialRisk)) : "1 : —"}</div></div>
@@ -3551,10 +3539,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 {manualEvidenceFiles.length ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{manualEvidenceFiles.map((file) => <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-xl border border-border bg-background/35 px-3 py-2 text-[8px]"><ImageIcon className="h-3.5 w-3.5 text-primary" /><span className="min-w-0 flex-1 truncate text-foreground">{file.name}</span><span className="font-mono text-muted">{Math.max(1, Math.round(file.size / 1024))} KB</span><button type="button" onClick={() => setManualEvidenceFiles((current) => current.filter((candidate) => candidate !== file))} className="text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button></div>)}</div> : null}
               </section>
 
+              </details>
+
               {manualTradeError ? <div className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/[0.07] px-3 py-2 text-[9px] leading-4 text-danger"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />{manualTradeError}</div> : null}
             </div>
             <div className="flex items-center gap-2 border-t border-border bg-background/20 px-5 py-4">
-              <span className="mr-auto text-[8px] text-muted">Notes and evidence are optional.</span>
+              <span className="mr-auto text-[8px] text-muted">Only net profit / loss is required.</span>
               <button type="button" disabled={manualTradeSaving} onClick={closeManualTrade} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
               <button type="button" disabled={manualTradeSaving} onClick={() => void submitManualTrade()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-on-primary disabled:opacity-50">{manualTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{manualTradeSaving ? "Saving entry" : editingTrade ? "Save changes" : "Save trade"}</button>
             </div>
@@ -3612,7 +3602,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </Card> : null}
               <Card className="p-4">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[9px]">
-                  {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Stop", selectedTrade.stopPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Target", selectedTrade.targetPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Planned R:R", selectedTrade.plannedRiskReward ? `1 : ${selectedTrade.plannedRiskReward.toFixed(2)}` : "Not recorded"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Contract", selectedTrade.contractClass ?? "—"], ["Fees", selectedTrade.feesKnown === false ? "Not recorded" : money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
+                  {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Stop", selectedTrade.stopPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Target", selectedTrade.targetPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Planned R:R", selectedTrade.plannedRiskReward ? `1 : ${selectedTrade.plannedRiskReward.toFixed(2)}` : "Not recorded"], ["Quantity", selectedTrade.quantity > 0 ? selectedTrade.quantity.toLocaleString() : "Not recorded"], ["Contract", selectedTrade.contractClass ?? "—"], ["Fees", selectedTrade.feesKnown === false ? "Not recorded" : money(selectedTrade.fees, false)], ["Gross P&L", selectedTrade.feesKnown === false ? "Not recorded" : money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
                   <div><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Trading account</div><div className="mt-1 break-words font-mono text-foreground">{selectedTrade.tradingAccountName ?? "Not recorded"}</div></div>
                   <div><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Account type</div><div className="mt-1 break-words font-mono text-foreground">{tradingAccountTypeLabel(selectedTrade.tradingAccountType)}</div></div>
                   <div><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Account size</div><div className="mt-1 break-words font-mono text-foreground">{selectedTrade.accountSize ? money(selectedTrade.accountSize, false) : "Not recorded"}</div></div>
