@@ -1,4 +1,5 @@
 "use client";
+import { recordChartTickPaint } from "@/lib/chartTickAudit";
 
 import { beginPaperProtectionDrag } from "@/lib/paperProtectionDrag";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
@@ -4660,6 +4661,7 @@ function Chart({
           low: candle.low,
           close: candle.close,
         });
+        recordChartTickPaint(instrument, candle.sourceEndTimestamp);
         if (liveFootprintEnabledRef.current && footprintPrimitiveRef.current) {
           liveFootprintSourceCandlesRef.current = mergeLiveIndicatorCandle(
             liveFootprintSourceCandlesRef.current,

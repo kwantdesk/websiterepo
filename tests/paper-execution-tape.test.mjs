@@ -108,7 +108,7 @@ test("disconnect flushes admitted executions rather than deduplicating them away
     emit(name, payload) { this.listeners.get(name)?.({ data: JSON.stringify(payload) }); }
     close() {}
   }
-  globalThis.fetch = async () => ({ ok: true });
+  globalThis.fetch = async () => ({ok:true,json:async()=>({url:"https://feed.kwantdesk.com/browser-stream?ticket=test",expiresAt:Date.now()+300000,transport:"direct-vps"})});
   globalThis.EventSource = FakeSource;
   let { record, ledger } = open();
   const engine = createExecutionTapeEngine("NQ", "NQZ6", {

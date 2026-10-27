@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import ts from 'typescript';
+function load(search){const callbacks=[],attributes=new Map(),exports={};let now=10000;const code=ts.transpileModule(fs.readFileSync(new URL('../src/lib/chartTickAudit.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+ vm.runInNewContext(code,{exports,URLSearchParams,window:{location:{search}},document:{documentElement:{setAttribute:(k,v)=>attributes.set(k,v)}},Date:{now:()=>now},setTimeout:fn=>{callbacks.push(fn);return callbacks.length}});
+ return {record:exports.recordChartTickPaint,callbacks,attributes,now:n=>{now=n}};
+}
+test('normal charts do not allocate diagnostic timers or mutate the DOM',()=>{const h=load('');for(let i=0;i<10000;i++)h.record('NQ',9000);assert.equal(h.callbacks.length,0);assert.equal(h.attributes.size,0)});
+test('opt-in metrics aggregate real source age and remain bounded without changing ticks',()=>{const h=load('?feedAudit=1');for(let i=0;i<1000;i++){h.now(10000+i);h.record('NQ',10000+i-25)}assert.equal(h.callbacks.length,1);h.callbacks[0]();const result=JSON.parse(h.attributes.get('data-chart-tick-audit'));assert.equal(result.instruments[0].paints,1000);assert.equal(result.instruments[0].sourceToPaintP95,25);assert.equal(result.instruments[0].paintGapP95,1)});

@@ -1,5 +1,6 @@
 import { providerErrorMessage, logProviderError } from "@/lib/providerErrorMessage";
 import { directBrowserStreamResponse } from "@/lib/browserStreamRedirect.server";
+import { executionStreamLeaseResponse } from "@/lib/executionStreamLease.server";
 import { NextRequest, NextResponse } from "next/server";
 import {
   RTH_END_MINUTES,
@@ -118,6 +119,10 @@ async function proxy(request: NextRequest, context: RouteContext) {
   // Replay packs are generated on the VPS and can exceed function response
   // limits. Authenticate here, then lease the exact read to the same VPS edge.
   const isReplayRead = path === "v1/heatmap/replay" || path === "v1/heatmap/replay/chunk";
+  if (request.method === "GET") {
+    const lease = executionStreamLeaseResponse(request, `/${path}`, forwarded.search);
+    if (lease) return lease;
+  }
   if (request.method === "GET" && (isLongLivedStream || isReplayRead)) {
     const direct = directBrowserStreamResponse(request, `/${path}`, forwarded.search);
     if (direct) return direct;

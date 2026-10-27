@@ -48,6 +48,25 @@ export const STREAM_WATCHDOG_INTERVAL_MS = 3_000;
 export const STREAM_STALE_RECONNECT_DELAY_MS = 250;
 export const STREAM_RECONNECT_DELAY_MS = 4_000;
 
+export async function requestExecutionStreamLease(query: URLSearchParams) {
+  const params = new URLSearchParams(query);
+  params.set("streamLease", "1");
+  const response = await fetch(`/api/institutional-market-data/v1/market-data/trades?${params}`, {
+    cache: "no-store", signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) throw Error("Execution lease unavailable");
+  const lease = await response.json() as { url?: unknown; expiresAt?: unknown; transport?: unknown };
+  const destination = new URL(String(lease.url));
+  const expiry = Number(lease.expiresAt);
+  if (lease.transport !== "direct-vps" || destination.origin !== "https://feed.kwantdesk.com"
+    || destination.pathname !== "/browser-stream" || destination.username || destination.password || destination.hash
+    || destination.searchParams.size !== 1 || !destination.searchParams.get("ticket")
+    || !Number.isFinite(expiry) || expiry <= Date.now() || expiry > Date.now() + 310_000) {
+    throw Error("Invalid execution lease");
+  }
+  return { url: destination.href, expiresAt: expiry };
+}
+
 export type ExecutionTapeEngineHandlers = {
   onStatus: (status: ExecutionTapeStatus) => void;
   onContinuity: (continuity: ExecutionStreamContinuity) => void;
@@ -75,6 +94,7 @@ export function createExecutionTapeEngine(
   let publishTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  let leaseTimer: ReturnType<typeof setTimeout> | null = null;
 
   const setStatus = (next: ExecutionTapeStatus) => {
     status = next;
@@ -110,6 +130,8 @@ export function createExecutionTapeEngine(
     source = null;
     if (watchdogTimer !== null) clearInterval(watchdogTimer);
     watchdogTimer = null;
+    if (leaseTimer !== null) clearTimeout(leaseTimer);
+    leaseTimer = null;
   };
 
   const discardPending = () => {
@@ -144,17 +166,6 @@ export function createExecutionTapeEngine(
     receipt = null;
     setContinuity("checking");
     try {
-      const health = await fetch("/api/institutional-market-data?path=health", {
-        cache: "no-store",
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (stopped || generation !== thisGeneration) return;
-      if (!health.ok) {
-        setStatus("unavailable");
-        scheduleReconnect();
-        return;
-      }
-
       /*
        * CME Group is not one exchange code. YM/treasuries/agriculture trade on
        * CBOT, energy on NYMEX and metals on COMEX. Sending all of those as
@@ -169,12 +180,15 @@ export function createExecutionTapeEngine(
         contractSymbol,
         // A 25k-print seed blocks live trades behind megabytes of JSON on a
         // slow proxy. History is restored separately; this is a live handoff.
-        seedLimit: "128",
+        seedLimit: seedPublished ? "4096" : "128",
       });
-      const stream = new EventSource(
-        `/api/institutional-market-data/v1/market-data/trades?${query.toString()}`,
-      );
+      const lease = await requestExecutionStreamLease(query);
+      if (stopped || generation !== thisGeneration) return;
+      const stream = new EventSource(lease.url);
       source = stream;
+      // Planned lease renewal must not incur the four-second outage backoff.
+      // Reconnect seeds cover the short handoff and share exact tape dedup.
+      leaseTimer = setTimeout(() => scheduleReconnect(0), Math.max(1, lease.expiresAt - Date.now() - 500));
       let connectionSeeded = false;
 
       const markActivity = () => {

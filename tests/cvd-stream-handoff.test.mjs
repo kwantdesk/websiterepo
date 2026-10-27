@@ -22,7 +22,7 @@ test('transport ready and heartbeats cannot declare executions connected before 
     emit(name, payload) { this.listeners.get(name)?.({data: JSON.stringify(payload)}); }
     close() {}
   }
-  globalThis.fetch = async () => ({ok: true});
+  globalThis.fetch = async () => ({ok:true,json:async()=>({url:"https://feed.kwantdesk.com/browser-stream?ticket=test",expiresAt:Date.now()+300000,transport:"direct-vps"})});
   globalThis.EventSource = FakeSource;
   const received = [];
   const engine = createExecutionTapeEngine('NQ', 'NQZ6', {
@@ -31,7 +31,7 @@ test('transport ready and heartbeats cannot declare executions connected before 
   try {
     engine.start();
     await new Promise(resolve => setImmediate(resolve));
-    assert.match(source.url, /seedLimit=128/);
+    assert.equal(source.url, "https://feed.kwantdesk.com/browser-stream?ticket=test");
     source.emit('ready', {continuity: 'seeding'});
     source.emit('heartbeat', {});
     assert.equal(engine.status(), 'checking');
