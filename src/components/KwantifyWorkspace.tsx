@@ -154,7 +154,7 @@ import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache, subscribeProfileIdentity } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
-import { PREFERENCES_HYDRATED_EVENT, compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
+import { PREFERENCES_HYDRATED_EVENT, canDisplayOwnedWorkspace, compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import {
   loadJournalAccountDeletions,
   loadJournalState,
@@ -10309,6 +10309,7 @@ export default function KwantifyWorkspace({
   // Trading/journal preference ownership still waits for full hydration below.
   const [authenticatedGexDataUserId, setAuthenticatedGexDataUserId] = useState("");
   const [preferencesReady, setPreferencesReady] = useState(false);
+  const [ownedWorkspaceDisplayReady, setOwnedWorkspaceDisplayReady] = useState(false);
   useAccountPreferenceSync({
     supabase,
     userId: preferenceUserId,
@@ -14898,6 +14899,7 @@ export default function KwantifyWorkspace({
     }
 
     setAuthenticatedGexDataUserId("");
+    setOwnedWorkspaceDisplayReady(false);
     const checkUsername = async () => {
       const user = (await supabase?.auth?.getUser())?.data?.user ?? null;
       if (!user) {
@@ -14917,6 +14919,9 @@ export default function KwantifyWorkspace({
       setCurrentUsername(existingUsername ?? "Account");
       setCurrentDisplayName(existingDisplayName || "Trader");
       setAuthenticatedGexDataUserId(user.id);
+      // Authenticated ownership is established first. Only display can start
+      // early; preferencesReady still gates trading and preference writes.
+      setOwnedWorkspaceDisplayReady(canDisplayOwnedWorkspace(user.id));
       let hydrated: Awaited<ReturnType<typeof hydrateUserPreferences>> | null = null;
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
@@ -20720,7 +20725,7 @@ export default function KwantifyWorkspace({
 
         {chartSurfaceActive ? (
         <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "GEX Vue charting" : "Charts"}>
-        {!preferencesReady ? (
+        {!preferencesReady && !ownedWorkspaceDisplayReady ? (
           workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.", chartWorkspaceScope === "gamma")
         ) : <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
           <div

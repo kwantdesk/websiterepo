@@ -9,6 +9,15 @@ const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
 const LEGACY_PREFERENCES_OWNER_KEY = "kwantdesk:legacy-preferences-owner:v1";
 const ACTIVE_PREFERENCES_OWNER_KEY = "kwantdesk:active-preferences-owner:v1";
+
+/** Read-only chart startup may use this account's cache while cloud sync runs. */
+export function canDisplayOwnedWorkspace(userId: string) {
+  if (!userId || typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(ACTIVE_PREFERENCES_OWNER_KEY) === userId
+      && readScopedPreferences(userId)?.complete === true;
+  } catch { return false; }
+}
 const SOCIAL_OBJECTS_TABLE = "social_objects";
 const SOCIAL_PREFERENCES_ID = "account-preferences";
 const ACCOUNT_TEMPLATE_STORAGE_KEYS = [
