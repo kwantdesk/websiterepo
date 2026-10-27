@@ -20,6 +20,7 @@ import { mixHexColors } from "@/lib/volumeProfileGradients";
 import {
   calculateVolumeProfileValueArea,
   groupVolumeProfileLevels,
+  resolveVolumeProfileRenderGrouping,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   volumeProfileBinTick,
 } from "@/lib/volumeProfileMath";
@@ -1039,37 +1040,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const sourceRowPixels = referenceY == null || nextReferenceY == null
           ? 1
           : Math.max(0.01, Math.abs(nextReferenceY - referenceY));
-        // Rows are allowed to fall well under a pixel before the renderer
-        // collapses them: a profile reads as structure — shelves, single
-        // prints, the notch beside a POC — only while each traded tick still
-        // has its own row. Requiring a full pixel per row silently doubled the
-        // grouping at ordinary zoom and flattened that structure into blocks.
-        // Auto group factory scales this, so raising it deliberately coarsens.
-        //
-        // Manual grouping sets the DATA bin size — it does not mean "draw rows
-        // thinner than a pixel". Manual used to skip this collapse entirely, so
-        // a manually binned profile lost every shelf, notch and single print
-        // the moment the rows fell under a pixel and smeared into a solid
-        // block. The legibility floor now applies in both modes; only the
-        // trader's coarsening factor is exclusive to automatic, so at ordinary
-        // zoom a manual profile still draws exactly the rows it was asked for.
-        const groupingFloorFactor = style.automaticGrouping ? style.autoGroupFactor : 1;
-        const automaticMultiplier = Math.max(
-          1,
-          Math.ceil((PROFILE_MIN_ROW_PIXELS * groupingFloorFactor) / sourceRowPixels),
-        );
-        /*
-         * The trader's manual bin is a floor on the ROW, not a coarser fetch.
-         *
-         * `profile.groupTicks` is whatever the data arrived binned at, which is
-         * now always tick resolution. Taking the larger of the two means manual
-         * never draws finer than asked and never throws away detail the way a
-         * pre-binned request did.
-         */
-        const requestedTicks = style.automaticGrouping
-          ? profile.groupTicks
-          : Math.max(profile.groupTicks, Math.max(1, Math.round(style.manualGroupTicks ?? 1)));
-        const groupedTicks = requestedTicks * automaticMultiplier;
+        // Assess legibility after applying the trader's requested grouping.
+        // Four ticks at .4px each are already a readable 1.6px row, not an
+        // eight-tick row merely because the original single tick was subpixel.
+        const { requestedTicks, groupedTicks } = resolveVolumeProfileRenderGrouping({
+          sourceGroupTicks: profile.groupTicks,
+          sourceRowPixels,
+          automatic: style.automaticGrouping,
+          manualGroupTicks: style.manualGroupTicks,
+          autoGroupFactor: style.autoGroupFactor,
+          minimumRowPixels: PROFILE_MIN_ROW_PIXELS,
+        });
         // Everything below depends only on the profile, its grouping and the
         // value-area percentage — never on the viewport — so it is computed
         // once per change instead of once per repaint.

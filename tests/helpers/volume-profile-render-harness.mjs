@@ -9,7 +9,8 @@ export class ProfilePathStub {
 }
 
 export function renderProfile({period="daily",mode="delta-volume",visualStyle="line",snapMode="off",
-  showDelta=true,gradient=null,zeroDelta=false,inverted=false,drawing=false}={}){
+  showDelta=true,gradient=null,zeroDelta=false,inverted=false,drawing=false,
+  symbol="NQ",tickSize=1,basePrice=100,pixelsPerTick=30,manualGroupTicks=1,automaticGrouping=false,autoGroupFactor=1,levelCount=6}={}){
   globalThis.Path2D=ProfilePathStub;
   const paths=[],state={};
   const context=new Proxy(state,{
@@ -31,26 +32,26 @@ export function renderProfile({period="daily",mode="delta-volume",visualStyle="l
     getVisibleLogicalRange:()=>({from:-20,to:40}),width:()=>mediaSize.width,
   };
   const volumes=[100,200,300,160,240,120],deltas=[60,-100,0,80,-40,100];
-  const levels=volumes.map((volume,i)=>{const delta=zeroDelta?0:deltas[i];return {
-    price:100+i,volume,delta,bidVolume:(volume-delta)/2,askVolume:(volume+delta)/2,trades:volume/2,
+  const levels=Array.from({length:levelCount},(_,i)=>{const volume=volumes[i%volumes.length];const delta=zeroDelta?0:deltas[i%deltas.length];return {
+    price:basePrice+i*tickSize,volume,delta,bidVolume:(volume-delta)/2,askVolume:(volume+delta)/2,trades:volume/2,
   };});
   const profile={schemaVersion:"kwantify-volume-profile-v1",provider:"Rithmic",source:"CME executions",
-    id:"test-profile",root:"NQ",period,startMs,endMs,asOf:endMs,tickSize:1,groupTicks:1,levels,
-    poc:102,vah:104,val:101,valueAreaHigh:104,valueAreaLow:101,totalVolume:1120,developingPoc:[]};
+    id:"test-profile",root:symbol,period,startMs,endMs,asOf:endMs,tickSize,groupTicks:1,levels,
+    poc:basePrice+2*tickSize,vah:basePrice+4*tickSize,val:basePrice+tickSize,valueAreaHigh:basePrice+4*tickSize,valueAreaLow:basePrice+tickSize,totalVolume:levels.reduce((sum,row)=>sum+row.volume,0),developingPoc:[]};
   const style={mode,visualStyle,snapMode,showDelta,gradient,widthBasis:"percent",widthPercent:20,
-    opacity:.75,borderWidth:1,automaticGrouping:false,valueAreaPercent:70,
+    opacity:.75,borderWidth:1,automaticGrouping,autoGroupFactor,manualGroupTicks,valueAreaPercent:70,
     valueAreaColor:"#5566FF",outsideValueAreaColor:"#334455",positiveDeltaColor:"#22FF88",negativeDeltaColor:"#FF2255",
     pocColor:"#FFFFFF",showValueArea:true,showProfileOutline:true,showProfileSpine:false,
     showPocLine:false,showValueAreaLines:false,showPocHighlight:false,showText:false,
     showDevelopingPoc:false,showPeaks:false,showValleys:false,showBusinessZone:false,showVwap:false,
     showLevelLabels:false,showSummaryVolume:false,showSummaryTrades:false};
-  const priceToCoordinate=p=>inverted?(p-90)*30:(110-p)*30;
+  const priceToCoordinate=p=>300+(inverted?1:-1)*(p-basePrice)*pixelsPerTick/tickSize;
   const primitive=new NativeVolumeProfilePrimitive();
-  primitive.attached({series:{priceToCoordinate,coordinateToPrice:y=>inverted?90+y/30:110-y/30},chart:{timeScale:()=>scale},requestUpdate(){}});
+  primitive.attached({series:{priceToCoordinate,coordinateToPrice:y=>basePrice+(inverted?1:-1)*(y-300)*tickSize/pixelsPerTick},chart:{timeScale:()=>scale},requestUpdate(){}});
   const model={id:"test-profile",profile,style,lastCandleTime:endMs/1000,intervalSeconds:60,
-    maxVolume:300,maxAbsDelta:100,lowPrice:100,highPrice:105,
+    maxVolume:300,maxAbsDelta:100,lowPrice:basePrice,highPrice:basePrice+(levelCount-1)*tickSize,
     ...(drawing?{drawingBounds:{startTime:startMs/1000,endTime:endMs/1000,firstPrice:99,secondPrice:106}}:{})};
   primitive.setModels([model]);
   primitive.paneViews()[0].renderer().draw({useMediaCoordinateSpace:cb=>cb({context,mediaSize})});
-  return {paths,profile,model};
+  return {paths,profile,model,primitive};
 }

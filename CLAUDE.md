@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## ES profile granularity — 2026-10-27
+
+Fixed native profile manual grouping being multiplied twice at subpixel source resolution. `resolveVolumeProfileRenderGrouping` measures the requested row before pixel aggregation; ES four-tick rows remain one point when readable. Preserve one-tick source requests and saved grouping preferences. 112 focused tests, production build and scoped lint pass; 127 catalog entries inventoried (50 generic finite calculations, 77 dedicated/no-signal—not universal live proof). VPS ESZ6 response confirmed 0.25-point rows. Seven pre-existing source-regex failures independently reproduced on HEAD. See `docs/prompt-log/2026-10-27-es-profile-granularity.md`.
+
+
 ## 2026-10-27 ES liquidity price scale and catalog identity
 
 Renderer floor45 conflicted with controller floor24: ES default45 could not zoom inward. Both now use shared `priceScaleRows` min8 with instrument tick/depth-based upper bound. Price rail wheel normalises device deltas, never time zoom. `parentLiquidityCatalogRows` prevents micro catalog rows (MES/MGC etc.) overwriting canonical ES/GC contracts; browser reproduced MESZ6 under ES before fix. Do not conflate micro and parent order books. Asset revision `20261027-instrument-price-scale`. Watchlist ES/NQ retains quarters; normal RTY/M2K minMove is0.1. 43 regression tests/build, see `docs/prompt-log/2026-10-27-es-liquidity-price-scale.md`.

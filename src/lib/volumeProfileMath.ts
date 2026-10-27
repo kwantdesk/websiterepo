@@ -178,3 +178,19 @@ export function volumeProfileWithInputData<
     totalVolume: levels.reduce((sum, level) => sum + level.volume, 0),
   };
 }
+
+/** Pixel grouping applies to the requested row, not the original one-tick
+ * source. Applying the same multiplier to a manual row again double-coarsens it. */
+export function resolveVolumeProfileRenderGrouping(args: {
+  sourceGroupTicks: number; sourceRowPixels: number; automatic: boolean;
+  manualGroupTicks?: number; autoGroupFactor?: number; minimumRowPixels?: number;
+}) {
+  const sourceTicks = Math.max(1, Math.round(args.sourceGroupTicks || 1));
+  const requestedTicks = args.automatic ? sourceTicks
+    : Math.max(sourceTicks, Math.max(1, Math.round(args.manualGroupTicks ?? 1)));
+  const requestedRowPixels = Math.max(.01, args.sourceRowPixels) * requestedTicks / sourceTicks;
+  const floor = Math.max(.01, args.minimumRowPixels ?? .55)
+    * (args.automatic ? Math.max(.25, args.autoGroupFactor ?? 1) : 1);
+  const multiplier = Math.max(1, Math.ceil(floor / requestedRowPixels));
+  return { requestedTicks, groupedTicks: requestedTicks * multiplier };
+}
