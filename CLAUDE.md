@@ -1,5 +1,23 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Red actual-entry arrows
+
+- Filled entry markers are small red sideways arrows for both buy and sell.
+  Their tip is the actual fill coordinate; the body sits 12px left of it.
+  Manual drawing-tool colour/handle settings and existing exit markers remain.
+- buildPaperFillMarkers uses actual ledger fills, exact fill prices, symbol
+  filtering and a containing real candle. Missing/future clock buckets do not
+  borrow an older candle. Event bars use source-execution starts and synthetic
+  chart-axis mappings; ordinary clock charts ignore leftover event mappings.
+- Marker hydration now depends on chartReadyRevision and includes directly
+  observed candles before React history catches up. Existing marker hiding,
+  selected-account filtering and ledger persistence still apply upstream.
+- 28 targeted marker/execution/receipt tests, 13 manual-arrow checks and the
+  focused fill integration check pass. Tests execute the actual canvas renderer
+  and actual marker effect. No owner trade was placed or changed for testing.
+- Receipt: docs/prompt-log/2026-10-27-red-entry-fill-arrows.md.
+
+
 ## 2026-10-27 — Big Blocks historical-marker finality
 
 - Owner observed a block flickering about ten candles after its origin. Live

@@ -226,15 +226,15 @@ test("active stop-loss and take-profit labels can be removed and recreated from 
 
 test("paper fills render as persistent candle-anchored entry and exit arrows", () => {
   assert.match(engine, /export function paperFillCandleTimestamp/);
-  assert.match(chart, /paperFillCandleTimestamp\(candles, fill\.timestamp\)/);
+  assert.match(chart, /buildPaperFillMarkers\(/);
   assert.match(chart, /class PaperFillMarkersPrimitive/);
   assert.match(chart, /candleSeries\.attachPrimitive\(paperFillMarkersPrimitive\)/);
   assert.match(chart, /const entry = marker\.role === "entry"/);
-  assert.match(chart, /side: fill\.side/);
+  assert.match(readFileSync(new URL("../src/lib/paperFillMarkers.ts", import.meta.url), "utf8"), /side: fill\.side/);
   assert.match(chart, /marker\.side === "buy" \? "#22e887" : "#ff3b5c"/);
   assert.match(chart, /#22e887/);
   assert.match(chart, /#ff3b5c/);
-  assert.match(chart, /context\.moveTo\(x - 6, y - 4\)/);
+  assert.match(chart, /context\.moveTo\(x - 12, y - 4\)/);
   assert.match(chart, /context\.moveTo\(x \+ 6, y - 4\)/);
   assert.match(chart, /Remove all fills/);
   assert.match(workspace, /kwantify-hidden-paper-fill-markers-v1/);

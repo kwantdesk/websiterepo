@@ -512,6 +512,7 @@ import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
 import { clearChartDrawingClipboard } from '@/lib/chartDrawingClipboard';
+import { buildPaperFillMarkers } from '@/lib/paperFillMarkers';
 import { drawingCoordinateToTime, drawingTimeToCoordinate, type DrawingTimeScale } from "@/lib/chartDrawingCoordinates";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
 import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
@@ -683,7 +684,6 @@ import {
   paperPositionLivePnl,
   type PaperMarkQuote,
   paperContractSpec,
-  paperFillCandleTimestamp,
   constrainDraggedPaperOrderPrice,
   paperProjectedPnl,
   snapPaperPrice,
@@ -1981,16 +1981,16 @@ class PaperFillMarkersRenderer implements ISeriesPrimitivePaneRenderer {
         const entry = marker.role === "entry";
         context.beginPath();
         if (entry) {
-          context.moveTo(x - 6, y - 4);
-          context.lineTo(x + 6, y);
-          context.lineTo(x - 6, y + 4);
+          context.moveTo(x - 12, y - 4);
+          context.lineTo(x, y);
+          context.lineTo(x - 12, y + 4);
         } else {
           context.moveTo(x + 6, y - 4);
           context.lineTo(x - 6, y);
           context.lineTo(x + 6, y + 4);
         }
         context.closePath();
-        context.fillStyle = marker.side === "buy" ? "#22e887" : "#ff3b5c";
+        context.fillStyle = entry ? "#ff3b5c" : marker.side === "buy" ? "#22e887" : "#ff3b5c";
         context.fill();
       }
       context.restore();
@@ -16902,23 +16902,12 @@ function Chart({
     const primitive = paperFillMarkersPrimitiveRef.current;
     if (!primitive) return;
     primitive.update(
-      paperFills
-        .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument))
-        .map((fill) => {
-          const timestamp = paperFillCandleTimestamp(candles, fill.timestamp);
-          return timestamp === null
-            ? null
-            : {
-                id: fill.id,
-                time: timestamp as Time,
-                price: fill.price,
-                side: fill.side,
-                role: fill.role,
-              };
-        })
-        .filter((marker): marker is PaperFillMarkerRenderData => marker !== null),
+      buildPaperFillMarkers(
+        observedCandleHistoryRef.current.merge(observedCandleScope, candles),
+        paperFills, instrument, candleIntervalMs, eventChartTimeBySourceTimeRef.current,
+      ).map(marker => ({ ...marker, time: marker.time as Time })),
     );
-  }, [candles, instrument, paperFills]);
+  }, [candles, candleIntervalMs, chartReadyRevision, instrument, observedCandleScope, paperFills]);
 
   const volumeProfileLastCandleTimestamp = candles.at(-1)?.timestamp ?? null;
   const variantProfileInstances = useMemo(() => indicators.filter((instance) => (

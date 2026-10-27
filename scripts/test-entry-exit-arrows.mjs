@@ -45,8 +45,8 @@ check("the real fill marker is a sideways triangle, and still is", () => {
   // If the genuine marker is ever redrawn as something else, this fails and
   // the drawn version has to follow it rather than quietly diverging.
   assert.match(realRenderer, /const entry = marker\.role === "entry"/);
-  // Entry: back at x-6, point at x+6 — pointing RIGHT.
-  assert.match(realRenderer, /moveTo\(x - 6, y - 4\)[\s\S]*?lineTo\(x \+ 6, y\)[\s\S]*?lineTo\(x - 6, y \+ 4\)/);
+  // Automatic entry: the tip pins the exact fill; the small body sits left.
+  assert.match(realRenderer, /moveTo\(x - 12, y - 4\)[\s\S]*?lineTo\(x, y\)[\s\S]*?lineTo\(x - 12, y \+ 4\)/);
   // Exit: back at x+6, point at x-6 — pointing LEFT.
   assert.match(realRenderer, /moveTo\(x \+ 6, y - 4\)[\s\S]*?lineTo\(x - 6, y\)[\s\S]*?lineTo\(x \+ 6, y \+ 4\)/);
   assert.match(realRenderer, new RegExp(PAPER_FILL_BUY_COLOR));
@@ -63,9 +63,9 @@ check("an entry points right into the trade, an exit points left out of it", () 
   assert.equal(exitAt().points[0][1], 200);
 });
 
-check("it is centred on the fill, exactly as the real marker is", () => {
-  // The real triangle straddles the anchor from x-6 to x+6 and y-4 to y+4,
-  // so the anchor is its middle, not its tip.
+check("the manual drawing retains its existing centred sizing anchor", () => {
+  // Manual drawing handles retain their geometry; automatic entry arrows now
+  // pin their tip to the real fill rather than changing a saved manual tool.
   const geometry = entryAt();
   assert.equal((geometry.tipX + geometry.backX) / 2, 100, "horizontally centred on the fill");
   const ys = geometry.points.map(([, y]) => y);
@@ -144,7 +144,7 @@ check("both tools are on the live rail, in their own group", () => {
   assert.ok(DRAW_TOOL_GROUPS.some((group) => group.id === "trade"), "the group needs its own rail slot");
 });
 
-check("they carry the real fill colours, and a theme cannot repaint them", () => {
+check("manual entry/exit drawing tools retain their saved colour defaults", () => {
   const entry = createDrawing("entryArrow", [{ time: 1, price: 1 }]);
   const exit = createDrawing("exitArrow", [{ time: 1, price: 1 }]);
   assert.equal(entry.style.color, PAPER_FILL_BUY_COLOR);
