@@ -1,5 +1,27 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Closed candle background overwrite follow-up
+
+- 8750a5c7 did not resolve the owner's reported closed-candle changes. Two
+  remaining overwrite paths were reproduced: the routine four-minute heal
+  replaced existing OHLC without completeness/correction evidence, then sent
+  that snapshot through the verified-history override; a deferred React commit
+  also copied older candles back into the synchronous CME execution writer.
+- Routine healing now defaults explicitly to backfill-only: insert real absent
+  closed buckets and repair flow without replacing existing OHLC. It no longer
+  broadcasts an unverified snapshot as a verified closed-price correction.
+  Deliberate correction utilities require the verified-correction policy.
+- CME setters already write latestCandlesRef before setCandles. The render
+  mirror must never copy an older React array back over that writer. Other
+  adapters retain their React-driven fallback. Replay setters remain intact.
+- Three regressions fail before the fix. 81 tests plus 8 explicit correction
+  checks pass, including the actual background effect across 20 conflicting
+  snapshots. Production build/scoped ESLint pass. A fresh VPS raw-tape sample
+  (1,285 NQ executions; five closed minutes from 00:12 UTC on 27 October) matches
+  the archive's OHLCV exactly. No provider restart or owner trade action.
+- Receipt: docs/prompt-log/2026-10-27-closed-candle-background-stability.md.
+
+
 ## 2026-10-27 — Execution-authoritative futures candles
 
 - Plain Databento/CME panes must subscribe to the shared Rithmic execution

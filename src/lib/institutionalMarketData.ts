@@ -1918,12 +1918,16 @@ export function healClosedCandleOhlc(
   held: Candle[],
   baked: Candle[],
   liveEdgeFromMs: number,
+  pricePolicy: "verified-correction" | "backfill-only" = "backfill-only",
 ): Candle[] | null {
   if (!held.length || !baked.length) return null;
   const bakedByTimestamp = new Map(baked.map((candle) => [candle.timestamp, candle]));
   let repaired = false;
   const healed = held.map((candle) => {
     if (Number(candle.timestamp) >= liveEdgeFromMs) return candle;
+    // A routine/cached snapshot is not an exchange correction receipt. It may
+    // fill a missing bucket, but cannot silently rewrite a published body/wick.
+    if (pricePolicy === "backfill-only") return candle;
     const authoritative = bakedByTimestamp.get(candle.timestamp);
     if (!authoritative) return candle;
     const same = authoritative.open === candle.open
@@ -1996,8 +2000,9 @@ export function healClosedCandleIntegrity(
   baked: Candle[],
   liveEdgeFromMs: number,
   includeFlow: boolean,
+  pricePolicy: "verified-correction" | "backfill-only" = "backfill-only",
 ): Candle[] | null {
-  const ohlcHealed = healClosedCandleOhlc(held, baked, liveEdgeFromMs) ?? held;
+  const ohlcHealed = healClosedCandleOhlc(held, baked, liveEdgeFromMs, pricePolicy) ?? held;
   const fullyHealed = includeFlow
     ? healClosedCandleFlow(ohlcHealed, baked, liveEdgeFromMs) ?? ohlcHealed
     : ohlcHealed;

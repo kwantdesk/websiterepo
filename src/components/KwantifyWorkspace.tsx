@@ -217,7 +217,6 @@ import {
 } from "@/lib/liveExecutionTape";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
-import { CLOSED_CHART_HISTORY_EVENT } from "@/lib/chartLiveEvents";
 import { processPaperExecutionTape } from "@/lib/paperExecutionTape";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
@@ -7515,17 +7514,10 @@ function WorkspaceChartPaneComponent({
     };
   }, [historicalExecutionDays, needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, replayHistoryRange, resolvedContractSymbol]);
 
-  // Closed-bar integrity heal. History is otherwise consumed exactly once at
-  // pane load, so a bar built while the live stream missed one or more prints
-  // could keep a truncated (occasionally body-only) wick forever even after
-  // Rithmic's History Plant had published the complete OHLC. Re-consume the
-  // route's baked bars at a deliberately low cadence and restore CLOSED bars
-  // from that authority. Genuinely wickless exchange bars remain wickless; we
-  // never manufacture a cosmetic minimum wick.
-  //
-  // When an order-flow study is attached, the same request also heals dropped
-  // bid/ask volume so CVD/footprint do not fragment. The forming edge remains
-  // stream-owned in both cases, because the provider's current bar is partial.
+  // Routine history snapshots fill actual missing buckets and reconcile flow.
+  // Their cache age/source label does not prove every closed OHLC is complete;
+  // they must not silently replace already published bodies or extrema. An
+  // explicit, verified exchange correction is a separate operation.
   useEffect(() => {
     if (
       replayHistoryRange
@@ -7553,10 +7545,6 @@ function WorkspaceChartPaneComponent({
         );
         if (cancelled || !downloaded.length) return;
         const previous = latestCandlesRef.current;
-        // Closed bars belong to the exchange-baked history, whether they are
-        // empty OR merely under-counted by a stream that dropped prints. The
-        // live edge past the provider's availability lag stays with the
-        // stream, so a partial baked bar cannot drag it backwards.
         const barMs = timeframeDurationMs(pane.timeframe) ?? 60_000;
         const liveEdgeFromMs = Date.now() - Math.max(90_000, barMs * 2);
         const healed = healClosedCandleIntegrity(
@@ -7564,11 +7552,9 @@ function WorkspaceChartPaneComponent({
           downloaded,
           liveEdgeFromMs,
           needsOrderFlowHistory,
+          "backfill-only",
         );
         if (!healed) return;
-        window.dispatchEvent(new CustomEvent(CLOSED_CHART_HISTORY_EVENT, {
-          detail: { key: pane.id, candles: healed, beforeMs: liveEdgeFromMs },
-        }));
         latestCandlesRef.current = healed;
         if (needsOrderFlowHistory && hasUsableOrderFlowHistory(healed)) {
           setOrderFlowHistoryReady(true);
@@ -7620,7 +7606,10 @@ function WorkspaceChartPaneComponent({
   }, [pane.broker, pane.symbol, pane.timeframe, replayHistoryRange]);
 
   useEffect(() => {
-    latestCandlesRef.current = candles;
+    // CME ingestion writes this ref synchronously before scheduling React.
+    // A deferred render can commit after newer executions/rollovers arrived;
+    // copying its older array back loses those prints and rewrites later bars.
+    if (pane.broker !== "Databento") latestCandlesRef.current = candles;
     const latest = candles.at(-1);
     if (latest && latestMarketIndexFrameRef.current === null && (
       latestFuturesRef.current.asOfMs === null
@@ -7635,7 +7624,7 @@ function WorkspaceChartPaneComponent({
         asOfMs: Math.min(latest.timestamp, Date.now()),
       };
     }
-  }, [candles]);
+  }, [candles, pane.broker]);
 
   useEffect(() => {
     const contractSymbol = pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;

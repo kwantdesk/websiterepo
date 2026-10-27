@@ -28,7 +28,7 @@ const liveEdge = NOW - 2 * MIN;
   const held = baked.map((b, i) => (
     i === 10 ? { ...b, high: b.close, low: b.open } : { ...b }
   ));
-  const healed = healClosedCandleOhlc(held, baked, liveEdge);
+  const healed = healClosedCandleOhlc(held, baked, liveEdge, "verified-correction");
   assert.ok(healed, "a truncated wick must be repaired");
   assert.equal(healed[10].high, baked[10].high);
   assert.equal(healed[10].low, baked[10].low);
@@ -37,7 +37,7 @@ const liveEdge = NOW - 2 * MIN;
 // 2. The opposite: a stray tick left an over-long wick.
 {
   const held = baked.map((b, i) => (i === 7 ? { ...b, high: b.high + 40 } : { ...b }));
-  const healed = healClosedCandleOhlc(held, baked, liveEdge);
+  const healed = healClosedCandleOhlc(held, baked, liveEdge, "verified-correction");
   assert.ok(healed, "an over-long wick must be repaired");
   assert.equal(healed[7].high, baked[7].high);
 }
@@ -48,7 +48,7 @@ const liveEdge = NOW - 2 * MIN;
   const held = baked.map((b, i) => (
     i === 5 ? { ...b, high: b.close, askVolume: 999, bidVolume: 111, delta: 888 } : { ...b }
   ));
-  const healed = healClosedCandleOhlc(held, baked, liveEdge);
+  const healed = healClosedCandleOhlc(held, baked, liveEdge, "verified-correction");
   assert.equal(healed[5].askVolume, 999);
   assert.equal(healed[5].bidVolume, 111);
   assert.equal(healed[5].delta, 888);
@@ -67,13 +67,13 @@ const liveEdge = NOW - 2 * MIN;
 // 5. An already-correct series must not force a rebuild.
 assert.equal(healClosedCandleOhlc(baked.map((b) => ({ ...b })), baked, liveEdge), null);
 
-// 6. Price repair is unconditional. A plain chart without CVD/footprint must
-//    not keep a body-only live-built bar just because it did not request flow.
+// 6. An explicitly verified correction can repair plain charts too. Ordinary
+//    background snapshots are separately tested as backfill-only.
 {
   const held = baked.map((b, i) => (
     i === 12 ? { ...b, high: Math.max(b.open, b.close), low: Math.min(b.open, b.close) } : { ...b }
   ));
-  const healed = healClosedCandleIntegrity(held, baked, liveEdge, false);
+  const healed = healClosedCandleIntegrity(held, baked, liveEdge, false, "verified-correction");
   assert.ok(healed, "ordinary price charts must run the closed OHLC repair");
   assert.equal(healed[12].high, baked[12].high);
   assert.equal(healed[12].low, baked[12].low);
