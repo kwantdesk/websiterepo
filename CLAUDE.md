@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 Liquidity Map modal overlays and no focus outlines
+
+All native map dialogs now drive the existing parent overlay suppression through `observeLiquidityMapModals`, not only inspector settings. Add Instrument/Help must hide parent Trade and watermark because iframe top layer cannot cover parent DOM. Focus outlines/rings removed in main globals and iframe site CSS per owner preference. Asset revision `20261027-modal-overlays`. See `docs/prompt-log/2026-10-27-liquidity-map-modal-overlays.md`; wider suite baseline has nine existing source-assertion failures unchanged by this task.
+
+
 ## 2026-10-27 Big Contracts live/sample stability
 
 Fast admission rejects flow-only and unclassified records like the full pass, and uses canonical event IDs without a live prefix. Chart anchors arriving prints through the shared candle bucket/event-bar mapper and applies `mergeBigTradeLiveMarkers` for identity deduplication and the same per-bar display limit as sampling. Tests execute the actual Chart live handler with a manual minimum of 50, summary/unknown records, and stable minute coordinates. See `docs/prompt-log/2026-10-27-big-contracts-live-stability.md`. Preserve explicit clustering/session/adaptive settings; no VPS changes or trades.

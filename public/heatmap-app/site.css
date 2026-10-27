@@ -183,3 +183,14 @@ html[data-embed="true"] .cvd-panel header { background: var(--ui-bg); }
   html[data-embed="true"] .header-panel-shortcuts button { width: 28px; padding: 0; }
   html[data-embed="true"] .header-panel-shortcuts button > span { display: none; }
 }
+
+/* Focus should not add a white/accent outline or ring around any control. */
+:focus, :focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+.instrument-search-wrap:focus-within {
+  border-color: var(--ui-line-strong);
+  box-shadow: none;
+}

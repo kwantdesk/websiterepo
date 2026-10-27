@@ -2399,3 +2399,10 @@ select:-webkit-autofill {
 [data-gexbox-themed] [data-gexbox-role="strike"] {
   color: var(--gexbox-strike);
 }
+
+/* Owner preference: retain control styling without focus outlines/rings. */
+:focus, :focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}

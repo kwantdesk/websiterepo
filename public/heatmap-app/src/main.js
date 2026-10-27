@@ -1,3 +1,4 @@
+import { observeLiquidityMapModals } from './modal-overlay-bridge.js?v=20261027-modal-overlays';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
@@ -245,11 +246,14 @@ class DepthForgeApp {
       this.requestRender();
     }));
 
+    observeLiquidityMapModals(document.body, open => {
+      if (window.parent !== window) window.parent.postMessage({ type: 'kwantdesk:liquidity-map-inspector', open }, window.location.origin);
+    });
     this.inspectorDialog = createInspectorDialog({
       dialog: $('inspector'), title: $('inspectorTitle'),
       onChange: open => {
         if (!open) all('[data-panel-shortcut]').forEach(button => button.classList.remove('active'));
-        if (window.parent !== window) window.parent.postMessage({ type: 'kwantdesk:liquidity-map-inspector', open }, window.location.origin);
+
       },
     });
     $('panelCollapse').addEventListener('click', () => this.inspectorDialog.close());
