@@ -4,7 +4,8 @@ import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 import { acquireCockpitTypography } from "@/lib/cockpitTypography";
 
 import Link from "next/link";
-import { memo, useEffect, useLayoutEffect, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useRouter } from "next/navigation";
+import { memo, useEffect, useLayoutEffect, useRef, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -156,6 +157,14 @@ function AppSidebar({
   orientation = "vertical",
   tradesActive = false,
 }: AppSidebarProps) {
+  const router = useRouter();
+  const settingsWarmedAt = useRef(0);
+  const warmSettings = () => {
+    // Intent only: never poll/preload every route from a trading tab.
+    if (activeItem === "settings" || Date.now() - settingsWarmedAt.current < 30_000) return;
+    settingsWarmedAt.current = Date.now();
+    router.prefetch("/settings");
+  };
   useLayoutEffect(() => acquireCockpitTypography(document.body), []);
   useEffect(() => {
     // Crash forensics: records main-thread health so the next "Aw, Snap"
@@ -260,14 +269,19 @@ function AppSidebar({
 
           <div className="flex-1" />
 
-          <a
+          <Link
             href="/settings"
+            prefetch={false}
+            onPointerEnter={warmSettings}
+            onFocus={warmSettings}
+            onPointerDown={(event) => beginPointerNavigation(event, "settings")}
+            onClick={(event) => navigate(event, "settings", "/settings")}
             className={activeItem === "settings" ? verticalItemActive : verticalItemInactive}
             title="Settings"
           >
             <Settings className="h-[18px] w-[18px] shrink-0" />
             <span className={verticalItemLabel}>Settings</span>
-          </a>
+          </Link>
         </aside>
       </div>
     );
@@ -340,15 +354,20 @@ function AppSidebar({
             ? <img src={accountAvatarUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
             : <User className="h-3.5 w-3.5" strokeWidth={1.55} />}
         </button>
-        <a
+        <Link
           href="/settings"
+          prefetch={false}
+          onPointerEnter={warmSettings}
+          onFocus={warmSettings}
+          onPointerDown={(event) => beginPointerNavigation(event, "settings")}
+          onClick={(event) => navigate(event, "settings", "/settings")}
           className={activeItem === "settings" ? horizontalUtilityActive : horizontalUtilityInactive}
           title="Settings"
           aria-label="Settings"
         >
           <Settings className="h-3.5 w-3.5" strokeWidth={1.55} />
           {activeItem === "settings" ? <ActiveUnderline /> : null}
-        </a>
+        </Link>
       </div>
     </header>
   );

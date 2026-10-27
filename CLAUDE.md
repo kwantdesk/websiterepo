@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Navigation and DOM update response
+
+Settings links now use client navigation plus existing chart pointer-down pause handoff. Intent-only route prefetch is bounded to once per30s per sidebar; no global route warming/polling or auth bypass. PrivateTerminologyGuard uses processTerminologyMutations: changed attributes/text only, deduped batch values and highest inserted ancestor traversal. Preserve synchronous copy privacy and iframe initial scrubs.16 focused tests/build pass; lint0errors/2existing img warnings. See docs/prompt-log/2026-10-27-navigation-response.md.
+
+
 ## 2026-10-27 — Theme refresh paint
 
 Initial root bootstrap normalizes saved fields/catches unavailable storage before painting; CSS fallbacks match canonical defaultTheme. Sidebar migration must never save a default over the active palette. GEX Data/Kwanty startup seeds saved/same-origin parent colours before React host registration (bootstrap v20261027-theme-paint), retaining live host overrides. Liquidity Map initial canvas/defaults match the active palette too. Nine refresh/font regressions and nine brand checks pass; scoped lint zero errors/two existing warnings, production build passed. See docs/prompt-log/2026-10-27-theme-refresh-paint.md. No owner preference/data changes.
