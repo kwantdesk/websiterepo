@@ -1,3 +1,5 @@
+import { INDICATOR_GRADIENT_SCHEMES } from "../../public/shared/indicator-gradients.js";
+
 /**
  * Gradient schemes for volume profiles.
  *
@@ -19,30 +21,7 @@ export type VolumeProfileGradient = {
 
 export const VOLUME_PROFILE_GRADIENT_OFF = "off";
 
-export const VOLUME_PROFILE_GRADIENTS: readonly VolumeProfileGradient[] = [
-  /*
-   * The DeepChart scheme, matching the "Chromey Mono" theme.
-   *
-   * Red at the low end and high-voltage green at the high end, so a profile,
-   * a footprint cell and an indicator all fade the way that terminal reads:
-   * what is being sold at the bottom of the scale, what is being bought at the
-   * top, and nothing in between competing for attention.
-   */
-  { id: "chromey-mono", label: "Chromey Mono", from: "#C11414", to: "#00FF00" },
-  { id: "pink-blue", label: "Pink → Blue", from: "#FF2D95", to: "#2D9BFF" },
-  { id: "yellow-blue", label: "Yellow → Blue", from: "#FFE83D", to: "#2D6BFF" },
-  { id: "orange-green", label: "Orange → Green", from: "#FF7A1A", to: "#22E06B" },
-  { id: "red-yellow", label: "Red → Yellow", from: "#FF2D2D", to: "#FFD93D" },
-  { id: "black-white", label: "Black → White", from: "#0A0A0A", to: "#FFFFFF" },
-  { id: "pink-purple", label: "Pink → Purple", from: "#FF4FD8", to: "#7B2DFF" },
-  { id: "cyan-magenta", label: "Cyan → Magenta", from: "#00E5FF", to: "#FF00C8" },
-  { id: "lime-teal", label: "Lime → Teal", from: "#C6FF3D", to: "#00C2A8" },
-  { id: "violet-amber", label: "Violet → Amber", from: "#8B5CF6", to: "#FFB020" },
-  { id: "crimson-indigo", label: "Crimson → Indigo", from: "#FF1F5A", to: "#4B32FF" },
-  // Requested by the desk. `from` is the LOW end, so red sits at the bottom of
-  // the profile and lime at the top, which is the direction the labels read.
-  { id: "red-lime", label: "Red → Lime", from: "#FF0000", to: "#48FF03" },
-] as const;
+export const VOLUME_PROFILE_GRADIENTS: readonly VolumeProfileGradient[] = INDICATOR_GRADIENT_SCHEMES;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 

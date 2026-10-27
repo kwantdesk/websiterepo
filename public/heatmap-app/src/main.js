@@ -4,7 +4,7 @@ import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261027-stable-trade-bubbles';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261027-instrument-price-scale';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261027-footprint-palettes';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -19,7 +19,7 @@ import {
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from './live-market.js?v=20261027-instrument-price-scale';
-import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20261017-aleph-font';
+import { DEFAULT_PALETTE, FOOTPRINT_PALETTES, paletteCssGradient } from './palettes.js?v=20261027-footprint-palettes';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
@@ -181,6 +181,15 @@ class DepthForgeApp {
       pending: false,
       retryTimer: null,
     };
+    const footprintPalettes = document.createElement('optgroup');
+    footprintPalettes.label = 'Footprint palettes';
+    for (const scheme of FOOTPRINT_PALETTES) {
+      const option = document.createElement('option');
+      option.value = scheme.id;
+      option.textContent = scheme.label;
+      footprintPalettes.append(option);
+    }
+    $('paletteSelect').append(footprintPalettes);
     this.#bindControls();
     this.#enhanceInspectorSelects();
     this.#syncPaletteControls();
@@ -549,6 +558,13 @@ class DepthForgeApp {
         const check = document.createElement('i');
         check.textContent = '✓';
         button.append(copy, check);
+        if (select.id === 'paletteSelect') {
+          const swatch = document.createElement('span');
+          swatch.className = 'kwant-palette-swatch';
+          swatch.setAttribute('aria-hidden', 'true');
+          swatch.style.background = paletteCssGradient(option.value);
+          button.prepend(swatch);
+        }
         menu.append(button);
       };
 
