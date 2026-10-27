@@ -12,7 +12,7 @@ Owner: Gold/Micro Gold and every listed futures chart must load through the same
 
 ## Verification
 
-106 focused tests passed: every catalogue identity and venue, micro isolation, same-connection reference protocol, missing-only merge, fatal-login stop, history live edge/cache/wicks, footprint handoff and execution continuity. TypeScript, scoped ESLint and production build passed. Two legacy chart-loading source assertions already fail on HEAD (old cachedIsHydrated and chartVisualReady spellings); neither reflects the present loader logic. Critical-path test harness supplied the new contract validator; updated live-edge assertion allows genuine sparse bars to settle.
+107 focused tests passed: every catalogue identity and venue, micro isolation, same-connection reference protocol, missing-only merge, fatal-login stop, history live edge/cache/wicks, footprint handoff and execution continuity. TypeScript, scoped ESLint and production build passed. Two legacy chart-loading source assertions already fail on HEAD (old cachedIsHydrated and chartVisualReady spellings); neither reflects the present loader logic. Critical-path test harness supplied the new contract validator; updated live-edge assertion allows genuine sparse bars to settle.
 
 VPS API audit: 53 products × seven intervals = 371 successful non-empty history responses, zero invalid OHLC or duplicate/out-of-order timestamps, maximum 276 ms measured inside the gateway. These are API timings, not end-to-end browser timings. All rows below count real bars returned over the preceding seven calendar days. Closed sessions and quiet markets legitimately contain fewer bars.
 
@@ -79,3 +79,7 @@ Gateway reloaded once; existing services, credentials, recording mounts and hotp
 Limit: minute OHLCV replay does not recreate historical individual executions or L3 order books for newly collected products; CVD/footprint accuracy requires actual retained executions. Do not infer such data from these candles.
 
 Release and browser verification: pending below.
+
+VPS post-reload: health HTTP 200, connected/authenticated true. Gateway sampled 27.77% CPU, 853.3 MiB of its existing 5 GiB limit. Daily timer active, next run 2026-10-28 08:20 UTC. Runtime client SHA256 1c25e1143357ff6b52705a21de6ced10d41fd0dd208e57d91e4d405a6c6727e8; catalogue script f2421c970110e46ec5d4bc80c47647138b99b188e3ac212d449c92ae9655f859.
+
+Follow-up production browser gate caught a genuine contract-resolution cancellation race after e978166b: the effect cleanup aborted the shared CME transport, then the replacement effect reused that rejected promise and swallowed AbortError, leaving the loader indefinitely. A manual refresh with the now-stable GCZ6 contract rendered Gold with profile/CVD, confirming the source was available. Shared CME transport now follows the existing Market Index pattern: bounded request completes into symbol-scoped cache; cancelled pane effects do not present it. Added an actual extracted fetchWorkspaceCandles regression with two consumers and an aborted first controller; one transport must return real candles to the surviving effect. Full focused suite 107/107 and second build checked before follow-up release.

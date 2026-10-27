@@ -3907,11 +3907,14 @@ async function fetchWorkspaceCandles(
       const eventBased = isEventBasedChartInterval(timeframe);
       // The independent pane effect hydrates the supplemental execution tape.
       // Candle readiness must not wait for its potentially two-minute request.
+      // This transport is shared by sibling panes and the contract-resolution
+      // rerender. A single pane's cleanup must not abort everybody's request.
+      // The bounded request finishes into its symbol-scoped cache; each pane
+      // checks its own cancelled flag before presenting the result.
       const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(
         `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${auctionGapExpectedContract ? "&auctionGap=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
         isEventBasedChartInterval(timeframe) ? 285_000 : 45_000,
         forceFresh,
-        { signal },
       );
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
       const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);

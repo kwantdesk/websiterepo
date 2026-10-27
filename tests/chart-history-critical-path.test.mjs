@@ -78,6 +78,26 @@ test("underlying history uses one bounded archive request and rejects wrong symb
   await assert.rejects(load(input), /geometry/);
 });
 
+test("contract resolution rerender cannot abort a shared futures history request", async () => {
+  const candle={timestamp:1000,open:100,high:102,low:98,close:101,volume:20};
+  let release,requests=0;
+  const gate=new Promise(resolve=>{release=resolve});
+  const load=loadFunction('../src/components/KwantifyWorkspace.tsx','fetchWorkspaceCandles',{
+    getPeriodConfig:()=>({from:'2026-10-12'}),FALLBACK_CTRADER_BROKER_NAMES:[],OANDA_INSTRUMENT_MAP:{},OANDA_GRANULARITY_MAP:{},
+    getHistoricalCandleLimit:()=>10000,DEFAULT_CHART_HISTORY_CALENDAR_DAYS:10,workspaceCandleRequests:new Map(),isEventBasedChartInterval:()=>false,
+    fetchJsonWithBudget:async(_url,_budget,_fresh,options)=>{requests++;await gate;if(options?.signal?.aborted)throw new DOMException('Cancelled','AbortError');return {response:{ok:true},payload:{candles:[candle],executions:[]}}},
+    sanitizeCandles:rows=>rows,decodeExecutionTape:rows=>rows,mergeInstitutionalTradeTape:(a,b)=>[...a,...b],workspaceExecutionTape:new Map(),workspaceOrderFlowKey:()=> 'GC:1m',
+    writeChartHistoryCache:async()=>null,writeExecutionTapeCache:async()=>null,
+  });
+  const first=new AbortController(),second=new AbortController();
+  const beforeResolution=load('GC.v.0','1m','Databento','1W',500,false,first.signal);
+  first.abort();
+  const afterResolution=load('GC.v.0','1m','Databento','1W',500,false,second.signal);
+  release();
+  const results=await Promise.all([beforeResolution,afterResolution]);
+  assert.equal(requests,1);assert.equal(results[1][0],candle);
+});
+
 test("closed futures sessions do not hold history behind a live-seam network request", async () => {
   const load = loadFunction("../src/components/KwantifyWorkspace.tsx", "fetchWorkspaceLiveSeam", {
     scopedFuturesContract: () => 'NQZ6',
