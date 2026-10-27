@@ -57,5 +57,5 @@ export function useExactFootprintHistory(contract: string | null, sourceCandles:
   const records = useMemo(() => state.contract === contract && (replayTimestampMs == null || state.scope === scope)
     ? replayFootprintRecords(state.records.filter(row => row.timestamp >= fromMs && row.timestamp < toMs), intervalMs, replayTimestampMs) : EMPTY,
   [state.contract, state.records, state.scope, scope, contract, fromMs, toMs, intervalMs, replayTimestampMs]);
-  return { active, boundary: toMs, records, error: state.scope === scope ? state.error : null };
+  return { active, pending: active && state.scope !== scope, boundary: toMs, records, error: state.scope === scope ? state.error : null };
 }

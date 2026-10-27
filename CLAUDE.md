@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 Footprint history/live handoff
+
+Both Footprint sampled and imperative live base/profile builders now use `mergeFootprintHistoryRecords`: exact records own only buckets actually returned; uncovered/newly closed buckets keep raw tape until covered. Never replace exact closed rows with compacted live tape. First exact request uses existing themed loader; `footprintHistoryPresentedScopeRef` prevents reopening it at later candle boundaries. Hook exposes pending. No grouping/filter preference changes; owner currently uses Automatic/Fixed. 62 focused tests, including actual cache and gate; see `docs/prompt-log/2026-10-27-footprint-history-handoff.md`. Cold archival IO still has real latency; no missing flow is fabricated.
+
+
 ## 2026-10-27 Liquidity Map modal overlays and no focus outlines
 
 All native map dialogs now drive the existing parent overlay suppression through `observeLiquidityMapModals`, not only inspector settings. Add Instrument/Help must hide parent Trade and watermark because iframe top layer cannot cover parent DOM. Focus outlines/rings removed in main globals and iframe site CSS per owner preference. Asset revision `20261027-modal-overlays`. See `docs/prompt-log/2026-10-27-liquidity-map-modal-overlays.md`; wider suite baseline has nine existing source-assertion failures unchanged by this task.

@@ -251,6 +251,7 @@ import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
+import { mergeFootprintHistoryRecords } from '@/lib/footprintHistoryMerge';
 import { footprintProfileGranularityTicks } from "@/lib/footprintSettings";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { cancelChartFrameWork, queueChartFrameWork } from "@/lib/chartFrameWork";
@@ -4794,13 +4795,17 @@ function Chart({
           ? tape.length
           : lowerBound(tape, finalCandle.timestamp + clockIntervalMs),
       );
-      const bars = buildFootprintBarsCached(liveFootprintBaseBuildCacheRef, sourceCandles, visibleTape, buildSettings);
+      const exactHistory = exactFootprintHistoryRef.current;
+      const unifiedTape = mergeFootprintHistoryRecords(
+        exactHistory.active ? exactHistory.records : [], visibleTape, sourceCandles, clockIntervalMs,
+      );
+      const bars = buildFootprintBarsCached(liveFootprintBaseBuildCacheRef, sourceCandles, unifiedTape, buildSettings);
       const profileGroupTicks = liveFootprintProfileGroupTicksRef.current;
       const needsSeparateProfile = (
         primitiveOptions.showPerBarVolumeProfile || primitiveOptions.showPerBarDeltaProfile
       ) && profileGroupTicks !== buildSettings.groupTicks;
       const profileRows = needsSeparateProfile
-        ? new Map(buildFootprintBarsCached(liveFootprintProfileBuildCacheRef, sourceCandles, visibleTape, {
+        ? new Map(buildFootprintBarsCached(liveFootprintProfileBuildCacheRef, sourceCandles, unifiedTape, {
             ...buildSettings,
             groupTicks: profileGroupTicks,
           }).map((bar) => [bar.timestamp, bar.rows]))
@@ -6704,31 +6709,25 @@ function Chart({
   const exactFootprintHistory = useExactFootprintHistory(contractSymbol,
     footprintSourceCandles, timeframeToMs(timeframe), Boolean(footprintDataConsumer),
     marketIsActive === true, Number(footprintSettings.minimumTradeVolume ?? 0), Number(footprintSettings.maximumTradeVolume ?? 0), replayTimestampMs);
-  const footprintMarketTrades = useMemo(() => {
-    if (exactFootprintHistory.active) {
-      const end = (footprintSourceCandles.at(-1)?.timestamp ?? 0) + (timeframeToMs(timeframe) ?? 0);
-      return [...exactFootprintHistory.records, ...sampledIndicatorMarketTrades.filter(record =>
-        !record.flowOnly && record.timestamp >= exactFootprintHistory.boundary && record.timestamp < end)];
+  // Cold open paints the exact initial layout once; later candle/history
+  // requests keep the established footprint visible instead of reopening a loader.
+  const footprintInitialHistoryScope = [instrument, timeframe, contractSymbol].join(':');
+  const footprintHistoryPresentedScopeRef = useRef<string | null>(null);
+  const footprintAwaitInitialHistory = Boolean(footprintIndicator && exactFootprintHistory.active
+    && exactFootprintHistory.pending
+    && footprintHistoryPresentedScopeRef.current !== footprintInitialHistoryScope);
+  useEffect(() => {
+    if (footprintIndicator && exactFootprintHistory.active && !exactFootprintHistory.pending) {
+      footprintHistoryPresentedScopeRef.current = footprintInitialHistoryScope;
     }
-    if (!footprintSourceCandles.length || !sampledIndicatorMarketTrades.length) return [];
-    const start = footprintSourceCandles[0].timestamp;
-    const finalCandle = footprintSourceCandles.at(-1)!;
-    // See the live path: an event chart has no interval to add, so the tape
-    // runs to its end rather than being cut short of the forming bar.
-    const clockIntervalMs = timeframeToMs(timeframe);
-    const end = clockIntervalMs === null ? null : finalCandle.timestamp + clockIntervalMs;
-    const lowerBound = (timestamp: number) => {
-      let low = 0;
-      let high = sampledIndicatorMarketTrades.length;
-      while (low < high) {
-        const middle = (low + high) >>> 1;
-        if (sampledIndicatorMarketTrades[middle].timestamp < timestamp) low = middle + 1;
-        else high = middle;
-      }
-      return low;
-    };
-    return sampledIndicatorMarketTrades.slice(lowerBound(start), end === null ? sampledIndicatorMarketTrades.length : lowerBound(end));
-  }, [exactFootprintHistory.active, exactFootprintHistory.records, exactFootprintHistory.boundary, footprintSourceCandles, sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion, timeframe]);
+  }, [footprintIndicator, exactFootprintHistory.active, exactFootprintHistory.pending, footprintInitialHistoryScope]);
+  const exactFootprintHistoryRef = useRef(exactFootprintHistory);
+  exactFootprintHistoryRef.current = exactFootprintHistory;
+  const footprintMarketTrades = useMemo(() => mergeFootprintHistoryRecords(
+    exactFootprintHistory.active ? exactFootprintHistory.records : [],
+    sampledIndicatorMarketTrades, footprintSourceCandles, timeframeToMs(timeframe),
+  ), [exactFootprintHistory.active, exactFootprintHistory.records, footprintSourceCandles,
+    sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion, timeframe]);
   const resolvedFootprintGroupTicks = useMemo(() => {
     const manual = Math.max(1, Math.round(Number(footprintSettings.manualTicks ?? 1)));
     if (footprintSettings.groupingMode === "manual") return manual;
@@ -18946,7 +18945,7 @@ function Chart({
           />
         </>
       ) : null}
-      {!chartVisualReady ? (
+      {!chartVisualReady || footprintAwaitInitialHistory ? (
         <div className="pointer-events-auto absolute inset-0 z-[90]" style={{ backgroundColor: settings.backgroundColor }}>
           <KwantLoader
             className="h-full w-full"
