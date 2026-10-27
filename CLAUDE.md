@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 Liquidity Map bubble stability
+
+Executed-volume bubbles default/reset to gross; owner live Differential checkbox switched off. Both clustering stages and initial frame grouping now isolate fixed 250 ms source-execution windows. Incremental renderer refresh expands to full windows, including cancelled groups missing from cache, preventing depth-only resurrection of a one-sided net bubble. Density/reference volumes are per window. Asset revision: `20261027-stable-trade-bubbles`. See `docs/prompt-log/2026-10-27-liquidity-map-bubble-stability.md` and regression tests. No provider/VPS changes or trades. Explicit net cancellation remains optional; rolling history and selected minimums still apply.
+
+
 ## 2026-10-27 — Red actual-entry arrows
 
 - Filled entry markers are small red sideways arrows for both buy and sell.

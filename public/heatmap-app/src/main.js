@@ -1,8 +1,8 @@
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261017-aleph-font';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261024-freeze-recovery';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261027-stable-trade-bubbles';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261027-stable-trade-bubbles';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -59,7 +59,7 @@ const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   smartClustering: BOOKMAP_VISUAL_DEFAULTS.smartClustering,
   minimumTradeSize: BOOKMAP_VISUAL_DEFAULTS.minimumTradeSize,
   minimumPixelVolume: BOOKMAP_VISUAL_DEFAULTS.minimumPixelVolume,
-  bubbleDifferential: true,
+  bubbleDifferential: false,
   autoCenter: true,
   trails: true,
   grid: true,
@@ -1054,7 +1054,7 @@ class DepthForgeApp {
     $('showGrid').checked = true;
     this.#syncDomVisibilityControls(true);
     $('aggregateDepth').checked = false;
-    $('bubbleDifferential').checked = true;
+    $('bubbleDifferential').checked = false;
     $('toggleHeatmap').classList.add('active-toggle');
     $('toggleDom').classList.add('active-toggle');
     $('toggleTrades').classList.add('active-toggle');

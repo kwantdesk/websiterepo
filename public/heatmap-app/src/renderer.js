@@ -1,6 +1,7 @@
 import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261017-aleph-font';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
 import { writeHeatRgba } from './heat-raster.js?v=20261020-smooth-motion';
+import { tradeClusterWindowStart } from './depth-engine.js?v=20261027-stable-trade-bubbles';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1
@@ -170,6 +171,24 @@ export function planIncrementalTradeClusterRefresh(
     if (maximumIndex < candidateStart) continue;
     const minimumIndex = indexFor(cluster.minimumFrame);
     if (minimumIndex >= start) rebuildStart = Math.min(rebuildStart, minimumIndex);
+  }
+  // An erased net-zero cluster is absent from the cache, so provenance alone
+  // cannot protect its boundary. Re-read its WHOLE source-time window rather
+  // than resurrecting just one side during a depth-only cache refresh.
+  const earliest = frame => {
+    let timestamp = Number(frame?.timestamp);
+    for (const trade of frame?.trades || []) if (Number.isFinite(trade.timestamp)) timestamp = Math.min(timestamp, trade.timestamp);
+    return tradeClusterWindowStart(timestamp);
+  };
+  const latest = frame => {
+    let timestamp = Number(frame?.timestamp);
+    for (const trade of frame?.trades || []) if (Number.isFinite(trade.timestamp)) timestamp = Math.max(timestamp, trade.timestamp);
+    return tradeClusterWindowStart(timestamp);
+  };
+  let window = earliest(history[rebuildStart]);
+  while (rebuildStart > start && latest(history[rebuildStart - 1]) >= window) {
+    rebuildStart--;
+    window = Math.min(window, earliest(history[rebuildStart]));
   }
   const retained = (clusters || []).filter(cluster => {
     const maximumIndex = indexFor(cluster.maximumFrame);
