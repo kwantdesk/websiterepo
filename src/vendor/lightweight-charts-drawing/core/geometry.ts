@@ -1,4 +1,6 @@
-import type { Point } from './types';
+import type { Point, Viewport } from './types';
+import { drawingTextWidth, ellipseHitShape, pointHitsPaintedShape, rectangleHitShape } from '@/lib/drawingPaintedHit';
+import { siteCanvasFont } from '../../../lib/siteFont';
 
 /**
  * Line geometry with optional extensions
@@ -76,73 +78,46 @@ export type Geometry =
   | PolygonGeometry
   | TextGeometry;
 
-/**
- * Hit-test the geometry that is actually painted for a drawing.
- *
- * Individual tools can keep specialised hit testing, but this provides a
- * consistent interaction surface for every visible line, body, label and
- * shape. That prevents drawings from only being selectable by an anchor or
- * another tiny implementation-specific hotspot.
- */
-export function hitTestGeometry(
-  point: Point,
-  geometry: Geometry,
-  tolerance = 8
-): boolean {
+/** Hit only painted strokes and actual label bounds, never anchor boxes. */
+export function hitTestGeometry(point: Point, geometry: Geometry, tolerance = 2,
+  viewport?: Pick<Viewport, 'width' | 'height'>, baseWidth = 1): boolean {
+  const slop = Math.max(0, Math.min(2, tolerance));
   if (geometry.type === 'line') {
-    return distanceToLineSegment(point, geometry.start, geometry.end) <=
-      tolerance + Math.max(0, (geometry.lineWidth ?? 1) / 2);
+    if (geometry.opacity === 0 || geometry.strokeColor === 'transparent') return false;
+    const ends = viewport && (geometry.extendLeft || geometry.extendRight)
+      ? extendLineToViewport(geometry.start, geometry.end, viewport.width, viewport.height, !!geometry.extendLeft, !!geometry.extendRight)
+      : geometry;
+    return pointHitsPaintedShape(point, {points:[ends.start,ends.end],width:geometry.lineWidth ?? baseWidth,dash:geometry.lineDash}, slop);
   }
-
-  if (geometry.type === 'rectangle') {
-    const left = Math.min(geometry.topLeft.x, geometry.topLeft.x + geometry.width);
-    const right = Math.max(geometry.topLeft.x, geometry.topLeft.x + geometry.width);
-    const top = Math.min(geometry.topLeft.y, geometry.topLeft.y + geometry.height);
-    const bottom = Math.max(geometry.topLeft.y, geometry.topLeft.y + geometry.height);
-    return point.x >= left - tolerance && point.x <= right + tolerance &&
-      point.y >= top - tolerance && point.y <= bottom + tolerance;
-  }
-
   if (geometry.type === 'arc') {
-    const distance = Math.hypot(point.x - geometry.center.x, point.y - geometry.center.y);
-    return Math.abs(distance - geometry.radius) <= tolerance;
+    return pointHitsPaintedShape(point, ellipseHitShape(geometry.center.x, geometry.center.y,
+      geometry.radius,geometry.radius,0,geometry.startAngle,geometry.endAngle,geometry.counterClockwise,baseWidth),slop);
   }
-
   if (geometry.type === 'polygon') {
-    if (geometry.points.length === 0) return false;
-    for (let index = 0; index < geometry.points.length - 1; index += 1) {
-      if (distanceToLineSegment(point, geometry.points[index], geometry.points[index + 1]) <= tolerance) return true;
-    }
-    if (geometry.closed && geometry.points.length > 2) {
-      if (distanceToLineSegment(point, geometry.points.at(-1)!, geometry.points[0]) <= tolerance) return true;
-      let inside = false;
-      for (let current = 0, previous = geometry.points.length - 1; current < geometry.points.length; previous = current++) {
-        const a = geometry.points[current];
-        const b = geometry.points[previous];
-        if (((a.y > point.y) !== (b.y > point.y)) &&
-          point.x < ((b.x - a.x) * (point.y - a.y)) / ((b.y - a.y) || Number.EPSILON) + a.x) {
-          inside = !inside;
-        }
-      }
-      if (inside) return true;
-    }
-    return false;
+    return pointHitsPaintedShape(point,{points:geometry.points,closed:geometry.closed,width:baseWidth},slop);
   }
-
-  // Canvas text metrics are not available in the manager, so use a slightly
-  // generous label box. It is still bounded to the visible label itself.
-  const fontSize = Number.parseFloat(geometry.font ?? '') || 12;
-  const width = Math.max(12, geometry.text.length * fontSize * 0.68);
-  return Math.abs(point.x - geometry.position.x) <= width + tolerance &&
-    Math.abs(point.y - geometry.position.y) <= fontSize + tolerance;
+  if (geometry.type === 'rectangle') {
+    if (geometry.opacity === 0 || (geometry.fillColor && !geometry.strokeColor) || geometry.strokeColor === 'transparent') return false;
+    const center={x:geometry.topLeft.x+geometry.width/2,y:geometry.topLeft.y+geometry.height/2};
+    const local=geometry.rotation?rotatePoint(point,center,-geometry.rotation):point;
+    const left=Math.min(geometry.topLeft.x,geometry.topLeft.x+geometry.width),top=Math.min(geometry.topLeft.y,geometry.topLeft.y+geometry.height);
+    const width=Math.abs(geometry.width),height=Math.abs(geometry.height),radius=Math.min(Math.max(0,geometry.borderRadius??0),width/2,height/2);
+    if (!radius) return pointHitsPaintedShape(local,rectangleHitShape(left,top,width,height,geometry.lineWidth??baseWidth),slop);
+    const qx=Math.abs(local.x-center.x)-(width/2-radius),qy=Math.abs(local.y-center.y)-(height/2-radius);
+    const distance=Math.hypot(Math.max(qx,0),Math.max(qy,0))+Math.min(Math.max(qx,qy),0)-radius;
+    return Math.abs(distance)<=slop+(geometry.lineWidth??baseWidth)/2;
+  }
+  if (geometry.color === 'transparent' || !geometry.text) return false;
+  const font=siteCanvasFont(geometry.font),size=Number(font.match(/([\d.]+)px/)?.[1])||12;
+  const width=drawingTextWidth(geometry.text,font);
+  const left=geometry.align==='right'||geometry.align==='end'?-width:geometry.align==='center'?-width/2:0;
+  const top=geometry.baseline==='middle'?-size/2:geometry.baseline==='top'||geometry.baseline==='hanging'?0: -size;
+  const local=geometry.rotation?rotatePoint(point,geometry.position,-geometry.rotation):point;
+  return pointHitsPaintedShape({x:local.x-geometry.position.x,y:local.y-geometry.position.y},rectangleHitShape(left,top,width,size,0,true),0);
 }
-
-export function hitTestGeometries(
-  point: Point,
-  geometries: Geometry[],
-  tolerance = 8
-): boolean {
-  return geometries.some((geometry) => hitTestGeometry(point, geometry, tolerance));
+export function hitTestGeometries(point: Point, geometries: Geometry[], tolerance = 2,
+  viewport?: Pick<Viewport, 'width' | 'height'>, baseWidth = 1): boolean {
+  return geometries.some(geometry=>hitTestGeometry(point,geometry,tolerance,viewport,baseWidth));
 }
 
 /**

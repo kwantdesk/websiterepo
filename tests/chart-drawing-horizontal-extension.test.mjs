@@ -39,6 +39,7 @@ test("only tools with meaningful horizontal geometry expose extension controls",
   assert.match(settings, /\["left", "Left"\]/);
   assert.match(settings, /\["right", "Right"\]/);
   assert.match(settings, /\["both", "Both"\]/);
-  assert.ok((layer.match(/horizontalExtensionBounds\(/g) ?? []).length >= 4,
-    "renderer and both pointer hit paths must share the edge geometry");
+  assert.ok(layer.includes("chartSvgHitTargets(body, allowBodyFills, interactive)"));
+  assert.ok((layer.match(/horizontalExtensionBounds\(/g) ?? []).length >= 2,
+    "renderer owns the extension geometry");
 });

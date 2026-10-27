@@ -91,13 +91,11 @@ test("price snap and ray extension are deterministic", () => {
   assert.equal(fibPrice(100, 200, 0.618, true), 138.2);
 });
 
-test("precision drawings can be selected anywhere on their rendered geometry", () => {
+test("precision hit testing consumes each actual tool painter instead of anchor bounds", () => {
   const hitTesting = read("src/chart/precision-tools/hitTesting.ts");
-  assert.match(hitTesting, /precision-fibonacci-retracement/);
-  assert.match(hitTesting, /Math\.min\(\.\.\.ys\)/);
-  assert.match(hitTesting, /precision-fibonacci-fan/);
-  assert.match(hitTesting, /precision-volume-profile/);
-  assert.match(hitTesting, /precision-parallel-line/);
+  assert.match(hitTesting, /precisionPaintedHitShapes/);
+  assert.match(hitTesting, /pointHitsPaintedShape/);
+  assert.doesNotMatch(hitTesting, /Math\.min\(\.\.\.ys\)/);
 });
 
 test("pencil RDP removes redundant points while preserving endpoints", () => {
@@ -171,10 +169,11 @@ test("trade calculators respect futures tick size and point value", () => {
 test("buy and sell calculators expose a complete draggable resize frame", () => {
   const hitTesting = read("src/chart/precision-tools/hitTesting.ts");
   const renderer = read("src/chart/precision-tools/renderer.ts");
-  assert.match(hitTesting, /export function tradeCalculatorResizeHandles/);
-  assert.match(hitTesting, /\{ x: left, y: top \}/);
-  assert.match(hitTesting, /\{ x: right, y: bottom \}/);
-  assert.match(hitTesting, /kind: "resize", handleIndex: index/);
+  const screenGeometry = read("src/chart/precision-tools/screenGeometry.ts");
+  assert.match(screenGeometry, /export function tradeCalculatorResizeHandles/);
+  assert.match(screenGeometry, /\{ x: left, y: top \}/);
+  assert.match(screenGeometry, /\{ x: right, y: bottom \}/);
+  assert.match(hitTesting, /kind:"resize",handleIndex:i/);
   assert.match(renderer, /tradeCalculatorResizeHandles\(anchors\)/);
   const layer = read("src/chart/precision-tools/PrecisionToolsLayer.tsx");
   assert.match(layer, /isTradeCalculator && drag\.original\.anchors\.length >= 3/);

@@ -123,7 +123,7 @@ test("fib retracement honours the magnet and has persistent Kwant Fib settings",
 });
 
 test("the full visible body of every drawing is selectable, movable and deletable", () => {
-  assert.match(drawingManager, /hitTestGeometries\(point, drawing\.computeGeometry\(viewport\), 8\)/);
+  assert.match(drawingManager, /hitTestDrawingPaint\(drawing, point, viewport\)/);
   assert.match(drawingGeometry, /export function hitTestGeometry/);
   assert.match(drawingGeometry, /geometry\.type === 'rectangle'/);
   assert.match(drawingGeometry, /geometry\.type === 'polygon'/);

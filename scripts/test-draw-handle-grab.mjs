@@ -1,19 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-/**
- * A grab handle has to be big enough to actually grab.
- *
- * Every handle was a bare r=4.5 circle, so the grabbable region ended about
- * six pixels from its centre — measured in the live layer with
- * elementFromPoint. Aim for a dot and land seven pixels out and the pointer
- * hit the body layer underneath instead, which MOVES the drawing. So a resize
- * silently became a drag, on every tool that has handles: trend lines, rays,
- * rectangles, fibs, the position calculators, all of them.
- *
- * The dot still draws at 4.5 so nothing looks different. What changed is the
- * transparent circle around it that the pointer actually catches.
- */
+/** Visible grab handles retain their resize behaviour, with a small target
+ * allowance that cannot steal chart panning from distant empty space. */
 
 const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
 
@@ -26,13 +15,11 @@ const radius = (name) => {
   return Number(match[1]);
 };
 
-check("the target is far bigger than the dot", () => {
-  const dot = radius("HANDLE_DOT_RADIUS_PX");
-  const hit = radius("HANDLE_HIT_RADIUS_PX");
-  assert.ok(hit >= dot * 2, `the grabbable area must dwarf the dot — dot ${dot}, hit ${hit}`);
-  // Below about ten pixels a handle is not reliably hittable with a mouse,
-  // and missing it does not do nothing: it drags the whole drawing.
-  assert.ok(hit >= 10, `a ${hit}px reach is still too small to aim at`);
+check("handle reach follows the visible dot with a small allowance", () => {
+  const shared=readFileSync(new URL("../src/lib/drawingPaintedHit.ts",import.meta.url),"utf8");
+  const hit=Number(shared.match(/DRAWING_HANDLE_HIT_RADIUS = ([\d.]+)/)[1]);
+  assert.ok(hit >= radius("HANDLE_DOT_RADIUS_PX") && hit <= 6);
+  assert.ok(layer.includes("const HANDLE_HIT_RADIUS_PX = DRAWING_HANDLE_HIT_RADIUS"));
 });
 
 check("the dot itself did not change size", () => {
@@ -47,7 +34,7 @@ check("every handle goes through the one helper", () => {
   // single tip handle. All three had the same unreachable target.
   const block = layer.slice(layer.indexOf("const grabHandle = ("), layer.indexOf("return (\n      <g"));
   assert.match(block, /fillMarkerHandle\s*\?\s*grabHandle\(/, "the fill marker's handle");
-  assert.match(block, /positionCorners\s*\n?\s*\?\s*positionCorners\.map\(\(corner\) => grabHandle\(/, "the position corners");
+  assert.ok(block.includes(".map((corner) => grabHandle("), "the position corners");
   assert.match(block, /\)\.map\(\(\{ point, index \}\) => grabHandle\(/, "the generic per-point handles");
   // And none of them may hand-roll a circle with its own pointer handling.
   assert.doesNotMatch(

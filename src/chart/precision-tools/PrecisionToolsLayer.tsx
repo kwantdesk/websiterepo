@@ -563,7 +563,7 @@ export default function PrecisionToolsLayer({
       const rect = canvas.getBoundingClientRect();
       const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       if (point.x < 0 || point.y < 0 || point.x > rect.width || point.y > rect.height) return;
-      const hit = hitTestObjects(liveSnapshot.objects, point, current.adapter);
+      const hit = hitTestObjects(liveSnapshot.objects, point, current.adapter, 2, liveSnapshot.selectedIds);
       if (!hit) return;
       const target = liveSnapshot.objects.find((object) => object.id === hit.objectId);
       if (!target || target.visibility.locked) return;
@@ -593,7 +593,7 @@ export default function PrecisionToolsLayer({
       return;
     }
     if (snapshot.toolbar.mode === "select") {
-      const hit = hitTestObjects(snapshot.objects, point, adapter);
+      const hit = hitTestObjects(snapshot.objects, point, adapter, 2, snapshot.selectedIds);
       if (!hit) {
         store.select([]);
         lassoRef.current = { start: point, end: point };

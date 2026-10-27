@@ -23,6 +23,7 @@ import type {
 import { numericTimeToCoordinate } from './coordinate-utils';
 import { DEFAULT_DRAWING_STYLE } from './types';
 import type { Geometry } from './geometry';
+import { hitTestDrawingPaint } from './painted-hit';
 
 /**
  * Abstract base class for all drawing tools.
@@ -159,7 +160,7 @@ export abstract class Drawing implements IDrawing {
     if (!viewport) return null;
 
     const point: Point = { x, y };
-    const hit = this.testHit(point, viewport);
+    const hit = hitTestDrawingPaint(this, point, viewport);
 
     if (hit) {
       return {
@@ -227,8 +228,9 @@ export abstract class Drawing implements IDrawing {
    * Test if point hits an anchor control point
    */
   hitTestAnchor(point: Point, viewport: Viewport): number | null {
+    if (this._options.visible === false) return null;
     const controlPoints = this.getControlPoints(viewport);
-    const threshold = 8; // pixels
+    const threshold = 6; // visible control point plus a small CSS-pixel allowance
 
     for (const cp of controlPoints) {
       const dx = point.x - cp.x;

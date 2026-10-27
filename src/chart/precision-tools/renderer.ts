@@ -1,6 +1,7 @@
+import { paintedHitContext } from "@/lib/drawingPaintedHit";
 import { buildExecutedVolumeProfile, calculateAnchoredVwap, calculateTradeRisk, clamp, extendRay, fibPrice } from "./math";
 import { fineVolumeProfileWidth } from "@/lib/volumeProfileWidth";
-import { objectScreenAnchors, tradeCalculatorResizeHandles } from "./hitTesting";
+import { objectScreenAnchors, shapeHandles, tradeCalculatorResizeHandles } from "./screenGeometry";
 import type { PrecisionChartAdapter, PrecisionMetrics, PrecisionObject, PrecisionScreenPoint, PrecisionTheme } from "./types";
 
 const analyticalProfileCache = new Map<string, { key: string; value: ReturnType<typeof buildExecutedVolumeProfile> }>();
@@ -81,10 +82,6 @@ function formatPrice(value: number, adapter: PrecisionChartAdapter): string {
   return value.toFixed(adapter.precision);
 }
 
-function shapeHandles(a: PrecisionScreenPoint, b: PrecisionScreenPoint): PrecisionScreenPoint[] {
-  const left = Math.min(a.x, b.x), right = Math.max(a.x, b.x), top = Math.min(a.y, b.y), bottom = Math.max(a.y, b.y);
-  return [{ x: left, y: top }, { x: (left + right) / 2, y: top }, { x: right, y: top }, { x: right, y: (top + bottom) / 2 }, { x: right, y: bottom }, { x: (left + right) / 2, y: bottom }, { x: left, y: bottom }, { x: left, y: (top + bottom) / 2 }];
-}
 
 function drawHandles(ctx: CanvasRenderingContext2D, points: PrecisionScreenPoint[], theme: PrecisionTheme): void {
   ctx.save(); ctx.setLineDash([]); ctx.lineWidth = 1.25; ctx.strokeStyle = theme.primary; ctx.fillStyle = theme.background;
@@ -349,4 +346,12 @@ export function renderPrecisionInteractionCanvas(
   line(ctx, { x: 0, y: pointer.y }, { x: adapter.width - adapter.priceScaleWidth, y: pointer.y });
   line(ctx, { x: pointer.x, y: 0 }, { x: pointer.x, y: adapter.height - adapter.timeScaleHeight });
   ctx.restore();
+}
+
+/** Hit paths come from every real tool painter, including analytical curves. */
+export function precisionPaintedHitShapes(object: PrecisionObject, adapter: PrecisionChartAdapter, selected = false) {
+  const collector = paintedHitContext(object.toolId === "precision-volume-profile" || object.toolId === "precision-buy-calculator" || object.toolId === "precision-sell-calculator");
+  const theme: PrecisionTheme = { background:"#000",panel:"#111",surface:"#222",border:"#333",foreground:"#fff",muted:"#888",primary:"#00ffff",bullish:"#00ff00",bearish:"#ff0000" };
+  renderObject(collector.context,object,adapter,theme,selected);
+  return collector.shapes;
 }

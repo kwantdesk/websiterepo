@@ -1,5 +1,11 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Drawing targets follow visible paint
+
+Owner reported trend lines grabbing far from their stroke and Fibonacci gaps dragging the tool. SVG multi-anchor transparent bounding rectangles removed. Hit targets mirror actual SVG strokes/labels, plus actual filled position/arrow/profile marks; eraser/placement keeps non-intercepting geometry targets. Precision and Professional canvas use their actual painters through drawingPaintedHit; manager and primitive no longer OR broad legacy testHit with bounding geometries. Two CSS-pixel stroke allowance, six-pixel selected handle radius; hidden drawings/anchors cannot capture.
+
+Inventory: 62 SVG, 17 Precision, 106 Professional implementations, enumerated in docs/prompt-log/2026-10-27-drawing-painted-hit-targets.md. 244 focused tests, handle checks 10/10, TypeScript, scoped ESLint and build pass. Local browser native path consistency checked all 62 SVG tools (32,364 points), real trend-line/Fib gap drags pan with zero drawing updates, direct strokes move correctly; eraser query passes. Manual drag checks are those two reported tools, not every setting combination. No owner workspace, account/trade, feed or VPS changes. Keep actual paint as interaction authority; do not reintroduce invisible anchor boxes or generic anchor connectors.
+
 ## Cross-device account/workspace synchronization — 2026-10-27
 
 Replaced upload-only preference upserts with RLS-scoped CAS/rebase and empty realtime change hints plus focus/online/30s visible recovery. Quote-only marks do not trigger cloud saves. Keep acknowledged base separate from in-flight/offline edits. Selected demo account, global favourites, links and professional drawings are tracked; mounted workspace/drawing consumers and standalone Home/Accounts restore revisions. New resting-order/exit-stage IDs are deterministic across devices; existing IDs untouched. 115 focused tests, TypeScript/lint/full build pass. Five legacy paper integration text assertions reproduce on HEAD. Physical phone untested; reload both devices after release. Demo execution is STILL browser-owned: unattended server simulation remains open. See `docs/prompt-log/2026-10-27-cross-device-account-state.md`.

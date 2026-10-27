@@ -1,5 +1,8 @@
 "use client";
 
+import { chartSvgHitTargets, chartSvgBodyHit } from "@/lib/chartSvgHitTargets";
+import { DRAWING_HANDLE_HIT_RADIUS } from "@/lib/drawingPaintedHit";
+
 import { useChartDrawingClipboard } from './useChartDrawingClipboard';
 
 import { clampPositionStopPrice, nearestPositionHandle } from "@/lib/positionToolConstraints";
@@ -1129,55 +1132,25 @@ export default function ChartDrawLayer({
     if (px == null || py == null) return null;
     for (let i = drawings.length - 1; i >= 0; i -= 1) {
       const drawing = drawings[i];
+      if (drawing.style.visible === false) continue;
       const coords = drawing.points.map((p) => ({ x: toX(p.time), y: toY(p.price) }));
-      if (drawing.tool === "longPosition" || drawing.tool === "shortPosition") {
+      if (drawing.id === selectedId && (drawing.tool === "longPosition" || drawing.tool === "shortPosition")) {
         const corners = positionToolScreenGeometry(coords)?.corners ?? [];
-        const corner = nearestPositionHandle([...corners].sort((a, b) => Number(a.edge === "stop") - Number(b.edge === "stop")), px, py);
+        const corner = nearestPositionHandle([...corners].sort((a, b) => Number(a.edge === "stop") - Number(b.edge === "stop")), px, py, DRAWING_HANDLE_HIT_RADIUS);
         if (corner) return { id: drawing.id, handleIndex: corner.edge === "stop" ? 1 : 2, positionCorner: corner };
       }
-      for (let h = 0; h < coords.length; h += 1) {
+      for (let h = 0; drawing.id === selectedId && h < coords.length; h += 1) {
+        if (DRAW_TOOL_SPECS[drawing.tool].points === "freehand" && h !== 0 && h !== coords.length - 1) continue;
         const c = coords[h];
-        if (c.x != null && c.y != null && Math.hypot(c.x - px, c.y - py) <= 8) return { id: drawing.id, handleIndex: h };
+        if (c.x != null && c.y != null && Math.hypot(c.x - px, c.y - py) <= DRAWING_HANDLE_HIT_RADIUS) return { id: drawing.id, handleIndex: h };
       }
       if (bodyHit(drawing, coords, px, py)) return { id: drawing.id, handleIndex: null };
     }
     return null;
   };
 
-  const bodyHit = (drawing: Drawing, coords: XY[], px: number, py: number): boolean => {
-    const a = coords[0];
-    if (a.x == null || a.y == null) return false;
-    if (drawing.tool === "emoji") {
-      const size = emojiScreenSize(drawing, a.x, a.y);
-      return Math.abs(px - a.x) <= size / 2 + 5 && Math.abs(py - a.y) <= size / 2 + 5;
-    }
-    if (drawing.tool === "horizontalLine" || drawing.tool === "horizontalRay") {
-      return Math.abs(py - a.y) <= 6 && (drawing.tool === "horizontalLine" || px >= a.x);
-    }
-    if (drawing.tool === "verticalLine" || drawing.tool === "crossLine") {
-      return Math.abs(px - a.x) <= 6 || (drawing.tool === "crossLine" && Math.abs(py - a.y) <= 6);
-    }
-    if (["rectangle", "ellipse", "circle", "fibRetracement", "priceRange", "dateRange", "datePriceRange", "brush", "highlighter", "longPosition", "shortPosition", "entryArrow", "exitArrow"].includes(drawing.tool)) {
-      const xs = coords.map((c) => c.x).filter((v): v is number => v != null);
-      const ys = coords.map((c) => c.y).filter((v): v is number => v != null);
-      if (!xs.length) return false;
-      const horizontalBounds = drawing.tool === "rectangle" || drawing.tool === "fibRetracement"
-        ? horizontalExtensionBounds(
-            Math.min(...xs),
-            Math.max(...xs),
-            Math.max(0, width - priceScaleWidth),
-            drawing.style.horizontalExtension,
-          )
-        : { left: Math.min(...xs), right: Math.max(...xs) };
-      return px >= horizontalBounds.left - 4 && px <= horizontalBounds.right + 4 && py >= Math.min(...ys) - 4 && py <= Math.max(...ys) + 4;
-    }
-    // default: near any segment
-    for (let i = 0; i < coords.length - 1; i += 1) {
-      const c = coords[i]; const d = coords[i + 1];
-      if (c.x != null && c.y != null && d.x != null && d.y != null && pointToSegment(px, py, c.x, c.y, d.x, d.y) <= 6) return true;
-    }
-    return false;
-  };
+  const bodyHit = (drawing: Drawing, _coords: XY[], px: number, py: number): boolean =>
+    chartSvgBodyHit(svgRef.current, drawing.id, px, py);
 
   // ---- rendering ----
   const renderDrawing = (drawing: Drawing, preview = false): ReactElement | null => {
@@ -1704,42 +1677,8 @@ export default function ChartDrawLayer({
     // anchor dots alone.
     const bodyMovable = drawing.tool !== "fixedRangeVolumeProfile" && drawing.tool !== "anchoredVolumeProfile";
     const valid = coords.filter((p) => p.x != null && p.y != null) as { x: number; y: number }[];
-    const xs = valid.map((p) => p.x); const ys = valid.map((p) => p.y);
-    const hitHorizontalBounds = valid.length >= 2 && (drawing.tool === "rectangle" || drawing.tool === "fibRetracement")
-      ? horizontalExtensionBounds(
-          Math.min(...xs),
-          Math.max(...xs),
-          Math.max(0, width - priceScaleWidth),
-          drawing.style.horizontalExtension,
-          EDGE_OVERSCAN,
-        )
-      : null;
-    // Transparent fat hit layer so thin lines and shape interiors are easy to
-    // grab; single-anchor tools get a hit line/dot instead.
-    const hit = interactive ? (
-      <g data-draw-hit="body" style={{ pointerEvents: "all" }}>
-        {["horizontalLine", "horizontalRay"].includes(drawing.tool) && a.y != null
-          ? <line x1={0} y1={a.y} x2={width} y2={a.y} stroke="transparent" strokeWidth={12} />
-          : ["verticalLine", "crossLine"].includes(drawing.tool) && a.x != null
-            ? <>{<line x1={a.x} y1={0} x2={a.x} y2={height} stroke="transparent" strokeWidth={12} />}{drawing.tool === "crossLine" && a.y != null ? <line x1={0} y1={a.y} x2={width} y2={a.y} stroke="transparent" strokeWidth={12} /> : null}</>
-            : valid.length >= 2
-              ? <>
-                  <polyline points={valid.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke="transparent" strokeWidth={12} />
-                  <rect x={hitHorizontalBounds?.left ?? Math.min(...xs)} y={Math.min(...ys)} width={Math.max(1, (hitHorizontalBounds?.right ?? Math.max(...xs)) - (hitHorizontalBounds?.left ?? Math.min(...xs)))} height={Math.max(1, Math.max(...ys) - Math.min(...ys))} fill="transparent" />
-                </>
-              : valid.length === 1
-                ? drawing.tool === "emoji"
-                  ? <rect
-                      x={valid[0].x - emojiScreenSize(drawing, valid[0].x, valid[0].y) / 2 - 5}
-                      y={valid[0].y - emojiScreenSize(drawing, valid[0].x, valid[0].y) / 2 - 5}
-                      width={emojiScreenSize(drawing, valid[0].x, valid[0].y) + 10}
-                      height={emojiScreenSize(drawing, valid[0].x, valid[0].y) + 10}
-                      fill="transparent"
-                    />
-                  : <circle cx={valid[0].x} cy={valid[0].y} r={12} fill="transparent" />
-                : null}
-      </g>
-    ) : null;
+    const allowBodyFills = ["longPosition", "shortPosition", "entryArrow", "exitArrow", "fixedRangeVolumeProfile", "anchoredVolumeProfile"].includes(drawing.tool);
+    const hit = !preview ? <g data-draw-hit="body" aria-hidden="true" style={{ pointerEvents: "none" }}>{chartSvgHitTargets(body, allowBodyFills, interactive)}</g> : null;
     const positionCorners = positionGeometry?.corners ?? null;
     // One handle, at the point of the triangle. Anywhere closer would sit
     // under the anchor dot and be unreachable.
@@ -1764,16 +1703,7 @@ export default function ChartDrawLayer({
     const emojiResizeHandle = emojiSize != null && a.x != null && a.y != null
       ? { x: a.x + emojiSize / 2, y: a.y + emojiSize / 2 }
       : null;
-    /**
-     * A grab handle: a small visible dot with a much larger invisible target.
-     *
-     * The dots were bare r=4.5 circles, so the grabbable region ended about
-     * six pixels from their centre — measured. Aim for one and land seven
-     * pixels out and the pointer instead hit the body layer underneath, which
-     * MOVES the drawing. So a resize silently became a drag, on every tool
-     * that has handles. The dot still draws at 4.5 so nothing looks different;
-     * the transparent circle around it is what the pointer actually catches.
-     */
+    // Handles use their visible dot plus a small CSS-pixel allowance.
     const grabHandle = (
       key: string,
       x: number,
@@ -1842,7 +1772,7 @@ export default function ChartDrawLayer({
           : undefined}
         onDoubleClick={interactive ? () => onOpenSettings(drawing.id) : undefined}
       >
-        {body}
+        <g style={{ pointerEvents: "none" }}>{body}</g>
         {hit}
         {handles}
       </g>
@@ -2051,12 +1981,11 @@ const FILL_MARKER_MIN_HALF_HEIGHT_PX = 3;
  * Grab handles: what is drawn, and what the pointer can actually catch.
  *
  * The visible dot stays small so it does not cover the price action it marks.
- * The target around it is what makes it grabbable — a nine-pixel dot is far
- * below what anyone can hit reliably, and missing it does not do nothing, it
- * drags the whole drawing instead.
+ * The target adds only a small allowance; blank space outside the visible
+ * dot must remain available to pan the chart.
  */
 const HANDLE_DOT_RADIUS_PX = 4.5;
-const HANDLE_HIT_RADIUS_PX = 11;
+const HANDLE_HIT_RADIUS_PX = DRAWING_HANDLE_HIT_RADIUS;
 
 function extend(x1: number, y1: number, x2: number, y2: number, w: number, h: number) {
   const dx = x2 - x1; const dy = y2 - y1;
@@ -2078,12 +2007,4 @@ function projectY(a: XY, b: XY, c: XY): number {
   if (a.x == null || b.x == null || c.x == null || b.x === a.x) return a.y ?? 0;
   const slope = (b.y! - a.y!) / (b.x - a.x);
   return a.y! + slope * (c.x - a.x);
-}
-
-function pointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
-  const dx = bx - ax; const dy = by - ay; const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
