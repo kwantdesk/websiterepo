@@ -1,5 +1,3 @@
-@font-face{font-family:Aleph;src:url('/fonts/aleph/Aleph-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
-@font-face{font-family:Aleph;src:url('/fonts/aleph/Aleph-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
 html,body{background:var(--site-background);color:var(--site-foreground);font-family:Aleph,sans-serif}
 button,input,select,textarea,.qfe,.qfe-json{font-family:Aleph,sans-serif}
 .brand{display:none!important}.topbar{justify-content:flex-start!important;min-height:38px!important;padding:4px 10px!important}.top-actions{margin-left:0!important;gap:6px!important}

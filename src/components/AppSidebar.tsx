@@ -1,9 +1,10 @@
 "use client";
 
 import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
+import { acquireCockpitTypography } from "@/lib/cockpitTypography";
 
 import Link from "next/link";
-import { memo, useEffect, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useLayoutEffect, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -156,12 +157,11 @@ function AppSidebar({
   orientation = "vertical",
   tradesActive = false,
 }: AppSidebarProps) {
+  useLayoutEffect(() => acquireCockpitTypography(document.body), []);
   useEffect(() => {
     // Crash forensics: records main-thread health so the next "Aw, Snap"
     // leaves a final snapshot behind instead of an empty tab.
     startRendererHealthRecorder();
-    const body = document.body;
-    body.classList.add("kwant-cockpit-ui");
 
     // Keep the legacy one-time migration marker so existing traders are not
     // repainted. Fresh browsers receive the current defaultTheme, while the
@@ -172,7 +172,6 @@ function AppSidebar({
       writeProtectedItem(migrationKey, "applied");
     }
 
-    return () => body.classList.remove("kwant-cockpit-ui");
   }, []);
 
   const beginNavigation = (key: SidebarKey) => {

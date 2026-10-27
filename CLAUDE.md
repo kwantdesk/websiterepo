@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-27 — Stable font transitions
+
+Canonical Aleph @font-face now uses display:block instead of swap, retaining bounded browser failure handling rather than a page-wide hide gate. GEX/Kwanty use the same versioned font stylesheet and preload both Regular/Bold; duplicate swap declarations removed. Liquidity Map/recovery CSS and iframe versions updated to20261027-stable-font. AppSidebar typography ownership moved to useLayoutEffect with acquireCockpitTypography reference counting, preventing post-paint route scope changes or overlapping-shell cleanup. Do not move it back into passive theme/forensics effects. Family, sizes and existing public/marketing scroll behavior retained.9 font checks/build pass; scoped lint0errors/3existing warnings. See docs/prompt-log/2026-10-27-font-transition-stability.md.
+
 ## 2026-10-27 — Footprint palettes on Liquidity Map
 
 All12 Footprint/profile gradient schemes now also appear in LIQ MAP Display > Heat palette > Footprint palettes, with swatches. Canonical data lives in public/shared/indicator-gradients.js (+.d.ts), imported by volumeProfileGradients.ts and the static heatmap; do not duplicate endpoints. Heat LUT stays dark at0, exact from at20%, exact to at100%; existing dimming applies. Buy/bid uses to, sell/ask uses from through existing legibility rules. Old palettes/default and preference bridge retained. Asset revision20261027-footprint-palettes covers iframe/main/renderer/palette/site CSS.16 tests, footprint script8/8, lint/build pass; legacy gradient script Chromey theme-name assertion already fails with identical HEAD label after prior theme pruning. See docs/prompt-log/2026-10-27-liquidity-footprint-palettes.md. No data/feed changes.
