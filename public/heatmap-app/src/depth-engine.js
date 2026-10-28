@@ -2,7 +2,16 @@ const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, v
 const RAW_COLUMN_GEOMETRY_CACHE_LIMIT = 2;
 const MAX_VISIBLE_TRADE_CLUSTERS = 2_500;
 export const TRADE_CLUSTER_WINDOW_MS = 250;
-export const tradeClusterWindowStart = timestamp => Math.floor(Number(timestamp) / TRADE_CLUSTER_WINDOW_MS) * TRADE_CLUSTER_WINDOW_MS;
+export const tradeClusterWindowStart = (timestamp, windowMs = TRADE_CLUSTER_WINDOW_MS) => Math.floor(Number(timestamp) / windowMs) * windowMs;
+
+// Keep settled source-time buckets deterministic. Gross-volume clustering can
+// span a wider burst; differential cancellation stays in the original window.
+export function tradeClusterWindowMs(strength, differential = false) {
+  if (differential) return TRADE_CLUSTER_WINDOW_MS;
+  const amount = clamp(Number(strength) || 0, 0, 100) / 100;
+  // Nested buckets avoid moving old boundaries back and forth as strength rises.
+  return TRADE_CLUSTER_WINDOW_MS * 2 ** Math.min(4, Math.floor(amount * 5));
+}
 
 export const BOOKMAP_VISUAL_DEFAULTS = Object.freeze({
   circleSize: 40,
@@ -21,9 +30,9 @@ export function transformedCircleSize(value) {
 
 export function smartClusteringParameter(value) {
   const setting = clamp(Number(value) || 0, 0, 100);
-  const scaled = setting / 100 * 2.1465;
-  return (Math.tan((scaled - 1) * 1.37) / 5 + 1) * Math.pow(scaled, 0.3)
-    + Math.pow(Math.max(0, scaled - 1.8), 2) * 10;
+  // Smooth and bounded: the former tangent jumped from10.8 at99 to2756 at100,
+  // yet could never bridge the hard250ms source-window boundary.
+  return Math.expm1(3 * setting / 100) / Math.expm1(3) * 16;
 }
 
 export function volumeDotDiameter(volume, maximumVolume, {
@@ -32,9 +41,12 @@ export function volumeDotDiameter(volume, maximumVolume, {
   drawingType = 'spheres',
 } = {}) {
   if (!(volume >= minimumVolume) || !(maximumVolume > 0)) return 0;
+  // Sphere volume represents executed contracts (area for flat dots).
+  // A fixed100-contract reference keeps the same trade the same size
+  // across viewport changes and incremental rebuilds; never normalize to the
+  // largest visible trade or clamp all large trades to an identical diameter.
   const exponent = drawingType === 'spheres' ? 1 / 3 : 1 / 2;
-  const scale = transformedCircleSize(circleSize) * 2 / Math.pow(maximumVolume, exponent);
-  return Math.max(6, Math.pow(volume, exponent) * scale);
+  return Math.max(2, (volume / 100) ** exponent * transformedCircleSize(circleSize) * 2);
 }
 
 export function volumeDotAlpha(diameter, transparency = BOOKMAP_VISUAL_DEFAULTS.circleTransparency) {
@@ -112,7 +124,7 @@ function mergeNearbyTrades(groups, options) {
   if (!(requestedDistance > 0) || groups.length < 2) return groups;
   const counts = new Map();
   for (const group of groups) {
-    const window = tradeClusterWindowStart(group.firstTimestamp);
+    const window = tradeClusterWindowStart(group.firstTimestamp, options.windowMs);
     counts.set(window, (counts.get(window) || 0) + 1);
   }
   // The old implementation repeatedly sorted the complete visible execution
@@ -123,7 +135,7 @@ function mergeNearbyTrades(groups, options) {
   const cells = new Map();
   const merged = [];
   const cellFor = group => {
-    const window = tradeClusterWindowStart(group.firstTimestamp);
+    const window = tradeClusterWindowStart(group.firstTimestamp, options.windowMs);
     const distanceLimit = requestedDistance * Math.max(1, Math.sqrt(counts.get(window) / MAX_VISIBLE_TRADE_CLUSTERS));
     const cellSize = Math.max(1, distanceLimit);
     return { window, distanceLimit,
@@ -189,7 +201,7 @@ function applySmartClustering(groups, options) {
     working.sort((left, right) => groupIndex(left) - groupIndex(right) || groupTick(left) - groupTick(right));
     const referenceVolumes = new Map();
     for (const group of working) {
-      const window = tradeClusterWindowStart(group.firstTimestamp);
+      const window = tradeClusterWindowStart(group.firstTimestamp, options.windowMs);
       referenceVolumes.set(window, Math.max(referenceVolumes.get(window) || 1, group.total));
     }
     const consumed = new Set();
@@ -198,14 +210,14 @@ function applySmartClustering(groups, options) {
     for (let index = 0; index < working.length; index += 1) {
       if (consumed.has(index)) continue;
       const left = working[index];
-      const window = tradeClusterWindowStart(left.firstTimestamp);
+      const window = tradeClusterWindowStart(left.firstTimestamp, options.windowMs);
       const targetScale = transformedCircleSize(options.circleSize) * 2 / Math.cbrt(referenceVolumes.get(window));
       let bestIndex = -1;
       let bestScore = Number.POSITIVE_INFINITY;
       for (let candidateIndex = index + 1; candidateIndex < Math.min(working.length, index + 11); candidateIndex += 1) {
         if (consumed.has(candidateIndex)) continue;
         const candidate = working[candidateIndex];
-        if (tradeClusterWindowStart(candidate.firstTimestamp) !== window) continue;
+        if (tradeClusterWindowStart(candidate.firstTimestamp, options.windowMs) !== window) continue;
         const score = smartMergeScore(
           left,
           candidate,
@@ -683,6 +695,7 @@ export class RollingDepthEngine {
       Math.ceil(smartClusteringParameter(smartClustering) * 6 / Math.max(0.2, columnPixels)),
     );
     const activeFromIndex = safeEnd - activeFrameSpan + 1;
+    const windowMs = tradeClusterWindowMs(smartClustering, differential);
     const groups = new Map();
 
     for (let index = safeStart; index <= safeEnd; index += 1) {
@@ -690,7 +703,7 @@ export class RollingDepthEngine {
       for (let tradeIndex = 0; tradeIndex < frame.trades.length; tradeIndex += 1) {
         const trade = frame.trades[tradeIndex];
         if (trade.size < minimumTradeSize) continue;
-        const key = `${index}:${tradeClusterWindowStart(trade.timestamp)}:${trade.tick}`;
+        const key = `${index}:${tradeClusterWindowStart(trade.timestamp, windowMs)}:${trade.tick}`;
         const group = groups.get(key) || {
           indexTotal: 0,
           tickTotal: 0,
@@ -737,6 +750,7 @@ export class RollingDepthEngine {
       columnPixels,
       rowTicks,
       rowPixels,
+      windowMs,
     });
     grouped = applySmartClustering(grouped, {
       smartClustering,
@@ -745,17 +759,17 @@ export class RollingDepthEngine {
       columnPixels,
       rowTicks,
       rowPixels,
+      windowMs,
     });
     const volumeReference = Math.max(1, grouped.reduce((maximum, group) => Math.max(maximum, group.total), 0));
-    const maximumDiameter = transformedCircleSize(circleSize) * 2;
     return grouped
       .filter(group => group.total >= minimumPixelVolume)
       .map(group => {
-        const diameter = Math.min(maximumDiameter, volumeDotDiameter(group.total, volumeReference, {
+        const diameter = volumeDotDiameter(group.total, volumeReference, {
           circleSize,
           minimumVolume: minimumPixelVolume,
           drawingType: 'spheres',
-        }));
+        });
         return ({
           key: group.key,
           index: group.anchorIndex,

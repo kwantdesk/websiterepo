@@ -360,11 +360,11 @@
         <label>Heatmap dimming <output id="dimmingOutput">40</output><input id="dimmingRange" type="range" min="0" max="100" step="1" value="40"></label>
         <label>Heatmap filter<select id="heatmapFilterSelect"><option value="auto">Auto</option><option value="gaussian">Gaussian</option><option value="none">None</option></select></label>
         <label>Gaussian sigma <output id="sigmaOutput">5</output><input id="sigmaRange" type="range" min="0" max="20" step="1" value="5"></label>
-        <label>3D bubble size <output id="bubbleOutput">40</output><input id="bubbleRange" type="range" min="0" max="100" step="1" value="40"></label>
+        <label title="Sphere volume is proportional to executed contracts. This adjusts the fixed size scale, rather than resizing against the largest visible trade.">3D bubble size <output id="bubbleOutput">40</output><input id="bubbleRange" type="range" min="0" max="100" step="1" value="40"></label>
         <label>Bubble transparency <output id="transparencyOutput">41</output><input id="transparencyRange" type="range" min="0" max="80" step="1" value="41"></label>
-        <label>Smart clustering <output id="clusteringOutput">52</output><input id="clusteringRange" type="range" min="0" max="100" step="1" value="52"></label>
-        <label title="Reject an individual execution before clustering when its size is below this value">Minimum trade size <output id="minimumTradeSizeOutput">1</output><input id="minimumTradeSizeRange" type="range" min="1" max="100" step="1" value="1"></label>
-        <label title="Render a clustered dot only when its displayed executed volume reaches this value (net volume only with Differential bubbles enabled)">Minimum bubble volume <output id="minimumVolumeOutput">1</output><input id="minimumVolumeRange" type="range" min="1" max="250" step="1" value="1"></label>
+        <label title="Higher strength combines nearby executions over wider fixed time windows, up to 4 seconds. Executed volume and the first trade's price/time remain exact.">Smart clustering <output id="clusteringOutput">52</output><input id="clusteringRange" type="range" min="0" max="100" step="1" value="52"></label>
+        <label title="Individual executions, before clustering: 2 excludes one-contract prints, even when many of them would form a large bubble. Use Minimum bubble volume to filter combined volume instead.">Minimum trade size (contracts) <output id="minimumTradeSizeOutput">1</output><input id="minimumTradeSizeRange" type="range" min="1" max="100" step="1" value="1"><input id="minimumTradeSizeNumber" aria-label="Minimum individual trade size in contracts" type="number" min="1" max="1000000" step="1" value="1"></label>
+        <label title="Combined executed contracts after clustering. Small individual prints can form a qualifying bubble. Net contracts only with Differential bubbles enabled.">Minimum bubble volume (contracts) <output id="minimumVolumeOutput">1</output><input id="minimumVolumeRange" type="range" min="1" max="250" step="1" value="1"><input id="minimumVolumeNumber" aria-label="Minimum clustered bubble volume in contracts" type="number" min="1" max="1000000" step="1" value="1"></label>
         <label title="Optional net view: equal buy and sell volume cancels inside each short cluster and balanced dots can disappear. Leave off to retain executed volume."><input id="bubbleDifferential" type="checkbox"> Differential bubbles</label>
         <label><input id="autoCenter" type="checkbox" checked> Auto-center price</label>
         <label><input id="showTrails" type="checkbox" checked> Best bid / ask</label>
@@ -417,6 +417,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=20261027-footprint-palettes"></script>
+  <script type="module" src="src/main.js?v=20261028-smart-volume-bubbles"></script>
 </body>
 </html>

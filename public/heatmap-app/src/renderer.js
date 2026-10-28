@@ -2,7 +2,7 @@ import { priceScaleRows } from './price-scale.js?v=20261027-instrument-price-sca
 import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261027-footprint-palettes';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
 import { writeHeatRgba } from './heat-raster.js?v=20261020-smooth-motion';
-import { tradeClusterWindowStart } from './depth-engine.js?v=20261027-stable-trade-bubbles';
+import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=20261028-smart-volume-bubbles';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1
@@ -161,6 +161,7 @@ export function planIncrementalTradeClusterRefresh(
   previousEndFrame,
   overlapFrames = 128,
   frameIndices = null,
+  windowMs = 250,
 ) {
   const indexFor = frame => frameIndices ? (frameIndices.get(frame) ?? -1) : history.indexOf(frame);
   const previousEnd = indexFor(previousEndFrame);
@@ -179,12 +180,12 @@ export function planIncrementalTradeClusterRefresh(
   const earliest = frame => {
     let timestamp = Number(frame?.timestamp);
     for (const trade of frame?.trades || []) if (Number.isFinite(trade.timestamp)) timestamp = Math.min(timestamp, trade.timestamp);
-    return tradeClusterWindowStart(timestamp);
+    return tradeClusterWindowStart(timestamp, windowMs);
   };
   const latest = frame => {
     let timestamp = Number(frame?.timestamp);
     for (const trade of frame?.trades || []) if (Number.isFinite(trade.timestamp)) timestamp = Math.max(timestamp, trade.timestamp);
-    return tradeClusterWindowStart(timestamp);
+    return tradeClusterWindowStart(timestamp, windowMs);
   };
   let window = earliest(history[rebuildStart]);
   while (rebuildStart > start && latest(history[rebuildStart - 1]) >= window) {
@@ -683,6 +684,7 @@ export class DepthRenderer {
           this.tradeClusterCache.endFrame,
           overlapFrames,
           frameIndices,
+          tradeClusterWindowMs(settings.smartClustering, settings.bubbleDifferential),
         )
         : null;
       const rebuilt = this.depthEngine.clusterTrades({
@@ -708,7 +710,7 @@ export class DepthRenderer {
       if (anchorIndex < layout.start || anchorIndex > layout.end) continue;
       const x = layout.xForIndex(anchorIndex);
       const y = layout.yForTick(cluster.tick);
-      if (y < -22 || y > layout.plotHeight + 22) continue;
+      if (y < -cluster.radius || y > layout.plotHeight + cluster.radius) continue;
       this.#drawSphereDot(ctx, x, y, cluster, accents);
     }
     ctx.restore();
@@ -762,7 +764,7 @@ export class DepthRenderer {
   }
 
   #drawSphereDot(ctx, centerX, centerY, cluster, accents) {
-    const diameter = Math.max(1, Math.round(cluster.diameter));
+    const diameter = Math.max(1, cluster.diameter);
     const radius = diameter / 2;
     const buy = this.#sphereSprite(accents.bid);
     const sell = this.#sphereSprite(accents.ask);
