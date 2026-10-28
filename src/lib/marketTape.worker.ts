@@ -12,7 +12,8 @@ import { createWorkerTradeBackpressure } from "@/lib/workerTradeBackpressure";
 type InboundMessage =
   | { type: "subscribe"; key: string; symbol: string; contractSymbol: string }
   | { type: "unsubscribe"; key: string }
-  | { type: "ack"; key: string };
+  | { type: "ack"; key: string }
+  | { type: "reconnect"; key: string };
 
 const engines = new Map<string, ExecutionTapeEngine>();
 const post = (message: unknown) => (self as unknown as Worker).postMessage(message);
@@ -23,6 +24,11 @@ const tradePublisher = createWorkerTradeBackpressure<InstitutionalTrade>(
 self.addEventListener("message", (event: MessageEvent<InboundMessage>) => {
   const message = event.data;
   if (!message) return;
+
+  if (message.type === "reconnect") {
+    engines.get(message.key)?.reconnect();
+    return;
+  }
 
   if (message.type === "ack") {
     tradePublisher.acknowledge(message.key);

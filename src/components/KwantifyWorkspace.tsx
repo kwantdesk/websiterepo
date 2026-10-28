@@ -220,7 +220,7 @@ import {
   mergeInstitutionalTradeTapeInPlace,
 } from "@/lib/liveExecutionTape";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
-import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
+import { subscribeRithmicIndicatorTrades, witnessRithmicExecution } from "@/lib/rithmicIndicatorStream";
 import { processPaperExecutionTape } from "@/lib/paperExecutionTape";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
@@ -6522,6 +6522,7 @@ function WorkspaceChartPaneComponent({
     const unsubscribe = subscribeRithmicIndicatorTrades({
       symbol: displayCmeSymbol(pane.symbol),
       contractSymbol: resolvedContractSymbol,
+      onRecovery: beginContinuityRecovery,
       onStatus: (status) => {
         if (status === "connected") rithmicConnectedRef.current = true;
         if (status === "unavailable") rithmicConnectedRef.current = false;
@@ -6629,6 +6630,7 @@ function WorkspaceChartPaneComponent({
   }, [
     needsLiveVolumeProfiles,
     needsOrderFlowHistory,
+    beginContinuityRecovery,
     auctionGapLiveActive,
     footprintLiveActive,
     instantTapeLiveActive,
@@ -8424,7 +8426,13 @@ function WorkspaceChartPaneComponent({
       // These coalesced quotes still mark the trading UI above. Futures OHLC
       // comes only from the lossless execution subscriber: even trade quotes
       // omit intermediate prints and cannot supply a bar's true extrema/open.
-      if (usingDatabentoPaneFeed) return;
+      if (usingDatabentoPaneFeed) {
+        if (price.contractSymbol) witnessRithmicExecution({
+          symbol: displayCmeSymbol(pane.symbol), contractSymbol: price.contractSymbol,
+          timestamp: chartSourceTimestamp(price.timestamp), isTrade: price.isTrade, cached: price.cached,
+        });
+        return;
+      }
       pendingLiveTicksRef.current.push({
         sourceTimestamp: chartSourceTimestamp(price.timestamp),
         mid: price.mid,

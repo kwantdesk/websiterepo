@@ -4,6 +4,7 @@ import { createExecutionTapeEngine, type ExecutionTapeEngine, type ExecutionTape
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import { recordDatabentoLiveExecutions } from "@/lib/chartLiveEvents";
+import { createExecutionFreshnessGuard } from "@/lib/executionFreshness";
 
 export type RithmicIndicatorStreamStatus = ExecutionTapeStatus;
 
@@ -14,6 +15,7 @@ type Subscriber = {
   onTrades: (records: InstitutionalTrade[]) => void;
   onStatus?: (status: RithmicIndicatorStreamStatus) => void;
   onContinuity?: (continuity: ExecutionStreamContinuity) => void;
+  onRecovery?: () => void;
 };
 
 /**
@@ -35,6 +37,8 @@ type SharedStream = {
   contractSymbol: string;
   /** Set only on the fallback path. */
   inlineEngine: ExecutionTapeEngine | null;
+  latestExecution: number;
+  freshness: ReturnType<typeof createExecutionFreshnessGuard> | null;
 };
 
 const streams = new Map<string, SharedStream>();
@@ -56,7 +60,10 @@ function publishTrades(stream: SharedStream, records: InstitutionalTrade[]) {
     if (subscriber.executionPriority) notifySubscriber(subscriber, () => subscriber.onTrades(records));
   }
   recordDatabentoLiveExecutions(stream.symbol, records);
-  for (const record of records) stream.records.push(record);
+  for (const record of records) {
+    stream.records.push(record);
+    stream.latestExecution = Math.max(stream.latestExecution, record.timestamp);
+  }
   if (stream.records.length > 29_096) stream.records.splice(0, stream.records.length - 25_000);
   for (const subscriber of stream.subscribers) {
     if (!subscriber.executionPriority) notifySubscriber(subscriber, () => subscriber.onTrades(records));
@@ -114,6 +121,7 @@ function ensureWorker(): Worker | null {
     }
     if (message.type === "seed") {
       stream.records = message.records;
+      for (const record of message.records) stream.latestExecution = Math.max(stream.latestExecution, record.timestamp);
       stream.seeded = true;
       stream.subscribers.forEach((subscriber) => notifySubscriber(subscriber, () => subscriber.onSeed?.(message.records.slice())));
       return;
@@ -143,6 +151,7 @@ function startInlineEngine(key: string, stream: SharedStream) {
     },
     onSeed: (records) => {
       stream.records = records;
+      for (const record of records) stream.latestExecution = Math.max(stream.latestExecution, record.timestamp);
       stream.seeded = true;
       stream.subscribers.forEach((subscriber) => notifySubscriber(subscriber, () => subscriber.onSeed?.(records.slice())));
     },
@@ -162,6 +171,7 @@ export function subscribeRithmicIndicatorTrades(args: {
   onTrades: Subscriber["onTrades"];
   onStatus?: Subscriber["onStatus"];
   onContinuity?: Subscriber["onContinuity"];
+  onRecovery?: Subscriber["onRecovery"];
 }) {
   const symbol = args.symbol.trim().toUpperCase();
   const contractSymbol = args.contractSymbol.trim().toUpperCase();
@@ -178,8 +188,23 @@ export function subscribeRithmicIndicatorTrades(args: {
       symbol,
       contractSymbol,
       inlineEngine: null,
+      latestExecution: 0,
+      freshness: null,
     };
     streams.set(key, stream);
+    const current = stream;
+    current.freshness = createExecutionFreshnessGuard({
+      now: Date.now,
+      latestExecution: () => current.latestExecution,
+      schedule: (callback, delay) => window.setTimeout(callback, delay),
+      cancel: handle => window.clearTimeout(handle),
+      recover: () => {
+        if (streams.get(key) !== current) return;
+        if (current.inlineEngine) current.inlineEngine.reconnect();
+        else worker?.postMessage({ type: "reconnect", key });
+        current.subscribers.forEach(subscriber => notifySubscriber(subscriber, () => subscriber.onRecovery?.()));
+      },
+    });
   }
 
   // Do not let a newly attached pane receive the same records once in its seed
@@ -192,6 +217,7 @@ export function subscribeRithmicIndicatorTrades(args: {
     onTrades: args.onTrades,
     onStatus: args.onStatus,
     onContinuity: args.onContinuity,
+    onRecovery: args.onRecovery,
   };
   stream.subscribers.add(subscriber);
   notifySubscriber(subscriber, () => subscriber.onStatus?.(stream.status));
@@ -211,6 +237,18 @@ export function subscribeRithmicIndicatorTrades(args: {
     if (current.subscribers.size > 0) return;
     if (current.inlineEngine) current.inlineEngine.stop();
     else worker?.postMessage({ type: "unsubscribe", key });
+    current.freshness?.dispose();
     streams.delete(key);
   };
+}
+
+/** Only a fresh confirmed print on the same concrete contract is a witness.
+ * Bid/ask movement alone is normal between executions and must not reconnect. */
+export function witnessRithmicExecution(args: {
+  symbol: string; contractSymbol: string; timestamp: number; isTrade?: boolean; cached?: boolean;
+}) {
+  if (args.isTrade !== true || args.cached) return;
+  const stream = streams.get(`${args.symbol.trim().toUpperCase()}:${args.contractSymbol.trim().toUpperCase()}`);
+  if (!stream?.seeded || stream.status !== "connected") return;
+  stream.freshness?.witness(args.timestamp);
 }

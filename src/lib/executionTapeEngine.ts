@@ -40,6 +40,7 @@ const TRADE_PUBLISH_INTERVAL_MS = 8;
  */
 export const STREAM_STALE_AFTER_MS = 15_000;
 export const STREAM_WATCHDOG_INTERVAL_MS = 3_000;
+export const STREAM_SEED_TIMEOUT_MS = 5_000;
 /**
  * A stall is not an outage. A watchdog reconnect goes straight back out,
  * while an explicit error keeps a backoff so a genuinely down gateway is not
@@ -190,6 +191,7 @@ export function createExecutionTapeEngine(
       // Reconnect seeds cover the short handoff and share exact tape dedup.
       leaseTimer = setTimeout(() => scheduleReconnect(0), Math.max(1, lease.expiresAt - Date.now() - 500));
       let connectionSeeded = false;
+      const seedDeadline = Date.now() + STREAM_SEED_TIMEOUT_MS;
 
       const markActivity = () => {
         if (generation !== thisGeneration || stopped) return false;
@@ -296,7 +298,8 @@ export function createExecutionTapeEngine(
       watchdogTimer = setInterval(() => {
         if (
           generation === thisGeneration
-          && Date.now() - lastActivityAt > STREAM_STALE_AFTER_MS
+          && ((!connectionSeeded && Date.now() >= seedDeadline)
+            || Date.now() - lastActivityAt > STREAM_STALE_AFTER_MS)
         ) scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);
       }, STREAM_WATCHDOG_INTERVAL_MS);
 
@@ -322,6 +325,8 @@ export function createExecutionTapeEngine(
     /** Publish anything queued now, so a new subscriber cannot be sent the
      *  same records in its seed and again in a pending batch. */
     flushPending: flush,
+    /** Re-lease the same execution feed; keep admitted prints and exact dedup. */
+    reconnect: () => scheduleReconnect(0),
     stop: () => {
       stopped = true;
       if (publishTimer !== null) clearTimeout(publishTimer);

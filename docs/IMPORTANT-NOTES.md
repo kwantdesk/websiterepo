@@ -1,5 +1,11 @@
 # KWANTDESK important notes
 
+## 2026-10-28 - NQ stalled-execution recovery
+
+- Missing execution seed cannot remain masked by heartbeats. A same-contract confirmed fresh trade quote can detect a delivered-execution watermark stall and reconnect the existing engine after grace, rate-limited and lossless. Existing in-place history repair is notified. No invented prices, quote-mid OHLC, pending-print loss or live gateway restart. 52 tests/full build and a real-feed isolated headless recovery fixture pass. Receipt: docs/prompt-log/2026-10-28-nq-stalled-execution-recovery.md.
+- OPEN: owner's actual trading tab/full indicator workspace was not accessible for visual verification. This is a tested recovery fault fix, not a millisecond/FPS or all-stalls-eliminated claim. Prior backend performance activation remains deferred; original Footprint transient and other existing parity/archive dependencies remain open.
+
+
 ## 2026-10-28 - LIQ MAP historical navigation and isolated archive service
 
 - Pause / six-hour timeline / minute steps / LIVE are visible at the bottom. Dragging works with price auto-centering, paused display no longer gets evicted, live execution quotes continue, loaded books are reused and CVD/tape remain causal. First unprepared archive windows can take minutes; recorded depth is two-second snapshots. 36 targeted checks, full build/lint and desktop/mobile headless fixture QA pass; real NQ/ES history and signed VPS CORS/auth verified. Receipt: docs/prompt-log/2026-10-28-liquidity-map-pause-history.md.
