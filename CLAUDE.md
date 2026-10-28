@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Footprint same-millisecond live sort cost
+
+Reuse module-lifetime numeric Intl.Collator in orderFootprintTrades. The prior localeCompare options per comparison made 25k-print same-ms burst footprint folds take ~128ms median; same-builder benchmark now ~19ms median with identical totals/rows.60 tests pass including preserved numeric tie order, execution delta extrema, cached folds and existing worker/frame paths. See docs/prompt-log/2026-10-28-footprint-live-ticking-cost.md and repeatable benchmark script. Do not interpret synthetic speedup as browser FPS or 1ms repaint guarantee. No gateway restart; pending backend performance activation remains deferred by owner.
+
 ## 2026-10-28 — CVD live-tail hydration and rollover
 
 CVD/Volume sampling now retains a bounded four-bucket live tail across sampling and merges it into history/tape hydration, so stale React candle props cannot rewind live flow after boundary-only candle commits. Reconcile final closing bucket as well as active bucket; do not invent absent history. Replay bypasses live tail. Delta extrema changes participate in sample equality.38 tests pass, including actual Chart hydration/rollover tests that fail against former HEAD effects. See docs/prompt-log/2026-10-28-cvd-live-tail-hydration.md. No gateway restart; deferred backend performance activation remains deferred. Read-only source probe found recent classified trades; owner browser CVD was not end-to-end observed.

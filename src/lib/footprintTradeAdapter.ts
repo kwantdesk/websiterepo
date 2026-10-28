@@ -1,6 +1,12 @@
 import type { InstitutionalTrade } from "./institutionalMarketData";
 import type { FootprintAggressorSide, FootprintTrade } from "./footprintTypes";
 
+// Busy futures bursts contain many prints in the same millisecond. Passing
+// numeric options to localeCompare rebuilt ICU collation machinery for every
+// comparison, on every live footprint fold. Keep precisely the same ordering
+// rules, but construct them once for the module's lifetime.
+const footprintSequenceCollator = new Intl.Collator(undefined, { numeric: true });
+
 const finite = (value: unknown, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -67,7 +73,7 @@ export function orderFootprintTrades(trades: FootprintTrade[]): FootprintTrade[]
     if (timeDifference) return timeDifference;
     const leftSequence = String(left.sequence ?? "");
     const rightSequence = String(right.sequence ?? "");
-    const sequenceDifference = leftSequence.localeCompare(rightSequence, undefined, { numeric: true });
+    const sequenceDifference = footprintSequenceCollator.compare(leftSequence, rightSequence);
     return sequenceDifference || left.arrivalIndex - right.arrivalIndex;
   });
 }
