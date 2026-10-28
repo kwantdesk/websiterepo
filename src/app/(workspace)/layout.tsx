@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { activeWorkspaceSection, isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 
-import KwantifyWorkspace, {
-  type PrimaryWorkspaceSection,
-} from "@/components/KwantifyWorkspace";
+import type { PrimaryWorkspaceSection } from "@/components/KwantifyWorkspace";
+import AppSidebar from "@/components/AppSidebar";
 import WorkspaceFailureBoundary from "@/components/WorkspaceFailureBoundary";
 
 const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
@@ -51,6 +51,22 @@ function workspaceLocation(pathname: string) {
 
   return { section: "charts" as const, socialProfileHandle: "" };
 }
+
+function WorkspaceNavigationShell() {
+  const pathname = usePathname();
+  const location = workspaceLocation(pathname);
+  return <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <AppSidebar activeItem={location.section} orientation="horizontal" />
+    <main className="min-h-0 flex-1 bg-background" aria-label={`${location.section} workspace`} aria-busy="true" />
+  </div>;
+}
+
+// The primary navigation must not wait for the large trading-engine bundle to
+// download/evaluate on entry from Home. Existing auth/data gates stay inside it.
+const KwantifyWorkspace = dynamic(() => import("@/components/KwantifyWorkspace"), {
+  ssr: false,
+  loading: WorkspaceNavigationShell,
+});
 
 export default function PersistentWorkspaceLayout({
   children: _children,

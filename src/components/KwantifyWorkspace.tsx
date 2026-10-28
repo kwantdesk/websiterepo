@@ -233,7 +233,6 @@ import {
 import {
   fetchWorkspaceData,
   gameplanCacheKey,
-  preloadWorkspaceData,
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
 import {
@@ -10323,7 +10322,6 @@ export default function KwantifyWorkspace({
   const warmWorkspaceSection = useCallback((target: string) => {
     if (isWorkspaceFeatureArchived(target)) return;
     void preloadWorkspaceModule(target).catch(() => null);
-    void preloadWorkspaceData(target).catch(() => null);
   }, []);
   const [preferenceUserId, setPreferenceUserId] = useState("");
   // GEX DATA's account-scoped host may start after identity verification;
@@ -13116,20 +13114,6 @@ export default function KwantifyWorkspace({
       active = false;
     };
   }, [authChecked, databentoOptions.length, section]);
-
-  useEffect(() => {
-    if (!authChecked) return;
-    const timers = [
-      window.setTimeout(() => warmWorkspaceSection("charts"), 100),
-      // ZYON is also a chart-side panel. Fetch its module while this deployment
-      // is known-good so a long-lived trading tab never requests it lazily
-      // across a later production rollout.
-      window.setTimeout(() => warmWorkspaceSection("zyon"), 300),
-      window.setTimeout(() => warmWorkspaceSection("gamma"), 650),
-      window.setTimeout(() => warmWorkspaceSection("gexdesk"), 1_300),
-    ];
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [authChecked, warmWorkspaceSection]);
 
   useEffect(() => {
     if (!authChecked) return;

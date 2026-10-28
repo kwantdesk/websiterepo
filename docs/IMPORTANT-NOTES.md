@@ -1,5 +1,11 @@
 # KWANTDESK important notes
 
+## 2026-10-28 — Navigation and separate frozen-study fault
+
+- Home/native navigation intent prepares destination code only; primary navigation can mount before the trading bundle. Unrelated startup/provider warmups removed and two dead Home launch routes corrected. 17 checks/full build pass; physical signed-in navigation latency remains unmeasured. Receipt: docs/prompt-log/2026-10-28-navigation-cold-entry.md.
+- OPEN: CVD/QuantStats live data reportedly stopped hours earlier. VPS probe received fresh classified NQ executions (latest about 60ms old); browser acceptance was blocked by the computer-use URL safety check. Do not describe the prior pan/zoom fix as a fix for this live-data fault. Deferred backend activation, original Footprint opening transient and existing parity/archive/off-box/unattended-execution dependencies remain open.
+
+
 ## 2026-10-28 — CVD / QuantStats viewport tracking
 
 - Pane-only native viewport subscription restores frame-coalesced chart alignment without full Chart renders during pan/zoom. 27 focused checks and the full build pass; renderer regression reproduces the former missing updates. Source receipt: docs/prompt-log/2026-10-28-cvd-quantstats-viewport-follow.md.

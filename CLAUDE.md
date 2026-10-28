@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Responsive cold navigation from Home
+
+Home cards/native sidebar now prepare only the intended route plus shell/chart code, deduped for 30 seconds, without mounting feeds or fetching vendor data. Cold persistent layout mounts normal primary navigation independently of the large trading bundle. Removed unrelated post-auth module/data warmup timers and provider-data calls on workspace pointer intent. Home's removed /gex-cal and /gex-flow launch routes now point to GEX Data/KWANTY. Persistent optimistic/history navigation and ownership/trading gates preserved. 17 focused checks, scoped lint and full 1536MiB build pass. Signed-in physical latency/FPS not measured. Frozen CVD/Stats live-data issue remains unresolved despite fresh VPS NQ executions; prior computer-use inspection was stopped by URL policy. No gateway restart. See docs/prompt-log/2026-10-28-navigation-cold-entry.md.
+
+
 ## 2026-10-28 — CVD / QuantStats follow pan and zoom
 
 ChartIndicatorPanes now subscribes directly to the chart's native logical viewport and coalesces its own SVG reprojection to one rAF, rather than waiting indefinitely for Chart's 80ms trailing React settle timer during continuous navigation. Parent full-tree performance policy, indicator values, event-time mapping and Footprint grouping are unchanged. Rebind on chartReadyRevision; cancel/unsubscribe for removed panes. 27 focused checks and the full 1536MiB build pass; pane/helper ESLint passes (full Chart lint exceeded 4GiB). Actual renderer/hook regression fails on 3966b676 and passes after this fix; signed-in physical/FPS acceptance is not claimed. No gateway restart. See docs/prompt-log/2026-10-28-cvd-quantstats-viewport-follow.md. Pending backend activation and original Footprint opening transient remain open.

@@ -4,6 +4,8 @@ import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { warmWorkspaceNavigation } from "@/lib/workspaceNavigationWarmup";
 import { memo, useCallback, useEffect, useState, type ComponentType } from "react";
 import { cacheProfileIdentity, readProfileIdentityCache, subscribeProfileIdentity } from "@/lib/profileIdentityCache";
 import {
@@ -51,8 +53,8 @@ const destinations: LaunchDestination[] = [
   { href: "/", title: "Home", eyebrow: "Command centre", description: "Your complete Kwant Desk launch surface.", preview: "home", icon: Home },
   { href: "/charts", title: "Charts", eyebrow: "Market workspace", description: "Live futures charting, indicators and execution.", preview: "chart", icon: LineChart },
   { href: "/gamvue", title: "GEX Vue", eyebrow: "Gamma charting", description: "Multi-panel underlying and options context.", preview: "vue", icon: BarChart3 },
-  { href: "/gex-cal", title: "GEX Calendar", eyebrow: "Expiry structure", description: "Exposure across dates, strikes and expirations.", preview: "calendar", icon: CalendarRange },
-  { href: "/gex-flow", title: "GEX Flow", eyebrow: "Options movement", description: "Track live positioning as exposure builds.", preview: "flow", icon: Workflow },
+  { href: "/gex-data", title: "GEX Data", eyebrow: "Options data tools", description: "Options flow, exposures, drift and volatility tools.", preview: "calendar", icon: CalendarRange },
+  { href: "/kwanty", title: "KWANTY", eyebrow: "Options positioning", description: "Classic, State and Orderflow positioning charts.", preview: "flow", icon: Workflow },
   { href: "/gamma", title: "Options", eyebrow: "Options intelligence", description: "Dealer regime, structure and positioning data.", preview: "gamma", icon: Crosshair },
   { href: "/gexmap", title: "GEX Map", eyebrow: "Strike exposure", description: "Live GEX, DEX and VEX strike ladders.", preview: "gexmap", icon: ScanLine },
   { href: "/liqmap", title: "Liquidity Map", eyebrow: "Level 3 order flow", description: "Resting liquidity, trades, bubbles and DOM.", preview: "liquidity", icon: Waves },
@@ -73,10 +75,15 @@ const LaunchCard = memo(function LaunchCard({
   live: HomeLiveIndices;
 }) {
   const Icon = destination.icon;
+  const router = useRouter();
+  const warm = () => warmWorkspaceNavigation(destination.href, route => router.prefetch(route));
   return (
     <Link
       href={destination.href}
       prefetch={false}
+      onPointerEnter={warm}
+      onFocus={warm}
+      onTouchStart={warm}
       className="group relative flex min-h-[162px] flex-col overflow-hidden rounded-[7px] border border-[color-mix(in_srgb,var(--foreground)_11%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] text-left shadow-[0_22px_70px_rgba(0,0,0,.28)] backdrop-blur-[18px] transition duration-300 hover:-translate-y-1 hover:border-primary/65 hover:bg-[color-mix(in_srgb,var(--background)_72%,transparent)] hover:shadow-[0_24px_80px_rgba(0,0,0,.55),0_0_30px_color-mix(in_srgb,var(--primary)_18%,transparent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
     >
       <div className="relative h-[105px] shrink-0 overflow-hidden border-b border-[color-mix(in_srgb,var(--foreground)_8%,transparent)] bg-[color-mix(in_srgb,var(--background)_35%,transparent)]">

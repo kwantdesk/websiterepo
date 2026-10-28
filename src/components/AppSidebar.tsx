@@ -2,6 +2,7 @@
 
 import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 import { acquireCockpitTypography } from "@/lib/cockpitTypography";
+import { warmWorkspaceNavigation } from "@/lib/workspaceNavigationWarmup";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -184,11 +185,21 @@ function AppSidebar({
     onNavigateStart?.(key);
   };
 
+  const warmNavigation = (key: SidebarKey) => {
+    if (navigationMode === "persistent" && PERSISTENT_WORKSPACE_KEYS.has(key)) {
+      onNavigateIntent?.(key);
+      return;
+    }
+    const href = key === "settings" ? "/settings" : navItems.find(item => item.key === key)?.href;
+    if (href) warmWorkspaceNavigation(href, route => router.prefetch(route));
+  };
+
   const beginPointerNavigation = (
     event: ReactPointerEvent<HTMLAnchorElement>,
     key: SidebarKey,
   ) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    warmNavigation(key);
     // Stop chart/feed work on pointer-down, before the browser waits for the
     // subsequent click. The click still owns the URL update and keyboard users
     // retain the same path through navigate().
@@ -255,9 +266,9 @@ function AppSidebar({
               key={key}
               href={href}
               prefetch={false}
-              onPointerEnter={() => onNavigateIntent?.(key)}
+              onPointerEnter={() => warmNavigation(key)}
               onPointerDown={(event) => beginPointerNavigation(event, key)}
-              onFocus={() => onNavigateIntent?.(key)}
+              onFocus={() => warmNavigation(key)}
               onClick={(event) => navigate(event, key, href)}
               className={activeItem === key ? verticalItemActive : verticalItemInactive}
               title={title}
@@ -292,9 +303,9 @@ function AppSidebar({
       <Link
         href="/"
         prefetch={false}
-        onPointerEnter={() => onNavigateIntent?.("home")}
+        onPointerEnter={() => warmNavigation("home")}
         onPointerDown={(event) => beginPointerNavigation(event, "home")}
-        onFocus={() => onNavigateIntent?.("home")}
+        onFocus={() => warmNavigation("home")}
         onClick={(event) => navigate(event, "home", "/")}
         className="kwant-primary-brand relative z-10 flex shrink-0 items-center overflow-hidden"
         title="Kwant Desk home"
@@ -313,9 +324,9 @@ function AppSidebar({
                 key={key}
                 href={href}
                 prefetch={false}
-                onPointerEnter={() => onNavigateIntent?.(key)}
+                onPointerEnter={() => warmNavigation(key)}
                 onPointerDown={(event) => beginPointerNavigation(event, key)}
-                onFocus={() => onNavigateIntent?.(key)}
+                onFocus={() => warmNavigation(key)}
                 onClick={(event) => navigate(event, key, href)}
                 aria-current={active ? "page" : undefined}
                 className={active ? horizontalItemActive : horizontalItemInactive}
