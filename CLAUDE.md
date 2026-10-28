@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Owner-requested rollback of footprint opening-scale change
+
+Owner reports e8f95ace worsened Footprint and explicitly requests the previous behavior. Restore Chart.tsx byte-for-byte to 840043de, remove the new opening-scale tests, and preserve earlier CVD/live-sort fixes. This supersedes the next opening-scale entry: its synthetic regressions did not establish the owner's actual visual fault. Do not reapply that grouping/readiness/layout-effect approach as the fix without actual visual evidence. Original first-open transient rendering remains unresolved.39 existing targeted tests pass. No gateway restart or owner state changes. See docs/prompt-log/2026-10-28-footprint-opening-scale-rollback.md.
+
 ## 2026-10-28 — Footprint opening scale and first presentation
 
 Footprint source-window and automatic-grouping memos now invalidate on opening viewport/scale readiness, avoiding provisional fit-all consolidated rows remaining cached until another trade. Live inputs/presentation commit in layout phase; provisional rows stay out of the primitive until existing chartVisualReady. No added timer/loader.43 tests pass including actual memo/presentation regressions that fail against former HEAD; manual ticks and history/live handoff preserved. See docs/prompt-log/2026-10-28-footprint-opening-scale.md. No gateway restart or owner state changes.
