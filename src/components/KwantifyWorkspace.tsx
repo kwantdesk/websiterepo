@@ -6489,6 +6489,7 @@ function WorkspaceChartPaneComponent({
       for (const candle of paintBatch) {
         window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
           detail: { key: pane.id, candle,
+            paintInCurrentFrame: document.visibilityState === "visible",
             // A closing candle needs its own exchange watermark. The newest
             // trade in the batch belongs to the NEXT candle and would make
             // the renderer reject this final close as a late receipt clock.

@@ -15,6 +15,8 @@ export type LiveChartCandleDetail = {
   candle: Candle;
   /** Provider observation time in milliseconds; absent is not evidence of freshness. */
   sourceTimestampMs?: number;
+  /** Sender is already in the visible display frame; do not queue another one. */
+  paintInCurrentFrame?: boolean;
 };
 
 export type ClosedChartHistoryDetail = { key: string; candles: Candle[]; beforeMs: number };

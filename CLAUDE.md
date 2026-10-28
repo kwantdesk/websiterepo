@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Live candle prepared-frame handoff
+
+Visible workspace execution accumulator marks candle events paintInCurrentFrame; Chart clock candles consume that frame without a redundant second rAF. Cancel an older queued frame and suppress follow-up scheduling while draining bounded pending rollover/current bars. Unprepared events, event charts, Heikin-Ashi behavior and replay guards retain existing paths. Same-bar coalescing already existed; do not claim this fix adds it or invent sub-tick NQ executions. P&L uses bid/ask while futures candles use trades.38 actual-effect/authority regressions pass. See docs/prompt-log/2026-10-28-live-price-frame-handoff.md including official CME/Bookmap sources and limits. No gateway restart or owner state changes.
+
 ## 2026-10-28 — Demo protective execution priority and standing touches
 
 Working SL/TP uses inclusive admitted execution price, without requiring its prior watermark to be strictly across the level. This fixes breakeven/equality/resume cases while retaining exact stored tick fills, stale/pre-entry/drag guards and marketable-release handling. Shared tape executionPriority subscribers run before cache/chart callbacks; workspace ledger execution precedes quote display publication. Subscriber exceptions are isolated, reported once/subscription and cannot discard sibling delivery; worker ack/batching retained.47 tests pass, including actual workspace/shared-worker fault injection and one-print reversals. See docs/prompt-log/2026-10-28-paper-tick-touch-execution.md. No owner test trades or gateway restart; received-tick correctness is not a transport/main-thread zero-latency guarantee.

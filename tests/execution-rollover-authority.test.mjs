@@ -30,6 +30,7 @@ test('actual execution rollover publication retains the final close and wick bef
   assert.ok(batch); assert.ok(publish);
   const received=[];
   const ctx=vm.createContext({previousCandles:before,reconciledCandles:next,latest:next.at(-1),pane:{id:scope,timeframe:'1m'},
+    document:{visibilityState:'visible'},
     isEventBasedChartInterval:()=>false,executionCandlePaintBatch,LIVE_CHART_CANDLE_EVENT:'candle',
     CustomEvent:class {constructor(type,options){this.type=type;this.detail=options.detail;}},
     window:{dispatchEvent:event=>{received.push(event.detail);buffer.observe(scope,event.detail.candle,event.detail.sourceTimestampMs);}},

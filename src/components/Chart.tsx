@@ -4616,8 +4616,9 @@ function Chart({
     if (!liveCandleEventKey) return;
     let pendingCandles: Candle[] = [];
     let frame: number | null = null;
+    let paintingInCurrentFrame = false;
     function scheduleNext() {
-      if (pendingCandles.length && frame === null) {
+      if (!paintingInCurrentFrame && pendingCandles.length && frame === null) {
         frame = window.requestAnimationFrame(flush);
       }
     }
@@ -4751,7 +4752,16 @@ function Chart({
           }, keyboardActive && !nonFootprintOrderFlowIndicatorEnabled ? 250 : 750);
         }
       }
-      if (frame === null) frame = window.requestAnimationFrame(flush);
+      if (detail.paintInCurrentFrame && timeframeToMs(timeframe) !== null) {
+        // The execution accumulator already scheduled this visible frame.
+        // Finalize a pending closing bar and paint the latest forming candle
+        // now, rather than adding another frame of lag behind the P&L quote.
+        if (frame !== null) window.cancelAnimationFrame(frame);
+        frame = null;
+        paintingInCurrentFrame = true;
+        try { while (pendingCandles.length) flush(); }
+        finally { paintingInCurrentFrame = false; }
+      } else if (frame === null) frame = window.requestAnimationFrame(flush);
     };
     window.addEventListener(LIVE_CHART_CANDLE_EVENT, receive);
     return () => {
