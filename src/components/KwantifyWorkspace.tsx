@@ -10945,7 +10945,7 @@ export default function KwantifyWorkspace({
       { bid: quote.bid, ask: quote.ask, last: quote.last, timestamp: quote.timestamp },
       {
         // Futures protection is owned by the lossless execution tape below.
-        // Sampled display quotes can arrive ahead of its 40ms batch and must
+        // Sampled display quotes can arrive ahead of its batched tape and must
         // not advance its watermark past an intervening TP/SL touch.
         executionAuthorized: quote.source === "replay" || !paperContractSpec(quote.symbol).isFutures,
         suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
@@ -11750,22 +11750,27 @@ export default function KwantifyWorkspace({
     for (const key of desired) {
       if (subscriptions.has(key)) continue;
       const [symbol, contractSymbol] = key.split(":");
-      subscriptions.set(key, subscribeRithmicIndicatorTrades({ symbol, contractSymbol, onTrades: (records) => {
+      subscriptions.set(key, subscribeRithmicIndicatorTrades({ symbol, contractSymbol, executionPriority: true, onTrades: (records) => {
         if (!paperLiveExecutionEnabledRef.current) return;
+        const current = paperLedgerRef.current;
+        const exposed = Object.values(current.accounts).some((account) =>
+          account.positions.some((position) => position.status === "open" && normalizePaperSymbol(position.symbol) === symbol)
+          || account.orders.some((order) => order.status === "working" && normalizePaperSymbol(order.symbol) === symbol));
+        if (exposed) {
+          const next = processPaperExecutionTape(current, paperJournalAccountsRef.current, symbol, records, {
+            suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
+          });
+          if (next !== current) {
+            paperLedgerRef.current = next;
+            const filled = paperLedgerExecutionShapeChanged(current, next);
+            if (filled) schedulePaperJournalSync();
+            syncPaperLedgerUi(filled, 1_000);
+          }
+        }
+        // Quote-store listeners are display consumers too. They cannot run
+        // ahead of protective execution or prevent a touched level from filling.
         const printQuote = paperTradeExecutionQuote(symbol, records, Date.now());
         if (printQuote) publishLiveExecutionQuote({ ...printQuote, source: "live", paneId: `paper-execution:${symbol}`, mid: printQuote.last });
-        const current = paperLedgerRef.current;
-        if (!Object.values(current.accounts).some((account) =>
-          account.positions.some((position) => position.status === "open" && normalizePaperSymbol(position.symbol) === symbol)
-          || account.orders.some((order) => order.status === "working" && normalizePaperSymbol(order.symbol) === symbol))) return;
-        const next = processPaperExecutionTape(current, paperJournalAccountsRef.current, symbol, records, {
-          suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
-        });
-        if (next === current) return;
-        paperLedgerRef.current = next;
-        const filled = paperLedgerExecutionShapeChanged(current, next);
-        if (filled) schedulePaperJournalSync();
-        syncPaperLedgerUi(filled, 1_000);
       } }));
     }
   }, [paperExecutionSignature, schedulePaperJournalSync, syncPaperLedgerUi]);

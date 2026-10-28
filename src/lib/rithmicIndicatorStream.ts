@@ -8,6 +8,8 @@ import { recordDatabentoLiveExecutions } from "@/lib/chartLiveEvents";
 export type RithmicIndicatorStreamStatus = ExecutionTapeStatus;
 
 type Subscriber = {
+  executionPriority?: boolean;
+  reportedFailure?: boolean;
   onSeed?: (records: InstitutionalTrade[]) => void;
   onTrades: (records: InstitutionalTrade[]) => void;
   onStatus?: (status: RithmicIndicatorStreamStatus) => void;
@@ -36,6 +38,30 @@ type SharedStream = {
 };
 
 const streams = new Map<string, SharedStream>();
+
+function notifySubscriber(subscriber: Subscriber, notify: () => void) {
+  try { notify(); } catch {
+    // One failed chart must not discard the batch for protection or siblings.
+    // Report once per subscription, not once per tick during a busy session.
+    if (!subscriber.reportedFailure) {
+      subscriber.reportedFailure = true;
+      console.error("Market-data subscriber failed; other consumers remain active.");
+    }
+  }
+}
+
+function publishTrades(stream: SharedStream, records: InstitutionalTrade[]) {
+  // Protective execution is synchronous and precedes chart cache/render work.
+  for (const subscriber of stream.subscribers) {
+    if (subscriber.executionPriority) notifySubscriber(subscriber, () => subscriber.onTrades(records));
+  }
+  recordDatabentoLiveExecutions(stream.symbol, records);
+  for (const record of records) stream.records.push(record);
+  if (stream.records.length > 29_096) stream.records.splice(0, stream.records.length - 25_000);
+  for (const subscriber of stream.subscribers) {
+    if (!subscriber.executionPriority) notifySubscriber(subscriber, () => subscriber.onTrades(records));
+  }
+}
 
 type WorkerMessage =
   | { type: "status"; key: string; status: RithmicIndicatorStreamStatus }
@@ -66,12 +92,7 @@ function ensureWorker(): Worker | null {
     if (message?.type === "trades") {
       try {
         if (!stream) return;
-        recordDatabentoLiveExecutions(stream.symbol, message.records);
-        // The worker owns the authoritative tape; this copy exists only to
-        // seed a pane that attaches later, so it is bounded the same way.
-        for (const record of message.records) stream.records.push(record);
-        if (stream.records.length > 29_096) stream.records.splice(0, stream.records.length - 25_000);
-        stream.subscribers.forEach((subscriber) => subscriber.onTrades(message.records));
+        publishTrades(stream, message.records);
       } finally {
         // Acknowledge only after synchronous fan-out. Until this arrives the
         // worker coalesces subsequent prints instead of filling Chromium's
@@ -83,18 +104,18 @@ function ensureWorker(): Worker | null {
     if (!stream) return;
     if (message.type === "status") {
       stream.status = message.status;
-      stream.subscribers.forEach((subscriber) => subscriber.onStatus?.(message.status));
+      stream.subscribers.forEach((subscriber) => notifySubscriber(subscriber, () => subscriber.onStatus?.(message.status)));
       return;
     }
     if (message.type === "continuity") {
       stream.continuity = message.continuity;
-      stream.subscribers.forEach((subscriber) => subscriber.onContinuity?.(message.continuity));
+      stream.subscribers.forEach((subscriber) => notifySubscriber(subscriber, () => subscriber.onContinuity?.(message.continuity)));
       return;
     }
     if (message.type === "seed") {
       stream.records = message.records;
       stream.seeded = true;
-      stream.subscribers.forEach((subscriber) => subscriber.onSeed?.(message.records.slice()));
+      stream.subscribers.forEach((subscriber) => notifySubscriber(subscriber, () => subscriber.onSeed?.(message.records.slice())));
       return;
     }
   });
@@ -114,28 +135,27 @@ function startInlineEngine(key: string, stream: SharedStream) {
   stream.inlineEngine = createExecutionTapeEngine(stream.symbol, stream.contractSymbol, {
     onStatus: (status) => {
       stream.status = status;
-      stream.subscribers.forEach((subscriber) => subscriber.onStatus?.(status));
+      stream.subscribers.forEach((subscriber) => notifySubscriber(subscriber, () => subscriber.onStatus?.(status)));
     },
     onContinuity: (continuity) => {
       stream.continuity = continuity;
-      stream.subscribers.forEach((subscriber) => subscriber.onContinuity?.(continuity));
+      stream.subscribers.forEach((subscriber) => notifySubscriber(subscriber, () => subscriber.onContinuity?.(continuity)));
     },
     onSeed: (records) => {
       stream.records = records;
       stream.seeded = true;
-      stream.subscribers.forEach((subscriber) => subscriber.onSeed?.(records.slice()));
+      stream.subscribers.forEach((subscriber) => notifySubscriber(subscriber, () => subscriber.onSeed?.(records.slice())));
     },
     onTrades: (records) => {
-      recordDatabentoLiveExecutions(stream.symbol, records);
-      for (const record of records) stream.records.push(record);
-      if (stream.records.length > 29_096) stream.records.splice(0, stream.records.length - 25_000);
-      stream.subscribers.forEach((subscriber) => subscriber.onTrades(records));
+      publishTrades(stream, records);
     },
   });
   stream.inlineEngine.start();
 }
 
 export function subscribeRithmicIndicatorTrades(args: {
+  /** Evaluate protective execution before cache maintenance and chart callbacks. */
+  executionPriority?: boolean;
   symbol: string;
   contractSymbol: string;
   onSeed?: Subscriber["onSeed"];
@@ -167,15 +187,16 @@ export function subscribeRithmicIndicatorTrades(args: {
   stream.inlineEngine?.flushPending();
 
   const subscriber: Subscriber = {
+    executionPriority: args.executionPriority,
     onSeed: args.onSeed,
     onTrades: args.onTrades,
     onStatus: args.onStatus,
     onContinuity: args.onContinuity,
   };
   stream.subscribers.add(subscriber);
-  subscriber.onStatus?.(stream.status);
-  subscriber.onContinuity?.(stream.continuity);
-  if (stream.records.length) subscriber.onSeed?.(stream.records.slice());
+  notifySubscriber(subscriber, () => subscriber.onStatus?.(stream.status));
+  notifySubscriber(subscriber, () => subscriber.onContinuity?.(stream.continuity));
+  if (stream.records.length) notifySubscriber(subscriber, () => subscriber.onSeed?.(stream.records.slice()));
 
   if (fresh) {
     const active = ensureWorker();

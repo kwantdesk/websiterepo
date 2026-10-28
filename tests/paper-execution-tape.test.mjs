@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { createPaperTradingAccount } from "../src/lib/paperAccounts.ts";
-import { emptyPaperTradingLedger, placePaperOrder, processPaperQuote } from "../src/lib/paperTrading.ts";
+import { emptyPaperTradingLedger, placePaperOrder, processPaperQuote, updatePaperProtection } from "../src/lib/paperTrading.ts";
 import { processPaperExecutionTape } from "../src/lib/paperExecutionTape.ts";
 import { createExecutionTapeEngine } from "../src/lib/executionTapeEngine.ts";
 
@@ -85,6 +85,33 @@ test("suspended protection stays suspended, then resumes on subsequent actual cr
   assert.equal(exits(held, record.id).length, 0);
   const resumed = processPaperExecutionTape(held, [record], "NQ", [print(24000, time + 2), print(24010, time + 3, 3)]);
   assert.equal(exits(resumed, record.id)[0].price, 24010);
+});
+
+for (const side of ['buy','sell']) for (const role of ['take_profit','stop_loss']) {
+  test(`${side} ${role}: a working level already on its watermark fills on the next touch or overshoot`,()=>{
+    for(const overshoot of [0,.25]){
+      const {record,ledger}=open(side);
+      const hit=(side==='buy')===(role==='take_profit')?24010:23990;
+      const positionId=ledger.accounts[record.id].positions[0].id;
+      const held=processPaperExecutionTape(ledger,[record],'NQ',[print(hit)],{suspendedProtectionPositionIds:new Set([positionId])});
+      assert.equal(exits(held,record.id).length,0);
+      const beyond=hit+(hit>24000?overshoot:-overshoot);
+      const next=processPaperExecutionTape(held,[record],'NQ',[print(beyond,time+2,2),print(24000,time+2,3)]);
+      assert.equal(exits(next,record.id).length,1);
+      assert.equal(exits(next,record.id)[0].role,role);
+      assert.equal(exits(next,record.id)[0].price,hit);
+    }
+  });
+}
+
+for(const side of ['buy','sell'])test(`${side} breakeven stop fills at the exact entry tick without needing a prior recross`,()=>{
+  const {record,ledger}=open(side);
+  const id=ledger.accounts[record.id].positions[0].id;
+  const placed=updatePaperProtection(ledger,record.id,id,{kind:'stop_loss',price:24000});
+  assert.equal(placed.error,undefined);
+  const next=processPaperExecutionTape(placed.ledger,[record],'NQ',[print(24000)]);
+  assert.equal(exits(next,record.id)[0].price,24000);
+  assert.equal(exits(next,record.id)[0].role,'stop_loss');
 });
 
 test("a delayed print before a resting order existed cannot create an entry", () => {

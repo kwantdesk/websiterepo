@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Demo protective execution priority and standing touches
+
+Working SL/TP uses inclusive admitted execution price, without requiring its prior watermark to be strictly across the level. This fixes breakeven/equality/resume cases while retaining exact stored tick fills, stale/pre-entry/drag guards and marketable-release handling. Shared tape executionPriority subscribers run before cache/chart callbacks; workspace ledger execution precedes quote display publication. Subscriber exceptions are isolated, reported once/subscription and cannot discard sibling delivery; worker ack/batching retained.47 tests pass, including actual workspace/shared-worker fault injection and one-print reversals. See docs/prompt-log/2026-10-28-paper-tick-touch-execution.md. No owner test trades or gateway restart; received-tick correctness is not a transport/main-thread zero-latency guarantee.
+
 ## 2026-10-28 — Buy/sell execution arrow colours
 
 PaperFillMarkersRenderer colours every actual fill by side: buy#22e887, sell#ff3b5c. Entries were previously hard-coded red regardless of side. Keep arrow geometry and exact execution anchors unchanged. Six existing marker tests pass, with actual canvas rendering checked across both sides/all four fill roles. See docs/prompt-log/2026-10-28-buy-sell-entry-arrow-colors.md. No account/trading/theme state or feed restart.

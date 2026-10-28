@@ -1282,7 +1282,6 @@ export function processPaperQuote(
         changed = true;
       }
 
-      const previousProtectionMark = position.protectionMarkPrice;
       // P&L marks to the executable touch, but a LEVEL is hit by what traded.
       // Testing protection against the touch alone is why a target could be
       // tapped without closing: a long's take profit at 24,000 was tested
@@ -1312,12 +1311,16 @@ export function processPaperQuote(
         continue;
       }
 
+      // A working level is triggered by this admitted execution, not by a
+      // requirement that the preceding mark was strictly on the other side.
+      // Breakeven stops and a level held during a drag can start exactly ON
+      // their watermark; requiring another crossing leaves them unarmed.
       const stopHit = position.stopLoss != null && (
         marketableRelease
           ? (position.side === "buy" ? markPrice <= position.stopLoss : markPrice >= position.stopLoss)
           : position.side === "buy"
-            ? previousProtectionMark > position.stopLoss && protectionMark <= position.stopLoss
-            : previousProtectionMark < position.stopLoss && protectionMark >= position.stopLoss
+            ? protectionMark <= position.stopLoss
+            : protectionMark >= position.stopLoss
       );
       if (stopHit) {
         // A working simulated stop fills at its configured tick. When a trader
@@ -1350,8 +1353,8 @@ export function processPaperQuote(
           marketableRelease
             ? (position.side === "buy" ? markPrice >= target.price : markPrice <= target.price)
             : position.side === "buy"
-              ? previousProtectionMark < target.price && protectionMark >= target.price
-              : previousProtectionMark > target.price && protectionMark <= target.price
+              ? protectionMark >= target.price
+              : protectionMark <= target.price
         );
         if (!targetHit) continue;
         const closeQuantity = Math.min(position.remainingQuantity, remainingTargetQuantity);
