@@ -16,7 +16,8 @@ const gexMap = readFileSync(
  * text: on a pale theme that reads as a white box, and on any theme it puts a
  * thin coloured glyph on a surface of nearly the same brightness. The chip is
  * now the inverse of the chart - background whichever of black or white can be
- * read against the chart background, text the chart background itself.
+ * read against the chart background, with one contrasting text colour shared
+ * by the label and both SL/TP handles.
  */
 
 let passed = 0;
@@ -48,8 +49,13 @@ check("the chip is the inverse of the chart background", () => {
   // All three chips - entry, protection and the drag preview.
   const inverted = chart.match(/backgroundColor: paperLabelInk,/g) ?? [];
   assert.equal(inverted.length, 3, `expected 3 inverted chips, found ${inverted.length}`);
-  const asText = chart.match(/color: settings\.backgroundColor,\n\s+backgroundColor: paperLabelInk,/g) ?? [];
-  assert.equal(asText.length, 3, "a chip does not use the chart background as its text");
+  const asText = chart.match(/color: paperLabelText,\n\s+backgroundColor: paperLabelInk,/g) ?? [];
+  assert.equal(asText.length, 3, "a chip does not use contrasting text");
+  assert.match(chart, /const paperLabelText = readableTextOn\(paperLabelInk\);/);
+  for (const caption of ["Add stop loss", "Add take profit"]) {
+    const button = chart.slice(chart.lastIndexOf("<button", chart.indexOf(`aria-label={\`${caption}`)), chart.indexOf(`aria-label={\`${caption}`));
+    assert.match(button, /color: paperLabelText,/, `${caption} must share the same readable text`);
+  }
 });
 
 check("the side is still legible", () => {
@@ -57,8 +63,8 @@ check("the side is still legible", () => {
    * Inverting the fill removes green/red from the text, so the border and the
    * price line have to keep carrying it or a stop and a target look identical.
    */
-  const borders = chart.match(/borderColor: level\.color,\n\s+color: settings\.backgroundColor,/g) ?? [];
-  assert.equal(borders.length, 3, "the chips lost their up/down border colour");
+  const borders = chart.match(/borderColor: level\.color,\n\s+color: paperLabelText,/g) ?? [];
+  assert.equal(borders.length, 5, "the chips and both add-protection handles retain their up/down borders");
   assert.match(chart, /borderTopColor: level\.color,/, "the price line lost its side colour");
 });
 
@@ -81,6 +87,9 @@ check("every theme background clears the WCAG body-text bar", () => {
   ];
   for (const background of backgrounds) {
     const chip = readableTextOn(background);
+    const text = readableTextOn(chip);
+    assert.equal(contrastRatio(parseResolvedColor(text), parseResolvedColor(chip)), 21,
+      `SL/TP text must contrast against the actual chip fill on ${background}`);
     const ratio = contrastRatio(parseResolvedColor(chip), parseResolvedColor(background));
     assert.ok(ratio >= 4.5, `${background} on ${chip} is only ${ratio.toFixed(2)}:1`);
   }
@@ -97,6 +106,8 @@ check("rgb() and hex forms agree", () => {
 });
 
 console.log(`\npaper label contrast: ${passed}/${passed} checks passed`);
+// The on-chart labels are independent of the side-panel ticket below.
+if (process.argv.includes("--chart-labels-only")) process.exit(0);
 
 
 /**

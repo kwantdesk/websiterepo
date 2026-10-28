@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Compact readable on-chart trade controls
+
+Normal Chart and Liquidity Map trade controls are75% of their prior size: scale1.5→1.125, height18px/type9px, proportional actual padding/handles/icons/widths. SL/TP add buttons and label text share readableTextOn(actual pill fill), not directional colours corrected against the different chart background. Theme directional lines/borders stay intact. Seven focused chart-label contrast checks and five map protection/geometry parity checks pass. See docs/prompt-log/2026-10-28-compact-readable-trade-controls.md for broader old-script limitations. No trading/account state or feed restart.
+
 ## 2026-10-28 — Drawing persistence race protection
 
 Chart drawing preferences merge by pane and drawing ID, preserving independent device edits and explicit deletes. Same-owner initial cloud hydration preserves drawing edits made during its request. Startup storage save waits for committed hydration state; never set a ref true in the load effect then save the initial empty state in a sibling effect. ChartDrawLayer retained drag callbacks use chartingDrawingsRef, updated synchronously on commit, rather than the array captured at render. Seven new actual callback/effect/hydration and merge regressions;35 account/theme tests pass. See docs/prompt-log/2026-10-28-position-drawing-persistence-races.md. Original missing drawing anchors have not been recovered or reconstructed. No gateway restart or owner trade/preference changes.

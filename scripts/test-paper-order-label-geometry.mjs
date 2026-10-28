@@ -68,10 +68,11 @@ const widthPx = evalHelper("paperLabelWidthPx")(...args, chromePx);
 check("every dimension scales together", () => {
   // The original was 8px type in a 164x16 box, unreadable against candles.
   // 2x fixed that and overshot - the labels crowded the candles they sit on -
-  // so it settled at 1.5. What matters is that ONE number moves all of them:
+  // so it settled at 1.5, then the owner requested a further 25% reduction.
+  // What matters is that ONE number moves all of them:
   // the painted box and its hit targets are the same geometry, and a dimension
   // that stopped following the scale would put a handle off its divider.
-  assert.equal(SCALE, 1.5);
+  assert.equal(SCALE, 1.5 * 0.75);
   assert.deepEqual(
     { HEIGHT, FONT, PAD, HANDLE, CLOSE, MIN },
     { HEIGHT: 16 * SCALE, FONT: 8 * SCALE, PAD: 7 * SCALE, HANDLE: 20 * SCALE, CLOSE: 16 * SCALE, MIN: 164 * SCALE },
@@ -95,7 +96,7 @@ check("nothing paints these on the canvas any more", () => {
 
 check("the labels sit above the drawing layer", () => {
   // THE POINT. A trendline drawn across a stop must not cover it.
-  assert.match(drawLayer, /className="absolute inset-0 z-\[24\]"/, "drawings are the layer to beat");
+  assert.match(drawLayer, /className="absolute inset-0 z-\[24\](?:\s|")/, "drawings are the layer to beat");
   const containers = source.match(/className="pointer-events-none absolute left-0 z-\[31\]"/g) ?? [];
   assert.equal(containers.length, 2, "live levels and previews both sit above the drawings");
 });

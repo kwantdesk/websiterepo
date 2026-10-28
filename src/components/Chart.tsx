@@ -2072,10 +2072,8 @@ function paperProtectionSizeLabel(positionSide: "buy" | "sell", quantity: number
  * Everything below derives from one scale so the box and its controls can only
  * move together.
  */
-// 2x was too big in practice: the entry, stop and target labels crowded the
-// candles they sit against. 1.5 keeps them readable at a glance - the point of
-// enlarging them - at three quarters of the size.
-const PAPER_LABEL_SCALE = 1.5;
+// Reduce the previous 1.5-scale controls by 25%, including their hit targets.
+const PAPER_LABEL_SCALE = 1.125;
 const PAPER_LABEL_HEIGHT = 16 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_FONT_PX = 8 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_PAD_X = 7 * PAPER_LABEL_SCALE;
@@ -18502,6 +18500,7 @@ function Chart({
    * border and the price line keep the up/down colour.
    */
   const paperLabelInk = readableTextOn(settings.backgroundColor);
+  const paperLabelText = readableTextOn(paperLabelInk);
   const paperOverlayPreviewLevels = [
     ...(paperDraftOverlayLevel ? [{
       id: paperDraftOverlayLevel.id,
@@ -19930,7 +19929,7 @@ function Chart({
               className="paper-position-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-center overflow-hidden border font-mono font-bold"
               style={{
                 borderColor: level.color,
-                color: settings.backgroundColor,
+                color: paperLabelText,
                 backgroundColor: paperLabelInk,
                 fontSize: PAPER_LABEL_FONT_PX,
                 height: PAPER_LABEL_HEIGHT,
@@ -19954,7 +19953,7 @@ function Chart({
                   className="flex touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono font-bold transition-colors hover:bg-danger/15 active:cursor-grabbing"
                   style={{
                     borderColor: level.color,
-                    color: paperDownInk,
+                    color: paperLabelText,
                     width: PAPER_LABEL_HANDLE_WIDTH,
                     fontSize: PAPER_LABEL_FONT_PX,
                   }}
@@ -19971,7 +19970,7 @@ function Chart({
                   className="flex touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono font-bold transition-colors hover:bg-success/15 active:cursor-grabbing"
                   style={{
                     borderColor: level.color,
-                    color: paperUpInk,
+                    color: paperLabelText,
                     width: PAPER_LABEL_HANDLE_WIDTH,
                     fontSize: PAPER_LABEL_FONT_PX,
                   }}
@@ -20045,7 +20044,7 @@ function Chart({
               className="paper-protection-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-stretch overflow-hidden border font-mono font-bold"
               style={{
                 borderColor: level.color,
-                color: settings.backgroundColor,
+                color: paperLabelText,
                 backgroundColor: paperLabelInk,
                 fontSize: PAPER_LABEL_FONT_PX,
                 height: PAPER_LABEL_HEIGHT,
@@ -20105,7 +20104,7 @@ function Chart({
             className="pointer-events-none absolute right-1 flex -translate-y-1/2 items-center overflow-hidden border font-mono font-bold"
             style={{
               borderColor: level.color,
-              color: settings.backgroundColor,
+              color: paperLabelText,
               backgroundColor: paperLabelInk,
               fontSize: PAPER_LABEL_FONT_PX,
               height: PAPER_LABEL_HEIGHT,
