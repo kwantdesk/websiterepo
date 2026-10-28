@@ -1995,7 +1995,7 @@ class PaperFillMarkersRenderer implements ISeriesPrimitivePaneRenderer {
           context.lineTo(x + 6, y + 4);
         }
         context.closePath();
-        context.fillStyle = entry ? "#ff3b5c" : marker.side === "buy" ? "#22e887" : "#ff3b5c";
+        context.fillStyle = marker.side === "buy" ? "#22e887" : "#ff3b5c";
         context.fill();
       }
       context.restore();

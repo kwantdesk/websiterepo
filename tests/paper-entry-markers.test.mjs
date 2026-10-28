@@ -42,16 +42,17 @@ test('event candles use source execution times and their synthetic axis coordina
 
 const text=fs.readFileSync(new URL('../src/components/Chart.tsx',import.meta.url),'utf8');
 const source=ts.createSourceFile('Chart.tsx',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-test('the actual canvas renderer paints a small red entry arrow with its tip exactly at the fill coordinate',()=>{
+test('the actual canvas renderer paints buy fills green and sell fills red with the arrow tip at the fill coordinate',()=>{
   let renderer;const visit=node=>{if(ts.isClassDeclaration(node)&&node.name?.text==='PaperFillMarkersRenderer')renderer=node;ts.forEachChild(node,visit)};visit(source);
   const code=ts.transpileModule(renderer.getText(source),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   const Renderer=new Function(`${code};return PaperFillMarkersRenderer`)();
-  for(const side of ['buy','sell']){
+  for(const side of ['buy','sell'])for(const role of ['entry','take_profit','stop_loss','manual_close']){
     const drawn=[];let points=[];
     const ctx={save(){},restore(){},beginPath(){points=[]},moveTo(x,y){points.push([x,y])},lineTo(x,y){points.push([x,y])},closePath(){},fill(){drawn.push({points,color:this.fillStyle})}};
-    const primitive={chart:()=>({timeScale:()=>({timeToCoordinate:()=>100})}),series:()=>({priceToCoordinate:price=>price*10}),markers:()=>[{time:1,price:100.25,side,role:'entry'}]};
+    const primitive={chart:()=>({timeScale:()=>({timeToCoordinate:()=>100})}),series:()=>({priceToCoordinate:price=>price*10}),markers:()=>[{time:1,price:100.25,side,role}]};
     new Renderer(primitive).draw({useMediaCoordinateSpace:fn=>fn({context:ctx})});
-    assert.equal(drawn[0].color,'#ff3b5c');assert.deepEqual(drawn[0].points,[[88,998.5],[100,1002.5],[88,1006.5]]);
+    assert.equal(drawn[0].color,side==='buy'?'#22e887':'#ff3b5c',`${side} ${role}`);
+    assert.deepEqual(drawn[0].points,role==='entry'?[[88,998.5],[100,1002.5],[88,1006.5]]:[[106,998.5],[94,1002.5],[106,1006.5]]);
   }
 });
 

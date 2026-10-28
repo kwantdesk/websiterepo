@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Buy/sell execution arrow colours
+
+PaperFillMarkersRenderer colours every actual fill by side: buy#22e887, sell#ff3b5c. Entries were previously hard-coded red regardless of side. Keep arrow geometry and exact execution anchors unchanged. Six existing marker tests pass, with actual canvas rendering checked across both sides/all four fill roles. See docs/prompt-log/2026-10-28-buy-sell-entry-arrow-colors.md. No account/trading/theme state or feed restart.
+
 ## 2026-10-28 — Liquidity bubble clustering and volume scale
 
 Gross smart clustering now uses bounded smooth spatial strength and nested250ms→4s source windows; differential retains250ms cancellation to protect settled net bubbles. Renderer incremental rebuild expands to the actual window. Fixed100-contract sphere-volume scale replaces viewport/tail maximum normalization and large-dot clipping; first execution anchors and exact volume stay intact. Individual trade and clustered bubble minimums are separate literal contract thresholds with synchronized exact numeric inputs.15 core tests pass; captured2,500-print NQ batch914→206 maximum-strength bubbles,2,693contracts conserved; minimum2 still44bubbles/297contracts (fixed geometry only). See docs/prompt-log/2026-10-28-liquidity-smart-bubble-volume.md for baseline failures and perf limits. Asset revision20261028-smart-volume-bubbles. No gateway restart or owner state changes.
