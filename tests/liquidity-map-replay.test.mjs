@@ -8,7 +8,7 @@ import { SYMBOLS } from '../public/heatmap-app/src/market-simulator.js';
 // replacing their ownership/cache/seek logic with a test-only implementation.
 const source = readFileSync(new URL('../public/heatmap-app/src/main.js', import.meta.url), 'utf8');
 const methods = source.slice(source.indexOf('  #postReplayStatus('), source.indexOf('  #ingestDepthSnapshot(')).replaceAll('#', '');
-const Harness = new Function('normalizeLiveSnapshot', 'isFullDepthSource', 'SYMBOLS', '$', 'MAX_HISTORY', 'INSTITUTIONAL_MARKET_DATA_ORIGIN', `return class {
+const Harness = new Function('normalizeLiveSnapshot', 'isFullDepthSource', 'SYMBOLS', '$', 'MAX_HISTORY', 'INSTITUTIONAL_MARKET_DATA_ORIGIN', 'fetchRecordedHistory', `return class {
   constructor() {
     this.symbol = 'NQ'; this.settings = { autoCenter: true }; this.view = {}; this.instrumentSubscriptions = new Map();
     this.replay = { active: false, tradingDate: '', clockMs: 0, chunks: new Map() };
@@ -17,9 +17,9 @@ const Harness = new Function('normalizeLiveSnapshot', 'isFullDepthSource', 'SYMB
     this.renderer = { endInteraction() {} };
     this.liveFeed = { stop() {}, start() {} };
   }
-  updateSymbolUi() {} renderTape() {} requestRender() {} appendTrades(rows) { this.tape.push(...rows); }
+  updatePlaybackUi() {} updateSymbolUi() {} renderTape() {} requestRender() {} appendTrades(rows) { this.tape.push(...rows); }
   ${methods}
-}`)(normalizeLiveSnapshot, isFullDepthSource, SYMBOLS, () => null, 1800, '/api/institutional-market-data');
+}`)(normalizeLiveSnapshot, isFullDepthSource, SYMBOLS, () => null, 1800, '/api/institutional-market-data', (path, query) => fetch(`/api/institutional-market-data${path}?${query}`));
 
 const DATE = '2026-10-23';
 const BASE = Date.parse(`${DATE}T14:00:00Z`);
@@ -151,7 +151,7 @@ test('standalone LIQ Map uses the shared controls, timezone, readiness gate and 
   assert.match(bridge,/liquidity-map-theme-request[\s\S]{0,300}setBridgeReady/);
   assert.match(bridge,/if \(!bridgeReady\) return/);
   assert.match(bridge,/replay=\{Boolean\(replay\)\}/);
-  assert.match(source,/#replaceCvdHistory[^\n]*\{\s*if \(this.replay.active\) return/);
+  assert.match(source,/#replaceCvdHistory[^\n]*\{\s*if \(this.replay.active \|\| this.localHistory\) return/);
 });
 
 test('missing clock coverage clears stale painted depth, but the clock can play through the archive gap', async()=>{
@@ -182,4 +182,14 @@ test('non-CME instruments retain their actual archive exchange on manifest AND c
    assert.ok(app.history.every(row=>row.symbol===symbol));assert.equal(app.history.length,2);
   });
  }
+});
+
+
+test('an expired derived generation drops its index and retries promptly without a thirty-second stall',async()=>{
+  const data=pack();
+  await withReplay(async url=>response(url.includes('/chunk?')?{code:'HISTORY_GENERATION_EXPIRED'}:{manifest:data.manifest},url.includes('/chunk?')?409:200),async(app)=>{
+    seek(app,BASE+4500);await settle();
+    assert.equal(app.replay.manifest,null);assert.equal(app.replay.chunks.size,0);
+    assert.ok(app.replay.retryAt>Date.now());assert.ok(app.replay.retryAt-Date.now()<=250);
+  });
 });

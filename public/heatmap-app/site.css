@@ -205,3 +205,8 @@ html[data-embed="true"] .cvd-panel header { background: var(--ui-bg); }
   border-color: var(--ui-line-strong);
   box-shadow: none;
 }
+
+/* Keep the history transport below the full-width embedded chart. */
+html[data-embed="true"] .terminal-shell { grid-template-rows: 38px 38px minmax(0,1fr) 38px; }
+html[data-embed="true"] .history-transport { grid-column: 1; grid-row: 4; width: 100%; height: 38px; }
+html[data-embed="true"] .terminal-shell:has(> .history-transport.hidden) { grid-template-rows: 38px 38px minmax(0,1fr); }

@@ -129,6 +129,27 @@ test("second manifest request returns the cached pack without rebuilding", async
   assert.equal(again.manifest.version, 3);
 });
 
+test('a growing session refreshes atomically without changing an already indexed generation', async () => {
+  const dir = syntheticArchive();
+  const store = new HeatmapReplayStore({dir, tickSizeFor:()=>.25});
+  await store.manifestOrBuild(TRADING_DATE,'CME','NQ');
+  const before = await builtManifest(store);
+  const old = await store.readChunk(TRADING_DATE,'CME','NQ',before.chunks[0].startMs,before.generation);
+  const file=join(dir,TRADING_DATE,'CME-NQU6.ndjson.gz');
+  const lines=gunzipSync(readFileSync(file)).toString('utf8');
+  writeFileSync(file,gzipSync(lines+tradeLine(BASE_SSBOE+120,29500,4,1,'later')+'\n'));
+  assert.equal(store.sourceChanged(TRADING_DATE,'CME','NQ',before),true);
+  const result=await store.manifestOrBuild(TRADING_DATE,'CME','NQ',{refresh:true});
+  assert.equal(result.building,true);
+  await Promise.all([...store.builds.values()].map(build=>build.promise));
+  const after=await store.readManifest(TRADING_DATE,'CME','NQ');
+  assert.notEqual(after.generation,before.generation);
+  assert.ok(after.lastFrameMs>before.lastFrameMs);
+  assert.equal(store.sourceChanged(TRADING_DATE,'CME','NQ',after),false);
+  const retained=await store.readChunk(TRADING_DATE,'CME','NQ',before.chunks[0].startMs,before.generation);
+  assert.deepEqual(retained.frames,old.frames,'an in-flight old reader still receives its immutable generation');
+});
+
 test('administrative root files cannot shadow the actual recorded contract', async () => {
   const dir = syntheticArchive();
   writeFileSync(join(dir, TRADING_DATE, 'CME-NQ.ndjson.gz'), gzipSync(JSON.stringify({type:'GAP'})+'\n'));

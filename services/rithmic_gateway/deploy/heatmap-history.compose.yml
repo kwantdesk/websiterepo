@@ -1,0 +1,36 @@
+# Merge this service into the existing production compose project. Start only
+# heatmap-history with --no-deps; never recreate the live gateway to add it.
+# Stage the three heatmap-*.mjs sources and browser-stream-edge.mjs and the deployed book-store.mjs under
+# ./heatmap-history/. The env file contains ONLY the existing gateway bearer.
+services:
+  heatmap-history:
+    image: ${KWANTDESK_GATEWAY_IMAGE:-kwantify-rithmic-gateway:local}
+    command: [node, /history/heatmap-history-server.mjs]
+    restart: unless-stopped
+    env_file: /etc/kwantdesk/heatmap-history.env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=384
+      RITHMIC_RECORD_DIR: /recordings
+      HEATMAP_HISTORY_PORT: 8796
+      HEATMAP_GATEWAY_ORIGIN: http://gateway:8793
+    volumes:
+      - ./heatmap-history:/history:ro
+      - /srv/kwantdesk-recordings:/recordings:ro
+      - /srv/kwantdesk-recordings/heatmap-replay:/recordings/heatmap-replay
+    expose: ['8796']
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 0.5
+    pids_limit: 64
+    init: true
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8796/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: '3'}

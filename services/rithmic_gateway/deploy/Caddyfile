@@ -9,12 +9,19 @@
 
 feed.kwantdesk.com {
 	encode zstd gzip
+	log_skip /liquidity-history
 
 	# /health is intentionally public and carries no market data or account
 	# information — it is what uptime monitoring reads.
 	@health path /health
 	handle @health {
 		reverse_proxy gateway:8793
+	}
+
+	# Archive preparation is isolated from the live Rithmic event loop.
+	@liquidityHistory path /v1/heatmap/replay /v1/heatmap/replay/chunk /liquidity-history
+	handle @liquidityHistory {
+		reverse_proxy heatmap-history:8796
 	}
 
 	handle {

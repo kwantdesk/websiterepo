@@ -1,4 +1,4 @@
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { once } from "node:events";
 import { pipeline } from "node:stream/promises";
 import { isMainThread, Worker } from "node:worker_threads";
@@ -218,10 +218,10 @@ export class HeatmapReplayStore {
    * background build. The response tells the caller exactly which state it is
    * in — never a fabricated empty session.
    */
-  async manifestOrBuild(tradingDate, exchange, symbol) {
+  async manifestOrBuild(tradingDate, exchange, symbol, { refresh = false } = {}) {
     if (!this.dir) return { error: "The collector has no archive directory configured." };
     const manifest = await this.readManifest(tradingDate, exchange, symbol);
-    if (manifest) return { manifest };
+    if (manifest && !refresh) return { manifest };
     const inFlight = this.buildStatus(tradingDate, exchange, symbol);
     if (inFlight) return inFlight;
     const archive = resolveArchiveFile(this.dir, tradingDate, exchange, symbol);
@@ -236,7 +236,7 @@ export class HeatmapReplayStore {
     this.builds.set(key, build);
     build.promise = (isMainThread ? new Promise((resolve, reject) => {
       const worker = new Worker(new URL('./heatmap-replay-worker.mjs', import.meta.url), {
-        workerData: { dir: this.dir, tradingDate, exchange, symbol, tickSize: this.tickSizeFor(archive.symbol) },
+        workerData: { dir: this.dir, tradingDate, exchange, symbol, refresh, tickSize: this.tickSizeFor(archive.symbol) },
         execArgv: [], resourceLimits: { maxOldGenerationSizeMb: 512 },
       });
       worker.on('message', message => {
@@ -254,8 +254,19 @@ export class HeatmapReplayStore {
     return { building: true, ...build.progress };
   }
 
-  async readChunk(tradingDate, exchange, symbol, chunkStartMs) {
-    const manifest = await this.readManifest(tradingDate, exchange, symbol);
+  sourceChanged(tradingDate, exchange, symbol, manifest) {
+    const archive = resolveArchiveFile(this.dir, tradingDate, exchange, symbol);
+    if (!archive) return false;
+    const stat = statSync(archive.path);
+    return manifest.archiveBytes != null ? stat.size !== manifest.archiveBytes
+      : stat.mtimeMs > Date.parse(manifest.builtAt || 0);
+  }
+
+  async readChunk(tradingDate, exchange, symbol, chunkStartMs, generation = '') {
+    let manifest;
+    if (/^\d+-[a-f0-9]+$/.test(generation)) {
+      try { manifest = JSON.parse(await readFile(join(packDir(this.dir, tradingDate), `${instrumentBase(exchange, symbol)}.manifest-${generation}.json`), 'utf8')); } catch { return null; }
+    } else manifest = await this.readManifest(tradingDate, exchange, symbol);
     if (!manifest) return null;
     const chunk = manifest.chunks.find((row) => Number(row.startMs) === Number(chunkStartMs));
     if (!chunk) return null;
@@ -277,6 +288,8 @@ export class HeatmapReplayStore {
 
   async #buildPack(tradingDate, exchange, symbol, archive, progress) {
     const startedAt = Date.now();
+    const sourceStat = statSync(archive.path);
+    const generation = `${startedAt}-${Math.random().toString(16).slice(2, 10)}`;
     const dir = packDir(this.dir, tradingDate);
     mkdirSync(dir, { recursive: true });
     const base = instrumentBase(exchange, symbol);
@@ -287,12 +300,13 @@ export class HeatmapReplayStore {
     let currentChunk = null;
     let gaps = 0;
     let lastFrameMarketMs = 0;
+    let lastCapturedMs = 0;
     let lastFrameSequence = 0;
     let awaitingResnapshot = false;
 
     const openChunk = (frameTimestamp) => {
       const startMs = Math.floor(frameTimestamp / CHUNK_MS) * CHUNK_MS;
-      const file = `${base}.chunk-${startMs}.ndjson.gz`;
+      const file = `${base}.${generation}.chunk-${startMs}.ndjson.gz`;
       const gzip = createGzip({ level: 6 });
       const done = pipeline(gzip, createWriteStream(join(dir, `${file}.partial`)));
       void done.catch(() => {}); // observed below before publishing the index
@@ -329,13 +343,14 @@ export class HeatmapReplayStore {
       if (typeof currentChunk.stream.flush === "function" && currentChunk.frames % 64 === 0) {
         currentChunk.stream.flush(zlibConstants.Z_SYNC_FLUSH);
       }
+      lastCapturedMs = marketMs;
       currentChunk.frames += 1;
       progress.frames += 1;
     };
 
     const input = archive.path.endsWith(".gz")
-      ? createReadStream(archive.path).pipe(createGunzip())
-      : createReadStream(archive.path);
+      ? createReadStream(archive.path, { end: Math.max(0, sourceStat.size - 1) }).pipe(createGunzip({ finishFlush: zlibConstants.Z_SYNC_FLUSH }))
+      : createReadStream(archive.path, { end: Math.max(0, sourceStat.size - 1) });
     const lines = createInterface({ input, crlfDelay: Number.POSITIVE_INFINITY });
     try {
       for await (const line of lines) {
@@ -393,6 +408,9 @@ export class HeatmapReplayStore {
 
     const manifest = {
       version: PACK_VERSION,
+      generation,
+      archiveBytes: sourceStat.size,
+      lastFrameMs: lastCapturedMs,
       tradingDate,
       exchange: String(exchange).toUpperCase(),
       root: String(symbol).toUpperCase(),
@@ -409,7 +427,21 @@ export class HeatmapReplayStore {
       endMs: chunks.at(-1)?.endMs ?? null,
       chunks: chunks.map(({ startMs, endMs, frames, file }) => ({ startMs, endMs, frames, file })),
     };
-    await writeFile(this.#manifestPath(tradingDate, exchange, symbol), JSON.stringify(manifest), "utf8");
+    const published = this.#manifestPath(tradingDate, exchange, symbol);
+    const versioned = join(dir, `${base}.manifest-${generation}.json`);
+    await writeFile(versioned, JSON.stringify(manifest), 'utf8');
+    await writeFile(`${published}.partial`, JSON.stringify(manifest), 'utf8');
+    await rename(`${published}.partial`, published);
+    // Immutable request generations protect in-flight readers. Expire only
+    // our own superseded derived files after 30 minutes; never raw recordings.
+    for (const name of readdirSync(dir)) {
+      if (!name.startsWith(`${base}.`)) continue;
+      const suffix = name.slice(base.length + 1);
+      const match = /^(?:manifest-)?(\d+-[a-f0-9]+)(?:\.chunk-\d+\.ndjson\.gz|\.json)$/.exec(suffix);
+      if (!match || match[1] === generation) continue;
+      const candidate = join(dir, name);
+      try { if (statSync(candidate).mtimeMs < startedAt - 30 * 60_000) unlinkSync(candidate); } catch { /* A concurrent reader/cleanup may have finished. */ }
+    }
     this.log(
       `[heatmap-replay] built ${base} ${tradingDate}: ${progress.frames} frames from ${progress.events} events in ${Math.round((Date.now() - startedAt) / 1_000)}s${gaps ? ` (${gaps} gap/drop markers)` : ""}`,
     );

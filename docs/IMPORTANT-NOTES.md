@@ -1,5 +1,11 @@
 # KWANTDESK important notes
 
+## 2026-10-28 - LIQ MAP historical navigation and isolated archive service
+
+- Pause / six-hour timeline / minute steps / LIVE are visible at the bottom. Dragging works with price auto-centering, paused display no longer gets evicted, live execution quotes continue, loaded books are reused and CVD/tape remain causal. First unprepared archive windows can take minutes; recorded depth is two-second snapshots. 36 targeted checks, full build/lint and desktop/mobile headless fixture QA pass; real NQ/ES history and signed VPS CORS/auth verified. Receipt: docs/prompt-log/2026-10-28-liquidity-map-pause-history.md.
+- Keep the new heatmap-history service in /opt/kwantdesk/compose.yml, /opt/kwantdesk/heatmap-history modules, restricted bearer-only env file and Caddy /liquidity-history route/log exclusion. One worker, 0.5 CPU / 768MiB, raw archive mounted read-only; immutable derived generations refresh only on demand. No new VPS/provider login; no live gateway restart. Do not put large history bodies back through Vercel or enlarge the 1800-book browser buffer.
+- Separate open items remain: live CVD/QuantStats freeze acceptance, original Footprint opening transient, owner-deferred main gateway activation and existing parity/archive/off-box/unattended-execution dependencies.
+
 ## 2026-10-28 — Navigation and separate frozen-study fault
 
 - Home/native navigation intent prepares destination code only; primary navigation can mount before the trading bundle. Unrelated startup/provider warmups removed and two dead Home launch routes corrected. 17 checks/full build pass; physical signed-in navigation latency remains unmeasured. Receipt: docs/prompt-log/2026-10-28-navigation-cold-entry.md.

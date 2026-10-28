@@ -6,6 +6,15 @@ import * as tape from '../src/lib/executionTape.ts';import * as continuity from 
 const origin='https://www.kwantdesk.com',key='lease-test-only';
 const compile=path=>ts.transpileModule(fs.readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
 function issuer(){const exports={};vm.runInNewContext(compile('../src/lib/executionStreamLease.server.ts'),{exports,require:name=>name==='server-only'?{}:name.includes('GatewayEnv')?{marketDataGatewayToken:()=>key,marketDataGatewayUrlCandidatesForPath:()=>['https://feed.kwantdesk.com']}:{signBrowserStreamTicket},URL,URLSearchParams,Response,Date});return exports.executionStreamLeaseResponse;}
+
+test('history negotiation signs the selected clock and immutable generation for its isolated VPS route',async()=>{
+ const response=issuer()(new Request(origin+'/api/example'),'/v1/heatmap/replay/chunk','?historyLease=1&symbol=ES&throughMs=123&generation=123-abcdef');
+ const lease=await response.json();const url=new URL(lease.url);
+ assert.equal(url.pathname,'/liquidity-history');assert.equal(url.origin,'https://feed.kwantdesk.com');
+ const ticket=verifyBrowserStreamTicket(url.searchParams.get('ticket'),key,origin);
+ assert.equal(ticket.path,'/v1/heatmap/replay/chunk');assert(!ticket.search.includes('historyLease'));
+ assert(ticket.search.includes('throughMs=123'));assert(ticket.search.includes('generation=123-abcdef'));
+});
 test('authenticated lease negotiation returns a finite exact-scope URL, never a cross-origin redirect',async()=>{
  const issue=issuer(),query='?exchange=COMEX&symbol=MGC&contractSymbol=MGCZ6&seedLimit=128&streamLease=1';
  const response=issue(new Request(origin+'/api/institutional-market-data/v1/market-data/trades'+query),'/v1/market-data/trades',query);
