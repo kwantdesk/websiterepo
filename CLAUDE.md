@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 - Active trade stop persistence during account sync
+
+Whole-position conflict selection could erase a new/moved SL when the competing copy edited/filled a target with its baseline null/old stop. Merge stop independently against base; merge targets by ID and price/quantity intent, retaining monotonic fills. Preserve deliberate removal, closed/reset authority and exact-touch execution. Six new actual regressions fail before fix;81 focused checks/scoped lint pass. No owner stop price guessed or account/trade mutated; no gateway restart. See docs/prompt-log/2026-10-28-active-stop-persistence.md. Active-tab acceptance and standing feed/Footprint/archive/backup/unattended-execution work remain open.
+
 ## 2026-10-28 - NQ execution delivery recovery despite heartbeats
 
 Execution connections now time out a missing seed even if heartbeats continue. Shared contract feeds compare fresh confirmed trade quote timestamps with their actual delivered execution watermark; after 1s grace a missing print re-leases the existing engine and requests existing in-place tail repair. Book/cached/unknown/stale/other-contract observations cannot trigger; one recovery per 15s, timers disposed on final unsubscribe. Preserve exact tape dedup, pending worker batches and ack/backpressure; no quote-derived OHLC, interpolation or gateway restart. 52 tests and full build pass; isolated real-NQ headless fixture deliberately dropped three trade packets and recovered with one reconnect, then painted 13 further updates at genuine ticks. Owner active trading tab was not exposed to browser control; full-workspace visual acceptance remains open. Absolute browser-age counters had clock skew and are not latency proof. See docs/prompt-log/2026-10-28-nq-stalled-execution-recovery.md. Deferred backend activation and original Footprint transient remain separate.

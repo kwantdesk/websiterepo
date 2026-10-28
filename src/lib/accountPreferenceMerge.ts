@@ -79,7 +79,20 @@ function mergeTradingAccount(base: PaperAccountLedger | undefined, local: PaperA
     if (a.status === 'closed') return a;
     const original = base?.positions.find(p => p.id === a.id);
     const chosen = original && same(executionPosition(a), executionPosition(original)) ? b : a;
-    return { ...chosen, takeProfits: chosen.takeProfits.map(target => ({ ...target,
+    // Protection is independent intent, not part of a whole-position winner.
+    // A partial fill or target edit can carry the baseline's null/older stop.
+    // Only an actual stop edit may replace the peer's changed stop (including
+    // an explicit removal); do not infer intent from quote/account timestamps.
+    const stopLoss = original && same(a.stopLoss, original.stopLoss) ? b.stopLoss : a.stopLoss;
+    const takeProfits = mergeById(original?.takeProfits ?? [], a.takeProfits, b.takeProfits, (left, right) => {
+      const previous = original?.takeProfits.find(target => target.id === left.id);
+      return { ...left,
+        price: previous && same(left.price, previous.price) ? right.price : left.price,
+        quantity: previous && same(left.quantity, previous.quantity) ? right.quantity : left.quantity,
+        filledQuantity: Math.max(left.filledQuantity, right.filledQuantity),
+      };
+    });
+    return { ...chosen, stopLoss, takeProfits: takeProfits.map(target => ({ ...target,
       filledQuantity: Math.max(target.filledQuantity,
         a.takeProfits.find(t => t.id === target.id)?.filledQuantity ?? 0,
         b.takeProfits.find(t => t.id === target.id)?.filledQuantity ?? 0) })) };

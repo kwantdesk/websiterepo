@@ -1,5 +1,10 @@
 # KWANTDESK important notes
 
+## 2026-10-28 - Stop loss survives concurrent account updates
+
+- Reproduced a whole-position sync conflict overwriting a new stop with baseline null during concurrent target changes/partial fills. Protection intent now merges field-wise; explicit removal and fill/reset authority remain.81 focused tests and scoped lint pass. Receipt: docs/prompt-log/2026-10-28-active-stop-persistence.md.
+- Already-lost stops are not recreated at guessed prices. Owner active-trade visual acceptance unverified; no test trades or gateway restart. Prior deferred backend/Footprint/vendor/archive/backup/browser-owned unattended-execution items remain open.
+
 ## 2026-10-28 - NQ stalled-execution recovery
 
 - Missing execution seed cannot remain masked by heartbeats. A same-contract confirmed fresh trade quote can detect a delivered-execution watermark stall and reconnect the existing engine after grace, rate-limited and lossless. Existing in-place history repair is notified. No invented prices, quote-mid OHLC, pending-print loss or live gateway restart. 52 tests/full build and a real-feed isolated headless recovery fixture pass. Receipt: docs/prompt-log/2026-10-28-nq-stalled-execution-recovery.md.
