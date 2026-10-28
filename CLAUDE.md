@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — CVD live-tail hydration and rollover
+
+CVD/Volume sampling now retains a bounded four-bucket live tail across sampling and merges it into history/tape hydration, so stale React candle props cannot rewind live flow after boundary-only candle commits. Reconcile final closing bucket as well as active bucket; do not invent absent history. Replay bypasses live tail. Delta extrema changes participate in sample equality.38 tests pass, including actual Chart hydration/rollover tests that fail against former HEAD effects. See docs/prompt-log/2026-10-28-cvd-live-tail-hydration.md. No gateway restart; deferred backend performance activation remains deferred. Read-only source probe found recent classified trades; owner browser CVD was not end-to-end observed.
+
 ## 2026-10-28 — Live candle prepared-frame handoff
 
 Visible workspace execution accumulator marks candle events paintInCurrentFrame; Chart clock candles consume that frame without a redundant second rAF. Cancel an older queued frame and suppress follow-up scheduling while draining bounded pending rollover/current bars. Unprepared events, event charts, Heikin-Ashi behavior and replay guards retain existing paths. Same-bar coalescing already existed; do not claim this fix adds it or invent sub-tick NQ executions. P&L uses bid/ask while futures candles use trades.38 actual-effect/authority regressions pass. See docs/prompt-log/2026-10-28-live-price-frame-handoff.md including official CME/Bookmap sources and limits. No gateway restart or owner state changes.

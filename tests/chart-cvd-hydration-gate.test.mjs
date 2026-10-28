@@ -32,7 +32,7 @@ test("CVD and Volume repaint immediately with hydrated candle history", () => {
   assert.match(chart, /const historyShapeChanged = \([\s\S]*?previousCandles\.length !== candles\.length/);
   assert.match(chart, /const orderFlowHydrated = \([\s\S]*?orderFlowHistoryReady/);
   assert.match(chart, /const requiresImmediateHydration = \([\s\S]*?historyShapeChanged && !liveBoundaryAppend[\s\S]*?executionTapeHydrated/);
-  assert.match(chart, /if \(requiresImmediateHydration\)[\s\S]*?setSampledIndicatorCandles\(candles\)[\s\S]*?setSampledIndicatorMarketTrades/);
+  assert.match(chart, /if \(requiresImmediateHydration\)[\s\S]*?setSampledIndicatorCandles\(liveReplayActiveRef\.current \? candles[\s\S]*?mergeLiveIndicatorTail\(candles, pendingLiveVolumeCandleRef\.current\)[\s\S]*?setSampledIndicatorMarketTrades/);
 });
 
 test("an early order-flow response is reapplied when base candles arrive and survive tail repair", () => {

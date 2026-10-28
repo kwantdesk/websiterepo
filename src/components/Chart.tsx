@@ -141,6 +141,7 @@ import {
   indicatorCandleSnapshotChanged,
   isLiveIndicatorBoundaryAppend,
   mergeLiveIndicatorCandle,
+  mergeLiveIndicatorTail,
   type DatabentoLiveTick,
   type LiveChartCandleDetail,
   type LiveChartExecutionDetail,
@@ -4386,7 +4387,7 @@ function Chart({
   const eventChartTimeBySourceTimeRef = useRef(new Map<number, number>());
   const indicatorSampleTimerRef = useRef<number | null>(null);
   const liveVolumeSampleTimerRef = useRef<number | null>(null);
-  const pendingLiveVolumeCandleRef = useRef<Candle | null>(null);
+  const pendingLiveVolumeCandleRef = useRef<Candle[]>([]);
   // Cancels an in-flight viewport reset. Not a frame id any more: the reset
   // now waits for the chart to paint the new range before pinning the price
   // scale, so it owns more than one frame.
@@ -4728,7 +4729,9 @@ function Chart({
       };
       latestCandleRef.current = authoritativeCandle;
       if (volumeIndicatorEnabled || nonFootprintOrderFlowIndicatorEnabled) {
-        pendingLiveVolumeCandleRef.current = authoritativeCandle;
+        pendingLiveVolumeCandleRef.current = enqueueLiveCandleSnapshot(
+          pendingLiveVolumeCandleRef.current, authoritativeCandle, 4, true,
+        );
         if (liveVolumeSampleTimerRef.current === null) {
           // Volume and the order-flow panes (CVD, delta studies) need a React
           // snapshot of the forming candle, which carries its live aggressor
@@ -4736,12 +4739,11 @@ function Chart({
           // tape bypasses React entirely.
           liveVolumeSampleTimerRef.current = window.setTimeout(() => {
             liveVolumeSampleTimerRef.current = null;
-            const liveVolumeCandle = pendingLiveVolumeCandleRef.current;
-            pendingLiveVolumeCandleRef.current = null;
-            if (liveVolumeCandle) {
+            const liveVolumeCandles = pendingLiveVolumeCandleRef.current;
+            if (liveVolumeCandles.length) {
               startTransition(() => {
                 setSampledIndicatorCandles((current) =>
-                  mergeLiveIndicatorCandle(current, liveVolumeCandle));
+                  mergeLiveIndicatorTail(current, liveVolumeCandles));
               });
             }
           // Every sampled snapshot triggers a full study recompute across the
@@ -4771,7 +4773,7 @@ function Chart({
         window.clearTimeout(liveVolumeSampleTimerRef.current);
         liveVolumeSampleTimerRef.current = null;
       }
-      pendingLiveVolumeCandleRef.current = null;
+      pendingLiveVolumeCandleRef.current = [];
     };
   }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, nonFootprintOrderFlowIndicatorEnabled, observedCandleScope, timeframe, volumeIndicatorEnabled]);
 
@@ -4975,7 +4977,10 @@ function Chart({
         // user-visible hydration, not a normal live bucket opening. Commit
         // those immediately. A one-bar append deliberately continues through
         // the low-priority sampler below so it cannot blank the chart surface.
-        setSampledIndicatorCandles(candles);
+        // Tape hydration often arrives after a newer imperative candle. Keep
+        // that verified tail rather than resetting CVD to the old prop sample.
+        setSampledIndicatorCandles(liveReplayActiveRef.current ? candles
+          : mergeLiveIndicatorTail(candles, pendingLiveVolumeCandleRef.current));
         if (orderFlowIndicatorEnabled) {
           sampledIndicatorMarketTradesRef.current = marketTrades;
           setSampledIndicatorMarketTrades((current) => current === marketTrades ? current : marketTrades);
@@ -4998,7 +5003,7 @@ function Chart({
           : null;
         startTransition(() => {
           setSampledIndicatorCandles(liveIndicatorCandle
-            ? mergeLiveIndicatorCandle(pendingCandles, liveIndicatorCandle)
+            ? mergeLiveIndicatorTail(pendingCandles, pendingLiveVolumeCandleRef.current)
             : pendingCandles);
           if (nonFootprintOrderFlowIndicatorEnabled) {
             sampledIndicatorMarketTradesRef.current = pendingIndicatorMarketTradesRef.current;

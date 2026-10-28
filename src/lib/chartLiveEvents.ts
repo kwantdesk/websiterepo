@@ -250,8 +250,41 @@ export function mergeLiveIndicatorCandle(
     && merged.trades === Number(last.trades ?? 0)
     && merged.askTrades === Number(last.askTrades ?? 0)
     && merged.bidTrades === Number(last.bidTrades ?? 0)
+    && merged.deltaHigh === last.deltaHigh
+    && merged.deltaLow === last.deltaLow
   ) return snapshot;
   return [...snapshot.slice(0, -1), merged];
+}
+
+/** Reconcile sampled history with the bounded live indicator tail, including
+ * the final closing bar delivered immediately before a rollover. This changes
+ * study inputs only; it never replaces price-chart history. */
+export function mergeLiveIndicatorTail(snapshot: Candle[], tail: Candle[]) {
+  if (!tail.length) return snapshot;
+  let next = snapshot;
+  for (const candle of tail) {
+    const end = next.at(-1);
+    if (!end || candle.timestamp >= end.timestamp) {
+      next = mergeLiveIndicatorCandle(next, candle);
+      continue;
+    }
+    // Only update an existing bucket: a bounded tail cannot fill history gaps.
+    let low = 0;
+    let high = next.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (next[middle].timestamp < candle.timestamp) low = middle + 1;
+      else high = middle;
+    }
+    if (next[low]?.timestamp !== candle.timestamp) continue;
+    const previous = next[low];
+    const merged = mergeLiveIndicatorCandle([previous], candle)[0];
+    if (merged !== previous) {
+      if (next === snapshot) next = [...snapshot];
+      next[low] = merged;
+    }
+  }
+  return next;
 }
 
 type DatabentoLiveStatusSnapshot = {
