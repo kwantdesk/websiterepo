@@ -1,5 +1,10 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — CVD / QuantStats follow pan and zoom
+
+ChartIndicatorPanes now subscribes directly to the chart's native logical viewport and coalesces its own SVG reprojection to one rAF, rather than waiting indefinitely for Chart's 80ms trailing React settle timer during continuous navigation. Parent full-tree performance policy, indicator values, event-time mapping and Footprint grouping are unchanged. Rebind on chartReadyRevision; cancel/unsubscribe for removed panes. 27 focused checks and the full 1536MiB build pass; pane/helper ESLint passes (full Chart lint exceeded 4GiB). Actual renderer/hook regression fails on 3966b676 and passes after this fix; signed-in physical/FPS acceptance is not claimed. No gateway restart. See docs/prompt-log/2026-10-28-cvd-quantstats-viewport-follow.md. Pending backend activation and original Footprint opening transient remain open.
+
+
 ## 2026-10-28 — Owner-requested rollback of footprint opening-scale change
 
 Owner reports e8f95ace worsened Footprint and explicitly requests the previous behavior. Restore Chart.tsx byte-for-byte to 840043de, remove the new opening-scale tests, and preserve earlier CVD/live-sort fixes. This supersedes the next opening-scale entry: its synthetic regressions did not establish the owner's actual visual fault. Do not reapply that grouping/readiness/layout-effect approach as the fix without actual visual evidence. Original first-open transient rendering remains unresolved.39 existing targeted tests pass. No gateway restart or owner state changes. See docs/prompt-log/2026-10-28-footprint-opening-scale-rollback.md.

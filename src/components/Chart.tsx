@@ -11716,6 +11716,15 @@ function Chart({
       return next;
     });
   }, [calculatedIndicatorPanes]);
+  const subscribeIndicatorViewport = useCallback((onChange: () => void) => {
+    const timeScale = chartRef.current?.timeScale();
+    if (!timeScale) return () => {};
+    timeScale.subscribeVisibleLogicalRangeChange(onChange);
+    return () => {
+      try { timeScale.unsubscribeVisibleLogicalRangeChange(onChange); } catch {}
+    };
+    // Rebind after chart recreation, including first creation after pane mount.
+  }, [chartReadyRevision]);
   const indicatorTimeToX = useCallback(
     (time: number) => {
       // Time-based candles can use their epoch second directly. Event-based
@@ -20802,6 +20811,7 @@ function Chart({
         chartHeight={overlaySize.height}
         bottom={24}
         viewportVersion={viewportVersion}
+        subscribeViewport={subscribeIndicatorViewport}
         paneHeights={resolvedIndicatorPaneHeights}
         collapsedPanes={collapsedIndicatorPanes}
         paneLayout={indicatorPaneLayout}

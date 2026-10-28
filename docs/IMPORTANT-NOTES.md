@@ -1,5 +1,11 @@
 # KWANTDESK important notes
 
+## 2026-10-28 — CVD / QuantStats viewport tracking
+
+- Pane-only native viewport subscription restores frame-coalesced chart alignment without full Chart renders during pan/zoom. 27 focused checks and the full build pass; renderer regression reproduces the former missing updates. Source receipt: docs/prompt-log/2026-10-28-cvd-quantstats-viewport-follow.md.
+- OPEN: signed-in physical session/FPS acceptance; deferred backend activation (owner is trading), original Footprint opening transient, vendor parity/archive completeness/off-box backups and browser-owned unattended demo execution remain separate dependencies.
+
+
 ## 2026-10-27 — Cross-device sync / unattended demo execution
 
 - Account/workspace state now uses conflict-aware database revisions and live change hints; see the cross-device-account-state receipt. No per-tick cloud replication.

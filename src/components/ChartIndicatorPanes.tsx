@@ -14,6 +14,7 @@ import { sampledPanePoints, sampledVerticalPanePoints } from "@/lib/chartIndicat
 import KstPanePlot from "@/components/KstPanePlot";
 import { createPaneCoordinateCache, resolvePaneCoordinate } from "@/lib/paneCoordinateContinuity";
 import { cvdSeriesRegressed } from "@/lib/cvdRenderContinuity";
+import { subscribeIndicatorPaneFrames } from "@/lib/indicatorPaneViewport";
 
 type IndicatorPaneGroup = {
   key: string;
@@ -1311,6 +1312,7 @@ function ChartIndicatorPanes({
   chartHeight,
   bottom,
   viewportVersion,
+  subscribeViewport,
   paneHeights,
   collapsedPanes,
   paneLayout,
@@ -1331,6 +1333,7 @@ function ChartIndicatorPanes({
   chartHeight: number;
   bottom: number;
   viewportVersion: number;
+  subscribeViewport?: (onChange: () => void) => () => void;
   paneHeights: Record<string, number>;
   collapsedPanes: Record<string, boolean>;
   paneLayout: IndicatorPaneLayoutMap;
@@ -1341,6 +1344,18 @@ function ChartIndicatorPanes({
   onUpdateSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenSettings?: (instanceId: string) => void;
 }) {
+  const [paneViewportVersion, setPaneViewportVersion] = useState(0);
+  useEffect(() => {
+    if (!subscribeViewport || !baseGroups.length) return;
+    // The parent Chart intentionally settles expensive derived overlays after
+    // a gesture. These time-aligned SVG panes must not wait for that timer.
+    return subscribeIndicatorPaneFrames(
+      subscribeViewport,
+      () => setPaneViewportVersion((version) => version + 1),
+      window,
+    );
+  }, [subscribeViewport, baseGroups.length]);
+  const surfaceViewportVersion = viewportVersion + paneViewportVersion;
   const cvdSeriesCacheRef = useRef<{ scope: string; series: Map<string, { identity: string; series: CalculatedIndicatorSeries[] }> }>({
     scope: coordinateScope,
     series: new Map(),
@@ -1529,7 +1544,7 @@ function ChartIndicatorPanes({
       width={surfaceWidth}
       priceScaleWidth={localValueScaleWidth}
       height={surfacePaneHeight}
-      viewportVersion={viewportVersion}
+      viewportVersion={surfaceViewportVersion}
       paneHeights={paneHeights}
       collapsedPanes={collapsedPanes}
       timeToX={surfaceTimeToX}
@@ -1557,7 +1572,7 @@ function ChartIndicatorPanes({
         width={sideWidthFor(surfaceGroups.length)}
         height={surfaceHeight}
         globalPlotWidth={Math.max(1, width - priceScaleWidth)}
-        viewportVersion={viewportVersion}
+        viewportVersion={surfaceViewportVersion}
         collapsedPanes={collapsedPanes}
         timeToX={stableTimeToX}
         onTogglePane={guardedToggle}
