@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-28 — Footprint opening scale and first presentation
+
+Footprint source-window and automatic-grouping memos now invalidate on opening viewport/scale readiness, avoiding provisional fit-all consolidated rows remaining cached until another trade. Live inputs/presentation commit in layout phase; provisional rows stay out of the primitive until existing chartVisualReady. No added timer/loader.43 tests pass including actual memo/presentation regressions that fail against former HEAD; manual ticks and history/live handoff preserved. See docs/prompt-log/2026-10-28-footprint-opening-scale.md. No gateway restart or owner state changes.
+
 ## 2026-10-28 — Footprint same-millisecond live sort cost
 
 Reuse module-lifetime numeric Intl.Collator in orderFootprintTrades. The prior localeCompare options per comparison made 25k-print same-ms burst footprint folds take ~128ms median; same-builder benchmark now ~19ms median with identical totals/rows.60 tests pass including preserved numeric tie order, execution delta extrema, cached folds and existing worker/frame paths. See docs/prompt-log/2026-10-28-footprint-live-ticking-cost.md and repeatable benchmark script. Do not interpret synthetic speedup as browser FPS or 1ms repaint guarantee. No gateway restart; pending backend performance activation remains deferred by owner.

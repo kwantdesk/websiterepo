@@ -6720,7 +6720,7 @@ function Chart({
     // footprint somewhere off screen to the right and left it stale for the
     // next refresh too.
     return first < last ? footprintCandles.slice(first, last) : [];
-  }, [candles.length, footprintCandles, footprintDataConsumer, footprintViewportVersion]);
+  }, [candles.length, chartReadyRevision, chartVisualReady, footprintCandles, footprintDataConsumer, footprintViewportVersion]);
   const footprintSourceCandles = useMemo(() => {
     if (!footprintDataConsumer) return [];
     return footprintVisibleCandles;
@@ -6770,6 +6770,7 @@ function Chart({
     return Math.min(100, grouped);
   }, [
     chartReadyRevision,
+    chartVisualReady,
     footprintSettings.autoGroupFactor,
     footprintSettings.fontSize,
     footprintSettings.groupMode,
@@ -7204,8 +7205,8 @@ function Chart({
       backgroundColor: settings.backgroundColor,
     };
   }, [footprintSettings, priceFormat.minMove, resolvedFootprintGroupTicks, settings]);
-  useEffect(() => {
-    liveFootprintEnabledRef.current = Boolean(footprintIndicator);
+  useLayoutEffect(() => {
+    liveFootprintEnabledRef.current = Boolean(footprintIndicator) && chartVisualReady;
     const sourceTailTimestamp = footprintSourceCandles.at(-1)?.timestamp ?? Number.NEGATIVE_INFINITY;
     const imperativeTail = liveFootprintSourceCandlesRef.current.filter(
       (candle) => candle.timestamp > sourceTailTimestamp,
@@ -7243,6 +7244,7 @@ function Chart({
       liveFootprintTapeRef.current = sampledIndicatorMarketTrades;
     }
   }, [
+    chartVisualReady,
     footprintBuildSettings,
     footprintIndicator,
     footprintPrimitiveOptions,
@@ -7854,13 +7856,15 @@ function Chart({
   }, [stackedImbalanceIndicator]);
 
   const footprintPresentationScopeRef = useRef<string | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const primitive = footprintPrimitiveRef.current;
     const series = candleSeriesRef.current;
     const chart = chartRef.current;
     if (!primitive || !series || !chart) return;
     const presentationScope = `${footprintDataKey}:${contractSymbol}`;
-    const stableFootprintBars = footprintIndicator && liveFootprintRenderBars.length
+    // Initial autoscale is provisional. Never paint its coarse rows, and
+    // apply the final grouping before the opening overlay can be removed.
+    const stableFootprintBars = footprintIndicator && liveFootprintRenderBars.length && chartVisualReady
       ? replayTimestampMs != null ? liveFootprintRenderBars : retainLiveFootprintRows(liveFootprintRenderBars,
         footprintPresentationScopeRef.current === presentationScope ? liveFootprintRenderBarsRef.current : [])
       : [];
@@ -7955,6 +7959,7 @@ function Chart({
     livePriceLineColor,
     resolvedCandleColors,
     chartReadyRevision,
+    chartVisualReady,
     footprintDataKey,
     contractSymbol,
     footprintIndicator,
