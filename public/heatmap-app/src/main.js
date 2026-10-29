@@ -1,11 +1,11 @@
-import { restoreLegacyDisplay, DISPLAY_ROLLBACK } from './display-rollback.js?v=20261029-oct25-rollback';
+import { restoreLegacyDisplay, DISPLAY_ROLLBACK } from './display-rollback.js?v=20261029-backed-display';
 import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261027-instrument-price-scale';
 import { observeLiquidityMapModals } from './modal-overlay-bridge.js?v=20261027-modal-overlays';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261029-oct25-rollback';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261029-oct25-rollback';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261029-backed-display';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -20,7 +20,7 @@ import {
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from './live-market.js?v=20261027-instrument-price-scale';
-import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20261029-oct25-rollback';
+import { DEFAULT_PALETTE, FOOTPRINT_PALETTES, paletteCssGradient } from './palettes.js?v=20261029-backed-display';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
@@ -182,6 +182,16 @@ class DepthForgeApp {
       pending: false,
       retryTimer: null,
     };
+    // Keep original saved palette IDs available when undoing the stock reset.
+    const footprintPalettes = document.createElement('optgroup');
+    footprintPalettes.label = 'Footprint palettes';
+    for (const scheme of FOOTPRINT_PALETTES) {
+      const option = document.createElement('option');
+      option.value = scheme.id;
+      option.textContent = scheme.label;
+      footprintPalettes.append(option);
+    }
+    $('paletteSelect').append(footprintPalettes);
     this.#bindControls();
     this.#enhanceInspectorSelects();
     this.#syncPaletteControls();

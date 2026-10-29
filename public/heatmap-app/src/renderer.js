@@ -1,5 +1,5 @@
 import { priceScaleRows } from './price-scale.js?v=20261027-instrument-price-scale';
-import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261029-oct25-rollback';
+import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261029-backed-display';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
 import { writeHeatRgba } from './heat-raster.js?v=20261020-smooth-motion';
 
