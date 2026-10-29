@@ -858,7 +858,10 @@ export default function GammaWorkspace() {
       const payload = await fetchWorkspaceData<OptionsFlowPayload>(
         `${optionsFlowCacheKey(nextSymbol, nextPriceMode)}:${detailMode}`,
         `/api/options-flow?symbol=${encodeURIComponent(nextSymbol)}&priceMode=${nextPriceMode}&detail=${detailMode}`,
-        { force: true },
+        // FULL includes two sequential provider phases and 25s interval-map
+        // reads. The shared 20s chart budget aborted a supported response.
+        // CORE still paints first; both requests remain bounded and shared.
+        { force: true, timeoutMs: detailMode === "CORE" ? 30_000 : 60_000 },
       );
       if (requestId !== requestIdRef.current[detailMode]) return;
       if (!canRenderOptionsPayload(payload)) {

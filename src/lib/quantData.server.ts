@@ -423,8 +423,15 @@ function quantDataPost(path: string, body: JsonRecord, ttlMs = 0, lane: QdLane |
   const cached = endpointCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
-  const promise = quantDataNetworkPost(path, body, resolvedLane).catch((error) => {
-    endpointCache.delete(cacheKey);
+  const promise = quantDataNetworkPost(path, body, resolvedLane).then((result) => {
+    const entry = endpointCache.get(cacheKey);
+    if (entry?.promise === promise) {
+      if (ttlMs > 0) entry.expiresAt = Date.now() + ttlMs;
+      else endpointCache.delete(cacheKey);
+    }
+    return result;
+  }, (error) => {
+    if (endpointCache.get(cacheKey)?.promise === promise) endpointCache.delete(cacheKey);
     throw error;
   });
 
@@ -442,17 +449,12 @@ function quantDataPost(path: string, body: JsonRecord, ttlMs = 0, lane: QdLane |
   // the response they would have got anyway, from the request already on its
   // way. Only a TTL keeps the entry after it settles.
   endpointCache.set(cacheKey, {
-    expiresAt: ttlMs > 0 ? Date.now() + ttlMs : Number.POSITIVE_INFINITY,
+    // A TTL bounds settled data, not the lifetime of an outstanding job.
+    // Interval maps can take longer than their 5s TTL; expiring the promise
+    // during that read duplicated provider work and lengthened the queue.
+    expiresAt: Number.POSITIVE_INFINITY,
     promise,
   });
-  if (ttlMs <= 0) {
-    // Drop it the moment it settles, so a later caller gets fresh data. The
-    // guard means a slow response cannot be evicted by a newer registration
-    // for the same key.
-    void promise.finally(() => {
-      if (endpointCache.get(cacheKey)?.promise === promise) endpointCache.delete(cacheKey);
-    });
-  }
   return promise;
 }
 
@@ -3946,9 +3948,13 @@ export async function getOptionsFlowPayload(
     )()
   ).then((payload) => {
     lastGoodOptionsFlowByInstrument.set(lastGoodKey, payload);
+    const entry = requestCache.get(cacheKey);
+    if (entry?.promise === promise) {
+      entry.expiresAt = Date.now() + (session.marketOpen ? CACHE_TTL_MS : 5 * 60_000);
+    }
     return payload;
   }).catch((error) => {
-    requestCache.delete(cacheKey);
+    if (requestCache.get(cacheKey)?.promise === promise) requestCache.delete(cacheKey);
     const lastGood = historical ? null : lastGoodOptionsFlowByInstrument.get(lastGoodKey);
     if (!lastGood) throw error;
     const problem = getQuantDataHttpError(error);
@@ -3962,7 +3968,10 @@ export async function getOptionsFlowPayload(
     };
   });
   requestCache.set(cacheKey, {
-    expiresAt: Date.now() + (session.marketOpen ? CACHE_TTL_MS : 5 * 60_000),
+    // Keep one build shared through both request phases. Its short response
+    // TTL starts only after completion, otherwise a slow cold load rebuilds
+    // the same dashboard repeatedly while the first build is still running.
+    expiresAt: Number.POSITIVE_INFINITY,
     promise,
   });
   return promise;
