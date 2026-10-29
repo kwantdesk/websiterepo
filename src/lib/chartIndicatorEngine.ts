@@ -49,6 +49,8 @@ import {
 } from "@/lib/vwap";
 
 export type CalculatedIndicatorSeries = {
+  /** Same historical signals rendered on price; never re-detect from another window. */
+  cvdDivergences?: CvdDivergenceSegment[];
   textOnChart?: TextOnChartOptions;
   swingPointLevels?: SwingPointLevelOptions;
   ichimokuCloud?: IchimokuCloudOptions;
@@ -640,6 +642,7 @@ function computeIndicatorSeries(
       label: "CVD",
       kind: "candlestick",
       placement: "pane",
+      cvdDivergences: segments,
       color: theme.primary,
       includeZeroInScale: false,
       data: bars.map((bar) => ({

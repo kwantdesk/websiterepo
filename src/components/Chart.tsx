@@ -516,7 +516,7 @@ import {
   type MagnetCandidate,
   type MagnetIntent,
 } from "@/lib/chartMagnet";
-import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
+import { CvdDivergencePricePrimitive } from "@/lib/cvdDivergencePricePrimitive";
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
 import { clearChartDrawingClipboard } from '@/lib/chartDrawingClipboard';
@@ -3618,6 +3618,7 @@ function Chart({
   const deepContractsPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const bigBlocksPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const smtDivergencePrimitiveRef = useRef<SmtDivergencePrimitive | null>(null);
+  const cvdDivergencePricePrimitiveRef = useRef<CvdDivergencePricePrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
   const liveFootprintSourceCandlesRef = useRef<Candle[]>([]);
   const liveFootprintBuildSettingsRef = useRef<FootprintBuildSettings | null>(null);
@@ -8002,28 +8003,6 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "options-delta") ?? null,
     [indicatorSignature, indicators],
   );
-  const cvdDivergenceIndicator = useMemo(
-    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cvd-divergence") ?? null,
-    [indicatorSignature, indicators],
-  );
-  // Price/CVD divergence over the recent live candles. Recomputed with each
-  // throttled candle update so the wick-to-wick line appears when price and
-  // CVD disagree and disappears the moment they match again.
-  const cvdDivergence = useMemo(() => {
-    if (!cvdDivergenceIndicator) return null;
-    const flowCandles = candles.filter((candle) => {
-      const flow = candle as unknown as CvdCandleLike;
-      return Number.isFinite(Number(flow.delta))
-        || (Number.isFinite(Number(flow.askVolume)) && Number.isFinite(Number(flow.bidVolume)));
-    }) as unknown as CvdCandleLike[];
-    if (flowCandles.length < 10) return null;
-    const indicatorSettings = cvdDivergenceIndicator.settings ?? {};
-    return detectCvdDivergence(flowCandles, sessionCvdPoints(flowCandles), {
-      pivotStrength: Number(indicatorSettings.pivotStrength ?? 2),
-      lookbackBars: Number(indicatorSettings.lookbackBars ?? 80),
-      recentBars: Number(indicatorSettings.recentBars ?? 12),
-    });
-  }, [candles, cvdDivergenceIndicator]);
   const [optionsDeltaPayload, setOptionsDeltaPayload] = useState<GexMapPanelPayload | null>(null);
   const [zeroGammaBarsPayload, setZeroGammaBarsPayload] = useState<GexMapPanelPayload | null>(null);
   const optionsSurfacePaneEffect = (
@@ -15414,6 +15393,9 @@ function Chart({
     const bigBlocksPrimitive = new BigBlocksPrimitive();
     candleSeries.attachPrimitive(bigBlocksPrimitive);
     bigBlocksPrimitiveRef.current = bigBlocksPrimitive;
+    const cvdDivergencePricePrimitive = new CvdDivergencePricePrimitive();
+    candleSeries.attachPrimitive(cvdDivergencePricePrimitive);
+    cvdDivergencePricePrimitiveRef.current = cvdDivergencePricePrimitive;
     const smtDivergencePrimitive = new SmtDivergencePrimitive();
     candleSeries.attachPrimitive(smtDivergencePrimitive);
     smtDivergencePrimitiveRef.current = smtDivergencePrimitive;
@@ -16440,6 +16422,9 @@ function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (cvdDivergencePricePrimitiveRef.current) {
+          try { candleSeries.detachPrimitive(cvdDivergencePricePrimitiveRef.current); } catch { /* Chart teardown may already have detached it. */ }
+        }
         if (candleSeriesRef.current && smtDivergencePrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(smtDivergencePrimitiveRef.current);
@@ -16554,6 +16539,7 @@ function Chart({
       deepContractsPrimitiveRef.current = null;
       bigBlocksPrimitiveRef.current = null;
       smtDivergencePrimitiveRef.current = null;
+      cvdDivergencePricePrimitiveRef.current = null;
       footprintPrimitiveRef.current = null;
       paperFillMarkersPrimitiveRef.current = null;
       footprintActiveRef.current = false;
@@ -17006,6 +16992,22 @@ function Chart({
       viewportSyncUserInteractionRef.current = false;
     };
   }, [chartInstanceId, chartReadyRevision, instrument, timeframe, viewportSyncGroup, viewportSyncRole]);
+
+  useEffect(() => {
+    cvdDivergencePricePrimitiveRef.current?.update(baseCalculatedIndicatorSeries.flatMap(definition => {
+      if (!definition.cvdDivergences) return [];
+      const related = baseCalculatedIndicatorSeries.filter(series => series.groupKey === definition.groupKey);
+      const bullish = related.find(series => series.key === "cvd-divergence-bullish");
+      const bearish = related.find(series => series.key === "cvd-divergence-bearish");
+      return [{
+        segments: definition.cvdDivergences,
+        bullishColor: bullish?.color ?? settings.upColor,
+        bearishColor: bearish?.color ?? settings.downColor,
+        backgroundColor: settings.backgroundColor,
+        lineWidth: bullish?.lineWidth ?? bearish?.lineWidth ?? 2,
+      }];
+    }));
+  }, [baseCalculatedIndicatorSeries, chartReadyRevision, settings.backgroundColor, settings.upColor, settings.downColor]);
 
   useEffect(() => {
     smtDivergencePrimitiveRef.current?.update(
@@ -21508,32 +21510,6 @@ function Chart({
         {renderableDrawings.map((drawing) => renderDrawing(drawing))}
         {draftDrawing && renderDrawing(draftDrawing, "draft")}
         {quickMeasure && renderDrawing(quickMeasure, "draft")}
-        {cvdDivergence ? (() => {
-          const x1 = timeToX(cvdDivergence.fromTime);
-          const y1 = priceToY(cvdDivergence.fromPrice);
-          const x2 = timeToX(cvdDivergence.toTime);
-          const y2 = priceToY(cvdDivergence.toPrice);
-          if (x1 == null || y1 == null || x2 == null || y2 == null) return null;
-          const divergenceSettings = cvdDivergenceIndicator?.settings ?? {};
-          const useThemeColors = divergenceSettings.useThemeColors !== false;
-          const color = cvdDivergence.kind === "bullish"
-            ? (useThemeColors ? settings.upColor : String(divergenceSettings.bullishColor ?? settings.upColor))
-            : (useThemeColors ? settings.downColor : String(divergenceSettings.bearishColor ?? settings.downColor));
-          const strokeWidth = Math.min(4, Math.max(1, Number(divergenceSettings.lineWidth ?? 2)));
-          const midX = (Number(x1) + Number(x2)) / 2;
-          const midY = (Number(y1) + Number(y2)) / 2;
-          return (
-            <g pointerEvents="none">
-              <line x1={Number(x1)} y1={Number(y1)} x2={Number(x2)} y2={Number(y2)} stroke={color} strokeWidth={strokeWidth} strokeDasharray="6 4" />
-              <circle cx={Number(x1)} cy={Number(y1)} r={2.5} fill={color} />
-              <circle cx={Number(x2)} cy={Number(y2)} r={2.5} fill={color} />
-              <rect x={midX - 17} y={midY - 19} width={34} height={13} rx={3} fill="var(--panel)" stroke={color} strokeWidth={1} />
-              <text x={midX} y={midY - 9.5} textAnchor="middle" fill={color} fontSize="8" fontWeight="700" fontFamily="'Aleph', monospace">
-                CVD
-              </text>
-            </g>
-          );
-        })() : null}
         </g>
       </svg>
 
