@@ -12,6 +12,8 @@ import { fineVolumeProfileWidth } from "@/lib/volumeProfileWidth";
 import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DRAW_TOOL_SPECS,
+  DEFAULT_POSITION_PROFIT_COLOR,
+  DEFAULT_POSITION_LOSS_COLOR,
   FIB_CIRCLE_COEFFS,
   FIB_LEVELS,
   FIB_RETRACEMENT_LEVELS,
@@ -106,7 +108,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "
 export default function ChartDrawLayer({
   width, height, priceScaleWidth = 0, activeTool, emoji, keepDrawing, drawings, selectedId,
   toX, toY, fromXY, candles, volumeProfiles = {}, requireExactVolumeProfiles = false, volumeProfileMessages = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, projectionRevision,
-  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor, currentPrice,
+  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, currentPrice,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const clipboardMenu = useChartDrawingClipboard({ svgRef, drawings, selectedId, toX, toY, fromXY, onCommit, onSelect });
@@ -1328,12 +1330,8 @@ export default function ChartDrawLayer({
           const long = drawing.tool === "longPosition";
           const entryY = a.y!;
           const { left: xL, right: xR, stopY, targetY } = positionGeometry;
-          // The zones follow the theme's two candle colours by default, so the
-          // calculator matches the chart it is drawn on. A trader who wants
-          // plain red-and-green regardless of theme sets them per drawing in
-          // the double-click settings; absent means follow the theme.
-          const green = style.profitColor ?? themeColor ?? "#089981";
-          const red = style.lossColor ?? themeBearColor ?? "#F23645";
+          const green = style.profitColor ?? DEFAULT_POSITION_PROFIT_COLOR;
+          const red = style.lossColor ?? DEFAULT_POSITION_LOSS_COLOR;
           const entryP = pr[0].price; const stopP = pr[1].price; const targetP = pr[2].price;
           const reward = Math.abs(targetP - entryP); const risk = Math.abs(entryP - stopP);
           const rr = risk > 0 ? reward / risk : 0;

@@ -521,7 +521,7 @@ import { getChartDrawingContextActions, type ChartDrawingContextActions } from '
 import { buildPaperFillMarkers } from '@/lib/paperFillMarkers';
 import { drawingCoordinateToTime, drawingTimeToCoordinate, type DrawingTimeScale } from "@/lib/chartDrawingCoordinates";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
-import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
+import { DEFAULT_POSITION_PROFIT_COLOR, DEFAULT_POSITION_LOSS_COLOR, createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
@@ -13284,8 +13284,8 @@ function Chart({
     && (drawing.tool === "longPosition" || drawing.tool === "shortPosition")
   ) ?? null;
   const positionStyleDefaults: Required<PositionVisualSettings> = {
-    targetColor: settings.upColor,
-    stopColor: settings.downColor,
+    targetColor: DEFAULT_POSITION_PROFIT_COLOR,
+    stopColor: DEFAULT_POSITION_LOSS_COLOR,
     entryLineColor: "#A1A1AA",
     textColor: "#050505",
     fillOpacity: 0.14,
@@ -13346,8 +13346,8 @@ function Chart({
         targetText: `Target ${targetDistance.toFixed(priceFormat.precision)} pts · ${Math.round(targetDistance / priceFormat.minMove)} ticks`,
         stopText: `Stop ${stopDistance.toFixed(priceFormat.precision)} pts · ${Math.round(stopDistance / priceFormat.minMove)} ticks`,
         rewardRiskText: stopDistance === 0 ? "Break-even · R:R —" : `1:${rewardRiskLabel} R:R`,
-        profitColor: visualStyle.targetColor ?? settings.upColor,
-        lossColor: visualStyle.stopColor ?? settings.downColor,
+        profitColor: visualStyle.targetColor ?? DEFAULT_POSITION_PROFIT_COLOR,
+        lossColor: visualStyle.stopColor ?? DEFAULT_POSITION_LOSS_COLOR,
         entryLineColor: visualStyle.entryLineColor ?? "#A1A1AA",
         labelTextColor: visualStyle.textColor ?? "#050505",
         handleFill: settings.backgroundColor ?? "#0A0A0A",

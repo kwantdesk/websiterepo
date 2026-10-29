@@ -1,24 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-/**
- * The Long/Short position tool's profit and loss zones must be overridable.
- *
- * They were pinned to the theme's two candle colours with no way out:
- *
- *   const green = themeColor || "#089981";
- *   const red = themeBearColor || "#F23645";
- *
- * On a monochrome or white-bullish theme that makes the risk zone grey and the
- * profit zone white, and the one tool where a trader most needs red-to-mean-loss
- * could not be made to say it.
- *
- * The other half of this is knowing WHICH implementation is live. Chart.tsx
- * still carries a `positionStyle` block (targetColor / stopColor / a settings
- * dialog) reading the legacy `drawings` state. That path is dead - the position
- * tools moved onto the live draw layer - so editing it changes nothing a user
- * can see. This test pins the live one.
- */
+// Position zones default to semantic green/red across themes; custom colours win.
 
 const tools = readFileSync(new URL("../src/lib/chartDrawTools.ts", import.meta.url), "utf8");
 const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
@@ -39,7 +22,7 @@ check("the live stack is the one being edited", () => {
 });
 
 check("the style model carries both colours, optionally", () => {
-  // Optional is the point: absent means follow the theme, which is what every
+  // Optional is the point: absent means fixed green/red defaults, which is what every
   // drawing saved before this existed relies on.
   assert.match(tools, /profitColor\?: string;/);
   assert.match(tools, /lossColor\?: string;/);
@@ -51,8 +34,8 @@ check("the renderer prefers the drawing's own colours", () => {
     layer.indexOf('case "priceRange":'),
   );
   assert.ok(block.length > 0 && block.length < 6_000, `slice looks wrong: ${block.length}`);
-  assert.match(block, /const green = style\.profitColor \?\? themeColor \?\? "#089981";/);
-  assert.match(block, /const red = style\.lossColor \?\? themeBearColor \?\? "#F23645";/);
+  assert.match(block, /const green = style\.profitColor \?\? DEFAULT_POSITION_PROFIT_COLOR;/);
+  assert.match(block, /const red = style\.lossColor \?\? DEFAULT_POSITION_LOSS_COLOR;/);
   // THE BUG: the theme must no longer be the only source.
   assert.doesNotMatch(block, /const green = themeColor \|\| "#089981";/);
   assert.doesNotMatch(block, /const red = themeBearColor \|\| "#F23645";/);
@@ -69,7 +52,7 @@ check("the settings dialog exposes them for position tools only", () => {
   assert.match(settings, /ariaLabel="Loss zone colour"/);
   assert.match(settings, /patchStyle\(\{ profitColor: hex \}\)/);
   assert.match(settings, /patchStyle\(\{ lossColor: hex \}\)/);
-  // Getting back to the theme must not require deleting the drawing.
+  // Getting back to green/red defaults must not require deleting the drawing.
   assert.match(settings, /patchStyle\(\{ profitColor: undefined, lossColor: undefined \}\)/);
   // The site's own picker, not an OS colour input.
   assert.doesNotMatch(settings, /type="color"/);
@@ -78,11 +61,11 @@ check("the settings dialog exposes them for position tools only", () => {
 check("the swatch shows what is actually painted", () => {
   // Same fallback chain as the renderer, or the dialog would advertise a colour
   // the chart is not using.
-  assert.match(settings, /drawing\.style\.profitColor \?\? themeColor \?\? "#089981"/);
-  assert.match(settings, /drawing\.style\.lossColor \?\? themeBearColor \?\? "#F23645"/);
-  // The bear colour has to reach the dialog at all.
-  assert.match(settings, /themeBearColor\?: string;/);
-  assert.match(chart, /themeBearColor=\{settings\.downColor\}/);
+  assert.match(settings, /drawing\.style\.profitColor \?\? DEFAULT_POSITION_PROFIT_COLOR/);
+  assert.match(settings, /drawing\.style\.lossColor \?\? DEFAULT_POSITION_LOSS_COLOR/);
+  assert.match(tools, /DEFAULT_POSITION_PROFIT_COLOR = "#089981"/);
+  assert.match(tools, /DEFAULT_POSITION_LOSS_COLOR = "#F23645"/);
+  assert.match(settings, /Reset to green \/ red/);
 });
 
 check("templates capture the new colours for free", () => {
@@ -92,11 +75,11 @@ check("templates capture the new colours for free", () => {
   assert.match(settings, /saveDrawTemplate\(drawing\.tool, templateName\.trim\(\), drawing\.style\)/);
 });
 
-check("the dead legacy path was left alone", () => {
-  // Chart.tsx's positionStyle block reads the legacy `drawings` state. It is
-  // untouched on purpose - editing it is the classic wasted round on this
-  // codebase - but if it ever becomes live again this test should be revisited.
-  assert.match(chart, /const positionSettingsDrawing = drawings\.find\(/);
+check("the canvas position path uses the same semantic defaults", () => {
+  assert.match(chart, /targetColor: DEFAULT_POSITION_PROFIT_COLOR/);
+  assert.match(chart, /stopColor: DEFAULT_POSITION_LOSS_COLOR/);
+  assert.match(chart, /profitColor: visualStyle\.targetColor \?\? DEFAULT_POSITION_PROFIT_COLOR/);
+  assert.match(chart, /lossColor: visualStyle\.stopColor \?\? DEFAULT_POSITION_LOSS_COLOR/);
 });
 
 console.log(`\nposition tool colours: ${passed}/${passed} checks passed`);

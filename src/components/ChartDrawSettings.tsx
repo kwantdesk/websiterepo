@@ -7,6 +7,8 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import {
   DRAW_TOOL_SPECS,
+  DEFAULT_POSITION_PROFIT_COLOR,
+  DEFAULT_POSITION_LOSS_COLOR,
   HORIZONTAL_EXTENSION_TOOLS,
   resolveDrawColor,
   type DrawHorizontalExtension,
@@ -34,7 +36,7 @@ type Props = {
 };
 
 export default function ChartDrawSettings({
-  drawing, onChange, onClose, themeColor, themeBearColor,
+  drawing, onChange, onClose, themeColor,
 }: Props) {
   const [tab, setTab] = useState<"style" | "text" | "coordinates" | "visibility">("style");
   const [templates, setTemplates] = useState<DrawTemplateStore>({});
@@ -154,14 +156,14 @@ export default function ChartDrawSettings({
                   <Row label="Profit">
                     <ChartColorField
                       ariaLabel="Profit zone colour"
-                      value={drawing.style.profitColor ?? themeColor ?? "#089981"}
+                      value={drawing.style.profitColor ?? DEFAULT_POSITION_PROFIT_COLOR}
                       onChange={(hex) => patchStyle({ profitColor: hex })}
                     />
                   </Row>
                   <Row label="Loss">
                     <ChartColorField
                       ariaLabel="Loss zone colour"
-                      value={drawing.style.lossColor ?? themeBearColor ?? "#F23645"}
+                      value={drawing.style.lossColor ?? DEFAULT_POSITION_LOSS_COLOR}
                       onChange={(hex) => patchStyle({ lossColor: hex })}
                     />
                   </Row>
@@ -171,7 +173,7 @@ export default function ChartDrawSettings({
                       onClick={() => patchStyle({ profitColor: undefined, lossColor: undefined })}
                       className="h-8 rounded-lg border border-border px-3 text-[11px] text-muted hover:text-foreground"
                     >
-                      Follow theme
+                      Reset to green / red
                     </button>
                   ) : null}
                 </div>
