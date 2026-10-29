@@ -191,11 +191,13 @@ import KwantLoader from "@/components/KwantLoader";
 import {
   anchorBigTradePrintsToCandles,
   buildEventBarChartTimeMap,
-  admitLiveBigTradePrints,
+  advanceBigTradeLiveAccumulator,
+  createBigTradeLiveAccumulator,
   mergeBigTradeLiveMarkers,
   calculateBigTradePrintsWithContext,
   retainBigTradePrints,
   type BigTradeLiveContext,
+  type BigTradeLiveAccumulator,
   type AnchoredBigTradePrint,
   type BigTradePrint,
 } from "@/lib/bigTrades";
@@ -11951,6 +11953,8 @@ function Chart({
     [indicatorSignature, indicators],
   );
   const bigTradeLiveContextRef = useRef<BigTradeLiveContext | null>(null);
+  const bigTradeLiveAccumulatorRef = useRef<BigTradeLiveAccumulator | null>(null);
+  const bigTradeLatestLiveTapeRef = useRef<{ scope: string; tape: InstitutionalTrade[]; candles?: Candle[] } | null>(null);
   const bigTradeFullScanIdentityRef = useRef("");
   const bigTradeReplayClockRef = useRef<number | null>(null);
   // How far along the TAPE the last full pass got, which is not the same thing
@@ -11970,6 +11974,7 @@ function Chart({
     () => {
       if (!bigTradesIndicator || bigTradesIndicator.settings?.showBigContracts === false) {
         bigTradeLiveContextRef.current = null;
+        bigTradeLiveAccumulatorRef.current = null;
         bigTradeFullScanIdentityRef.current = "";
         return [];
       }
@@ -11992,6 +11997,18 @@ function Chart({
       // resumes exactly where this pass stopped reading rather than where it
       // last found something.
       bigTradeTapeWatermarkRef.current = Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0);
+      bigTradeLiveAccumulatorRef.current = context
+        ? createBigTradeLiveAccumulator(context, indicatorMarketTrades, bigTradeTapeWatermarkRef.current)
+        : null;
+      // A sampled React snapshot may finish after newer executions painted.
+      // Catch up before committing its markers, rather than erasing those
+      // prints and rediscovering them on a later history refresh.
+      const liveTape = bigTradeLatestLiveTapeRef.current;
+      const catchup = context && bigTradeLiveAccumulatorRef.current && replayTimestampMs == null
+        && liveTape?.scope === observedCandleScope
+        ? advanceBigTradeLiveAccumulator(bigTradeLiveAccumulatorRef.current, context, liveTape.tape,
+          { ...settings, tickSize: priceFormat.minMove })
+        : null;
       // The tape is compacted to its most recent prints, so a pass late in the
       // session can no longer SEE the history an earlier pass did. Union with
       // what has already been earned, bounded by the study's own lookback, so
@@ -12004,8 +12021,9 @@ function Chart({
       );
       const anchor = newestKnown > 0 ? newestKnown : (replayTimestampMs ?? Date.now());
       const retained = retainBigTradePrints(
-        replayTimestampMs != null && requiresFullScan ? [] : retainedBigTradePrintsRef.current,
-        prints,
+        replayTimestampMs != null && requiresFullScan ? []
+          : retainedBigTradePrintsRef.current.filter(print => !catchup?.removedIds.has(print.id)),
+        catchup ? [...prints.filter(print => !catchup.removedIds.has(print.id)), ...catchup.prints] : prints,
         context,
         anchor - lookbackDays * 86_400_000,
       );
@@ -12016,13 +12034,15 @@ function Chart({
     [bigTradeFullPassKey, bigTradesIndicator, priceFormat.minMove, replayTimestampMs],
   );
   const anchoredBigTradePrints = useMemo(() => {
-    if (!indicatorCandles.length || !bigTradePrints.length) return [];
+    const liveSnapshot = bigTradeLatestLiveTapeRef.current;
+    const anchorCandles = liveSnapshot?.scope === observedCandleScope
+      ? liveSnapshot.candles ?? indicatorCandles : indicatorCandles;
+    if (!anchorCandles.length || !bigTradePrints.length) return [];
     const anchored = anchorBigTradePrintsToCandles(
       bigTradePrints,
-      // This completed snapshot is the stable anchor for the authoritative
-      // pass. New prints use the direct live-edge map below, so a forming
-      // volume/range bar never forces every historical marker to be re-anchored.
-      indicatorCandles,
+      // A caught-up full pass must also use caught-up bar boundaries. Reading
+      // this ref inside the existing memo keeps it off the per-tick hot path.
+      anchorCandles,
       // Clock charts anchor arithmetically; event charts keep the bar walk.
       timeframe && isEventBasedChartInterval(timeframe) ? null : candleIntervalMs,
     );
@@ -12081,7 +12101,7 @@ function Chart({
     const aggregates = Array.from(grouped.values());
     const intervalMinutes = candleIntervalMs / 60_000;
     const historical = aggregates.filter((print) =>
-      print.chartTimestamp !== indicatorCandles.at(-1)?.timestamp);
+      print.chartTimestamp !== anchorCandles.at(-1)?.timestamp);
     let adaptiveThreshold = 0;
     if (indicatorSettings.adaptiveTimeframeFilter !== false && historical.length >= 6) {
       const percentile = intervalMinutes >= 240
@@ -12100,7 +12120,7 @@ function Chart({
       const weight = position - lower;
       adaptiveThreshold = sortedVolumes[lower] * (1 - weight) + sortedVolumes[upper] * weight;
     }
-    const latestTimestamp = indicatorCandles.at(-1)?.timestamp;
+    const latestTimestamp = anchorCandles.at(-1)?.timestamp;
     const visible = aggregates.filter((print) =>
       print.chartTimestamp === latestTimestamp || print.volume >= adaptiveThreshold);
     if (!visible.length) return [];
@@ -12130,20 +12150,15 @@ function Chart({
         opacity: minimumOpacity + (maximumOpacity - minimumOpacity) * visualWeight,
       };
     }).sort((left, right) => left.timestamp - right.timestamp);
-  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles, timeframe]);
+  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles, timeframe, observedCandleScope]);
   /**
    * Draw a qualifying print the moment the tape holds it.
    *
    * The full pass measures the tape's distribution and costs 22ms on a
    * 20,000-print tape, 183ms on 150,000 - at stream cadence that is 55% and
-   * 458% of a core, so it samples every 1.5s instead. That sampling is why a
-   * large print could sit invisible for over a second after it had already
-   * arrived.
-   *
-   * This appends only prints newer than the committed set, sized against the
-   * scale the last pass measured. Measured at 0.02ms per batch, and the next
-   * full pass replaces the whole set, so clustering and any scale movement
-   * still settle within the sample interval.
+   * 458% of a core, so it uses a coarse five-second key instead. Live batches
+   * advance only the unprocessed suffix and current cluster against the last
+   * measured scale. No wait for a candle close or the next full scan.
    */
   useEffect(() => {
     if (!bigTradesIndicator || bigTradesIndicator.settings?.showBigContracts === false) return;
@@ -12153,39 +12168,63 @@ function Chart({
       // A replay reveals history against its own clock; the live tape is not
       // its future to draw.
       if (liveReplayActiveRef.current) return;
+      bigTradeLatestLiveTapeRef.current = { scope: observedCandleScope, tape: detail.tape, candles: detail.candles };
       const primitive = bigTradesPrimitiveRef.current;
-      const context = bigTradeLiveContextRef.current;
+      let context = bigTradeLiveContextRef.current;
       const options = bigTradePrimitiveOptionsRef.current;
       const committed = bigTradeCommittedRef.current;
-      if (!primitive || !context || !options || !committed.watermark) return;
-      const fresh = admitLiveBigTradePrints(context, detail.tape, committed.watermark);
-      if (!fresh.length) return;
+      if (!primitive || !options) return;
+      if (!context) {
+        // An empty/new session must not wait for its first sampled execution.
+        context = calculateBigTradePrintsWithContext(
+          detail.candles ?? [], detail.tape,
+          { ...bigTradesIndicator.settings, tickSize: priceFormat.minMove },
+        ).context;
+        if (!context) return;
+        bigTradeLiveContextRef.current = context;
+        bigTradeLiveAccumulatorRef.current = createBigTradeLiveAccumulator(
+          { ...context, lastCandidate: undefined }, [], 0,
+        );
+      }
+      const accumulator = bigTradeLiveAccumulatorRef.current;
+      if (!accumulator) return;
+      const { prints: fresh, removedIds } = advanceBigTradeLiveAccumulator(
+        accumulator, context, detail.tape,
+        { ...bigTradesIndicator.settings, tickSize: priceFormat.minMove },
+      );
+      if (!fresh.length && !removedIds.size) return;
       // Immediate prints use the same candle coordinates and display budget
       // as the sampled pass. Raw execution seconds are not 1m/3m bar times.
       const eventBars = timeframe && isEventBasedChartInterval(timeframe);
       const anchored = anchorBigTradePrintsToCandles(
-        fresh, sampledIndicatorCandlesRef.current, eventBars ? null : candleIntervalMs,
+        fresh, detail.candles ?? sampledIndicatorCandlesRef.current, eventBars ? null : candleIntervalMs,
       );
+      const batchChartTimes = eventBars && detail.candles ? buildEventBarChartTimeMap(detail.candles) : null;
       const markers = anchored.flatMap(print => {
-        const eventTime = eventBars ? eventChartTimeBySourceTimeRef.current.get(print.chartTimestamp) : undefined;
+        const eventTime = eventBars
+          ? batchChartTimes?.get(print.chartTimestamp) ?? eventChartTimeBySourceTimeRef.current.get(print.chartTimestamp)
+          : undefined;
         if (eventBars && eventTime === undefined) return [];
         return [{ ...print, time: (eventTime ?? Math.floor(print.chartTimestamp / 1_000)) as Time }];
       });
-      primitive.update(
-        mergeBigTradeLiveMarkers(committed.markers, markers,
-          Number(bigTradesIndicator.settings?.maxMarkersPerBar ?? 6)),
-        options,
+      committed.markers = mergeBigTradeLiveMarkers(
+        removedIds.size ? committed.markers.filter(marker => !removedIds.has(marker.id)) : committed.markers,
+        markers, Number(bigTradesIndicator.settings?.maxMarkersPerBar ?? 6),
       );
+      primitive.update(committed.markers, options);
     };
     window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
     return () => window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
-  }, [bigTradesIndicator, liveCandleEventKey, timeframe, candleIntervalMs]);
+  }, [bigTradesIndicator, liveCandleEventKey, timeframe, candleIntervalMs, priceFormat.minMove, observedCandleScope]);
 
   const bigTradeEventChartTimes = useMemo(
     () => timeframe && isEventBasedChartInterval(timeframe)
-      ? buildEventBarChartTimeMap(sampledIndicatorCandles)
+      ? buildEventBarChartTimeMap(bigTradeLatestLiveTapeRef.current?.scope === observedCandleScope
+        ? bigTradeLatestLiveTapeRef.current.candles ?? sampledIndicatorCandles : sampledIndicatorCandles)
       : null,
-    [sampledIndicatorCandles, timeframe],
+    // A full-pass catch-up may include bars newer than the sampled snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sampledIndicatorCandles, timeframe, bigTradePrints, observedCandleScope],
   );
   const deepContractRenderZones = useMemo<BigBlockRenderZone[]>(() => {
     if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return [];
@@ -12438,26 +12477,39 @@ function Chart({
         priceFormat.minMove,
       );
       if (!fresh.length) return;
-      const lastChartTime = lastRenderedCandleTimeRef.current;
-      if (lastChartTime === null) return;
-      primitive.update([
-        ...committed.zones,
-        ...fresh.map((item) => ({
+      const eventBars = timeframe && isEventBasedChartInterval(timeframe);
+      const anchored = anchorBigTradePrintsToCandles(
+        fresh.map(item => ({ ...item, radius: 1, opacity: 1 })),
+        detail.candles ?? sampledIndicatorCandlesRef.current, eventBars ? null : candleIntervalMs,
+      );
+      const batchChartTimes = eventBars && detail.candles ? buildEventBarChartTimeMap(detail.candles) : null;
+      const zones = new Map(committed.zones.map(zone => [zone.id, zone]));
+      const eventsById = new Map(fresh.map(item => [item.id, item]));
+      for (const item of anchored) {
+        const event = eventsById.get(item.id);
+        if (!event) continue;
+        const eventTime = eventBars
+          ? batchChartTimes?.get(item.chartTimestamp) ?? eventChartTimeBySourceTimeRef.current.get(item.chartTimestamp)
+          : Math.floor(item.chartTimestamp / 1_000);
+        if (eventTime === undefined) continue;
+        zones.set(item.id, {
           id: item.id,
-          startTime: lastChartTime as Time,
-          endTime: lastChartTime as Time,
-          top: item.top,
-          bottom: item.bottom,
+          startTime: eventTime as Time,
+          endTime: eventTime as Time,
+          top: event.top,
+          bottom: event.bottom,
           side: item.side,
           extensionBars: bigTradesIndicator.settings?.deepShowProjection !== false
             ? Math.max(1, Math.min(600, Number(bigTradesIndicator.settings?.deepProjectionBars ?? 22)))
             : 0,
-        })),
-      ], options);
+        });
+      }
+      committed.zones = [...zones.values()];
+      primitive.update(committed.zones, options);
     };
     window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
     return () => window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
-  }, [bigTradesIndicator, liveCandleEventKey, priceFormat.minMove]);
+  }, [bigTradesIndicator, liveCandleEventKey, priceFormat.minMove, timeframe, candleIntervalMs]);
   const bigBlockRenderZones = useMemo<LiveBigBlockZone[]>(() => {
     if (!deepEffort || deepEffortIndicator?.settings?.showZones === false) return [];
     return deepEffort.zones.flatMap((zone) => {

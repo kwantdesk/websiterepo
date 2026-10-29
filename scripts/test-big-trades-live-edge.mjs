@@ -162,7 +162,7 @@ const tape = Array.from({ length: 20_000 }, (_, i) =>
 {
   const { readFileSync } = await import("node:fs");
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-  assert.ok(chart.includes("admitLiveBigTradePrints(context, detail.tape, committed.watermark)"),
+  assert.ok(chart.includes("advanceBigTradeLiveAccumulator(") && chart.includes("accumulator, context, detail.tape"),
     "the live edge must run off the execution event, not the sampler");
   assert.ok(chart.includes("bigTradeLiveContextRef.current = context"),
     "the measured scale has to be retained between passes");

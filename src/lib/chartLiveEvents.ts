@@ -31,6 +31,8 @@ export type LiveChartExecutionDetail = {
   key: string;
   records: InstitutionalTrade[];
   tape: InstitutionalTrade[];
+  /** Canonical bar boundaries for this batch, shared by reference, not sampled. */
+  candles?: Candle[];
   /** Browser-verified atomic seed and uninterrupted SSE batch sequence. */
   continuity: ExecutionStreamContinuity;
 };

@@ -5843,6 +5843,8 @@ function WorkspaceChartPaneComponent({
     instance.enabled && instance.indicatorId === "speed-of-tape-instant");
   const auctionGapLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "auction-gap-tracker");
+  const bigContractsLiveActive = indicators.some((instance) =>
+    instance.enabled && instance.indicatorId === "big-trades");
   const nonFootprintOrderFlowActive = indicators.some((instance) =>
     instance.enabled
     && instance.indicatorId !== "deep-print-footprint"
@@ -6426,18 +6428,23 @@ function WorkspaceChartPaneComponent({
           records,
         );
         latestMarketTradesRef.current = next;
-        if (footprintLiveActive || instantTapeLiveActive || auctionGapLiveActive) {
+        scheduleMarketTradeStateSync();
+      }
+
+      const publishExecutions = () => {
+        if (needsOrderFlowHistory
+          && (footprintLiveActive || instantTapeLiveActive || auctionGapLiveActive || bigContractsLiveActive)) {
           window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT, {
             detail: {
               key: pane.id,
               records,
-              tape: next,
+              tape: latestMarketTradesRef.current,
+              candles: latestCandlesRef.current,
               continuity: executionContinuityRef.current,
             },
           }));
         }
-        scheduleMarketTradeStateSync();
-      }
+      };
 
       // Exact profiles and CVD consume the same lossless batch. Coalescing the
       // prints before touching React/candle history avoids copying a growing
@@ -6465,7 +6472,10 @@ function WorkspaceChartPaneComponent({
             pane.symbol,
             Math.max(600, previousCandles.length),
           );
-      if (nextCandles === previousCandles || !nextCandles.length) return;
+      if (nextCandles === previousCandles || !nextCandles.length) {
+        publishExecutions();
+        return;
+      }
 
       const flushNow = Date.now();
       const flushedNewBar = previousCandles.at(-1)?.timestamp !== nextCandles.at(-1)!.timestamp;
@@ -6495,6 +6505,9 @@ function WorkspaceChartPaneComponent({
             sourceTimestampMs: candle.sourceEndTimestamp ?? candle.timestamp },
         }));
       }
+      // Publish after bar boundaries/coordinates have advanced, so an execution
+      // is not anchored against the previous sampled candle during rollover.
+      publishExecutions();
       const newBar = flushedNewBar;
       if (newBar) {
         lastCandleStateSyncRef.current = flushNow;
@@ -6634,6 +6647,7 @@ function WorkspaceChartPaneComponent({
     auctionGapLiveActive,
     footprintLiveActive,
     instantTapeLiveActive,
+    bigContractsLiveActive,
     nonFootprintOrderFlowActive,
     pane.broker,
     pane.id,

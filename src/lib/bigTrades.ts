@@ -53,6 +53,46 @@ type TradeCandidate = {
   side: "ASK" | "BID";
 };
 
+function executionCandidate(trade: InstitutionalTrade): TradeCandidate | null {
+  if (trade.flowOnly || !Number.isFinite(trade.timestamp)
+    || !(trade.volume > 0) || !(trade.close > 0)
+    || (trade.aggressor !== "BUY" && trade.aggressor !== "SELL")) return null;
+  return {
+    id: trade.eventId ?? `record-${trade.recordIndex}`,
+    timestamp: trade.timestamp,
+    price: trade.close,
+    volume: trade.volume,
+    executions: Math.max(1, Number(trade.trades ?? 1)),
+    side: trade.aggressor === "BUY" ? "ASK" : "BID",
+  };
+}
+
+/** Same aggregation in historical scans and incremental delivery. */
+function appendCandidate(
+  previous: TradeCandidate | null,
+  candidate: TradeCandidate,
+  settings: BigTradeSettings,
+): TradeCandidate {
+  const windowMs = clamp(Number(settings.clusterWindowMs ?? 100), 0, 10_000);
+  const tolerance = clamp(Number(settings.clusterPriceTicks ?? 0), 0, 100)
+    * Math.max(Number(settings.tickSize ?? 0.25), Number.EPSILON) + Number.EPSILON;
+  if (settings.enableClustering !== false && previous
+    && previous.side === candidate.side
+    && candidate.timestamp >= previous.timestamp
+    && candidate.timestamp - previous.timestamp <= windowMs
+    && Math.abs(candidate.price - previous.price) <= tolerance) {
+    const volume = previous.volume + candidate.volume;
+    previous.price = (previous.price * previous.volume + candidate.price * candidate.volume) / volume;
+    previous.volume = volume;
+    previous.executions += candidate.executions;
+    previous.timestamp = candidate.timestamp;
+    // A cluster grows under its first execution's identity. Concatenating IDs
+    // made every additional fill a different marker on the live path.
+    return previous;
+  }
+  return { ...candidate };
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -78,53 +118,24 @@ function tradeCandidates(
   let monotonic = true;
   let previousTimestamp = Number.NEGATIVE_INFINITY;
   for (const trade of marketTrades) {
-    if (
-      trade.flowOnly
-      || trade.timestamp < cutoff
-      || trade.volume <= 0
-      || trade.aggressor === "UNKNOWN"
-    ) continue;
+    if (trade.timestamp < cutoff) continue;
+    const candidate = executionCandidate(trade);
+    if (!candidate) continue;
     monotonic = monotonic && trade.timestamp >= previousTimestamp;
     previousTimestamp = trade.timestamp;
-    liveCandidates.push({
-      id: trade.eventId ?? `record-${trade.recordIndex}`,
-      timestamp: trade.timestamp,
-      price: trade.close,
-      volume: trade.volume,
-      executions: Math.max(1, trade.trades),
-      side: trade.aggressor === "BUY" ? "ASK" as const : "BID" as const,
-    });
+    liveCandidates.push(candidate);
   }
   if (!monotonic) liveCandidates.sort((left, right) => left.timestamp - right.timestamp);
   if (settings.enableClustering === false || liveCandidates.length < 2) {
     return liveCandidates;
   }
 
-  const clusterWindowMs = clamp(Number(settings.clusterWindowMs ?? 100), 0, 10_000);
-  const clusterPriceTicks = clamp(Number(settings.clusterPriceTicks ?? 0), 0, 100);
-  const tickSize = Math.max(Number(settings.tickSize ?? 0.25), Number.EPSILON);
-  const priceTolerance = clusterPriceTicks * tickSize + Number.EPSILON;
   const clustered: TradeCandidate[] = [];
-  liveCandidates.forEach((candidate) => {
-      const previous = clustered.at(-1);
-      if (
-        previous
-        && previous.side === candidate.side
-        && candidate.timestamp - previous.timestamp <= clusterWindowMs
-        && Math.abs(candidate.price - previous.price) <= priceTolerance
-      ) {
-        const combinedVolume = previous.volume + candidate.volume;
-        previous.price = (
-          previous.price * previous.volume + candidate.price * candidate.volume
-        ) / combinedVolume;
-        previous.volume = combinedVolume;
-        previous.executions += candidate.executions;
-        previous.timestamp = candidate.timestamp;
-        previous.id = `${previous.id}:${candidate.id}`;
-        return;
-      }
-      clustered.push({ ...candidate });
-    });
+  for (const candidate of liveCandidates) {
+    const previous = clustered.at(-1) ?? null;
+    const next = appendCandidate(previous, candidate, settings);
+    if (next !== previous) clustered.push(next);
+  }
   return clustered;
 }
 
@@ -382,6 +393,7 @@ export function calculateBigTradePrintsWithContext(
     maxSize,
     minOpacity,
     maxOpacity,
+    lastCandidate: { ...candidates[candidates.length - 1] },
   };
   return {
     prints: distributeContractMarkers(qualified, 12_000).map((candidate) => sizeBigTradePrint(candidate, context)),
@@ -408,7 +420,69 @@ export type BigTradeLiveContext = {
   maxSize: number;
   minOpacity: number;
   maxOpacity: number;
+  lastCandidate?: TradeCandidate;
 };
+
+export type BigTradeLiveAccumulator = {
+  cursor: number;
+  seenAtCursor: Set<string>;
+  pending: TradeCandidate | null;
+};
+
+export function createBigTradeLiveAccumulator(
+  context: BigTradeLiveContext,
+  tape: readonly InstitutionalTrade[],
+  watermark: number,
+): BigTradeLiveAccumulator {
+  const seenAtCursor = new Set<string>();
+  for (let index = tape.length - 1; index >= 0; index -= 1) {
+    const trade = tape[index];
+    if (trade.timestamp < watermark) break;
+    if (trade.timestamp === watermark) seenAtCursor.add(trade.eventId ?? `record-${trade.recordIndex}`);
+  }
+  return { cursor: watermark, seenAtCursor, pending: context.lastCandidate ? { ...context.lastCandidate } : null };
+}
+
+/** Read only the tape suffix since the cursor; no timer or distribution scan. */
+export function advanceBigTradeLiveAccumulator(
+  state: BigTradeLiveAccumulator,
+  context: BigTradeLiveContext,
+  tape: readonly InstitutionalTrade[],
+  settings: BigTradeSettings,
+): { prints: BigTradePrint[]; removedIds: Set<string> } {
+  const updates = new Map<string, BigTradePrint>();
+  const removedIds = new Set<string>();
+  // Provider batches can contain several executions sharing one millisecond.
+  // Identity, rather than a strict timestamp inequality, distinguishes them.
+  // The canonical tape is ordered. Re-reading the suffix also catches up when
+  // a React/full-pass snapshot commits behind executions already painted live.
+  let first = tape.length;
+  while (first > 0 && tape[first - 1].timestamp >= state.cursor) first -= 1;
+  for (let index = first; index < tape.length; index += 1) {
+    const trade = tape[index];
+    if (!Number.isFinite(trade.timestamp) || trade.timestamp < state.cursor) continue;
+    const id = trade.eventId ?? `record-${trade.recordIndex}`;
+    if (trade.timestamp > state.cursor) {
+      state.cursor = trade.timestamp;
+      state.seenAtCursor.clear();
+    }
+    if (state.seenAtCursor.has(id)) continue;
+    state.seenAtCursor.add(id);
+    const candidate = executionCandidate(trade);
+    if (!candidate) continue;
+    const previous = state.pending;
+    const previouslyAdmitted = previous && admitsBigTrade(context, previous.timestamp, previous.volume);
+    state.pending = appendCandidate(previous, candidate, settings);
+    if (admitsBigTrade(context, state.pending.timestamp, state.pending.volume)) {
+      updates.set(state.pending.id, sizeBigTradePrint(state.pending, context));
+      removedIds.delete(state.pending.id);
+    } else if (state.pending === previous && previouslyAdmitted) {
+      updates.delete(state.pending.id);
+      removedIds.add(state.pending.id);
+    }
+  }
+  return { prints: [...updates.values()], removedIds };
+}
 
 /** The one place a print's radius and opacity are decided. */
 export function sizeBigTradePrint<T extends { timestamp: number; volume: number }>(
