@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-30 - Closed trade phantom protective exit and fill resurrection
+
+Reproduced sync fault after manual close + Remove all fills: stale peer SL/TP shared the exit fill ID, a raw conflicting visible fill survived canonical admission, and no-local-change/storage hydration paths could restore old open state. Added sorted per-account clearedFillIds tombstones with legacy journal inference; journal facts beat visible duplicates, first/committed exits stay canonical, and PnL corrections cannot become bogus cash adjustments. Merge terminal positions, exited quantity and filled/cancelled/rejected orders even when local matches baseline; actual storage/hydration handlers reconcile against the current live ref. Partial protections, real new fills, explicit resets/balance changes and journals remain valid. Initial7/8 repros failed before; final94 tests plus8 trigger/14 journal checks pass. Scoped libs/test lint, full1536MiB build and final TypeScript pass; large workspace compiler lint not claimed. Frontend only, no gateway/provider or owner-data changes. See docs/prompt-log/2026-10-30-closed-trade-phantom-exit.md. Do not manufacture corrections to prior fills without execution evidence.
+
 ## 2026-10-29 - Entry/Exit drawings 40 percent smaller
 
 Manual entry/exit arrows now render geometry and stroke at 0.6 scale, including existing and legacy drawings. Saved dimensions/anchors are preserved; legacy capture remains unscaled. Resize converts displayed deltas back to saved units, preventing shrink-on-grab or compounding across refresh. Fixed-screen-size viewport compensation remains intact. Automatic trade-fill markers/icons unchanged. Updated existing affine, persistence, legacy and actual resize callback regressions pass; entry/exit13 checks pass. Scoped lint/full build/TypeScript pass. See docs/prompt-log/2026-10-29-entry-exit-40-percent-smaller.md. Frontend only.

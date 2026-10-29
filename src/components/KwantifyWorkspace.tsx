@@ -1,5 +1,7 @@
 "use client";
 
+import { mergePaperTradingLedgerUpdate } from "@/lib/accountPreferenceMerge";
+
 import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
 import { createExecutionPaintScheduler } from '@/lib/executionPaintScheduler';
 
@@ -13334,7 +13336,7 @@ export default function KwantifyWorkspace({
           if (saved.ok) setPaperTradingAccounts(saved.accounts);
         }
         if (event.key === "kwantify-paper-trading-ledger-v1") {
-          commitPaperLedger(loadPaperTradingLedger());
+          commitPaperLedger(mergePaperTradingLedgerUpdate(paperLedgerRef.current, loadPaperTradingLedger()));
         }
         if (event.key === "olisa-broker-connections") {
           try {
@@ -13366,7 +13368,7 @@ export default function KwantifyWorkspace({
     const handleHydrated = (event: Event) => {
       const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys;
       if (!keys || keys.includes("kwantify-paper-trading-accounts")) handlePaperAccountsChange();
-      if (!keys || keys.includes("kwantify-paper-trading-ledger-v1")) commitPaperLedger(loadPaperTradingLedger());
+      if (!keys || keys.includes("kwantify-paper-trading-ledger-v1")) commitPaperLedger(mergePaperTradingLedgerUpdate(paperLedgerRef.current, loadPaperTradingLedger()));
     };
     window.addEventListener("storage", handleStorage);
     window.addEventListener(PAPER_TRADING_ACCOUNTS_EVENT, handlePaperAccountsChange);

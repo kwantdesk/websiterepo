@@ -1,6 +1,6 @@
 import type { UserPreferenceSnapshot } from './userPreferences';
 import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from './chartDrawingPreferences';
-import { normalizePaperTradingLedger, paperAccountJournalFills, type PaperAccountLedger, type PaperPosition, type PaperTradeFill } from './paperTrading';
+import { normalizePaperTradingLedger, paperAccountJournalFills, type PaperAccountLedger, type PaperPosition, type PaperTradeFill, type PaperTradingLedger } from './paperTrading';
 
 export const PAPER_LEDGER_KEY = 'kwantify-paper-trading-ledger-v1';
 const PAPER_ACCOUNTS_KEY = 'kwantify-paper-trading-accounts';
@@ -36,20 +36,60 @@ function mergeById<T extends { id: string }>(base: T[], local: T[], remote: T[],
   for (const item of local) {
     const old = originals.get(item.id), other = result.get(item.id);
     if (old && !other) continue; // A peer explicitly removed this existing object.
-    if (!same(item, old)) result.set(item.id, other && choose ? choose(item, other) : item);
+    // Terminal execution policies must run even when the local object equals
+    // the baseline; a stale peer may be the side that changed it backwards.
+    if (!same(item, old) || (other && choose)) result.set(item.id, other && choose ? choose(item, other) : item);
   }
   for (const old of base) if (!local.some(item => item.id === old.id) && same(result.get(old.id), old)) result.delete(old.id);
   return [...result.values()];
 }
 
 /** Concurrent quote marks never win over a changed stop, fill or closed position. */
+function executionConflict(known: PaperAccountLedger, incoming: PaperAccountLedger) {
+  const knownFills = paperAccountJournalFills(known);
+  const entered = new Map<string, number>(), exited = new Map<string, number>();
+  for (const fill of knownFills) {
+    const totals = fill.role === 'entry' ? entered : exited;
+    totals.set(fill.positionId, (totals.get(fill.positionId) ?? 0) + fill.quantity);
+  }
+  const closed = new Set(known.positions.filter(p => p.status === 'closed' || p.remainingQuantity <= 0).map(p => p.id));
+  if (incoming.positions.some(p => {
+    const previous = known.positions.find(position => position.id === p.id);
+    const recordedRemaining = entered.has(p.id) ? Math.max(0, entered.get(p.id)! - (exited.get(p.id) ?? 0)) : Infinity;
+    return p.status === 'open' && (closed.has(p.id)
+      || p.remainingQuantity > Math.min(previous?.remainingQuantity ?? Infinity, recordedRemaining) + 1e-9);
+  })) return true;
+  const finalOrders = new Set(known.orders.filter(order => ['filled', 'cancelled', 'rejected'].includes(order.status)).map(order => order.id));
+  if (incoming.orders.some(order => order.status === 'working' && finalOrders.has(order.id))) return true;
+  const fills = new Map(knownFills.map(fill => [fill.id, fill]));
+  return paperAccountJournalFills(incoming).some(fill => {
+    const recorded = fills.get(fill.id);
+    return recorded && (recorded.price !== fill.price || recorded.quantity !== fill.quantity
+      || recorded.role !== fill.role || recorded.timestamp !== fill.timestamp || recorded.realizedPnl !== fill.realizedPnl);
+  });
+}
+
 function mergeTradingAccount(base: PaperAccountLedger | undefined, local: PaperAccountLedger, remote: PaperAccountLedger): PaperAccountLedger {
+  const clearedFillIds = [...new Set([...(local.clearedFillIds ?? []), ...(remote.clearedFillIds ?? [])])].sort();
+  const cleared = new Set(clearedFillIds);
+  const finish = (account: PaperAccountLedger): PaperAccountLedger => clearedFillIds.length
+    ? { ...account, clearedFillIds, fills: account.fills.filter(fill => !cleared.has(fill.id)) } : account;
   const localChanged = !same(base && executionAccount(base), executionAccount(local));
   const remoteChanged = !same(base && executionAccount(base), executionAccount(remote));
-  if (!localChanged) return remote;
-  if (!remoteChanged) return local;
+  const conflict = executionConflict(local, remote) || executionConflict(remote, local);
+  if (!localChanged && !remoteChanged) return finish(local);
+  if (!localChanged && !conflict) return finish(remote);
+  if (!remoteChanged && !conflict) return finish(local);
+  const baselineFills = new Map(base ? paperAccountJournalFills(base).map(fill => [fill.id, fill]) : []);
   const allFills = new Map<string, PaperTradeFill>();
-  for (const fill of [...paperAccountJournalFills(remote), ...paperAccountJournalFills(local)]) allFills.set(fill.id, fill);
+  for (const fill of [...paperAccountJournalFills(remote), ...paperAccountJournalFills(local)]) {
+    const previous = allFills.get(fill.id);
+    // Recorded fills are immutable. Before acknowledgement, the first actual
+    // exit wins; a later stale-peer protective fill cannot reprice that exit.
+    const first = previous && (previous.timestamp < fill.timestamp
+      || (previous.timestamp === fill.timestamp && JSON.stringify(previous) < JSON.stringify(fill))) ? previous : fill;
+    allFills.set(fill.id, baselineFills.get(fill.id) ?? first);
+  }
   // Both browsers can observe the same protective touch. Admit no more than
   // the position's actual entry quantity, in real source-time order.
   const positionsById = new Map([...remote.positions, ...local.positions].map(p => [p.id, p]));
@@ -99,35 +139,47 @@ function mergeTradingAccount(base: PaperAccountLedger | undefined, local: PaperA
   }).filter(position => !base?.positions.some(p => p.id === position.id)
     || (local.positions.some(p => p.id === position.id) && remote.positions.some(p => p.id === position.id)))
   .map(position => {
-    const remainingQuantity = Math.min(position.remainingQuantity, Math.max(0, position.quantity - (exited.get(position.id) ?? 0)));
+    const remainingQuantity = position.status === 'closed' ? 0
+      : Math.min(position.remainingQuantity, Math.max(0, position.quantity - (exited.get(position.id) ?? 0)));
     return { ...position, remainingQuantity, status: remainingQuantity > 0 ? 'open' as const : 'closed' as const };
   });
   // A position absent after a known local/remote reset cannot be resurrected
   // merely by a stale marking packet.
   const orders = mergeById(base?.orders ?? [], local.orders, remote.orders, (a, b) =>
-    b.status === 'filled' || (b.status === 'cancelled' && a.status === 'working') ? b : a)
+    b.status === 'filled' || (a.status === 'working' && (b.status === 'cancelled' || b.status === 'rejected')) ? b : a)
     .filter(order => !base?.orders.some(o => o.id === order.id)
       || (local.orders.some(o => o.id === order.id) && remote.orders.some(o => o.id === order.id)));
+  const baselinePnl = [...baselineFills.values()].reduce((sum, fill) => sum + fill.realizedPnl, 0);
   const expectedPnl = (account: PaperAccountLedger) => paperAccountJournalFills(account)
-    .filter(fill => !baselineIds.has(fill.id)).reduce((sum, fill) => sum + fill.realizedPnl, 0);
+    .reduce((sum, fill) => sum + fill.realizedPnl, -baselinePnl);
   const localAdjustment = local.cashBalance - baseCash - expectedPnl(local);
   const remoteAdjustment = remote.cashBalance - baseCash - expectedPnl(remote);
   const adjustment = localAdjustment !== 0 ? localAdjustment : remoteAdjustment;
   const localRealizedAdjustment = local.realizedPnl - baseRealized - expectedPnl(local);
   const remoteRealizedAdjustment = remote.realizedPnl - baseRealized - expectedPnl(remote);
   const realizedAdjustment = localRealizedAdjustment !== 0 ? localRealizedAdjustment : remoteRealizedAdjustment;
-  return { ...remote, startingBalance: local.startingBalance !== base?.startingBalance ? local.startingBalance : remote.startingBalance,
+  return finish({ ...remote, startingBalance: local.startingBalance !== base?.startingBalance ? local.startingBalance : remote.startingBalance,
     cashBalance: baseCash + newPnl + adjustment, realizedPnl: baseRealized + newPnl + realizedAdjustment,
     positions, orders,
-    fills: mergeById(base?.fills ?? [], local.fills, remote.fills).filter(fill => acceptedIds.has(fill.id)),
-    journalFills: accepted, updatedAt: Math.max(local.updatedAt, remote.updatedAt) };
+    fills: mergeById(base?.fills ?? [], local.fills, remote.fills).filter(fill => acceptedIds.has(fill.id)).map(fill => allFills.get(fill.id)!),
+    journalFills: accepted, updatedAt: Math.max(local.updatedAt, remote.updatedAt) });
+}
+
+/** Storage/hydration can carry an older peer; reconcile against live execution state. */
+export function mergePaperTradingLedgerUpdate(current: PaperTradingLedger, incoming: PaperTradingLedger): PaperTradingLedger {
+  const accounts = { ...incoming.accounts };
+  for (const [id, account] of Object.entries(current.accounts)) {
+    if (accounts[id]) accounts[id] = mergeTradingAccount(account, account, accounts[id]);
+  }
+  return { ...incoming, accounts };
 }
 
 export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, local: UserPreferenceSnapshot, remote: UserPreferenceSnapshot): UserPreferenceSnapshot {
   const values = { ...remote.values };
   const keys = new Set([...Object.keys(base.values), ...Object.keys(local.values)]);
   for (const key of keys) {
-    if (preferenceValueFingerprint(key, base.values[key]) === preferenceValueFingerprint(key, local.values[key])) continue;
+    if (preferenceValueFingerprint(key, base.values[key]) === preferenceValueFingerprint(key, local.values[key])
+      && !(key === PAPER_LEDGER_KEY && local.values[key] && remote.values[key])) continue;
     if (local.values[key] === undefined) delete values[key];
     else if (key === CHART_DRAWING_PREFERENCE_KEY) {
       const merged = mergeChartDrawingPreferences(base.values[key], local.values[key], remote.values[key]);

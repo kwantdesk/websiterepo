@@ -187,6 +187,8 @@ export type PaperAccountLedger = {
   positions: PaperPosition[];
   orders: PaperOrder[];
   fills: PaperTradeFill[];
+  /** Removed chart markers are tombstones, not permission for sync to restore them. */
+  clearedFillIds?: string[];
   /** Durable journal evidence; clearing chart fills must not erase closed trades. */
   journalFills?: PaperTradeFill[];
   updatedAt: number;
@@ -698,7 +700,9 @@ function normalizePosition(value: Partial<PaperPosition>): PaperPosition | null 
 }
 
 export function paperAccountJournalFills(account: Pick<PaperAccountLedger, "fills" | "journalFills">): PaperTradeFill[] {
-  return [...new Map([...(account.journalFills ?? []), ...account.fills].map(fill => [fill.id, fill])).values()];
+  const recorded = new Map((account.journalFills ?? []).map(fill => [fill.id, fill]));
+  for (const fill of account.fills) if (!recorded.has(fill.id)) recorded.set(fill.id, fill);
+  return [...recorded.values()];
 }
 
 export function normalizePaperTradingLedger(value: unknown): PaperTradingLedger {
@@ -709,6 +713,14 @@ export function normalizePaperTradingLedger(value: unknown): PaperTradingLedger 
     Object.entries(rawAccounts).flatMap(([accountId, raw]) => {
       if (!raw || typeof raw !== "object") return [];
       const account = raw as Partial<PaperAccountLedger>;
+      const sourceFills = Array.isArray(account.fills) ? account.fills as PaperTradeFill[] : [];
+      const visibleIds = new Set(sourceFills.map(fill => fill.id));
+      const clearedFillIds = [...new Set([
+        ...(Array.isArray(account.clearedFillIds) ? account.clearedFillIds : []),
+        // Older ledgers already retain journal evidence after clearing markers.
+        ...(Array.isArray(account.journalFills) ? account.journalFills : []).filter(fill => !visibleIds.has(fill.id)).map(fill => fill.id),
+      ].filter((id): id is string => typeof id === "string" && id.length > 0))].sort();
+      const cleared = new Set(clearedFillIds);
       return [[accountId, {
         accountId,
         startingBalance: Math.max(0, finite(account.startingBalance)),
@@ -718,7 +730,8 @@ export function normalizePaperTradingLedger(value: unknown): PaperTradingLedger 
           ? account.positions.map(normalizePosition).filter((position): position is PaperPosition => Boolean(position))
           : [],
         orders: Array.isArray(account.orders) ? account.orders as PaperOrder[] : [],
-        fills: Array.isArray(account.fills) ? account.fills as PaperTradeFill[] : [],
+        fills: sourceFills.filter(fill => !cleared.has(fill.id)),
+        clearedFillIds,
         journalFills: paperAccountJournalFills({ fills: Array.isArray(account.fills) ? account.fills as PaperTradeFill[] : [], journalFills: Array.isArray(account.journalFills) ? account.journalFills : [] }),
         updatedAt: positive(account.updatedAt, Date.now()),
       } satisfies PaperAccountLedger]];
@@ -863,6 +876,7 @@ export function clearPaperAccountFills(
         // Open positions and working orders remain untouched.
         journalFills: paperAccountJournalFills(account),
         fills: [],
+        clearedFillIds: [...new Set([...(account.clearedFillIds ?? []), ...account.fills.map(fill => fill.id)])].sort(),
         updatedAt: timestamp,
       },
     },
