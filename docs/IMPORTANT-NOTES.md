@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-29 - Hide liquidity Trade overlay while the map loads
+
+LiquidityMapWorkspace now shares `mapLoading` between the loader and trading-overlay visibility/interaction. The z20 Trade button no longer floats over the z10 loading mask on refresh. Keep LiquidityMapTrading mounted while hidden so its iframe bridge remains connected. Inspector and replay loading rules are preserved; no feed restart or trading-state changes. See docs/prompt-log/2026-10-29-liquidity-loading-trade-button.md.
+
 ## 2026-10-29 - Big Contracts receives and paints live executions independently
 
 Fixed workspace execution-event gate omitting `big-trades` unless Footprint/Instant Tape/Auction Gap was also enabled. Big Contracts now receives the frame-batched stream alone. Historical/live clustering share an incremental aggregation rule with stable first-execution IDs; same-millisecond records dedupe by identity, and sampled snapshots catch up before replacing newer live markers. Handles first-ever print and a pending cluster across sampled rebases. Execution events share canonical candle boundaries after their update; optional Deep Contracts uses each execution's candle rather than the latest candle. Actual publisher/listener/full-pass callback fixtures,120 live/history batch-prefix comparisons, bounded25k-tape suffix reads and existing targeted regressions pass. See docs/prompt-log/2026-10-29-big-contracts-immediate-delivery.md for validation, release and limits. No new polling/Vercel tick traffic or gateway restart; separate depth integrity fault remains open.

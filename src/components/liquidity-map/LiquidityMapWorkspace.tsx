@@ -348,6 +348,9 @@ function LiquidityMapWorkspace({
   const watermark = plotBox
     ? chartWatermarkSize(plotBox.width, plotBox.height, LIQUIDITY_MAP_WATERMARK_SCALE)
     : null;
+  const mapLoading = !(replay
+    ? ["ready", "gap", "unavailable"].includes(replayStatus?.state ?? "")
+    : isReady);
 
   return (
     <div
@@ -373,7 +376,7 @@ function LiquidityMapWorkspace({
           syncPerformancePriority();
         }}
       />
-      {trading ? <div className={inspectorOpen ? "hidden" : undefined}><LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active && !inspectorOpen} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /></div> : null}
+      {trading ? <div className={inspectorOpen || mapLoading ? "hidden" : undefined}><LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active && !inspectorOpen && !mapLoading} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /></div> : null}
       {watermark && !inspectorOpen ? (
         /*
           * The same mark the charts carry, on the same sizing rules.
@@ -406,7 +409,7 @@ function LiquidityMapWorkspace({
           }}
         />
       ) : null}
-      {!(replay ? ["ready", "gap", "unavailable"].includes(replayStatus?.state ?? "") : isReady) && !inspectorOpen ? (
+      {mapLoading && !inspectorOpen ? (
         <div className="pointer-events-none absolute inset-0 z-10">
           <KwantLoader
             title="Loading LIQ MAP"
