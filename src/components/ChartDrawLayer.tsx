@@ -29,7 +29,7 @@ import {
   magnetStrengthSpec,
   type MagnetStrength,
 } from "@/lib/chartDrawTools";
-import { fillMarkerGeometry, fillMarkerCounterScale, FILL_MARKER_DEFAULT_HALF_WIDTH_PX, FILL_MARKER_DEFAULT_HALF_HEIGHT_PX, FILL_MARKER_MIN_HALF_WIDTH_PX, FILL_MARKER_MIN_HALF_HEIGHT_PX, positionToolScreenGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
+import { fillMarkerGeometry, scaleFillMarkerGeometry, FILL_MARKER_DISPLAY_SCALE, fillMarkerCounterScale, FILL_MARKER_DEFAULT_HALF_WIDTH_PX, FILL_MARKER_DEFAULT_HALF_HEIGHT_PX, FILL_MARKER_MIN_HALF_WIDTH_PX, FILL_MARKER_MIN_HALF_HEIGHT_PX, positionToolScreenGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
 import { nearestCandleMagnetCandidate } from "@/lib/chartMagnet";
 import type { InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
 import { exactCustomDrawVolumeProfile } from "@/lib/customDrawVolumeProfile";
@@ -514,7 +514,7 @@ export default function ChartDrawLayer({
       minHalfWidth: FILL_MARKER_MIN_HALF_WIDTH_PX, minHalfHeight: FILL_MARKER_MIN_HALF_HEIGHT_PX,
     });
     if (remember && chartReady) fillMarkerSizesRef.current.set(drawing.id, { halfWidth: geometry.halfWidth, halfHeight: geometry.halfHeight });
-    return geometry;
+    return scaleFillMarkerGeometry(geometry, anchorX, anchorY);
   };
   // Capture each legacy arrow's current size once, then persist it without
   // changing its anchor. Later zooms must never become new size measurements.
@@ -845,8 +845,8 @@ export default function ChartDrawLayer({
     const initialSize = markerGeometry(drawing, anchorX, anchorY, true);
     const direction = drawing.tool === "entryArrow" ? 1 : -1;
     const onMove = (moveEvent: PointerEvent) => {
-      const halfWidth = Math.max(FILL_MARKER_MIN_HALF_WIDTH_PX, initialSize.halfWidth + direction * (moveEvent.clientX - event.clientX));
-      const halfHeight = Math.max(FILL_MARKER_MIN_HALF_HEIGHT_PX, initialSize.halfHeight + moveEvent.clientY - event.clientY);
+      const halfWidth = Math.max(FILL_MARKER_MIN_HALF_WIDTH_PX, (initialSize.halfWidth + direction * (moveEvent.clientX - event.clientX)) / FILL_MARKER_DISPLAY_SCALE);
+      const halfHeight = Math.max(FILL_MARKER_MIN_HALF_HEIGHT_PX, (initialSize.halfHeight + moveEvent.clientY - event.clientY) / FILL_MARKER_DISPLAY_SCALE);
       onUpdate({ ...drawing, style: { ...drawing.style, fillMarkerHalfWidthPx: halfWidth, fillMarkerHalfHeightPx: halfHeight } });
     };
     const cleanup = () => {
@@ -1464,7 +1464,7 @@ export default function ChartDrawLayer({
           const path = `${marker.points.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ")} Z`;
           return (
             <g>
-              <path d={path} fill={stroke} stroke={stroke} strokeWidth={w} strokeLinejoin="round" />
+              <path d={path} fill={stroke} stroke={stroke} strokeWidth={w * FILL_MARKER_DISPLAY_SCALE} strokeLinejoin="round" />
               {style.showLabels === false || !drawing.text
                 ? null
                 : <text

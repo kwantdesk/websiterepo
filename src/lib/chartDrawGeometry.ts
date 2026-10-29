@@ -128,6 +128,8 @@ export const FILL_MARKER_DEFAULT_HALF_WIDTH_PX = 9;
 export const FILL_MARKER_DEFAULT_HALF_HEIGHT_PX = 6;
 export const FILL_MARKER_MIN_HALF_WIDTH_PX = 4;
 export const FILL_MARKER_MIN_HALF_HEIGHT_PX = 3;
+/** Owner-selected presentation size, preserving saved/custom dimensions. */
+export const FILL_MARKER_DISPLAY_SCALE = 0.6;
 
 export type FillMarkerGeometryInput = {
   /** Which way the tool always points. */
@@ -196,6 +198,16 @@ export function fillMarkerGeometry(input: FillMarkerGeometryInput): FillMarkerGe
       [backX, anchorY - halfHeight],
       [backX, anchorY + halfHeight],
     ],
+  };
+}
+
+export function scaleFillMarkerGeometry(geometry: FillMarkerGeometry, anchorX: number, anchorY: number): FillMarkerGeometry {
+  return {
+    halfWidth: geometry.halfWidth * FILL_MARKER_DISPLAY_SCALE,
+    halfHeight: geometry.halfHeight * FILL_MARKER_DISPLAY_SCALE,
+    tipX: anchorX + (geometry.tipX - anchorX) * FILL_MARKER_DISPLAY_SCALE,
+    backX: anchorX + (geometry.backX - anchorX) * FILL_MARKER_DISPLAY_SCALE,
+    points: geometry.points.map(([x, y]) => [anchorX + (x - anchorX) * FILL_MARKER_DISPLAY_SCALE, anchorY + (y - anchorY) * FILL_MARKER_DISPLAY_SCALE]),
   };
 }
 
