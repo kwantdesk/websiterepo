@@ -1,11 +1,8 @@
-import { restoreLegacyDisplay, DISPLAY_ROLLBACK } from './display-rollback.js?v=20261029-backed-display';
-import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261027-instrument-price-scale';
-import { observeLiquidityMapModals } from './modal-overlay-bridge.js?v=20261027-modal-overlays';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261029-oct25-rollback';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261029-backed-display';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261017-aleph-font';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261024-freeze-recovery';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -16,11 +13,10 @@ import {
   liveInstrumentResolveUrl,
   normalizeLiveSnapshot,
   normalizeLiquidityMapSymbol,
-  parentLiquidityCatalogRows,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20261027-instrument-price-scale';
-import { DEFAULT_PALETTE, FOOTPRINT_PALETTES, paletteCssGradient } from './palettes.js?v=20261029-backed-display';
+} from './live-market.js?v=20261024-freeze-recovery';
+import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20261017-aleph-font';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
@@ -182,16 +178,6 @@ class DepthForgeApp {
       pending: false,
       retryTimer: null,
     };
-    // Keep original saved palette IDs available when undoing the stock reset.
-    const footprintPalettes = document.createElement('optgroup');
-    footprintPalettes.label = 'Footprint palettes';
-    for (const scheme of FOOTPRINT_PALETTES) {
-      const option = document.createElement('option');
-      option.value = scheme.id;
-      option.textContent = scheme.label;
-      footprintPalettes.append(option);
-    }
-    $('paletteSelect').append(footprintPalettes);
     this.#bindControls();
     this.#enhanceInspectorSelects();
     this.#syncPaletteControls();
@@ -259,14 +245,11 @@ class DepthForgeApp {
       this.requestRender();
     }));
 
-    observeLiquidityMapModals(document.body, open => {
-      if (window.parent !== window) window.parent.postMessage({ type: 'kwantdesk:liquidity-map-inspector', open }, window.location.origin);
-    });
     this.inspectorDialog = createInspectorDialog({
       dialog: $('inspector'), title: $('inspectorTitle'),
       onChange: open => {
         if (!open) all('[data-panel-shortcut]').forEach(button => button.classList.remove('active'));
-
+        if (window.parent !== window) window.parent.postMessage({ type: 'kwantdesk:liquidity-map-inspector', open }, window.location.origin);
       },
     });
     $('panelCollapse').addEventListener('click', () => this.inspectorDialog.close());
@@ -354,7 +337,6 @@ class DepthForgeApp {
     $('resetSettings').addEventListener('click', () => this.#resetSettings());
     window.addEventListener('message', event => {
       if (event.origin !== window.location.origin) return;
-      if (event.source !== window.parent) return;
       if (event.data?.type === 'kwantdesk:liquidity-map-trading') {
         if (event.source !== window.parent) return;
         this.tradingIntent = event.data;
@@ -840,7 +822,13 @@ class DepthForgeApp {
     // archive pack (built on demand) instead of resuming the live stream —
     // the feed stays stopped, so setSymbol above did not reconnect it.
     if (this.replay.active) {
-      this.#enterReplay();
+      this.sourceMode = 'replay';
+      this.playing = false;
+      this.replay.manifest = null;
+      this.replay.chunks = new Map();
+      this.replay.appliedThroughMs = 0;
+      this.#postReplayStatus('loading');
+      void this.#syncReplay();
     }
   }
 
@@ -850,7 +838,7 @@ class DepthForgeApp {
       if (!response.ok) return;
       const payload = await response.json();
       const permitted = new Set();
-      for (const row of parentLiquidityCatalogRows(payload?.instruments)) {
+      for (const row of payload?.instruments || []) {
         const root = normalizeLiquidityMapSymbol(row?.root || row?.symbol);
         if (!root || !SYMBOLS[root] || row?.fullDepth === false) continue;
         permitted.add(root);
@@ -969,13 +957,6 @@ class DepthForgeApp {
     $('depthSymbol').textContent = this.currentContractSymbol || config.contract;
     $('symbolDescription').textContent = config.description;
     $('symbolIcon').textContent = config.key[0];
-    if (this.replay.active) {
-      if ($('modeStatus')) $('modeStatus').lastChild.textContent = ' REPLAY';
-      if ($('footerModeStatus')) $('footerModeStatus').textContent = 'RECORDED BOOK · READ-ONLY';
-      $('feedStatus').textContent = 'ARCHIVE REPLAY · 2-SECOND SNAPSHOTS · READ-ONLY';
-      if ($('sourceBanner')) $('sourceBanner').textContent = `Recorded ${this.symbol} depth · ${this.replay.tradingDate} · no live data mixed in`;
-      return;
-    }
     if ($('modeStatus')) $('modeStatus').lastChild.textContent = isLiveDepth ? ' LIVE L3' : ' CONNECTING';
     if ($('footerModeStatus')) $('footerModeStatus').textContent = isLiveDepth ? `${provider} L3 · READ-ONLY` : `CONNECTING TO ${provider}`;
     if (isLiveDepth) {
@@ -1015,7 +996,7 @@ class DepthForgeApp {
 
   #restoreSettings() {
     try {
-      const saved = restoreLegacyDisplay(JSON.parse(localStorage.getItem(LIQUIDITY_MAP_SETTINGS_KEY) || 'null'), LIQUIDITY_MAP_DISPLAY_DEFAULTS, localStorage, LIQUIDITY_MAP_SETTINGS_KEY);
+      const saved = JSON.parse(localStorage.getItem(LIQUIDITY_MAP_SETTINGS_KEY) || 'null');
       if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return;
       const allowed = new Set(Object.keys(this.settings));
       allowed.delete('uiTheme');
@@ -1042,7 +1023,7 @@ class DepthForgeApp {
 
   #saveSettings() {
     try {
-      const saved = { ...this.settings, displayRollback: DISPLAY_ROLLBACK };
+      const saved = { ...this.settings };
       delete saved.uiTheme;
       delete saved.autoCenter;
       localStorage.setItem(LIQUIDITY_MAP_SETTINGS_KEY, JSON.stringify(saved));
@@ -1176,7 +1157,6 @@ class DepthForgeApp {
   }
 
   #setLiveStatus(status) {
-    if (this.replay.active) return;
     this.liveStatus = { ...this.liveStatus, ...status };
     if (status.contractSymbol) this.currentContractSymbol = status.contractSymbol;
     if (this.symbolLoadActive) {
@@ -1194,7 +1174,7 @@ class DepthForgeApp {
   #postReplayStatus(state, detail = '') {
     if (window.parent === window) return;
     window.parent.postMessage(
-      { type: 'kwantdesk:liquidity-map-replay-status', state, detail, symbol: this.symbol, tradingDate: this.replay.tradingDate },
+      { type: 'kwantdesk:liquidity-map-replay-status', state, detail, symbol: this.symbol },
       window.location.origin,
     );
   }
@@ -1206,83 +1186,32 @@ class DepthForgeApp {
     }
     const tradingDate = String(data.tradingDate || '');
     const clockMs = Number(data.timestampMs) || 0;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || !Number.isFinite(clockMs) || clockMs <= 0) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || clockMs <= 0) return;
     const dateChanged = this.replay.tradingDate !== tradingDate;
-    const rewound = this.replay.active && clockMs < this.replay.clockMs;
     this.replay.tradingDate = tradingDate;
     this.replay.clockMs = clockMs;
     if (!this.replay.active || dateChanged) this.#enterReplay();
-    else {
-      // Remove future columns immediately, before any earlier chunk can load.
-      if (rewound) {
-        this.replay.appliedThroughMs = 0;
-        this.#resetReplayBook();
-        this.#postReplayStatus('loading');
-      }
-      void this.#syncReplay();
-    }
+    else void this.#syncReplay();
   }
 
-  #resetReplayBook() {
+  #enterReplay() {
+    clearTimeout(this.replay.retryTimer);
+    this.replay.active = true;
+    this.replay.manifest = null;
+    this.replay.chunks = new Map();
+    this.replay.appliedThroughMs = 0;
+    this.replay.syncing = false;
+    this.replay.pending = false;
+    this.liveFeed.stop();
+    this.sourceMode = 'replay';
     this.depthEngine.reset();
     this.history = this.depthEngine.frames;
     this.tape = [];
-    this.cvdHistory = [];
-    this.cvdTradingDate = '';
     this.viewEnd = 0;
     this.eventCount = 0;
     this.indicatorAnalysis = null;
     this.indicatorAnalysisKey = '';
     this.indicatorTradeRevision = 0;
-    this.depthLadderHtml = '';
-    const ladder = $('depthLadder');
-    if (ladder) ladder.innerHTML = '';
-    for (const id of ['lastPrice', 'priceChange', 'spreadValue', 'volumeValue', 'cvdValue', 'eventCount', 'replayTime', 'rangeStart']) {
-      const node = $(id);
-      if (node) node.textContent = '—';
-    }
-    // The renderer skips empty history; explicitly erase its last picture so
-    // a rewind cannot keep future pixels/axes/bubbles while an older chunk loads.
-    for (const canvas of [this.renderer.canvas, this.renderer.cvdCanvas]) {
-      const context = canvas?.getContext('2d');
-      if (!context) continue;
-      context.save();
-      context.setTransform(1, 0, 0, 1, 0, 0);
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      context.restore();
-    }
-    this.renderer.layout = null;
-    this.renderer.cameraCenterTick = null;
-    this.renderer.endInteraction();
-    this.#renderTape();
-    this.requestRender();
-  }
-
-  #postReplayReady(session) {
-    const last = Number(this.history.at(-1)?.timestamp) || 0;
-    if (!last || session.clockMs - last > Math.max(10_000, session.manifest.frameMs * 5)) {
-      this.#resetReplayBook();
-      this.#postReplayStatus('gap', 'No recorded depth at the selected time.');
-      return;
-    }
-    this.#postReplayStatus('ready', session.manifest.gaps ? `archive contains ${session.manifest.gaps} gap/drop markers` : '');
-  }
-
-  #enterReplay() {
-    clearTimeout(this.replay.retryTimer);
-    this.replay.abort?.abort();
-    // The object is the request generation. A replaced session can never
-    // write into, unlock, or report an error against its successor.
-    this.replay = {
-      active: true, tradingDate: this.replay.tradingDate, clockMs: this.replay.clockMs,
-      manifest: null, chunks: new Map(), appliedThroughMs: 0,
-      syncing: false, pending: false, retryTimer: null, retryAt: 0,
-      abort: new AbortController(), symbol: this.symbol,
-      exchange: this.instrumentSubscriptions.get(this.symbol)?.exchange || SYMBOLS[this.symbol]?.venue || 'CME',
-    };
-    this.liveFeed.stop();
-    this.sourceMode = 'replay';
-    this.#resetReplayBook();
     this.atLive = true;
     this.playing = false;
     this.#updateSymbolUi();
@@ -1294,7 +1223,6 @@ class DepthForgeApp {
   #exitReplay() {
     if (!this.replay.active) return;
     clearTimeout(this.replay.retryTimer);
-    this.replay.abort?.abort();
     this.replay = {
       active: false,
       tradingDate: '',
@@ -1307,7 +1235,14 @@ class DepthForgeApp {
       retryTimer: null,
     };
     this.sourceMode = 'connecting';
-    this.#resetReplayBook();
+    this.depthEngine.reset();
+    this.history = this.depthEngine.frames;
+    this.tape = [];
+    this.viewEnd = 0;
+    this.eventCount = 0;
+    this.indicatorAnalysis = null;
+    this.indicatorAnalysisKey = '';
+    this.indicatorTradeRevision = 0;
     this.atLive = true;
     this.playing = true;
     this.liveFeed.start();
@@ -1316,168 +1251,137 @@ class DepthForgeApp {
   }
 
   async #syncReplay() {
-    const session = this.replay;
-    if (!session.active || Date.now() < session.retryAt) return;
-    if (session.syncing) {
-      session.pending = true;
+    if (!this.replay.active) return;
+    if (this.replay.syncing) {
+      this.replay.pending = true;
       return;
     }
-    session.syncing = true;
+    this.replay.syncing = true;
     try {
-      const { symbol, tradingDate, exchange } = session;
-      if (!session.manifest) {
-        const query = new URLSearchParams({ symbol, tradingDate, exchange });
+      const symbol = this.symbol;
+      const tradingDate = this.replay.tradingDate;
+      if (!this.replay.manifest) {
+        const query = new URLSearchParams({ symbol, tradingDate });
         const response = await fetch(
           `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay?${query}`,
-          { cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]) },
+          { cache: 'no-store', headers: { Accept: 'application/json' } },
         );
         const body = await response.json().catch(() => null);
-        if (this.replay !== session || !session.active) return;
+        if (!this.replay.active || this.symbol !== symbol || this.replay.tradingDate !== tradingDate) return;
         if (!response.ok) {
-          throw new Error(body?.error || 'No recorded session archive.');
+          this.#postReplayStatus('unavailable', body?.error || 'No recorded session archive.');
+          return;
         }
         if (body?.building) {
           // The one-time pack build for a full session takes minutes. Report
           // progress honestly and check back rather than pretending.
           this.#postReplayStatus('building', `${Number(body.frames || 0).toLocaleString()} frames prepared`);
-          this.#retryReplay(session);
+          clearTimeout(this.replay.retryTimer);
+          this.replay.retryTimer = setTimeout(() => {
+            if (this.replay.active) void this.#syncReplay();
+          }, 5_000);
           return;
         }
         if (!body?.manifest) {
-          throw new Error(body?.error || 'Replay pack unavailable.');
+          this.#postReplayStatus('unavailable', body?.error || 'Replay pack unavailable.');
+          return;
         }
-        const manifest = body.manifest;
-        if (manifest.tradingDate !== tradingDate || manifest.root !== symbol || manifest.exchange !== exchange
-          || !Number.isFinite(manifest.frameMs) || manifest.frameMs <= 0
-          || !Array.isArray(manifest.chunks) || !manifest.chunks.length
-          || manifest.chunks.some(chunk => !Number.isFinite(chunk.startMs) || !Number.isFinite(chunk.endMs)
-            || chunk.endMs <= chunk.startMs || !Number.isInteger(chunk.frames) || chunk.frames < 1)) {
-          throw new Error('Recorded session identity or index is invalid.');
-        }
-        session.manifest = manifest;
-        this.currentContractSymbol = manifest.contractSymbol || this.currentContractSymbol;
-        this.#updateSymbolUi();
+        this.replay.manifest = body.manifest;
       }
-      await this.#applyReplayWindow(session);
-    } catch (error) {
-      if (this.replay === session && session.active) {
-        this.#postReplayStatus('unavailable', error?.message || 'Replay data could not be loaded.');
-        this.#retryReplay(session, 30_000);
-      }
+      await this.#applyReplayWindow();
+    } catch {
+      if (this.replay.active) this.#postReplayStatus('unavailable', 'Replay data could not be loaded.');
     } finally {
-      session.syncing = false;
-      if (this.replay === session && session.pending) {
-        session.pending = false;
+      this.replay.syncing = false;
+      if (this.replay.pending) {
+        this.replay.pending = false;
         void this.#syncReplay();
       }
     }
   }
 
-  #retryReplay(session, delayMs = 5_000) {
-    session.retryAt = Date.now() + delayMs;
-    clearTimeout(session.retryTimer);
-    session.retryTimer = setTimeout(() => {
-      if (this.replay !== session || !session.active) return;
-      session.retryAt = 0;
-      void this.#syncReplay();
-    }, delayMs);
-  }
-
-  async #fetchReplayChunk(startMs, session) {
-    const cached = session.chunks.get(startMs);
+  async #fetchReplayChunk(startMs) {
+    const cached = this.replay.chunks.get(startMs);
     if (cached) return cached;
     const query = new URLSearchParams({
-      symbol: session.symbol,
-      exchange: session.exchange,
-      tradingDate: session.tradingDate,
+      symbol: this.symbol,
+      tradingDate: this.replay.tradingDate,
       chunk: String(startMs),
     });
     const response = await fetch(
       `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay/chunk?${query}`,
-      { cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]) },
+      { cache: 'no-store', headers: { Accept: 'application/json' } },
     );
-    if (!response.ok) throw new Error('A recorded liquidity chunk could not be loaded.');
+    if (!response.ok) return null;
     const body = await response.json().catch(() => null);
-    if (this.replay !== session || !session.active) return null;
     const frames = Array.isArray(body?.frames) ? body.frames : null;
-    const indexed = session.manifest.chunks.find(chunk => chunk.startMs === startMs);
-    if (!frames || body.chunk?.startMs !== startMs || frames.length !== indexed?.frames
-      || frames.some(row => !Number.isFinite(row?.snapshot?.timestamp)
-        || row.snapshot.timestamp < indexed.startMs || row.snapshot.timestamp >= indexed.endMs
-        || row.snapshot.root !== session.symbol || row.snapshot.bookValid !== true
-        || row.snapshot.fullDepth !== true || row.snapshot.readOnly !== true || !isFullDepthSource(row.snapshot.source)
-        || !Array.isArray(row.snapshot.bids) || !row.snapshot.bids.length
-        || !Array.isArray(row.snapshot.asks) || !row.snapshot.asks.length)) {
-      throw new Error('Recorded liquidity chunk is incomplete or belongs to another instrument.');
-    }
-    session.chunks.set(startMs, frames);
+    if (!frames) return null;
+    this.replay.chunks.set(startMs, frames);
     // Hold only the window around the clock; a whole session of packed books
     // is exactly the heap pattern that used to freeze embedded maps.
-    if (session.chunks.size > 4) {
-      const keys = [...session.chunks.keys()].sort((a, b) => a - b);
+    if (this.replay.chunks.size > 4) {
+      const keys = [...this.replay.chunks.keys()].sort((a, b) => a - b);
       for (const key of keys) {
-        if (session.chunks.size <= 4) break;
-        if (key !== startMs) session.chunks.delete(key);
+        if (this.replay.chunks.size <= 4) break;
+        if (key !== startMs) this.replay.chunks.delete(key);
       }
     }
     return frames;
   }
 
-  async #applyReplayWindow(session) {
-    const manifest = session.manifest;
+  async #applyReplayWindow() {
+    const manifest = this.replay.manifest;
     if (!manifest || !Array.isArray(manifest.chunks) || !manifest.chunks.length) {
       this.#postReplayStatus('unavailable', 'The replay pack holds no frames.');
       return;
     }
-    const clockMs = session.clockMs;
+    const clockMs = this.replay.clockMs;
     const frameMs = Number(manifest.frameMs) || 2_000;
     const windowStartMs = clockMs - MAX_HISTORY * frameMs;
     const wanted = manifest.chunks.filter(chunk => chunk.endMs > windowStartMs && chunk.startMs <= clockMs);
-    const rebuild = !session.appliedThroughMs || session.appliedThroughMs <= windowStartMs;
+    const scrubbedBack = clockMs < this.replay.appliedThroughMs;
     const frames = [];
     for (const chunk of wanted) {
-      const rows = await this.#fetchReplayChunk(chunk.startMs, session);
-      if (this.replay !== session || !session.active || session.clockMs !== clockMs) return;
-      if (!rows) throw new Error('Recorded liquidity chunk is unavailable.');
+      const rows = await this.#fetchReplayChunk(chunk.startMs);
+      if (!this.replay.active || this.replay.clockMs !== clockMs) return;
+      if (!rows) continue;
       for (const row of rows) {
         const timestamp = Number(row?.snapshot?.timestamp) || 0;
         if (timestamp <= 0 || timestamp > clockMs || timestamp <= windowStartMs) continue;
-        if (!rebuild && timestamp <= session.appliedThroughMs) continue;
+        if (!scrubbedBack && timestamp <= this.replay.appliedThroughMs) continue;
         frames.push(row);
       }
     }
-    if (rebuild) {
+    if (scrubbedBack) {
       // series-style appends cannot remove columns; rebuild the bounded
       // window so scrubbing backwards shows the true earlier book.
-      this.#resetReplayBook();
+      this.depthEngine.reset();
+      this.history = this.depthEngine.frames;
+      this.tape = [];
+      this.indicatorAnalysis = null;
+      this.indicatorAnalysisKey = '';
+      this.indicatorTradeRevision = 0;
     } else if (!frames.length) {
-      session.appliedThroughMs = clockMs;
-      this.#postReplayReady(session);
+      if (!this.history.length) this.#postReplayStatus('ready', 'Waiting for the first recorded frame in range.');
       return;
     }
     frames.sort((left, right) => Number(left.snapshot.timestamp) - Number(right.snapshot.timestamp));
     for (const row of frames) {
       const snapshot = normalizeLiveSnapshot(row.snapshot);
-      if (!snapshot) throw new Error('Recorded liquidity frame has no valid two-sided book.');
-      snapshot.trades = snapshot.trades.filter(trade => Number.isFinite(trade.timestamp) && trade.timestamp <= snapshot.timestamp && trade.timestamp <= clockMs);
+      if (!snapshot) continue;
       this.depthEngine.append(snapshot);
-      // Recorded scalar observations only; never carry over today's live CVD
-      // seed or invent an intra-snapshot path/OHLC extremum.
-      this.cvdHistory.push({ timestamp: snapshot.timestamp, value: snapshot.cvd,
-        open: snapshot.cvd, high: snapshot.cvd, low: snapshot.cvd, close: snapshot.cvd });
-      if (this.cvdHistory.length > MAX_HISTORY) this.cvdHistory.shift();
       if (snapshot.trades.length) {
         this.indicatorTradeRevision += 1;
         this.#appendTrades(snapshot.trades);
       }
       this.eventCount += snapshot.eventsSince || 1;
     }
-    session.appliedThroughMs = clockMs;
+    this.replay.appliedThroughMs = clockMs;
     this.viewEnd = Math.max(0, this.history.length - 1);
     this.atLive = true;
     if (this.settings.autoCenter) this.view.centerTick = null;
     this.renderRequested = true;
-    this.#postReplayReady(session);
+    this.#postReplayStatus('ready');
   }
 
   #ingestDepthSnapshot(snapshot, metadata = {}) {
@@ -1587,7 +1491,6 @@ class DepthForgeApp {
   }
 
   #replaceCvdHistory(points, tradingDate, asOfMs = 0) {
-    if (this.replay.active) return;
     const nextTradingDate = String(tradingDate || '');
     this.cvdHistory = mergeLiveCvdHistory(this.cvdHistory, points, {
       sameSession: Boolean(this.cvdTradingDate && this.cvdTradingDate === nextTradingDate),
@@ -1842,7 +1745,7 @@ class DepthForgeApp {
     $('volumeValue').textContent = snapshot.totalVolume.toLocaleString();
     $('cvdValue').textContent = `${snapshot.cvd >= 0 ? '+' : ''}${Math.round(snapshot.cvd).toLocaleString()}`;
     $('eventCount').textContent = this.#compactNumber(this.eventCount);
-    $('utcClock').innerHTML = `${new Date(this.replay.active ? this.replay.clockMs : Date.now()).toISOString().slice(11, 19)} <small>UTC</small>`;
+    $('utcClock').innerHTML = `${new Date().toISOString().slice(11, 19)} <small>UTC</small>`;
     $('replayTime').textContent = timeLabel(snapshot.timestamp, true);
     $('rangeStart').textContent = timeLabel(this.history[0].timestamp, true);
     const timelineValue = this.history.length <= 1 ? 1000 : Math.round(this.viewEnd / (this.history.length - 1) * 1000);
@@ -1979,7 +1882,6 @@ class DepthForgeApp {
   }
 
   togglePlayback() {
-    if (this.replay.active) return;
     this.playing = !this.playing;
     if (this.sourceMode === 'live' && !this.playing) this.atLive = false;
     this.accumulator = 0;
@@ -1999,7 +1901,7 @@ class DepthForgeApp {
   goLive() {
     this.atLive = true;
     this.viewEnd = this.history.length - 1;
-    this.playing = !this.replay.active;
+    this.playing = true;
     this.accumulator = 0;
     if (this.settings.autoCenter) this.view.centerTick = null;
     this.#updatePlaybackUi();
@@ -2289,8 +2191,7 @@ class DepthForgeApp {
       // The right price rail behaves like a dedicated vertical scale. Wheel
       // input here stretches/compresses price spacing around the chart centre
       // and must never alter horizontal history density or position.
-      const factor = priceWheelFactor(event);
-      if (factor === 1) return;
+      const factor = event.deltaY > 0 ? 1.12 : 0.88;
       this.#zoom(factor, {
         x: layout.plotWidth,
         y: layout.plotHeight / 2,
@@ -2316,8 +2217,7 @@ class DepthForgeApp {
       this.#zoom(factor, point, { price: false, time: true });
       return;
     }
-    const factor = priceWheelFactor(event);
-      if (factor === 1) return;
+    const factor = event.deltaY > 0 ? 1.12 : 0.88;
     const axes = event.shiftKey
       ? { price: false, time: true }
       : { price: true, time: true };
@@ -2402,7 +2302,9 @@ class DepthForgeApp {
     if (price) {
       const anchorTick = layout.tickForY(Math.max(0, Math.min(layout.plotHeight, anchor.y)));
       const config = SYMBOLS[this.symbol];
-      this.view.visibleRows = priceScaleRows(this.view.visibleRows * factor, config);
+      const depthRangePoints = config.depthRangePoints ?? config.tickSize * 110;
+      const fullBookRows = Math.round(depthRangePoints * 2 / Math.max(Number.EPSILON, config.tickSize));
+      this.view.visibleRows = Math.max(24, Math.min(Math.max(320, fullBookRows), this.view.visibleRows * factor));
       if (this.settings.autoCenter) {
         // Price zoom may change vertical density, but live price remains
         // locked to the centre until the user explicitly turns Auto-center off.

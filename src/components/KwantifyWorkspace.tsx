@@ -10498,7 +10498,6 @@ export default function KwantifyWorkspace({
       return next;
     });
   }, [chartWorkspaceScope, workspacePanes]);
-  const [liquidityReplayReady, setLiquidityReplayReady] = useState(false);
   const [kwantyReplayReady, setKwantyReplayReady] = useState(false);
   const [kwantyReplayStepMs, setKwantyReplayStepMs] = useState(60_000);
   const requestKwantyReplay = useCallback((action: "open" | "exit") => {
@@ -10506,8 +10505,7 @@ export default function KwantifyWorkspace({
     else setShowReplayPicker(true);
   }, []);
   useEffect(() => {
-    if (!gexVueReplay.active || !gexVueReplay.playing || !["charts", "gamvue", "liqmap", "kwanty"].includes(optimisticWorkspaceSection)
-      || (optimisticWorkspaceSection === "liqmap" && !liquidityReplayReady)
+    if (!gexVueReplay.active || !gexVueReplay.playing || !["charts", "gamvue", "kwanty"].includes(optimisticWorkspaceSection)
       || (optimisticWorkspaceSection === "kwanty" && !kwantyReplayReady)) {
       return;
     }
@@ -10529,7 +10527,7 @@ export default function KwantifyWorkspace({
       stop();
       document.removeEventListener("visibilitychange", pauseHiddenReplay);
     };
-  }, [optimisticWorkspaceSection, gexVueReplay.active, gexVueReplay.playing, gexVueReplay.speed, liquidityReplayReady, kwantyReplayReady]);
+  }, [optimisticWorkspaceSection, gexVueReplay.active, gexVueReplay.playing, gexVueReplay.speed, kwantyReplayReady]);
   const [workspaceTree, setWorkspaceTree] = useState<WorkspaceLayoutNode>(initialChartWorkspaceRuntime.tree);
   const [workspaceFloatingWindows, setWorkspaceFloatingWindows] = useState<WorkspaceFloatingWindow[]>(initialChartWorkspaceRuntime.floatingWindows);
   const [workspacePresets, setWorkspacePresets] = useState<WorkspacePreset[]>(initialChartWorkspaceRuntime.presets);
@@ -11812,11 +11810,6 @@ export default function KwantifyWorkspace({
     if (bottomWorkspaceSection === "kwanty") {
       setGexVueReplay(current => ({ ...current, playing: false,
         timestampMs: clampGexVueReplayTimestamp(current, Math.floor(current.timestampMs / kwantyReplayStepMs) * kwantyReplayStepMs + direction * kwantyReplayStepMs) }));
-      return;
-    }
-    if (bottomWorkspaceSection === "liqmap") {
-      setGexVueReplay(current => ({ ...current, playing: false,
-        timestampMs: clampGexVueReplayTimestamp(current, current.timestampMs + direction * 2_000) }));
       return;
     }
     const timeframe = activePaneIsChart ? activeWorkspacePane.timeframe : selectedTimeframe;
@@ -19585,9 +19578,7 @@ export default function KwantifyWorkspace({
     );
   }
 
-  const replayScope = bottomWorkspaceSection === "kwanty" ? "gamma" : bottomWorkspaceSection === "liqmap" ? "charts" : chartWorkspaceScope;
-  // Futures complete at 17:00 New York, one hour after the cash close.
-  const latestLiquidityReplaySession = latestCompletedNewYorkSession(Date.now() - 60 * 60_000);
+  const replayScope = bottomWorkspaceSection === "kwanty" ? "gamma" : chartWorkspaceScope;
   const renderReplayTransport = () => (gexVueReplay.active ? (
             <div className="flex w-full shrink-0 items-center gap-2 overflow-x-auto border-t border-primary/25 bg-panel/95 px-3 py-2 backdrop-blur-xl [scrollbar-width:thin]">
                   <span className="shrink-0 font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">
@@ -19596,7 +19587,7 @@ export default function KwantifyWorkspace({
                   <span className="shrink-0 text-[9px] text-muted" title="Live-only tools and book indicators are paused. Forming candles require recorded executions; complete historical profiles appear only after their recorded end time.">Recorded data only</span>
                   <KwantDatePicker
                     value={gexVueReplay.sessionDate}
-                    max={bottomWorkspaceSection === "liqmap" ? latestLiquidityReplaySession : latestCompletedNewYorkSession()}
+                    max={latestCompletedNewYorkSession()}
                     min={earliestGexVueReplaySessionDate()}
                     onChange={(sessionDate) => {
                       const normalizedSessionDate = normalizeGexVueReplaySessionDate(sessionDate);
@@ -19617,8 +19608,8 @@ export default function KwantifyWorkspace({
                     type="button"
                     onClick={() => stepGexVueReplayCandle(-1)}
                     className="flex h-7 w-7 shrink-0 items-center justify-center border border-border text-muted hover:border-primary/40 hover:text-primary"
-                    title={bottomWorkspaceSection === "liqmap" ? "Back one 2-second depth frame" : bottomWorkspaceSection === "kwanty" ? `Back one ${kwantyReplayStepMs / 60_000}m candle` : `Back one ${activePaneIsChart ? activeWorkspacePane.timeframe : selectedTimeframe} candle`}
-                    aria-label={bottomWorkspaceSection === "liqmap" ? "Step back one depth frame" : "Step back one candle"}
+                    title={bottomWorkspaceSection === "kwanty" ? `Back one ${kwantyReplayStepMs / 60_000}m candle` : `Back one ${activePaneIsChart ? activeWorkspacePane.timeframe : selectedTimeframe} candle`}
+                    aria-label="Step back one candle"
                   >
                     <SkipBack className="h-3.5 w-3.5" />
                   </button>
@@ -19634,8 +19625,8 @@ export default function KwantifyWorkspace({
                     type="button"
                     onClick={() => stepGexVueReplayCandle(1)}
                     className="flex h-7 w-7 shrink-0 items-center justify-center border border-border text-muted hover:border-primary/40 hover:text-primary"
-                    title={bottomWorkspaceSection === "liqmap" ? "Forward one 2-second depth frame" : bottomWorkspaceSection === "kwanty" ? `Forward one ${kwantyReplayStepMs / 60_000}m candle` : `Forward one ${activePaneIsChart ? activeWorkspacePane.timeframe : selectedTimeframe} candle`}
-                    aria-label={bottomWorkspaceSection === "liqmap" ? "Step forward one depth frame" : "Step forward one candle"}
+                    title={bottomWorkspaceSection === "kwanty" ? `Forward one ${kwantyReplayStepMs / 60_000}m candle` : `Forward one ${activePaneIsChart ? activeWorkspacePane.timeframe : selectedTimeframe} candle`}
+                    aria-label="Step forward one candle"
                   >
                     <SkipForward className="h-3.5 w-3.5" />
                   </button>
@@ -20977,30 +20968,11 @@ export default function KwantifyWorkspace({
             ) : null}
             {bottomWorkspaceSection === "liqmap" ? (
               <WorkspaceFailureBoundary resetKey="liqmap" label="Liquidity Map">
-                <div className="flex h-full min-h-0 w-full flex-col bg-chart-background">
-                  <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1">
-                    <button type="button" aria-pressed={gexVueReplay.active}
-                      onClick={() => { if (gexVueReplay.active) setGexVueReplay(current => ({ ...current, active: false, playing: false })); else setShowReplayPicker(true); }}
-                      className="kwant-chart-row-control flex h-7 items-center gap-1.5 px-2.5 text-[10px] font-semibold uppercase text-primary">
-                      {gexVueReplay.active ? <X className="h-3.5 w-3.5" /> : <Repeat className="h-3.5 w-3.5" />}
-                      {gexVueReplay.active ? "Exit replay" : "Replay"}
-                    </button>
-                    <TimeZoneSelect value={chartSettings.timezone} onChange={changeChartTimeZone}
-                      menuLabel="Replay timezone" compact className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME} />
-                    {gexVueReplay.active ? <span className="text-[10px] text-muted">Recorded depth · 2-second snapshots · read only</span> : null}
-                  </div>
-                  {showReplayPicker ? <WorkspaceReplayDialog state={gexVueReplay} scope="charts" maxSessionDate={latestLiquidityReplaySession} initialTimeZone={chartSettings.timezone} onClose={closeReplayPicker} onGo={(next, timeZone) => { changeChartTimeZone(timeZone); setGexVueReplay(next); setShowReplayPicker(false); }} /> : null}
-                  <div className="min-h-0 flex-1">
                 <LiquidityMapWorkspace
                   instrument={selectedLiquidityMapInstrument}
                   trading={liquidityMapTrading(activePaneId)}
                   onInstrumentChange={setSelectedLiquidityMapInstrument}
-                  replay={gexVueReplay.active ? { tradingDate: gexVueReplay.sessionDate, timestampMs: gexVueReplay.timestampMs } : null}
-                  onReplayReadyChange={setLiquidityReplayReady}
                 />
-                  </div>
-                  {renderReplayTransport()}
-                </div>
               </WorkspaceFailureBoundary>
             ) : null}
             {visitedWorkspaceSections.has("heatmap") ? (

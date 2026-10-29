@@ -22,7 +22,7 @@ test("LIQ MAP iframe is owned by the persistent shell and unmounts when inactive
 
   assert.equal(existsSync(new URL("src/app/liqmap/page.tsx", root)), false);
   assert.equal(existsSync(new URL("src/app/(workspace)/liqmap/page.tsx", root)), true);
-  assert.match(liquidityMap, /src="\/heatmap-app\/index\.html\?v=20261025-session-replay-exchanges"/);
+  assert.match(liquidityMap, /src="\/heatmap-app\/index\.html\?v=20261024-freeze-recovery"/);
   assert.doesNotMatch(workspace, /visitedWorkspaceSections\.has\("liqmap"\)/);
 });
 

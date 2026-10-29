@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-29 - Full liquidity-map rollback to before standalone Replay
+
+Owner rejected patches and mixed-version restoration. Restored ALL26 public heatmap assets and both map React components byte-for-byte from2bd8ac0140011f29d078f5c941dcc6c8bfaf1c57 (25Oct16:20Brisbane, before standalone shared Replay). Restored the exact standalone map branch and removed its added master Replay UI/clock/readiness/step integration, preserving other workspace features. This intentionally removes later ES-scale, palette, modal and loading-Trade changes too; do not silently layer them back on. Legacy embedded archive-message support already present in the target remains. Historical tests restored:102checks pass,9historical/shared-label assertions fail and are documented; build/TypeScript and scoped component lint pass. Hash manifest and full scope/limits: docs/prompt-log/2026-10-29-liquidity-full-pre-replay-rollback.md and adjacent manifest JSON. Accounts/recordings/shared gateway preserved; separate crossed-depth fault remains unverified. Verify all26 published asset hashes after deployment; no claim of live visual/data acceptance.
+
 ## 2026-10-29 - Hide liquidity Trade overlay while the map loads
 
 LiquidityMapWorkspace now shares `mapLoading` between the loader and trading-overlay visibility/interaction. The z20 Trade button no longer floats over the z10 loading mask on refresh. Keep LiquidityMapTrading mounted while hidden so its iframe bridge remains connected. Inspector and replay loading rules are preserved; no feed restart or trading-state changes. See docs/prompt-log/2026-10-29-liquidity-loading-trade-button.md.

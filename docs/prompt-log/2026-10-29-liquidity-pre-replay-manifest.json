@@ -1,0 +1,120 @@
+{
+  "baseline": "2bd8ac0140011f29d078f5c941dcc6c8bfaf1c57",
+  "staticAssets": 26,
+  "components": 2,
+  "standaloneBranchSha256": "7eda37b9ce5f72f704f7b20c2fe33deda23e68a94b8642258fc460a5852ffd7a",
+  "files": [
+    {
+      "file": "public/heatmap-app/embed.css",
+      "sha256": "6550c8a2a61e47b4bec17eaa85e57fb31be38b4c7c9742e1f587703080f47817"
+    },
+    {
+      "file": "public/heatmap-app/fonts/inter-400.woff2",
+      "sha256": "8909904ab6c872eb994093482a88a28eca2cd95912d7b6fecd72103b0dc07edc"
+    },
+    {
+      "file": "public/heatmap-app/fonts/inter-500.woff2",
+      "sha256": "f3779f1efccc4bdcdf9c0a02ab95bf6bd092ed09c48c08cedc725889edd1d19f"
+    },
+    {
+      "file": "public/heatmap-app/fonts/inter-600.woff2",
+      "sha256": "f9a06e79cd3a2a20951c0f0e28f66dd0e6d3fda73911d640a2125c8fcb78f21a"
+    },
+    {
+      "file": "public/heatmap-app/fonts/inter-700.woff2",
+      "sha256": "6f56409fd3d64bb85f7d070bce20749db2d66b6d63cec586cc22d1c761be2491"
+    },
+    {
+      "file": "public/heatmap-app/fonts/jetbrains-mono-400.woff2",
+      "sha256": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb"
+    },
+    {
+      "file": "public/heatmap-app/fonts/jetbrains-mono-600.woff2",
+      "sha256": "400c6bfda18d5d14acad1c15d6dcb9f8e13c015e7286317e0b9a482539bef147"
+    },
+    {
+      "file": "public/heatmap-app/fonts/rajdhani-400.woff2",
+      "sha256": "759a9000e47b028799d7a4ca602634a7ac7adf415775df070a335d18d9b66f38"
+    },
+    {
+      "file": "public/heatmap-app/fonts/rajdhani-500.woff2",
+      "sha256": "23afdb9b5b89b878fab04d80cc30bf41bb4f3f7e8be88e5f16a7cc7671cdb2dc"
+    },
+    {
+      "file": "public/heatmap-app/fonts/rajdhani-600.woff2",
+      "sha256": "433a7007e4747a02a790167a6efa2625855f013970ba49b9b739a5d3db8b2601"
+    },
+    {
+      "file": "public/heatmap-app/fonts/rajdhani-700.woff2",
+      "sha256": "5b7e4a6f97163c2636724d4de90304fc895653dcfe64c67a7a22f26331ca5c5f"
+    },
+    {
+      "file": "public/heatmap-app/index.html",
+      "sha256": "3e0c5aa9d420f7c93acdee40cdbcf92931ea2ce746ef44f4c30eb7b1d5cfdc6f"
+    },
+    {
+      "file": "public/heatmap-app/site.css",
+      "sha256": "243e7ad2a0d0063c0690d84eb906cdff64d2e13e20a71b71c3ed0d375de58c77"
+    },
+    {
+      "file": "public/heatmap-app/src/depth-engine.js",
+      "sha256": "dc82d498cc66b9cd4b37db43348ab7fca375cc9620424b27f58c1a36d6e2903c"
+    },
+    {
+      "file": "public/heatmap-app/src/heat-raster.js",
+      "sha256": "d603f7281cc40de9552d64f80eebb0e5d0c00a85a90695b9c2846f2cc1bdad8e"
+    },
+    {
+      "file": "public/heatmap-app/src/history-navigation.js",
+      "sha256": "8fb83fd4c2510107343158e5333df8449402b7133dfcdba2639986b16444acce"
+    },
+    {
+      "file": "public/heatmap-app/src/inspector-dialog.js",
+      "sha256": "917143806dd75ff1dcae3edd84d34eba7a064c5eac999ab17c23c0f5d578dab3"
+    },
+    {
+      "file": "public/heatmap-app/src/live-market.js",
+      "sha256": "7d35a3a58cffb01b5f5c0883abeb7f321f3f4a7f0b16f33358366d0900844858"
+    },
+    {
+      "file": "public/heatmap-app/src/main.js",
+      "sha256": "378ee8e38906f0085a85e611c01888c505362c99f87861aa1acb5cdba1ff55bf"
+    },
+    {
+      "file": "public/heatmap-app/src/market-simulator.js",
+      "sha256": "55162e2dfd48b91769945ded9c1a173bc6c8b9ed80776c763c09ae0a8a35a419"
+    },
+    {
+      "file": "public/heatmap-app/src/order-flow-indicators.js",
+      "sha256": "e1ca37e88202010c0d92e7056f8aa278fb8ed84094f35693fea21fb2a043ac9c"
+    },
+    {
+      "file": "public/heatmap-app/src/palettes.js",
+      "sha256": "1910178ea19e4f148f8bbafa3dee8c54450d9ef502b4d95ba63625d065bd94d2"
+    },
+    {
+      "file": "public/heatmap-app/src/renderer.js",
+      "sha256": "a1f21dcf2a35480f3ff62ef87b22eb5be77b631a58dbf13bcc933371344bd874"
+    },
+    {
+      "file": "public/heatmap-app/src/trading-bridge.js",
+      "sha256": "e2394295335c860fe8313037d3d1dbe0e5add2ec08f0a87978a0beced293627b"
+    },
+    {
+      "file": "public/heatmap-app/src/ui-themes.js",
+      "sha256": "e17f1c7c4323b9d21fcf0fe2ce79b55e11a08a2693c9cbb4e94e0230b3cf01d6"
+    },
+    {
+      "file": "public/heatmap-app/styles.css",
+      "sha256": "9a41021d6fc48d0fa662a0aaa760a35e07df2ac2acf85cb1b1954796edeac8f8"
+    },
+    {
+      "file": "src/components/liquidity-map/LiquidityMapTrading.tsx",
+      "sha256": "2a66e12fe23cfc91c225051750ca292436107d21b9b76ccdb283d02daed99e09"
+    },
+    {
+      "file": "src/components/liquidity-map/LiquidityMapWorkspace.tsx",
+      "sha256": "cee8f773ec609d39bcadb4271674101a12723522cea0c521a016d62c5d1e7dab"
+    }
+  ]
+}

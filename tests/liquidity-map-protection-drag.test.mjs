@@ -50,7 +50,7 @@ test('partial targets use remaining size and normal-chart signed quantity / proj
  assert.equal(liquidityMapLevelLabel(levels.find(l=>l.kind==='take_profit'),'NQ'),'TP · -1 · 30010.00 · +$200.00');
  assert.equal(liquidityMapLevelLabel(levels.find(l=>l.kind==='stop_loss'),'NQ',29995),'SL · -3 · 29995.00 · -$300.00');
  assert.equal(liquidityMapLevelLabel(levels[0],'NQ'),'+3 · +$120.00');
- assert.equal(PAPER_LABEL_HEIGHT,24*.75);assert.equal(PAPER_LABEL_FONT_PX,12*.75);assert.equal(paperLabelWidthPx('SL · -3 · 29995.00 · -$300.00',0,true),190.75);
+ assert.equal(PAPER_LABEL_HEIGHT,24);assert.equal(PAPER_LABEL_FONT_PX,12);assert.equal(paperLabelWidthPx('SL · -3 · 29995.00 · -$300.00',0,true),254);
 });
 test('label dimensions match the actual normal chart implementation across widths and handle counts',()=>{
  const chart=readFileSync(new URL('../src/components/Chart.tsx',import.meta.url),'utf8').replaceAll('\r\n','\n');

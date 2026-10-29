@@ -1,6 +1,4 @@
 import { websiteThemeColors } from './ui-themes.js?v=20261017-aleph-font';
-import { INDICATOR_GRADIENT_SCHEMES } from '../../shared/indicator-gradients.js?v=20261027-footprint-palettes';
-export const FOOTPRINT_PALETTES = INDICATOR_GRADIENT_SCHEMES;
 
 export const DEFAULT_PALETTE = 'auto';
 
@@ -8,10 +6,6 @@ const BOOKMAP_LANDMARKS = Object.freeze([0, 0.18, 0.422422, 0.624625, 0.722723, 
 const atLandmarks = colors => colors.map((color, index) => [BOOKMAP_LANDMARKS[index], color]);
 
 export const PALETTES = Object.freeze({
-  // Zero liquidity stays dark. Real low/high heat uses the exact footprint
-  // endpoints; interpolation/dimming remains the normal heatmap pipeline.
-  ...Object.fromEntries(FOOTPRINT_PALETTES.map(scheme => [scheme.id,
-    [[0, [0, 0, 0]], [0.2, rgb(scheme.from)], [1, rgb(scheme.to)]]])),
   /*
    * The DeepChart look, matching the "Chromey Mono" website theme.
    *
@@ -103,8 +97,6 @@ export const PALETTES = Object.freeze({
 // ask/sell uses `ask`, so the market-side encoding stays consistent while the
 // complete chart changes theme as one unit.
 export const PALETTE_ACCENTS = Object.freeze({
-  ...Object.fromEntries(FOOTPRINT_PALETTES.map(scheme => [scheme.id,
-    Object.freeze({ bid: rgb(scheme.to), ask: rgb(scheme.from) })])),
   chromeymono: Object.freeze({ bid: [0, 255, 0], ask: [193, 20, 20] }),
   kwantify: Object.freeze({ bid: [0, 245, 160], ask: [239, 68, 68] }),
   liquid: Object.freeze({ bid: [100, 210, 255], ask: [255, 159, 10] }),

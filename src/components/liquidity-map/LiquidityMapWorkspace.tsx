@@ -27,7 +27,6 @@ type LiquidityMapWorkspaceProps = {
   // GEX Vue session replay: when set, the map leaves the live stream and
   // renders the collector's archived book for this session up to this clock.
   replay?: LiquidityMapReplayControl | null;
-  onReplayReadyChange?: (ready: boolean) => void;
 };
 
 function liquidityMapInstrument(root: unknown) {
@@ -43,7 +42,6 @@ function LiquidityMapWorkspace({
   embedded = false,
   active = true,
   replay = null,
-  onReplayReadyChange,
 }: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -60,13 +58,10 @@ function LiquidityMapWorkspace({
   const stylesReadyRef = useRef(false);
   const marketFrameReadyRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
-  const [bridgeReady, setBridgeReady] = useState(0);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [replayStatus, setReplayStatus] = useState<{ state: string; detail: string } | null>(null);
-  const replayTradingDate = replay?.tradingDate;
   const lastReplayPostAtRef = useRef(0);
   const replayPostTimerRef = useRef<number | null>(null);
-  const lastReplayControlRef = useRef<LiquidityMapReplayControl | null>(null);
   const syncReadyState = useCallback(() => {
     setIsReady(stylesReadyRef.current && marketFrameReadyRef.current);
   }, []);
@@ -94,13 +89,8 @@ function LiquidityMapWorkspace({
   }, [active, embedded]);
 
   useEffect(() => {
-    if (bridgeReady) syncInstrument();
-  }, [bridgeReady, syncInstrument]);
-
-  useEffect(() => {
-    setReplayStatus(null);
-    onReplayReadyChange?.(false);
-  }, [replay?.tradingDate, instrument, onReplayReadyChange]);
+    if (isReady) syncInstrument();
+  }, [isReady, syncInstrument]);
 
   // Forward the replay clock, coalesced to at most one message per second —
   // the map's archive frames are 2s columns, so a faster drip is pure waste.
@@ -117,19 +107,16 @@ function LiquidityMapWorkspace({
         replayPostTimerRef.current = null;
       }
       setReplayStatus(null);
-      lastReplayControlRef.current = null;
-      if (bridgeReady) post({ active: false });
+      if (isReady) post({ active: false });
       return;
     }
-    if (!bridgeReady) return;
-    const previous = lastReplayControlRef.current;
-    lastReplayControlRef.current = replay;
+    if (!isReady) return;
     const send = () => {
       lastReplayPostAtRef.current = Date.now();
       post({ active: true, tradingDate: replay.tradingDate, timestampMs: replay.timestampMs });
     };
     const elapsed = Date.now() - lastReplayPostAtRef.current;
-    if (!previous || previous.tradingDate !== replay.tradingDate || replay.timestampMs < previous.timestampMs || elapsed >= 1_000) {
+    if (elapsed >= 1_000) {
       send();
       return;
     }
@@ -144,7 +131,7 @@ function LiquidityMapWorkspace({
         replayPostTimerRef.current = null;
       }
     };
-  }, [bridgeReady, replay]);
+  }, [isReady, replay]);
 
   useEffect(() => {
     syncPerformancePriority();
@@ -220,20 +207,14 @@ function LiquidityMapWorkspace({
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-theme-request") {
-        // Sent immediately after the app installs its message listener,
-        // independently of any live market frame (including offline replay).
-        setBridgeReady(current => current + 1);
         syncTheme();
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-replay-status") {
-        if (!replayTradingDate || event.data.tradingDate !== replayTradingDate
-          || liquidityMapInstrument(event.data.symbol) !== instrument) return;
         setReplayStatus({
           state: String(event.data.state || ""),
           detail: String(event.data.detail || ""),
         });
-        onReplayReadyChange?.(event.data.state === "ready" || event.data.state === "gap");
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-styles-pending") {
@@ -296,7 +277,7 @@ function LiquidityMapWorkspace({
       clearStyleCheck();
       window.removeEventListener("message", handleMapReady);
     };
-  }, [instrument, replayTradingDate, onReplayReadyChange, onActivate, onInstrumentChange, syncInstrument, syncPerformancePriority, syncReadyState, syncTheme]);
+  }, [instrument, onActivate, onInstrumentChange, syncInstrument, syncPerformancePriority, syncReadyState, syncTheme]);
 
   /*
    * The pane's own size, for the mark.
@@ -348,9 +329,6 @@ function LiquidityMapWorkspace({
   const watermark = plotBox
     ? chartWatermarkSize(plotBox.width, plotBox.height, LIQUIDITY_MAP_WATERMARK_SCALE)
     : null;
-  const mapLoading = !(replay
-    ? ["ready", "gap", "unavailable"].includes(replayStatus?.state ?? "")
-    : isReady);
 
   return (
     <div
@@ -360,7 +338,7 @@ function LiquidityMapWorkspace({
       <iframe
         ref={iframeRef}
         className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
-        src="/heatmap-app/index.html?v=20261029-backed-display"
+        src="/heatmap-app/index.html?v=20261024-freeze-recovery"
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
           iframeRef.current?.contentDocument?.documentElement.setAttribute(
@@ -368,7 +346,6 @@ function LiquidityMapWorkspace({
             "true",
           );
           stylesReadyRef.current = false;
-          lastReplayControlRef.current = null;
           setInspectorOpen(false);
           marketFrameReadyRef.current = false;
           syncReadyState();
@@ -376,7 +353,7 @@ function LiquidityMapWorkspace({
           syncPerformancePriority();
         }}
       />
-      {trading ? <div className={inspectorOpen || mapLoading ? "hidden" : undefined}><LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active && !inspectorOpen && !mapLoading} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /></div> : null}
+      {trading ? <div className={inspectorOpen ? "hidden" : undefined}><LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active && !inspectorOpen} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /></div> : null}
       {watermark && !inspectorOpen ? (
         /*
           * The same mark the charts carry, on the same sizing rules.
@@ -409,12 +386,11 @@ function LiquidityMapWorkspace({
           }}
         />
       ) : null}
-      {mapLoading && !inspectorOpen ? (
+      {!isReady && !inspectorOpen ? (
         <div className="pointer-events-none absolute inset-0 z-10">
           <KwantLoader
             title="Loading LIQ MAP"
-            detail={replay ? undefined : "Restoring live depth and recent liquidity history."}
-            quiet={Boolean(replay)}
+            detail="Restoring live depth and recent liquidity history."
             className="h-full w-full bg-chart-background"
           />
         </div>
@@ -430,13 +406,12 @@ function LiquidityMapWorkspace({
             ? `Replay pack building from the session archive · ${replayStatus.detail || "preparing"}`
             : replayStatus.state === "unavailable"
               ? `Replay unavailable · ${replayStatus.detail || "no recorded archive for this session"}`
-              : replayStatus.state === "gap" ? replayStatus.detail
               : "Loading recorded session…"}
         </div>
       ) : null}
       {!inspectorOpen && replay && replayStatus?.state === "ready" ? (
         <div className="pointer-events-none absolute left-2 top-2 z-10 border border-primary/40 bg-panel/90 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-primary">
-          Replay · {replayStatus.detail || "recorded L3 · 2-second snapshots"}
+          Replay · recorded L3
         </div>
       ) : null}
     </div>
@@ -451,7 +426,6 @@ export default memo(
     && previous.embedded === next.embedded
     && previous.active === next.active
     && previous.onInstrumentChange === next.onInstrumentChange
-    && previous.onReplayReadyChange === next.onReplayReadyChange
     && previous.replay?.tradingDate === next.replay?.tradingDate
     && previous.replay?.timestampMs === next.replay?.timestampMs,
 );

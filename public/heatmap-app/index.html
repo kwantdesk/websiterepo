@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en" data-ui-theme="kwantify" data-embed="true">
 <head>
-  <link rel="stylesheet" href="/fonts/aleph/aleph.css?v=20261027-stable-font">
+  <link rel="stylesheet" href="/fonts/aleph/aleph.css">
   <link rel="preload" href="/fonts/aleph/Aleph-Regular.ttf" as="font" type="font/ttf" crossorigin="anonymous">
   <link rel="preload" href="/fonts/aleph/Aleph-Bold.ttf" as="font" type="font/ttf" crossorigin="anonymous">
   <meta charset="utf-8">
@@ -11,29 +11,26 @@
   <script>
     (() => {
       const defaults = {
-        background: '#000000',
-        foreground: '#FFFFFF',
-        primary: '#FFFFFF',
-        secondary: '#9A9A9A',
-        muted: '#777777',
-        border: '#333333',
-        card: '#0E0E0E',
-        danger: '#6B6B6B',
-        panel: '#080808',
-        surface: '#151515',
+        background: '#09090b',
+        foreground: '#fafafa',
+        primary: '#00f5a0',
+        secondary: '#6366f1',
+        muted: '#71717a',
+        border: '#27272a',
+        card: '#0f0f12',
+        danger: '#ef4444',
+        panel: '#0c0c0e',
+        surface: '#18181b',
       };
 
       try {
-        let saved;
-        try { saved = JSON.parse(localStorage.getItem('olisa-theme') || 'null'); } catch { /* Use the canonical defaults. */ }
+        const saved = JSON.parse(localStorage.getItem('olisa-theme') || 'null');
         const theme = saved && typeof saved === 'object' ? { ...defaults, ...saved } : defaults;
         const root = document.documentElement;
         const color = (value, fallback) => (
           typeof value === 'string' && value.trim() ? value.trim() : fallback
         );
         const primary = color(theme.primary, defaults.primary);
-        root.style.backgroundColor = color(theme.background, defaults.background);
-        root.style.color = color(theme.foreground, defaults.foreground);
         const danger = color(theme.danger, defaults.danger);
         const hexRgb = (value, fallback) => {
           const match = String(value).match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
@@ -154,8 +151,8 @@
   >
   <link
     rel="stylesheet"
-    href="/heatmap-app/site.css?v=20261029-oct25-rollback"
-    data-source="/heatmap-app/site.css?v=20261029-oct25-rollback"
+    href="/heatmap-app/site.css?v=20261020-workspace-chrome"
+    data-source="/heatmap-app/site.css?v=20261020-workspace-chrome"
     data-liquidity-style="site"
     onload="window.__kwantLiquidityStyleLoaded('site')"
     onerror="window.__kwantLiquidityStyleFailed('site', this)"
@@ -417,6 +414,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=20261029-backed-display"></script>
+  <script type="module" src="src/main.js?v=20261024-freeze-recovery"></script>
 </body>
 </html>

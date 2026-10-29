@@ -33,8 +33,6 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
   const [preview, setPreview] = useState<{ id: string; price: number } | null>(null);
   const layer = useRef<HTMLDivElement>(null);
   const [appearance, setAppearance] = useState(() => loadStoredChartSettings());
-  const labelBackground = readableTextOn(appearance.backgroundColor);
-  const labelText = readableTextOn(labelBackground);
   useEffect(() => {
     const update = () => setAppearance(loadStoredChartSettings());
     window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, update);
@@ -157,7 +155,7 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
         const owner = level.resting ? trading.orders.find(o => o.id === level.ownerId) : trading.positions.find(p => p.id === level.ownerId);
         return <div key={level.id} className="absolute left-0 right-0 border-t" style={{ top: y, borderColor: color, borderStyle: level.kind === "entry" ? "solid" : "dashed" }}>
           <div className={`${level.kind === "entry" ? "paper-position-overlay-label" : "paper-protection-overlay-label"} pointer-events-auto absolute right-1 flex -translate-y-1/2 items-stretch overflow-hidden border font-mono font-bold`}
-            style={{ borderColor: color, color: labelText, backgroundColor: labelBackground, fontSize: PAPER_LABEL_FONT_PX, height: PAPER_LABEL_HEIGHT, width: paperLabelWidthPx(label, level.kind === "entry" ? 2 : 0, true), maxWidth: "calc(100% - 8px)" }}>
+            style={{ borderColor: color, color: appearance.backgroundColor, backgroundColor: readableTextOn(appearance.backgroundColor), fontSize: PAPER_LABEL_FONT_PX, height: PAPER_LABEL_HEIGHT, width: paperLabelWidthPx(label, level.kind === "entry" ? 2 : 0, true), maxWidth: "calc(100% - 8px)" }}>
             <button type="button" aria-label={`${level.label} ${symbol} at ${price}`} disabled={replay || !trading.enabled}
               className="min-w-0 flex-1 touch-none truncate text-left active:cursor-grabbing" style={{ cursor: level.draggable ? "ns-resize" : "default", paddingInline: PAPER_LABEL_PAD_X }}
               title={level.draggable ? "Drag to adjust protection" : "Filled entry price"} onPointerDown={e => startDrag(e, level)}>
