@@ -1,0 +1,11 @@
+# Broader liquidity presentation rollback — 2026-10-29
+
+Owner rejects unchanged appearance after the prior history-only revert. That narrow rollback is not proof of resolving the visual report. Owner asks to restore the old map and has instructed no further browser/skill inspection.
+
+Restore 4065cc10 (25 October) renderer/DOM drawing, palette catalogue, bubble sizing/clustering engine, controls and site styling. Keep correct ES tick scaling, parent-vs-micro contract catalogue protection, modal ownership suppression and stable theme/font bootstrap. All changed module/style/iframe paths carry fresh 20261029-oct25-rollback query strings. Retired palette/clustering feature tests are removed with the reverted features; earlier bubble-anchor/performance assertions restored.
+
+Saved settings can override code indefinitely. One-time restoreLegacyDisplay backs up the complete prior map setting object under kwantdesk:liquidity-map-display-backup:20261029, then restores ONLY Oct25 display defaults, retaining unrelated study settings. Both trails/DOM side columns enabled. Existing account settings carry displayRollback marker and normal later saves preserve it, so future deliberate edits survive. A failed backup or settings write preserves prior configuration. No original custom settings are invented or claimed recovered. No account/trade/drawing/provider data reset.
+
+Validation:38 focused tests pass, including backup/idempotence/storage-failure cases, actual complete inside-market and DOM painters compared to Oct25, replay causality, ES scale/product identity, modal layering, camera motion, bubble anchors, theme contrast and buy/sell volume colours. Full 1536MiB-capped production build/TypeScript and scoped lint pass (exit 0). Owner screenshot/live visual acceptance unverified; browser inspection stopped on instruction. Existing old source-regex baseline failures remain, not claimed fixed.
+
+Operational scope: frontend only, no gateway restart or archive service change. Raw recordings and trade accounts remain. Differential cancellation and old viewport-relative bubble sizing return as part of owner-requested rollback. Deferred backend performance activation, original Footprint transient, full vendor/archive parity, backup and browser-owned unattended protection remain open.

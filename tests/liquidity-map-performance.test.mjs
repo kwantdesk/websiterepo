@@ -105,7 +105,7 @@ test("wide and high-DPI screens use bounded canvas work and cached trade cluster
   assert.match(renderer, /this\.interaction\?\.startTimestamp/);
   assert.match(depthEngine, /const cells = new Map\(\)/);
   assert.match(depthEngine, /MAX_VISIBLE_TRADE_CLUSTERS = 2_500/);
-  assert.match(depthEngine, /Math\.sqrt\(counts\.get\(window\) \/ MAX_VISIBLE_TRADE_CLUSTERS\)/);
+  assert.match(depthEngine, /Math\.sqrt\(groups\.length \/ MAX_VISIBLE_TRADE_CLUSTERS\)/);
   const nearbyMerge = depthEngine.match(/function mergeNearbyTrades[\s\S]*?function applySmartClustering/)?.[0] || "";
   assert.doesNotMatch(nearbyMerge, /for \(let pass = 0; pass < 20 && working\.length > 1; pass \+= 1\)/);
   assert.doesNotMatch(depthEngine, /const ordered = \[\.\.\.groups\]\.sort/);

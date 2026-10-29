@@ -159,17 +159,6 @@ html[data-embed="true"] #inspector .kwant-select-option {
 }
 html[data-embed="true"] #inspector .kwant-select-option:is(:hover, :focus-visible) { background: var(--ui-surface); }
 html[data-embed="true"] #inspector .kwant-select-option.active { color: var(--ui-accent); background: color-mix(in srgb, var(--ui-accent) 10%, transparent); }
-#inspector [data-select-for="paletteSelect"] .kwant-palette-swatch {
-  display: block;
-  flex: 0 0 44px;
-  height: 12px;
-  border: 1px solid var(--ui-line);
-  border-radius: 4px;
-}
-#inspector [data-select-for="paletteSelect"] .kwant-select-option > span:not(.kwant-palette-swatch) {
-  flex: 1;
-  text-align: left;
-}
 html[data-embed="true"] #inspector .kwant-select-group { padding: 8px 10px 4px; color: var(--ui-muted); font: 700 8px var(--font-ui); letter-spacing: .16em; }
 html[data-embed="true"] #resetSettings { min-height: 28px; padding: 6px 10px; border: 1px solid var(--ui-line); border-radius: 3px; background: var(--ui-surface); color: var(--ui-text); font: 600 10px var(--font-ui); letter-spacing: .075em; }
 html[data-embed="true"] #resetSettings:hover { border-color: var(--ui-accent); color: var(--ui-accent); }
@@ -193,15 +182,4 @@ html[data-embed="true"] .cvd-panel header { background: var(--ui-bg); }
 @media (max-width: 520px) {
   html[data-embed="true"] .header-panel-shortcuts button { width: 28px; padding: 0; }
   html[data-embed="true"] .header-panel-shortcuts button > span { display: none; }
-}
-
-/* Focus should not add a white/accent outline or ring around any control. */
-:focus, :focus-visible {
-  outline: none !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
-}
-.instrument-search-wrap:focus-within {
-  border-color: var(--ui-line-strong);
-  box-shadow: none;
 }

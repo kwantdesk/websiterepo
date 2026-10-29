@@ -1,10 +1,11 @@
+import { restoreLegacyDisplay, DISPLAY_ROLLBACK } from './display-rollback.js?v=20261029-oct25-rollback';
 import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261027-instrument-price-scale';
 import { observeLiquidityMapModals } from './modal-overlay-bridge.js?v=20261027-modal-overlays';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261028-smart-volume-bubbles';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261028-smart-volume-bubbles';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261029-oct25-rollback';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261029-oct25-rollback';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -19,7 +20,7 @@ import {
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from './live-market.js?v=20261027-instrument-price-scale';
-import { DEFAULT_PALETTE, FOOTPRINT_PALETTES, paletteCssGradient } from './palettes.js?v=20261027-footprint-palettes';
+import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20261029-oct25-rollback';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
@@ -62,7 +63,7 @@ const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   smartClustering: BOOKMAP_VISUAL_DEFAULTS.smartClustering,
   minimumTradeSize: BOOKMAP_VISUAL_DEFAULTS.minimumTradeSize,
   minimumPixelVolume: BOOKMAP_VISUAL_DEFAULTS.minimumPixelVolume,
-  bubbleDifferential: false,
+  bubbleDifferential: true,
   autoCenter: true,
   trails: true,
   grid: true,
@@ -181,15 +182,6 @@ class DepthForgeApp {
       pending: false,
       retryTimer: null,
     };
-    const footprintPalettes = document.createElement('optgroup');
-    footprintPalettes.label = 'Footprint palettes';
-    for (const scheme of FOOTPRINT_PALETTES) {
-      const option = document.createElement('option');
-      option.value = scheme.id;
-      option.textContent = scheme.label;
-      footprintPalettes.append(option);
-    }
-    $('paletteSelect').append(footprintPalettes);
     this.#bindControls();
     this.#enhanceInspectorSelects();
     this.#syncPaletteControls();
@@ -320,19 +312,16 @@ class DepthForgeApp {
       $('clusteringOutput').value = String(this.settings.smartClustering);
       this.requestRender();
     });
-    for (const [prefix, key] of [['minimumTradeSize', 'minimumTradeSize'], ['minimumVolume', 'minimumPixelVolume']]) {
-      const update = event => {
-        const value = Number(event.target.value);
-        if (!Number.isFinite(value) || event.target.value.trim() === '') return;
-        this.settings[key] = Math.max(1, Math.min(1_000_000, Math.round(value)));
-        $(`${prefix}Range`).value = String(this.settings[key]);
-        $(`${prefix}Number`).value = String(this.settings[key]);
-        $(`${prefix}Output`).value = String(this.settings[key]);
-        this.requestRender();
-      };
-      $(`${prefix}Range`).addEventListener('input', update);
-      $(`${prefix}Number`).addEventListener('change', update);
-    }
+    $('minimumTradeSizeRange').addEventListener('input', event => {
+      this.settings.minimumTradeSize = Number(event.target.value);
+      $('minimumTradeSizeOutput').value = String(this.settings.minimumTradeSize);
+      this.requestRender();
+    });
+    $('minimumVolumeRange').addEventListener('input', event => {
+      this.settings.minimumPixelVolume = Number(event.target.value);
+      $('minimumVolumeOutput').value = String(this.settings.minimumPixelVolume);
+      this.requestRender();
+    });
     this.#bindCheckbox('autoCenter', 'autoCenter');
     this.#bindCheckbox('showTrails', 'trails');
     this.#bindCheckbox('showGrid', 'grid');
@@ -561,13 +550,6 @@ class DepthForgeApp {
         const check = document.createElement('i');
         check.textContent = '✓';
         button.append(copy, check);
-        if (select.id === 'paletteSelect') {
-          const swatch = document.createElement('span');
-          swatch.className = 'kwant-palette-swatch';
-          swatch.setAttribute('aria-hidden', 'true');
-          swatch.style.background = paletteCssGradient(option.value);
-          button.prepend(swatch);
-        }
         menu.append(button);
       };
 
@@ -1023,7 +1005,7 @@ class DepthForgeApp {
 
   #restoreSettings() {
     try {
-      const saved = JSON.parse(localStorage.getItem(LIQUIDITY_MAP_SETTINGS_KEY) || 'null');
+      const saved = restoreLegacyDisplay(JSON.parse(localStorage.getItem(LIQUIDITY_MAP_SETTINGS_KEY) || 'null'), LIQUIDITY_MAP_DISPLAY_DEFAULTS, localStorage, LIQUIDITY_MAP_SETTINGS_KEY);
       if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return;
       const allowed = new Set(Object.keys(this.settings));
       allowed.delete('uiTheme');
@@ -1050,7 +1032,7 @@ class DepthForgeApp {
 
   #saveSettings() {
     try {
-      const saved = { ...this.settings };
+      const saved = { ...this.settings, displayRollback: DISPLAY_ROLLBACK };
       delete saved.uiTheme;
       delete saved.autoCenter;
       localStorage.setItem(LIQUIDITY_MAP_SETTINGS_KEY, JSON.stringify(saved));
@@ -1079,7 +1061,7 @@ class DepthForgeApp {
     $('showGrid').checked = true;
     this.#syncDomVisibilityControls(true);
     $('aggregateDepth').checked = false;
-    $('bubbleDifferential').checked = false;
+    $('bubbleDifferential').checked = true;
     $('toggleHeatmap').classList.add('active-toggle');
     $('toggleDom').classList.add('active-toggle');
     $('toggleTrades').classList.add('active-toggle');
@@ -1098,10 +1080,8 @@ class DepthForgeApp {
     $('clusteringOutput').value = String(this.settings.smartClustering);
     $('minimumTradeSizeRange').value = String(this.settings.minimumTradeSize);
     $('minimumTradeSizeOutput').value = String(this.settings.minimumTradeSize);
-    $('minimumTradeSizeNumber').value = String(this.settings.minimumTradeSize);
     $('minimumVolumeRange').value = String(this.settings.minimumPixelVolume);
     $('minimumVolumeOutput').value = String(this.settings.minimumPixelVolume);
-    $('minimumVolumeNumber').value = String(this.settings.minimumPixelVolume);
     $('bubbleDifferential').checked = this.settings.bubbleDifferential;
   }
 
@@ -2326,7 +2306,8 @@ class DepthForgeApp {
       this.#zoom(factor, point, { price: false, time: true });
       return;
     }
-    const factor = event.deltaY > 0 ? 1.12 : 0.88;
+    const factor = priceWheelFactor(event);
+      if (factor === 1) return;
     const axes = event.shiftKey
       ? { price: false, time: true }
       : { price: true, time: true };
