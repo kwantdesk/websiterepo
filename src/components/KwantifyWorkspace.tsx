@@ -18228,6 +18228,17 @@ export default function KwantifyWorkspace({
     positionId: string,
     update: PaperProtectionUpdate,
   ) => {
+    const commitProtection = (next: PaperTradingLedger) => {
+      commitPaperLedger(next);
+      // Operator intent must be durable in this same call. The passive ledger
+      // save intentionally skips superseded React snapshots; a live tick can
+      // advance the ref before that effect and otherwise leave the OLD stop
+      // in storage/cloud despite the new level already being on the chart.
+      const saved = savePaperTradingLedger(next);
+      if (!saved.ok) {
+        showPaperOrderMessage("error", "Protection updated in this tab, but browser storage could not save it. Keep this tab open.");
+      }
+    };
     const current = paperLedgerRef.current;
     const restingOrder = current.accounts[accountId]?.orders.find(
       (candidate) => candidate.id === positionId && candidate.status === "working",
@@ -18240,7 +18251,7 @@ export default function KwantifyWorkspace({
         showPaperOrderMessage("error", "TP and SL must remain on the correct side of the order price.");
         return;
       }
-      commitPaperLedger(next);
+      commitProtection(next);
       return;
     }
     const position = current.accounts[accountId]?.positions.find((candidate) => candidate.id === positionId);
@@ -18256,7 +18267,7 @@ export default function KwantifyWorkspace({
     // Releasing a stop handle only arms the snapped stop. It must not replay
     // the quote used during the pointer release and turn placement into a fill.
     if (update.kind === "stop_loss" || update.price == null) {
-      commitPaperLedger(result.ledger);
+      commitProtection(result.ledger);
       return;
     }
 
@@ -18273,7 +18284,7 @@ export default function KwantifyWorkspace({
           },
         )
       : result.ledger;
-    commitPaperLedger(next);
+    commitProtection(next);
   };
 
   const handlePaperProtectionDragStateChange = useCallback((positionId: string, dragging: boolean) => {
