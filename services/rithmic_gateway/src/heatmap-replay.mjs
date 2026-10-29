@@ -376,7 +376,7 @@ export class HeatmapReplayStore {
           case TEMPLATE_ORDER_BOOK: book.applyOrderBook(payload); break;
           case TEMPLATE_DEPTH_SNAPSHOT:
           case TEMPLATE_DEPTH_SNAPSHOT_END:
-            if (book.applyDepthSnapshot(payload)?.snapshotComplete) awaitingResnapshot = false;
+            if (book.applyDepthSnapshot(payload, Date.parse(record.receivedAt))?.snapshotComplete) awaitingResnapshot = false;
             break;
           case TEMPLATE_DEPTH_UPDATE:
             if (!awaitingResnapshot) book.applyDepthUpdate(payload);

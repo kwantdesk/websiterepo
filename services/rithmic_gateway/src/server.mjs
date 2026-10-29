@@ -1072,15 +1072,22 @@ function captureHeatmapFrame(instrumentKey, now = Date.now(), marketEvent = null
     exchange,
     symbol,
     Math.min(HEATMAP_CACHE_DEPTH, requestedDepth),
-    { afterSequence: state.lastSequence, tradeLimit: 256 },
+    { afterSequence: state.lastSequence, tradeLimit: state.awaitingValidDepth ? 2_500 : 256 },
   );
   if (!snapshot) return null;
   const frame = heatmapPayload(snapshot, state.lastSequence);
   frame.snapshot.orderEvents = state.pendingOrderEvents.slice();
   if (!acceptMonotonicHeatmapFrame(state, frame)) return null;
-  state.pendingOrderEvents.splice(0);
+  const usableDepth = snapshot.fullDepth === true && snapshot.bids.length > 0 && snapshot.asks.length > 0;
+  state.awaitingValidDepth = !usableDepth;
+  // The browser rejects invalid books. Advancing its execution cursor here
+  // discarded genuine prints during every crossed interval; the next valid
+  // book must still carry those actual executions and order removals.
+  if (usableDepth) {
+    state.pendingOrderEvents.splice(0);
+    state.lastSequence = Number(snapshot.sequence) || state.lastSequence;
+  }
   state.lastEmitAt = now;
-  state.lastSequence = Number(snapshot.sequence) || state.lastSequence;
   // Only retain genuine moving-market frames. A completed Friday close stays
   // inspectable on Saturday, but repeatedly caching it would manufacture a
   // false horizontal history and imply liquidity existed after the session.

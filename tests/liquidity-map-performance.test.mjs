@@ -12,7 +12,7 @@ test("the Rithmic map publishes bounded truthful depth at a sustainable cadence"
   assert.match(gateway, /HEATMAP_HISTORY_CHUNK_SIZE = 24/);
   assert.match(feed, /REQUESTED_DEPTH_TICKS = 320/);
   assert.match(gateway, /capturedHeatmapFrame/);
-  assert.match(gateway, /afterSequence: state\.lastSequence, tradeLimit: 256/);
+  assert.match(gateway, /afterSequence: state\.lastSequence, tradeLimit: state\.awaitingValidDepth \? 2_500 : 256/);
   assert.match(gateway, /tradeLimit: 1/);
 });
 

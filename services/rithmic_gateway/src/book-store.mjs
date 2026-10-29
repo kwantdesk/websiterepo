@@ -32,6 +32,23 @@ function eventTimestampMs(payload) {
   return seconds > 0 ? seconds * 1_000 + Math.floor(microseconds / 1_000) : 0;
 }
 
+function eventTimestampUs(payload) {
+  const seconds = Number(payload.sourceSsboe ?? payload.ssboe ?? 0);
+  const micros = Number(payload.sourceUsecs ?? (payload.sourceNsecs != null
+    ? Math.floor(Number(payload.sourceNsecs) / 1_000) : payload.usecs ?? 0));
+  const value = seconds * 1_000_000 + micros;
+  return seconds > 0 && Number.isSafeInteger(value) ? value : 0;
+}
+
+const levelKey = (side, price) => `${side}:${Number(price)}`;
+
+function indexOrder(instrument, order) {
+  const index = order.side === "BUY" ? instrument.bidOrderIds : instrument.askOrderIds;
+  let ids = index.get(Number(order.price));
+  if (!ids) index.set(Number(order.price), ids = new Set());
+  ids.add(order.id);
+}
+
 function snapshotTarget(payload) {
   const exchange = Array.isArray(payload?.exchange) ? payload.exchange[0] : payload?.exchange;
   const symbol = Array.isArray(payload?.symbol) ? payload.symbol[0] : payload?.symbol;
@@ -75,6 +92,10 @@ function makeInstrument(exchange, symbol, maxTrades) {
     bids: new Map(),
     asks: new Map(),
     orders: new Map(),
+    bidOrderIds: new Map(),
+    askOrderIds: new Map(),
+    orderSourceTimes: new Map(),
+    emptyLevelTimes: new Map(),
     volumeByPrice: new Map(),
     trades: [],
     // Exact one-minute aggressor-flow bars are retained independently from
@@ -89,6 +110,9 @@ function makeInstrument(exchange, symbol, maxTrades) {
     sourceSequence: "0",
     asOfMs: 0,
     lastPrice: null,
+    lastTradeTimeMs: 0,
+    bidTimeUs: 0,
+    askTimeUs: 0,
     bestBid: null,
     bestAsk: null,
     bookValid: false,
@@ -206,9 +230,12 @@ function aggregateFlowCandles(candles, intervalMs) {
 function rebuildDepthByOrder(instrument) {
   instrument.bids.clear();
   instrument.asks.clear();
+  instrument.bidOrderIds.clear();
+  instrument.askOrderIds.clear();
   const bidOrders = new Map();
   const askOrders = new Map();
   for (const order of instrument.orders.values()) {
+    indexOrder(instrument, order);
     const target = order.side === "BUY" ? instrument.bids : instrument.asks;
     const orderCounts = order.side === "BUY" ? bidOrders : askOrders;
     const previous = target.get(order.price);
@@ -227,6 +254,10 @@ function rebuildDepthByOrder(instrument) {
 
 function removeOrderFromDepth(instrument, order) {
   if (!order || !Number.isFinite(Number(order.price))) return;
+  const index = order.side === "BUY" ? instrument.bidOrderIds : instrument.askOrderIds;
+  const ids = index.get(Number(order.price));
+  ids?.delete(order.id);
+  if (ids?.size === 0) index.delete(Number(order.price));
   const levels = order.side === "BUY" ? instrument.bids : instrument.asks;
   const level = levels.get(Number(order.price));
   if (!level) return;
@@ -245,6 +276,7 @@ function addOrderToDepth(instrument, order) {
     || !Number.isFinite(Number(order.size))
     || Number(order.size) <= 0
   ) return;
+  indexOrder(instrument, order);
   const levels = order.side === "BUY" ? instrument.bids : instrument.asks;
   const level = levels.get(Number(order.price));
   addLevel(
@@ -316,6 +348,10 @@ export class RithmicBookStore {
     instrument.bids.clear();
     instrument.asks.clear();
     instrument.orders.clear();
+    instrument.bidOrderIds.clear();
+    instrument.askOrderIds.clear();
+    instrument.orderSourceTimes.clear();
+    instrument.emptyLevelTimes.clear();
     instrument.pendingDepthSnapshot = null;
     instrument.bookValid = false;
     instrument.depthMode = "TRADES";
@@ -331,17 +367,21 @@ export class RithmicBookStore {
     instrument.sourceSequence = String(
       payload.sourceTradeId || payload.exchangeOrderId || payload.aggressorExchangeOrderId || instrument.sequence,
     );
-    instrument.asOfMs = eventTimestampMs(payload) || Date.now();
-    instrument.lastPrice = price;
+    const timestampMs = eventTimestampMs(payload) || Date.now();
+    instrument.asOfMs = Math.max(instrument.asOfMs || 0, timestampMs);
+    if (timestampMs >= instrument.lastTradeTimeMs) {
+      instrument.lastPrice = price;
+      instrument.lastTradeTimeMs = timestampMs;
+    }
     const aggressor =
       Number(payload.aggressor) === 1 ? "BUY" : Number(payload.aggressor) === 2 ? "SELL" : "UNKNOWN";
     const trade = {
       id: payload.sourceTradeId
         ? `${instrument.exchange}:${instrument.symbol}:${payload.sourceTradeId}`
-        : `${instrument.exchange}:${instrument.symbol}:${instrument.asOfMs}:${instrument.sequence}`,
+        : `${instrument.exchange}:${instrument.symbol}:${timestampMs}:${instrument.sequence}`,
       sequence: instrument.sequence,
       sourceSequence: instrument.sourceSequence,
-      timestampMs: instrument.asOfMs,
+      timestampMs,
       price,
       size,
       aggressor,
@@ -354,15 +394,20 @@ export class RithmicBookStore {
 
   applyBbo(payload) {
     const instrument = this.ensure(payload.exchange, payload.symbol);
-    instrument.asOfMs = eventTimestampMs(payload) || instrument.asOfMs || Date.now();
-    if (Number.isFinite(Number(payload.bidPrice)) && Number(payload.bidPrice) > 0) {
+    const timeUs = eventTimestampUs(payload);
+    instrument.asOfMs = Math.max(instrument.asOfMs || 0, eventTimestampMs(payload) || instrument.asOfMs || Date.now());
+    if (Number.isFinite(Number(payload.bidPrice)) && Number(payload.bidPrice) > 0
+      && (!timeUs || timeUs >= instrument.bidTimeUs)) {
+      instrument.bidTimeUs = timeUs || instrument.bidTimeUs;
       instrument.bestBid = {
         price: Number(payload.bidPrice),
         size: Number(payload.bidSize || 0),
         orders: Number(payload.bidOrders || 0),
       };
     }
-    if (Number.isFinite(Number(payload.askPrice)) && Number(payload.askPrice) > 0) {
+    if (Number.isFinite(Number(payload.askPrice)) && Number(payload.askPrice) > 0
+      && (!timeUs || timeUs >= instrument.askTimeUs)) {
+      instrument.askTimeUs = timeUs || instrument.askTimeUs;
       instrument.bestAsk = {
         price: Number(payload.askPrice),
         size: Number(payload.askSize || 0),
@@ -375,7 +420,52 @@ export class RithmicBookStore {
 
   applyOrderBook(payload) {
     const instrument = this.ensure(payload.exchange, payload.symbol);
-    if (instrument.orders.size > 0 && instrument.depthMode === "L3") {
+    if (instrument.depthMode === "L3" || instrument.pendingDepthSnapshot) {
+      const timeUs = eventTimestampUs(payload);
+      const orderEvents = [];
+      // A positive aggregated quantity cannot identify individual orders.
+      // An explicit, timestamped zero-size/zero-order level CAN prove every
+      // older order at that exact side/price is gone. Ignoring these clears
+      // left real captured NQ snapshot orders resting after their deletion.
+      if (timeUs > 0) for (const [side, prefix, index] of [
+        ["BUY", "bid", instrument.bidOrderIds],
+        ["SELL", "ask", instrument.askOrderIds],
+      ]) {
+        const prices = payload[`${prefix}Price`] || [];
+        for (let offset = 0; offset < prices.length; offset += 1) {
+          const price = Number(prices[offset]);
+          if (!(price > 0) || payload[`${prefix}Size`]?.[offset] !== 0
+            || payload[`${prefix}Orders`]?.[offset] !== 0) continue;
+          const key = levelKey(side, price);
+          if (timeUs < (instrument.emptyLevelTimes.get(key) || 0)) continue;
+          instrument.emptyLevelTimes.set(key, timeUs);
+          // Bound clocks even on a long-running, very wide contract range.
+          if (instrument.emptyLevelTimes.size > 20_000) {
+            instrument.emptyLevelTimes.delete(instrument.emptyLevelTimes.keys().next().value);
+          }
+          for (const id of [...(index.get(price) || [])]) {
+            if ((instrument.orderSourceTimes.get(id) || 0) > timeUs) continue;
+            const order = instrument.orders.get(id);
+            if (!order) continue;
+            removeOrderFromDepth(instrument, order);
+            instrument.orders.delete(id);
+            instrument.orderSourceTimes.delete(id);
+            instrument.pendingDepthSnapshot?.deltaOrders?.set(id, null);
+            orderEvents.push({ sequence: ++instrument.orderEventSequence,
+              timestamp: Math.floor(timeUs / 1_000), orderId: id, action: "REMOVE",
+              side: side === "BUY" ? "BID" : "ASK", price, previousPrice: price,
+              size: 0, previousSize: Number(order.size || 0),
+              priority: String(order.priority || "0"), previousPriority: String(order.priority || "0"),
+              reason: "explicit-price-level-clear" });
+          }
+        }
+      }
+      if (orderEvents.length) {
+        instrument.sequence += 1;
+        instrument.asOfMs = Math.max(instrument.asOfMs || 0, Math.floor(timeUs / 1_000));
+        instrument.bookValid = instrument.bids.size > 0 || instrument.asks.size > 0;
+        return { type: "depth", instrument: instrumentKey(instrument.exchange, instrument.symbol), orderEvents };
+      }
       // Rithmic sends the aggregated OrderBook alongside the depth-by-order
       // stream. It is not an L3 change and, outside trading hours, often has
       // no exchange timestamp. Publishing it as a new depth frame made the
@@ -410,7 +500,7 @@ export class RithmicBookStore {
         payload.askOrders?.[index],
       );
     }
-    instrument.asOfMs = eventTimestampMs(payload) || instrument.asOfMs || Date.now();
+    instrument.asOfMs = Math.max(instrument.asOfMs || 0, eventTimestampMs(payload) || instrument.asOfMs || Date.now());
     instrument.sequence += 1;
     instrument.depthMode = "L2";
     instrument.individualOrders = false;
@@ -515,7 +605,7 @@ export class RithmicBookStore {
     };
   }
 
-  applyDepthSnapshot(payload) {
+  applyDepthSnapshot(payload, receivedAtMs = Date.now()) {
     const target = snapshotTarget(payload);
     if (!target) return null;
     const instrument = this.ensure(target.exchange, target.symbol);
@@ -536,10 +626,23 @@ export class RithmicBookStore {
       // baseline swap must not resurrect a cancelled order, undo its latest
       // price/size, or discard orders added since that baseline began.
       for (const [id, order] of pending.deltaOrders || []) {
-        if (order) pending.orders.set(id, order);
-        else pending.orders.delete(id);
+        if (order) {
+          pending.orders.set(id, order);
+          pending.orderSourceTimes.set(id, pending.deltaTimes.get(id) || 0);
+        } else {
+          pending.orders.delete(id);
+          pending.orderSourceTimes.delete(id);
+        }
+      }
+      for (const [id, order] of pending.orders) {
+        const clearedAt = instrument.emptyLevelTimes.get(levelKey(order.side, order.price));
+        if (clearedAt && (pending.orderSourceTimes.get(id) || 0) <= clearedAt) {
+          pending.orders.delete(id);
+          pending.orderSourceTimes.delete(id);
+        }
       }
       instrument.orders = pending.orders;
+      instrument.orderSourceTimes = pending.orderSourceTimes;
       instrument.sourceSequence = pending.sourceSequence || instrument.sourceSequence;
       instrument.sequence += 1;
       rebuildDepthByOrder(instrument);
@@ -563,6 +666,11 @@ export class RithmicBookStore {
         sourceSequence,
         orders: new Map(),
         deltaOrders: new Map(),
+        deltaTimes: new Map(),
+        orderSourceTimes: new Map(),
+        // The complete image was captured before its first row arrived.
+        // Its receipt is a conservative upper bound, not an exchange clock.
+        observedAtUs: (Number.isFinite(Number(receivedAtMs)) ? Number(receivedAtMs) : Date.now()) * 1_000 + 999,
       };
     }
     const pending = instrument.pendingDepthSnapshot;
@@ -579,6 +687,7 @@ export class RithmicBookStore {
         size: Number(sizes[index] || 0),
         priority: String(priorities[index] || "0"),
       });
+      pending.orderSourceTimes.set(id, pending.observedAtUs);
     }
     return null;
   }
@@ -600,10 +709,12 @@ export class RithmicBookStore {
     const ids = payload.exchangeOrderId || [];
     const orderEvents = [];
     const timestamp = eventTimestampMs(payload) || Date.now();
+    const timeUs = eventTimestampUs(payload);
     for (let index = 0; index < updates.length; index += 1) {
       const id = String(ids[index] || `${sides[index]}:${prices[index]}:${priorities[index] || index}`);
       const updateType = Number(updates[index]);
       const existing = instrument.orders.get(id);
+      if (timeUs > 0 && (instrument.orderSourceTimes.get(id) || 0) > timeUs) continue;
       if (updateType === 3) {
         instrument.pendingDepthSnapshot?.deltaOrders?.set(id, null);
         if (existing) {
@@ -623,6 +734,7 @@ export class RithmicBookStore {
         }
         removeOrderFromDepth(instrument, existing);
         instrument.orders.delete(id);
+        instrument.orderSourceTimes.delete(id);
         continue;
       }
       const nextOrder = {
@@ -635,6 +747,11 @@ export class RithmicBookStore {
         size: Number(sizes[index] ?? existing?.size ?? 0),
         priority: String(priorities[index] ?? existing?.priority ?? "0"),
       };
+      const clearedAt = instrument.emptyLevelTimes.get(levelKey(nextOrder.side, nextOrder.price));
+      if (timeUs > 0 && clearedAt && timeUs <= clearedAt) {
+        instrument.pendingDepthSnapshot?.deltaOrders?.set(id, null);
+        continue;
+      }
       orderEvents.push({
         sequence: ++instrument.orderEventSequence,
         timestamp,
@@ -654,11 +771,13 @@ export class RithmicBookStore {
       // aggregates instead, making each DBO update O(1).
       removeOrderFromDepth(instrument, existing);
       instrument.orders.set(id, nextOrder);
+      instrument.orderSourceTimes.set(id, timeUs);
       instrument.pendingDepthSnapshot?.deltaOrders?.set(id, nextOrder);
+      instrument.pendingDepthSnapshot?.deltaTimes?.set(id, timeUs);
       addOrderToDepth(instrument, nextOrder);
     }
     instrument.sourceSequence = String(payload.sequenceNumber || instrument.sourceSequence);
-    instrument.asOfMs = eventTimestampMs(payload) || instrument.asOfMs;
+    instrument.asOfMs = Math.max(instrument.asOfMs || 0, eventTimestampMs(payload) || instrument.asOfMs);
     instrument.sequence += 1;
     instrument.depthMode = "L3";
     instrument.individualOrders = true;
