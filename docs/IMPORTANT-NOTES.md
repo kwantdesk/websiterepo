@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-29 - Owner-requested exact liquidity map rollback
+
+Owner rejected the pause/history presentation and explicitly said "Just revert it" and stop browser inspection. Restore entire public/heatmap-app tree and LiquidityMapWorkspace to 11fc3ac8^ (2a57b333), including prior toolbar/layout, settings behavior, rendering imports and hidden playback controls. Delete new browser history helper/tests and restore previous controls/replay tests. No new pause UI in this rollback. Actual renderer/palettes already matched that baseline; no guessed settings reset or colour changes. Keep isolated VPS archive service and recordings intact; no gateway restart.37 focused regressions pass; full build/TypeScript pass. Seven old controls source assertions and one inspector source assertion remain baseline failures. See docs/prompt-log/2026-10-29-liquidity-map-owner-rollback.md. Owner signed-in visual result unverified; standing feed/Footprint/archive/parity/backup/unattended-execution items remain open.
+
 ## 2026-10-28 - Stop loss survives concurrent account updates
 
 - Reproduced a whole-position sync conflict overwriting a new stop with baseline null during concurrent target changes/partial fills. Protection intent now merges field-wise; explicit removal and fill/reset authority remain.81 focused tests and scoped lint pass. Receipt: docs/prompt-log/2026-10-28-active-stop-persistence.md.

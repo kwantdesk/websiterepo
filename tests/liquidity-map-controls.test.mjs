@@ -371,15 +371,24 @@ test("every liquidity-map load and instrument switch starts auto-centered", asyn
   assert.match(source, /delete saved\.autoCenter/);
 });
 
-test("price auto-center remains independent of horizontal history browsing", async () => {
+test("dragging and zooming cannot break an enabled auto-center lock", async () => {
   const source = await readFile(mainPath, "utf8");
-  const pan = source.slice(source.indexOf("    if (this.drag?.mode === 'pan')"), source.indexOf("    if (this.drag?.mode === 'measure')"));
-  assert.ok(pan.includes('if (!this.settings.autoCenter)'));
-  assert.ok(pan.includes('this.#panHistory('));
-  assert.ok(!pan.includes('this.atLive = true'));
-  assert.ok(!pan.includes('this.playing = true'));
-  const up = source.slice(source.indexOf('  #pointerUp(event)'), source.indexOf('  #wheel(event)'));
-  assert.ok(up.includes('!this.localHistory && !this.replay.active'));
+
+  assert.match(source, /this\.drag\?\.mode === 'price-pan'[\s\S]*?if \(this\.settings\.autoCenter\) \{[\s\S]*?this\.view\.centerTick = null;[\s\S]*?\} else \{[\s\S]*?panPriceCenter/);
+  assert.match(source, /this\.drag\?\.mode === 'pan'[\s\S]*?if \(this\.settings\.autoCenter\) \{[\s\S]*?this\.view\.centerTick = null;[\s\S]*?\} else \{/);
+  assert.match(source, /if \(price\)[\s\S]*?if \(this\.settings\.autoCenter\) \{[\s\S]*?this\.view\.centerTick = null;[\s\S]*?\} else if \(anchorTick/);
+  assert.doesNotMatch(source, /this\.settings\.autoCenter = false/);
+  assert.doesNotMatch(source, /\$\('autoCenter'\)\.checked = false/);
+});
+
+test("refresh and drag always snap an enabled auto-center back to live price", async () => {
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(source, /window\.addEventListener\('pageshow',[\s\S]*?if \(this\.settings\.autoCenter\) this\.goLive\(\)/);
+  assert.match(source, /#syncHeatmapControls\(\) \{[\s\S]*?\$\('autoCenter'\)\.checked = Boolean\(this\.settings\.autoCenter\)/);
+  assert.match(source, /this\.drag\?\.mode === 'pan'[\s\S]*?this\.settings\.autoCenter[\s\S]*?this\.viewEnd = this\.history\.length - 1;[\s\S]*?this\.atLive = true;/);
+  assert.match(source, /#pointerUp\(event\)[\s\S]*?if \(this\.settings\.autoCenter\) this\.goLive\(\)/);
+  assert.match(source, /#panHistory\(columnShift\)[\s\S]*?if \(this\.settings\.autoCenter\) \{[\s\S]*?this\.goLive\(\);[\s\S]*?return;/);
 });
 
 test("embedded map omits intrusive feed and latency overlays", async () => {

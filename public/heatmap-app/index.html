@@ -138,8 +138,8 @@
   </script>
   <link
     rel="stylesheet"
-    href="/heatmap-app/styles.css?v=20261028-history-transport"
-    data-source="/heatmap-app/styles.css?v=20261028-history-transport"
+    href="/heatmap-app/styles.css?v=20261017-aleph-font"
+    data-source="/heatmap-app/styles.css?v=20261017-aleph-font"
     data-liquidity-style="base"
     onload="window.__kwantLiquidityStyleLoaded('base')"
     onerror="window.__kwantLiquidityStyleFailed('base', this)"
@@ -154,8 +154,8 @@
   >
   <link
     rel="stylesheet"
-    href="/heatmap-app/site.css?v=20261028-history-transport"
-    data-source="/heatmap-app/site.css?v=20261028-history-transport"
+    href="/heatmap-app/site.css?v=20261027-footprint-palettes"
+    data-source="/heatmap-app/site.css?v=20261027-footprint-palettes"
     data-liquidity-style="site"
     onload="window.__kwantLiquidityStyleLoaded('site')"
     onerror="window.__kwantLiquidityStyleFailed('site', this)"
@@ -386,15 +386,6 @@
       </div>
     </dialog>
 
-    <nav class="history-transport" id="historyTransport" aria-label="Liquidity map history">
-      <button id="playPause" type="button" aria-label="Pause liquidity map" title="Pause and browse the last 6 hours"><span class="pause-icon">Ⅱ</span><span class="play-icon hidden">▶</span> <span id="playPauseLabel">Pause</span></button>
-      <button id="stepBack" type="button" aria-label="Back one minute">−1m</button>
-      <span title="Last six hours of recorded liquidity">6H</span><span id="rangeStart">6 hours ago</span>
-      <input id="timeline" type="range" min="0" max="1000" value="1000" step="1" aria-label="Browse the last six hours of recorded liquidity">
-      <button id="stepForward" type="button" aria-label="Forward one minute">+1m</button>
-      <span id="historyStatus" role="status">LIVE</span>
-      <button id="goLive" type="button" class="active">LIVE</button>
-    </nav>
     <footer class="status-bar">
       <div><span class="status-led"></span><strong>DATA</strong><span id="feedStatus">CONNECTING</span></div>
       <div><strong>RENDER</strong><span id="fpsValue">— FPS</span></div>
@@ -404,7 +395,9 @@
   </div>
 
   <div class="compat-controls" aria-hidden="true">
-    <span id="cvdValue">0</span><button id="speedButton">1×</button>
+    <span id="cvdValue">0</span><span id="rangeStart">—</span>
+    <button id="playPause"><svg class="pause-icon"></svg><svg class="play-icon hidden"></svg></button>
+    <button id="stepBack">−1</button><input id="timeline" type="range" min="0" max="1000" value="1000"><button id="stepForward">+1</button><button id="speedButton">1×</button><button id="goLive">LIVE</button>
   </div>
 
   <dialog class="modal" id="helpModal"><div class="modal-header"><strong>Kwant Desk LIQ MAP shortcuts</strong><button id="closeHelp" aria-label="Close shortcuts">×</button></div><div class="shortcut-grid"><kbd>Wheel</kbd><span>Zoom price and time</span><kbd>Price scale + wheel</kbd><span>Stretch price axis only</span><kbd>Time scale + wheel</kbd><span>Stretch time axis only</span><kbd>Shift + wheel</kbd><span>Zoom time only</span><kbd>Ctrl + wheel</kbd><span>Compress or expand time</span><kbd>Space</kbd><span>Play or pause</span><kbd>L</kbd><span>Return to live edge</span><kbd>H</kbd><span>Show or hide heatmap</span><kbd>D</kbd><span>Show or hide full DOM</span><kbd>T</kbd><span>Show or hide trade bubbles</span><kbd>P</kbd><span>Show or hide volume profile</span><kbd>C</kbd><span>Show or hide CVD</span><kbd>R</kbd><span>Reset chart</span></div></dialog>
@@ -424,6 +417,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=20261028-history-transport"></script>
+  <script type="module" src="src/main.js?v=20261028-smart-volume-bubbles"></script>
 </body>
 </html>

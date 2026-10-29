@@ -7,6 +7,7 @@ import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v
 import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261028-smart-volume-bubbles';
 import {
   DepthMarketFeed,
+  INSTITUTIONAL_MARKET_DATA_ORIGIN,
   isFullDepthSource,
   LIQUIDITY_MAP_ROOTS,
   LIQUIDITY_MAP_SYMBOLS,
@@ -26,8 +27,7 @@ import {
   computeVolumeImbalance,
   mergeLiveCvdHistory,
 } from './order-flow-indicators.js?v=20261017-aleph-font';
-import { archiveDate, historyTimeAt, historyPosition, nearestHistoryFrame, fetchRecordedHistory } from './history-transport.js?v=20261028-history-transport';
-import { panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20261017-aleph-font';
+import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20261017-aleph-font';
 import {
   DEFAULT_UI_THEME,
   WEBSITE_THEME_STORAGE_KEY,
@@ -110,7 +110,6 @@ class DepthForgeApp {
     this.market = { intervalMs: 100 };
     this.sourceMode = 'connecting';
     this.liveStatus = { connected: false, readOnly: true, trading: false, levels: 0 };
-    this.localHistory = null;
     this.depthEngine = new RollingDepthEngine(MAX_HISTORY);
     this.renderer = new DepthRenderer($('heatmapCanvas'), $('cvdCanvas'), this.depthEngine);
     this.history = this.depthEngine.frames;
@@ -221,7 +220,7 @@ class DepthForgeApp {
     });
     window.addEventListener('pageshow', () => {
       this.#setUiTheme(DEFAULT_UI_THEME);
-      if (this.settings.autoCenter && !this.localHistory && !this.replay.active) this.goLive();
+      if (this.settings.autoCenter) this.goLive();
     });
     $('instrumentTabList').addEventListener('click', event => {
       const tab = event.target.closest('.instrument-tab');
@@ -805,7 +804,6 @@ class DepthForgeApp {
     const normalized = normalizeLiquidityMapSymbol(symbol);
     if (!SYMBOLS[normalized] || !this.availableInstrumentSymbols.has(normalized) || normalized === this.symbol) return;
     symbol = normalized;
-    if (this.localHistory) this.goLive();
     this.#beginSymbolLoad(symbol);
     this.symbol = symbol;
     this.currentContractSymbol = this.instrumentSubscriptions.get(symbol)?.contractSymbol
@@ -1204,12 +1202,6 @@ class DepthForgeApp {
   // ---- session replay (archive replay packs) ----
 
   #postReplayStatus(state, detail = '') {
-    if (this.localHistory) {
-      this.localHistory.state = state;
-      const label = $('historyStatus');
-      if (label) label.textContent = state === 'ready' ? 'PAUSED' : state === 'building' ? 'Preparing recorded history...' : state === 'loading' ? 'Loading recorded history...' : detail || 'No recorded depth at this time';
-      return;
-    }
     if (window.parent === window) return;
     window.parent.postMessage(
       { type: 'kwantdesk:liquidity-map-replay-status', state, detail, symbol: this.symbol, tradingDate: this.replay.tradingDate },
@@ -1219,20 +1211,17 @@ class DepthForgeApp {
 
   #handleReplayMessage(data) {
     if (data.active !== true) {
-      if (this.localHistory) return;
       this.#exitReplay();
       return;
     }
     const tradingDate = String(data.tradingDate || '');
     const clockMs = Number(data.timestampMs) || 0;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || !Number.isFinite(clockMs) || clockMs <= 0) return;
-    const wasLocal = Boolean(this.localHistory);
-    this.localHistory = null;
     const dateChanged = this.replay.tradingDate !== tradingDate;
     const rewound = this.replay.active && clockMs < this.replay.clockMs;
     this.replay.tradingDate = tradingDate;
     this.replay.clockMs = clockMs;
-    if (!this.replay.active || dateChanged || wasLocal) this.#enterReplay();
+    if (!this.replay.active || dateChanged) this.#enterReplay();
     else {
       // Remove future columns immediately, before any earlier chunk can load.
       if (rewound) {
@@ -1290,7 +1279,6 @@ class DepthForgeApp {
   }
 
   #enterReplay() {
-    $('historyTransport')?.classList.toggle('hidden', !this.localHistory);
     clearTimeout(this.replay.retryTimer);
     this.replay.abort?.abort();
     // The object is the request generation. A replaced session can never
@@ -1302,10 +1290,10 @@ class DepthForgeApp {
       abort: new AbortController(), symbol: this.symbol,
       exchange: this.instrumentSubscriptions.get(this.symbol)?.exchange || SYMBOLS[this.symbol]?.venue || 'CME',
     };
-    if (!this.localHistory) this.liveFeed.stop();
+    this.liveFeed.stop();
     this.sourceMode = 'replay';
     this.#resetReplayBook();
-    this.atLive = !this.localHistory;
+    this.atLive = true;
     this.playing = false;
     this.#updateSymbolUi();
     this.requestRender();
@@ -1315,7 +1303,6 @@ class DepthForgeApp {
 
   #exitReplay() {
     if (!this.replay.active) return;
-    $('historyTransport')?.classList.toggle('hidden', false);
     clearTimeout(this.replay.retryTimer);
     this.replay.abort?.abort();
     this.replay = {
@@ -1335,7 +1322,6 @@ class DepthForgeApp {
     this.playing = true;
     this.liveFeed.start();
     this.#updateSymbolUi();
-    this.#updatePlaybackUi();
     this.requestRender();
   }
 
@@ -1350,9 +1336,11 @@ class DepthForgeApp {
     try {
       const { symbol, tradingDate, exchange } = session;
       if (!session.manifest) {
-        const query = new URLSearchParams({ symbol, tradingDate, exchange, throughMs: String(session.clockMs) });
-        const response = await fetchRecordedHistory('/v1/heatmap/replay', query,
-          AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]));
+        const query = new URLSearchParams({ symbol, tradingDate, exchange });
+        const response = await fetch(
+          `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay?${query}`,
+          { cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]) },
+        );
         const body = await response.json().catch(() => null);
         if (this.replay !== session || !session.active) return;
         if (!response.ok) {
@@ -1383,10 +1371,8 @@ class DepthForgeApp {
       await this.#applyReplayWindow(session);
     } catch (error) {
       if (this.replay === session && session.active) {
-        session.manifest = null;
-        session.chunks.clear();
         this.#postReplayStatus('unavailable', error?.message || 'Replay data could not be loaded.');
-        this.#retryReplay(session, error?.code === 'HISTORY_GENERATION_EXPIRED' ? 250 : 30_000);
+        this.#retryReplay(session, 30_000);
       }
     } finally {
       session.syncing = false;
@@ -1416,15 +1402,12 @@ class DepthForgeApp {
       tradingDate: session.tradingDate,
       chunk: String(startMs),
     });
-    if (session.manifest.generation) query.set('generation', session.manifest.generation);
-    const response = await fetchRecordedHistory('/v1/heatmap/replay/chunk', query,
-      AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]));
+    const response = await fetch(
+      `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay/chunk?${query}`,
+      { cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(20_000)]) },
+    );
+    if (!response.ok) throw new Error('A recorded liquidity chunk could not be loaded.');
     const body = await response.json().catch(() => null);
-    if (!response.ok) {
-      const error = new Error('A recorded liquidity chunk could not be loaded.');
-      error.code = body?.code;
-      throw error;
-    }
     if (this.replay !== session || !session.active) return null;
     const frames = Array.isArray(body?.frames) ? body.frames : null;
     const indexed = session.manifest.chunks.find(chunk => chunk.startMs === startMs);
@@ -1479,8 +1462,6 @@ class DepthForgeApp {
       this.#resetReplayBook();
     } else if (!frames.length) {
       session.appliedThroughMs = clockMs;
-      this.viewEnd = Math.max(0, this.history.length - 1);
-      this.renderRequested = true;
       this.#postReplayReady(session);
       return;
     }
@@ -1503,7 +1484,7 @@ class DepthForgeApp {
     }
     session.appliedThroughMs = clockMs;
     this.viewEnd = Math.max(0, this.history.length - 1);
-    this.atLive = !this.localHistory;
+    this.atLive = true;
     if (this.settings.autoCenter) this.view.centerTick = null;
     this.renderRequested = true;
     this.#postReplayReady(session);
@@ -1512,7 +1493,7 @@ class DepthForgeApp {
   #ingestDepthSnapshot(snapshot, metadata = {}) {
     // While the parent drives a session replay, the archive is the only
     // permitted source; a stray live probe frame must not corrupt it.
-    if (this.replay.active && !this.localHistory) return;
+    if (this.replay.active) return;
     // Two separate gates rejected the Rithmic feed here. The source check was
     // pinned to Databento, and the symbol had to match literally - but the
     // collector serves micros from the parent book and answers with the
@@ -1528,8 +1509,6 @@ class DepthForgeApp {
       this.executionBook = book;
       if (window.parent !== window) window.parent.postMessage(book, window.location.origin);
     }
-    // Keep genuine execution quotes flowing while freezing the display.
-    if (this.localHistory) return;
     const liveTickSize = Number(snapshot.tickSize);
     if (Number.isFinite(liveTickSize) && liveTickSize > 0) {
       const config = SYMBOLS[this.symbol];
@@ -1602,10 +1581,10 @@ class DepthForgeApp {
   }
 
   #ingestPresentationTick(tick, timestamp) {
-    if (this.replay.active && !this.localHistory) return;
+    if (this.replay.active) return;
     const print = executablePrint(this.executionBook, tick, timestamp, SYMBOLS[this.symbol].tickSize, this.symbol);
     if (print && window.parent !== window) window.parent.postMessage(print, window.location.origin);
-    if (this.localHistory || !this.atLive || !this.history.length) return;
+    if (!this.atLive || !this.history.length) return;
     updateLivePresentationEdge(this.history, { lastTick: tick, timestamp });
     this.viewEnd = this.history.length - 1;
     if (this.settings.autoCenter) this.view.centerTick = null;
@@ -1618,7 +1597,7 @@ class DepthForgeApp {
   }
 
   #replaceCvdHistory(points, tradingDate, asOfMs = 0) {
-    if (this.replay.active || this.localHistory) return;
+    if (this.replay.active) return;
     const nextTradingDate = String(tradingDate || '');
     this.cvdHistory = mergeLiveCvdHistory(this.cvdHistory, points, {
       sameSession: Boolean(this.cvdTradingDate && this.cvdTradingDate === nextTradingDate),
@@ -1876,11 +1855,7 @@ class DepthForgeApp {
     $('utcClock').innerHTML = `${new Date(this.replay.active ? this.replay.clockMs : Date.now()).toISOString().slice(11, 19)} <small>UTC</small>`;
     $('replayTime').textContent = timeLabel(snapshot.timestamp, true);
     $('rangeStart').textContent = timeLabel(this.history[0].timestamp, true);
-    const timelineValue = this.localHistory
-      ? historyPosition(this.localHistory.clockMs, this.localHistory.startMs, this.localHistory.endMs) : 1000;
-    $('timeline').disabled = this.replay.active && !this.localHistory;
-    if (!this.localHistory) $('historyStatus').textContent = this.replay.active ? 'REPLAY' : 'LIVE';
-    $('rangeStart').textContent = timeLabel(this.localHistory?.startMs ?? Date.now() - 6 * 3600_000, true);
+    const timelineValue = this.history.length <= 1 ? 1000 : Math.round(this.viewEnd / (this.history.length - 1) * 1000);
     if (document.activeElement !== $('timeline')) $('timeline').value = String(timelineValue);
     const inspector = $('inspector');
     const inspectorOpen = inspector?.classList.contains('open');
@@ -1988,8 +1963,7 @@ class DepthForgeApp {
 
   #renderTape() {
     const config = SYMBOLS[this.symbol];
-    const cutoff = this.localHistory?.clockMs ?? Infinity;
-    const nextHtml = this.tape.filter(trade => trade.timestamp <= cutoff).slice(0, 18).map((trade, index) => `
+    const nextHtml = this.tape.slice(0, 18).map((trade, index) => `
       <div class="tape-row ${trade.side}${index === 0 ? ' flash' : ''}">
         <span>${timeLabel(trade.timestamp, true).slice(0, 12)}</span>
         <span class="price">${priceLabel(trade.tick, config)}</span>
@@ -2014,68 +1988,18 @@ class DepthForgeApp {
     tag.style.right = `${rightOffset}px`;
   }
 
-  #pauseHistory() {
-    if (this.localHistory || this.replay.active || !this.history.length) return;
-    const endMs = Number(this.history.at(-1)?.timestamp) || Date.now();
-    $('historyStatus').textContent = 'PAUSED';
-    this.localHistory = { startMs: endMs - 6 * 3600_000, endMs,
-      clockMs: Number(this.history[this.viewEnd]?.timestamp) || endMs, state: 'ready' };
-    this.atLive = false;
-    this.playing = false;
+  togglePlayback() {
+    if (this.replay.active) return;
+    this.playing = !this.playing;
+    if (this.sourceMode === 'live' && !this.playing) this.atLive = false;
     this.accumulator = 0;
     this.#updatePlaybackUi();
   }
 
-  #seekHistory(clockMs) {
-    if (this.replay.active && !this.localHistory) return;
-    this.#pauseHistory();
-    const state = this.localHistory;
-    if (!state) return;
-    state.clockMs = Math.max(state.startMs, Math.min(state.endMs, clockMs));
-    this.playing = false;
-    this.atLive = false;
-    const index = nearestHistoryFrame(this.history, state.clockMs);
-    if (index >= 0) {
-      this.viewEnd = index;
-      state.state = 'ready';
-      if (this.replay.active) {
-        this.replay.clockMs = state.clockMs;
-        clearTimeout(this.replay.retryTimer);
-        this.replay.retryAt = 0;
-      }
-      this.indicatorAnalysis = null;
-      this.indicatorAnalysisKey = '';
-      $('historyStatus').textContent = 'PAUSED';
-      this.requestRender();
-    } else {
-      const date = archiveDate(state.clockMs);
-      if (!this.replay.active || this.replay.tradingDate !== date) {
-        this.replay.tradingDate = date;
-        this.replay.clockMs = state.clockMs;
-        this.#enterReplay();
-      } else {
-        this.replay.clockMs = state.clockMs;
-        if (state.clockMs < this.replay.appliedThroughMs) this.replay.appliedThroughMs = 0;
-        void this.#syncReplay();
-      }
-    }
-    this.#updatePlaybackUi();
-  }
-
-  togglePlayback() {
-    if (this.replay.active && !this.localHistory) return;
-    if (this.localHistory) this.goLive();
-    else this.#pauseHistory();
-    this.requestRender();
-  }
-
   #updatePlaybackUi() {
-    const paused = Boolean(this.localHistory) || !this.playing;
-    $('playPause').querySelector('.pause-icon').classList.toggle('hidden', paused);
-    $('playPause').querySelector('.play-icon').classList.toggle('hidden', !paused);
-    $('playPause').setAttribute('aria-label', paused ? 'Resume live liquidity map' : 'Pause liquidity map');
-    $('playPause').title = paused ? 'Resume live' : 'Pause and browse the last 6 hours';
-    $('playPauseLabel').textContent = paused ? 'Resume live' : 'Pause';
+    $('playPause').querySelector('.pause-icon').classList.toggle('hidden', !this.playing);
+    $('playPause').querySelector('.play-icon').classList.toggle('hidden', this.playing);
+    $('playPause').setAttribute('aria-label', this.playing ? 'Pause replay' : 'Play replay');
     $('goLive').classList.toggle('active', this.atLive);
     $('returnToLive').classList.toggle('hidden', this.atLive);
     $('cvdGoLive').classList.toggle('active', this.atLive);
@@ -2083,10 +2007,6 @@ class DepthForgeApp {
   }
 
   goLive() {
-    if (this.localHistory) {
-      this.localHistory = null;
-      if (this.replay.active) this.#exitReplay();
-    }
     this.atLive = true;
     this.viewEnd = this.history.length - 1;
     this.playing = !this.replay.active;
@@ -2097,17 +2017,21 @@ class DepthForgeApp {
   }
 
   #stepReplay(direction) {
-    if (this.replay.active && !this.localHistory) return;
-    this.#pauseHistory();
-    if (!this.localHistory) return;
-    this.#seekHistory(this.localHistory.clockMs + direction * 60_000);
+    this.atLive = false;
+    this.playing = false;
+    this.viewEnd = Math.max(0, Math.min(this.history.length - 1, this.viewEnd + direction));
+    this.#updatePlaybackUi();
+    this.#updateUi(true);
+    this.requestRender();
   }
 
   #scrub(value) {
-    if (this.replay.active && !this.localHistory) return;
-    this.#pauseHistory();
-    if (!this.localHistory) return;
-    this.#seekHistory(historyTimeAt(value, this.localHistory.startMs, this.localHistory.endMs));
+    this.viewEnd = Math.max(0, Math.min(this.history.length - 1, Math.round(value / 1000 * (this.history.length - 1))));
+    this.atLive = this.viewEnd >= this.history.length - 1;
+    this.playing = false;
+    this.#updatePlaybackUi();
+    this.#updateUi(true);
+    this.requestRender();
   }
 
   #cycleSpeed() {
@@ -2208,14 +2132,23 @@ class DepthForgeApp {
       const dx = point.x - this.drag.last.x;
       const layout = this.renderer.layout;
       if (layout) {
-        if (!this.settings.autoCenter) {
+        if (this.settings.autoCenter) {
+          this.view.centerTick = null;
+          this.viewEnd = this.history.length - 1;
+          this.atLive = true;
+          this.playing = true;
+          this.accumulator = 0;
+          this.#updatePlaybackUi();
+        } else {
           this.view.centerTick = (this.view.centerTick ?? this.history[this.viewEnd].midTick) + dy / Math.max(1, layout.plotHeight) * layout.visibleTickSpan;
         }
-        if (Math.abs(dx) >= 2) {
+        if (!this.settings.autoCenter && Math.abs(dx) >= 2) {
           const columnShift = Math.round(-dx / Math.max(.6, this.view.columnPixels));
           if (columnShift !== 0) {
-            this.#panHistory(columnShift);
+            this.viewEnd = Math.max(0, Math.min(this.history.length - 1, this.viewEnd + columnShift));
+            this.atLive = this.viewEnd === this.history.length - 1;
             this.drag.last.x = point.x;
+            this.#updatePlaybackUi();
           }
         }
       }
@@ -2326,7 +2259,7 @@ class DepthForgeApp {
     try { $('heatmapCanvas').releasePointerCapture(event.pointerId); } catch { /* pointer already released */ }
     this.drag = null;
     this.renderer.endInteraction();
-    if (this.settings.autoCenter && !this.localHistory && !this.replay.active) this.goLive();
+    if (this.settings.autoCenter) this.goLive();
     if (completedDrag.mode === 'dom-resize' && window.parent !== window) {
       window.parent.postMessage({
         type: 'kwantify:heatmap-dom-width',
@@ -2401,12 +2334,26 @@ class DepthForgeApp {
   }
 
   #panHistory(columnShift) {
-    if (!this.renderer.layout || !this.history.length || columnShift === 0) return;
-    if (this.replay.active && !this.localHistory) return;
-    this.#pauseHistory();
-    const spacing = this.replay.active ? Number(this.replay.manifest?.frameMs) || 2000
-      : Math.max(1, (this.history.at(-1).timestamp - this.history[0].timestamp) / Math.max(1, this.history.length - 1));
-    this.#seekHistory(this.localHistory.clockMs + columnShift * spacing);
+    const layout = this.renderer.layout;
+    if (!layout || !this.history.length || columnShift === 0) return;
+    if (this.settings.autoCenter) {
+      this.goLive();
+      return;
+    }
+    const nextEnd = panHistoryEnd({
+      currentEnd: this.viewEnd,
+      columnShift,
+      historyLength: this.history.length,
+      visibleColumns: layout.count,
+    });
+    if (nextEnd === this.viewEnd) return;
+    this.viewEnd = nextEnd;
+    this.atLive = nextEnd === this.history.length - 1;
+    this.playing = this.atLive;
+    this.accumulator = 0;
+    this.#updatePlaybackUi();
+    this.#updateUi(true);
+    this.requestRender();
   }
 
   #cvdWheel(event) {
@@ -2497,11 +2444,7 @@ class DepthForgeApp {
         const latest = this.history.length - 1;
         const minimumEnd = Math.min(latest, visibleColumns - 1);
         this.viewEnd = Math.max(minimumEnd, Math.min(latest, candidateEnd));
-        this.atLive = !this.localHistory && this.viewEnd === latest;
-        if (this.localHistory) {
-          this.localHistory.clockMs = this.history[this.viewEnd].timestamp;
-          if (this.replay.active) this.replay.clockMs = this.localHistory.clockMs;
-        }
+        this.atLive = this.viewEnd === latest;
         this.#updatePlaybackUi();
       }
       this.view.columnPixels = nextColumnPixels;
