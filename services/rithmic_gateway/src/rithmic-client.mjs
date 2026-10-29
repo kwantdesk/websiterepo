@@ -193,6 +193,7 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.pendingFrontMonthRequests = new Map();
     this.pendingSymbolSearches = new Map();
     this.frontMonthRequestSequence = 0;
+    this.depthIntegrityChecks = new Map();
     this.status = {
       provider: "Rithmic",
       environment: config.systemName,
@@ -299,6 +300,7 @@ export class RithmicMarketDataClient extends EventEmitter {
           appVersion: this.config.appVersion,
           systemName: this.config.systemName,
           infraType: 1,
+          aggregatedQuotes: false,
         }),
       );
       const response = await loginPromise;
@@ -568,6 +570,7 @@ export class RithmicMarketDataClient extends EventEmitter {
       symbol: String(symbol).trim().toUpperCase(),
     };
     this.subscriptions.delete(instrumentKey(row.exchange, row.symbol));
+    this.depthIntegrityChecks.delete(instrumentKey(row.exchange, row.symbol));
     this.status.subscriptions = [...this.subscriptions.values()];
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.send("RequestMarketDataUpdate", {
@@ -615,6 +618,43 @@ export class RithmicMarketDataClient extends EventEmitter {
         exchange: row.exchange,
       });
     }
+  }
+
+  checkDepthIntegrity(event, now = Date.now()) {
+    if (!this.config.enableDepthByOrder || !this.status.authenticated
+      || this.socket?.readyState !== WebSocket.OPEN
+      || !["depth", "bbo"].includes(event?.type)) return false;
+    const subscription = this.subscriptions.get(event.instrument);
+    const instrument = this.book.instruments.get(event.instrument);
+    if (!subscription || !instrument || instrument.depthMode !== "L3"
+      || instrument.pendingDepthSnapshot) return false;
+    const state = this.depthIntegrityChecks.get(event.instrument)
+      || { checkedAt: -Infinity, crossedSince: null, requestedAt: -Infinity };
+    this.depthIntegrityChecks.set(event.instrument, state);
+    // Scan at most once per second per subscribed instrument, never once per
+    // order update. Two observations avoid resnapshotting transient crossings.
+    if (now - state.checkedAt < 1_000) return false;
+    state.checkedAt = now;
+    let bid = -Infinity, ask = Infinity;
+    for (const price of instrument.bids.keys()) bid = Math.max(bid, price);
+    for (const price of instrument.asks.keys()) ask = Math.min(ask, price);
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid < ask) {
+      state.crossedSince = null;
+      return false;
+    }
+    if (state.crossedSince === null) { state.crossedSince = now; return false; }
+    const cooldown = Math.max(30_000, Number(this.config.depthResyncMinMs) || 30_000);
+    if (now - state.crossedSince < 1_000 || now - state.requestedAt < cooldown) return false;
+    // Refresh only the baseline using the existing provider socket. Do not
+    // unsubscribe trades, clear the tape or publish partial snapshot rows.
+    this.send("RequestDepthByOrderSnapshot", {
+      templateId: TEMPLATE_IDS.DEPTH_SNAPSHOT_REQUEST,
+      userMsg: [`dbo-resync:${subscription.exchange}:${subscription.symbol}`],
+      exchange: subscription.exchange, symbol: subscription.symbol,
+    });
+    state.requestedAt = now;
+    this.status.crossedDepthRecoveryRequests = Number(this.status.crossedDepthRecoveryRequests || 0) + 1;
+    return true;
   }
 
   handleMessage(data) {
@@ -741,6 +781,7 @@ export class RithmicMarketDataClient extends EventEmitter {
         break;
     }
     if (event) {
+      this.checkDepthIntegrity(event);
       if (event.sequenceRegression && decoded.payload?.exchange && decoded.payload?.symbol) {
         // Rithmic's DBO sequence is exchange/channel scoped, not a monotonic
         // per-instrument cursor. A lower value therefore does not prove that

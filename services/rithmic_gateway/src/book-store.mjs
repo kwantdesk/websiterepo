@@ -532,6 +532,13 @@ export class RithmicBookStore {
       const pending = instrument.pendingDepthSnapshot;
       instrument.pendingDepthSnapshot = null;
       if (failed || !pending || pending.orders.size === 0) return null;
+      // Live updates can arrive while baseline rows are still streaming. A
+      // baseline swap must not resurrect a cancelled order, undo its latest
+      // price/size, or discard orders added since that baseline began.
+      for (const [id, order] of pending.deltaOrders || []) {
+        if (order) pending.orders.set(id, order);
+        else pending.orders.delete(id);
+      }
       instrument.orders = pending.orders;
       instrument.sourceSequence = pending.sourceSequence || instrument.sourceSequence;
       instrument.sequence += 1;
@@ -555,6 +562,7 @@ export class RithmicBookStore {
       instrument.pendingDepthSnapshot = {
         sourceSequence,
         orders: new Map(),
+        deltaOrders: new Map(),
       };
     }
     const pending = instrument.pendingDepthSnapshot;
@@ -597,6 +605,7 @@ export class RithmicBookStore {
       const updateType = Number(updates[index]);
       const existing = instrument.orders.get(id);
       if (updateType === 3) {
+        instrument.pendingDepthSnapshot?.deltaOrders?.set(id, null);
         if (existing) {
           orderEvents.push({
             sequence: ++instrument.orderEventSequence,
@@ -645,6 +654,7 @@ export class RithmicBookStore {
       // aggregates instead, making each DBO update O(1).
       removeOrderFromDepth(instrument, existing);
       instrument.orders.set(id, nextOrder);
+      instrument.pendingDepthSnapshot?.deltaOrders?.set(id, nextOrder);
       addOrderToDepth(instrument, nextOrder);
     }
     instrument.sourceSequence = String(payload.sequenceNumber || instrument.sourceSequence);
@@ -728,6 +738,10 @@ export class RithmicBookStore {
     if (!instrument) return null;
     const bids = snapshotLevels(instrument.bids, depth, true);
     const asks = snapshotLevels(instrument.asks, depth, false);
+    // Non-empty sides alone do not establish a valid executable book. Keep
+    // the raw rows for diagnostics/recordings, but never certify a crossed
+    // baseline as full depth or silently trim it around the last trade.
+    const crossedBook = Boolean(bids.length && asks.length && bids[0].price >= asks[0].price);
     const afterSequence = Math.max(0, Number(options.afterSequence) || 0);
     const tradeLimit = Math.max(0, Math.floor(Number(options.tradeLimit ?? 2_500) || 0));
     const trades = snapshotTrades(instrument.trades, afterSequence, tradeLimit);
@@ -792,9 +806,10 @@ export class RithmicBookStore {
       depthMode: instrument.depthMode,
       fullDepth:
         ["L3", "MBO_AGGREGATED"].includes(instrument.depthMode) &&
-        instrument.bookValid,
+        instrument.bookValid && !crossedBook,
       individualOrders: instrument.individualOrders,
-      bookValid: instrument.bookValid,
+      bookValid: instrument.bookValid && !crossedBook,
+      crossedBook,
       orderCount: instrument.orders.size,
       orderEventSequence: instrument.orderEventSequence,
       orders,
