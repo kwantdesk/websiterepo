@@ -1,0 +1,13 @@
+import {createChart,CandlestickSeries,ColorType} from 'lightweight-charts';
+import {ChartForegroundLayerPrimitive} from '../../src/lib/chartForegroundLayerPrimitive';
+const host=document.createElement('div');Object.assign(host.style,{position:'relative',width:'640px',height:'360px',background:'#000'});document.body.append(host);
+const chart=createChart(host,{width:640,height:360,layout:{background:{type:ColorType.Solid,color:'#000'},textColor:'#fff'},grid:{vertLines:{visible:false},horzLines:{visible:false}},crosshair:{vertLine:{visible:false},horzLine:{visible:false}},timeScale:{visible:true}});
+const series=chart.addSeries(CandlestickSeries,{upColor:'#000',downColor:'#000',wickUpColor:'#000',wickDownColor:'#000',borderVisible:false,lastValueVisible:false,priceLineVisible:false});
+series.setData(Array.from({length:100},(_,i)=>({time:1793246000+i*60 as never,open:100,high:101,low:99,close:100})));chart.timeScale().fitContent();
+let profileEnabled=true;
+series.attachPrimitive({paneViews:()=>[{zOrder:()=> 'top' as const,renderer:()=>({draw:target=>target.useMediaCoordinateSpace(({context})=>{if(profileEnabled){context.fillStyle='rgba(255,0,255,0.5)';context.fillRect(200,40,100,140);}})})}]});
+const foreground=new ChartForegroundLayerPrimitive(host);series.attachPrimitive(foreground);foreground.setEnabled(true);
+const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('width','640');svg.setAttribute('height','360');Object.assign(svg.style,{position:'absolute',inset:'0',zIndex:'24',pointerEvents:'none'});svg.innerHTML='<rect x="100" y="40" width="220" height="140" fill="#00ff00" fill-opacity="0.6" style="pointer-events:all" />';host.append(svg);
+const state={chart,host,foreground,svg,drawClicks:0,chartClicks:0,setProfile(enabled:boolean){profileEnabled=enabled;foreground.setEnabled(enabled)},resize(){host.style.width='800px';host.style.height='420px';svg.setAttribute('width','800');svg.setAttribute('height','420');chart.resize(800,420)},destroy(){series.detachPrimitive(foreground);chart.remove()}};
+svg.addEventListener('click',()=>state.drawClicks++);chart.subscribeClick(()=>state.chartClicks++);
+Object.assign(window,{qa:state});

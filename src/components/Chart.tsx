@@ -227,6 +227,7 @@ import {
   type FootprintRenderBar,
 } from "@/lib/footprintPrimitive";
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
+import { ChartForegroundLayerPrimitive } from "@/lib/chartForegroundLayerPrimitive";
 import { resolveVolumeProfileGradient, mixHexColors } from "@/lib/volumeProfileGradients";
 import { resolveIndicatorPalette } from "@/lib/indicatorPalettes";
 import { settingsWithPalette, settingsWithThemeColours } from "@/lib/indicatorPaletteRegistry";
@@ -3505,6 +3506,7 @@ function Chart({
   const auctionGapAlertStateRef = useRef(createAuctionGapAlertState());
   const positionCalculatorPrimitiveRef = useRef<PositionCalculatorPrimitive | null>(null);
   const repaintNotifierRef = useRef<ChartRepaintNotifierPrimitive | null>(null);
+  const profileForegroundLayerRef = useRef<ChartForegroundLayerPrimitive | null>(null);
   const imbalanceZoneModelsRef = useRef<ImbalanceZoneModel[]>([]);
   const sessionWindowPrimitiveRef = useRef<SessionWindowPrimitive | null>(null);
   const hedgeLevelsPrimitiveRef = useRef<HedgeLevelsPrimitive | null>(null);
@@ -15369,6 +15371,9 @@ function Chart({
     const paperFillMarkersPrimitive = new PaperFillMarkersPrimitive();
     candleSeries.attachPrimitive(paperFillMarkersPrimitive);
     paperFillMarkersPrimitiveRef.current = paperFillMarkersPrimitive;
+    const profileForegroundLayer = new ChartForegroundLayerPrimitive(chartContainerRef.current);
+    candleSeries.attachPrimitive(profileForegroundLayer);
+    profileForegroundLayerRef.current = profileForegroundLayer;
 
     // Chart recreation (settings/layout) must include direct ticks received
     // since the last React candle commit, just like an ordinary full redraw.
@@ -16397,6 +16402,8 @@ function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        try { candleSeries.detachPrimitive(profileForegroundLayer); } catch { profileForegroundLayer.detached(); }
+        if (profileForegroundLayerRef.current === profileForegroundLayer) profileForegroundLayerRef.current = null;
         if (candleSeriesRef.current && paperFillMarkersPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(paperFillMarkersPrimitiveRef.current);
@@ -17428,6 +17435,12 @@ function Chart({
     primitive.setModels(models);
     setDeepProfileValuesFrame(frame);
   }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileValuesIndicator, deepProfileValuesSettings, deepProfileValuesViewportRevision, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
+
+  useEffect(() => {
+    const hasDrawingLayer = chartingDrawings.length > 0 || drawings.length > 0 || drawTool !== "cursor";
+    const hasProfiles = Boolean(renderedVolumeProfiles.length || deepProfileSwingIndicator || deepProfileValuesIndicator);
+    profileForegroundLayerRef.current?.setEnabled(hasDrawingLayer && hasProfiles);
+  }, [chartReadyRevision, chartingDrawings.length, drawings.length, drawTool, renderedVolumeProfiles.length, deepProfileSwingIndicator, deepProfileValuesIndicator]);
 
   useEffect(() => {
     const primitive = tpoProfilePrimitiveRef.current;

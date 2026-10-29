@@ -1884,8 +1884,10 @@ export default function ChartDrawLayer({
         */}
       <g clipPath={`url(#${plotClipId})`}>
         <g ref={drawingsGroupRef} vectorEffect="non-scaling-stroke">
-          {drawings.map((drawing) => renderDrawing(drawing))}
+          {/* Profile drawings form the foreground regardless of creation order. */}
+          {drawings.filter((drawing) => drawing.tool !== "fixedRangeVolumeProfile" && drawing.tool !== "anchoredVolumeProfile").map((drawing) => renderDrawing(drawing))}
           {previewDrawing ? renderDrawing(previewDrawing, true) : null}
+          {drawings.filter((drawing) => drawing.tool === "fixedRangeVolumeProfile" || drawing.tool === "anchoredVolumeProfile").map((drawing) => renderDrawing(drawing))}
         </g>
       </g>
     </svg>{clipboardMenu}</>
