@@ -93,7 +93,7 @@ test("live refresh retains settled clusters and rebuilds only the overlapping ta
     32,
   );
   assert.ok(plan);
-  assert.ok(plan.rebuildStart >= 168 && plan.rebuildStart < 200);
+  assert.equal(plan.rebuildStart, 165, "the overlapping tail includes its whole 250 ms source window");
   assert.ok(plan.retained.length >= 80, "settled bubbles are not rescanned on every live frame");
   assert.ok(plan.retained.every(cluster => engine.frames.indexOf(cluster.maximumFrame) < plan.rebuildStart));
 });

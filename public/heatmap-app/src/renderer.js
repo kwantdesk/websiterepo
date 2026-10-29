@@ -1,3 +1,5 @@
+import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=20261029-cvd-bubble-presentation';
+import { normalizeCvdStyle, cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261029-cvd-bubble-presentation';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
 import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261017-aleph-font';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
@@ -160,6 +162,7 @@ export function planIncrementalTradeClusterRefresh(
   previousEndFrame,
   overlapFrames = 128,
   frameIndices = null,
+  windowMs = 250,
 ) {
   const indexFor = frame => frameIndices ? (frameIndices.get(frame) ?? -1) : history.indexOf(frame);
   const previousEnd = indexFor(previousEndFrame);
@@ -171,6 +174,24 @@ export function planIncrementalTradeClusterRefresh(
     if (maximumIndex < candidateStart) continue;
     const minimumIndex = indexFor(cluster.minimumFrame);
     if (minimumIndex >= start) rebuildStart = Math.min(rebuildStart, minimumIndex);
+  }
+  // An erased net-zero cluster is absent from the cache, so provenance alone
+  // cannot protect its boundary. Re-read its WHOLE source-time window rather
+  // than resurrecting just one side during a depth-only cache refresh.
+  const earliest = frame => {
+    let timestamp = Number(frame?.timestamp);
+    for (const trade of frame?.trades || []) if (Number.isFinite(trade.timestamp)) timestamp = Math.min(timestamp, trade.timestamp);
+    return tradeClusterWindowStart(timestamp, windowMs);
+  };
+  const latest = frame => {
+    let timestamp = Number(frame?.timestamp);
+    for (const trade of frame?.trades || []) if (Number.isFinite(trade.timestamp)) timestamp = Math.max(timestamp, trade.timestamp);
+    return tradeClusterWindowStart(timestamp, windowMs);
+  };
+  let window = earliest(history[rebuildStart]);
+  while (rebuildStart > start && latest(history[rebuildStart - 1]) >= window) {
+    rebuildStart--;
+    window = Math.min(window, earliest(history[rebuildStart]));
   }
   const retained = (clusters || []).filter(cluster => {
     const maximumIndex = indexFor(cluster.maximumFrame);
@@ -192,6 +213,10 @@ export class DepthRenderer {
     this.paletteCache = new Map();
     this.sphereSprites = new Map();
     this.interaction = null;
+    this.cvdPresentation = null;
+    this.cvdInMotion = false;
+    this.cvdRenderState = null;
+    this.tradeClusterGeometry = null;
     this.cameraCenterTick = null;
     this.cameraFrameAt = 0;
     this.cameraInMotion = false;
@@ -207,6 +232,10 @@ export class DepthRenderer {
   setMeasurement(measurement) { this.measurement = measurement; }
 
   resetCamera() {
+    this.cvdPresentation = null;
+    this.cvdInMotion = false;
+    this.cvdRenderState = null;
+    this.tradeClusterGeometry = null;
     this.cameraCenterTick = null;
     this.cameraFrameAt = 0;
     this.cameraInMotion = false;
@@ -429,6 +458,10 @@ export class DepthRenderer {
     this.#drawMeasurement(ctx);
     if (settings.cvdEnabled && settings.cvdPanel) {
       this.#drawCvd(history, start, end, settings, accents, indicatorAnalysis);
+    } else {
+      this.cvdInMotion = false;
+      this.cvdRenderState = null;
+      this.cvdPresentation = null;
     }
   }
 
@@ -611,12 +644,13 @@ export class DepthRenderer {
     // One linear pass, not a full history.indexOf scan for each bubble and
     // each incremental-cluster boundary on every animation frame.
     const frameIndices = indexHistoryFrames(history);
+    const reference = this.tradeClusterGeometry = tradeClusterReference(layout, this.tradeClusterGeometry);
     const clusterOptions = {
-      start: layout.start,
+      start: 0,
       end: layout.end,
-      rowTicks: layout.rowTicks,
-      rowPixels: layout.plotHeight / Math.max(1, layout.visibleTickSpan / layout.rowTicks),
-      columnPixels: layout.columnPixels,
+      rowTicks: reference.rowTicks,
+      rowPixels: reference.rowPixels,
+      columnPixels: reference.columnPixels,
       circleSize: settings.circleSize,
       circleTransparency: settings.circleTransparency,
       smartClustering: settings.smartClustering,
@@ -625,6 +659,7 @@ export class DepthRenderer {
       minimumPixelVolume: settings.minimumPixelVolume,
     };
     const clusterSettingsKey = [
+      reference.key,
       clusterOptions.rowTicks,
       clusterOptions.rowPixels.toFixed(3),
       clusterOptions.columnPixels.toFixed(3),
@@ -642,7 +677,8 @@ export class DepthRenderer {
       clusterSettingsKey,
     ].join('|');
     const clusterNow = performance.now();
-    const settingsChanged = this.tradeClusterCache.settingsKey !== clusterSettingsKey;
+    const sourceReplaced = this.tradeClusterCache.ready && !frameIndices.has(this.tradeClusterCache.endFrame);
+    const settingsChanged = sourceReplaced || this.tradeClusterCache.settingsKey !== clusterSettingsKey;
     if (
       settingsChanged
       || !this.tradeClusterCache.ready
@@ -653,7 +689,7 @@ export class DepthRenderer {
     ) {
       const overlapFrames = Math.max(
         32,
-        Math.ceil((Math.max(6, Number(settings.circleSize) * 2) + 12) / Math.max(.12, layout.columnPixels)),
+        Math.ceil((Math.max(6, Number(settings.circleSize) * 2) + 12) / Math.max(.12, reference.columnPixels)),
       );
       const incremental = !settingsChanged && this.tradeClusterCache.ready
         ? planIncrementalTradeClusterRefresh(
@@ -664,6 +700,7 @@ export class DepthRenderer {
           this.tradeClusterCache.endFrame,
           overlapFrames,
           frameIndices,
+          tradeClusterWindowMs(settings.smartClustering, settings.bubbleDifferential),
         )
         : null;
       const rebuilt = this.depthEngine.clusterTrades({
@@ -680,6 +717,7 @@ export class DepthRenderer {
       };
     }
     const clusters = this.tradeClusterCache.value;
+    const zoom = tradeBubbleZoom(layout, reference);
     ctx.save();
     for (const cluster of clusters) {
       // Cached clusters outlive individual rolling-window shifts. Resolve the
@@ -689,8 +727,9 @@ export class DepthRenderer {
       if (anchorIndex < layout.start || anchorIndex > layout.end) continue;
       const x = layout.xForIndex(anchorIndex);
       const y = layout.yForTick(cluster.tick);
-      if (y < -22 || y > layout.plotHeight + 22) continue;
-      this.#drawSphereDot(ctx, x, y, cluster, accents);
+      const radius = cluster.radius * zoom;
+      if (y < -radius || y > layout.plotHeight + radius) continue;
+      this.#drawSphereDot(ctx, x, y, { ...cluster, diameter: cluster.diameter * zoom, radius: cluster.radius * zoom }, accents);
     }
     ctx.restore();
   }
@@ -743,7 +782,7 @@ export class DepthRenderer {
   }
 
   #drawSphereDot(ctx, centerX, centerY, cluster, accents) {
-    const diameter = Math.max(1, Math.round(cluster.diameter));
+    const diameter = Math.max(1, cluster.diameter);
     const radius = diameter / 2;
     const buy = this.#sphereSprite(accents.bid);
     const sell = this.#sphereSprite(accents.ask);
@@ -1272,7 +1311,17 @@ export class DepthRenderer {
     ctx.restore();
   }
 
+  renderCvdAnimation() {
+    if (this.cvdRenderState && this.cvdInMotion) this.#drawCvd(...this.cvdRenderState);
+  }
+
   #drawCvd(history, start, end, settings, accents, analysis) {
+    this.cvdRenderState = [history, start, end, settings, accents, analysis];
+    const railWidth = Math.max(0, this.layout.width - this.layout.plotWidth);
+    if (this.cvdCanvas.parentElement?.style && this.cvdRailWidth !== railWidth) {
+      this.cvdCanvas.parentElement.style.setProperty('--cvd-right-rail-width', `${railWidth}px`);
+      this.cvdRailWidth = railWidth;
+    }
     const { context: ctx, width, height } = fitCanvas(this.cvdCanvas);
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = this.chrome.axis;
@@ -1305,12 +1354,10 @@ export class DepthRenderer {
         : { value: 0, buy: 0, sell: 0 };
     }
     const count = points.length;
-    if (count <= 1 || width <= 0 || height <= 0) return;
+    if (count <= 1 || width <= 0 || height <= 0) { this.cvdInMotion = false; this.cvdPresentation = null; return; }
     const dataWidth = width;
     const plotWidth = width;
-    const displayStyle = ['candles', 'line', 'bars'].includes(settings.cvdDisplayStyle)
-      ? settings.cvdDisplayStyle
-      : 'candles';
+    const displayStyle = normalizeCvdStyle(settings.cvdDisplayStyle);
     const adjustedPoints = points.map(point => ({
         value: Number(point.value ?? point.close ?? 0) - Number(baseline.value || 0),
         open: Number(point.open ?? point.value ?? 0) - Number(baseline.value || 0),
@@ -1342,23 +1389,22 @@ export class DepthRenderer {
     const padding = Math.max(1, (maximum - minimum) * .1);
     minimum -= padding;
     maximum += padding;
-    const xForTimestamp = timestamp => {
-      const target = Number(timestamp);
-      if (target <= Number(history[start]?.timestamp || 0)) return 0;
-      if (target >= Number(history[end]?.timestamp || 0)) return dataWidth;
-      let low = start;
-      let high = end;
-      while (low + 1 < high) {
-        const middle = Math.floor((low + high) / 2);
-        if (Number(history[middle]?.timestamp || 0) <= target) low = middle;
-        else high = middle;
-      }
-      const leftTime = Number(history[low]?.timestamp || target);
-      const rightTime = Number(history[high]?.timestamp || leftTime);
-      const fraction = rightTime > leftTime ? (target - leftTime) / (rightTime - leftTime) : 0;
-      return this.layout.xForIndex(low)
-        + (this.layout.xForIndex(high) - this.layout.xForIndex(low)) * Math.max(0, Math.min(1, fraction));
-    };
+    const lastPoint = adjustedPoints[count - 1];
+    this.cvdPresentation = advanceCvdPresentation(this.cvdPresentation, {
+      value: lastPoint.value, buy: lastPoint.buy, sell: lastPoint.sell, minimum, maximum,
+    }, {
+      key: [this.layout.config.key, analysis?.cvdSession, width, height, this.layout.columnPixels,
+        settings.cvdRange, settings.cvdScale, settings.cvdSplit].join('|'),
+      live: analysis?.liveCvd === true,
+      now: performance.now(),
+    });
+    this.cvdInMotion = this.cvdPresentation.active;
+    minimum = this.cvdPresentation.minimum;
+    maximum = this.cvdPresentation.maximum;
+    // Only the displayed tip eases. Every historical sample stays exact.
+    adjustedPoints[count - 1] = { ...lastPoint, value: this.cvdPresentation.value,
+      buy: this.cvdPresentation.buy, sell: this.cvdPresentation.sell };
+    const xForTimestamp = timestamp => cvdTimeCoordinate(history, this.layout, timestamp);
     const yForValue = value => height - 7 - ((value - minimum) / Math.max(1, maximum - minimum)) * (height - 14);
     ctx.strokeStyle = `rgba(${this.chrome.grid},.12)`;
     ctx.lineWidth = 1;
@@ -1395,25 +1441,7 @@ export class DepthRenderer {
       ctx.stroke();
       ctx.shadowBlur = 0;
     };
-    if (displayStyle === 'candles') {
-      const barWidth = Math.max(2, Math.min(10, dataWidth / Math.max(1, count) * .64));
-      for (let index = 0; index < count; index += 1) {
-        const point = adjustedPoints[index];
-        const x = xForTimestamp(points[index]?.timestamp);
-        const positive = point.close >= point.open;
-        const color = colorCss(positive ? accents.bid : accents.ask);
-        const openY = yForValue(point.open);
-        const closeY = yForValue(point.close);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, yForValue(point.high));
-        ctx.lineTo(x, yForValue(point.low));
-        ctx.stroke();
-        ctx.fillStyle = color;
-        ctx.fillRect(x - barWidth / 2, Math.min(openY, closeY), barWidth, Math.max(2, Math.abs(openY - closeY)));
-      }
-    } else if (displayStyle === 'bars') {
+    if (displayStyle === 'bars') {
       const zero = Math.max(7, Math.min(height - 7, yForValue(0)));
       const barWidth = Math.max(1, Math.min(12, dataWidth / Math.max(1, count) * .72));
       for (let index = 0; index < count; index += 1) {

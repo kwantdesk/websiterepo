@@ -1,9 +1,10 @@
+import { normalizeCvdStyle } from './liquidity-presentation.js?v=20261029-cvd-bubble-presentation';
 import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261029-depth-clear-scale';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261017-aleph-font';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261029-depth-clear-scale';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261029-cvd-bubble-presentation';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261029-cvd-bubble-presentation';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -61,7 +62,7 @@ const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   smartClustering: BOOKMAP_VISUAL_DEFAULTS.smartClustering,
   minimumTradeSize: BOOKMAP_VISUAL_DEFAULTS.minimumTradeSize,
   minimumPixelVolume: BOOKMAP_VISUAL_DEFAULTS.minimumPixelVolume,
-  bubbleDifferential: true,
+  bubbleDifferential: false,
   autoCenter: true,
   trails: true,
   grid: true,
@@ -415,8 +416,6 @@ class DepthForgeApp {
     cvdCanvas.addEventListener('pointercancel', event => this.#cvdPointerUp(event));
     cvdCanvas.addEventListener('wheel', event => this.#cvdWheel(event), { passive: false });
     cvdCanvas.addEventListener('dblclick', () => this.goLive());
-    $('cvdGoLive').addEventListener('click', () => this.goLive());
-    $('cvdSettingsButton').addEventListener('click', () => this.#openPanel('signals'));
     $('cvdStyleButton').addEventListener('click', event => {
       event.stopPropagation();
       const menu = $('cvdStyleMenu');
@@ -437,7 +436,7 @@ class DepthForgeApp {
     document.addEventListener('pointerdown', event => {
       const inspector = $('inspector');
       if (!inspector.classList.contains('open')) return;
-      if (event.target.closest('#inspector, [data-panel-shortcut], #settingsButton, #cvdSettingsButton')) return;
+      if (event.target.closest('#inspector, [data-panel-shortcut], #settingsButton')) return;
       this.inspectorDialog.close();
     });
 
@@ -1009,8 +1008,8 @@ class DepthForgeApp {
         this.settings[key] = value;
       }
       // Move legacy installs from the old visually compressed candle default
-      // to the live Bookmap-style line once. The user can still select candles
-      // or bars afterwards and that explicit choice remains saved.
+      // to the live line once. Explicit bar choices remain saved; unsupported
+      // candle choices are normalized to line when the controls synchronize.
       if (Number(saved.cvdPresentationVersion || 0) < 2) {
         this.settings.cvdDisplayStyle = 'line';
         this.settings.cvdPresentationVersion = 2;
@@ -1055,7 +1054,7 @@ class DepthForgeApp {
     $('showGrid').checked = true;
     this.#syncDomVisibilityControls(true);
     $('aggregateDepth').checked = false;
-    $('bubbleDifferential').checked = true;
+    $('bubbleDifferential').checked = this.settings.bubbleDifferential;
     $('toggleHeatmap').classList.add('active-toggle');
     $('toggleDom').classList.add('active-toggle');
     $('toggleTrades').classList.add('active-toggle');
@@ -1121,7 +1120,7 @@ class DepthForgeApp {
   }
 
   #setCvdDisplayStyle(value) {
-    const style = ['candles', 'line', 'bars'].includes(value) ? value : 'candles';
+    const style = normalizeCvdStyle(value);
     this.settings.cvdDisplayStyle = style;
     this.#syncCvdDisplayStyle();
     this.#saveSettings();
@@ -1129,10 +1128,9 @@ class DepthForgeApp {
   }
 
   #syncCvdDisplayStyle() {
-    const style = ['candles', 'line', 'bars'].includes(this.settings.cvdDisplayStyle)
-      ? this.settings.cvdDisplayStyle
-      : 'candles';
-    const labels = { candles: 'CVD candles', line: 'CVD line', bars: 'CVD bars' };
+    const style = normalizeCvdStyle(this.settings.cvdDisplayStyle);
+    this.settings.cvdDisplayStyle = style;
+    const labels = { line: 'CVD line', bars: 'CVD bars' };
     $('cvdStyleLabel').textContent = labels[style];
     all('[data-cvd-style]').forEach(option => {
       const selected = option.dataset.cvdStyle === style;
@@ -1618,7 +1616,7 @@ class DepthForgeApp {
           // allocated the complete trade tape every 200 ms even while that
           // inspector was closed. Signals still computes on demand in
           // #updateSignals; the live map paint no longer waits behind it.
-          const indicatorAnalysis = { sessionCvd: { points: this.cvdHistory } };
+          const indicatorAnalysis = { sessionCvd: { points: this.cvdHistory }, cvdSession: this.cvdTradingDate, liveCvd: this.atLive && this.playing && this.sourceMode === 'live' };
           const previousCenterTick = Number(this.renderer.layout?.centerTick);
           const previousEndFrame = this.renderer.layout?.history?.[this.renderer.layout?.end];
           const previousPixelsPerTick = Number(this.renderer.layout?.plotHeight)
@@ -1665,6 +1663,11 @@ class DepthForgeApp {
         }
         this.renderRequested = false;
         this.frames += 1;
+      }
+
+      if (this.renderer.cvdInMotion && canvasPaintDue && this.lastCanvasPaintAt !== timestamp) {
+        this.renderer.renderCvdAnimation();
+        this.lastCanvasPaintAt = timestamp;
       }
 
       this.#presentLiveCamera(timestamp);
@@ -1852,9 +1855,7 @@ class DepthForgeApp {
     setSignal('orderbookImbalanceSignal', signed(orderbookImbalance.value * 100), orderbookState.badge, orderbookState.className, `Top ${this.settings.imbalanceDepthLevels} exponentially weighted levels`);
 
     $('cvdValue').textContent = wholeSigned(cvd.value);
-    $('cvdLegend').textContent = this.settings.cvdSplit
-      ? `BUY ${Math.round(cvd.buy).toLocaleString()} · SELL ${Math.round(Math.abs(cvd.sell)).toLocaleString()} · NET ${wholeSigned(cvd.value)}`
-      : `NET ${wholeSigned(cvd.value)} · ${this.settings.cvdRange.toUpperCase()}`;
+
   }
 
   #renderTape() {
@@ -1897,8 +1898,6 @@ class DepthForgeApp {
     $('playPause').setAttribute('aria-label', this.playing ? 'Pause replay' : 'Play replay');
     $('goLive').classList.toggle('active', this.atLive);
     $('returnToLive').classList.toggle('hidden', this.atLive);
-    $('cvdGoLive').classList.toggle('active', this.atLive);
-    $('cvdGoLive').textContent = this.atLive ? 'LIVE' : 'GO LIVE';
   }
 
   goLive() {

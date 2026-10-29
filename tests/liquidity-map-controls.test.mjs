@@ -220,11 +220,11 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
 
   assert.match(html, /> Cumulative Volume Delta<\/strong>/);
   assert.doesNotMatch(html, /Scroll or drag to explore history/);
-  assert.match(html, /data-cvd-style="candles"/);
+  assert.doesNotMatch(html, /data-cvd-style="candles"/);
   assert.match(html, /data-cvd-style="line"/);
   assert.match(html, /data-cvd-style="bars"/);
   assert.match(renderer, /const dataWidth = width/);
-  assert.match(renderer, /const xForIndex = index => count <= 1 \? dataWidth : \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
+  assert.match(renderer, /const xForTimestamp = timestamp => cvdTimeCoordinate\(history, this\.layout, timestamp\)/);
 });
 
 test("ES uses its own one-tick price viewport and visual holds do not enter history", async () => {
