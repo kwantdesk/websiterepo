@@ -124,6 +124,11 @@ export function positionToolScreenGeometry(
  * the anchor makes the marker bigger rather than turning an entry into an
  * exit.
  */
+export const FILL_MARKER_DEFAULT_HALF_WIDTH_PX = 9;
+export const FILL_MARKER_DEFAULT_HALF_HEIGHT_PX = 6;
+export const FILL_MARKER_MIN_HALF_WIDTH_PX = 4;
+export const FILL_MARKER_MIN_HALF_HEIGHT_PX = 3;
+
 export type FillMarkerGeometryInput = {
   /** Which way the tool always points. */
   direction: "right" | "left";
@@ -133,6 +138,9 @@ export type FillMarkerGeometryInput = {
   /** The size handle. Absent while the marker is being placed. */
   handleX?: number | null;
   handleY?: number | null;
+  /** Persisted CSS-pixel dimensions, independent of chart projection. */
+  halfWidthPx?: number;
+  halfHeightPx?: number;
   defaultHalfWidth: number;
   defaultHalfHeight: number;
   minHalfWidth: number;
@@ -171,9 +179,9 @@ export function fillMarkerGeometry(input: FillMarkerGeometryInput): FillMarkerGe
   // it started expanding. Signed, dragging inward shrinks to the minimum and
   // stays there, and the marker still cannot be turned around.
   const reach = right ? requestedX - anchorX : anchorX - requestedX;
-  const halfWidth = Math.max(minHalfWidth, reach);
+  const halfWidth = Math.max(minHalfWidth, Number.isFinite(input.halfWidthPx) ? input.halfWidthPx! : reach);
   // Height is symmetric about the anchor, so distance is the right measure.
-  const halfHeight = Math.max(minHalfHeight, Math.abs(requestedY - anchorY));
+  const halfHeight = Math.max(minHalfHeight, Number.isFinite(input.halfHeightPx) ? input.halfHeightPx! : Math.abs(requestedY - anchorY));
 
   const tipX = right ? anchorX + halfWidth : anchorX - halfWidth;
   const backX = right ? anchorX - halfWidth : anchorX + halfWidth;
@@ -189,4 +197,11 @@ export function fillMarkerGeometry(input: FillMarkerGeometryInput): FillMarkerGe
       [backX, anchorY + halfHeight],
     ],
   };
+}
+
+/** Cancel the parent viewport scale around the marker's own projected anchor. */
+export function fillMarkerCounterScale(anchorX: number, anchorY: number, scaleX: number, scaleY: number): string | null {
+  if (![anchorX, anchorY, scaleX, scaleY].every(Number.isFinite) || scaleX <= 0 || scaleY <= 0) return null;
+  if (scaleX === 1 && scaleY === 1) return null;
+  return `translate(${anchorX} ${anchorY}) scale(${1 / scaleX} ${1 / scaleY}) translate(${-anchorX} ${-anchorY})`;
 }

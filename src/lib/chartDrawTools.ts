@@ -1,3 +1,4 @@
+import { FILL_MARKER_DEFAULT_HALF_WIDTH_PX, FILL_MARKER_DEFAULT_HALF_HEIGHT_PX } from "./chartDrawGeometry";
 import { clampPositionStopPrice } from "./positionToolConstraints";
 
 /**
@@ -190,6 +191,9 @@ export type DrawStyle = {
   vwapLowerColor?: string;
   vwapBandFill?: boolean;
   vwapBandFillOpacity?: number;
+  /** Entry/exit marker size in CSS pixels; price/time points only anchor it. */
+  fillMarkerHalfWidthPx?: number;
+  fillMarkerHalfHeightPx?: number;
   /** Custom position-zone colours; absent uses fixed green profit/red loss. */
   profitColor?: string;
   lossColor?: string;
@@ -556,7 +560,12 @@ export function updateDrawingHandle(
 }
 
 export function createDrawing(tool: DrawToolId, points: DrawPoint[], text?: string): Drawing {
-  return { id: `draw-${crypto.randomUUID()}`, tool, points, style: defaultStyleFor(tool), text };
+  const style = defaultStyleFor(tool);
+  if (tool === "entryArrow" || tool === "exitArrow") {
+    style.fillMarkerHalfWidthPx = FILL_MARKER_DEFAULT_HALF_WIDTH_PX;
+    style.fillMarkerHalfHeightPx = FILL_MARKER_DEFAULT_HALF_HEIGHT_PX;
+  }
+  return { id: `draw-${crypto.randomUUID()}`, tool, points, style, text };
 }
 
 export function normalizeDrawings(value: unknown): Drawing[] {

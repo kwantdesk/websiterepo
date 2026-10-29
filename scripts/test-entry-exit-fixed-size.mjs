@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+import {fillMarkerGeometry,fillMarkerCounterScale} from '../src/lib/chartDrawGeometry.ts';
+import {createDrawing,normalizeDrawings} from '../src/lib/chartDrawTools.ts';
+const layer=readFileSync(new URL('../src/components/ChartDrawLayer.tsx',import.meta.url),'utf8');
+const limits={defaultHalfWidth:9,defaultHalfHeight:6,minHalfWidth:4,minHalfHeight:3};
+function apply(point,transform){let result=[...point];const operations=[...transform.matchAll(/(translate|scale)\(([^)]+)\)/g)];for(const [,kind,args]of operations.reverse()){const [x,y]=args.split(/[ ,]+/).map(Number);result=kind==='scale'?[result[0]*x,result[1]*(y??x)]:[result[0]+x,result[1]+(y??0)];}return result;}
+for(const direction of ['left','right'])for(const [sx,sy,dx,dy]of [[1,1,80,-40],[0.25,4,90,120],[5,0.2,-300,24],[1.8,2.3,0,0]]){
+ const anchor=[150,230],g=fillMarkerGeometry({direction,anchorX:anchor[0],anchorY:anchor[1],halfWidthPx:21,halfHeightPx:9,...limits});const local=fillMarkerCounterScale(...anchor,sx,sy)||'';const parent=`translate(${dx} ${dy}) scale(${sx} ${sy})`;const projected=g.points.map(p=>apply(apply(p,local),parent));const xs=projected.map(p=>p[0]),ys=projected.map(p=>p[1]);assert.ok(Math.abs(Math.max(...xs)-Math.min(...xs)-42)<1e-8);assert.ok(Math.abs(Math.max(...ys)-Math.min(...ys)-18)<1e-8);assert.deepEqual(apply(apply(anchor,local),parent),[dx+sx*150,dy+sy*230]);
+}
+for(const tool of ['entryArrow','exitArrow']){
+ const drawing=createDrawing(tool,[{time:1,price:100}]);assert.equal(drawing.style.fillMarkerHalfWidthPx,9);assert.equal(drawing.style.fillMarkerHalfHeightPx,6);drawing.style.fillMarkerHalfWidthPx=27;drawing.style.fillMarkerHalfHeightPx=13;const restored=normalizeDrawings(JSON.parse(JSON.stringify([drawing])))[0];assert.equal(restored.style.fillMarkerHalfWidthPx,27);assert.equal(restored.style.fillMarkerHalfHeightPx,13);
+}
+function fragment(start,end,context,expose){const source=layer.slice(layer.indexOf(start),layer.indexOf(end,layer.indexOf(start)));const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;vm.runInNewContext(code+';globalThis.exposed='+expose,context);return context.exposed;}
+let zoomX=1,zoomY=1;const cached={current:new Map()};const context={fillMarkerSizesRef:cached,chartReady:true,toX:t=>t*zoomX,toY:p=>p*zoomY,fillMarkerGeometry,FILL_MARKER_DEFAULT_HALF_WIDTH_PX:9,FILL_MARKER_DEFAULT_HALF_HEIGHT_PX:6,FILL_MARKER_MIN_HALF_WIDTH_PX:4,FILL_MARKER_MIN_HALF_HEIGHT_PX:3};const geometry=fragment('  const markerGeometry =','  // Capture each legacy',context,'markerGeometry');const legacy={id:'legacy',tool:'entryArrow',style:{},points:[{time:100,price:200},{time:130,price:212}]};let g=geometry(legacy,100,200,true);assert.equal(g.halfWidth,30);assert.equal(g.halfHeight,12);zoomX=3;zoomY=0.5;g=geometry(legacy,300,100,true);assert.equal(g.halfWidth,30);assert.equal(g.halfHeight,12);
+for(const tool of ['entryArrow','exitArrow']){
+ const drawing={...createDrawing(tool,[{time:100,price:200},{time:130,price:212}]),style:{fillMarkerHalfWidthPx:12,fillMarkerHalfHeightPx:9}};let next;const listeners=new Map();const event={clientX:tool==='entryArrow'?112:88,clientY:200,stopPropagation(){}};const ctx={onSelect(){},toX:()=>100,toY:()=>200,markerGeometry:()=>({halfWidth:12,halfHeight:9}),FILL_MARKER_MIN_HALF_WIDTH_PX:4,FILL_MARKER_MIN_HALF_HEIGHT_PX:3,onUpdate:n=>next=n,eventWindow:()=>({addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)}),dragCleanupRef:{current:null}};const resize=fragment('  const beginFillMarkerResize =','  /** Resize the emoji',ctx,'beginFillMarkerResize');resize(drawing,event);listeners.get('pointermove')({...event});assert.equal(next.style.fillMarkerHalfHeightPx,9,'grabbing the tip must not collapse its height');listeners.get('pointermove')({clientX:event.clientX+(tool==='entryArrow'?20:-20),clientY:205});assert.equal(next.style.fillMarkerHalfWidthPx,32);assert.equal(next.style.fillMarkerHalfHeightPx,14);assert.deepEqual(next.points,drawing.points);listeners.get('pointerup')();assert.equal(listeners.size,0);
+}
+assert.match(layer,/alignFixedMarkers\(scaleX, scaleY\);\s*group\.setAttribute\("transform"/);
+assert.match(layer,/data-fixed-marker-x=\{fillMarkerHandle/);
+assert.equal(fillMarkerCounterScale(100,200,0,1),null);
+console.log('entry/exit fixed screen size: zoom/pan matrices, anchors, persistence, legacy capture, actual resize callbacks and cleanup passed');

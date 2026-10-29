@@ -181,7 +181,8 @@ check("there is exactly ONE handle, and it is not buried under the anchor", () =
 check("the whole marker is grabbable, not just its outline", () => {
   const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
   const bodyHit = layer.slice(layer.indexOf("const bodyHit ="), layer.indexOf("// ---- rendering ----"));
-  assert.match(bodyHit, /"entryArrow", "exitArrow"/, "both must use the bounding-box hit test");
+  assert.match(bodyHit, /chartSvgBodyHit\(svgRef\.current, drawing\.id, px, py\)/, "hit testing uses the actual transformed SVG");
+  assert.match(layer, /const allowBodyFills = .*"entryArrow", "exitArrow"/, "filled arrow interiors remain grabbable");
 });
 
 console.log(`\nentry/exit fill markers: ${passed}/${passed} checks passed`);

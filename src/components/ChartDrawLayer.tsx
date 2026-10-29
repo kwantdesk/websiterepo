@@ -29,7 +29,7 @@ import {
   magnetStrengthSpec,
   type MagnetStrength,
 } from "@/lib/chartDrawTools";
-import { fillMarkerGeometry, positionToolScreenGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
+import { fillMarkerGeometry, fillMarkerCounterScale, FILL_MARKER_DEFAULT_HALF_WIDTH_PX, FILL_MARKER_DEFAULT_HALF_HEIGHT_PX, FILL_MARKER_MIN_HALF_WIDTH_PX, FILL_MARKER_MIN_HALF_HEIGHT_PX, positionToolScreenGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
 import { nearestCandleMagnetCandidate } from "@/lib/chartMagnet";
 import type { InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
 import { exactCustomDrawVolumeProfile } from "@/lib/customDrawVolumeProfile";
@@ -490,6 +490,48 @@ export default function ChartDrawLayer({
   // throttled ~15fps React signal made drawings lag and wobble behind the
   // candles during a fast pan; this tracks the candles at frame rate.
   const [, forceRedraw] = useState(0);
+  const fillMarkerSizesRef = useRef(new Map<string, { halfWidth: number; halfHeight: number }>());
+  const fixedMarkerNodesRef = useRef<SVGGElement[]>([]);
+  const alignFixedMarkers = useCallback((scaleX = 1, scaleY = 1) => {
+    for (const node of fixedMarkerNodesRef.current) {
+      const transform = fillMarkerCounterScale(Number(node.dataset.fixedMarkerX), Number(node.dataset.fixedMarkerY), scaleX, scaleY);
+      if (transform) node.setAttribute("transform", transform);
+      else node.removeAttribute("transform");
+    }
+  }, []);
+  const markerGeometry = (drawing: Drawing, anchorX: number, anchorY: number, remember: boolean) => {
+    const savedWidth = drawing.style.fillMarkerHalfWidthPx;
+    const savedHeight = drawing.style.fillMarkerHalfHeightPx;
+    const fixed = Number.isFinite(savedWidth) && Number.isFinite(savedHeight)
+      ? { halfWidth: savedWidth!, halfHeight: savedHeight! }
+      : fillMarkerSizesRef.current.get(drawing.id);
+    const handle = drawing.points[1];
+    const geometry = fillMarkerGeometry({
+      direction: drawing.tool === "entryArrow" ? "right" : "left", anchorX, anchorY,
+      handleX: !fixed && handle ? toX(handle.time) : null, handleY: !fixed && handle ? toY(handle.price) : null,
+      halfWidthPx: fixed?.halfWidth, halfHeightPx: fixed?.halfHeight,
+      defaultHalfWidth: FILL_MARKER_DEFAULT_HALF_WIDTH_PX, defaultHalfHeight: FILL_MARKER_DEFAULT_HALF_HEIGHT_PX,
+      minHalfWidth: FILL_MARKER_MIN_HALF_WIDTH_PX, minHalfHeight: FILL_MARKER_MIN_HALF_HEIGHT_PX,
+    });
+    if (remember && chartReady) fillMarkerSizesRef.current.set(drawing.id, { halfWidth: geometry.halfWidth, halfHeight: geometry.halfHeight });
+    return geometry;
+  };
+  // Capture each legacy arrow's current size once, then persist it without
+  // changing its anchor. Later zooms must never become new size measurements.
+  useEffect(() => {
+    const ids = new Set(drawings.map((drawing) => drawing.id));
+    for (const id of fillMarkerSizesRef.current.keys()) if (!ids.has(id)) fillMarkerSizesRef.current.delete(id);
+    if (!chartReady) return;
+    for (const drawing of drawings) {
+      if (drawing.tool !== "entryArrow" && drawing.tool !== "exitArrow") continue;
+      const size = fillMarkerSizesRef.current.get(drawing.id);
+      if (size && (!Number.isFinite(drawing.style.fillMarkerHalfWidthPx) || !Number.isFinite(drawing.style.fillMarkerHalfHeightPx))) {
+        onUpdate({ ...drawing, style: { ...drawing.style, fillMarkerHalfWidthPx: size.halfWidth, fillMarkerHalfHeightPx: size.halfHeight } });
+        break;
+      }
+    }
+  });
+
   // The projection this render's coordinates were computed against.
   //
   // SVG cannot be repainted inside the chart's paint pass — it is the
@@ -555,6 +597,8 @@ export default function ChartDrawLayer({
   const alignViewportRef = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     // Fresh coordinates: drop any compensating transform from the last pan.
+    fixedMarkerNodesRef.current = Array.from(drawingsGroupRef.current?.querySelectorAll<SVGGElement>("[data-fixed-marker-x]") ?? []);
+    alignFixedMarkers();
     projectionBasisRef.current = renderedProjection;
     renderedTimelineRef.current = renderedTimeline;
     timelineRedrawPendingRef.current = false;
@@ -626,6 +670,7 @@ export default function ChartDrawLayer({
         || scaleX > 1_000 || scaleY > 1_000
       ) {
         group.removeAttribute("transform");
+        alignFixedMarkers();
         forceRedraw((value) => value + 1);
         return;
       }
@@ -633,8 +678,10 @@ export default function ChartDrawLayer({
       const dy = yA - scaleY * basis.yA;
       if (dx === 0 && dy === 0 && scaleX === 1 && scaleY === 1) {
         group.removeAttribute("transform");
+        alignFixedMarkers();
         return;
       }
+      alignFixedMarkers(scaleX, scaleY);
       group.setAttribute("transform", `translate(${dx} ${dy}) scale(${scaleX} ${scaleY})`);
       // Only a rescale needs settling; a pure pan translates text without
       // distorting it, so it can hold the transform indefinitely.
@@ -651,7 +698,7 @@ export default function ChartDrawLayer({
       alignViewportRef.current = null;
       if (settleTimer !== null) window.clearTimeout(settleTimer);
     };
-  }, [subscribeViewport, chartReady, drawings.length, pending]);
+  }, [subscribeViewport, chartReady, drawings.length, pending, alignFixedMarkers]);
   // Volume-profile histograms and anchored-VWAP series live in price/time space
   // — they do NOT change when the user pans or zooms, only the pixel projection
   // does. Computing them inside renderDrawing meant a full candle scan per
@@ -791,22 +838,16 @@ export default function ChartDrawLayer({
   const beginFillMarkerResize = (drawing: Drawing, event: ReactPointerEvent) => {
     event.stopPropagation();
     onSelect(drawing.id);
-    if (drawing.points.length < 2) return;
-    const origin = drawing.points.map((point) => ({ ...point }));
+    const anchor = drawing.points[0];
+    const anchorX = anchor ? toX(anchor.time) : null;
+    const anchorY = anchor ? toY(anchor.price) : null;
+    if (anchorX == null || anchorY == null) return;
+    const initialSize = markerGeometry(drawing, anchorX, anchorY, true);
+    const direction = drawing.tool === "entryArrow" ? 1 : -1;
     const onMove = (moveEvent: PointerEvent) => {
-      const rect = svgRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const localX = moveEvent.clientX - rect.left;
-      const localY = moveEvent.clientY - rect.top;
-      // Each axis resolved on its own, so a pixel past the last bar — where
-      // the time scale has no answer — still resizes the height.
-      const price = priceAtY(localY);
-      const time = timeAtX(localX);
-      if (price == null && time == null) return;
-      const next = origin.map((point) => ({ ...point }));
-      if (time != null) next[1].time = time;
-      if (price != null) next[1].price = price;
-      onUpdate({ ...drawing, points: next });
+      const halfWidth = Math.max(FILL_MARKER_MIN_HALF_WIDTH_PX, initialSize.halfWidth + direction * (moveEvent.clientX - event.clientX));
+      const halfHeight = Math.max(FILL_MARKER_MIN_HALF_HEIGHT_PX, initialSize.halfHeight + moveEvent.clientY - event.clientY);
+      onUpdate({ ...drawing, style: { ...drawing.style, fillMarkerHalfWidthPx: halfWidth, fillMarkerHalfHeightPx: halfHeight } });
     };
     const cleanup = () => {
       eventWindow().removeEventListener("pointermove", onMove);
@@ -1419,17 +1460,7 @@ export default function ChartDrawLayer({
           // colours, just resizable.
           if (a.x == null || a.y == null) return null;
           const entry = drawing.tool === "entryArrow";
-          const marker = fillMarkerGeometry({
-            direction: entry ? "right" : "left",
-            anchorX: a.x,
-            anchorY: a.y,
-            handleX: b?.x,
-            handleY: b?.y,
-            defaultHalfWidth: FILL_MARKER_DEFAULT_HALF_WIDTH_PX,
-            defaultHalfHeight: FILL_MARKER_DEFAULT_HALF_HEIGHT_PX,
-            minHalfWidth: FILL_MARKER_MIN_HALF_WIDTH_PX,
-            minHalfHeight: FILL_MARKER_MIN_HALF_HEIGHT_PX,
-          });
+          const marker = markerGeometry(drawing, a.x, a.y, !preview);
           const path = `${marker.points.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ")} Z`;
           return (
             <g>
@@ -1682,17 +1713,7 @@ export default function ChartDrawLayer({
     // under the anchor dot and be unreachable.
     const fillMarkerHandle = (drawing.tool === "entryArrow" || drawing.tool === "exitArrow")
       && a.x != null && a.y != null
-      ? fillMarkerGeometry({
-          direction: drawing.tool === "entryArrow" ? "right" : "left",
-          anchorX: a.x,
-          anchorY: a.y,
-          handleX: b?.x,
-          handleY: b?.y,
-          defaultHalfWidth: FILL_MARKER_DEFAULT_HALF_WIDTH_PX,
-          defaultHalfHeight: FILL_MARKER_DEFAULT_HALF_HEIGHT_PX,
-          minHalfWidth: FILL_MARKER_MIN_HALF_WIDTH_PX,
-          minHalfHeight: FILL_MARKER_MIN_HALF_HEIGHT_PX,
-        })
+      ? markerGeometry(drawing, a.x, a.y, !preview)
       : null;
     const emojiSize = drawing.tool === "emoji"
       && a.x != null && a.y != null
@@ -1759,6 +1780,8 @@ export default function ChartDrawLayer({
       <g
         key={drawing.id}
         data-chart-drawing-id={preview ? undefined : drawing.id}
+        data-fixed-marker-x={fillMarkerHandle ? a.x ?? undefined : undefined}
+        data-fixed-marker-y={fillMarkerHandle ? a.y ?? undefined : undefined}
         data-draw-hit={interactive ? "drawing" : undefined}
         opacity={preview ? 0.75 : 1}
         style={interactive ? { pointerEvents: "auto", cursor: bodyMovable ? "move" : "pointer" } : { pointerEvents: "none" }}
@@ -1966,15 +1989,6 @@ const EDGE_OVERSCAN = 2000;
  * should read the same size at every zoom and on every instrument, exactly as
  * the real one does.
  */
-// The real marker is 12x8 around the fill. The drawn one starts a little
-// larger so it is easy to grab, keeping the same 3:2 proportion, and scales
-// from there.
-const FILL_MARKER_DEFAULT_HALF_WIDTH_PX = 9;
-const FILL_MARKER_DEFAULT_HALF_HEIGHT_PX = 6;
-/** Below these it stops being legible, or grabbable. */
-const FILL_MARKER_MIN_HALF_WIDTH_PX = 4;
-const FILL_MARKER_MIN_HALF_HEIGHT_PX = 3;
-
 /**
  * Grab handles: what is drawn, and what the pointer can actually catch.
  *
