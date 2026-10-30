@@ -13,7 +13,7 @@ import {
   BrainCircuit,
   CalendarDays,
   CheckCircle,
-  FlaskConical,
+  Braces,
   MoreHorizontal,
   Play,
   PlusCircle,
@@ -75,7 +75,7 @@ function Sidebar() {
       <Link href="/alerts" className={inactive} title="Alerts"><Bell className="w-[18px] h-[18px] shrink-0" /><span className={label}>Alerts</span></Link>
       <Link href="/vault" className={inactive} title="The Vault"><Store className="w-[18px] h-[18px] shrink-0" /><span className={label}>Vault</span></Link>
       <Link href="/leaderboard" className={inactive} title="Leaderboard"><Trophy className="w-[18px] h-[18px] shrink-0" /><span className={label}>Leaderboard</span></Link>
-      <Link href="/lab" className={inactive} title="The Strategy Lab"><FlaskConical className="w-[18px] h-[18px] shrink-0" /><span className={label}>Lab</span></Link>
+      <Link href="/algo" className={inactive} title="Algorithmic trading"><Braces className="w-[18px] h-[18px] shrink-0" /><span className={label}>Algo</span></Link>
       <Link href="/accounts" className={inactive} title="Accounts"><Wallet className="w-[18px] h-[18px] shrink-0" /><span className={label}>Accounts</span></Link>
       <div className="flex-1" />
       <button onClick={() => { window.location.href = "/settings"; }} className={inactive} title="Settings"><Settings className="w-[18px] h-[18px] shrink-0" /><span className={label}>Settings</span></button>

@@ -13,6 +13,7 @@ const workspaceCode: Record<string, () => Promise<unknown>> = {
   "/journal": () => import("@/components/journal/JournalWorkspace"),
   "/socials": () => import("@/components/socials/SocialsWorkspace"),
   "/backtesting": () => import("@/components/backtesting/BacktestingWorkspace"),
+  "/algo": () => import("@/components/algo/AlgoWorkspace"),
 };
 
 /** Intent only: prepare one destination's code, never start its data/feed. */

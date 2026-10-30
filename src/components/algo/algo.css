@@ -1,0 +1,170 @@
+.algo-workspace {
+  display: flex; flex-direction: column; height: 100dvh; min-height: 500px; overflow: hidden;
+  background: var(--background); color: var(--foreground); font-family: Aleph, sans-serif;
+  font-size: 12px; --algo-profit: #22c55e; --algo-loss: #ef4444;
+}
+.algo-workspace * { box-sizing: border-box; }
+.algo-workspace button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.algo-workspace button:disabled { opacity: .4; cursor: default; }
+.algo-workspace input, .algo-workspace textarea { color: var(--foreground); background: var(--background); border: 1px solid var(--border); border-radius: 5px; font: inherit; outline: none; }
+.algo-workspace input:focus-visible, .algo-workspace textarea:focus-visible { outline: none; box-shadow: none; }
+.algo-workspace button:focus-visible, .algo-resizer:focus-visible { outline: 1px dashed var(--primary); outline-offset: -3px; }
+.algo-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 43px; flex-shrink: 0; padding: 5px 12px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: thin; }
+.algo-toolbar-group { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.algo-title { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; letter-spacing: .1em; padding-right: 5px; }
+.algo-divider { height: 18px; width: 1px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
+.algo-toolbar button, .algo-test-range button, .algo-trade-filters button, .algo-risk-controls > button, .algo-import-panel button, .algo-monte-top button {
+  min-height: 28px; border: 1px solid var(--border); border-radius: 5px; padding: 4px 9px;
+  color: var(--muted); background: var(--background); font-size: 11px; white-space: nowrap;
+}
+.algo-workspace button:hover { color: var(--foreground); }
+.algo-toolbar button[aria-pressed="true"], .algo-tabs button[aria-current="page"] { color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--background)); }
+.algo-intervals { display: flex; gap: 2px; }
+.algo-intervals button { border-color: transparent; padding-inline: 9px; }
+.algo-main { display: flex; flex: 1 1 0; min-height: 200px; overflow: hidden; }
+.algo-chart-panel { flex: 1; min-width: 0; min-height: 200px; display: flex; flex-direction: column; position: relative; overflow: hidden; background: var(--background); }
+.algo-chart-caption { display: flex; align-items: center; gap: 7px; padding: 8px 13px 3px; font-size: 11px; flex-wrap: wrap; flex-shrink: 0; }
+.algo-chart-caption > span { color: var(--muted); }
+.algo-chart-caption strong { font-size: 12px; }
+.algo-preview-badge { padding: 3px 7px; border: 1px solid var(--border); border-radius: 4px; font-size: 9px; margin-left: 4px; }
+.algo-pending { font-size: 10px; color: var(--primary); margin-left: auto; }
+.algo-price-chart { flex: 1; min-height: 75px; position: relative; }
+.algo-chart-foot { padding: 4px 12px; font-size: 9px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); }
+.algo-chart-foot > span { display: inline-flex; align-items: center; gap: 6px; }
+.algo-chart-foot i { width: 5px; height: 5px; display: inline-block; border-radius: 50%; }
+.algo-long-dot { background: var(--algo-profit); }.algo-short-dot { background: var(--algo-loss); }
+.algo-selected-trade { position: absolute; bottom: 30px; left: 15px; z-index: 3; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); background: var(--panel); padding: 8px 10px; border-radius: 5px; font-size: 10px; }
+.algo-profit { color: var(--algo-profit) !important; }.algo-loss { color: var(--algo-loss) !important; }
+.algo-import-panel { width: 320px; max-width: 75vw; flex-shrink: 0; background: var(--panel); padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; border-left: 1px solid var(--border); }
+.algo-import-title, .algo-import-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.algo-import-title strong { font-size: 14px; font-weight: 500; }
+.algo-import-panel p, .algo-import-panel > small { color: var(--muted); font-size: 10px; line-height: 1.6; }
+.algo-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.algo-field > span { color: var(--muted); font-size: 10px; }
+.algo-field > input { min-width: 0; width: 100%; padding: 8px 10px; }
+.algo-source-field { flex: 1; min-height: 120px; }
+.algo-source-field textarea { flex: 1; min-height: 100px; padding: 10px; font-family: ui-monospace, monospace; font-size: 10px; line-height: 1.6; resize: vertical; width: 100%; }
+.algo-file-input { display: none; }
+.algo-tester { flex-shrink: 0; display: flex; flex-direction: column; min-height: 39px; position: relative; border-top: 1px solid var(--border); background: var(--background); }
+.algo-resizer { height: 9px; position: absolute; top: -5px; left: 0; width: 100%; z-index: 6; display: flex; align-items: center; justify-content: center; cursor: row-resize; touch-action: none; color: var(--muted); }
+.algo-resizer svg { width: 44px; height: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; }
+.algo-resizer:hover svg { color: var(--primary); border-color: var(--primary); }
+.algo-tester-heading { display: flex; align-items: center; min-height: 38px; gap: 12px; padding: 4px 11px; border-bottom: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; scrollbar-width: thin; }
+.algo-tester-title { flex-shrink: 0; font-size: 11px; gap: 6px; font-weight: 600; }
+.algo-tabs { display: flex; height: 29px; gap: 4px; flex-shrink: 0; }
+.algo-tabs button { color: var(--muted); font-size: 10px; padding: 5px 10px; border-radius: 4px; white-space: nowrap; }
+.algo-tester-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-shrink: 0; }
+.algo-tester-actions > button { padding: 5px; border-radius: 4px; color: var(--muted); }
+.algo-preview-label { color: var(--muted); font-size: 8px; letter-spacing: .1em; }
+.algo-workspace .algo-primary-button { padding: 6px 10px; color: var(--on-primary); background: var(--primary); border: 1px solid var(--primary); border-radius: 5px; font-size: 10px; white-space: nowrap; }
+.algo-workspace .algo-primary-button:hover { color: var(--on-primary); filter: brightness(.93); }
+.algo-test-range { display: flex; align-items: center; gap: 7px; padding: 7px 12px; min-height: 44px; border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; scrollbar-width: thin; }
+.algo-test-range > span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.algo-test-range button { flex-shrink: 0; }
+.algo-test-range > span:first-child { margin-right: 2px; }
+.algo-inline-error { display: flex; justify-content: space-between; gap: 10px; padding: 7px 12px; color: var(--foreground); background: var(--surface); font-size: 11px; }
+.algo-tester-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.algo-library-aside { width: 225px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.algo-library { padding: 14px 12px; }
+.algo-section-title { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; margin-bottom: 11px; }
+.algo-section-title > span { margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 400; }
+.algo-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 5px; padding: 7px 8px; color: var(--muted); margin-bottom: 9px; }
+.algo-workspace .algo-search input { width: 100%; min-width: 0; padding: 0; border: none; background: transparent; font-size: 10px; }
+.algo-library-item { padding: 10px 1px; border-bottom: 1px solid var(--border); }
+.algo-library-item > div { display: flex; gap: 8px; align-items: center; }
+.algo-template-name { text-align: left; justify-content: flex-start !important; font-size: 10px; line-height: 1.4; }
+.algo-library-item > small { display: block; color: var(--muted); font-size: 9px; padding-left: 32px; margin-top: 5px; }
+.algo-toggle { width: 24px; height: 13px; min-width: 24px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 10px; position: relative; background: var(--surface); padding: 0; }
+.algo-toggle > span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); position: absolute; left: 2px; transition: transform .15s; }
+.algo-toggle[aria-checked="true"] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 16%, var(--background)); }
+.algo-toggle[aria-checked="true"] > span { background: var(--primary); transform: translateX(10px); }
+.algo-draft-row { width: 100%; justify-content: flex-start !important; text-align: left; border-bottom: 1px solid var(--border); padding: 10px 0; gap: 9px !important; font-size: 11px; }
+.algo-draft-row small { display: block; color: var(--muted); font-size: 9px; margin-top: 3px; }
+.algo-library-import { width: 100%; margin-top: 12px; border: 1px dashed var(--border); padding: 9px 5px; border-radius: 5px; font-size: 10px; color: var(--muted); }
+.algo-library-note { font-size: 9px; color: var(--muted); line-height: 1.6; margin-top: 13px; }
+.algo-results { flex: 1; min-width: 0; overflow: auto; padding: 14px 17px; }
+.algo-hero-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 7px; margin-bottom: 16px; overflow: hidden; }
+.algo-metric { padding: 12px 15px; min-width: 0; border-right: 1px solid var(--border); }
+.algo-metric:last-child { border-right: none; }
+.algo-metric > span { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.algo-metric > strong { display: block; font-size: 24px; letter-spacing: -.7px; font-weight: 500; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.algo-metric > small { display: block; font-size: 9px; color: var(--muted); margin-top: 4px; }
+.algo-equity-plot { border: 1px solid var(--border); border-radius: 7px; padding: 12px 14px 6px; margin-bottom: 13px; background: var(--background); overflow: hidden; }
+.algo-plot-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11px; }
+.algo-plot-value { color: var(--muted); font-size: 9px; }
+.algo-equity-plot svg { display: block; width: 100%; height: 180px; }
+.algo-equity-plot text { fill: var(--muted); font-size: 10px; font-family: Aleph, sans-serif; }
+.algo-grid-line { stroke: var(--border); stroke-width: .6; stroke-dasharray: 3 5; opacity: .55; }
+.algo-equity-line { stroke: var(--primary); stroke-width: 2; }
+.algo-dd-line { stroke: var(--algo-loss); stroke-width: 1.4; }
+.algo-equity-area { fill: var(--primary); opacity: .07; }
+.algo-dd-area { fill: var(--algo-loss); opacity: .07; }
+.algo-hover-line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4; }
+.algo-equity-dot { fill: var(--primary); stroke: var(--background); stroke-width: 2; }
+.algo-quant-heading { padding: 10px 2px 2px; }
+.algo-quant-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.algo-quant-grid .algo-metric { border-bottom: 1px solid var(--border); }
+.algo-quant-grid .algo-metric:nth-child(4n) { border-right: 0; }
+.algo-quant-grid .algo-metric:nth-last-child(-n+4) { border-bottom: 0; }
+.algo-quant-grid .algo-metric > strong { font-size: 19px; }
+.algo-risk-link { width: 100%; padding: 14px; color: var(--primary); font-size: 11px; border: 1px solid var(--border); border-radius: 6px; margin-top: 14px; }
+.algo-trade-filters { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.algo-trade-filters > span { flex: 1; color: var(--muted); font-size: 10px; }
+.algo-trades-scroll { overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.algo-trades { width: 100%; border-collapse: collapse; white-space: nowrap; text-align: left; font-size: 10px; }
+.algo-trades th { color: var(--muted); font-weight: 400; padding: 9px 11px; background: var(--panel); position: sticky; top: 0; }
+.algo-trades td { padding: 9px 11px; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.algo-trades td:first-child > span { display: flex; align-items: center; gap: 3px; font-size: 9px; margin-top: 3px; }
+.algo-trades tr { cursor: pointer; }.algo-trades tr:hover, .algo-trades tr.is-selected { background: var(--surface); }
+.algo-empty { color: var(--muted); text-align: center; padding: 30px; }
+.algo-risk-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 15px; }
+.algo-risk-controls > div:first-child { flex: 1; }.algo-risk-controls strong { font-size: 13px; font-weight: 500; }
+.algo-risk-controls span, .algo-monte-top span { display: block; color: var(--muted); font-size: 9px; margin-top: 5px; }
+.algo-monte-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.algo-monte-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 16px 0; }
+.algo-monte-top strong { font-size: 12px; font-weight: 500; }
+.algo-monte-canvas { height: 300px; width: 100%; touch-action: none; position: relative; overflow: hidden; }
+.algo-3d-label { position: absolute; pointer-events: none; color: var(--muted); font-size: 9px; transform: translate(-50%, -50%); white-space: nowrap; }
+.algo-monte-canvas canvas, .algo-monte-canvas svg { width: 100%; height: 100%; display: block; }
+.algo-monte-axes { display: flex; align-items: center; justify-content: center; gap: 30px; color: var(--muted); font-size: 9px; padding: 0 12px 12px; }
+.algo-risk-foot { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 9px; padding: 12px 0; }
+.algo-method-note { color: var(--muted); font-size: 10px; line-height: 1.7; padding: 10px 0; }
+.algo-settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 19px; }
+.algo-three-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0; }
+.algo-parameter-card { border: 1px solid var(--border); border-radius: 7px; padding: 14px; margin-bottom: 13px; }
+.algo-parameter-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+.algo-parameter-heading strong { font-weight: 500; font-size: 12px; }
+.algo-parameter-heading div > span { display: block; color: var(--muted); font-size: 10px; margin-top: 5px; }
+.algo-mobile-library { display: none; }
+@media (max-width: 1000px) {
+  .algo-library-aside { width: 190px; }
+  .algo-tester-heading { gap: 6px; }
+  .algo-tabs button { padding-inline: 6px; }
+  .algo-preview-label { display: none; }
+  .algo-metric { padding: 10px; }.algo-metric > strong { font-size: 20px; }
+  .algo-results { padding: 12px; }
+  .algo-settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .algo-three-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .algo-workspace { min-height: 480px; }
+  .algo-toolbar { padding-inline: 8px; }
+  .algo-library-aside { display: none; }.algo-mobile-library { display: block; margin: -10px -10px 12px; }
+  .algo-chart-caption > span:nth-child(2), .algo-chart-foot > span:last-child { display: none; }
+  .algo-tester-title { font-size: 10px; }.algo-tester-heading { overflow-x: auto; }
+  .algo-tester-actions { position: sticky; right: -11px; background: var(--background); padding: 0 7px; }
+  .algo-tester-actions > button[aria-label="Expand strategy tester"] { display: none; }
+  .algo-hero-metrics, .algo-quant-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .algo-hero-metrics .algo-metric:nth-child(2) { border-right: none; }
+  .algo-hero-metrics .algo-metric:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+  .algo-quant-grid .algo-metric:nth-child(2n) { border-right: none; }
+  .algo-quant-grid .algo-metric:nth-last-child(-n+4) { border-bottom: 1px solid var(--border); }
+  .algo-quant-grid .algo-metric:nth-last-child(-n+2) { border-bottom: 0; }
+  .algo-equity-plot { padding-inline: 6px; }.algo-equity-plot svg { height: 160px; }
+  .algo-trade-filters { flex-wrap: wrap; }.algo-trade-filters > span { flex-basis: 100%; }
+  .algo-risk-controls { flex-wrap: wrap; }.algo-risk-controls > div:first-child { flex-basis: 100%; }
+  .algo-risk-foot { flex-direction: column; gap: 4px; }
+  .algo-import-panel { position: absolute; z-index: 8; right: 0; top: 80px; bottom: 40px; box-shadow: -8px 0 25px #0003; }
+  .algo-three-columns { grid-template-columns: 1fr; }
+  .algo-selected-trade { max-width: calc(100% - 30px); flex-wrap: wrap; }
+}

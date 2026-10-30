@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-31 — Algo frontend strategy tester
+
+Replaced primary/editor Lab navigation with /algo; preserved gated legacy Lab implementation/APIs and did not touch ALGO/. New theme-linked native candlestick/line chart, fill markers, draggable bottom tester, algo toggles/inputs, date/session/timezone controls, Journal-style equity/drawdown/quant stats, searchable library, trade ledger/filter/sort/CSV/chart focus, lazy interactive Three.js Monte Carlo, and browser-local Pine/NinjaScript import drafts. This is explicitly FRONTEND PREVIEW ONLY: generated example candles/fills are not real history, and ORB/VWAP/trend templates are not implemented trading algorithms. No imported source executes and no backend/feed/trading calls or VPS changes were added. Marker autoscale is disabled to prevent short-pane candle flattening; fixed OHLC margins remain. 16 calculation tests + 15 isolated Chrome interaction checks pass, no runtime errors/feed requests, dark/light/purple action contrast verified. Scoped lint has zero errors (three existing shared-file warnings); full production build and actual main/live SHA verification are required. Handoff: docs/prompt-log/2026-10-31-algo-frontend-workspace.md.
+
 ## 2026-10-31 — Long/short drawing labels default on
 
 Long Position and Short Position createDrawing defaults now showLabels:true; settings/renderer already honor it. Explicit saved false choices remain. Direct creation/normalization checks plus26 drawing/persistence tests, scoped lint and full build pass. No existing drawing/data/feed/VPS/trade mutations. Details: docs/prompt-log/2026-10-31-position-label-default.md. Verify main-only production release and actual live SHA.
