@@ -75,6 +75,7 @@ import {
 } from "@/lib/gexVueReplay";
 
 import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { warmWorkspaceCodeInBackground } from "@/lib/workspaceCodeWarmup";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -10334,6 +10335,12 @@ export default function KwantifyWorkspace({
     if (isWorkspaceFeatureArchived(target)) return;
     void preloadWorkspaceModule(target).catch(() => null);
   }, []);
+  useEffect(() => {
+    if (!authChecked) return;
+    const targets = ["news", "journal", ...BOTTOM_WORKSPACE_SECTIONS.map(item => item.id)]
+      .filter(target => target !== activeWorkspaceSectionRef.current && !isWorkspaceFeatureArchived(target));
+    return warmWorkspaceCodeInBackground(targets, preloadWorkspaceModule);
+  }, [authChecked]);
   const [preferenceUserId, setPreferenceUserId] = useState("");
   // GEX DATA's account-scoped host may start after identity verification;
   // unrelated cloud-preference I/O must not leave its frame blank indefinitely.

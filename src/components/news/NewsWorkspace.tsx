@@ -28,9 +28,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
-import KwantLoader from "@/components/KwantLoader";
-import MacroWorkspace, { type MacroNewsView } from "@/components/news/MacroWorkspace";
-import FinancialInfoWorkspace from "@/components/news/FinancialInfoWorkspace";
+import type { MacroNewsView } from "@/components/news/MacroWorkspace";
+import { economicCalendarDateKey as dateKey } from "@/lib/economicCalendarFormatting";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
@@ -49,6 +48,8 @@ import type { FriendSummary, FriendsPayload } from "@/lib/friends";
 
 const OptionsExpirationCalendar = dynamic(() => import("./OptionsExpirationCalendar"), { ssr: false, loading: () => null });
 const FuturesExpirationCalendar = dynamic(() => import("./FuturesExpirationCalendar"), { ssr: false, loading: () => null });
+const MacroWorkspace = dynamic(() => import("./MacroWorkspace"), { ssr: false, loading: () => null });
+const FinancialInfoWorkspace = dynamic(() => import("./FinancialInfoWorkspace"), { ssr: false, loading: () => null });
 
 const ALERTS_STORAGE_KEY = "kwantdesk:economic-calendar-alerts:v1";
 const CURRENCIES_STORAGE_KEY = "kwantdesk:economic-calendar-currencies:v1";
@@ -160,19 +161,6 @@ function sanitizeCalendarPayload(value: unknown): EconomicCalendarPayload | null
     partial: candidate.partial === true,
     note: typeof candidate.note === "string" ? candidate.note : "Economic calendar loaded.",
   };
-}
-
-function dateKey(date: Date | string, timeZone: string) {
-  const value = typeof date === "string" ? new Date(date) : date;
-  if (!Number.isFinite(value.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: normalizeTimeZone(timeZone),
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(value);
-  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${map.year}-${map.month}-${map.day}`;
 }
 
 function localDateFromKey(key: string) {
@@ -338,17 +326,6 @@ function CalendarPopover({
   );
 }
 
-function LoadingState() {
-  return (
-    <KwantLoader
-      page
-      icon={CalendarDays}
-      title="Loading the economic calendar"
-      detail="Scheduled releases, forecasts and impact"
-    />
-  );
-}
-
 function EventDetail({ event }: { event: EconomicCalendarEvent }) {
   return (
     <div className="border-t border-border bg-background/35 px-4 py-4 lg:px-5">
@@ -403,10 +380,13 @@ function EconomicCalendarWorkspace() {
   const [selectedCurrencies, setSelectedCurrencies] = useState<EconomicCurrency[]>(DEFAULT_CURRENCIES);
   const [selectedImpacts, setSelectedImpacts] = useState<EconomicImpact[]>(["High", "Medium", "Low"]);
   const [alerts, setAlerts] = useState<string[]>([]);
-  const [payload, setPayload] = useState<EconomicCalendarPayload | null>(null);
+  const [payload, setPayload] = useState<EconomicCalendarPayload | null>(() => {
+    try { return sanitizeCalendarPayload(JSON.parse(readLocalStorage(CALENDAR_CACHE_STORAGE_KEY) ?? "null")); }
+    catch { return null; }
+  });
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!payload);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clock, setClock] = useState(new Date());
@@ -419,7 +399,7 @@ function EconomicCalendarWorkspace() {
   const shareFriendsLoadedRef = useRef(false);
   const selectedDateTouchedRef = useRef(false);
   const alertTimersRef = useRef<number[]>([]);
-  const payloadRef = useRef<EconomicCalendarPayload | null>(null);
+  const payloadRef = useRef<EconomicCalendarPayload | null>(payload);
 
   useEffect(() => {
     try {
@@ -429,14 +409,6 @@ function EconomicCalendarWorkspace() {
       }
       const savedAlerts = JSON.parse(readLocalStorage(ALERTS_STORAGE_KEY) ?? "[]") as string[];
       if (Array.isArray(savedAlerts)) setAlerts(savedAlerts.filter((id) => typeof id === "string"));
-      const savedCalendar = sanitizeCalendarPayload(
-        JSON.parse(readLocalStorage(CALENDAR_CACHE_STORAGE_KEY) ?? "null"),
-      );
-      if (savedCalendar) {
-        payloadRef.current = savedCalendar;
-        setPayload(savedCalendar);
-        setLoading(false);
-      }
     } catch {}
   }, []);
 
@@ -457,7 +429,7 @@ function EconomicCalendarWorkspace() {
       const today = dateKey(new Date(), timeZone);
       const from = shiftDate(today, -CALENDAR_HISTORY_DAYS);
       const to = shiftDate(today, CALENDAR_FORWARD_DAYS);
-      const response = await fetch(`/api/economic-calendar?from=${from}&to=${to}`, { cache: "no-store" });
+      const response = await fetch(`/api/economic-calendar?from=${from}&to=${to}`, { cache: manual ? "reload" : "default" });
       const responsePayload = await response.json() as EconomicCalendarPayload & { error?: string };
       if (!response.ok) throw new Error(responsePayload.error || "Economic calendar could not be loaded.");
       const next = sanitizeCalendarPayload(responsePayload);
@@ -648,8 +620,6 @@ function EconomicCalendarWorkspace() {
     window.setTimeout(() => setShareEvent(null), 650);
   };
 
-  if (loading && !payload) return <LoadingState />;
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <header className="flex min-h-[58px] shrink-0 flex-wrap items-center gap-3 border-b border-border bg-panel px-3 py-2 lg:px-4">
@@ -668,7 +638,7 @@ function EconomicCalendarWorkspace() {
           menuLabel="Economic calendar timezone"
           compact
         />
-        <button type="button" onClick={() => void loadCalendar(true)} disabled={refreshing} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-foreground disabled:opacity-50" aria-label="Refresh calendar">
+        <button type="button" onClick={() => void loadCalendar(true)} disabled={refreshing || loading} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-foreground disabled:opacity-50" aria-label="Refresh calendar">
           <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
         </button>
       </header>
@@ -734,13 +704,13 @@ function EconomicCalendarWorkspace() {
           <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-border bg-panel p-4">
               <div className="text-[8px] font-semibold uppercase tracking-[0.15em] text-muted">Events in view</div>
-              <div className="mt-2 font-mono text-[22px] font-semibold">{filteredEvents.length}</div>
-              <div className="mt-1 text-[9px] text-muted">{allDayEvents.length} total before filters</div>
+              <div className="mt-2 font-mono text-[22px] font-semibold">{payload ? filteredEvents.length : "—"}</div>
+              <div className="mt-1 text-[9px] text-muted">{payload ? `${allDayEvents.length} total before filters` : ""}</div>
             </div>
             <div className="rounded-2xl border border-border bg-panel p-4">
               <div className="text-[8px] font-semibold uppercase tracking-[0.15em] text-muted">High impact</div>
-              <div className={`mt-2 font-mono text-[22px] font-semibold ${highImpactCount ? `text-[${IMPACT_HIGH}]` : "text-foreground"}`}>{highImpactCount}</div>
-              <div className="mt-1 text-[9px] text-muted">{highImpactCount ? "Protect the release windows" : "No major release in this view"}</div>
+              <div className={`mt-2 font-mono text-[22px] font-semibold ${highImpactCount ? `text-[${IMPACT_HIGH}]` : "text-foreground"}`}>{payload ? highImpactCount : "—"}</div>
+              <div className="mt-1 text-[9px] text-muted">{!payload ? "" : highImpactCount ? "Protect the release windows" : "No major release in this view"}</div>
             </div>
             <div className="rounded-2xl border border-border bg-panel p-4 sm:col-span-2">
               <div className="flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.15em] text-muted"><AlarmClock className="h-3 w-3 text-primary" /> Next catalyst</div>
@@ -751,7 +721,7 @@ function EconomicCalendarWorkspace() {
                   <span className={`rounded-lg border px-2 py-1 text-[9px] font-semibold ${impactClasses(nextEvent.impact)}`}>{nextEvent.impact}</span>
                   <span className="ml-auto font-mono text-[10px] text-primary">{timeUntil(nextEvent.date, clock)}</span>
                 </div>
-              ) : <div className="mt-2 text-[11px] text-muted">No later event matches the active filters.</div>}
+              ) : <div className="mt-2 text-[11px] text-muted">{payload ? "No later event matches the active filters." : "—"}</div>}
             </div>
           </div>
 
@@ -766,7 +736,11 @@ function EconomicCalendarWorkspace() {
             <div className="grid grid-cols-[88px_72px_72px_minmax(220px,1fr)_86px_78px] gap-3 border-b border-border bg-surface/35 px-4 py-2.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted max-lg:hidden">
               <span>Date</span><span>Time</span><span>Currency</span><span>Impact · Event</span><span className="text-center">Alert · Send</span><span className="text-right">Details</span>
             </div>
-            {filteredEvents.length ? (
+            {loading && !payload ? (
+              <div role="status" aria-label="Calendar events" aria-busy="true" className="space-y-3 px-4 py-5">
+                {[0, 1, 2, 3].map(row => <div key={row} className="h-10 rounded-lg bg-surface" />)}
+              </div>
+            ) : filteredEvents.length ? (
               filteredEvents.map((event, index) => {
                 const expanded = expandedEvent === event.id;
                 const alertActive = alerts.includes(event.id);

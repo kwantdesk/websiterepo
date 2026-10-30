@@ -36,7 +36,9 @@ export default function TimeZoneSelect({
   const [query, setQuery] = useState("");
   const [position, setPosition] = useState({ left: 8, top: 8, width: 350 });
   const referenceDate = useMemo(() => new Date(referenceTimestampMs ?? Date.now()), [referenceTimestampMs]);
-  const options = useMemo(() => timeZoneOptions(referenceDate), [referenceDate]);
+  // Most mounted selectors are closed. Building hundreds of timezone rows on
+  // every page entry blocks navigation even though none of them can be seen.
+  const options = useMemo(() => open ? timeZoneOptions(referenceDate) : [], [open, referenceDate]);
   const filteredOptions = useMemo(() => {
     const search = query.trim().toLowerCase();
     if (!search) return options;

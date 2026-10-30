@@ -56,15 +56,23 @@ function supportedTimeZones() {
   }
 }
 
+const validatedTimeZones = new Map<string, string>();
+const offsetFormatters = new Map<string, Intl.DateTimeFormat>();
+
 export function normalizeTimeZone(value?: string | null) {
   const candidate = LEGACY_TIME_ZONES[value ?? ""] ?? value ?? "";
-  if (!candidate) return "UTC";
+  if (!candidate || candidate === "UTC") return "UTC";
+  const cached = validatedTimeZones.get(candidate);
+  if (cached) return cached;
+  let normalized = candidate;
   try {
     new Intl.DateTimeFormat("en-AU", { timeZone: candidate }).format();
-    return candidate;
   } catch {
-    return "UTC";
+    normalized = "UTC";
   }
+  if (validatedTimeZones.size >= 1_024) validatedTimeZones.delete(validatedTimeZones.keys().next().value!);
+  validatedTimeZones.set(candidate, normalized);
+  return normalized;
 }
 
 export function browserTimeZone() {
@@ -75,16 +83,22 @@ export function browserTimeZone() {
 export function timeZoneOffsetMinutes(timeZone: string, date = new Date()) {
   const normalized = normalizeTimeZone(timeZone);
   if (normalized === "UTC") return 0;
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: normalized,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
+  let formatter = offsetFormatters.get(normalized);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: normalized,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    if (offsetFormatters.size >= 512) offsetFormatters.delete(offsetFormatters.keys().next().value!);
+    offsetFormatters.set(normalized, formatter);
+  }
+  const parts = formatter.formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   const representedAsUtc = Date.UTC(
     Number(values.year),
