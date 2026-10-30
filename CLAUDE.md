@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-30 — TPO visible-left-edge replacement
+
+TPO now receives the drawing-toolbar plot inset. Its one-wall-profile election per study, anchors, clip and hit testing use the visible edge with inclusive contact; newer drawable profile replaces the old profile and all its layers/hit bounds. Native paint drives handoff; pan back restores prior wall owner without deleting history. Right-docked old profiles fully beyond the left edge are culled. Independent studies retained.43 TPO tests (7 new actual-renderer cases), scoped primitive lint and full production build pass. No calculation/data/feed/recording/trade/VPS changes. Details: docs/prompt-log/2026-10-30-tpo-left-edge-handoff.md. Owner-browser screenshot acceptance not observed.
+
 ## 2026-10-30 — Lower indicator right-axis drag gestures
 
 All expanded numeric lower panes now have a right-axis drag control (previously CVD-only wheel/no-op pointer-down). Drag scales the press-time domain using the installed native LWC price-axis coefficient; Shift-drag moves vertically; wheel/reset retained. Table/collapsed panes excluded. Per-pane domain remains stable through chart pan. Pointer capture and cleanup on up/cancel/lost capture/new gesture/unmount prevent stranded drag listeners.18 actual-renderer/native-coefficient/axis/docking tests, scoped lint and full production build pass. One broader pre-existing indicator-engine CVD naming-regex failure is unchanged; do not claim the entire legacy suite passes. No data/feed/recording/trade/VPS changes. Details: docs/prompt-log/2026-10-30-indicator-axis-drag.md. Owner-browser drag acceptance not observed.

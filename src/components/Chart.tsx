@@ -15378,6 +15378,7 @@ function Chart({
     candleSeries.attachPrimitive(deepProfileValuesPrimitive);
     deepProfileValuesPrimitiveRef.current = deepProfileValuesPrimitive;
     const tpoProfilePrimitive = new TpoProfilePrimitive();
+    tpoProfilePrimitive.setPaneInsets({ left: toolbarPlotLeftInset });
     candleSeries.attachPrimitive(tpoProfilePrimitive);
     tpoProfilePrimitiveRef.current = tpoProfilePrimitive;
     const miniDomPrimitive = new MiniDomPrimitive();
@@ -17497,6 +17498,10 @@ function Chart({
     const hasProfiles = Boolean(renderedVolumeProfiles.length || deepProfileSwingIndicator || deepProfileValuesIndicator);
     profileForegroundLayerRef.current?.setEnabled(hasDrawingLayer && hasProfiles);
   }, [chartReadyRevision, chartingDrawings.length, drawings.length, drawTool, renderedVolumeProfiles.length, deepProfileSwingIndicator, deepProfileValuesIndicator]);
+
+  useEffect(() => {
+    tpoProfilePrimitiveRef.current?.setPaneInsets({ left: toolbarPlotLeftInset });
+  }, [chartReadyRevision, toolbarPlotLeftInset]);
 
   useEffect(() => {
     const primitive = tpoProfilePrimitiveRef.current;

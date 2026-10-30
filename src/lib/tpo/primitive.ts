@@ -40,6 +40,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private models: TpoPrimitiveModel[] = [];
   private hits: HitBounds[] = [];
+  private leftInset = 0;
   private readonly paneView = {
     // TPO is the primary auction visual. Keep it above the candle series for
     // every profile and every saved setting so candles can never obscure its
@@ -79,7 +80,15 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     this.attachedParams?.requestUpdate();
   }
 
+  setPaneInsets(insets: { left: number }) {
+    const left = Number.isFinite(insets.left) ? Math.max(0, insets.left) : 0;
+    if (left === this.leftInset) return;
+    this.leftInset = left;
+    this.attachedParams?.requestUpdate();
+  }
+
   profileHitTest(x: number, y: number): TpoHit | null {
+    if (x < this.leftInset) return null;
     const hit = [...this.hits].reverse().find((candidate) =>
       x >= candidate.left && x <= candidate.right && y >= candidate.top && y <= candidate.bottom);
     return hit ? { instanceId: hit.instanceId, profileId: hit.profileId, x, y } : null;
@@ -107,7 +116,8 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       context.save();
       context.beginPath();
-      context.rect(0, 0, mediaSize.width, mediaSize.height);
+      const leftEdge = Math.min(this.leftInset, mediaSize.width);
+      context.rect(leftEdge, 0, Math.max(0, mediaSize.width - leftEdge), mediaSize.height);
       context.clip();
       this.hits = [];
 
@@ -129,10 +139,10 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
       this.models.forEach((model, index) => {
         if (!model.profile.rows.length || model.settings.showOnRight) return;
         const start = coordinates[index].start;
-        if (start == null) return;
+        if (start == null || coordinates[index].end == null) return;
         const latest = latestProfileByInstance.get(model.instanceId) === index;
         const offset = (latest ? model.settings.currentOffset : model.settings.previousOffset) * pixelsPerBar;
-        if (start + offset >= 2) return;
+        if (start + offset > leftEdge + 2) return;
         const currentIndex = leftWallProfileByInstance.get(model.instanceId);
         if (currentIndex == null || model.profile.startTimeMs > this.models[currentIndex].profile.startTimeMs) {
           leftWallProfileByInstance.set(model.instanceId, index);
@@ -188,15 +198,16 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         // what the setting is about.
         const facesLeft = settings.showOnRight;
         const dockRight = facesLeft && latest;
-        const behindLeftWall = !facesLeft && periodStartX + offset < 2;
+        const behindLeftWall = !facesLeft && periodStartX + offset <= leftEdge + 2;
         if (behindLeftWall && leftWallProfileByInstance.get(model.instanceId) !== modelIndex) return;
+        if (facesLeft && !dockRight && periodEndX - offset <= leftEdge + 2) return;
         const anchorX = dockRight
           ? mediaSize.width - 4 - offset
           : facesLeft
             // An older right-facing profile hangs off the end of its own
             // period and opens back across it.
-            ? clamp(periodEndX - offset, 2, mediaSize.width - 2)
-            : behindLeftWall ? 4 : clamp(periodStartX + offset, 2, mediaSize.width - 2);
+            ? clamp(periodEndX - offset, leftEdge + 2, mediaSize.width - 2)
+            : behindLeftWall ? leftEdge + 4 : clamp(periodStartX + offset, leftEdge + 2, mediaSize.width - 2);
         // A profile held at the left wall must open into the viewport. Keeping
         // a saved mirrored direction here would draw part of the newest TPO
         // outside the clipped canvas and make the profile look incomplete.
