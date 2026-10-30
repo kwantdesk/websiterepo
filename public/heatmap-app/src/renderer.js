@@ -620,6 +620,19 @@ export class DepthRenderer {
 
   #drawInsideMarket(ctx, history, accents) {
     const layout = this.layout;
+    // Thick strokes can cover the opposite quote when a real tight spread is
+    // compressed to only a few screen pixels. Fit the ink to that spread;
+    // never move the recorded bid/ask coordinates to manufacture a wider gap.
+    let minimumSpreadPixels = Infinity;
+    for (let index = layout.start; index <= layout.end; index += 1) {
+      const { bestBid, bestAsk } = history[index];
+      if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk) || bestAsk <= bestBid) continue;
+      const gap = Math.abs(layout.yForTick(bestAsk) - layout.yForTick(bestBid));
+      if (gap > 0) minimumSpreadPixels = Math.min(minimumSpreadPixels, gap);
+    }
+    const trailWidth = Number.isFinite(minimumSpreadPixels)
+      ? Math.max(0.5, Math.min(3, minimumSpreadPixels * 0.65))
+      : 3;
     const drawTrail = (field, color, extensionColor) => {
       ctx.save();
       const path = new Path2D();
@@ -641,13 +654,13 @@ export class DepthRenderer {
       ctx.lineCap = 'round';
       ctx.setLineDash([]);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = trailWidth;
       ctx.stroke(path);
       ctx.beginPath();
       ctx.moveTo(layout.dataWidth, previousY);
       ctx.lineTo(layout.plotWidth, previousY);
       ctx.strokeStyle = extensionColor;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = trailWidth;
       ctx.lineCap = 'butt';
       ctx.setLineDash([8, 8]);
       ctx.stroke();

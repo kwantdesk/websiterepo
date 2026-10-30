@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-30 — Bid/ask historical stroke overlap
+
+Fixed compressed-scale ink overlap: BBO trails/extensions now fit thickness to the smallest positive visible quote gap (0.5–3px), keeping all prices/time coordinates exact; no fake minimum spread. Prior inside-market drawing unchanged by CVD-only release. Read-only VPS4 samples/root: valid BBO NQ3–4ticks, ES1tick; not a certification of all historical data/current owner viewport.15 actual-trail/zoom/CVD/bubble checks, JS syntax, host lint and full build pass. Revision20261030-bbo-trace-strokes; verify public asset hashes and production SHA. CVD line-only stays intact. No feed/reset/recording/trade/VPS changes. Details and acceptance limits: docs/prompt-log/2026-10-30-bid-ask-trace-strokes.md.
+
 ## 2026-10-30 — Liquidity-map CVD line only
 
 Removed CVD Bars choice and renderer branch; saved bars/candles normalize to line. Split lines, exact history, live easing and scale modes retained. Bumped iframe and changed public-module revisions to20261030-cvd-line-only.9 focused actual-CVD/presentation/bubble checks, JS syntax, host lint and full build pass. Verify four public asset hashes with actual production SHA. No heatmap/DOM/bubble/feed/recording/trade/VPS changes. Details: docs/prompt-log/2026-10-30-liquidity-cvd-line-only.md.
