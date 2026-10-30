@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-31 — Long/short drawing labels default on
+
+Long Position and Short Position createDrawing defaults now showLabels:true; settings/renderer already honor it. Explicit saved false choices remain. Direct creation/normalization checks plus26 drawing/persistence tests, scoped lint and full build pass. No existing drawing/data/feed/VPS/trade mutations. Details: docs/prompt-log/2026-10-31-position-label-default.md. Verify main-only production release and actual live SHA.
+
 ## 2026-10-31 — Replay drawing persistence and normal clear
 
 Replay already uses the normal pane drawing document; harden durability instead of adding date-scoped stores. Commit edits/clears to the existing account-tracked key immediately, with canonical refs, explicit empty pane retention, stale passive-save guards and duplicate-write suppression. Ordinary edits avoid full-document merge when storage matches; external changes and stale rendered callbacks use existing ID-aware merge, preserving newer tools and preventing cleared-tool resurrection. Same pane/absolute timestamps survive replay exit/day changes/reload.50 focused source-callback/replay/persistence/clipboard/account checks, scoped helper lint and full build pass. Old immediate-navigation callback performed zero writes before passive effects. Clear remains all saved dates for the active pane, other panes preserved. No viewport/data/trade/account/feed/recording changes. Details/limits: docs/prompt-log/2026-10-31-replay-drawing-persistence.md. Verify main-only deployment and live SHA.

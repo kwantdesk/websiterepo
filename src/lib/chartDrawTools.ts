@@ -513,12 +513,10 @@ const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
     return { ...DEFAULT_DRAW_STYLE, useThemeColor: false, fontSize: 36, showLabels: false };
   }
   if (tool === "highlighter") return { ...DEFAULT_DRAW_STYLE, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
-  // The calculators land as clean target/risk boxes. Their readout is three
-  // stacked pills across the middle of the box; on by default it covers the
-  // price action the position is being sized against. Still available from the
-  // style panel.
+  // New position calculators show their readout immediately. The style panel
+  // can still hide it, and explicitly saved choices remain authoritative.
   if (tool === "longPosition" || tool === "shortPosition") {
-    return { ...DEFAULT_DRAW_STYLE, showLabels: false };
+    return { ...DEFAULT_DRAW_STYLE, showLabels: true };
   }
   // Entry and exit arrows mean the same thing the real fill markers do, so
   // they carry the fill colours rather than the theme's line colour: a green
