@@ -7,10 +7,10 @@ import { indexHistoryFrames, planIncrementalTradeClusterRefresh, resolveTradeClu
 const read = name => readFileSync(new URL('../' + name, import.meta.url), 'utf8');
 const renderer = read('public/heatmap-app/src/renderer.js');
 
-test('CVD choices migrate old candles to line and remove only the named header controls', () => {
-  assert.deepEqual(['candles', undefined, 'unknown', 'line', 'bars'].map(normalizeCvdStyle), ['line', 'line', 'line', 'line', 'bars']);
+test('CVD is line-only and migrates old candles and bars without restoring removed controls', () => {
+  assert.deepEqual(['candles', undefined, 'unknown', 'line', 'bars'].map(normalizeCvdStyle), ['line', 'line', 'line', 'line', 'line']);
   const html = read('public/heatmap-app/index.html'), main = read('public/heatmap-app/src/main.js');
-  assert.deepEqual([...html.matchAll(/data-cvd-style="([^"]+)"/g)].map(m => m[1]), ['line', 'bars']);
+  assert.deepEqual([...html.matchAll(/data-cvd-style="([^"]+)"/g)].map(m => m[1]), ['line']);
   for (const id of ['cvdGoLive', 'cvdSettingsButton', 'cvdLegend']) {
     assert.ok(!html.includes(`id="${id}"`)); assert.ok(!main.includes(`$('${id}')`));
   }
@@ -49,7 +49,7 @@ test('live CVD presentation eases, retargets without overshoot, settles and neve
   assert.match(read('public/heatmap-app/src/main.js'), /this\.renderer\.cvdInMotion && canvasPaintDue && this\.lastCanvasPaintAt !== timestamp/);
 });
 
-test('actual CVD canvas draw aligns the tip in line/bars and finishes animation without repainting the map', () => {
+test('actual CVD canvas stays a line with legacy bar settings and preserves the live tip animation', () => {
   const boundsSource = renderer.slice(renderer.indexOf('function timestampLowerBound('), renderer.indexOf('function niceTickStep('));
   const bounds = new Function(boundsSource + '; return {timestampLowerBound,timestampUpperBound};')();
   const source = renderer.slice(renderer.indexOf('  #drawCvd('), renderer.indexOf('  hitTest(')).trim().replace('#drawCvd', 'function').replaceAll('this.#font', 'this.font');
@@ -74,7 +74,8 @@ test('actual CVD canvas draw aligns the tip in line/bars and finishes animation 
   assert.equal(state.cvdInMotion, false); assert.equal(state.cvdPresentation.value, 100);
   assert.equal(JSON.stringify(points), exactSource);
   settings.cvdDisplayStyle = 'bars'; now += 16; paint();
-  const bar = fills.at(-1); assert.equal(bar[0] + bar[2] / 2, 800);
+  assert.equal(fills.length, 1, 'legacy bars cannot draw anything beyond the canvas background');
+  assert.equal(paths.at(-1).at(-1)[0], 800, 'legacy bars render the same aligned line');
   settings.cvdDisplayStyle = 'line'; analysis.liveCvd = false;
   points.splice(0,points.length,...history.map(({timestamp},i)=>({timestamp,value:[1000,1010,990][i],open:0,high:100000,low:0,buy:0,sell:0})));
   const sourceSeed=JSON.stringify(points),peakPath=paint(),ys=peakPath.map(p=>p[1]);
@@ -82,10 +83,14 @@ test('actual CVD canvas draw aligns the tip in line/bars and finishes animation 
   assert.equal(JSON.stringify(points),sourceSeed,'scaling cannot rewrite the actual CVD history');
   settings.cvdScale='include-zero';const zeroPath=paint().map(p=>p[1]);
   assert.ok(Math.max(...zeroPath)-Math.min(...zeroPath)<5,'explicit include-zero scaling remains available');
-  settings.cvdScale='compact';settings.cvdDisplayStyle='bars';settings.cvdSplit=true;
+  settings.cvdScale='compact';settings.cvdDisplayStyle='bars';settings.cvdSplit=false;
   points.forEach(p=>{p.buy=100000;p.sell=-100000;});paint();
-  const barYs=fills.slice(-3).map(f=>f[1]);
-  assert.ok(Math.max(...barYs)-Math.min(...barYs)>60,'bars must not scale to hidden split lines');
+  const migratedYs=paths.at(-1).map(point=>point[1]);
+  assert.equal(fills.length,1);
+  assert.ok(Math.max(...migratedYs)-Math.min(...migratedYs)>60,'migrated line must not scale to hidden split lines');
+  const beforeSplit=JSON.stringify(points);settings.cvdSplit=true;paint();
+  assert.ok(paths.slice(-3).every(series=>series.length===points.length&&series.at(-1)[0]===800),'split buyers/sellers and total CVD remain aligned lines');
+  assert.equal(fills.length,1);assert.equal(JSON.stringify(points),beforeSplit);
 });
 
 test('actual bubble renderer keeps identities, volumes, colours and market anchors through zoom and new prints', () => {

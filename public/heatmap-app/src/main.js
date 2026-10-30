@@ -1,10 +1,10 @@
-import { normalizeCvdStyle } from './liquidity-presentation.js?v=20261029-cvd-bubble-presentation';
+import { normalizeCvdStyle } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261029-depth-clear-scale';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261030-smart-clustering';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261030-cvd-seed-scale';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261030-cvd-line-only';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -1013,8 +1013,8 @@ class DepthForgeApp {
         this.settings[key] = value;
       }
       // Move legacy installs from the old visually compressed candle default
-      // to the live line once. Explicit bar choices remain saved; unsupported
-      // candle choices are normalized to line when the controls synchronize.
+      // to the live line once. All saved display styles, including bars,
+      // are normalized to line when the controls synchronize.
       if (Number(saved.cvdPresentationVersion || 0) < 2) {
         this.settings.cvdDisplayStyle = 'line';
         this.settings.cvdPresentationVersion = 2;
@@ -1135,8 +1135,7 @@ class DepthForgeApp {
   #syncCvdDisplayStyle() {
     const style = normalizeCvdStyle(this.settings.cvdDisplayStyle);
     this.settings.cvdDisplayStyle = style;
-    const labels = { line: 'CVD line', bars: 'CVD bars' };
-    $('cvdStyleLabel').textContent = labels[style];
+    $('cvdStyleLabel').textContent = 'CVD line';
     all('[data-cvd-style]').forEach(option => {
       const selected = option.dataset.cvdStyle === style;
       option.classList.toggle('active', selected);

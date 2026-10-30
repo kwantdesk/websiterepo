@@ -1,4 +1,4 @@
-export const normalizeCvdStyle = value => value === 'bars' ? 'bars' : 'line';
+export const normalizeCvdStyle = () => 'line';
 
 /** CVD and price must share the data edge, including the map's live gap. */
 export function cvdTimeCoordinate(history, layout, timestamp) {

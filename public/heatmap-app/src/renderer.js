@@ -1,5 +1,5 @@
 import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=20261030-smart-clustering';
-import { normalizeCvdStyle, cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261029-cvd-bubble-presentation';
+import { cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
 import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261017-aleph-font';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
@@ -1374,9 +1374,7 @@ export class DepthRenderer {
     }
     const count = points.length;
     if (count <= 1 || width <= 0 || height <= 0) { this.cvdInMotion = false; this.cvdPresentation = null; return; }
-    const dataWidth = width;
     const plotWidth = width;
-    const displayStyle = normalizeCvdStyle(settings.cvdDisplayStyle);
     const adjustedPoints = points.map(point => ({
         value: Number(point.value ?? point.close ?? 0) - Number(baseline.value || 0),
         open: Number(point.open ?? point.value ?? 0) - Number(baseline.value || 0),
@@ -1390,12 +1388,12 @@ export class DepthRenderer {
     let maximum = Number.NEGATIVE_INFINITY;
     for (let index = 0; index < count; index += 1) {
       const point = adjustedPoints[index];
-      // Line/bars draw cumulative values, not the seed bucket's hidden OHLC
+      // The line draws cumulative values, not the seed bucket's hidden OHLC
       // envelope. Including that envelope flattened real visible peaks while
       // a newly loaded minute bucket still contained a distant opening value.
       minimum = Math.min(minimum, point.value);
       maximum = Math.max(maximum, point.value);
-      if (displayStyle === 'line' && settings.cvdSplit) {
+      if (settings.cvdSplit) {
         minimum = Math.min(minimum, point.buy, point.sell);
         maximum = Math.max(maximum, point.buy, point.sell);
       }
@@ -1463,23 +1461,11 @@ export class DepthRenderer {
       ctx.stroke();
       ctx.shadowBlur = 0;
     };
-    if (displayStyle === 'bars') {
-      const zero = Math.max(7, Math.min(height - 7, yForValue(0)));
-      const barWidth = Math.max(1, Math.min(12, dataWidth / Math.max(1, count) * .72));
-      for (let index = 0; index < count; index += 1) {
-        const point = adjustedPoints[index];
-        const x = xForTimestamp(points[index]?.timestamp);
-        const y = yForValue(point.value);
-        ctx.fillStyle = colorCss(point.value >= 0 ? accents.bid : accents.ask, .9);
-        ctx.fillRect(x - barWidth / 2, Math.min(y, zero), barWidth, Math.max(1, Math.abs(zero - y)));
-      }
-    } else {
-      if (settings.cvdSplit) {
-        drawSeries('buy', colorCss(accents.bid, .82), 1);
-        drawSeries('sell', colorCss(accents.ask, .82), 1);
-      }
-      drawSeries('value', lastValue >= firstValue ? colorCss(accents.bid) : colorCss(accents.ask), 1.5, 4);
+    if (settings.cvdSplit) {
+      drawSeries('buy', colorCss(accents.bid, .82), 1);
+      drawSeries('sell', colorCss(accents.ask, .82), 1);
     }
+    drawSeries('value', lastValue >= firstValue ? colorCss(accents.bid) : colorCss(accents.ask), 1.5, 4);
     ctx.fillStyle = this.chrome.muted;
     ctx.font = this.#font(7, 500, true);
     ctx.textAlign = 'right';
