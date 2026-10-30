@@ -1390,9 +1390,12 @@ export class DepthRenderer {
     let maximum = Number.NEGATIVE_INFINITY;
     for (let index = 0; index < count; index += 1) {
       const point = adjustedPoints[index];
-      minimum = Math.min(minimum, point.value, point.high, point.low);
-      maximum = Math.max(maximum, point.value, point.high, point.low);
-      if (settings.cvdSplit) {
+      // Line/bars draw cumulative values, not the seed bucket's hidden OHLC
+      // envelope. Including that envelope flattened real visible peaks while
+      // a newly loaded minute bucket still contained a distant opening value.
+      minimum = Math.min(minimum, point.value);
+      maximum = Math.max(maximum, point.value);
+      if (displayStyle === 'line' && settings.cvdSplit) {
         minimum = Math.min(minimum, point.buy, point.sell);
         maximum = Math.max(maximum, point.buy, point.sell);
       }

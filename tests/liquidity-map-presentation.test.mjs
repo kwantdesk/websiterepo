@@ -75,6 +75,17 @@ test('actual CVD canvas draw aligns the tip in line/bars and finishes animation 
   assert.equal(JSON.stringify(points), exactSource);
   settings.cvdDisplayStyle = 'bars'; now += 16; paint();
   const bar = fills.at(-1); assert.equal(bar[0] + bar[2] / 2, 800);
+  settings.cvdDisplayStyle = 'line'; analysis.liveCvd = false;
+  points.splice(0,points.length,...history.map(({timestamp},i)=>({timestamp,value:[1000,1010,990][i],open:0,high:100000,low:0,buy:0,sell:0})));
+  const sourceSeed=JSON.stringify(points),peakPath=paint(),ys=peakPath.map(p=>p[1]);
+  assert.ok(Math.max(...ys)-Math.min(...ys)>60,'compact line scaling must reveal peaks rather than scale to invisible bucket OHLC');
+  assert.equal(JSON.stringify(points),sourceSeed,'scaling cannot rewrite the actual CVD history');
+  settings.cvdScale='include-zero';const zeroPath=paint().map(p=>p[1]);
+  assert.ok(Math.max(...zeroPath)-Math.min(...zeroPath)<5,'explicit include-zero scaling remains available');
+  settings.cvdScale='compact';settings.cvdDisplayStyle='bars';settings.cvdSplit=true;
+  points.forEach(p=>{p.buy=100000;p.sell=-100000;});paint();
+  const barYs=fills.slice(-3).map(f=>f[1]);
+  assert.ok(Math.max(...barYs)-Math.min(...barYs)>60,'bars must not scale to hidden split lines');
 });
 
 test('actual bubble renderer keeps identities, volumes, colours and market anchors through zoom and new prints', () => {

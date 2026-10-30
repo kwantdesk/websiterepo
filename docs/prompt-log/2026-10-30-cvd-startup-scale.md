@@ -1,0 +1,7 @@
+# Liquidity Map CVD startup scale — 2026-10-30
+
+The owner reported that CVD initially appeared flattened/odd, then looked normal once history had built. Source inspection found a reproducible rendering fault: the line/bar scale included the compact seed bucket's OHLC high/low, although these styles draw cumulative values only. A distant bucket opening/extreme could dominate the scale and hide the visible line's peaks. This is a verified code fault, not proof of every detail in the owner's screenshot.
+
+Scale bounds now use the plotted cumulative values. Buy/sell split values contribute only when the split lines are actually drawn; bars ignore those hidden lines. Explicit include-zero and symmetric choices remain respected. Data ingestion, CVD totals, timestamps and historical records are unchanged; no intermediate peaks are invented from coarse OHLC buckets.
+
+Verification: 24 focused continuity, CVD canvas, bubble-anchor and smart-clustering checks pass; scoped ESLint and the production build pass. The actual extracted CVD canvas method renders source values 1000/1010/990 with hidden OHLC extremes 0/100000 across more than 60 pixels of a 120-pixel pane, rather than a flat trace. Source points remain unchanged, include-zero remains available, and bar scaling excludes hidden split totals. Versioned renderer/main assets are published through the normal main-only deployment. No gateway restart or provider requests were needed.
