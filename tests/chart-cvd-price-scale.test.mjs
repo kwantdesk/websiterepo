@@ -22,7 +22,7 @@ test("CVD value rail matches the native chart price-scale width", () => {
 test("CVD owns an independent right-axis wheel scale", () => {
   assert.match(source, /verticalScaleByPane/);
   assert.match(source, /cvd-price-scale-/);
-  assert.match(source, /aria-label="Scale CVD vertically"/);
+  assert.match(source, /aria-label=\{isCvdIndicator\(group.indicatorId\) \? "Scale CVD vertically"/);
   assert.match(source, /event\.preventDefault\(\);[\s\S]*?event\.stopPropagation\(\);[\s\S]*?event\.stopImmediatePropagation\(\);[\s\S]*?scalePaneFromWheel/);
 });
 

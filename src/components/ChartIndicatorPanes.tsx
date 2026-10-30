@@ -153,6 +153,8 @@ function ChartIndicatorPaneSurface({
   const [draggingPane, setDraggingPane] = useState<string | null>(null);
   const [hoverTooltip, setHoverTooltip] = useState<{ groupKey: string; x: number; y: number; rows: Array<{ label: string; value: string }> } | null>(null);
   const paneRootRef = useRef<HTMLDivElement>(null);
+  const axisDragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => axisDragCleanupRef.current?.(), []);
 
   function scalePaneFromWheel(groupKey: string, deltaY: number, deltaMode: number) {
     const normalizedDelta = deltaMode === 1
@@ -941,21 +943,80 @@ function ChartIndicatorPaneSurface({
         </div>
       ) : null}
       {paneLayouts.map(({ group, top, height: paneHeight, collapsed }) => {
-        if (collapsed || !isCvdIndicator(group.indicatorId)) return null;
+        if (collapsed || group.stats || !group.series.length) return null;
         const verticalScale = verticalScaleByPane[group.key] ?? 1;
         return (
           <div
-            key={`cvd-price-scale-${group.key}`}
+            key={isCvdIndicator(group.indicatorId) ? `cvd-price-scale-${group.key}` : `indicator-price-scale-${group.key}`}
             role="slider"
-            aria-label="Scale CVD vertically"
+            aria-label={isCvdIndicator(group.indicatorId) ? "Scale CVD vertically" : `Scale ${group.title} vertically`}
             aria-valuemin={20}
             aria-valuemax={800}
             aria-valuenow={Math.round(verticalScale * 100)}
             data-indicator-pane-wheel-zone={group.key}
-            title="Scroll to expand or squeeze CVD · Double-click to reset"
+            data-indicator-axis={group.key}
+            title={`Drag to stretch ${group.title} · Shift-drag to move vertically · Scroll to scale · Double-click to reset`}
             className="pointer-events-auto absolute right-0 z-10 cursor-ns-resize touch-none"
             style={{ top: top + 25, width: valueScaleWidth, height: Math.max(20, paneHeight - 34) }}
-            onPointerDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const startDomain = renderedVerticalDomainByPaneRef.current[group.key];
+              if (!startDomain) return;
+              axisDragCleanupRef.current?.();
+              const target = event.currentTarget;
+              const paneWindow = target.ownerDocument.defaultView ?? window;
+              const pointerId = event.pointerId;
+              const bounds = target.getBoundingClientRect();
+              const axisHeight = Math.max(20, bounds.height);
+              const startY = event.clientY - bounds.top;
+              const startScale = verticalScaleByPane[group.key] ?? 1;
+              const startPan = verticalPanByPane[group.key] ?? 0;
+              const pan = event.shiftKey;
+              const center = (startDomain.min + startDomain.max) / 2;
+              const span = Math.max(1e-9, startDomain.max - startDomain.min);
+              let finished = false;
+              const move = (moveEvent: PointerEvent) => {
+                if (moveEvent.pointerId !== pointerId || finished) return;
+                moveEvent.preventDefault();
+                const currentY = moveEvent.clientY - bounds.top;
+                if (pan) {
+                  const delta = (currentY - startY) / axisHeight;
+                  setLockedVerticalDomainByPane(current => ({ ...current, [group.key]: {
+                    min: startDomain.min + delta * span, max: startDomain.max + delta * span,
+                  } }));
+                  setVerticalPanByPane(current => ({ ...current, [group.key]: Math.max(-4, Math.min(4, startPan + delta)) }));
+                } else {
+                  // Match the native Lightweight Charts price-axis gesture:
+                  // scale the press-time range around its center, not a range
+                  // compounded from each successive pointer event.
+                  const padding = (axisHeight - 1) * 0.2;
+                  const multiplier = Math.max(0.1, (axisHeight - startY + padding) / (Math.max(0, axisHeight - currentY) + padding));
+                  const halfSpan = span * multiplier / 2;
+                  setLockedVerticalDomainByPane(current => ({ ...current, [group.key]: { min: center - halfSpan, max: center + halfSpan } }));
+                  setVerticalScaleByPane(current => ({ ...current, [group.key]: Math.max(0.2, Math.min(8, startScale * multiplier)) }));
+                }
+              };
+              const finish = (upEvent?: PointerEvent) => {
+                if (finished || (upEvent && upEvent.pointerId !== pointerId)) return;
+                finished = true;
+                paneWindow.removeEventListener("pointermove", move);
+                paneWindow.removeEventListener("pointerup", finish);
+                paneWindow.removeEventListener("pointercancel", finish);
+                target.removeEventListener("lostpointercapture", finish);
+                if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+                axisDragCleanupRef.current = null;
+                setDraggingPane(current => current === group.key ? null : current);
+              };
+              axisDragCleanupRef.current = finish;
+              target.setPointerCapture(pointerId);
+              setDraggingPane(group.key);
+              target.addEventListener("lostpointercapture", finish);
+              paneWindow.addEventListener("pointermove", move, { passive: false });
+              paneWindow.addEventListener("pointerup", finish);
+              paneWindow.addEventListener("pointercancel", finish);
+            }}
             onWheel={(event) => {
               event.preventDefault();
               event.stopPropagation();

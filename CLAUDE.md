@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-30 — Lower indicator right-axis drag gestures
+
+All expanded numeric lower panes now have a right-axis drag control (previously CVD-only wheel/no-op pointer-down). Drag scales the press-time domain using the installed native LWC price-axis coefficient; Shift-drag moves vertically; wheel/reset retained. Table/collapsed panes excluded. Per-pane domain remains stable through chart pan. Pointer capture and cleanup on up/cancel/lost capture/new gesture/unmount prevent stranded drag listeners.18 actual-renderer/native-coefficient/axis/docking tests, scoped lint and full production build pass. One broader pre-existing indicator-engine CVD naming-regex failure is unchanged; do not claim the entire legacy suite passes. No data/feed/recording/trade/VPS changes. Details: docs/prompt-log/2026-10-30-indicator-axis-drag.md. Owner-browser drag acceptance not observed.
+
 ## 2026-10-30 — Opaque indicator panes above chart content
 
 Indicator dock root now z40 above price drawings24/trade labels31–32; raising child surfaces alone cannot escape the old root z9. Horizontal/side background rectangles are opaque. Drawing placement target now shares existing price-pane clip bounds, excluding lower/top indicators and price axis.21 pane/drawing regressions, scoped lint and full build pass. Actual-component headless Chrome fixture with compiled CSS reproduces old overlay/3% bleed/click interception; dark/light after fixtures have8 exact background pixel checks and4 correct pane hit targets; price drawing capture confined. Calculations, data, recordings, trades and gateway untouched. Details/evidence: docs/prompt-log/2026-10-30-indicator-pane-occlusion.md. Owner browser not inspected; do not claim its screenshot was observed.

@@ -81,3 +81,70 @@ test('chart recreation rebinds the pane viewport listener instead of retaining a
   const h=harness();h.tree();assert.equal(h.listeners.size,1);const next=new Set();
   h.props.subscribeViewport=listener=>{next.add(listener);return()=>next.delete(listener);};h.tree();assert.equal(h.listeners.size,0);assert.equal(next.size,1);h.dispose();assert.equal(next.size,0);
 });
+
+function axisIn(h,key){return h.descendants(h.tree(),n=>n.props?.['data-indicator-axis']===key)[0];}
+function nativeAxisMultiplier(height,startY,currentY){
+  const source=fs.readFileSync('node_modules/lightweight-charts/dist/lightweight-charts.development.mjs','utf8');
+  const start=source.indexOf('    _internal_scaleTo(x) {'),end=source.indexOf('    _internal_endScale()',start);
+  assert.ok(start>=0&&end>start);let multiplier;
+  const scaleTo=vm.runInNewContext('({'+source.slice(start,end)+'})._internal_scaleTo',{ensureNotNull:value=>value});
+  scaleTo.call({_internal_isPercentage:()=>false,_internal_isIndexedTo100:()=>false,_private__scaleStartPoint:height-startY,_private__height:height,_internal_setMode(){},_private__priceRangeSnapshot:{_internal_clone:()=>({_internal_scaleAroundCenter:value=>{multiplier=value;}})},_internal_setPriceRange(){}},currentY);
+  return multiplier;
+}
+function wickGeometry(h){return h.descendants(h.tree(),n=>n.type==='line'&&n.props.stroke==='#00ff00'&&n.props.y1!==n.props.y2).map(n=>({x:n.props.x1,top:n.props.y1,bottom:n.props.y2}));}
+function axisPointer(axis,{shift=false,pointerId=7,button=0}={}){
+  const listeners=new Map(),targetListeners=new Map(),capture=new Set();
+  const view={addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key)};
+  const height=axis.props.style.height,top=axis.props.style.top;
+  const target={ownerDocument:{defaultView:view},getBoundingClientRect:()=>({top,height}),setPointerCapture:id=>capture.add(id),hasPointerCapture:id=>capture.has(id),releasePointerCapture:id=>capture.delete(id),addEventListener:(key,fn)=>targetListeners.set(key,fn),removeEventListener:key=>targetListeners.delete(key)};
+  const event=(offset,id=pointerId)=>({pointerId:id,clientY:top+offset,preventDefault(){},stopPropagation(){}});
+  axis.props.onPointerDown({...event(height/2),button,shiftKey:shift,currentTarget:target});
+  return {height,listeners,capture,move:(offset,id)=>listeners.get('pointermove')?.(event(offset,id)),end:()=>listeners.get('pointerup')?.(event(height/2)),cancel:()=>listeners.get('pointercancel')?.(event(height/2)),lose:()=>targetListeners.get('lostpointercapture')?.(event(height/2))};
+}
+
+test('CVD right-axis drag stretches the rendered plot using a fixed press-time range, independently of the chart',()=>{
+  const h=harness(),original=JSON.stringify(h.groups),initial=wickGeometry(h),axis=axisIn(h,'cvd');
+  assert.ok(axis);const pointer=axisPointer(axis);
+  pointer.move(pointer.height*.2,99);assert.deepEqual(wickGeometry(h),initial,'unrelated pointers cannot affect this gesture');
+  pointer.move(pointer.height*.2);const stretched=wickGeometry(h);
+  assert.ok(Math.abs(stretched[0].bottom-stretched[0].top)>Math.abs(initial[0].bottom-initial[0].top));
+  const ratio=Math.abs((initial[0].bottom-initial[0].top)/(stretched[0].bottom-stretched[0].top));
+  assert.ok(Math.abs(ratio-nativeAxisMultiplier(pointer.height,pointer.height/2,pointer.height*.2))<1e-9,'matches the installed native price-axis scale gesture');
+  assert.deepEqual(stretched.map(p=>p.x),initial.map(p=>p.x));
+  pointer.move(pointer.height*.2);assert.deepEqual(wickGeometry(h),stretched,'same pointer position must not compound the scale');
+  pointer.end();assert.equal(pointer.listeners.size,0);assert.equal(pointer.capture.size,0);
+  h.move(150,40);h.window.paint();assert.deepEqual(wickGeometry(h).map(p=>[p.top,p.bottom]),stretched.map(p=>[p.top,p.bottom]),'horizontal chart movement preserves the chosen value range');
+  assert.equal(JSON.stringify(h.groups),original,'no source values were changed');assert.equal(h.props.viewportVersion,0);h.dispose();
+});
+
+test('Shift-axis drag moves the value range without stretching; double-click restores automatic scale',()=>{
+  const h=harness(),initial=wickGeometry(h),pointer=axisPointer(axisIn(h,'cvd'),{shift:true});
+  pointer.move(pointer.height*.7);const moved=wickGeometry(h);
+  assert.notEqual(moved[0].top,initial[0].top);
+  assert.ok(Math.abs((moved[0].bottom-moved[0].top)-(initial[0].bottom-initial[0].top))<1e-9);
+  pointer.end();axisIn(h,'cvd').props.onDoubleClick({preventDefault(){},stopPropagation(){}});
+  assert.deepEqual(wickGeometry(h),initial);h.dispose();
+});
+
+test('every numeric lower pane has its own drag axis; tables and collapsed panes do not',()=>{
+  const h=harness(),data=[{time:1,value:10},{time:2,value:20},{time:3,value:30}];
+  h.props.groups=[...h.groups,{key:'volume',title:'Volume',indicatorId:'volume',series:[{key:'vol',kind:'histogram',color:'#aabbcc',data}]},{key:'rsi',title:'RSI',indicatorId:'rsi',series:[{key:'rsi-line',kind:'line',color:'#ddeeff',data}]}];
+  h.props.height=480;h.props.paneHeights={cvd:120,stats:120,volume:120,rsi:120};
+  assert.equal(axisIn(h,'stats'),undefined);
+  for(const key of ['volume','rsi']){
+    const axis=axisIn(h,key);assert.ok(axis);assert.equal(axis.props['aria-valuenow'],100);
+    const pointer=axisPointer(axis);pointer.move(pointer.height*.25);pointer.end();
+    assert.notEqual(axisIn(h,key).props['aria-valuenow'],100);assert.equal(axisIn(h,'cvd').props['aria-valuenow'],100);
+  }
+  h.props.collapsedPanes={rsi:true};assert.equal(axisIn(h,'rsi'),undefined);h.dispose();
+});
+
+test('axis capture loss, cancellation and component disposal release all drag listeners',()=>{
+  for(const end of ['lose','cancel','dispose']){
+    const h=harness(),pointer=axisPointer(axisIn(h,'cvd'));assert.equal(pointer.listeners.size,3);
+    if(end==='dispose')h.dispose();else pointer[end]();
+    assert.equal(pointer.listeners.size,0,end);assert.equal(pointer.capture.size,0,end);
+    if(end!=='dispose')h.dispose();
+  }
+  const h=harness(),pointer=axisPointer(axisIn(h,'cvd'),{button:2});assert.equal(pointer.listeners.size,0);h.dispose();
+});
