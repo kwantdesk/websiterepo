@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { createMiddlewareAuthBudget, isTemporaryMiddlewareAuthError } from "@/lib/middlewareAuth";
 import {
   SITE_ACCESS_COOKIE,
   isSiteAccessConfigured,
@@ -152,7 +153,9 @@ export async function middleware(request: NextRequest) {
   }
 
   const activeAuthCookie = supabaseAuthCookieName(url);
+  const authBudget = createMiddlewareAuthBudget();
   const supabase = createServerClient(url, key, {
+    global: { fetch: authBudget.fetch },
     cookies: {
       // Never hand old Supabase projects or unrelated cookie chunks to the
       // auth parser. Besides being irrelevant, accumulated JWT chunks can
@@ -170,9 +173,35 @@ export async function middleware(request: NextRequest) {
       setAll() {},
     },
   });
-  const { data } = await supabase.auth.getUser();
+  // Navigation and the shared Options read surface need a verified identity,
+  // not a fresh account lookup on every click/poll. getClaims verifies the
+  // token's signature and expiry with the SDK's shared public-key cache. It
+  // retains the remote fallback for older symmetric tokens. All other API
+  // operations retain their remote getUser check and handler authorization.
+  const claimsRead = (request.method === "GET" || request.method === "HEAD")
+    && (!apiRequest || pathname === "/api/options-flow" || pathname === "/api/options-flow/market-data");
+  const unavailable = () => NextResponse.json(
+    { error: "Your session could not be checked right now. Please retry shortly.", code: "AUTH_SERVICE_UNAVAILABLE" },
+    { status: 503, headers: { "Cache-Control": "private, no-store, max-age=0", "Retry-After": "2" } },
+  );
+  let email: string | null | undefined;
+  try {
+    if (claimsRead) {
+      const { data, error } = await authBudget.run(() => supabase.auth.getClaims());
+      if (authBudget.expired || isTemporaryMiddlewareAuthError(error)) return unavailable();
+      if (!error && typeof data?.claims.sub === "string") email = data.claims.email;
+    } else {
+      const { data, error } = await authBudget.run(() => supabase.auth.getUser());
+      if (authBudget.expired || isTemporaryMiddlewareAuthError(error)) return unavailable();
+      if (!error) email = data.user?.email;
+    }
+  } catch {
+    // A dependency interruption is not evidence that the user signed out.
+    // Fail closed without deleting cookies or starting a login/refresh loop.
+    return unavailable();
+  }
 
-  if (!data.user || !allowed(data.user.email)) {
+  if (!allowed(email)) {
     if (apiRequest) {
       return NextResponse.json(
         { error: "Your session has expired. Sign in again.", code: "AUTHENTICATION_REQUIRED" },

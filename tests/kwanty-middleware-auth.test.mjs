@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {createMiddlewareAuthBudget,isTemporaryMiddlewareAuthError} from '../src/lib/middlewareAuth.ts';
 const source=readFileSync(new URL('../middleware.ts',import.meta.url),'utf8');
 const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 function harness({configured=true,granted=true}={}){
@@ -12,6 +13,7 @@ function harness({configured=true,granted=true}={}){
   if(name==='next/server')return{NextResponse:{next:()=>response,json:(body,options)=>({body,...options}),redirect:()=>({redirect:true})}};
   if(name==='@supabase/ssr')return{createServerClient:()=>({auth:{getUser:async()=>{authCalls++;return{data:{user:null}}}}})};
   if(name==='@/lib/siteAccess')return{SITE_ACCESS_COOKIE:'gate',isSiteAccessConfigured:()=>configured,isValidSiteAccessToken:async()=>granted};
+  if(name==='@/lib/middlewareAuth')return{createMiddlewareAuthBudget,isTemporaryMiddlewareAuthError};
   throw Error(name);
  }};
  vm.runInNewContext(code,context);

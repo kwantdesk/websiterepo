@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import vm from "node:vm";
 import ts from "typescript";
 import { safeAuthReturn, OAUTH_RETURN_COOKIE } from "../src/lib/authRedirect.ts";
+import { createMiddlewareAuthBudget, isTemporaryMiddlewareAuthError } from "../src/lib/middlewareAuth.ts";
 const require = createRequire(import.meta.url);
 const { NextResponse, NextRequest } = require("next/server.js");
 function compile(path, modules) {
@@ -13,6 +14,7 @@ function compile(path, modules) {
   vm.runInNewContext(code, { exports, URL, console: { warn() {} }, process: { env: {} }, require: name => {
     if (name === "next/server") return { NextResponse };
     if (name === "@/lib/authRedirect") return { safeAuthReturn, OAUTH_RETURN_COOKIE };
+    if (name === "@/lib/middlewareAuth") return { createMiddlewareAuthBudget, isTemporaryMiddlewareAuthError };
     if (name in modules) return modules[name];
     throw Error(name);
   } });
