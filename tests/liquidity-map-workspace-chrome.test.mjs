@@ -15,7 +15,7 @@ test('presentation waits for the final theme stylesheet, with the existing retry
  assert.match(html,/data-liquidity-style="site"[\s\S]*?__kwantLiquidityStyleLoaded\('site'\)/);
  assert.match(html,/__kwantLiquidityStyleFailed\('site', this\)/);
  assert.match(workspace,/loadedStyleSheets.some\(\(href\) => href.includes\("\/heatmap-app\/site.css"\)\)/);
- assert.match(workspace,/index.html\?v=20261024-freeze-recovery/);
+ assert.match(workspace,/index.html\?v=\d{8}-[\w-]+/);
 });
 test('toolbar and popup colours follow website tokens, without decorative gradients or hardcoded ink',()=>{
  for(const token of ['--ui-bg','--ui-panel','--ui-surface','--ui-line','--ui-muted','--ui-text','--ui-accent'])assert.ok(css.includes(`var(${token})`));
@@ -37,9 +37,11 @@ test('configuration controls use accessible line icons, while narrow layouts kee
  assert.match(css,/@media \(max-width: 520px\)[\s\S]*?\.header-panel-shortcuts button > span \{ display: none/);
  assert.match(read('public/heatmap-app/embed.css'),/overflow-x: auto/);
 });
-test('injected Trade control follows the same contract and styling does not alter price-rendering rules',()=>{
+test('Trade sits beside Depth in the shared toolbar and opens the host ticket',()=>{
  const trading=read('src/components/liquidity-map/LiquidityMapTrading.tsx');
- assert.match(trading,/inline-flex h-7[\s\S]*?rounded-\[3px\][\s\S]*?text-\[10px\][\s\S]*?tracking-\[\.075em\]/);
+ assert.match(html,/header-panel-shortcuts[\s\S]*?id="mapTradeButton"[\s\S]*?<span>Trade<\/span><\/button>\s*<button[^>]*data-panel-shortcut="depth"/);
+ assert.match(trading,/liquidity-map-open-ticket[\s\S]*?state.trading.onOpenTicket\(\)/);
+ assert.doesNotMatch(trading,/>Trade<\/button>/);
  assert.doesNotMatch(css,/canvas\s*\{|transform:\s*(?:translate|scale)/);
  assert.doesNotMatch(css,/@import\s+url\(['"]?https?:/);
 });

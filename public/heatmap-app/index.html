@@ -169,6 +169,7 @@
       <div class="app-actions">
         <span class="simulation-badge" id="modeStatus"><i></i> CONNECTING</span>
         <div class="toolbar-panel-shortcuts header-panel-shortcuts" role="group" aria-label="Liquidity map configuration">
+          <button type="button" id="mapTradeButton" aria-label="Trade" style="display:none"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16h16M8 15v-5M12 15V7M16 15v-3"></path></svg><span>Trade</span></button>
           <button type="button" data-panel-shortcut="depth" aria-label="Depth"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M8 7h12M8 12h8M8 17h10"></path></svg><span>Depth</span></button>
           <button type="button" data-panel-shortcut="signals" aria-label="Signals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h4l3-8 4 14 3-6h4"></path></svg><span>Signals</span></button>
           <button type="button" data-panel-shortcut="settings" aria-label="Display"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h7M15 6h5M4 12h3M11 12h9M4 18h9M17 18h3"></path><circle cx="13" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="15" cy="18" r="2"></circle></svg><span>Display</span></button>
@@ -410,6 +411,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=20261030-bubble-source-time"></script>
+  <script type="module" src="src/main.js?v=20261030-trade-toolbar"></script>
 </body>
 </html>

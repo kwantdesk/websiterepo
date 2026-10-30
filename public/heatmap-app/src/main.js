@@ -258,6 +258,10 @@ class DepthForgeApp {
     $('panelCollapse').addEventListener('click', () => this.inspectorDialog.close());
 
     all('[data-panel-shortcut]').forEach(button => button.addEventListener('click', () => this.#openPanel(button.dataset.panelShortcut)));
+    $('mapTradeButton').addEventListener('click', () => {
+      if (!this.tradingIntent?.ticketAvailable || window.parent === window) return;
+      window.parent.postMessage({ type: 'kwantdesk:liquidity-map-open-ticket', symbol: this.symbol, scope: this.tradingIntent.scope }, window.location.origin);
+    });
     $('settingsButton').addEventListener('click', () => this.#openPanel('settings'));
 
     $('paletteSelect').addEventListener('change', event => {
@@ -343,6 +347,7 @@ class DepthForgeApp {
       if (event.data?.type === 'kwantdesk:liquidity-map-trading') {
         if (event.source !== window.parent) return;
         this.tradingIntent = event.data;
+        $('mapTradeButton').style.display = event.data.ticketAvailable === true ? '' : 'none';
         this.tradingPlotKey = null;
         this.#publishTradingPlot();
         return;
