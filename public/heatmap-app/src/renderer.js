@@ -1,4 +1,4 @@
-import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=20261029-cvd-bubble-presentation';
+import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=20261030-bubble-source-time';
 import { normalizeCvdStyle, cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261029-cvd-bubble-presentation';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
 import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261017-aleph-font';
@@ -152,6 +152,24 @@ export function resolveTradeClusterAnchorIndex(history, cluster, frameIndices = 
   return Number.isInteger(fallback) && fallback >= 0 && fallback < history.length
     ? fallback
     : -1;
+}
+
+/** Source execution time, not the later depth packet that happened to carry it. */
+export function resolveTradeClusterTimeIndex(history, cluster, frameIndices = null) {
+  const owner = resolveTradeClusterAnchorIndex(history, cluster, frameIndices);
+  if (owner < 0) return -1;
+  const timestamp = Number(cluster.anchorTimestamp);
+  if (!Number.isFinite(timestamp)) return owner;
+  if (timestamp < Number(history[0].timestamp)) return -1;
+  if (timestamp >= Number(history.at(-1).timestamp)) return history.length - 1;
+  let low = 0, high = history.length - 1;
+  while (low + 1 < high) {
+    const middle = (low + high) >>> 1;
+    if (Number(history[middle].timestamp) <= timestamp) low = middle;
+    else high = middle;
+  }
+  const left = Number(history[low].timestamp), right = Number(history[high].timestamp);
+  return right > left ? low + (timestamp - left) / (right - left) : low;
 }
 
 export function planIncrementalTradeClusterRefresh(
@@ -660,6 +678,7 @@ export class DepthRenderer {
     };
     const clusterSettingsKey = [
       reference.key,
+      this.depthEngine.timelineRevision,
       clusterOptions.rowTicks,
       clusterOptions.rowPixels.toFixed(3),
       clusterOptions.columnPixels.toFixed(3),
@@ -723,7 +742,7 @@ export class DepthRenderer {
       // Cached clusters outlive individual rolling-window shifts. Resolve the
       // retained frame object against today's array index on every paint so a
       // bubble never jumps one column while the 100 ms cache catches up.
-      const anchorIndex = resolveTradeClusterAnchorIndex(history, cluster, frameIndices);
+      const anchorIndex = resolveTradeClusterTimeIndex(history, cluster, frameIndices);
       if (anchorIndex < layout.start || anchorIndex > layout.end) continue;
       const x = layout.xForIndex(anchorIndex);
       const y = layout.yForTick(cluster.tick);

@@ -338,8 +338,10 @@ export function updateLivePresentationEdge(history, snapshot) {
     current.lastTick = liveTick;
     changed = true;
   }
-  if (Number.isFinite(liveTimestamp) && liveTimestamp > current.timestamp) {
-    current.timestamp = liveTimestamp;
+  if (Number.isFinite(liveTimestamp) && liveTimestamp > (current.presentationTimestamp ?? current.timestamp)) {
+    // The book frame's source time is an immutable execution/time-axis anchor.
+    // A later presentation tick must not move that recorded column in time.
+    current.presentationTimestamp = liveTimestamp;
     changed = true;
   }
   return changed;

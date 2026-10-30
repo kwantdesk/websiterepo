@@ -3253,7 +3253,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             {journalBulkError ? <p role="alert" className="mt-3 whitespace-pre-line text-[10px] text-danger">{journalBulkError}</p> : null}
             <div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-border pt-4">
               <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => journalBulkConfirm ? setJournalBulkConfirm(false) : setShowJournalManager(false)} className="h-9 rounded-xl border border-border px-4 text-[10px] text-muted disabled:opacity-35">{journalBulkConfirm ? "Back" : "Cancel"}</button>
-              <button type="button" disabled={!selectedJournals.length || Boolean(journalLifecycleBusy) || (journalBulkConfirm && journalBulkPhrase !== `DELETE ${selectedJournals.length} JOURNALS`)} onClick={() => journalBulkConfirm ? void deleteSelectedJournals() : (setJournalBulkPhrase(""), setJournalBulkConfirm(true))} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-white disabled:opacity-35">{journalLifecycleBusy ? "Removing…" : journalBulkConfirm ? "Delete selected permanently" : `Remove selected (${selectedJournals.length})`}</button>
+              <button type="button" disabled={!selectedJournals.length || Boolean(journalLifecycleBusy) || (journalBulkConfirm && journalBulkPhrase !== `DELETE ${selectedJournals.length} JOURNALS`)} onClick={() => journalBulkConfirm ? void deleteSelectedJournals() : (setJournalBulkPhrase(""), setJournalBulkConfirm(true))} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-on-danger disabled:opacity-35">{journalLifecycleBusy ? "Removing…" : journalBulkConfirm ? "Delete selected permanently" : `Remove selected (${selectedJournals.length})`}</button>
             </div>
           </section>
         </div>
@@ -3269,7 +3269,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             {resetJournalError ? <p role="alert" className="mt-3 text-[10px] text-danger">{resetJournalError}</p> : null}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setResetJournalTarget(null)} className="h-9 rounded-xl border border-border px-4 text-[10px] text-muted">Cancel</button>
-              <button type="button" disabled={resetJournalConfirmation !== `RESET ${resetJournalTarget}` || Boolean(journalLifecycleBusy)} onClick={() => void resetSelectedJournal()} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-white disabled:opacity-35">{journalLifecycleBusy ? "Resetting…" : "Reset this journal"}</button>
+              <button type="button" disabled={resetJournalConfirmation !== `RESET ${resetJournalTarget}` || Boolean(journalLifecycleBusy)} onClick={() => void resetSelectedJournal()} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-on-danger disabled:opacity-35">{journalLifecycleBusy ? "Resetting…" : "Reset this journal"}</button>
             </div>
           </section>
         </div>
@@ -3285,7 +3285,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             {zyonResetError ? <p role="alert" className="mt-3 text-[10px] text-danger">{zyonResetError}</p> : null}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setShowZyonReset(false)} className="h-9 rounded-xl border border-border px-4 text-[10px] text-muted">Cancel</button>
-              <button type="button" disabled={zyonResetConfirmation !== "RESET ZYON JOURNAL" || Boolean(journalLifecycleBusy)} onClick={() => void resetZyonJournal()} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-white disabled:opacity-35">{journalLifecycleBusy ? "Resetting…" : "Reset ZYON Journal"}</button>
+              <button type="button" disabled={zyonResetConfirmation !== "RESET ZYON JOURNAL" || Boolean(journalLifecycleBusy)} onClick={() => void resetZyonJournal()} className="h-9 rounded-xl bg-danger px-4 text-[10px] font-semibold text-on-danger disabled:opacity-35">{journalLifecycleBusy ? "Resetting…" : "Reset ZYON Journal"}</button>
             </div>
           </section>
         </div>
@@ -3302,7 +3302,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setDeleteJournalTarget(null)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
-              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => void deleteJournalForever(deleteJournalTarget)} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-white hover:brightness-110 disabled:opacity-40">{journalLifecycleBusy === deleteJournalTarget ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Delete Journal forever</button>
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => void deleteJournalForever(deleteJournalTarget)} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-on-danger hover:brightness-110 disabled:opacity-40">{journalLifecycleBusy === deleteJournalTarget ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Delete Journal forever</button>
             </div>
           </div>
         </div>
@@ -3562,7 +3562,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" onClick={() => setDeleteTradeTargetId(null)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Cancel</button>
-              <button type="button" onClick={() => void deleteTrade(deleteTradeTarget)} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-white hover:brightness-110"><Trash2 className="h-3.5 w-3.5" />Delete trade</button>
+              <button type="button" onClick={() => void deleteTrade(deleteTradeTarget)} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-on-danger hover:brightness-110"><Trash2 className="h-3.5 w-3.5" />Delete trade</button>
             </div>
           </div>
         </div>

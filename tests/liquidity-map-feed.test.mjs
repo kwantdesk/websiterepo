@@ -78,7 +78,8 @@ test("presentation holds move only the live edge and never create synthetic hist
   }), true);
   assert.equal(history.length, 1);
   assert.equal(history[0].lastTick, 31_151);
-  assert.equal(history[0].timestamp, 1_786_420_440_014);
+  assert.equal(history[0].timestamp, 1_786_420_440_000, "presentation cannot rewrite the book's source time");
+  assert.equal(history[0].presentationTimestamp, 1_786_420_440_014);
   assert.equal(history[0].trades, originalTrades);
   assert.equal(history[0].bids, originalBids);
 });

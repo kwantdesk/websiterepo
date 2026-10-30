@@ -74,7 +74,7 @@ export default function WorkspaceReplayDialog({ state, scope, initialTimeZone = 
         <p className="mt-3 text-[11px] leading-5 text-muted">Session in {timeZoneCity(timeZone)}: {clockFormat.format(bounds.startMs)} – {clockFormat.format(bounds.endMs)}.</p>
         {selection ? <p className="mt-2 text-[11px] text-foreground" aria-live="polite">Replay starts: {clockFormat.format(selection.timestampMs)} · {timeZoneCity(timeZone)}</p> : null}
         {error ? <p role="alert" className="mt-3 text-xs text-danger">{error}</p> : null}
-        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded border border-border px-3 py-2 text-xs">Cancel</button><button type="submit" className="rounded bg-primary px-5 py-2 text-xs font-semibold text-background">Go</button></div>
+        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded border border-border px-3 py-2 text-xs">Cancel</button><button type="submit" className="rounded bg-primary px-5 py-2 text-xs font-semibold text-on-primary">Go</button></div>
       </form>
     </div>
   </div>, document.body);

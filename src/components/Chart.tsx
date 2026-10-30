@@ -21805,7 +21805,7 @@ function Chart({
                   clearAllChartDrawings();
                   setClearConfirm(false);
                 }}
-                className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-white"
+                className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-on-danger"
               >
                 Clear
               </button>
@@ -21830,7 +21830,7 @@ function Chart({
                   onResetPaperTrading?.();
                   setResetPaperTradingConfirm(false);
                 }}
-                className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-white"
+                className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-on-danger"
               >
                 Reset everything
               </button>

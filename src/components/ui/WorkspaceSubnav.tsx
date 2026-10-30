@@ -58,7 +58,7 @@ export default function WorkspaceSubnav<T extends string>({
                   </span>
                 ) : null}
               </span>
-              {item.badge ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[7px] font-semibold text-white">{item.badge}</span> : null}
+              {item.badge ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[7px] font-semibold text-on-danger">{item.badge}</span> : null}
               {active ? <span className="absolute -bottom-[7px] left-3 right-3 h-px bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
             </button>
           );

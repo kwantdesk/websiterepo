@@ -35,6 +35,7 @@
       const host = hostId ? owner.__kwantOptionsToolHosts?.[hostId] : location.pathname?.startsWith('/kwanty-app/') ? owner.__kwantyHost : owner.__kwantGexDataHost;
       if (host) {
         const theme = host.theme();
+        seed = {...seed, ...theme};
         for (const [key, value] of Object.entries(theme)) root.style.setProperty('--site-' + key, value);
         root.style.backgroundColor = theme.background;
         root.style.color = theme.foreground;
@@ -44,5 +45,14 @@
       else if (owner.opener) owner = owner.opener;
       else break;
     } catch { break; } // Cross-origin frames must never be inspected.
+  }
+  // The initial action label must contrast before the async theme module loads.
+  for(const role of ['primary','danger']){
+  const hex=seed[role]?.match(/^#([\da-f]{3}|[\da-f]{6})$/i)?.[1];
+  if(hex){
+    const full=hex.length===3?[...hex].map(v=>v+v).join(''):hex;
+    const luminance=full.match(/../g).map(v=>{v=parseInt(v,16)/255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+    root.style.setProperty('--site-on-'+role,(luminance+.05)/.05>=1.05/(luminance+.05)?'#000000':'#FFFFFF');
+  }
   }
 })();

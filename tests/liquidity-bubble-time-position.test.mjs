@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+import {RollingDepthEngine,tradeClusterWindowMs} from '../public/heatmap-app/src/depth-engine.js';
+import {resolveTradeClusterTimeIndex,indexHistoryFrames,planIncrementalTradeClusterRefresh} from '../public/heatmap-app/src/renderer.js';
+import {tradeClusterReference,tradeBubbleZoom} from '../public/heatmap-app/src/liquidity-presentation.js';
+import {updateLivePresentationEdge} from '../public/heatmap-app/src/live-market.js';
+const frame=(timestamp,trades=[])=>({id:timestamp,timestamp,bestBid:99,bestAsk:101,lastTick:100,bids:new Map([[99,10]]),asks:new Map([[101,10]]),trades});
+const trade={id:42,timestamp:2500,tick:100,size:25,side:'buy'};
+test('an early HTTP probe and later SSE history keep the actual timeline chronological',()=>{
+  const engine=new RollingDepthEngine(4),live=frame(3000),older=frame(1000),middle=frame(2000);
+  engine.append(live);engine.append(older);engine.append(middle);
+  assert.deepEqual(engine.frames,[older,middle,live]);assert.equal(engine.timelineRevision,2);
+  const current=frame(4000);engine.append(current);engine.append(frame(5000));
+  assert.deepEqual(engine.frames.map(f=>f.timestamp),[2000,3000,4000,5000]);
+  assert.equal(engine.append(frame(500)).accepted,false);assert.equal(engine.frames.at(-1).timestamp,5000);
+});
+test('presentation ticks cannot rewrite a recorded frame and move its execution-time coordinate',()=>{
+  const history=[frame(1000),frame(2000),frame(4000,[trade])],cluster={anchorFrame:history[2],anchorTimestamp:2500};
+  const before=resolveTradeClusterTimeIndex(history,cluster);
+  updateLivePresentationEdge(history,{timestamp:4500,lastTick:102});
+  assert.equal(history[2].timestamp,4000);assert.equal(history[2].presentationTimestamp,4500);
+  assert.equal(resolveTradeClusterTimeIndex(history,cluster),before);
+});
+test('a delayed execution uses its real time between depth frames, not its arrival frame',()=>{
+  const history=[frame(1000),frame(2000),frame(4000,[trade])];
+  const cluster={anchorFrame:history[2],anchorTimestamp:2500,tick:100};
+  assert.equal(resolveTradeClusterTimeIndex(history,cluster),1.25);
+  assert.equal(resolveTradeClusterTimeIndex(history,{...cluster,anchorTimestamp:500}),-1,'no invented pre-window book history');
+  assert.equal(resolveTradeClusterTimeIndex(history.slice(0,2),cluster),-1,'a rolled-off owner cannot jump onto another frame');
+});
+test('the actual bubble renderer keeps exact execution coordinates through zoom, pan and history repair',()=>{
+  const source=readFileSync(new URL('../public/heatmap-app/src/renderer.js',import.meta.url),'utf8');
+  const ast=ts.createSourceFile('renderer.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);let method;
+  function visit(n){if(ts.isMethodDeclaration(n)&&n.name.getText(ast)==='#drawTrades')method=n.getText(ast);ts.forEachChild(n,visit);}visit(ast);
+  assert.ok(method);method=method.replace('#drawTrades','drawTrades').replaceAll('this.#drawSphereDot','this.drawSphereDot');
+  const context={tradeClusterReference,tradeBubbleZoom,indexHistoryFrames,planIncrementalTradeClusterRefresh,resolveTradeClusterTimeIndex,tradeClusterWindowMs,performance:{now:()=>1000},TRADE_CLUSTER_REFRESH_MS:100};
+  const Renderer=vm.runInNewContext('(class {'+method+'})',context),renderer=new Renderer(),engine=new RollingDepthEngine(20);
+  engine.append(frame(1000));engine.append(frame(2000));engine.append(frame(4000,[trade]));
+  const painted=[];renderer.depthEngine=engine;renderer.tradeClusterCache={ready:false};renderer.drawSphereDot=(_ctx,x,y,c)=>painted.push({x,y,key:c.key,volume:c.total,tick:c.tick});
+  const config={key:'NQ',contract:'NQZ6',tickSize:.25,defaultVisibleRows:100};
+  renderer.layout={config,end:2,start:0,plotHeight:1000,visibleTickSpan:100,columnPixels:1.24,xForIndex:i=>i*100,yForTick:t=>1000-t*5};
+  const settings={circleSize:40,circleTransparency:0,smartClustering:0,bubbleDifferential:false,minimumTradeSize:1,minimumPixelVolume:1};
+  const canvas={save(){},restore(){}};
+  renderer.drawTrades(canvas,engine.frames,settings,{});assert.equal(painted.at(-1).x,125);assert.equal(painted.at(-1).y,500);
+  renderer.layout={...renderer.layout,xForIndex:i=>i*70+30,yForTick:t=>600-t*3};
+  renderer.drawTrades(canvas,engine.frames,settings,{});assert.equal(painted.at(-1).x,117.5);assert.equal(painted.at(-1).y,300);
+  engine.append(frame(1500));renderer.layout.end=3;
+  renderer.drawTrades(canvas,engine.frames,settings,{});assert.equal(painted.at(-1).x,187.5);
+  assert.deepEqual(painted.map(p=>[p.key,p.volume,p.tick]),[['42',25,100],['42',25,100],['42',25,100]]);
+});

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { normalizeCvdStyle, cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from '../public/heatmap-app/src/liquidity-presentation.js';
 import { RollingDepthEngine, tradeClusterWindowMs } from '../public/heatmap-app/src/depth-engine.js';
-import { indexHistoryFrames, planIncrementalTradeClusterRefresh, resolveTradeClusterAnchorIndex } from '../public/heatmap-app/src/renderer.js';
+import { indexHistoryFrames, planIncrementalTradeClusterRefresh, resolveTradeClusterAnchorIndex, resolveTradeClusterTimeIndex } from '../public/heatmap-app/src/renderer.js';
 const read = name => readFileSync(new URL('../' + name, import.meta.url), 'utf8');
 const renderer = read('public/heatmap-app/src/renderer.js');
 
@@ -87,7 +87,7 @@ test('actual bubble renderer keeps identities, volumes, colours and market ancho
   const original = engine.clusterTrades.bind(engine);
   engine.clusterTrades = options => { builds++; buildOptions.push(options); return original(options); };
   const source = renderer.slice(renderer.indexOf('  #drawTrades('), renderer.indexOf('  #sphereSprite(')).trim().replace('#drawTrades', 'function').replaceAll('this.#drawSphereDot', 'this.drawSphereDot');
-  const draw = new Function('indexHistoryFrames', 'tradeClusterReference', 'tradeBubbleZoom', 'planIncrementalTradeClusterRefresh', 'resolveTradeClusterAnchorIndex', 'tradeClusterWindowMs', 'performance', 'TRADE_CLUSTER_REFRESH_MS', 'return ' + source)(indexHistoryFrames, tradeClusterReference, tradeBubbleZoom, planIncrementalTradeClusterRefresh, resolveTradeClusterAnchorIndex, tradeClusterWindowMs, { now: () => now }, 100);
+  const draw = new Function('indexHistoryFrames', 'tradeClusterReference', 'tradeBubbleZoom', 'planIncrementalTradeClusterRefresh', 'resolveTradeClusterAnchorIndex', 'resolveTradeClusterTimeIndex', 'tradeClusterWindowMs', 'performance', 'TRADE_CLUSTER_REFRESH_MS', 'return ' + source)(indexHistoryFrames, tradeClusterReference, tradeBubbleZoom, planIncrementalTradeClusterRefresh, resolveTradeClusterAnchorIndex, resolveTradeClusterTimeIndex, tradeClusterWindowMs, { now: () => now }, 100);
   const settings = { circleSize: 40, circleTransparency: 41, smartClustering: 52, bubbleDifferential: false, minimumTradeSize: 1, minimumPixelVolume: 1 };
   const makeState = () => ({ layout: { config, start: 60, end: 119, rowTicks: 1, plotHeight: 560, visibleTickSpan: 112, columnPixels: 1.24, xForIndex: i => i * 2, yForTick: tick => tick * 2 }, depthEngine: engine, tradeClusterCache: { settingsKey: '', ready: false, value: [] }, dots: [], drawSphereDot(_ctx, x, y, cluster) { this.dots.push({ x, y, ...cluster }); } });
   const a = makeState(), b = makeState(), ctx = { save() {}, restore() {} };

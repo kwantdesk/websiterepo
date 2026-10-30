@@ -8,6 +8,11 @@ function channels(color){
   if(color.startsWith('rgb'))return[numbers[0],numbers[1],numbers[2],numbers[3]??1];
   if(color.startsWith('hsl')){const[h,s,l]=[numbers[0]/360,numbers[1]/100,numbers[2]/100],a=s*Math.min(l,1-l),f=n=>{const k=(n+h*12)%12;return 255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)));};return[f(0),f(8),f(4),numbers[3]??1];}return null;
 }
+export function actionForeground(color){
+  const rgb=channels(color);if(!rgb)return'#FFFFFF';
+  const luminance=rgb.slice(0,3).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+  return(luminance+.05)/.05>=1.05/(luminance+.05)?'#000000':'#FFFFFF';
+}
 export function themeRole(color){
   const rgb=channels(color);if(!rgb)return'primary';const[r,g,b]=rgb,max=Math.max(r,g,b),min=Math.min(r,g,b),light=(max+min)/510;
   if(light<.045)return'background';if(light<.085)return'panel';if(light<.13)return'surface';if(light<.23)return'border';
@@ -27,6 +32,8 @@ export async function installTheme(next){
   document.documentElement.style.backgroundColor=palette.background;
   document.documentElement.style.color=palette.foreground;
   for(const[key,value]of Object.entries(palette))document.documentElement.style.setProperty('--site-'+key,value);
+  document.documentElement.style.setProperty('--site-on-primary',actionForeground(palette.primary));
+  document.documentElement.style.setProperty('--site-on-danger',actionForeground(palette.danger));
   const background=channels(palette.background)||[0,0,0];document.documentElement.style.colorScheme=(Math.max(...background.slice(0,3))+Math.min(...background.slice(0,3)))<255?'dark':'light';
   // Apply the live site surface before awaiting the static colour catalogue.
   // Share that download across theme changes; failed downloads can retry.

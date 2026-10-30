@@ -3,8 +3,8 @@ import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261029-de
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261029-cvd-bubble-presentation';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261029-cvd-bubble-presentation';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261030-bubble-source-time';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261030-bubble-source-time';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -18,7 +18,7 @@ import {
   parentLiquidityCatalogRows,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20261029-depth-clear-scale';
+} from './live-market.js?v=20261030-bubble-source-time';
 import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20261017-aleph-font';
 import {
   DEFAULT_INDICATOR_SETTINGS,
@@ -1449,9 +1449,13 @@ class DepthForgeApp {
         metadata.historical ? 'Building historical liquidity columns' : 'Processing first live depth frame',
       );
     }
-    const { shifted } = this.depthEngine.append(snapshot);
+    const { shifted, inserted, accepted } = this.depthEngine.append(snapshot);
+    if (accepted === false) return;
     if (snapshot.trades.length) this.indicatorTradeRevision += 1;
-    if (shifted && this.indicatorAnalysis) this.#shiftIndicatorAnalysis(shifted);
+    if (inserted) {
+      this.indicatorAnalysis = null;
+      this.indicatorAnalysisKey = '';
+    } else if (shifted && this.indicatorAnalysis) this.#shiftIndicatorAnalysis(shifted);
     if (!metadata.historical && !metadata.visualHold) {
       this.#appendLiveCvd(snapshot.timestamp, snapshot.delta);
     }

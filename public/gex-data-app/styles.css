@@ -352,7 +352,7 @@ button { color: inherit; }
 .snapshot-control { margin:8px 24px 16px 60px;display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;color:var(--gex-23666666);font-size:11px; }
 .snapshot-control input { width:100%;accent-color:var(--gex-23373030666563); }
 .snapshot-control output { min-width:64px;text-align:center; }
-.snapshot-control button,.row-detail-actions button { background:var(--gex-23373030666563);color:var(--gex-23666666);border:0;border-radius:5px;padding:5px 9px;cursor:pointer; }
+.snapshot-control button,.row-detail-actions button { background:var(--site-primary);color:var(--site-on-primary);border:0;border-radius:5px;padding:5px 9px;cursor:pointer; }
 .snapshot-labels { grid-column:2;display:flex;justify-content:space-between; }
 .qtable { table-layout:fixed;border-collapse:collapse;min-width:100%;color:var(--gex-23666666);font:11px Aleph,sans-serif; }
 #toolTable.qtable th,#toolTable.qtable td { box-sizing:border-box;position:relative;padding:5px 10px;border-right:1px solid var(--gex-233730306665633535);border-bottom:1px solid var(--gex-236666666666663230);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--gex-23666666); }

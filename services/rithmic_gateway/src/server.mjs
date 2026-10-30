@@ -793,6 +793,17 @@ function intervalDurationMs(value) {
 // absent entirely. The app reads each through `finite(raw.x)`, so every one
 // silently resolved to 0: no CVD, dead metrics row, and an event counter that
 // only ever advanced by the trade count.
+function heatmapInsideMarket(snapshot, tick, bids, asks) {
+  const bid = Number(snapshot.bestBid?.price), ask = Number(snapshot.bestAsk?.price);
+  if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > bid) {
+    return { bestBid: Math.round(bid / tick), bestAsk: Math.round(ask / tick),
+      bidTop: Math.max(0, Number(snapshot.bestBid.size) || 0),
+      askTop: Math.max(0, Number(snapshot.bestAsk.size) || 0), insideMarketSource: "BBO" };
+  }
+  return { bestBid: bids[0]?.[0] || 0, bestAsk: asks[0]?.[0] || 0,
+    bidTop: bids[0]?.[1] || 0, askTop: asks[0]?.[1] || 0, insideMarketSource: "DEPTH" };
+}
+
 function heatmapPayload(snapshot, after = 0) {
   const tick = tickSize(snapshot.symbol);
   const bids = snapshot.bids.map((row) => [Math.round(row.price / tick), row.size, row.orders]);
@@ -823,10 +834,10 @@ function heatmapPayload(snapshot, after = 0) {
     delta += trade.side === "buy" ? trade.size : -trade.size;
   }
 
-  const bestBid = bids[0]?.[0] || 0;
-  const bestAsk = asks[0]?.[0] || 0;
-  const bidTop = bids[0]?.[1] || 0;
-  const askTop = asks[0]?.[1] || 0;
+  // The exchange BBO and the aggregate L3 rows are distinct source facts.
+  // Incomplete/deferred depth rows must not replace genuine inside quotes or
+  // make correctly priced executions look detached from the bid/ask trails.
+  const { bestBid, bestAsk, bidTop, askTop, insideMarketSource } = heatmapInsideMarket(snapshot, tick, bids, asks);
   const topTotal = bidTop + askTop;
   let bidDepth = 0;
   let askDepth = 0;
@@ -878,6 +889,7 @@ function heatmapPayload(snapshot, after = 0) {
       asks,
       bestBid,
       bestAsk,
+      insideMarketSource,
       midTick: bestBid && bestAsk ? (bestBid + bestAsk) / 2 : 0,
       lastTick: snapshot.lastPrice ? Math.round(snapshot.lastPrice / tick) : 0,
       trades,

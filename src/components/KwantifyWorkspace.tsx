@@ -20902,7 +20902,7 @@ export default function KwantifyWorkspace({
               {rightPanel === "alertslog" && (
                 <div className="flex flex-1 flex-col overflow-hidden">
                   <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-                    <div className="flex items-center gap-2"><BellRing className="h-4 w-4 text-primary" /><h3 className="text-[14px] font-semibold">Signal Log</h3><span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-semibold text-white">{alertLogCount}</span></div>
+                    <div className="flex items-center gap-2"><BellRing className="h-4 w-4 text-primary" /><h3 className="text-[14px] font-semibold">Signal Log</h3><span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-semibold text-on-danger">{alertLogCount}</span></div>
                     <button onClick={() => setAlertLogCount(0)} className="text-[11px] font-medium text-muted hover:text-foreground">Clear All</button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-3">
@@ -22166,7 +22166,7 @@ export default function KwantifyWorkspace({
           {rightPanel === "alertslog" && (
             <div className="flex flex-1 flex-col overflow-hidden">
               <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-                <div className="flex items-center gap-2"><BellRing className="h-4 w-4 text-primary" /><h3 className="text-[14px] font-semibold">Signal Log</h3><span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-semibold text-white">{alertLogCount}</span></div>
+                <div className="flex items-center gap-2"><BellRing className="h-4 w-4 text-primary" /><h3 className="text-[14px] font-semibold">Signal Log</h3><span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-semibold text-on-danger">{alertLogCount}</span></div>
                 <button onClick={() => setAlertLogCount(0)} className="text-[11px] font-medium text-muted hover:text-foreground">Clear All</button>
               </div>
               <div className="flex-1 overflow-y-auto p-3">
@@ -22860,7 +22860,7 @@ export default function KwantifyWorkspace({
               <button
                 type="button"
                 onClick={() => handleDeleteChartAlert(pendingAlertDelete.id)}
-                className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-white"
+                className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-on-danger"
               >
                 Delete
               </button>

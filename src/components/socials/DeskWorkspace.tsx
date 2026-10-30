@@ -2484,7 +2484,7 @@ export default function DeskWorkspace({
               {lifecycleTarget.action === "archive" ? (
                 <button type="button" onClick={() => void archiveDesk()} disabled={working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary disabled:opacity-40"><Archive className="h-3.5 w-3.5" />Archive Desk</button>
               ) : (
-                <button type="button" onClick={() => void deleteDesk()} disabled={Boolean(deletingDeskId) || !deleteConfirmationMatches} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-white transition-all enabled:shadow-[0_0_18px_color-mix(in_srgb,var(--color-danger)_20%,transparent)] disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
+                <button type="button" onClick={() => void deleteDesk()} disabled={Boolean(deletingDeskId) || !deleteConfirmationMatches} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-on-danger transition-all enabled:shadow-[0_0_18px_color-mix(in_srgb,var(--color-danger)_20%,transparent)] disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
               )}
             </>
           )}

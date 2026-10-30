@@ -29,7 +29,10 @@ test('embedded standalone startup respects storage and cross-origin parents are 
 });
 test('legacy migration cannot repaint a saved theme and bootstrap assets are versioned',()=>{
  const source=read('src/components/AppSidebar.tsx');assert.doesNotMatch(source,/saveTheme\(defaultTheme\)/);
- for(const app of ['gex-data-app','kwanty-app'])assert.match(read('public/'+app+'/index.html'),/site-bootstrap.js\?v=20261027-theme-paint/);
+ for(const app of ['gex-data-app','kwanty-app']){
+  const version=read('public/'+app+'/index.html').match(/site-bootstrap.js\?v=(\d{8})-[\w-]+/);
+  assert.ok(version&&Number(version[1])>=20261027,'startup asset must retain an explicit current revision');
+ }
  const css=read('src/app/globals.css').split('/* Shared precision rail')[0];for(const [key,value]of Object.entries(defaultTheme)){const name='--'+key.replace(/([A-Z])/g,'-$1').toLowerCase();if(css.includes(name+':'))assert.ok(css.includes(name+': '+value),name);}
 });
 

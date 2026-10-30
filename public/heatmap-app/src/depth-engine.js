@@ -462,6 +462,7 @@ export class RollingDepthEngine {
     this.frames = [];
     this.revision = 0;
     this.tradeRevision = 0;
+    this.timelineRevision = 0;
     this.contrast = new AdaptiveContrast(options.contrast);
     this.columnCache = new WeakMap();
     this.lastHeatmap = null;
@@ -471,13 +472,32 @@ export class RollingDepthEngine {
     this.frames.length = 0;
     this.revision = 0;
     this.tradeRevision = 0;
+    this.timelineRevision = 0;
     this.columnCache = new WeakMap();
     this.lastHeatmap = null;
     this.contrast.reset();
   }
 
   append(frame) {
-    this.frames.push(frame);
+    const timestamp = Number(frame.timestamp);
+    const lastTimestamp = Number(this.frames.at(-1)?.timestamp);
+    let inserted = false;
+    // An HTTP current-book probe can finish before SSE sends its older seed.
+    // Keep those genuine historical frames, but never append them AFTER live.
+    if (Number.isFinite(timestamp) && timestamp < lastTimestamp) {
+      if (this.frames.length >= this.capacity && timestamp < Number(this.frames[0]?.timestamp)) {
+        return { shifted: 0, length: this.frames.length, revision: this.revision, accepted: false, inserted: false };
+      }
+      let low = 0, high = this.frames.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (Number(this.frames[middle].timestamp) <= timestamp) low = middle + 1;
+        else high = middle;
+      }
+      this.frames.splice(low, 0, frame);
+      inserted = true;
+      this.timelineRevision += 1;
+    } else this.frames.push(frame);
     let shifted = 0;
     while (this.frames.length > this.capacity) {
       this.frames.shift();
@@ -487,8 +507,8 @@ export class RollingDepthEngine {
     // Resting-book changes do not alter execution bubbles. Keep a separate
     // revision so the renderer does not rebuild and recluster the complete
     // visible trade tape for every 50 ms depth-only frame.
-    if ((frame.trades?.length || 0) > 0 || shifted > 0) this.tradeRevision += 1;
-    return { shifted, length: this.frames.length, revision: this.revision };
+    if ((frame.trades?.length || 0) > 0 || shifted > 0 || inserted) this.tradeRevision += 1;
+    return { shifted, length: this.frames.length, revision: this.revision, inserted, accepted: true };
   }
 
   #rawColumn(frame, geometry) {

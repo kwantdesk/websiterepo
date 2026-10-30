@@ -3582,7 +3582,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                 type="button"
                 onClick={() => void deleteFolder()}
                 disabled={folderActionBusy}
-                className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-white disabled:opacity-40"
+                className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-on-danger disabled:opacity-40"
               >
                 {folderActionBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 Delete permanently
