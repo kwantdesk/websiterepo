@@ -1,5 +1,7 @@
 "use client";
 
+import { readChartDrawingStore, updateChartDrawingPane } from "@/lib/chartDrawingPreferences";
+
 import { mergePaperTradingLedgerUpdate } from "@/lib/accountPreferenceMerge";
 
 import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
@@ -11189,16 +11191,14 @@ export default function KwantifyWorkspace({
   // drawing store and synced to the account through the tracked key below.
   const [paneChartDrawings, setPaneChartDrawings] = useState<Record<string, Drawing[]>>({});
   const [paneChartDrawingsHydrated, setPaneChartDrawingsHydrated] = useState(false);
+  const paneChartDrawingsRef = useRef<Record<string, Drawing[]>>({});
+  const paneChartDrawingsSavedRef = useRef<{ serialized: string; drawings: Record<string, Drawing[]> } | null>(null);
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(CHARTING_DRAWINGS_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        const next: Record<string, Drawing[]> = {};
-        for (const [paneId, value] of Object.entries(parsed ?? {})) {
-          const drawings = normalizeDrawings(value);
-          if (drawings.length) next[paneId] = drawings;
-        }
+      const next = readChartDrawingStore(raw);
+      if (next) {
+        paneChartDrawingsRef.current = next;
         setPaneChartDrawings(next);
       }
     } catch {
@@ -11207,16 +11207,31 @@ export default function KwantifyWorkspace({
     setPaneChartDrawingsHydrated(true);
   }, []);
   useEffect(() => {
-    if (!paneChartDrawingsHydrated) return;
+    if (!paneChartDrawingsHydrated || paneChartDrawings !== paneChartDrawingsRef.current) return;
+    if (paneChartDrawingsSavedRef.current?.drawings === paneChartDrawings) return;
+    const serialized = JSON.stringify(paneChartDrawings);
     try {
-      window.localStorage.setItem(CHARTING_DRAWINGS_STORAGE_KEY, JSON.stringify(paneChartDrawings));
+      window.localStorage.setItem(CHARTING_DRAWINGS_STORAGE_KEY, serialized);
+      paneChartDrawingsSavedRef.current = { serialized, drawings: paneChartDrawings };
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     } catch {
       // Drawings still apply this session without persistence.
     }
   }, [paneChartDrawings, paneChartDrawingsHydrated]);
-  const setChartDrawingsForPane = useCallback((paneId: string, drawings: Drawing[]) => {
-    setPaneChartDrawings((current) => ({ ...current, [paneId]: drawings }));
+  const setChartDrawingsForPane = useCallback((paneId: string, drawings: Drawing[], renderedPane?: Drawing[]) => {
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem(CHARTING_DRAWINGS_STORAGE_KEY); } catch { /* Session state still works without storage. */ }
+    const next = updateChartDrawingPane(paneChartDrawingsRef.current, stored, paneId, drawings, paneChartDrawingsSavedRef.current?.serialized, renderedPane);
+    paneChartDrawingsRef.current = next;
+    // Persist at the edit boundary, before exiting replay/navigating/unmounting.
+    // React's later passive save must never overwrite this with an older frame.
+    try {
+      const serialized = JSON.stringify(next);
+      window.localStorage.setItem(CHARTING_DRAWINGS_STORAGE_KEY, serialized);
+      paneChartDrawingsSavedRef.current = { serialized, drawings: next };
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    } catch { /* Keep edits in memory and let the passive save retry. */ }
+    setPaneChartDrawings(next);
   }, []);
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
@@ -15185,7 +15200,12 @@ export default function KwantifyWorkspace({
       };
       if (changed(CHARTING_DRAWINGS_STORAGE_KEY)) {
         const stored = read<Record<string, unknown>>(CHARTING_DRAWINGS_STORAGE_KEY, {});
-        setPaneChartDrawings(Object.fromEntries(Object.entries(stored).map(([id, value]) => [id, normalizeDrawings(value)])));
+        const next = readChartDrawingStore(JSON.stringify(stored));
+        if (next) {
+          paneChartDrawingsRef.current = next;
+          paneChartDrawingsSavedRef.current = { serialized: JSON.stringify(next), drawings: next };
+          setPaneChartDrawings(next);
+        }
       }
       if (changed(GLOBAL_FAVOURITE_INTERVALS_KEY)) setFavTFs(read(GLOBAL_FAVOURITE_INTERVALS_KEY, ["1m", "5m", "15m", "1h", "4h", "1D"]));
       if (changed(GLOBAL_FAVOURITE_INSTRUMENTS_KEY)) setFavInstruments(read(GLOBAL_FAVOURITE_INSTRUMENTS_KEY, ["ES", "NQ", "YM", "RTY"]));
@@ -19010,7 +19030,7 @@ export default function KwantifyWorkspace({
         onCreateAlertAtPrice={openCreateAlert}
         onRemoveAllIndicators={() => removeAllIndicatorsFromPane(pane.id)}
         chartingDrawings={paneChartDrawings[pane.id] ?? EMPTY_CHART_DRAWINGS}
-        onChartingDrawingsChange={(drawings) => setChartDrawingsForPane(pane.id, drawings)}
+        onChartingDrawingsChange={(drawings) => setChartDrawingsForPane(pane.id, drawings, paneChartDrawings[pane.id] ?? EMPTY_CHART_DRAWINGS)}
         onUpdateIndicatorSetting={(instanceId, key, value) =>
           updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
