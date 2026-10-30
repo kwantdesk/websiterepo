@@ -668,10 +668,6 @@ function EconomicCalendarWorkspace() {
           menuLabel="Economic calendar timezone"
           compact
         />
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-[9px] text-muted">
-          <span className={`h-1.5 w-1.5 rounded-full ${payload ? "bg-primary" : "bg-muted"}`} />
-          {payload?.provider ?? "Calendar feed"}
-        </div>
         <button type="button" onClick={() => void loadCalendar(true)} disabled={refreshing} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-foreground disabled:opacity-50" aria-label="Refresh calendar">
           <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
         </button>

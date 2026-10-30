@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-30 — Economic Calendar provider badge
+
+Removed the TradingView/provider status badge from our calendar toolbar per owner screenshot. Event-level provenance, time/timezone/refresh controls and feed behavior retained. Existing calendar-sharing check, scoped lint and production build pass. No backend/provider changes. Details: docs/prompt-log/2026-10-30-calendar-provider-badge.md.
+
 ## 2026-10-30 — Liquidity Map CVD startup scaling
 
 CVD line/bar bounds now follow plotted cumulative values rather than hidden seed-bucket OHLC extremes. Bars also ignore hidden buy/sell split lines. Explicit zero/symmetric modes retained; no source values/history rewritten or peaks fabricated. 24 focused checks, scoped lint and production build pass; actual canvas fixture confirms visible peaks despite distant seed extrema. No gateway change. Details: docs/prompt-log/2026-10-30-cvd-startup-scale.md.
