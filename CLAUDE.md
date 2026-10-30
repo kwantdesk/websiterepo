@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-30 — NQ execution-path readiness bottleneck
+
+Replaced full candle-history filter/allocation on every live execution flush with an equivalent allocation-free readiness helper; common hydrated history reads about60 candles rather than20000. 24 focused tests (400 randomized equivalence histories, source authority, rollover, actual same-frame series updates), scoped helper lint and production build pass. Benchmark5000 calls:1231.83ms→2.64ms for this check only. A15s VPS sample delivered identical76 execution packets internally/public HTTPS, reported timestamp ages6/29ms median/P95, no current overload; laptop health RTT278–299ms. Provider timestamp fallback and source sample completeness are not certified. No active browser/Deep Charts runtime exposed, so final paint latency/parity remains unverified. No gateway reset or synthetic prices. Details and limitations: docs/prompt-log/2026-10-30-nq-feed-latency.md. Do not describe this as a complete Deep Charts parity fix.
+
 ## 2026-10-30 — Economic Calendar provider badge
 
 Removed the TradingView/provider status badge from our calendar toolbar per owner screenshot. Event-level provenance, time/timezone/refresh controls and feed behavior retained. Existing calendar-sharing check, scoped lint and production build pass. No backend/provider changes. Details: docs/prompt-log/2026-10-30-calendar-provider-badge.md.

@@ -4,6 +4,7 @@ import { mergePaperTradingLedgerUpdate } from "@/lib/accountPreferenceMerge";
 
 import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
 import { createExecutionPaintScheduler } from '@/lib/executionPaintScheduler';
+import { hasUsableOrderFlowHistory } from '@/lib/orderFlowHistoryReadiness';
 
 import { freshPaperExecutionQuote, paperOrderReceipt, paperTradeExecutionQuote } from "@/lib/paperOrderReceipt";
 
@@ -3429,20 +3430,6 @@ function mergeTimeBasedLiveTickPath(
 
 function hasFiveDayHistory(candles: Candle[], timeframe: string) {
   return hasMinimumChartHistory(candles, timeframe);
-}
-
-function hasUsableOrderFlowHistory(candles: Candle[]) {
-  const verified = candles.filter((candle) =>
-    Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0);
-  // A five-day 1m chart should carry a meaningful run of flow candles, while
-  // a 4h/daily chart may legitimately contain only a handful. Scale the
-  // requirement to the chart rather than forcing every interval to have 60
-  // populated bars (which made higher timeframes re-download forever).
-  const minimumVerified = Math.min(60, Math.max(2, Math.floor(candles.length * 0.05)));
-  if (verified.length < minimumVerified) return false;
-  const first = verified[0]?.timestamp ?? 0;
-  const last = verified.at(-1)?.timestamp ?? 0;
-  return last > first;
 }
 
 // Favourite intervals and instruments are GLOBAL to the trader: one bar,
