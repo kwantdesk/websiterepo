@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-30 — Uniform calendar impact filter selection
+
+High/Medium/Low economic-calendar filters now share static theme-primary selected text/dot/background/border and a dim unselected state. Reserved border sizing prevents shifts; aria-pressed matches selection. Filter logic and event badges preserved. Actual JSX callback checked across all8 selection combinations/24 buttons;11 News/navigation regressions and scoped lint pass; full production build passed. No provider/feed/recording changes. Details: docs/prompt-log/2026-10-30-calendar-impact-filter-style.md.
+
 ## 2026-10-30 — Internal workspace navigation CPU and loading
 
 Shared timezone controls no longer construct the world menu while closed; bounded timezone validation/Intl formatter caches preserve exact-date DST offsets. News day-key formatter reuse removes per-event Intl construction. Actual isolated measurements vs6d22ea26: three closed controls426.41→2.45ms (5064→2 constructions);2000 date keys272.81→8.63ms (4000→1). News controls/structure render before remote calendar responses; saved payload initializes first render, placeholder only in event rows, missing totals use dashes. Normal requests honor private HTTP caching; manual Refresh reloads. Macro/Financial Info lazy-loaded. Authenticated workspace serially warms code in idle time, pauses hidden, respects data saver/2G, cancels on unmount; no page mounting, API/RSC prefetch or feed startup.20 focused tests, scoped lint and full build pass; one existing obsolete liquidity iframe-version pin remains unchanged. No VPS/feed/recording/trade changes. Browser end-to-end timing unmeasured; do not turn isolated CPU gains into a whole-site speed claim. Details: docs/prompt-log/2026-10-30-workspace-navigation-speed.md.

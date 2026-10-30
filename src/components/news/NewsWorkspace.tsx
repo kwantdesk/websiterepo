@@ -692,8 +692,8 @@ function EconomicCalendarWorkspace() {
               {(["High", "Medium", "Low"] as const).map((impact) => {
                 const active = selectedImpacts.includes(impact);
                 return (
-                  <button key={impact} type="button" onClick={() => toggleImpact(impact)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[9px] font-semibold ${active ? impactClasses(impact) : "text-muted opacity-55"}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${impact === "High" ? `bg-[${IMPACT_HIGH}]` : impact === "Medium" ? `bg-[${IMPACT_MEDIUM}]` : "bg-muted"}`} />
+                  <button key={impact} type="button" onClick={() => toggleImpact(impact)} aria-pressed={active} className={`flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[9px] font-semibold transition-colors ${active ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-muted opacity-55 hover:opacity-80"}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-primary" : "bg-muted"}`} />
                     {impact}
                   </button>
                 );
