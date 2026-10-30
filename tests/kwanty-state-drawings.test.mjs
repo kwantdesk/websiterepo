@@ -83,5 +83,5 @@ test('State reuses normal drawing layer/settings and forbids fabricated VAP fall
  assert.match(code,/isExecutionBackedVolumeProfile/);assert.match(code,/cash index|Cash index/);
  const layer=readFileSync(new URL('../src/components/ChartDrawLayer.tsx',import.meta.url),'utf8');
  assert.match(layer,/ownerDocument.defaultView/);assert.doesNotMatch(layer,/window\.(?:add|remove)EventListener/);
- assert.match(layer,/requireExactVolumeProfiles \? null : volumeProfile/);
+ assert.match(layer,/requireExactVolumeProfiles \|\| \(requireExactFixedVolumeProfiles && !anchored\)\) \? null : volumeProfile/);
 });

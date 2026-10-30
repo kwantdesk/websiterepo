@@ -3964,6 +3964,7 @@ function Chart({
   );
   const [drawVolumeProfiles, setDrawVolumeProfiles] = useState<Record<string, InstitutionalVolumeProfile>>({});
   const [ownedVariantProfiles, setOwnedVariantProfiles] = useState<Record<string, InstitutionalVolumeProfile>>({});
+  const drawVolumeProfileResultsRef = useRef<Record<string, { signature: string; profile: InstitutionalVolumeProfile }>>({});
   const drawVolumeProfileSignaturesRef = useRef<Record<string, string>>({});
   useEffect(() => {
     const requested = chartingDrawings.flatMap((drawing) => {
@@ -3971,8 +3972,8 @@ function Chart({
       const startMs = Math.min(drawing.points[0].time, drawing.points[1].time) * 1000;
       const endMs = Math.max(drawing.points[0].time, drawing.points[1].time) * 1000;
       if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return [];
-      const groupTicks = Number(drawing.style.profileGroupTicks ?? 4);
-      const valueAreaPercent = Number(drawing.style.valueAreaPercent ?? 68);
+      const groupTicks = 1; // Keep exact rows; grouping belongs to the shared renderer.
+      const valueAreaPercent = 70; // VA styling is recalculated from exact rows by the native renderer.
       const minTradeVolume = Number(drawing.style.profileMinTradeVolume ?? 0);
       const maxTradeVolume = Number(drawing.style.profileMaxTradeVolume ?? 0);
       const signature = [instrument, contractSymbol, startMs, endMs, groupTicks, valueAreaPercent, minTradeVolume, maxTradeVolume].join(":");
@@ -3980,13 +3981,15 @@ function Chart({
     });
     const activeIds = new Set(requested.map(({ drawing }) => drawing.id));
     const requestedSignatures = Object.fromEntries(requested.map(({ drawing, signature }) => [drawing.id, signature]));
+    const previousSignatures = drawVolumeProfileSignaturesRef.current;
     setDrawVolumeProfiles((current) => {
       const retained = Object.fromEntries(Object.entries(current).filter(([id]) => (
-        activeIds.has(id) && drawVolumeProfileSignaturesRef.current[id] === requestedSignatures[id]
+        activeIds.has(id) && previousSignatures[id] === requestedSignatures[id]
       )));
       return Object.keys(retained).length === Object.keys(current).length ? current : retained;
     });
     drawVolumeProfileSignaturesRef.current = requestedSignatures;
+    for (const id of Object.keys(drawVolumeProfileResultsRef.current)) if (!activeIds.has(id)) delete drawVolumeProfileResultsRef.current[id];
     if (!requested.length) return;
 
     // Anchor drags can emit dozens of intermediate ranges. Wait until the
@@ -3994,7 +3997,8 @@ function Chart({
     let cancelled = false;
     const timer = window.setTimeout(() => {
       void Promise.all(requested.map(async ({ drawing, startMs, endMs, groupTicks, valueAreaPercent, minTradeVolume, maxTradeVolume, signature }) => {
-        const profile = await fetchInstitutionalVolumeProfile({
+        const cached = drawVolumeProfileResultsRef.current[drawing.id];
+        const profile = cached?.signature === signature ? cached.profile : await fetchInstitutionalVolumeProfile({
           symbol: instrument,
           contractSymbol: contractSymbol || undefined,
           period: "custom",
@@ -4005,6 +4009,7 @@ function Chart({
           minTradeVolume,
           maxTradeVolume,
         });
+        if (profile && !cancelled) drawVolumeProfileResultsRef.current[drawing.id] = { profile, signature };
         return { id: drawing.id, profile, signature };
       })).then((results) => {
         if (cancelled) return;
@@ -18985,6 +18990,7 @@ function Chart({
             // trader picks a colour of its own.
             themeColor={settings.upColor}
             themeBearColor={settings.downColor}
+            profileTheme={settings}
             activeTool={drawTool}
             emoji={drawEmoji}
             keepDrawing={drawKeepDrawing}
@@ -18999,6 +19005,7 @@ function Chart({
             }}
             candles={chartingDrawCandles}
             volumeProfiles={drawVolumeProfiles}
+            requireExactFixedVolumeProfiles
             magnet={drawMagnet}
             magnetStrength={drawMagnetStrength}
             viewportVersion={viewportVersion}
@@ -19063,6 +19070,7 @@ function Chart({
           <ChartDrawSettings
             themeColor={settings.upColor}
             themeBearColor={settings.downColor}
+            profileTheme={settings}
             drawing={drawSettingsOpen && drawSelectedId ? (chartingDrawings.find((drawing) => drawing.id === drawSelectedId) ?? null) : null}
             onChange={(next) => commitDrawings(chartingDrawings.map((d) => d.id === next.id ? next : d))}
             onClose={() => setDrawSettingsOpen(false)}

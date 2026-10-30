@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { DrawingProfileTheme } from "@/lib/drawingVolumeProfileStyle";
+import { VOLUME_PROFILE_GRADIENTS, isVolumeProfileGradientActive } from "@/lib/volumeProfileGradients";
 import ChartColorField from "@/components/ChartColorField";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { createPortal } from "react-dom";
@@ -30,13 +32,14 @@ type Props = {
   onChange: (drawing: Drawing) => void;
   onClose: () => void;
   /** Theme bullish candle, so the swatch shows what is actually painted. */
+  profileTheme?: DrawingProfileTheme;
   themeColor?: string;
   /** Theme bearish candle, for the position tool's risk zone swatch. */
   themeBearColor?: string;
 };
 
 export default function ChartDrawSettings({
-  drawing, onChange, onClose, themeColor,
+  drawing, onChange, onClose, themeColor, themeBearColor, profileTheme,
 }: Props) {
   const [tab, setTab] = useState<"style" | "text" | "coordinates" | "visibility">("style");
   const [templates, setTemplates] = useState<DrawTemplateStore>({});
@@ -70,6 +73,9 @@ export default function ChartDrawSettings({
   const isText = TEXT_TOOLS.includes(drawing.tool);
   const isEmoji = drawing.tool === "emoji";
   const isProfile = PROFILE_TOOLS.includes(drawing.tool);
+  const fixedProfile = drawing.tool === "fixedRangeVolumeProfile";
+  const profileValueAreaDefault = fixedProfile ? 70 : 68;
+  const profileGradientLocked = isProfile && isVolumeProfileGradientActive(drawing.style.profileGradient);
   const isAnchoredVwap = drawing.tool === "anchoredVwap";
   const isPosition = POSITION_TOOLS.includes(drawing.tool);
   const supportsHorizontalExtension = HORIZONTAL_EXTENSION_TOOLS.has(drawing.tool);
@@ -182,11 +188,21 @@ export default function ChartDrawSettings({
               {isProfile ? (
                 <div className="space-y-3 border-t border-border pt-3">
                   <div className="text-[10px] uppercase tracking-[0.1em] text-muted">Profile</div>
-                  <Row label={`Rows · ${drawing.style.profileRows ?? 80}`}>
-                    <input type="range" min={20} max={200} step={5} value={drawing.style.profileRows ?? 80} onChange={(e) => patchStyle({ profileRows: Number(e.target.value) })} className="w-40 accent-primary" />
-                  </Row>
+                  {drawing.tool === "fixedRangeVolumeProfile" ? <>
+                  <Row label="Profile type"><Select value={drawing.style.profileMode ?? "volume"} onChange={value => patchStyle({ profileMode: value as NonNullable<Drawing["style"]["profileMode"]> })} options={[["volume", "Volume"], ["delta-volume", "Delta and total volume"], ["bid-ask", "Ask / bid volume"], ["delta", "Delta"], ["delta-percentage", "Delta percentage"]]} /></Row>
+                  <Row label="Appearance"><Select value={drawing.style.profileVisualStyle ?? "automatic"} onChange={value => patchStyle({ profileVisualStyle: value as NonNullable<Drawing["style"]["profileVisualStyle"]> })} options={[["automatic", "Automatic"], ["solid", "Solid"], ["hollow", "Hollow"], ["line", "Line"], ["combined", "Combined"]]} /></Row>
+                  <Row label="Show delta"><input type="checkbox" checked={drawing.style.profileShowDelta !== false} disabled={(drawing.style.profileMode ?? "volume") === "volume"} onChange={e => patchStyle({ profileShowDelta: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  <Row label={`Opacity · ${drawing.style.profileOpacity ?? 68}%`}><input type="range" min={10} max={100} step={1} value={drawing.style.profileOpacity ?? 68} onChange={e => patchStyle({ profileOpacity: Number(e.target.value) })} className="w-40 accent-primary" /></Row>
+                  <Row label="Gradient scheme"><Select value={drawing.style.profileGradient ?? "off"} onChange={value => patchStyle({ profileGradient: value })} options={[["off", "Off"], ...VOLUME_PROFILE_GRADIENTS.map(g => [g.id, g.label] as [string, string])]} /></Row>
+                  <Row label="Volume / value area"><ChartColorField disabled={profileGradientLocked} ariaLabel="Profile volume colour" value={drawing.style.profileVolumeColor ?? (drawing.style.useThemeColor === false ? drawing.style.color : profileTheme?.borderUpColor ?? resolveDrawColor(drawing.style, themeColor))} onChange={hex => patchStyle({ profileVolumeColor: hex })} /></Row>
+                  <Row label="Ask / positive delta"><ChartColorField disabled={profileGradientLocked} ariaLabel="Profile ask and positive delta colour" value={drawing.style.profileAskColor ?? themeColor ?? "#22c55e"} onChange={hex => patchStyle({ profileAskColor: hex })} /></Row>
+                  <Row label="Bid / negative delta"><ChartColorField disabled={profileGradientLocked} ariaLabel="Profile bid and negative delta colour" value={drawing.style.profileBidColor ?? themeBearColor ?? "#ef4444"} onChange={hex => patchStyle({ profileBidColor: hex })} /></Row>
+                  <Row label="Profile spine"><input type="checkbox" checked={drawing.style.profileShowSpine === true} onChange={e => patchStyle({ profileShowSpine: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  <Row label="POC highlight"><input type="checkbox" checked={drawing.style.profileShowPocHighlight !== false} onChange={e => patchStyle({ profileShowPocHighlight: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  <Row label="Automatic grouping"><input type="checkbox" checked={drawing.style.profileAutomaticGrouping !== false} onChange={e => patchStyle({ profileAutomaticGrouping: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  </> : <Row label={`Rows · ${drawing.style.profileRows ?? 80}`}><input type="range" min={20} max={200} step={5} value={drawing.style.profileRows ?? 80} onChange={e => patchStyle({ profileRows: Number(e.target.value) })} className="w-40 accent-primary" /></Row>}
                   <Row label={`Price grouping · ${drawing.style.profileGroupTicks ?? 4} ticks`}>
-                    <input type="range" min={1} max={40} step={1} value={drawing.style.profileGroupTicks ?? 4} onChange={(e) => patchStyle({ profileGroupTicks: Number(e.target.value) })} className="w-40 accent-primary" />
+                    <input type="range" min={1} max={fixedProfile ? 500 : 40} step={1} value={drawing.style.profileGroupTicks ?? 4} onChange={e => patchStyle({ profileGroupTicks: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
                   <Row label={`Minimum trade · ${drawing.style.profileMinTradeVolume ?? 0}`}>
                     <input type="range" min={0} max={500} step={1} value={drawing.style.profileMinTradeVolume ?? 0} onChange={(e) => patchStyle({ profileMinTradeVolume: Number(e.target.value) })} className="w-40 accent-primary" />
@@ -194,19 +210,20 @@ export default function ChartDrawSettings({
                   <Row label={`Maximum trade · ${drawing.style.profileMaxTradeVolume ?? 0}${(drawing.style.profileMaxTradeVolume ?? 0) === 0 ? " (off)" : ""}`}>
                     <input type="range" min={0} max={5000} step={10} value={drawing.style.profileMaxTradeVolume ?? 0} onChange={(e) => patchStyle({ profileMaxTradeVolume: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
-                  <Row label={`Value area · ${drawing.style.valueAreaPercent ?? 68}%`}>
-                    <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? 68} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
+                  <Row label={`Value area · ${drawing.style.valueAreaPercent ?? profileValueAreaDefault}%`}>
+                    <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? 70} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
                   <Row label={`Profile width · ${drawing.style.profileWidthPercent ?? 32}%`}>
                     <input type="range" min={1} max={80} step={1} value={drawing.style.profileWidthPercent ?? 32} onChange={(e) => patchStyle({ profileWidthPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
+                  {fixedProfile ? <Row label="Level extension"><Select value={drawing.style.profileLevelExtension ?? "range"} onChange={value => patchStyle({ profileLevelExtension: value as "range" | "window" | "none" })} options={[["range", "Selected range"], ["window", "Window end"], ["none", "None"]]} /></Row> : null}
                   <Row label="Show POC line"><input type="checkbox" checked={drawing.style.showPoc !== false} onChange={(e) => patchStyle({ showPoc: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
                   <Row label="Show VAH / VAL lines"><input type="checkbox" checked={drawing.style.showValueAreaLines !== false} onChange={(e) => patchStyle({ showValueAreaLines: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
-                  <Row label="POC line colour"><ChartColorField ariaLabel="Point of control line colour" value={drawing.style.pocColor ?? resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ pocColor: hex })} /></Row>
-                  <Row label="VAH / VAL colour"><ChartColorField ariaLabel="Value area line colour" value={drawing.style.valueAreaColor ?? resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ valueAreaColor: hex })} /></Row>
+                  <Row label="POC line colour"><ChartColorField disabled={profileGradientLocked} ariaLabel="Point of control line colour" value={drawing.style.pocColor ?? resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ pocColor: hex })} /></Row>
+                  <Row label="VAH / VAL colour"><ChartColorField disabled={profileGradientLocked} ariaLabel="Value area line colour" value={drawing.style.valueAreaColor ?? (fixedProfile ? drawing.style.profileVolumeColor ?? profileTheme?.borderUpColor ?? resolveDrawColor(drawing.style, themeColor) : resolveDrawColor(drawing.style, themeColor))} onChange={(hex) => patchStyle({ valueAreaColor: hex })} /></Row>
                   <Row label={`POC line width · ${drawing.style.pocLineWidth ?? drawing.style.width}px`}><input type="range" min={0.5} max={4} step={0.5} value={drawing.style.pocLineWidth ?? drawing.style.width} onChange={(e) => patchStyle({ pocLineWidth: Number(e.target.value) })} className="w-40 accent-primary" /></Row>
                   <Row label={`VAH / VAL width · ${drawing.style.valueAreaLineWidth ?? drawing.style.width}px`}><input type="range" min={0.5} max={4} step={0.5} value={drawing.style.valueAreaLineWidth ?? drawing.style.width} onChange={(e) => patchStyle({ valueAreaLineWidth: Number(e.target.value) })} className="w-40 accent-primary" /></Row>
-                  <Row label="Outside value area"><ChartColorField ariaLabel="Outside value area colour" value={drawing.style.outsideColor ?? "#787B86"} onChange={(hex) => patchStyle({ outsideColor: hex })} /></Row>
+                  <Row label="Outside value area"><ChartColorField disabled={profileGradientLocked} ariaLabel="Outside value area colour" value={drawing.style.outsideColor ?? (fixedProfile ? profileTheme?.borderDownColor ?? themeBearColor ?? "#787B86" : "#787B86")} onChange={(hex) => patchStyle({ outsideColor: hex })} /></Row>
                 </div>
               ) : null}
 

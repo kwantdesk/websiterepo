@@ -424,6 +424,7 @@ export type NativeVolumeProfileStyle = {
   negativeDeltaColor: string;
   outsideValueAreaColor: string;
   valueAreaColor: string;
+  valueAreaLineColor?: string;
   /**
    * Active gradient scheme. When set, the whole profile body fades from
    * `from` at its low to `to` at its high and every individual body colour
@@ -477,7 +478,7 @@ export type NativeVolumeProfileStyle = {
   /** Point of Control line weight. */
   pocLineWidth?: number;
   /** DeepCharts line-extension contract. */
-  pocExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
+  pocExtensionMode?: "none" | "until-first-interaction" | "to-window-end" | "to-profile-end";
   /** Trace the POC as it migrated through the session. */
   showDevelopingPoc?: boolean;
   /** Raw developing movement or DeepCharts' tick-grouped shifted movement. */
@@ -493,7 +494,7 @@ export type NativeVolumeProfileStyle = {
   developingPocStartMs?: number;
   /** Value Area boundary line weight. */
   valueAreaLineWidth?: number;
-  valueAreaExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
+  valueAreaExtensionMode?: "none" | "until-first-interaction" | "to-window-end" | "to-profile-end";
   /** Peak and Valley tab. Peaks are high-volume nodes, valleys low-volume ones. */
   showPeaks?: boolean;
   showValleys?: boolean;
@@ -615,6 +616,8 @@ export function resolveDeltaBarWidth(input: {
 }
 
 export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
+  private readonly createPath: () => Path2D;
+  constructor(createPath: () => Path2D = () => new Path2D()) { this.createPath = createPath; }
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private models: NativeVolumeProfileModel[] = [];
   /**
@@ -1205,14 +1208,14 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           negativeDelta: [] as VolumeProfileContourStep[], ask: [] as VolumeProfileContourStep[],
           bid: [] as VolumeProfileContourStep[],
         } : null;
-        const valueAreaPath = new Path2D();
-        const outsideValueAreaPath = new Path2D();
-        const positiveDeltaPath = new Path2D();
-        const negativeDeltaPath = new Path2D();
-        const askVolumePath = new Path2D();
-        const bidVolumePath = new Path2D();
-        const outlinePath = new Path2D();
-        const pocPath = new Path2D();
+        const valueAreaPath = this.createPath();
+        const outsideValueAreaPath = this.createPath();
+        const positiveDeltaPath = this.createPath();
+        const negativeDeltaPath = this.createPath();
+        const askVolumePath = this.createPath();
+        const bidVolumePath = this.createPath();
+        const outlinePath = this.createPath();
+        const pocPath = this.createPath();
         const addComponentBar = (
           component: "volume" | "positiveDelta" | "negativeDelta" | "ask" | "bid",
           path: Path2D, row: number, x: number, y: number, width: number, height: number,
@@ -1435,7 +1438,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const levelPocColor = style.gradient ? style.gradient.to : style.pocColor;
         const levelValueAreaColor = style.gradient
           ? mixHexColors(style.gradient.to, style.gradient.from, 0.35)
-          : style.valueAreaColor;
+          : style.valueAreaLineColor ?? style.valueAreaColor;
         if (contourSteps) {
           // Appearance changes the paint, not which measurements exist. Every
           // selected volume/delta/ask/bid component owns its own open contour.
@@ -1450,7 +1453,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           for (const component of Object.keys(contourSteps) as Array<keyof typeof contourSteps>) {
             const steps = contourSteps[component];
             if (!steps.length) continue;
-            const silhouette = new Path2D();
+            const silhouette = this.createPath();
             traceVolumeProfileContour(silhouette, steps);
             context.globalAlpha = Math.min(1, style.opacity + 0.2);
             context.strokeStyle = bodyColor(colours[component]);
@@ -1578,7 +1581,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           dash: number[],
           label: string | null,
           lineWidth?: number,
-          extensionMode: "none" | "until-first-interaction" | "to-window-end" = "to-window-end",
+          extensionMode: "none" | "until-first-interaction" | "to-window-end" | "to-profile-end" = "to-window-end",
           ownDash = false,
         ) => {
           if (price == null) return;
@@ -1608,6 +1611,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           let lineEndX = lineSegment?.endX ?? sourceFrontX;
           if (extensionMode === "none") {
             lineEndX = sourceFrontX;
+          } else if (extensionMode === "to-profile-end") {
+            lineEndX = Math.min(lineEndX, Math.max(sourceFrontX, sessionEndX));
           } else if (extensionMode === "until-first-interaction" && lineSegment) {
             const touched = firstVolumeProfileLevelInteraction(price, model.laterBars ?? []);
             if (touched) {

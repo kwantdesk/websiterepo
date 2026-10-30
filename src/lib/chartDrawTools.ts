@@ -179,6 +179,18 @@ export type DrawStyle = {
   valueAreaLineWidth?: number; // 0.5..4; absent follows the drawing line width
   outsideColor?: string;       // rows outside the value area (default #787B86)
   profileWidthPercent?: number; // 1..80; widths below 4 add fine-scale control
+  profileMode?: "volume" | "delta-volume" | "bid-ask" | "delta" | "delta-percentage";
+  profileVisualStyle?: "automatic" | "solid" | "hollow" | "line" | "combined";
+  profileOpacity?: number;
+  profileShowDelta?: boolean;
+  profileShowSpine?: boolean;
+  profileShowPocHighlight?: boolean;
+  profileAutomaticGrouping?: boolean;
+  profileVolumeColor?: string;
+  profileAskColor?: string;
+  profileBidColor?: string;
+  profileGradient?: string;
+  profileLevelExtension?: "range" | "window" | "none";
   // Anchored VWAP. Optional fields keep existing saved drawings compatible.
   vwapSource?: "hlc3" | "hl2" | "ohlc4" | "close";
   vwapBand1Enabled?: boolean;

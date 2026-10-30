@@ -32,6 +32,8 @@ import {
 import { fillMarkerGeometry, scaleFillMarkerGeometry, FILL_MARKER_DISPLAY_SCALE, fillMarkerCounterScale, FILL_MARKER_DEFAULT_HALF_WIDTH_PX, FILL_MARKER_DEFAULT_HALF_HEIGHT_PX, FILL_MARKER_MIN_HALF_WIDTH_PX, FILL_MARKER_MIN_HALF_HEIGHT_PX, positionToolScreenGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
 import { nearestCandleMagnetCandidate } from "@/lib/chartMagnet";
 import type { InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
+import ChartDrawingVolumeProfile from "@/components/ChartDrawingVolumeProfile";
+import type { DrawingProfileTheme } from "@/lib/drawingVolumeProfileStyle";
 import { exactCustomDrawVolumeProfile } from "@/lib/customDrawVolumeProfile";
 import { chartAnchoredEmojiScreenSize } from "@/lib/chartEmojiScale";
 
@@ -66,6 +68,7 @@ type Props = {
   volumeProfiles?: Readonly<Record<string, InstitutionalVolumeProfile>>;
   /** Options workspaces must never reconstruct traded VAP from positioning/OHLC. */
   requireExactVolumeProfiles?: boolean;
+  requireExactFixedVolumeProfiles?: boolean;
   volumeProfileMessages?: Readonly<Record<string, string>>;
   magnet: boolean;
   magnetStrength: MagnetStrength;
@@ -86,6 +89,7 @@ type Props = {
    * until the trader picks a colour of their own, so a drawing never sits on
    * the chart in a palette the theme has moved away from.
    */
+  profileTheme?: DrawingProfileTheme;
   themeColor?: string;
   /** Theme bearish candle, for the risk side of a position calculator. */
   themeBearColor?: string;
@@ -107,8 +111,8 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "
 
 export default function ChartDrawLayer({
   width, height, priceScaleWidth = 0, activeTool, emoji, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, volumeProfiles = {}, requireExactVolumeProfiles = false, volumeProfileMessages = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, projectionRevision,
-  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, currentPrice,
+  toX, toY, fromXY, candles, volumeProfiles = {}, requireExactVolumeProfiles = false, requireExactFixedVolumeProfiles = false, volumeProfileMessages = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, projectionRevision,
+  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor, profileTheme, currentPrice,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const clipboardMenu = useChartDrawingClipboard({ svgRef, drawings, selectedId, toX, toY, fromXY, onCommit, onSelect });
@@ -714,7 +718,7 @@ export default function ChartDrawLayer({
       const t0 = anchored ? pr[0].time : Math.min(pr[0].time, pr[1].time);
       const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
       const exact = exactCustomDrawVolumeProfile(volumeProfiles[drawing.id]);
-      cache.set(drawing.id, exact ?? (requireExactVolumeProfiles ? null : volumeProfile(
+      cache.set(drawing.id, exact ?? ((requireExactVolumeProfiles || (requireExactFixedVolumeProfiles && !anchored)) ? null : volumeProfile(
           candles,
           t0,
           t1,
@@ -723,7 +727,7 @@ export default function ChartDrawLayer({
         )));
     }
     return cache;
-  }, [drawings, candles, volumeProfiles, requireExactVolumeProfiles]);
+  }, [drawings, candles, volumeProfiles, requireExactVolumeProfiles, requireExactFixedVolumeProfiles]);
   // Between the first and second placement click the preview histogram used to
   // recompute on EVERY mousemove — a full candle scan per pixel of cursor
   // travel, which is what made drawing the fixed range feel glitchy. The
@@ -1552,18 +1556,27 @@ export default function ChartDrawLayer({
           const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
           const x0 = toX(t0); const x1 = toX(t1);
           if (x0 == null || x1 == null) return null;
+          const exactRequired = requireExactVolumeProfiles || (requireExactFixedVolumeProfiles && !anchored);
           const rows = style.profileRows ?? 80;
           const valueArea = style.valueAreaPercent ?? 68;
           // Committed drawings read the memoized histogram (recomputed only when
           // candles/anchors/settings change); the live preview recomputes only
           // when the cursor crosses a bar, never per pixel.
-          const prof = requireExactVolumeProfiles ? volumeProfileCache.get(drawing.id) : preview
+          const prof = exactRequired ? volumeProfileCache.get(drawing.id) : preview
             ? previewVolumeProfile(t0, t1, rows, valueArea)
             : (volumeProfileCache.get(drawing.id) ?? volumeProfile(candles, t0, t1, rows, valueArea));
-          if (!prof) return requireExactVolumeProfiles ? <g>
+          if (!prof) return exactRequired ? <g>
             <rect x={Math.min(x0,x1)} y={plotTopInset} width={Math.max(1,Math.abs(x1-x0))} height={Math.max(1,height-plotTopInset-plotBottomInset)} fill="none" stroke={stroke} strokeWidth={w} strokeDasharray="4 4" />
             {label(Math.min(x0,x1)+4,a.y ?? plotTopInset+14,volumeProfileMessages[drawing.id] || (preview ? "Select profile range" : "Exact volume-at-price unavailable"),stroke)}
           </g> : null;
+          const exactProfile = volumeProfiles[drawing.id];
+          if (!anchored && exactProfile?.levels.length && Number.isFinite(exactProfile.poc) && Number.isFinite(exactProfile.vah) && Number.isFinite(exactProfile.val)) return <ChartDrawingVolumeProfile
+            drawing={drawing} profile={exactProfile}
+            theme={profileTheme ?? { upColor: themeColor ?? stroke, downColor: themeBearColor ?? stroke, borderUpColor: themeColor ?? stroke, borderDownColor: themeBearColor ?? stroke }}
+            width={Math.max(4, width - priceScaleWidth)} height={Math.max(4, height - plotBottomInset)} toX={toX} toY={toY}
+            fromY={y => fromXY(0, y)?.price ?? null}
+          />;
+          if (style.profileMode && style.profileMode !== "volume") return <g>{label(x0, plotTopInset + 14, "Exact executions required for delta / bid-ask", stroke)}</g>;
           const boxRight = anchored ? x1 : Math.max(x0, x1);
           const boxLeft = Math.min(x0, x1);
           const widthSetting = Math.max(1, Math.min(80, style.profileWidthPercent ?? 32));
