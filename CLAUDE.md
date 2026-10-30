@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-30 — Opaque indicator panes above chart content
+
+Indicator dock root now z40 above price drawings24/trade labels31–32; raising child surfaces alone cannot escape the old root z9. Horizontal/side background rectangles are opaque. Drawing placement target now shares existing price-pane clip bounds, excluding lower/top indicators and price axis.21 pane/drawing regressions, scoped lint and full build pass. Actual-component headless Chrome fixture with compiled CSS reproduces old overlay/3% bleed/click interception; dark/light after fixtures have8 exact background pixel checks and4 correct pane hit targets; price drawing capture confined. Calculations, data, recordings, trades and gateway untouched. Details/evidence: docs/prompt-log/2026-10-30-indicator-pane-occlusion.md. Owner browser not inspected; do not claim its screenshot was observed.
+
 ## 2026-10-30 — Uniform calendar impact filter selection
 
 High/Medium/Low economic-calendar filters now share static theme-primary selected text/dot/background/border and a dim unselected state. Reserved border sizing prevents shifts; aria-pressed matches selection. Filter logic and event badges preserved. Actual JSX callback checked across all8 selection combinations/24 buttons;11 News/navigation regressions and scoped lint pass; full production build passed. No provider/feed/recording changes. Details: docs/prompt-log/2026-10-30-calendar-impact-filter-style.md.

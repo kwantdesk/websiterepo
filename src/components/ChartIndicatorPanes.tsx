@@ -362,7 +362,7 @@ function ChartIndicatorPaneSurface({
 
         return (
           <g key={group.key}>
-            <rect x="0" y={top} width={width} height={paneHeight} fill="var(--chart-background)" fillOpacity="0.97" />
+            <rect x="0" y={top} width={width} height={paneHeight} fill="var(--chart-background)" />
             <line x1="0" y1={top + 0.5} x2={width} y2={top + 0.5} stroke="var(--grid-color)" strokeWidth="1" />
             <line x1={plotWidth + 0.5} y1={top} x2={plotWidth + 0.5} y2={top + paneHeight} stroke="var(--grid-color)" strokeWidth="1" />
             {group.showHeader !== false ? <text x={group.percentageAxis ? leftAxisWidth + 8 : 10} y={top + 16} fill="var(--foreground)" fontSize="11" fontWeight="600" fontFamily="var(--font-mono), Aleph, monospace">
@@ -1124,7 +1124,6 @@ function ChartVerticalIndicatorPaneSurface({
                 width={columnWidth}
                 height={height}
                 fill="var(--chart-background)"
-                fillOpacity="0.98"
               />
               {groupIndex > 0 ? (
                 <line x1={columnLeft + 0.5} x2={columnLeft + 0.5} y1="0" y2={height} stroke="var(--grid-color)" />
@@ -1586,7 +1585,7 @@ function ChartIndicatorPanes({
   if (!groups.length || width <= 0 || chartHeight <= 0) return null;
 
   return (
-    <div ref={rootRef} className="pointer-events-none absolute inset-0 z-[9] overflow-hidden" data-testid="indicator-pane-dock-root">
+    <div ref={rootRef} className="pointer-events-none absolute inset-0 z-[40] overflow-hidden" data-testid="indicator-pane-dock-root">
       {renderSurface("top", groupsByDock.top, horizontalPaneWidth, topHeight, { left: boundedLeftInset, top: 0 })}
       {renderSurface("bottom", groupsByDock.bottom, horizontalPaneWidth, bottomHeight, { left: boundedLeftInset, bottom })}
       {renderSideSurface("left", groupsByDock.left, leftHeight, { left: boundedLeftInset, top: topHeight })}

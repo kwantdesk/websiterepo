@@ -1866,9 +1866,9 @@ export default function ChartDrawLayer({
       {captureActive ? (
         <rect
           x={0}
-          y={0}
-          width={width}
-          height={height}
+          y={plotTopInset}
+          width={Math.max(0, width - priceScaleWidth)}
+          height={Math.max(0, height - plotTopInset - plotBottomInset)}
           fill="transparent"
           style={{ pointerEvents: "all", cursor: active ? "crosshair" : "cell" }}
           onPointerDown={handlePointerDown}
