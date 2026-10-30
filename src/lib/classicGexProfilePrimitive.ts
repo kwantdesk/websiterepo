@@ -107,7 +107,7 @@ class ClassicGexProfileRenderer implements ISeriesPrimitivePaneRenderer {
           context.strokeStyle = data.backgroundColor;
           context.lineWidth = 3;
           const x = data.right ? 7 : mediaSize.width - 7;
-          const labelY = Math.max(10, y - 4);
+          const labelY = y - 4;
           context.strokeText(label, x, labelY);
           context.fillStyle = line.color;
           context.fillText(label, x, labelY);

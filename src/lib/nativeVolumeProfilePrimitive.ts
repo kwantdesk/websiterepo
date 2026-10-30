@@ -46,32 +46,30 @@ export type VolumeProfileLabelBox = {
 };
 
 /**
- * Keep every enabled profile label inside the pane and out of labels already
- * placed there. Profiles frequently share a high (or dock to the same edge),
- * so drawing all captions at their raw top coordinate makes later text paint
- * directly over earlier text and appear to replace it.
+ * Place visible profile labels near their own anchors. An off-screen caption
+ * must never be moved onto a pane border merely to keep it visible.
  */
 export function placeVolumeProfileLabelBoxes(
   candidates: readonly VolumeProfileLabelBox[],
   bounds: { left: number; top: number; right: number; bottom: number },
-): Array<VolumeProfileLabelBox & { left: number; top: number }> {
+): Array<(VolumeProfileLabelBox & { left: number; top: number }) | null> {
   const placed: Array<VolumeProfileLabelBox & { left: number; top: number }> = [];
+  const result: Array<(VolumeProfileLabelBox & { left: number; top: number }) | null> = [];
   for (const candidate of candidates) {
-    const width = Math.max(1, Math.min(candidate.width, Math.max(1, bounds.right - bounds.left)));
-    const height = Math.max(1, Math.min(candidate.height, Math.max(1, bounds.bottom - bounds.top)));
-    const left = clamp(candidate.preferredLeft, bounds.left, Math.max(bounds.left, bounds.right - width));
-    const preferredTop = clamp(candidate.preferredTop, bounds.top, Math.max(bounds.top, bounds.bottom - height));
+    const { width, height } = candidate;
+    const left = candidate.preferredLeft, preferredTop = candidate.preferredTop;
+    if (![left, preferredTop, width, height].every(Number.isFinite) || width <= 0 || height <= 0
+      || left < bounds.left || left + width > bounds.right || preferredTop < bounds.top || preferredTop + height > bounds.bottom) {
+      result.push(null); continue;
+    }
     const step = Math.max(3, height + 2);
-    const maximumSteps = Math.max(1, Math.ceil((bounds.bottom - bounds.top) / step));
-    let top = preferredTop;
+    const maximumSteps = 2;
+    let top: number | null = null;
     for (let distance = 0; distance <= maximumSteps; distance += 1) {
       const offsets = distance === 0 ? [0] : [distance * step, -distance * step];
       const available = offsets.find((offset) => {
-        const trialTop = clamp(
-          preferredTop + offset,
-          bounds.top,
-          Math.max(bounds.top, bounds.bottom - height),
-        );
+        const trialTop = preferredTop + offset;
+        if (trialTop < bounds.top || trialTop + height > bounds.bottom) return false;
         return !placed.some((other) => (
           left < other.left + other.width + 2
           && left + width + 2 > other.left
@@ -80,17 +78,15 @@ export function placeVolumeProfileLabelBoxes(
         ));
       });
       if (available !== undefined) {
-        top = clamp(
-          preferredTop + available,
-          bounds.top,
-          Math.max(bounds.top, bounds.bottom - height),
-        );
+        top = preferredTop + available;
         break;
       }
     }
-    placed.push({ ...candidate, width, height, left, top });
+    if (top === null) { result.push(null); continue; }
+    const box = { ...candidate, width, height, left, top };
+    placed.push(box); result.push(box);
   }
-  return placed;
+  return result;
 }
 
 /**
@@ -880,12 +876,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const rawCustomRight = Math.max(sessionAnchorX, sessionEndX);
         const customCenterX = (rawCustomLeft + rawCustomRight) / 2;
         const customWidth = Math.max(120, rawCustomRight - rawCustomLeft);
-        const customLeft = clamp(
-          customCenterX - customWidth / 2,
-          leftEdge + 2,
-          Math.max(leftEdge + 2, rightEdge - 122),
-        );
-        const customRight = Math.min(rightEdge - 2, customLeft + customWidth);
+        const customLeft = customCenterX - customWidth / 2;
+        const customRight = customLeft + customWidth;
         // Keep the current left-dock owner visible when its session open has
         // moved off the left edge. The old renderer only pinned once
         // the *entire* session was off-screen, so a cash-session viewport had
@@ -1591,7 +1583,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         ) => {
           if (price == null) return;
           const y = params.series.priceToCoordinate(price);
-          if (y == null) return;
+          if (y == null || !Number.isFinite(y) || y < 0 || y > mediaSize.height) return;
           // VAH, VAL and POC obey one spatial contract: start at the source
           // profile's front, finish flush with the next chronological profile,
           // and let the newest profile reach the pane edge. Candle interaction
@@ -1642,7 +1634,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               : `${label} ${price.toFixed(pricePrecision)}`;
             context.font = "700 9px 'Aleph', monospace";
             const measured = context.measureText(labelText).width;
-            const labelY = Math.max(11, Math.min(mediaSize.height - 3, y - 3));
+            const labelY = y - 3;
             const labelOnLeft = (style.levelLabelSide ?? "right") === "left";
             // Where the label naturally belongs: at the line's own terminus.
             const naturalX = labelOnLeft

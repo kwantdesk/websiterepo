@@ -76,13 +76,13 @@ class SmtDivergenceRenderer implements ISeriesPrimitivePaneRenderer {
           }
         }
 
-        if (options.showLabels) {
+        if (options.showLabels && endX >= 0 && endX <= mediaSize.width && endY >= 0 && endY <= mediaSize.height) {
           const paddingX = 6;
           const labelHeight = Math.max(17, options.labelFontSize + 8);
           const labelWidth = context.measureText(signal.label).width + paddingX * 2;
-          const labelX = Math.max(2, Math.min(mediaSize.width - labelWidth - 2, endX + 7));
+          const labelX = endX + 7;
           const preferredY = signal.kind === "bearish" ? endY - labelHeight - 6 : endY + 6;
-          const labelY = Math.max(2, Math.min(mediaSize.height - labelHeight - 2, preferredY));
+          const labelY = preferredY;
           context.save();
           context.globalAlpha = 0.94;
           context.fillStyle = "rgba(4, 6, 9, 0.90)";

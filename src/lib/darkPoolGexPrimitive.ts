@@ -98,7 +98,7 @@ function drawPinnedDarkPoolLabels(
     const label = context.measureText(fullLabel).width <= availableWidth ? fullLabel : compactLabel;
     const labelWidth = Math.min(availableWidth + 10, Math.ceil(context.measureText(label).width) + 10);
     const left = pinnedDarkPoolLabelLeft(width, labelWidth);
-    const labelY = Math.max(8, Math.min(height - 8, Number(y)));
+    const labelY = Number(y);
     const opacity = lifecycle.invalidated ? Math.max(0.45, data.settings.haloIntensity / 100) : 1;
     context.fillStyle = rgba(data.backgroundColor, 0.94);
     context.fillRect(left, labelY - 8, labelWidth, 16);

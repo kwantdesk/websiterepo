@@ -64,8 +64,8 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           context.setLineDash([]);
           if (settings.showTargetText) {
             context.font = `700 ${settings.textSize}px 'Aleph', monospace`; context.textBaseline = "bottom";
-            context.fillStyle = colors.text; context.fillText("HTF High", Math.max(2, x2 - context.measureText("HTF High").width - 3), highY - 2);
-            context.textBaseline = "top"; context.fillText("HTF Low", Math.max(2, x2 - context.measureText("HTF Low").width - 3), lowY + 2);
+            context.fillStyle = colors.text; context.fillText("HTF High", x2 - context.measureText("HTF High").width - 3, highY - 2);
+            context.textBaseline = "top"; context.fillText("HTF Low", x2 - context.measureText("HTF Low").width - 3, lowY + 2);
           }
         }
         const summaryFirst = Math.max(0, points.length - settings.summaryToView);
@@ -76,7 +76,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           if (bucket.askVolume + bucket.bidVolume > 0) rows.push(`A ${compact(bucket.askVolume)}  B ${compact(bucket.bidVolume)}`);
           context.font = `600 ${settings.summaryTextSize}px 'Aleph', monospace`; context.textBaseline = "top";
           rows.forEach((row, rowIndex) => {
-            const y = Math.min(mediaSize.height - settings.summaryTextSize - 2, Number(low) + 4 + rowIndex * (settings.summaryTextSize + 2));
+            const y = Number(low) + 4 + rowIndex * (settings.summaryTextSize + 2);
             if (row.startsWith("A ")) {
               const [ask, bid] = row.split("  "); context.fillStyle = colors.ask; context.fillText(ask, x1 + 3, y);
               context.fillStyle = colors.bid; context.fillText(bid, x1 + 6 + context.measureText(ask).width, y);

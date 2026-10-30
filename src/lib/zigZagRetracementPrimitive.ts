@@ -41,7 +41,7 @@ export class ZigZagRetracementPrimitive implements ISeriesPrimitive<Time> {
           context.beginPath(); context.moveTo(Math.max(0, x1), y); context.lineTo(Math.min(mediaSize.width, x2), y); context.stroke();
           const label = level.label;
           const width = context.measureText(label).width + 8;
-          const labelX = Math.max(0, Math.min(mediaSize.width - width, x2 - width));
+          const labelX = x2 - width;
           context.fillStyle = options.backgroundColor; context.fillRect(labelX, y - options.fontSize - 5, width, options.fontSize + 5);
           context.fillStyle = options.textColor; context.fillText(label, labelX + 4, y - 2);
         }

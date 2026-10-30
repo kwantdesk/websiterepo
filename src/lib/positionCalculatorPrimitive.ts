@@ -47,8 +47,6 @@ export type PositionCalculatorModel = {
   lineDash: number[] | null;
 };
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
 function withAlpha(color: string, alpha: number) {
   const trimmed = color.trim();
   const hex = /^#([0-9a-f]{6})$/i.exec(trimmed);
@@ -120,6 +118,9 @@ export class PositionCalculatorPrimitive implements ISeriesPrimitive<Time> {
         const riskHeight = Math.abs(entryY - stopY);
 
         context.save();
+        context.beginPath();
+        context.rect(0, 0, mediaSize.width, mediaSize.height);
+        context.clip();
         context.lineWidth = model.lineWidth;
 
         context.globalAlpha = model.fillOpacity;
@@ -158,14 +159,11 @@ export class PositionCalculatorPrimitive implements ISeriesPrimitive<Time> {
           context.textAlign = "center";
           context.textBaseline = "middle";
           const pill = (y: number, text: string, background: string, bold: boolean) => {
+            if (y < 0 || y > mediaSize.height || x + boxWidth / 2 < 0 || x + boxWidth / 2 > mediaSize.width) return;
             context.font = `${bold ? 700 : 650} 10px 'Aleph', monospace`;
             const width = Math.max(76, context.measureText(text).width + 18);
-            const left = clamp(
-              x + boxWidth / 2 - width / 2,
-              4,
-              Math.max(4, mediaSize.width - width - 4),
-            );
-            const top = clamp(y - 10.5, 4, Math.max(4, mediaSize.height - 25));
+            const left = x + boxWidth / 2 - width / 2;
+            const top = y - 10.5;
             context.fillStyle = background;
             context.beginPath();
             context.roundRect(left, top, width, 21, 10.5);

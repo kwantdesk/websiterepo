@@ -1117,6 +1117,9 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
       type LabelBounds = { left: number; top: number; right: number; bottom: number };
       const labels: LevelLabel[] = [];
       const seenLevelIds = new Set<string>();
+      context.beginPath();
+      context.rect(this.primitive.leftInset(), 0, Math.max(0, mediaSize.width - this.primitive.leftInset()), mediaSize.height);
+      context.clip();
 
       for (const level of this.primitive.levels()) {
         // A live settings/data refresh can briefly deliver the same logical
@@ -1125,7 +1128,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
         seenLevelIds.add(level.id);
         const rawX = chart.timeScale().timeToCoordinate(level.startTime);
         const y = series.priceToCoordinate(level.price);
-        if (rawX === null || y === null) continue;
+        if (rawX === null || y === null || !Number.isFinite(rawX) || !Number.isFinite(y) || rawX >= mediaSize.width || y < 0 || y > mediaSize.height) continue;
 
         const startX = Math.max(-2, rawX);
         context.save();
@@ -1165,18 +1168,19 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
           // edge -- that was the source of the unreadable overprint.
           const toolbarClearance = this.primitive.leftInset() + 4;
           const measuredWidth = context.measureText(labelText).width;
-          const maximumLabelX = Math.max(toolbarClearance, mediaSize.width - measuredWidth - 6);
           const anchor = level.labelAnchor ?? "start";
           // End-anchored labels sit at the line's right terminus: the right
           // edge of the plot for a forward level, or just inside the line's
           // own end for a bounded one (IB fibs stop at the next session).
           const labelX = anchor === "end"
-            ? Math.max(toolbarClearance, Math.min(maximumLabelX, endX - measuredWidth - 6))
-            : Math.min(maximumLabelX, Math.max(toolbarClearance, startX + 6));
-          labels.push({
+            ? (rawEndX ?? endX) - measuredWidth - 6
+            : rawX + 6;
+          const labelY = y - 4;
+          if (labelX >= toolbarClearance && labelX + measuredWidth <= mediaSize.width - 6
+            && labelY - level.fontSize - 2 >= 2 && labelY + 2 <= mediaSize.height - 2) labels.push({
             text: labelText,
             x: labelX,
-            y: Math.max(level.fontSize + 3, Math.min(mediaSize.height - 3, y - 4)),
+            y: labelY,
             width: measuredWidth,
             fontSize: level.fontSize,
             color: level.labelColor ?? level.color,
@@ -1233,12 +1237,9 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
             const verticalStep = label.fontSize + 6;
             for (let slot = 1; slot <= 4 && !placed; slot += 1) {
               for (const direction of [-1, 1]) {
-                const candidateY = Math.max(
-                  label.fontSize + 3,
-                  Math.min(mediaSize.height - 3, baselineY + direction * slot * verticalStep),
-                );
+                const candidateY = baselineY + direction * slot * verticalStep;
                 const bounds = boundsFor(label, label.x, candidateY);
-                if (bounds.right <= mediaSize.width - 6 && bounds.left >= minimumX && !occupied.some((other) => overlaps(bounds, other))) {
+                if (bounds.top >= 2 && bounds.bottom <= mediaSize.height - 2 && bounds.right <= mediaSize.width - 6 && bounds.left >= minimumX && !occupied.some((other) => overlaps(bounds, other))) {
                   placed = { x: label.x, y: candidateY, bounds };
                   break;
                 }
@@ -1585,10 +1586,10 @@ class HedgeLevelsRenderer implements ISeriesPrimitivePaneRenderer {
 
       if (options.showLabels) {
         const labelRows = staggerHedgeLabels(
-          positioned.map((item) => ({ id: item.level.id, y: item.centreY })),
+          positioned.filter((item) => item.centreY >= 6 && item.centreY <= mediaSize.height - 6).map((item) => ({ id: item.level.id, y: item.centreY })),
           12,
         );
-        const labelY = new Map(labelRows.map((row) => [row.id, Math.max(7, Math.min(mediaSize.height - 6, row.labelY))]));
+        const labelY = new Map(labelRows.map((row) => [row.id, row.labelY]));
         context.font = "700 7px 'Aleph', monospace";
         context.textBaseline = "middle";
         for (const item of positioned) {
@@ -1597,6 +1598,7 @@ class HedgeLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           const width = Math.min(140, Math.max(24, context.measureText(text).width + 10));
           const x = 4;
           const y = labelY.get(item.level.id) ?? item.centreY;
+          if (y < 6 || y > mediaSize.height - 6) continue;
           context.save();
           context.globalAlpha = 0.86 * opacityScale;
           context.fillStyle = options.backgroundColor;
@@ -11174,12 +11176,12 @@ function Chart({
     const ordered = rails.slice().sort((left, right) => left.y - right.y);
     const minimumGap = 11;
     ordered.forEach((rail, index) => {
-      let labelY = Math.max(9, Math.min(plotHeight - 4, rail.labelY));
+      let labelY = rail.labelY;
       while (occupied.some((y) => Math.abs(y - labelY) < minimumGap)) labelY += minimumGap;
       if (index && labelY - ordered[index - 1].labelY < minimumGap) {
         labelY = ordered[index - 1].labelY + minimumGap;
       }
-      rail.labelY = Math.max(9, Math.min(plotHeight - 4, labelY));
+      rail.labelY = labelY;
       occupied.push(rail.labelY);
     });
     const oneHighY = candleSeriesRef.current?.priceToCoordinate(band.high) ?? null;
@@ -11360,7 +11362,7 @@ function Chart({
       }];
     });
     const labelRows = staggerHedgeLabels(positioned.map(({ level, centreY }) => ({ id: level.id, y: centreY })), 14);
-    const labelY = new Map(labelRows.map((row) => [row.id, Math.max(10, Math.min(plotHeight - 5, row.labelY))]));
+    const labelY = new Map(labelRows.map((row) => [row.id, row.labelY]));
     const flip = positioned.find((row) => row.level.kind === "FLIP") ?? null;
     const indicatorSettings = hedgeLevelsIndicator.settings ?? {};
     return {
@@ -14593,7 +14595,7 @@ function Chart({
     const top = Math.min(highY, lowY);
     const height = Math.max(4, Math.abs(lowY - highY));
     const plotWidth = Math.max(0, overlaySize.width - 64);
-    const naturalLabelY = Math.max(13, Math.min(overlaySize.height - 8, top + Math.min(height / 2, 14)));
+    const naturalLabelY = top + Math.min(height / 2, 14);
     const rawRightAlignedLabelY = (highY + lowY) / 2;
     const rightAlignedLabelY = rightAlignedZoneLabelYs.get(zone.id)
       ?? (rawRightAlignedLabelY >= 14 && rawRightAlignedLabelY <= overlaySize.height - 36
