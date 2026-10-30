@@ -4,7 +4,6 @@ import { optionsOpeningRefreshDelay, publishPanelResults } from "@/lib/optionsOp
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
-  CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -28,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
+import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
 import { buildGexMapSnapshots as buildSnapshots, gexMapPriceAt as priceAt } from "@/lib/gexMapSnapshots";
@@ -2464,21 +2464,17 @@ function GexMapWorkspace({
         {replayMode && !externalReplay ? (
           <footer className="shrink-0 overflow-x-auto border-t border-border bg-panel px-3 py-2">
             <div className="flex min-w-max items-center gap-2">
-              <label className="flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[9px] text-muted">
-                <CalendarDays className="h-3.5 w-3.5 text-primary" />
-                <input
-                  aria-label="Replay date"
-                  type="date"
-                  value={replayDate}
-                  max={currentSessionDate || undefined}
-                  onChange={(event) => {
-                    setReplayDate(event.target.value);
-                    setCursor(0);
-                    setPlaying(false);
-                  }}
-                  className="bg-transparent font-mono text-[10px] text-foreground outline-none"
-                />
-              </label>
+              <KwantDatePicker
+                label="Replay date"
+                value={replayDate}
+                max={currentSessionDate || undefined}
+                onChange={(date) => {
+                  setReplayDate(date);
+                  setCursor(0);
+                  setPlaying(false);
+                }}
+                className="h-9 rounded-lg px-3 text-[10px]"
+              />
 
               <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
                 <button type="button" onClick={() => setCursor(0)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
