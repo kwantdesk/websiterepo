@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-30 — Source-time smart clustering
+
+Smart-cluster distances now use execution time rather than depth-packet indexes; stronger bounded curve and nested windows up to 8s (default52=2s), with differential cancellation still250ms. Both merge stages enforce a full price envelope up to8 ticks; zero disables proximity merging. Growing groups retain first-execution identity/time/price, including ID9→10. Unrelated large prints no longer shrink merge reach and split existing groups. 41 focused checks, scoped lint and production build pass. A local28800-execution/84000-contract fixture reduces bubbles60→30 at default,15→8 at maximum without changing volume; incremental median1.34ms. These are synthetic measurements, not complete vendor parity. Existing saved settings retained; no gateway activation. Details: docs/prompt-log/2026-10-30-smart-clustering.md.
+
 ## 2026-10-30 — Liquidity Map Trade toolbar placement
 
 Moved the map-specific floating Trade button into the existing command toolbar immediately before Depth; shared styling and existing order ticket preserved. Same-origin/source/instrument/scope checked iframe request activates the host pane and opens its ticket. Hidden until the trading-host handshake. 13 existing chrome/trading checks, scoped lint and production build pass; actual CSS headless layout confirms same row and 28px height. No gateway changes. Details: docs/prompt-log/2026-10-30-liquidity-trade-toolbar.md.

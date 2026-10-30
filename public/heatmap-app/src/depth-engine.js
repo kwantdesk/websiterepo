@@ -10,7 +10,7 @@ export function tradeClusterWindowMs(strength, differential = false) {
   if (differential) return TRADE_CLUSTER_WINDOW_MS;
   const amount = clamp(Number(strength) || 0, 0, 100) / 100;
   // Nested buckets avoid moving old boundaries back and forth as strength rises.
-  return TRADE_CLUSTER_WINDOW_MS * 2 ** Math.min(4, Math.floor(amount * 5));
+  return TRADE_CLUSTER_WINDOW_MS * 2 ** Math.min(5, Math.floor(amount * 6));
 }
 
 export const BOOKMAP_VISUAL_DEFAULTS = Object.freeze({
@@ -32,7 +32,7 @@ export function smartClusteringParameter(value) {
   const setting = clamp(Number(value) || 0, 0, 100);
   // Smooth and bounded: the former tangent jumped from10.8 at99 to2756 at100,
   // yet could never bridge the hard250ms source-window boundary.
-  return Math.expm1(3 * setting / 100) / Math.expm1(3) * 16;
+  return Math.expm1(2 * setting / 100) / Math.expm1(2) * 24;
 }
 
 export function volumeDotDiameter(volume, maximumVolume, {
@@ -57,14 +57,18 @@ export function volumeDotAlpha(diameter, transparency = BOOKMAP_VISUAL_DEFAULTS.
 }
 
 const groupWeight = group => group.gross || group.total;
-const groupIndex = group => group.indexTotal / groupWeight(group);
 const groupTick = group => group.tickTotal / groupWeight(group);
+const groupTime = group => group.timestampTotal / groupWeight(group);
+// Canonical 50-ms source units, independent of quote-packet count or zoom.
+const groupTimeColumn = group => groupTime(group) / 50;
+const clusterPriceSpan = options => Math.floor(clamp(Number(options.smartClustering) || 0, 0, 100) / 100 * 8) * options.rowTicks;
+const withinClusterPriceSpan = (left, right, span) => Math.max(left.maximumTick, right.maximumTick) - Math.min(left.minimumTick, right.minimumTick) <= span;
 
 function smartMergeScore(left, right, parameter, columnPixels, rowTicks, rowPixels) {
   let leftRadius = Math.max(Math.cbrt(left.total) / 2 * parameter, 0.1);
   let rightRadius = Math.max(Math.cbrt(right.total) / 2 * parameter, 0.1);
   if (leftRadius < rightRadius) [leftRadius, rightRadius] = [rightRadius, leftRadius];
-  const dx = (groupIndex(left) - groupIndex(right)) * columnPixels;
+  const dx = (groupTimeColumn(left) - groupTimeColumn(right)) * columnPixels;
   const dy = (groupTick(left) - groupTick(right)) / rowTicks * rowPixels;
   const distance = Math.max(0.001, Math.hypot(dx, dy));
   const core = 3 * parameter;
@@ -77,7 +81,6 @@ function smartMergeScore(left, right, parameter, columnPixels, rowTicks, rowPixe
 
 function mergeTradeGroups(left, right, differential) {
   const gross = groupWeight(left) + groupWeight(right);
-  const roundedIndex = Math.round((left.indexTotal + right.indexTotal) / gross);
   // Clustering may make a bubble grow as nearby executions arrive, but it
   // must never move the execution the trader already saw. Keep the earliest
   // real trade as the immutable market anchor while retaining weighted totals
@@ -95,7 +98,8 @@ function mergeTradeGroups(left, right, differential) {
   buyVolume -= cancelled;
   sellVolume -= cancelled;
   return {
-    indexTotal: roundedIndex * gross,
+    indexTotal: left.indexTotal + right.indexTotal,
+    timestampTotal: left.timestampTotal + right.timestampTotal,
     tickTotal: left.tickTotal + right.tickTotal,
     buyVolume,
     sellVolume,
@@ -105,7 +109,9 @@ function mergeTradeGroups(left, right, differential) {
     timestamp: Math.max(left.timestamp, right.timestamp),
     minimumIndex: Math.min(left.minimumIndex, right.minimumIndex),
     maximumIndex: Math.max(left.maximumIndex, right.maximumIndex),
-    key: left.key < right.key ? left.key : right.key,
+    minimumTick: Math.min(left.minimumTick, right.minimumTick),
+    maximumTick: Math.max(left.maximumTick, right.maximumTick),
+    key: anchor.key,
     count: left.count + right.count,
     anchorFrame: anchor.anchorFrame,
     anchorIndex: anchor.anchorIndex,
@@ -122,6 +128,7 @@ function mergeNearbyTrades(groups, options) {
   // useful frame anyway. Increase only the screen-space aggregation radius as
   // density rises; trade totals and the first real anchor remain exact.
   if (!(requestedDistance > 0) || groups.length < 2) return groups;
+  const priceSpan = clusterPriceSpan(options);
   const counts = new Map();
   for (const group of groups) {
     const window = tradeClusterWindowStart(group.firstTimestamp, options.windowMs);
@@ -139,7 +146,7 @@ function mergeNearbyTrades(groups, options) {
     const distanceLimit = requestedDistance * Math.max(1, Math.sqrt(counts.get(window) / MAX_VISIBLE_TRADE_CLUSTERS));
     const cellSize = Math.max(1, distanceLimit);
     return { window, distanceLimit,
-      x: Math.floor(groupIndex(group) * options.columnPixels / cellSize),
+      x: Math.floor(groupTimeColumn(group) * options.columnPixels / cellSize),
       y: Math.floor(groupTick(group) / options.rowTicks * options.rowPixels / cellSize) };
   };
   const addToCell = (index, cell) => {
@@ -168,7 +175,8 @@ function mergeNearbyTrades(groups, options) {
         const candidates = cells.get(`${cell.window}:${cell.x + offsetX}:${cell.y + offsetY}`) || [];
         for (const candidateIndex of candidates) {
           const candidate = merged[candidateIndex];
-          const dx = (groupIndex(candidate) - groupIndex(group)) * options.columnPixels;
+          if (!withinClusterPriceSpan(candidate, group, priceSpan)) continue;
+          const dx = (groupTimeColumn(candidate) - groupTimeColumn(group)) * options.columnPixels;
           const dy = (groupTick(candidate) - groupTick(group)) / options.rowTicks * options.rowPixels;
           const distance = Math.hypot(dx, dy);
           if (distance < cell.distanceLimit && distance < bestDistance) {
@@ -196,14 +204,14 @@ function mergeNearbyTrades(groups, options) {
 
 function applySmartClustering(groups, options) {
   const parameter = smartClusteringParameter(options.smartClustering);
+  if (!(parameter > 0) || groups.length < 2) return groups;
+  const priceSpan = clusterPriceSpan(options);
+  // Match sphere sizing's fixed 100-contract reference. An unrelated large
+  // print must not shrink merge reach and split existing nearby clusters.
+  const targetScale = transformedCircleSize(options.circleSize) * 2 / Math.cbrt(100);
   let working = groups;
   for (let pass = 0; pass < 20 && working.length > 1; pass += 1) {
-    working.sort((left, right) => groupIndex(left) - groupIndex(right) || groupTick(left) - groupTick(right));
-    const referenceVolumes = new Map();
-    for (const group of working) {
-      const window = tradeClusterWindowStart(group.firstTimestamp, options.windowMs);
-      referenceVolumes.set(window, Math.max(referenceVolumes.get(window) || 1, group.total));
-    }
+    working.sort((left, right) => groupTime(left) - groupTime(right) || groupTick(left) - groupTick(right));
     const consumed = new Set();
     const next = [];
     let mergeCount = 0;
@@ -211,13 +219,13 @@ function applySmartClustering(groups, options) {
       if (consumed.has(index)) continue;
       const left = working[index];
       const window = tradeClusterWindowStart(left.firstTimestamp, options.windowMs);
-      const targetScale = transformedCircleSize(options.circleSize) * 2 / Math.cbrt(referenceVolumes.get(window));
       let bestIndex = -1;
       let bestScore = Number.POSITIVE_INFINITY;
       for (let candidateIndex = index + 1; candidateIndex < Math.min(working.length, index + 11); candidateIndex += 1) {
         if (consumed.has(candidateIndex)) continue;
         const candidate = working[candidateIndex];
         if (tradeClusterWindowStart(candidate.firstTimestamp, options.windowMs) !== window) continue;
+        if (!withinClusterPriceSpan(left, candidate, priceSpan)) continue;
         const score = smartMergeScore(
           left,
           candidate,
@@ -727,6 +735,7 @@ export class RollingDepthEngine {
         const group = groups.get(key) || {
           indexTotal: 0,
           tickTotal: 0,
+          timestampTotal: 0,
           buyVolume: 0,
           sellVolume: 0,
           total: 0,
@@ -734,6 +743,8 @@ export class RollingDepthEngine {
           timestamp: trade.timestamp,
           minimumIndex: index,
           maximumIndex: index,
+          minimumTick: trade.tick,
+          maximumTick: trade.tick,
           key: String(trade.id ?? `${trade.timestamp}:${index}:${trade.tick}:${trade.side}:${tradeIndex}`),
           count: 0,
           anchorFrame: frame,
@@ -747,6 +758,7 @@ export class RollingDepthEngine {
         group[trade.side === 'buy' ? 'buyVolume' : 'sellVolume'] += trade.size;
         group.indexTotal += index * trade.size;
         group.tickTotal += trade.tick * trade.size;
+        group.timestampTotal += trade.timestamp * trade.size;
         group.timestamp = Math.max(group.timestamp, trade.timestamp);
         group.count += 1;
         groups.set(key, group);

@@ -20,11 +20,11 @@ test('maximum clustering combines dense multi-second bursts while preserving eve
 test('strength has bounded, increasing spatial reach and nested source-time windows',()=>{
   let previous=0;
   for(let strength=0;strength<=100;strength++){
-    const parameter=smartClusteringParameter(strength);assert.ok(parameter>=previous&&parameter<=16);previous=parameter;
-    assert.ok([250,500,1000,2000,4000].includes(tradeClusterWindowMs(strength)));
+    const parameter=smartClusteringParameter(strength);assert.ok(parameter>=previous&&parameter<=24);previous=parameter;
+    assert.ok([250,500,1000,2000,4000,8000].includes(tradeClusterWindowMs(strength)));
     assert.equal(tradeClusterWindowMs(strength,true),250);
   }
-  assert.equal(tradeClusterWindowMs(100),4000);
+  assert.equal(tradeClusterWindowMs(100),8000);
   assert.ok(smartClusteringParameter(100)/smartClusteringParameter(99)<1.1);
 });
 test('3D sphere volume represents contracts and never renormalizes when a huge unrelated trade arrives',()=>{
@@ -63,7 +63,41 @@ test('wide-window incremental refresh equals full rebuild including every bubble
 test('a later fixed source window cannot rewrite a settled bubble or its size',()=>{
   const engine=new RollingDepthEngine(50);engine.append(frame(0,[trade('first',10,10)]));
   const initial=engine.clusterTrades(options)[0];
-  engine.append(frame(100,[trade('later',5000,10000)]));
+  engine.append(frame(200,[trade('later',10000,10000)]));
   const held=engine.clusterTrades(options).find(g=>g.key===initial.key);
   assert.equal(held.total,10);assert.equal(held.diameter,initial.diameter);assert.equal(held.anchorTimestamp,10);
+});
+
+test('the same executions cluster identically with sparse or dense depth updates',()=>{
+  const sparse=new RollingDepthEngine(500),dense=new RollingDepthEngine(500);
+  const first=trade('9',1000,10),second=trade('10',1100,20,101);
+  sparse.append({...frame(0,[first]),timestamp:1000});sparse.append({...frame(1,[second]),timestamp:1100});
+  for(let i=0;i<=100;i++)dense.append({...frame(i,i===0?[first]:i===100?[second]:[]),timestamp:1000+i});
+  const shape=e=>e.clusterTrades({...options,smartClustering:52,end:e.frames.length-1}).map(g=>({key:g.key,total:g.total,tick:g.tick,time:g.anchorTimestamp,buy:g.buyVolume,sell:g.sellVolume}));
+  assert.deepEqual(shape(dense),shape(sparse));assert.equal(shape(dense).length,1);
+});
+
+test('growing clusters keep the first execution identity across numeric ID boundaries',()=>{
+  const engine=new RollingDepthEngine(20);engine.append(frame(20,[trade('9',1000,10)]));
+  const first=engine.clusterTrades(options)[0];engine.append(frame(21,[trade('10',1050,20,101)]));
+  const grown=engine.clusterTrades(options)[0];assert.equal(grown.key,first.key);assert.equal(grown.total,30);assert.equal(grown.anchorTimestamp,1000);assert.equal(grown.tick,100);
+});
+
+test('large volumes cannot make clustering consume unrelated price levels',()=>{
+  const engine=new RollingDepthEngine(20);engine.append(frame(20,[trade('low',1000,100000,100),trade('high',1010,100000,125)]));
+  const groups=engine.clusterTrades(options);assert.equal(groups.length,2);assert.equal(total(groups),200000);
+});
+
+test('zero strength disables spatial merging even for small overlapping bubbles',()=>{
+  const engine=new RollingDepthEngine(20);engine.append(frame(0,[trade('a',10,1,100),trade('b',20,1,101)]));
+  assert.equal(engine.clusterTrades({...options,smartClustering:0,rowPixels:1,circleSize:100}).length,2);
+});
+
+test('a huge unrelated print cannot split an existing cluster through volume renormalization',()=>{
+  const engine=new RollingDepthEngine(200);
+  engine.append(frame(20,[trade('a',1000,1)]));engine.append(frame(140,[trade('b',7000,1)]));
+  const original=engine.clusterTrades(options);assert.equal(original.length,1);assert.equal(original[0].total,2);
+  engine.append(frame(150,[trade('unrelated',7500,1000000,125)]));
+  const held=engine.clusterTrades(options).find(g=>g.key===original[0].key);
+  assert.ok(held);assert.equal(held.total,2);assert.equal(held.diameter,original[0].diameter);
 });
