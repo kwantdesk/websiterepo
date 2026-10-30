@@ -1,10 +1,11 @@
+import { normalizeControlValue, synchronizeSettingsControls } from './settings-controls.js?v=20261030-settings-contracts';
 import { normalizeCvdStyle } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261029-depth-clear-scale';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261030-smart-clustering';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261030-bbo-trace-strokes';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261030-settings-contracts';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -151,6 +152,7 @@ class DepthForgeApp {
       ...DEFAULT_INDICATOR_SETTINGS,
     };
     this.#restoreSettings();
+    synchronizeSettingsControls(this.settings, { ...LIQUIDITY_MAP_DISPLAY_DEFAULTS, ...DEFAULT_INDICATOR_SETTINGS }, $);
     // Every liquidity-map session starts live and centred. Auto-centre is a
     // safe viewport default, not a durable user preference that an old pan
     // gesture should be able to disable on future visits.
@@ -463,8 +465,14 @@ class DepthForgeApp {
 
   #bindToggle(id, setting) {
     $(id).addEventListener('click', event => {
-      this.settings[setting] = !this.settings[setting];
+      const visible = setting === 'cvdPanel' ? this.settings.cvdPanel && this.settings.cvdEnabled : this.settings[setting];
+      this.settings[setting] = !visible;
+      if (setting === 'cvdPanel' && this.settings.cvdPanel) {
+        this.settings.cvdEnabled = true;
+        $('cvdEnabled').checked = true;
+      }
       event.currentTarget.classList.toggle('active-toggle', this.settings[setting]);
+      event.currentTarget.setAttribute('aria-pressed', String(this.settings[setting]));
       if (setting === 'cvdPanel') this.#syncIndicatorLayout();
       if (setting === 'domVisible') this.#syncDomVisibilityControls(true);
       this.requestRender();
@@ -497,6 +505,7 @@ class DepthForgeApp {
       $(id).disabled = !visible;
     }
     $('toggleDom').classList.toggle('active-toggle', visible);
+    $('toggleDom').setAttribute('aria-pressed', String(visible));
     if (notifyParent && window.parent !== window) {
       window.parent.postMessage({
         type: 'kwantify:heatmap-dom-visibility',
@@ -632,14 +641,14 @@ class DepthForgeApp {
 
   #bindNumber(id, setting) {
     $(id).addEventListener('input', event => {
-      const minimum = event.target.min === '' ? -Infinity : Number(event.target.min);
-      const maximum = event.target.max === '' ? Infinity : Number(event.target.max);
-      let value = Number(event.target.value);
-      if (!Number.isFinite(value)) return;
-      if (Number.isFinite(minimum)) value = Math.max(minimum, value);
-      if (Number.isFinite(maximum)) value = Math.min(maximum, value);
+      if (event.target.value.trim() === '') return;
+      const value = normalizeControlValue(event.target, event.target.value, this.settings[setting]);
       this.settings[setting] = value;
+      event.target.value = String(value);
       this.requestRender();
+    });
+    $(id).addEventListener('change', event => {
+      if (event.target.value.trim() === '') event.target.value = String(this.settings[setting]);
     });
   }
 
@@ -1050,6 +1059,7 @@ class DepthForgeApp {
       ...LIQUIDITY_MAP_DISPLAY_DEFAULTS,
       ...DEFAULT_INDICATOR_SETTINGS,
     });
+    synchronizeSettingsControls(this.settings, { ...LIQUIDITY_MAP_DISPLAY_DEFAULTS, ...DEFAULT_INDICATOR_SETTINGS }, $);
     this.#syncPaletteControls();
     this.#syncHeatmapControls();
     this.#syncVolumeDotControls();
@@ -1148,7 +1158,8 @@ class DepthForgeApp {
   #syncIndicatorLayout() {
     const visible = this.settings.cvdEnabled && this.settings.cvdPanel;
     $('chartModule').classList.toggle('cvd-open', visible);
-    $('toggleCvd').classList.toggle('active-toggle', this.settings.cvdPanel);
+    $('toggleCvd').classList.toggle('active-toggle', visible);
+    $('toggleCvd').setAttribute('aria-pressed', String(visible));
   }
 
   #setUiTheme(value) {

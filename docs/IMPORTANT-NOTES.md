@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-10-30 — Liquidity settings/control synchronization
+
+Fixed model/UI mismatches: legacy zero contract filters rendered range thumbs at1 (first increment2), saved false Trades/Heatmap/Profile still looked enabled, Trails/Grid still checked, and disabled CVD had a lit/nonresponsive first toggle. Explicit0=all filters now retain size1 at1; shared30-control normalization uses native bounds/steps/enum/boolean contracts on init/reset. CVD/DOM lights and aria reflect actual visibility; numeric blanks preserve prior values.29 focused tests, all30 actual isolated-app event bindings, actual renderer threshold0/1/2/16/1 totals18/18/17/0/18, scoped lint/JS syntax/full build pass.41/48 broader checks pass; same7 legacy failures reproduced from HEAD. No clustering/source/trade/feed/recording/VPS changes. Owner exact state not observed; existing inclusive arithmetic was correct. One currentNQ sample2459/2500 size1; min2 legitimately removes most. Details: docs/prompt-log/2026-10-30-liquidity-settings-contracts.md. Revision20261030-settings-contracts; verify production SHA/static hashes.
+
 ## 2026-10-30 — Bid/ask historical stroke overlap
 
 Fixed compressed-scale ink overlap: BBO trails/extensions now fit thickness to the smallest positive visible quote gap (0.5–3px), keeping all prices/time coordinates exact; no fake minimum spread. Prior inside-market drawing unchanged by CVD-only release. Read-only VPS4 samples/root: valid BBO NQ3–4ticks, ES1tick; not a certification of all historical data/current owner viewport.15 actual-trail/zoom/CVD/bubble checks, JS syntax, host lint and full build pass. Revision20261030-bbo-trace-strokes; verify public asset hashes and production SHA. CVD line-only stays intact. No feed/reset/recording/trade/VPS changes. Details and acceptance limits: docs/prompt-log/2026-10-30-bid-ask-trace-strokes.md.
