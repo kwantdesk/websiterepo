@@ -9162,6 +9162,7 @@ function WorkspaceChartPaneComponent({
     ]);
     return resolveSessionSegments(dayStartMs, dayEndMs, {
       mode,
+      namedSessions: mode === "splitted" && settings.sessionSelectionArmed === true,
       window: sessionFilterTimeFor(settings),
       customStartMinutes: Number(settings.sessionStartMinutes ?? RTH_START_MINUTES),
       customEndMinutes: Number(settings.sessionEndMinutes ?? RTH_END_MINUTES),
@@ -9175,7 +9176,7 @@ function WorkspaceChartPaneComponent({
       // session key encodes that 17:00 roll, so it is the correct owner here
       // whatever the end-session toggle says — that toggle governs custom
       // windows, whose day boundary is the trader's to define.
-      mode === "triple"
+      mode === "triple" || (mode === "splitted" && settings.sessionSelectionArmed === true)
         ? chicagoTradingDate(segment.startMs) === tradingDate
         : sessionTradingDate(segment, useEndSessionAsStartDay) === tradingDate
     )).filter((segment) => enabledSessionIds.has(segment.id));
@@ -9609,6 +9610,7 @@ function WorkspaceChartPaneComponent({
     dailyProfileInstance?.indicatorId,
     dailyProfileSettings.autoGroupFactor,
     dailyProfileSettings.filterMode,
+    dailyProfileSettings.sessionSelectionArmed,
     dailyProfileSettings.filterTime,
     dailyProfileSettings.sessionStartMinutes,
     dailyProfileSettings.sessionEndMinutes,

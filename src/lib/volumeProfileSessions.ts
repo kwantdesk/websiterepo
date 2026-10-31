@@ -18,6 +18,8 @@ export type SessionFilterMode = "none" | "filter" | "splitted" | "triple";
 export type SessionWindowKind = "rth" | "eth" | "custom";
 
 export type SessionFilterConfig = {
+  /** Explicit named picks in Splitted; legacy custom/RTH/overnight splits stay unchanged. */
+  namedSessions?: boolean;
   mode: SessionFilterMode;
   window: SessionWindowKind;
   /** Minutes past exchange-local midnight. Only read when window is "custom". */
@@ -101,6 +103,11 @@ export const DESK_SESSIONS: readonly { id: SessionSegment["id"]; label: string; 
 /** Every desk-session settings flag, in draw order. */
 export const DESK_SESSION_SETTING_KEYS: readonly string[] =
   DESK_SESSION_SEGMENTS.map((segment) => segment.settingsKey);
+
+export function hasNamedProfileSessions(settings: Record<string, unknown>): boolean {
+  const mode = String(settings.filterMode ?? "none").toLowerCase();
+  return mode === "triple" || (mode === "splitted" && settings.sessionSelectionArmed === true);
+}
 
 const minuteFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: CHICAGO_TIME_ZONE,
@@ -190,8 +197,9 @@ export function resolveSessionSegments(
     days.push(date);
   }
 
+  const namedSplit = config.mode === "triple" || (config.mode === "splitted" && config.namedSessions === true);
   const spans: { id: SessionSegment["id"]; label: string; start: number; end: number }[] =
-    config.mode === "triple"
+    namedSplit
       ? DESK_SESSION_SEGMENTS
       : config.window === "custom"
         ? [{
@@ -215,14 +223,18 @@ export function resolveSessionSegments(
     // Friday/Saturday evenings do not open sessions. Emitting them lets a
     // "last trading date" fallback fold empty weekend windows onto Friday.
     const weekday = new Date(date).getUTCDay();
-    if (config.mode === "triple" && (weekday === 5 || weekday === 6)) continue;
+    if (namedSplit && (weekday === 5 || weekday === 6)) continue;
     for (const span of spans) {
       // The Asia handover is Tokyo's fixed 09:00, not a Chicago clock that
       // would drift by an hour every US winter. `date` encodes the Chicago
       // opening calendar date; next UTC midnight is that day's Tokyo open.
       const asiaOpen = date + DAY_MS;
       const segmentStart = span.id === "asia" ? asiaOpen : exchangeCivilEpoch(date, span.start);
-      const segmentEnd = span.id === "globex" ? asiaOpen : exchangeCivilEpoch(date, span.end);
+      const segmentEnd = span.id === "globex"
+        ? config.mode === "splitted" && config.namedSessions === true
+          ? exchangeCivilEpoch(date, 40 * 60) // Full CME session: 17:00 through next 16:00 Chicago.
+          : asiaOpen
+        : exchangeCivilEpoch(date, span.end);
       if (!Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd)) continue;
       if (segmentEnd <= startMs || segmentStart >= endMs) continue;
       segments.push({
@@ -353,7 +365,7 @@ export function requestedSessionIds(settings: Record<string, unknown>): Set<stri
     : "none") as SessionFilterMode;
   // "none" draws one profile over the whole day and carries no session id.
   if (mode === "none") return null;
-  if (mode === "triple") {
+  if (hasNamedProfileSessions(settings)) {
     return new Set(DESK_SESSIONS
       .filter(({ settingsKey }) => settings[settingsKey] !== false)
       .map(({ id }) => id));

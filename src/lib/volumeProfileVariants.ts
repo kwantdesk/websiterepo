@@ -42,6 +42,7 @@ function sessionJobs(args: VariantProfilePlanArgs, instance: ChartIndicatorInsta
       ? [{ id: "globex", label: "Whole session", ...day }]
       : resolveSessionSegments(day.startMs, day.endMs, {
       mode: requestedMode,
+      namedSessions: requestedMode === "splitted" && settings.sessionSelectionArmed === true,
       window: requestedWindow,
       customStartMinutes: number(settings.sessionStartMinutes, RTH_START_MINUTES),
       customEndMinutes: number(settings.sessionEndMinutes, RTH_END_MINUTES),

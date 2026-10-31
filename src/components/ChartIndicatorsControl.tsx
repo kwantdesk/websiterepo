@@ -3157,6 +3157,10 @@ export default function ChartIndicatorsControl({
                         onChange={(event) => replace(settingsInstance.instanceId, (current) => {
                           const nextValue = event.target.value;
                           const settings = { ...(current.settings ?? {}), [key]: nextValue };
+                          // An explicit window returns Splitted to its legacy
+                          // custom/RTH/overnight calculation; named picks can
+                          // be armed again directly with the session buttons.
+                          if (key === "filterTime" && settings.filterMode === "splitted") settings.sessionSelectionArmed = false;
                           // A custom clock with Filter mode still on "None"
                           // looks configured but deliberately filters nothing.
                           // Selecting Custom is an explicit request to use that
@@ -3190,7 +3194,8 @@ export default function ChartIndicatorsControl({
                     <span className="block text-[9px] uppercase tracking-[0.12em] text-muted">Sessions drawn</span>
                     <div className="grid grid-cols-2 gap-2">
                       {DESK_SESSIONS.map(({ label, settingsKey: key }) => {
-                        const splitting = String(settingsInstance.settings?.filterMode ?? "none") === "triple";
+                        const mode = String(settingsInstance.settings?.filterMode ?? "none");
+                        const splitting = mode === "triple" || (mode === "splitted" && settingsInstance.settings?.sessionSelectionArmed === true);
                         // Off the split there is one profile covering everything,
                         // so no single session reads as selected.
                         const on = splitting && settingsInstance.settings?.[key] !== false;
@@ -3200,7 +3205,8 @@ export default function ChartIndicatorsControl({
                             type="button"
                             onClick={() => replace(settingsInstance.instanceId, (current) => {
                               const settings = { ...(current.settings ?? {}) };
-                              const wasSplitting = String(settings.filterMode ?? "none") === "triple";
+                              const selectedMode = String(settings.filterMode ?? "none");
+                              const wasSplitting = selectedMode === "triple" || selectedMode === "splitted";
                               /*
                                * Every session still enabled means nothing has
                                * been PICKED yet - either the split is off, or
@@ -3234,7 +3240,7 @@ export default function ChartIndicatorsControl({
                                 // session alone, which is what clicking one asks
                                 // for. Turning on the split with everything still
                                 // enabled would draw all three.
-                                settings.filterMode = "triple";
+                                settings.filterMode = selectedMode === "splitted" ? "splitted" : "triple";
                                 settings.sessionSelectionArmed = true;
                                 for (const sessionKey of DESK_SESSION_SETTING_KEYS) {
                                   settings[sessionKey] = sessionKey === key;
@@ -3268,11 +3274,10 @@ export default function ChartIndicatorsControl({
                       })}
                     </div>
                     <span className="block text-[8px] leading-4 text-muted">
-                      Picking a session splits the day and draws only what is selected; the rest keep their own
-                      boundaries rather than absorbing the ones left out. Asia runs 17:00–02:00,
-                      London 02:00–10:00 and New York 08:30–15:00,
-                      Chicago time, matching DeepChart&apos;s Asian / Europe / USA windows. At least one
-                      session remains selected; choose “None · whole session” explicitly for a whole-day profile.
+                      In Splitted, select Globex for the full futures session (17:00–16:00 Chicago)
+                      and New York for its separate cash-session profile. Sessions mode keeps the opening
+                      Globex block separate from Asia, London and New York. Only selected sessions are drawn;
+                      turning others off never shortens Globex in Splitted. At least one selection remains on.
                     </span>
                   </div>
                   {([
