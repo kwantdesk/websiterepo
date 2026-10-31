@@ -11,6 +11,7 @@ export type BounceGreekMode = "GAMMA" | "DELTA" | "VANNA" | "CHARM";
 export type BounceLevelRole = "KING" | "FLOOR" | "CEILING" | "GATEKEEPER" | "MAJOR" | "CLUSTER" | "DEVELOPING" | "WEAKENING" | "RETIRED" | "AIR_POCKET";
 
 export type BounceLevel = {
+  mapRoleLabel?: string;
   id: string;
   role: BounceLevelRole;
   sourceStrike: number;
@@ -75,6 +76,12 @@ export type BounceExposureRoll = {
   score: number;
 };
 export type BounceExposureNode = {
+  mapColor?: string;
+  mapOpacity?: number;
+  mapHighlighted?: boolean;
+  mapRoleLabel?: string;
+  mapImportanceScore?: number;
+  mapExposureChange?: number;
   id: string;
   nodeKey: string;
   timestamp: number;
@@ -119,7 +126,10 @@ export type BounceLevelsSnapshot = {
   receivedTimeMs: number;
   refreshAfterMs: number;
   expirationLabel: string;
-  representation: "per-one-percent-move";
+  representation: "per-one-percent-move" | "per-one-dollar-move";
+  mirrorGexMap?: boolean;
+  sourceSnapshotTimeMs?: number;
+  sourceModel?: "STRUCTURAL_OI" | "DEALER_INVENTORY";
   mapping: NetGammaProfileSnapshot["mapping"];
   exposureField: BounceExposureSlice[];
   exposureSeries: BounceExposureSeries[];

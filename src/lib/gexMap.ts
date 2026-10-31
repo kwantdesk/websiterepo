@@ -193,3 +193,14 @@ export function hasRenderableGexMapSurface(
   if (!payload) return false;
   return payload.latestStrikes.length > 0 || latestGexMapStrikesFromFrames(payload.frames).length > 0;
 }
+/** A shared cache key must never accept a different measurement or session. */
+export function isGexMapSurfaceFor(
+  payload: GexMapPanelPayload | null | undefined,
+  expected: Pick<GexMapPanelPayload, "symbol" | "greekMode" | "scope" | "representation" | "model"> & { sessionDate?: string | null },
+) {
+  return Boolean(payload && hasRenderableGexMapSurface(payload)
+    && gexMapProviderTicker(payload.symbol) === gexMapProviderTicker(expected.symbol)
+    && payload.greekMode === expected.greekMode && payload.scope === expected.scope
+    && payload.representation === expected.representation && payload.model === expected.model
+    && (!expected.sessionDate || payload.sessionDate === expected.sessionDate));
+}

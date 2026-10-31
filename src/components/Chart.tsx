@@ -445,6 +445,7 @@ import {
   type NetGammaProfileSnapshot,
 } from "@/lib/netGammaExposureByStrike";
 import { bounceLevelsSnapshotsHaveSameHead, filterBounceLevelsSnapshot, isBounceLevelsSnapshot, mergeBounceLevelsSnapshots, type BounceExposureSlice, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
+import { useBounceGexMapMirror } from "@/components/gex-map/useBounceGexMapMirror";
 import {
   BounceLevelsPrimitive,
   type BounceLevelsHit,
@@ -4253,8 +4254,6 @@ function Chart({
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
   const [netGammaTooltip, setNetGammaTooltip] = useReplayFrameState<NetGammaExposureHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [bounceLevelsState, setBounceLevelsState] = useState<{ snapshot: BounceLevelsSnapshot | null; scope: string }>({ snapshot: null, scope: "" });
-  const bounceLevelsSnapshot = bounceLevelsState.snapshot;
-  const bounceLevelsSnapshotScope = bounceLevelsState.scope;
   const bounceLevelsDataSignatureRef = useRef("");
   // Replay follows the clock with ONE request in flight at a time, latest
   // minute wins. The old pattern re-ran the effect every replay minute and
@@ -9727,10 +9726,22 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "bounce-levels") ?? null,
     [indicators],
   );
+  const bounceMirrorEnabled = Boolean(bounceLevelsIndicator && bounceLevelsIndicator.settings?.gexMapMirror !== false);
+  const bounceMirrorEod = !replayTimestampMs && bounceLevelsIndicator?.settings?.linkGexMapSettings === false && bounceLevelsIndicator?.settings?.priceMode === "eod"
+    ? newYorkSessionTimestamp(latestCompletedNewYorkSession(), 16 * 60) : null;
+  const bounceMirror = useBounceGexMapMirror({
+    enabled: bounceMirrorEnabled, instrument, timeframe, settings: bounceLevelsIndicator?.settings ?? {},
+    timestampMs: replayTimestampMs ?? bounceMirrorEod ?? null, candles: drawingCandlesRef,
+  });
+  const bounceLevelsSnapshot = bounceMirrorEnabled ? bounceMirror.snapshot : bounceLevelsState.snapshot;
+  const bounceLevelsSnapshotScope = bounceLevelsState.scope;
+  useEffect(() => {
+    if (bounceMirrorEnabled) { setBounceLevelsLoading(bounceMirror.loading); setBounceLevelsError(bounceMirror.error); }
+  }, [bounceMirrorEnabled, bounceMirror.loading, bounceMirror.error]);
   // "Link GEX Map colours": every bounce level paints the exact colour its
   // strike shows on the GEX Map — same live palette, same signed-exposure heat
   // scale with the Star magnitude as the yardstick.
-  const bounceGexColorSyncEnabled = bounceLevelsIndicator?.settings?.syncGexMapColors === true;
+  const bounceGexColorSyncEnabled = !bounceMirrorEnabled && bounceLevelsIndicator?.settings?.syncGexMapColors === true;
   // The map only serves DELTA and GAMMA surfaces; VANNA/CHARM bounce configs
   // link against the gamma map, which is the surface the trader reads.
   const bounceGexGreekMode: "DELTA" | "GAMMA" =
@@ -9827,7 +9838,7 @@ function Chart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [overlayTimelineKey],
   );
-  const bounceLevelsDataSignature = bounceLevelsIndicator ? JSON.stringify({
+  const bounceLevelsDataSignature = bounceLevelsIndicator && !bounceMirrorEnabled ? JSON.stringify({
     sourceTicker: String(bounceLevelsIndicator.settings?.sourceTicker ?? "AUTO"),
     greekMode: String(bounceLevelsIndicator.settings?.greekMode ?? "GAMMA"),
     expirationMode: String(bounceLevelsIndicator.settings?.expirationMode ?? "zero-to-one-dte"),
@@ -9883,6 +9894,7 @@ function Chart({
   const bounceLevelsReplayMinute = replayTimestampMs ? Math.floor(replayTimestampMs / 60_000) : 0;
   bounceReplayTargetRef.current = nextBounceReplayTarget(bounceReplayTargetRef.current, `${instrument}|${bounceLevelsDataSignature}`, bounceLevelsReplayMinute);
   useEffect(() => {
+    if (bounceMirrorEnabled) { bounceLevelsDataSignatureRef.current = ""; return; }
     if (!bounceLevelsDataSignature) {
       bounceLevelsDataSignatureRef.current = "";
       setBounceLevelsState({ snapshot: null, scope: "" });
@@ -10106,7 +10118,7 @@ function Chart({
     return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
   // The last-good snapshot is intentionally not a dependency: refreshes update it silently.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bounceLevelsDataSignature, instrument, bounceLevelsReplayMinute]);
+  }, [bounceLevelsDataSignature, instrument, bounceLevelsReplayMinute, bounceMirrorEnabled]);
   const bounceLevelsPrimitiveData = useMemo<BounceLevelsPrimitiveData | null>(() => {
     if (!bounceLevelsIndicator || !bounceLevelsSnapshot) return null;
     const indicatorSettings = bounceLevelsIndicator.settings ?? {};
@@ -10127,17 +10139,17 @@ function Chart({
     // so this shows exactly what live showed, advancing with every clock tick
     // instead of trailing a provider round-trip behind price. Level lines and
     // role states stay on the at-clock snapshot (no lookahead).
-    if (replayTimestampMs && bounceLevelsSnapshotScope !== `${instrument}|${bounceLevelsDataSignature}`) return null;
+    if (!bounceMirrorEnabled && replayTimestampMs && bounceLevelsSnapshotScope !== `${instrument}|${bounceLevelsDataSignature}`) return null;
     let sourceSnapshot = selectBounceReplaySnapshot(bounceLevelsSnapshot, replayTimestampMs);
     if (!sourceSnapshot) return null;
-    if (replayTimestampMs && bounceReplayCheckpoint
+    if (!bounceMirrorEnabled && replayTimestampMs && bounceReplayCheckpoint
       && bounceReplayCheckpoint.scope === bounceLevelsScopeRef.current) {
       const clipped = bounceReplayCheckpoint.slices.filter((slice) => slice.timestamp <= replayTimestampMs);
       if (clipped.length >= sourceSnapshot.exposureField.length) {
         sourceSnapshot = { ...sourceSnapshot, exposureField: clipped };
       }
     }
-    const visibleSnapshot = filterBounceLevelsSnapshot(
+    const visibleSnapshot = bounceMirrorEnabled ? sourceSnapshot : filterBounceLevelsSnapshot(
       sourceSnapshot,
       roleVisibility,
       indicatorSettings.showAirPockets !== false,
@@ -10153,10 +10165,11 @@ function Chart({
       glowStrength: Number(indicatorSettings.glowStrength ?? 5),
       microOrbTexture: indicatorSettings.microOrbTexture !== false,
       showHeader: indicatorSettings.showHeader === true,
-      showLabels: indicatorSettings.showLabels === true,
-      showValues: indicatorSettings.showValues === true,
+      showLabels: bounceMirrorEnabled ? bounceMirror.profile.starSettings.showRoleLabels : indicatorSettings.showLabels === true,
+      showValues: bounceMirrorEnabled ? bounceMirror.profile.viewMode === "full" || bounceMirror.profile.starSettings.showRawValues : indicatorSettings.showValues === true,
+      valueMode: bounceMirrorEnabled ? bounceMirror.profile.starSettings.valueMode : "signed",
       showTouchCount: indicatorSettings.showTouchCount !== false,
-      showAirPockets: indicatorSettings.showAirPockets !== false,
+      showAirPockets: bounceMirrorEnabled ? bounceMirror.profile.starSettings.showAirPocketLabels : indicatorSettings.showAirPockets !== false,
       showRolls: indicatorSettings.rollVisualizationEnabled === true,
       neutralColor: useThemeColors ? settings.gridColor : String(indicatorSettings.airPocketColor ?? settings.gridColor),
       roleColors: (() => {
@@ -10178,9 +10191,9 @@ function Chart({
       })(),
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
-      extendRight: indicatorSettings.extendRight === true,
+      extendRight: bounceMirrorEnabled || indicatorSettings.extendRight === true,
     };
-  }, [bounceGexStrikeColors, bounceLevelsDataSignature, bounceLevelsIndicator, bounceLevelsSnapshot, bounceLevelsSnapshotScope, bounceReplayCheckpoint, instrument, overlayTimelineMs, replayTimestampMs, settings.borderUpColor, settings.gridColor, settings.downColor, settings.upColor]);
+  }, [bounceMirrorEnabled, bounceMirror.profile, bounceGexStrikeColors, bounceLevelsDataSignature, bounceLevelsIndicator, bounceLevelsSnapshot, bounceLevelsSnapshotScope, bounceReplayCheckpoint, instrument, overlayTimelineMs, replayTimestampMs, settings.borderUpColor, settings.gridColor, settings.downColor, settings.upColor]);
   useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -19751,14 +19764,22 @@ function Chart({
           </div>
           <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
             <span>Source strike</span><span className="text-foreground">{bounceLevelsTooltip.node.sourceStrike.toLocaleString()}</span>
-            <span>Signed {bounceLevelsTooltip.snapshot.greekMode}</span><span className={bounceLevelsTooltip.node.signedExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(bounceLevelsTooltip.node.signedExposure, "per-one-percent-move", false)}</span>
-            <span>Call / Put</span><span className="text-foreground">{formatGammaValue(bounceLevelsTooltip.node.callExposure, "per-one-percent-move")} / {formatGammaValue(bounceLevelsTooltip.node.putExposure, "per-one-percent-move")}</span>
-            <span>Percent of King</span><span className="text-foreground">{(bounceLevelsTooltip.node.percentOfKing * 100).toFixed(1)}%</span>
+            <span>Signed {bounceLevelsTooltip.snapshot.greekMode}</span><span className={bounceLevelsTooltip.node.signedExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(bounceLevelsTooltip.node.signedExposure, bounceLevelsTooltip.snapshot.representation, false)}</span>
+            <span>Call / Put</span><span className="text-foreground">{formatGammaValue(bounceLevelsTooltip.node.callExposure, bounceLevelsTooltip.snapshot.representation)} / {formatGammaValue(bounceLevelsTooltip.node.putExposure, bounceLevelsTooltip.snapshot.representation)}</span>
+            <span>{bounceLevelsTooltip.snapshot.mirrorGexMap ? "Percent of Star" : "Percent of King"}</span><span className="text-foreground">{(bounceLevelsTooltip.node.percentOfKing * 100 * (bounceLevelsTooltip.snapshot.mirrorGexMap && bounceLevelsTooltip.node.signedExposure < 0 ? -1 : 1)).toFixed(1)}%</span>
             <span>Slice share</span><span className="text-foreground">{(bounceLevelsTooltip.node.bucketShare * 100).toFixed(1)}%</span>
-            {bounceLevelsIndicator?.settings?.showTouchCount !== false ? <><span>Confirmed touches</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.levels.find((level) => level.sourceStrike === bounceLevelsTooltip.node.sourceStrike)?.touches ?? 0}</span></> : null}
+            {!bounceLevelsTooltip.snapshot.mirrorGexMap && bounceLevelsIndicator?.settings?.showTouchCount !== false ? <><span>Confirmed touches</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.levels.find((level) => level.sourceStrike === bounceLevelsTooltip.node.sourceStrike)?.touches ?? 0}</span></> : null}
+            {bounceLevelsTooltip.snapshot.mirrorGexMap ? <>
+              <span>GEX Map role</span><span className="text-foreground">{bounceLevelsTooltip.node.mapRoleLabel}</span>
+              <span>Model</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.sourceModel === "DEALER_INVENTORY" ? "Dealer inventory" : "Structural OI"}</span>
+              <span>Units</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.representation === "per-one-dollar-move" ? "Per $1 move" : "Per 1% move"}</span>
+              <span>Expirations</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.expirationLabel}</span>
+              <span>Recorded exposure</span><span className="text-foreground">{new Date(bounceLevelsTooltip.snapshot.sourceSnapshotTimeMs ?? bounceLevelsTooltip.node.timestamp).toLocaleTimeString()}</span>
+            </> : <>
             <span>Last snapshot ROC</span><span className={bounceLevelsTooltip.node.shortRateOfChange >= 0 ? "text-primary" : "text-danger"}>{bounceLevelsTooltip.node.shortRateOfChange >= 0 ? "+" : ""}{bounceLevelsTooltip.node.shortRateOfChange.toFixed(1)}%</span>
             <span>1m / 5m / 15m ROC</span><span className="text-foreground">{bounceLevelsTooltip.node.oneMinuteRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.fiveMinuteRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.fifteenMinuteRateOfChange.toFixed(1)}%</span>
             <span>Exposure cadence</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.exposureRefreshIntervalMs ? `${(bounceLevelsTooltip.snapshot.exposureRefreshIntervalMs / 1_000).toFixed(0)}s` : "Awaiting second snapshot"}</span>
+            </>}
             <span>Mapping</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.mapping.method.replaceAll("-", " ")} · {bounceLevelsTooltip.snapshot.mapping.mappingConfidence}%</span>
             <span>Source → projected</span><span className="text-foreground">{bounceLevelsTooltip.node.sourceStrike.toLocaleString()} → {bounceLevelsTooltip.node.mappedPrice.toFixed(priceFormat.precision)}</span>
           </div>

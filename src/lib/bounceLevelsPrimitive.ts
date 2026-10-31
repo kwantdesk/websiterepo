@@ -7,6 +7,7 @@ import type {
   Time,
 } from "@/lib/lightweightChartsCompat";
 import type { BounceExposureNode, BounceLevelsSnapshot } from "@/lib/bounceLevels";
+import { formatGexMapExposure } from "@/lib/gexMapFormat";
 
 type CandleSeriesApi = SeriesAttachedParameter<Time, "Candlestick">["series"];
 
@@ -23,6 +24,7 @@ export type BounceLevelsPrimitiveData = {
   showHeader: boolean;
   showLabels: boolean;
   showValues: boolean;
+  valueMode?: "signed" | "star-percent";
   showTouchCount: boolean;
   showAirPockets: boolean;
   showRolls: boolean;
@@ -453,7 +455,11 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           // Every historical slice is ranked independently, so leadership
           // changes begin painting at the actual switch timestamp rather than
           // retroactively widening an entire old ribbon.
-          const structure = calculateBounceNodeVisualStructure({
+          const structure = data.snapshot.mirrorGexMap ? {
+            strength: clamp(node.visualStrength, 0, 1),
+            brightness: clamp(node.mapOpacity ?? 1, 0, 1),
+            fade: 1, momentum: "stable" as const,
+          } : calculateBounceNodeVisualStructure({
             visualStrength: leaderRelativeStrength,
             bucketShare: node.bucketShare,
             rateOfChangePercent: node.rateOfChangePercent,
@@ -461,8 +467,8 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             intensity: data.intensity,
           });
           const height = calculateBounceNodeHeight(data.minimumNodeHeight, data.maximumNodeHeight, structure.strength);
-          const opacity = clamp(data.opacity * (data.minimumOpacity + (1 - data.minimumOpacity) * structure.brightness), 0.012, 1);
-          const color = data.roleColors[String(node.sourceStrike)]
+          const opacity = clamp(data.opacity * (data.snapshot.mirrorGexMap ? structure.brightness : data.minimumOpacity + (1 - data.minimumOpacity) * structure.brightness), 0.012, 1);
+          const color = (data.snapshot.mirrorGexMap ? node.mapColor : null) || data.roleColors[String(node.sourceStrike)]
             || (node.signedExposure >= 0 ? data.positiveColor : data.negativeColor);
 
           prepared.push({
@@ -588,7 +594,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           context.stroke();
           context.shadowBlur = 0;
 
-          if (data.extendRight && body.edgeX < mediaSize.width) {
+          if (data.extendRight && body.edgeX < mediaSize.width && (!data.snapshot.mirrorGexMap || lastPoint.sliceIndex === slices.length - 1)) {
             // Project the level's final price to the right edge as a quiet
             // dashed continuation — the ribbon stays anchored to when the
             // level actually existed; the projection is presentation only.
@@ -688,22 +694,30 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         if (!current || point.node.timestamp > current.node.timestamp) latestByStrike.set(point.node.sourceStrike, point);
       }
       const levelByStrike = new Map(data.snapshot.levels.map((level) => [level.sourceStrike, level]));
-      for (const point of latestByStrike.values()) {
+      const labelPoints = [...latestByStrike.values()];
+      if (data.snapshot.mirrorGexMap) labelPoints.sort((a, b) =>
+        Number(b.node.mapRoleLabel !== "NODE") - Number(a.node.mapRoleLabel !== "NODE") || b.node.absoluteExposure - a.node.absoluteExposure);
+      const occupiedLabels: { top: number; bottom: number }[] = [];
+      for (const point of labelPoints) {
         const level = levelByStrike.get(point.node.sourceStrike);
         if (!data.showLabels && !data.showValues) continue;
+        if (data.snapshot.mirrorGexMap && !point.node.mapHighlighted) continue;
+        if (data.snapshot.mirrorGexMap && !data.showValues && point.node.mapRoleLabel === "NODE") continue;
+        if (data.snapshot.mirrorGexMap && occupiedLabels.some((r) => point.y - 8 < r.bottom && point.y + 8 > r.top)) continue;
         const parts = [
-          data.showLabels ? `${level?.role ?? "NODE"} ${point.node.mappedPrice.toFixed(2)}` : "",
-          data.showValues ? compactExposure(point.node.signedExposure) : "",
+          data.showLabels ? `${point.node.mapRoleLabel ?? level?.role ?? "NODE"} ${point.node.mappedPrice.toFixed(2)}` : "",
+          data.showValues ? data.valueMode === "star-percent" ? (point.node.signedExposure < 0 ? "-" : "") + (point.node.percentOfKing * 100).toFixed(1) + "%" : data.snapshot.mirrorGexMap ? formatGexMapExposure(point.node.signedExposure) : compactExposure(point.node.signedExposure) : "",
           data.showTouchCount && level ? `${level.touches}T` : "",
         ].filter(Boolean);
         if (!parts.length) continue;
+        occupiedLabels.push({ top: point.y - 9, bottom: point.y + 9 });
         const label = parts.join(" · ");
         context.font = "10px Aleph, monospace";
         const width = context.measureText(label).width + 8;
         const x = clamp(point.right + 10, 4, mediaSize.width - width - 4);
         context.fillStyle = rgba("#000000", 0.78);
         context.fillRect(x, point.y - 8, width, 16);
-        context.fillStyle = rgba(point.color, 0.96);
+        context.fillStyle = rgba(data.snapshot.mirrorGexMap ? "#FFFFFF" : point.color, 0.96);
         context.fillText(label, x + 4, point.y + 3.5);
       }
 

@@ -67,6 +67,7 @@ import {
 } from "@/lib/volumeProfileGradients";
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
+import BounceGexMapSettings, { isBounceMirrorPresentationKey } from "@/components/gex-map/BounceGexMapSettings";
 import KstIndicatorSettings from "@/components/KstIndicatorSettings";
 import {
   FOOTPRINT_CHART_TYPES,
@@ -4225,7 +4226,11 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {settingsDefinition.id === "bounce-levels" ? (
+              {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
+                <BounceGexMapSettings instrument={instrument} settings={settingsInstance.settings ?? {}} onChange={(patch) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...patch } }))} />
+              ) : null}
+
+              {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror === false ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Preset</span>
@@ -8271,6 +8276,7 @@ export default function ChartIndicatorsControl({
                 * for them rather than giving them a second scheme picker.
                 */}
               {indicatorSupportsPalette(settingsDefinition.id)
+                && !(settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false)
                 && !hasOwnPaletteSection(settingsDefinition.id) ? (
                 <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : undefined}>
                   <IndicatorPaletteSection
@@ -8303,7 +8309,8 @@ export default function ChartIndicatorsControl({
                 const numericSettings = (VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
                   ? []
                   : INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
-                  .filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent"));
+                  .filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent"))
+                  .filter((setting) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(setting.key));
                 const bySection = new Map<string, typeof numericSettings>();
                 for (const setting of numericSettings) {
                   const section = sectionForSetting(settingsDefinition.id, setting.key, "Inputs");
@@ -8338,6 +8345,7 @@ export default function ChartIndicatorsControl({
 
               {(() => {
                 const entries = Object.entries(settingsInstance.settings ?? {})
+                  .filter(([key]) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(key))
                   .filter(([key, value]) =>
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
                     && !(settingsDefinition.id === "deep-print-footprint" && FOOTPRINT_PROFILE_MANAGED_SETTINGS.has(key))
@@ -8438,7 +8446,7 @@ export default function ChartIndicatorsControl({
               })()}
               <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : "Style"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
                 {settingsDefinition.id === "bounce-levels" ? (
-                  <>Bounce colours follow the active chart theme by default. Changing any colour automatically creates a workspace-specific palette; turn <span className="text-foreground">Use Theme Colors</span> back on to relink it.</>
+                  <>Linked Bounce Levels uses the GEX Map colour scale. Open <span className="text-foreground">GEX Map view, nodes &amp; colours</span> above to change the shared palette.</>
                 ) : (
                   <>Theme colours remain linked by default. Turn off <span className="text-foreground">Use Theme Colors</span> before setting custom study colours.</>
                 )}

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { GexMapDropdown } from "@/components/gex-map/GexMapWorkspace";
+import { GexMapDropdown } from "@/components/gex-map/GexMapSettingsDialog";
 import { gexMapSignedScale, type GexMapPalette } from "@/lib/gexMapPalette";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 

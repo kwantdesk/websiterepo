@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 import { BIG_BLOCKS_OPTIONS_DEFAULTS } from "@/lib/bigBlocksOptions";
 import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors, normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
@@ -2227,6 +2228,13 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     gexIntervalMapSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "bounce-levels" ? {
+    gexMapMirror: true,
+    linkGexMapSettings: true,
+    mapExpiryScope: "FRONT_EXPIRY",
+    mapRepresentation: "PER_ONE_DOLLAR_MOVE",
+    mapExposureModel: "STRUCTURAL_OI",
+    mapViewMode: "star",
+    mapStepMinutes: 1,
     preset: "balanced-intraday",
     provider: "quantdata",
     sourceTicker: "AUTO",
@@ -2235,7 +2243,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     priceMode: "live",
     extendRight: false,
     greekMode: "GAMMA",
-    expirationMode: "zero-to-one-dte",
+    expirationMode: "front-expiration",
     minimumDte: 0,
     maximumDte: 7,
     expirationDates: "",
@@ -2277,14 +2285,14 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     // Paints every level with the exact colour its strike shows on the GEX
     // Map surface (live palette, signed-exposure heat scale) instead of the
     // role colours below.
-    syncGexMapColors: false,
+    syncGexMapColors: true,
     positiveColor: theme?.upColor ?? "#22C55E",
     negativeColor: theme?.downColor ?? "#EF4444",
     kingColor: theme?.borderUpColor ?? "#F59E0B",
     developingColor: theme?.upColor ?? "#22C55E",
     weakeningColor: theme?.downColor ?? "#EF4444",
     airPocketColor: theme?.gridColor ?? "#71717A",
-    bounceLevelsSettingsVersion: 5,
+    bounceLevelsSettingsVersion: 6,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -3878,7 +3886,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     }
     const enumValues: Record<string, string[]> = {
       provider: ["quantdata"],
-      sourceTicker: ["AUTO", "QQQ", "NDX", "SPY", "SPX", "SPXW", "IWM"],
+      sourceTicker: ["AUTO", ...OPTIONS_FLOW_INSTRUMENTS.map((p) => p.symbol)],
       greekMode: ["GAMMA", "DELTA", "VANNA", "CHARM"],
       expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
       visualStrengthBasis: ["absolute-exposure", "percent-of-king", "hybrid"],
@@ -3898,7 +3906,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     if (Number(settings.maximumDte) < Number(settings.minimumDte)) settings.maximumDte = settings.minimumDte;
     if (Number(settings.maximumNodeThickness) < Number(settings.minimumNodeThickness)) settings.maximumNodeThickness = settings.minimumNodeThickness;
     if (Number(settings.activeEnterThreshold) < Number(settings.activeExitThreshold)) settings.activeEnterThreshold = settings.activeExitThreshold;
-    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 5 } };
+    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 6 } };
   }
   if (normalizedInstance.indicatorId === "depth-of-market") {
     const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("depth-of-market");

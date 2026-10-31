@@ -10,6 +10,7 @@ const server = read("src/lib/quantData.server.ts");
 const route = read("src/app/api/gex-map/route.ts");
 const cache = read("src/lib/workspaceDataCache.ts");
 const workspace = read("src/components/gex-map/GexMapWorkspace.tsx");
+const settingsDialog = read("src/components/gex-map/GexMapSettingsDialog.tsx");
 const chart = read("src/components/Chart.tsx");
 
 assert.match(
@@ -96,7 +97,7 @@ assert.match(workspace, /All Exp/, "the complete-chain selector must be visible 
 assert.match(workspace, /Front \/ 0DTE/, "the comparable front-expiry selector must be labelled explicitly");
 assert.match(workspace, /PER_ONE_DOLLAR_MOVE[\s\S]*?\$1/, "the dollar-move selector must be visible in the GEX Map toolbar");
 assert.match(workspace, /OI model/, "the UI must distinguish structural OI from proprietary inferred dealer flow");
-assert.match(workspace, /viewMode === "ninja"[\s\S]*?Ninja node selection/, "Ninja-only controls must not be shown as inert settings in other views");
+assert.match(settingsDialog, /viewMode === "ninja"[\s\S]*?Ninja node selection/, "Ninja-only controls must not be shown as inert settings in other views");
 
 const isolatedFrontRequests = chart.match(/scope=FRONT_EXPIRY/g) ?? [];
 assert.equal(

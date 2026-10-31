@@ -1,5 +1,9 @@
 import type { ExposureStrike } from "./optionsFlow";
 import { latestGexMapStrikesFromFrames, type GexMapPanelPayload } from "./gexMap";
+/** Map row filtering/order also defines deterministic tied-node selection. */
+export function gexMapSurfaceRows(current: ReadonlyMap<number, ExposureStrike>) {
+  return [...current.values()].filter((row) => row.call !== 0 || row.put !== 0).sort((a, b) => b.strike - a.strike);
+}
 
 /** The first recorded surface is a baseline, never a future replay fallback. */
 function openingSurface(payload: GexMapPanelPayload, upTo: number | null) {

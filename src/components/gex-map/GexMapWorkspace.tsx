@@ -1,15 +1,13 @@
 "use client";
+import { formatGexMapExposure as formatCompact } from "@/lib/gexMapFormat";
 import { optionsOpeningRefreshDelay, publishPanelResults } from "@/lib/optionsOpeningRefresh";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { createPortal } from "react-dom";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleStop,
   Gauge,
-  ListOrdered,
   Lock,
   LockOpen,
   Minus,
@@ -28,14 +26,19 @@ import {
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
 import KwantDatePicker from "@/components/ui/KwantDatePicker";
+import GexMapSettingsDialog, { GexMapDropdown } from "./GexMapSettingsDialog";
+export { GexMapDropdown } from "./GexMapSettingsDialog";
+import { useGexMapSettingsBridge } from "./useLinkedGexMapSettings";
+import { publishGexMapSurface, subscribeGexMapSurface } from "@/lib/gexMapSurfaceBus";
 import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
-import { buildGexMapSnapshots as buildSnapshots, gexMapPriceAt as priceAt } from "@/lib/gexMapSnapshots";
+import { buildGexMapSnapshots as buildSnapshots, gexMapPriceAt as priceAt, gexMapSurfaceRows } from "@/lib/gexMapSnapshots";
 import {
   DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   DEFAULT_GEX_MAP_REPRESENTATION,
   GEX_MAP_GREEKS,
   hasRenderableGexMapSurface,
+  isGexMapSurfaceFor,
   selectGexMapStarNode,
   type GexMapExpiryScope,
   type GexMapPanelPayload,
@@ -43,12 +46,7 @@ import {
 } from "@/lib/gexMap";
 import {
   DEFAULT_GEX_MAP_PALETTE,
-  GEX_MAP_DRAG_BAR_TRACK,
   GEX_MAP_PALETTE_CHANGE_EVENT,
-  GEX_MAP_PALETTE_PRESETS,
-  GEX_MAP_STOP_COUNT,
-  buildGexMapSignedScale,
-  gexMapDragBarColor,
   gexMapPaletteTones,
   gexMapSignedScale,
   gexMapPalettesEqual,
@@ -73,9 +71,6 @@ import {
   type GreekMode,
 } from "@/lib/optionsFlow";
 import {
-  PURE_BLACK,
-  PURE_WHITE,
-  colorLuminance,
   contrastRatio,
   parseResolvedColor,
   readableTextOn,
@@ -230,12 +225,6 @@ function readGexMapStarPreferences() {
   }
 }
 
-type GexMapDropdownOption<T extends string> = {
-  value: T;
-  label: string;
-  detail?: string;
-};
-
 const easternTime = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
   hour: "2-digit",
@@ -243,15 +232,6 @@ const easternTime = new Intl.DateTimeFormat("en-US", {
   second: "2-digit",
   hourCycle: "h23",
 });
-
-function formatCompact(value: number) {
-  const absolute = Math.abs(value);
-  const sign = value < 0 ? "−" : "";
-  if (absolute >= 1_000_000_000) return `${sign}$${(absolute / 1_000_000_000).toFixed(2)}B`;
-  if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2)}M`;
-  if (absolute >= 1_000) return `${sign}$${(absolute / 1_000).toFixed(1)}K`;
-  return `${sign}$${absolute.toFixed(0)}`;
-}
 
 function linkedMarketFromLocation(): GexMapMarket | null {
   if (typeof window === "undefined") return null;
@@ -418,142 +398,6 @@ function starPaletteFromAccent(accentHex: string): StarPalette {
   return { accent: rgbHex(accent), text: rgbHex(text), outline: rgbHex(text) };
 }
 
-export function GexMapDropdown<T extends string>({
-  ariaLabel,
-  value,
-  options,
-  menuLabel,
-  menuWidth,
-  onChange,
-}: {
-  ariaLabel: string;
-  value: T;
-  options: GexMapDropdownOption<T>[];
-  menuLabel: string;
-  menuWidth: number;
-  onChange: (value: T) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const selected = options.find((option) => option.value === value) ?? options[0];
-
-  const toggleMenu = () => {
-    if (open) {
-      setOpen(false);
-      return;
-    }
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setPosition({
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)),
-      top: rect.bottom + 7,
-    });
-    setOpen(true);
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    const closeOnViewportChange = () => setOpen(false);
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("resize", closeOnViewportChange);
-    window.addEventListener("scroll", closeOnViewportChange, true);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("resize", closeOnViewportChange);
-      window.removeEventListener("scroll", closeOnViewportChange, true);
-    };
-  }, [open]);
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={toggleMenu}
-        className={`gex-map-dropdown group flex h-7 min-w-0 flex-1 items-center justify-between gap-1.5 rounded-[3px] border px-2 text-left transition-colors ${
-          open
-            ? "border-primary/40 bg-primary/[0.08] text-primary"
-            : "border-border/70 bg-background/35 text-foreground hover:border-primary/30 hover:bg-surface"
-        }`}
-      >
-        <span className="text-[10px] font-semibold uppercase leading-none tracking-[0.075em]">{selected?.label ?? value}</span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform duration-200 ${open ? "rotate-180 text-primary" : "group-hover:text-foreground"}`} />
-      </button>
-
-      {open && position && typeof document !== "undefined"
-        ? createPortal(
-          <div
-            ref={menuRef}
-            role="listbox"
-            aria-label={ariaLabel}
-            data-gex-map-dropdown-menu=""
-            className="fixed z-[280] overflow-hidden rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
-            style={{ left: position.left, top: position.top, width: menuWidth }}
-          >
-            <div className="flex items-center justify-between px-2.5 pb-1.5 pt-1 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">
-              <span>{menuLabel}</span>
-              <span>{options.length}</span>
-            </div>
-            <div className="max-h-[300px] space-y-0.5 overflow-y-auto">
-              {options.map((option) => {
-                const active = option.value === value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    onClick={() => {
-                      onChange(option.value);
-                      setOpen(false);
-                      triggerRef.current?.focus();
-                    }}
-                    className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${
-                      active
-                        ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-surface"
-                    }`}
-                  >
-                    <span className={`flex h-7 min-w-12 shrink-0 items-center justify-center rounded-lg px-2 font-mono text-[10px] font-semibold ${
-                      active
-                        ? "bg-primary text-on-primary shadow-[0_0_14px_color-mix(in_srgb,var(--color-primary)_22%,transparent)]"
-                        : "border border-border bg-card text-foreground"
-                    }`}>
-                      {option.label}
-                    </span>
-                    {option.detail ? (
-                      <span className="min-w-0 flex-1 truncate text-[9px] text-muted">{option.detail}</span>
-                    ) : null}
-                    {active ? <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_var(--color-primary)]" /> : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>,
-          document.body,
-        )
-        : null}
-    </>
-  );
-}
-
 function ExposurePanel({
   config,
   payload,
@@ -666,9 +510,7 @@ function ExposurePanel({
     // Strikes with zero call AND zero put exposure carry no positioning at
     // all — the provider lists them merely because the strike exists on the
     // exchange. They are noise on the ladder and are dropped entirely.
-    () => [...current.values()]
-      .filter((row) => row.call !== 0 || row.put !== 0)
-      .sort((a, b) => b.strike - a.strike),
+    () => gexMapSurfaceRows(current),
     [current],
   );
   // `rows` is the complete reconstructed/filtered strike surface, not the
@@ -930,7 +772,9 @@ function ExposurePanel({
             onChange={(greekMode) => onChange({ greekMode })}
           />
           <div className="gex-map-panel-spot ml-auto shrink-0 text-right">
-            <div className="text-[7px] font-semibold uppercase leading-none tracking-[0.1em] text-muted">{valueHeading}</div>
+            <div data-gex-model={payload?.model} className="text-[7px] font-semibold uppercase leading-none tracking-[0.1em] text-muted">
+              {payload ? payload.model === "DEALER_INVENTORY" ? "Dealer estimate" : "Structural OI" : valueHeading}
+            </div>
             <div className="font-mono text-[11px] font-semibold text-foreground">{formatPrice(spot)}</div>
             <div className={`font-mono text-[9px] ${payload && (payload.sessionChangePercent ?? 0) >= 0 ? "text-primary" : "text-danger"}`}>
               {payload?.sessionChangePercent === null || payload?.sessionChangePercent === undefined
@@ -1301,340 +1145,6 @@ function ExposurePanel({
   );
 }
 
-function StarViewSettings({
-  open,
-  settings,
-  palette,
-  paletteDirty,
-  viewMode,
-  onViewModeChange,
-  onChange,
-  onPaletteChange,
-  onPaletteSave,
-  onClose,
-}: {
-  open: boolean;
-  settings: GexMapStarSettings;
-  palette: GexMapPalette;
-  paletteDirty: boolean;
-  viewMode: GexMapViewMode;
-  onViewModeChange: (next: GexMapViewMode) => void;
-  onChange: (next: GexMapStarSettings) => void;
-  onPaletteChange: (next: GexMapPalette) => void;
-  onPaletteSave: () => void;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [onClose, open]);
-  const [editSlot, setEditSlot] = useState<{ side: "scale" | "star"; index: number }>({
-    side: "scale",
-    index: GEX_MAP_STOP_COUNT - 1,
-  });
-  if (!open || typeof document === "undefined") return null;
-
-  const update = <K extends keyof GexMapStarSettings>(key: K, value: GexMapStarSettings[K]) => onChange({ ...settings, [key]: value });
-  const paletteScale = gexMapSignedScale(palette);
-  const applySlotColor = (hex: string) => {
-    if (editSlot.side === "star") {
-      onPaletteChange({ ...palette, useThemeColors: false, star: hex });
-      return;
-    }
-    const ramp = [...paletteScale];
-    ramp[editSlot.index] = hex;
-    // Keep the legacy strong tones in sync so preview bars and preset
-    // detection stay coherent with the edited scale.
-    onPaletteChange({
-      ...palette,
-      useThemeColors: false,
-      scaleStops: ramp,
-    });
-  };
-  const handleDragBar = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0) return;
-    applySlotColor(gexMapDragBarColor((event.clientX - rect.left) / rect.width));
-  };
-  const selectedSlotColor = editSlot.side === "star" ? palette.star : paletteScale[editSlot.index];
-  const scaleSlotLabel = (index: number) => (index < 5 ? `-${(5 - index) * 20}` : `+${(index - 4) * 20}`);
-  const rowClass = "grid grid-cols-[minmax(0,1fr)_160px] items-center gap-4 border-b border-border/60 py-3";
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[270] flex items-start justify-center bg-black/20 px-4 pt-[10vh]"
-      onPointerDown={(event) => {
-        // Portaled dropdown menus live outside this overlay's DOM subtree;
-        // choosing an option must not close the whole settings dialog.
-        if ((event.target as HTMLElement).closest?.("[data-gex-map-dropdown-menu]")) return;
-        onClose();
-      }}
-    >
-      <section className="max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]" onPointerDown={(event) => event.stopPropagation()}>
-        <header className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-panel px-4">
-          <div>
-            <div className="text-[11px] font-semibold text-foreground">{viewMode.toUpperCase()} VIEW SETTINGS</div>
-            <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Applied to every GEX Map panel</div>
-          </div>
-          <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label="Close Star view settings"><X className="h-3.5 w-3.5" /></button>
-        </header>
-        <div className="px-4 pb-4">
-          <div className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">View</span><span className="text-[8px] text-muted">Full = every strike raw · Ninja = structural nodes · Star = only the Star node</span></span>
-            <div className="flex h-7 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map view">
-              {([["full", "Full"], ["ninja", "Ninja"], ["star", "Star"]] as const).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={viewMode === mode}
-                  onClick={() => onViewModeChange(mode)}
-                  className={`flex h-5 flex-1 items-center justify-center rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${viewMode === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">Values</span><span className="text-[8px] text-muted">The numbers beside each strike — colours stay identical</span></span>
-            <div className="flex h-7 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map value mode">
-              {([["signed", "Signed"], ["star-percent", "% of Star"]] as const).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={(settings.valueMode ?? "signed") === mode}
-                  onClick={() => update("valueMode", mode)}
-                  className={`flex h-5 flex-1 items-center justify-center rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${(settings.valueMode ?? "signed") === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {viewMode !== "full" ? (
-            <>
-              <label className={rowClass}>
-                <span><span className="block text-[10px] text-foreground">Dimmed-row intensity</span><span className="text-[8px] text-muted">{Math.round(settings.dimOpacity * 100)}%</span></span>
-                <input type="range" min="0.02" max="0.3" step="0.01" value={settings.dimOpacity} onChange={(event) => update("dimOpacity", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
-              </label>
-              {([
-                ["showRawValues", "Show raw exposure values"],
-                ["animateChanges", "Animate live changes"],
-              ] as const).map(([key, label]) => (
-                <label key={key} className={rowClass}>
-                  <span className="text-[10px] text-foreground">{label}</span>
-                  <input type="checkbox" checked={settings[key]} onChange={(event) => update(key, event.target.checked)} className="ml-auto h-4 w-4 accent-[var(--primary)]" />
-                </label>
-              ))}
-            </>
-          ) : null}
-          {viewMode === "ninja" ? (
-            <>
-              <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Ninja node selection</div>
-              <label className={rowClass}>
-                <span><span className="block text-[10px] text-foreground">Highlighted nodes</span><span className="text-[8px] text-muted">Unique structural strikes per panel</span></span>
-                <input type="range" min="2" max="8" step="1" value={settings.highlightedNodes} onChange={(event) => update("highlightedNodes", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
-              </label>
-              <label className={rowClass}>
-                <span><span className="block text-[10px] text-foreground">Selection strategy</span><span className="text-[8px] text-muted">Changes the deterministic node ranking</span></span>
-                <GexMapDropdown
-                  ariaLabel="Structural node selection strategy"
-                  value={settings.selectionStrategy}
-                  options={[
-                    { value: "structural", label: "Structural", detail: "Balanced structural ranking" },
-                    { value: "magnitude", label: "Magnitude", detail: "Largest absolute exposure first" },
-                    { value: "velocity", label: "Velocity", detail: "Fastest-changing nodes first" },
-                  ]}
-                  menuLabel="Selection strategy"
-                  menuWidth={230}
-                  onChange={(selectionStrategy) => update("selectionStrategy", selectionStrategy)}
-                />
-              </label>
-              {([[
-                "showRoleLabels", "Show role labels",
-              ], [
-                "showAirPocketLabels", "Show air-pocket labels",
-              ]] as const).map(([key, label]) => (
-                <label key={key} className={rowClass}>
-                  <span className="text-[10px] text-foreground">{label}</span>
-                  <input type="checkbox" checked={settings[key]} onChange={(event) => update(key, event.target.checked)} className="ml-auto h-4 w-4 accent-[var(--primary)]" />
-                </label>
-              ))}
-              <div className={rowClass}>
-                <span><span className="block text-[10px] text-foreground">Minimum map control</span><span className="text-[8px] text-muted">Auto adapts to strike density</span></span>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => update("minimumControlPct", settings.minimumControlPct === null ? 0.5 : null)} className={`h-7 border px-2 text-[8px] ${settings.minimumControlPct === null ? "border-primary bg-primary/10 text-primary" : "border-border text-muted"}`}>{settings.minimumControlPct === null ? "AUTO" : "MANUAL"}</button>
-                  {settings.minimumControlPct !== null ? <input type="number" min="0" max="25" step="0.1" value={settings.minimumControlPct} onChange={(event) => update("minimumControlPct", Number(event.target.value))} className="h-7 min-w-0 flex-1 border border-border bg-surface px-2 text-[9px] text-foreground" /> : null}
-                </div>
-              </div>
-              <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Air-pocket calculation</div>
-              <label className={rowClass}>
-                <span className="text-[10px] text-foreground">Row control threshold</span>
-                <input type="number" min="0" max="20" step="0.05" value={settings.airPocketRowThresholdPct} onChange={(event) => update("airPocketRowThresholdPct", Number(event.target.value))} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground" />
-              </label>
-              <label className={rowClass}>
-                <span className="text-[10px] text-foreground">Combined pocket threshold</span>
-                <input type="number" min="0" max="50" step="0.1" value={settings.airPocketCombinedThresholdPct} onChange={(event) => update("airPocketCombinedThresholdPct", Number(event.target.value))} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground" />
-              </label>
-              <label className={rowClass}>
-                <span><span className="block text-[10px] text-foreground">Spot-proximity weighting</span><span className="text-[8px] text-muted">{Math.round(settings.proximityWeight * 100)}%</span></span>
-                <input type="range" min="0" max="0.3" step="0.01" value={settings.proximityWeight} onChange={(event) => update("proximityWeight", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
-              </label>
-            </>
-          ) : null}
-          <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Colours</div>
-          <div className="border-b border-border/60 py-3">
-            <span><span className="block text-[10px] text-foreground">Gradient palettes</span><span className="text-[8px] text-muted">One click recolours the whole map</span></span>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {GEX_MAP_PALETTE_PRESETS.map((preset) => {
-                const presetScale = preset.scale ?? buildGexMapSignedScale(preset.negative, preset.positive);
-                const presetPalette: GexMapPalette = {
-                  useThemeColors: false,
-                  positive: preset.positive,
-                  positiveSoft: preset.positiveSoft,
-                  negative: preset.negative,
-                  negativeSoft: preset.negativeSoft,
-                  star: preset.star,
-                  scaleStops: [...presetScale],
-                };
-                const active = gexMapPalettesEqual(palette, presetPalette);
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    title={preset.label}
-                    aria-label={`${preset.label} palette`}
-                    aria-pressed={active}
-                    onClick={() => onPaletteChange(presetPalette)}
-                    className={`relative h-7 w-9 overflow-hidden rounded-[4px] border transition-transform hover:scale-110 ${
-                      active ? "border-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" : "border-border"
-                    }`}
-                    style={{ background: `linear-gradient(90deg, ${presetScale.join(", ")})` }}
-                  >
-                    <span
-                      className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-black/30"
-                      style={{ background: preset.star }}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <label className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">Use theme colours</span><span className="text-[8px] text-muted">Follow the overall KwantDesk theme</span></span>
-            <input
-              type="checkbox"
-              checked={palette.useThemeColors}
-              onChange={(event) => onPaletteChange({ ...palette, useThemeColors: event.target.checked })}
-              className="ml-auto h-4 w-4 accent-[var(--primary)]"
-            />
-          </label>
-          {!palette.useThemeColors ? (
-            <div className="border-b border-border/60 py-3">
-              <span className="block text-[10px] text-foreground">Signed-exposure scale · extreme negative → extreme positive</span>
-              <span className="text-[8px] text-muted">One ten-colour gradient: slot one paints the biggest negative (darkest), the middle is average noise, slot ten the biggest positive (lightest). Tap a slot, then drag the bar — the map recolours live.</span>
-              <div className="mt-2.5">
-                <div className="grid grid-cols-10 gap-1">
-                  {paletteScale.map((color, index) => {
-                    const selected = editSlot.side === "scale" && editSlot.index === index;
-                    return (
-                      <button
-                        key={index}
-                        type="button"
-                        title={`${scaleSlotLabel(index)}% signed-exposure slot`}
-                        aria-label={`Signed exposure ${scaleSlotLabel(index)}% colour`}
-                        aria-pressed={selected}
-                        onClick={() => setEditSlot({ side: "scale", index })}
-                        className={`relative h-7 rounded-[3px] border transition-transform hover:scale-110 ${
-                          selected
-                            ? "border-primary shadow-[0_0_8px_color-mix(in_srgb,var(--primary)_45%,transparent)]"
-                            : "border-border/70"
-                        }`}
-                        style={{ background: color }}
-                      >
-                        <span
-                          className="absolute inset-x-0 bottom-0 text-center font-mono text-[6px] leading-[9px]"
-                          style={{ color: "#FFFFFF", textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
-                        >
-                          {scaleSlotLabel(index)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="mt-2.5">
-                <span className="text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Star node</span>
-                <div className="mt-1 flex items-center gap-2">
-                  <button
-                    type="button"
-                    aria-label="Star node colour"
-                    aria-pressed={editSlot.side === "star"}
-                    onClick={() => setEditSlot({ side: "star", index: 0 })}
-                    className={`h-7 w-10 rounded-[3px] border transition-transform hover:scale-110 ${
-                      editSlot.side === "star"
-                        ? "border-primary shadow-[0_0_8px_color-mix(in_srgb,var(--primary)_45%,transparent)]"
-                        : "border-border/70"
-                    }`}
-                    style={{ background: palette.star }}
-                  />
-                  <span className="font-mono text-[8px] uppercase text-muted">{palette.star}</span>
-                </div>
-              </div>
-              <div className="mt-3">
-                <div
-                  role="slider"
-                  aria-label="Colour drag bar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  className="relative h-6 w-full cursor-ew-resize touch-none rounded-[4px] border border-border"
-                  style={{ background: GEX_MAP_DRAG_BAR_TRACK }}
-                  onPointerDown={(event) => {
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                    handleDragBar(event);
-                  }}
-                  onPointerMove={(event) => {
-                    if (event.currentTarget.hasPointerCapture(event.pointerId)) handleDragBar(event);
-                  }}
-                />
-                <div className="mt-1 flex items-center justify-between text-[8px] text-muted">
-                  <span>Drag left–right to recolour the selected slot</span>
-                  <span className="flex items-center gap-1.5 font-mono uppercase">
-                    <span className="inline-block h-3 w-3 rounded-[2px] border border-border/70" style={{ background: selectedSlotColor }} />
-                    {selectedSlotColor}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ) : null}
-          <button type="button" onClick={() => onChange({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS })} className="mt-4 h-8 border border-primary/40 px-3 text-[9px] font-semibold text-primary hover:bg-primary/10">RESET RECOMMENDED DEFAULTS</button>
-        </div>
-        <footer className="sticky bottom-0 z-10 flex h-12 items-center justify-between gap-3 border-t border-border bg-panel px-4">
-          <span className="text-[8px] text-muted">
-            {paletteDirty ? "Colour changes preview live — Save to keep them." : "Saved colours stay until you relink the theme."}
-          </span>
-          <button
-            type="button"
-            onClick={onPaletteSave}
-            disabled={!paletteDirty}
-            className={`h-8 border px-4 text-[9px] font-semibold transition ${
-              paletteDirty
-                ? "border-primary bg-primary/10 text-primary hover:bg-primary/20"
-                : "border-border text-muted"
-            }`}
-          >
-            SAVE
-          </button>
-        </footer>
-      </section>
-    </div>,
-    document.body,
-  );
-}
-
 function GexMapWorkspace({
   market = null,
   externalReplay = null,
@@ -1665,6 +1175,9 @@ function GexMapWorkspace({
   const [panels, setPanels] = useState<PanelConfig[]>(() =>
     initialEmbedStateRef.current?.panels.map((panel) => ({ ...panel })) ?? initialPanelsForMarket(market));
   const panelsRef = useRef(panels);
+  // Configuration hydration can change the columns and cache scope together.
+  // Update before passive cache restoration so it cannot restore old Greeks.
+  useLayoutEffect(() => { panelsRef.current = panels; }, [panels]);
   const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>({
     left: null,
     centre: null,
@@ -1841,8 +1354,12 @@ function GexMapWorkspace({
      * browser kept serving the old frameless one and the panel reported "No
      * replay frames" against a server that was already returning 391 of them.
      */
-    return exposureModel === "DEALER_INVENTORY" ? `${base}:dealer-v3` : base;
+    return exposureModel === "DEALER_INVENTORY" && panel.greekMode === "GAMMA" ? `${base}:dealer-v3` : base;
   }, [exposureModel, expiryScope, replayMode, representation, requestedReplayDate]);
+  const panelMatches = useCallback((panel: PanelConfig, payload: GexMapPanelPayload | null | undefined) =>
+    isGexMapSurfaceFor(payload, { symbol: panel.symbol, greekMode: panel.greekMode, scope: expiryScope, representation,
+      model: exposureModel === "DEALER_INVENTORY" && panel.greekMode === "GAMMA" ? "DEALER_INVENTORY" : "STRUCTURAL_OI",
+      sessionDate: requestedReplayDate }), [exposureModel, expiryScope, representation, requestedReplayDate]);
 
   useEffect(() => {
     setLocationMarket(market ?? linkedMarketFromLocation());
@@ -1915,8 +1432,22 @@ function GexMapWorkspace({
       timeHorizon,
     });
   }, [expiryScope, exposureModel, panels, representation, stepMinutes, timeHorizon, viewMode]);
+  const linkedSettingsReady = useGexMapSettingsBridge({ version: 1, panels, viewMode, stepMinutes, expiryScope, representation, exposureModel, starSettings }, (next) => {
+    setPanels(next.panels); setViewMode(next.viewMode); setStepMinutes(next.stepMinutes as typeof stepMinutes);
+    setExpiryScope(next.expiryScope); setRepresentation(next.representation); setExposureModel(next.exposureModel);
+    setStarSettings(next.starSettings); setPlaying(false);
+  });
+  useEffect(() => {
+    const stops = panels.map((panel) => subscribeGexMapSurface(panelCacheKey(panel), (payload) => {
+      if (!panelMatches(panel, payload)) return;
+      setPanelData((current) => current[panel.id] === payload ? current : { ...current, [panel.id]: payload });
+      setPanelErrors((current) => current[panel.id] === null ? current : { ...current, [panel.id]: null });
+    }));
+    return () => stops.forEach((stop) => stop());
+  }, [panels, panelCacheKey, panelMatches]);
 
   useEffect(() => {
+    if (!linkedSettingsReady) return;
     let cancelled = false;
     let timer: number | null = null;
     let requestInFlight = false;
@@ -1931,12 +1462,11 @@ function GexMapWorkspace({
       // React may eagerly execute a functional state updater during dispatch.
       // Keep this out of the updater's temporal dead zone: the old ordering
       // could throw before the first three panel requests even started.
-      const expectedModel = exposureModel === "DEALER_INVENTORY" ? "DEALER_INVENTORY" : "STRUCTURAL_OI";
       const cachedPanels = Object.fromEntries(panels.map((panel) => {
         const cached = readWorkspaceData<GexMapPanelPayload>(
           panelCacheKey(panel),
         );
-        return [panel.id, hasRenderableGexMapSurface(cached) ? cached : null];
+        return [panel.id, panelMatches(panel, cached) ? cached : null];
       }));
       setPanelData((current) => {
         const next = { ...current };
@@ -1945,9 +1475,9 @@ function GexMapWorkspace({
           // WRONG across a model change: the two models are different
           // measurements, so holding v1's rows under a DEALER heading shows a
           // number the label denies. Drop anything from the other model.
-          if (next[panel.id] && next[panel.id]?.model !== expectedModel) delete next[panel.id];
+          if (next[panel.id] && !panelMatches(panel, next[panel.id])) delete next[panel.id];
           const cached = cachedPanels[panel.id];
-          if (cached && cached.model === expectedModel && !hasRenderableGexMapSurface(next[panel.id])) {
+          if (cached && !hasRenderableGexMapSurface(next[panel.id])) {
             next[panel.id] = cached;
           }
         }
@@ -1979,7 +1509,7 @@ function GexMapWorkspace({
               // workspace timeout even though every provider response is
               // healthy, so do not abort the final QQQ panel prematurely.
               timeoutMs: 45_000,
-              validate: (value) => hasRenderableGexMapSurface(value as GexMapPanelPayload),
+              validate: (value) => panelMatches(panel, value as GexMapPanelPayload),
               invalidMessage: "The GEX surface did not contain a strike ladder.",
             },
           );
@@ -1987,6 +1517,8 @@ function GexMapWorkspace({
         };
         const results = await publishPanelResults(panels.map(loadPanel), ({ id, payload }) => {
           if (cancelled) return;
+          const sourcePanel = panels.find((p) => p.id === id);
+          if (sourcePanel) publishGexMapSurface(panelCacheKey(sourcePanel), payload);
           if (Number.isFinite(payload.refreshAfterMs) && payload.refreshAfterMs > 0) nextRefreshDelay = Math.min(nextRefreshDelay, payload.refreshAfterMs);
           setPanelData(current => ({ ...current, [id]: payload }));
           setPanelErrors(current => ({ ...current, [id]: null }));
@@ -2062,7 +1594,7 @@ function GexMapWorkspace({
         timer = null;
       }
     };
-  }, [exposureModel, expiryScope, panelCacheKey, panels, refreshToken, replayMode, representation, requestedReplayDate]);
+  }, [exposureModel, expiryScope, panelCacheKey, panelMatches, panels, refreshToken, replayMode, representation, requestedReplayDate, linkedSettingsReady]);
 
   const [replayWindow, setReplayWindow] = useState<GexMapReplayWindowId>(() => {
     if (typeof window === "undefined") return "rth";
@@ -2078,7 +1610,8 @@ function GexMapWorkspace({
   const timeline = useMemo(() => {
     const timestamps = new Set<number>();
     for (const panel of panels) {
-      const payload = panelData[panel.id];
+      const candidate = panelData[panel.id];
+      const payload = panelMatches(panel, candidate) ? candidate : null;
       if (!payload || (replayMode && requestedReplayDate && payload.sessionDate !== requestedReplayDate)) continue;
       for (const frame of payload.frames) timestamps.add(frame.timestamp);
     }
@@ -2091,7 +1624,7 @@ function GexMapWorkspace({
     if (stepMinutes === 1 || !ordered.length) return ordered;
     const anchor = ordered[0];
     return ordered.filter((timestamp) => Math.round((timestamp - anchor) / 60_000) % stepMinutes === 0);
-  }, [panelData, panels, replayMode, replayWindow, requestedReplayDate, stepMinutes]);
+  }, [panelData, panelMatches, panels, replayMode, replayWindow, requestedReplayDate, stepMinutes]);
 
   useEffect(() => {
     if (!replayMode || !playing || timeline.length < 2) return;
@@ -2249,7 +1782,7 @@ function GexMapWorkspace({
               */
             <div
               className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
-              title="Structural is the provider's exposure by strike. Dealer is a carried signed dealer book revalued against current gamma - measured to track the reference far more closely on cash indices, and worse than Structural on ETFs."
+              title="The Structural OI model uses the provider's exposure by strike. Dealer is our reconstructed dealer-inventory estimate, not a proprietary participant-position feed. Gamma only; other metrics remain structural."
             >
               {([
                 ["STRUCTURAL_OI", "STRUCTURAL"],
@@ -2421,7 +1954,8 @@ function GexMapWorkspace({
             style={{ "--gex-map-panel-count": panels.length } as CSSProperties}
           >
             {panels.map((panel, panelIndex) => {
-              const payload = panelData[panel.id];
+              const candidate = panelData[panel.id];
+              const payload = panelMatches(panel, candidate) ? candidate : null;
               const matchesPanel = payload
                 && payload.symbol === panel.symbol
                 && payload.greekMode === panel.greekMode
@@ -2536,7 +2070,7 @@ function GexMapWorkspace({
           />
         </div>
       ) : null}
-      <StarViewSettings
+      <GexMapSettingsDialog
         open={starSettingsOpen}
         settings={starSettings}
         viewMode={viewMode}

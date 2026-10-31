@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { buildGexMapSnapshots } from "../src/lib/gexMapSnapshots.ts";
 
 /**
  * Velocity is measured from the session open, not from a minute ago.
@@ -15,14 +16,15 @@ const source = readFileSync(new URL("../src/components/gex-map/GexMapWorkspace.t
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
-check("the surface at the session's first frame is carried alongside the others", () => {
-  assert.match(source, /function sessionOpenSurface\(payload: GexMapPanelPayload, upTo: number \| null\)/);
-  // The FIRST frame, not the newest one before the cursor.
-  assert.match(source, /const first = payload\.frames\.find\(\(frame\) => upTo === null \|\| frame\.timestamp <= upTo\);/);
-  // Both snapshot paths supply it - the live one and the replay cursor one -
-  // and so does the empty-payload case, or the pill would crash on first paint.
-  assert.equal((source.match(/opening: sessionOpenSurface\(payload/g) ?? []).length, 2);
-  assert.match(source, /\{ current: new Map\(\), previous: new Map\(\), opening: new Map\(\) \}/);
+check("the surface at the session first frame is causal in live and replay", () => {
+  const initial = { strike: 7635, call: 10, put: 0, net: 10 };
+  const later = { ...initial, call: 100, net: 100 };
+  const payload = { frames: [{ timestamp: 100000, updates: [initial] }, { timestamp: 160000, updates: [later] }], latestStrikes: [later], asOf: new Date(160000).toISOString() };
+  assert.equal(buildGexMapSnapshots(payload, 99999, 1).opening.size, 0);
+  assert.equal(buildGexMapSnapshots(payload, 130000, 1).opening.get(7635).net, 10);
+  assert.equal(buildGexMapSnapshots(payload, 160000, 1).opening.get(7635).net, 10);
+  assert.equal(buildGexMapSnapshots(payload, null, 1).opening.get(7635).net, 10);
+  assert.equal(buildGexMapSnapshots({ ...payload, frames: [] }, null, 1).opening.size, 0);
 });
 
 check("the pill measures against the open", () => {
