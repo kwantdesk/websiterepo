@@ -2,7 +2,8 @@
 import {useEffect,useRef,useState,type PointerEvent as ReactPointerEvent} from "react";
 import {createPortal} from "react-dom";
 import {ChevronDown,X} from "lucide-react";
-import {GEX_MAP_DRAG_BAR_TRACK,GEX_MAP_PALETTE_PRESETS,GEX_MAP_STOP_COUNT,buildGexMapSignedScale,gexMapDragBarColor,gexMapSignedScale,gexMapPalettesEqual,type GexMapPalette} from "@/lib/gexMapPalette";
+import {GEX_MAP_DRAG_BAR_TRACK,GEX_MAP_SHARED_PALETTE_PRESETS,GEX_MAP_STOP_COUNT,gexMapPaletteFromPreset,gexMapDragBarColor,gexMapSignedScale,gexMapPalettesEqual,type GexMapPalette} from "@/lib/gexMapPalette";
+import ChartColorField, {isInsideChartColorPopover} from "@/components/ChartColorField";
 import {RECOMMENDED_GEX_MAP_STAR_SETTINGS,type GexMapStarSettings,type GexMapViewMode} from "@/lib/gexMapStar";
 type GexMapDropdownOption<T extends string> = {
   value: T;
@@ -210,6 +211,7 @@ export default function GexMapSettingsDialog({
       ...palette,
       useThemeColors: false,
       scaleStops: ramp,
+      negative: ramp[0], negativeSoft: ramp[4], positiveSoft: ramp[5], positive: ramp[9],
     });
   };
   const handleDragBar = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -218,7 +220,10 @@ export default function GexMapSettingsDialog({
     applySlotColor(gexMapDragBarColor((event.clientX - rect.left) / rect.width));
   };
   const selectedSlotColor = editSlot.side === "star" ? palette.star : paletteScale[editSlot.index];
-  const scaleSlotLabel = (index: number) => (index < 5 ? `-${(5 - index) * 20}` : `+${(index - 4) * 20}`);
+  const scaleSlotLabel = (index: number) => {
+    const percent = Math.round((index / (GEX_MAP_STOP_COUNT - 1) * 2 - 1) * 100);
+    return (percent > 0 ? "+" : "") + percent;
+  };
   const rowClass = "grid grid-cols-[minmax(0,1fr)_160px] items-center gap-4 border-b border-border/60 py-3";
   const content = (<section className={embedded ? "w-full rounded-xl border border-border bg-panel" : "max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]"} onPointerDown={(event) => event.stopPropagation()}>
         <header className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-panel px-4">
@@ -334,19 +339,11 @@ export default function GexMapSettingsDialog({
           ) : null}
           <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Colours</div>
           <div className="border-b border-border/60 py-3">
-            <span><span className="block text-[10px] text-foreground">Gradient palettes</span><span className="text-[8px] text-muted">One click recolours the whole map</span></span>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {GEX_MAP_PALETTE_PRESETS.map((preset) => {
-                const presetScale = preset.scale ?? buildGexMapSignedScale(preset.negative, preset.positive);
-                const presetPalette: GexMapPalette = {
-                  useThemeColors: false,
-                  positive: preset.positive,
-                  positiveSoft: preset.positiveSoft,
-                  negative: preset.negative,
-                  negativeSoft: preset.negativeSoft,
-                  star: preset.star,
-                  scaleStops: [...presetScale],
-                };
+            <span><span className="block text-[10px] text-foreground">Colour scheme</span><span className="text-[8px] text-muted">The same palettes as Footprint and volume profiles. Choose one, tweak the colours below, then Save.</span></span>
+            <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="group" aria-label="GEX Map colour schemes">
+              {GEX_MAP_SHARED_PALETTE_PRESETS.map((preset) => {
+                const presetPalette = gexMapPaletteFromPreset(preset);
+                const presetScale = presetPalette.scaleStops!;
                 const active = gexMapPalettesEqual(palette, presetPalette);
                 return (
                   <button
@@ -356,15 +353,12 @@ export default function GexMapSettingsDialog({
                     aria-label={`${preset.label} palette`}
                     aria-pressed={active}
                     onClick={() => onPaletteChange(presetPalette)}
-                    className={`relative h-7 w-9 overflow-hidden rounded-[4px] border transition-transform hover:scale-110 ${
+                    className={`relative flex min-h-9 items-center justify-center overflow-hidden rounded-lg border px-1.5 py-1 transition-colors ${
                       active ? "border-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" : "border-border"
                     }`}
                     style={{ background: `linear-gradient(90deg, ${presetScale.join(", ")})` }}
                   >
-                    <span
-                      className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-black/30"
-                      style={{ background: preset.star }}
-                    />
+                    <span className="relative rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">{preset.label}</span>
                   </button>
                 );
               })}
@@ -382,7 +376,7 @@ export default function GexMapSettingsDialog({
           {!palette.useThemeColors ? (
             <div className="border-b border-border/60 py-3">
               <span className="block text-[10px] text-foreground">Signed-exposure scale · extreme negative → extreme positive</span>
-              <span className="text-[8px] text-muted">One ten-colour gradient: slot one paints the biggest negative (darkest), the middle is average noise, slot ten the biggest positive (lightest). Tap a slot, then drag the bar — the map recolours live.</span>
+              <span className="text-[8px] text-muted">The chosen scheme fills these ten stock colours. The first slot paints extreme negative exposure, the middle is near zero, and the last paints extreme positive exposure. Select a slot to customise it.</span>
               <div className="mt-2.5">
                 <div className="grid grid-cols-10 gap-1">
                   {paletteScale.map((color, index) => {
@@ -430,6 +424,10 @@ export default function GexMapSettingsDialog({
                   />
                   <span className="font-mono text-[8px] uppercase text-muted">{palette.star}</span>
                 </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-[10px] text-foreground">Selected colour</span>
+                <ChartColorField ariaLabel="Selected exposure colour" value={selectedSlotColor} onChange={applySlotColor} />
               </div>
               <div className="mt-3">
                 <div
@@ -483,7 +481,7 @@ export default function GexMapSettingsDialog({
       onPointerDown={(event) => {
         // Portaled dropdown menus live outside this overlay's DOM subtree;
         // choosing an option must not close the whole settings dialog.
-        if ((event.target as HTMLElement).closest?.("[data-gex-map-dropdown-menu]")) return;
+        if (isInsideChartColorPopover(event.target) || (event.target as HTMLElement).closest?.("[data-gex-map-dropdown-menu]")) return;
         onClose();
       }}
     >

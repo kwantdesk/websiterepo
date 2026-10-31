@@ -6,7 +6,7 @@ import { buildGexMapSnapshots, gexMapSurfaceRows } from "../src/lib/gexMapSnapsh
 import { selectGexMapStarNode, DEFAULT_GEX_MAP_EXPIRY_SCOPE, DEFAULT_GEX_MAP_REPRESENTATION } from "../src/lib/gexMap.ts";
 import { deriveGexMapStarModel } from "../src/lib/gexMapStar.ts";
 import { DEFAULT_LINKED_GEX_MAP_SETTINGS, normalizeLinkedGexMapSettings, mergeLinkedGexMapPanels, linkedGexMapPanel, effectiveLinkedGexMapModel } from "../src/lib/gexMapLinkedSettings.ts";
-import { GEX_MAP_PALETTE_PRESETS, gexMapSignedScaleHex, gexMapHeatStrength, gexMapHeatColorHex } from "../src/lib/gexMapPalette.ts";
+import { GEX_MAP_SHARED_PALETTE_PRESETS as GEX_MAP_PALETTE_PRESETS, gexMapSignedScaleHex, gexMapHeatStrength, gexMapHeatColorHex } from "../src/lib/gexMapPalette.ts";
 import { defaultIndicatorSettings, normalizeStoredIndicator } from "../src/lib/chartIndicatorConfig.ts";
 import { subscribeGexMapSurface, publishGexMapSurface } from "../src/lib/gexMapSurfaceBus.ts";
 import { formatGexMapExposure } from "../src/lib/gexMapFormat.ts";

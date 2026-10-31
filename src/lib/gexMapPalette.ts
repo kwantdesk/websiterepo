@@ -1,4 +1,5 @@
 import { writeProtectedItem } from "./browserStorageQuota.ts";
+import { VOLUME_PROFILE_GRADIENTS } from "./volumeProfileGradients.ts";
 
 export type GexMapPalette = {
   useThemeColors: boolean;
@@ -264,7 +265,34 @@ export function relinkGexMapPaletteToTheme() {
   saveGexMapPalette({ ...DEFAULT_GEX_MAP_PALETTE });
 }
 
+export type GexMapPalettePreset = {
+  id: string; label: string; positive: string; positiveSoft: string;
+  negative: string; negativeSoft: string; star: string; scale?: string[];
+};
+
+/** Same canonical schemes as Footprint, profiles and the indicator palette picker.
+ * Only the colours change: signed exposure still selects the same ten positions. */
+export const GEX_MAP_SHARED_PALETTE_PRESETS: GexMapPalettePreset[] = VOLUME_PROFILE_GRADIENTS.map((gradient) => {
+  const scale = Array.from({ length: GEX_MAP_STOP_COUNT }, (_, index) =>
+    hexLerp(gradient.from, gradient.to, index / (GEX_MAP_STOP_COUNT - 1)));
+  return {
+    id: gradient.id, label: gradient.label, negative: scale[0], negativeSoft: scale[4],
+    positiveSoft: scale[5], positive: scale[9], star: gradient.to.toUpperCase(), scale,
+  };
+});
+
+/** Seed editable stock colours without sharing mutable arrays with the catalogue. */
+export function gexMapPaletteFromPreset(preset: GexMapPalettePreset): GexMapPalette {
+  return {
+    useThemeColors: false, positive: preset.positive, positiveSoft: preset.positiveSoft,
+    negative: preset.negative, negativeSoft: preset.negativeSoft, star: preset.star,
+    scaleStops: [...(preset.scale ?? buildGexMapSignedScale(preset.negative, preset.positive))],
+  };
+}
+
 /**
+ * Historical scientific catalogue retained for GEX Data/stats and saved-colour
+ * compatibility. The GEX Map/Bounce picker uses the shared indicator schemes.
  * Curated gradient palettes following classic scientific heat colormaps.
  * Every side of the surface is a strict brightness ramp: the soft stop is the
  * DARK shade the lowest signed exposure sits at, the strong stop is the
