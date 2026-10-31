@@ -18764,7 +18764,7 @@ export default function KwantifyWorkspace({
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Options"><GammaWorkspace /></WorkspaceFailureBoundary>;
       case "gexmap": {
         const gexMarket = ["ES", "MES"].includes(normalizePaperSymbol(pane.symbol)) ? "ES" : "NQ";
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace key={`${pane.id}-${gexMarket}`} market={gexMarket} enableDealerModel persistedState={pane.gexMapState ?? null} onStateChange={(state) => {
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace timeZone={chartSettings.timezone} key={`${pane.id}-${gexMarket}`} market={gexMarket} enableDealerModel persistedState={pane.gexMapState ?? null} onStateChange={(state) => {
           setWorkspacePanes((current) => current.map((candidate) => {
             if (candidate.id !== pane.id) return candidate;
             if (JSON.stringify(candidate.gexMapState) === JSON.stringify(state)) return candidate;
@@ -21005,7 +21005,7 @@ export default function KwantifyWorkspace({
             ) : null}
             {bottomWorkspaceSection === "gexmap" ? (
                 <WorkspaceFailureBoundary resetKey="gexmap" label="GEX Map">
-                  <GexMapWorkspace enableDealerModel />
+                  <GexMapWorkspace timeZone={chartSettings.timezone} enableDealerModel />
                 </WorkspaceFailureBoundary>
             ) : null}
             {bottomWorkspaceSection === "liqmap" ? (

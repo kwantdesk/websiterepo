@@ -88,6 +88,7 @@ import {
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import { gexMapReplayDisplay } from "@/lib/gexMapReplayTime";
 import {
   GEX_MAP_REPLAY_WINDOWS,
   framesInReplayWindow,
@@ -123,6 +124,8 @@ export type GexMapEmbedState = {
 };
 
 type GexMapWorkspaceProps = {
+  /** The host's top-right chart timezone; display only, never a session key. */
+  timeZone?: string;
   market?: GexMapMarket | null;
   externalReplay?: {
     active: boolean;
@@ -229,14 +232,6 @@ function readGexMapStarPreferences() {
   }
 }
 
-const easternTime = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
-
 function linkedMarketFromLocation(): GexMapMarket | null {
   if (typeof window === "undefined") return null;
   const market = new URLSearchParams(window.location.search).get("market")?.toUpperCase();
@@ -292,14 +287,6 @@ function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
 function formatPrice(value: number | null) {
   if (value === null) return "—";
   return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatSessionDate(value: string) {
-  return new Date(`${value}T12:00:00Z`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  });
 }
 
 const THEME_HEAT_TONES: GexMapHeatTones = {
@@ -391,6 +378,7 @@ function starPaletteFromAccent(accentHex: string): StarPalette {
 }
 
 function ExposurePanel({
+  replayDisplay,
   config,
   payload,
   loading,
@@ -407,6 +395,7 @@ function ExposurePanel({
   onRemove,
   onReplayCoverageGap = null,
 }: {
+  replayDisplay: ReturnType<typeof gexMapReplayDisplay>;
   config: PanelConfig;
   payload: GexMapPanelPayload | null;
   loading: boolean;
@@ -424,6 +413,10 @@ function ExposurePanel({
   onReplayCoverageGap?: (() => void) | null;
 }) {
   const panelRef = useRef<HTMLElement>(null);
+  const snapshotTime = payload ? Date.parse(payload.asOf) : NaN;
+  const snapshotCaption = Number.isFinite(snapshotTime)
+    ? `${replayDisplay.date(snapshotTime)} ${replayDisplay.clock(snapshotTime)}`
+    : "Time unavailable";
   const scrollRef = useRef<HTMLDivElement>(null);
   const ladderRef = useRef<HTMLDivElement>(null);
   const [followingSpot, setFollowingSpot] = useState(true);
@@ -828,7 +821,7 @@ function ExposurePanel({
                 && firstFrameMs !== null
                 && selectedTimestamp < firstFrameMs
               ) {
-                return `Replay is before the first recorded frame — exposure starts at ${easternTime.format(firstFrameMs)} ET.`;
+                return `Replay is before the first recorded frame — exposure starts at ${replayDisplay.clock(firstFrameMs)}.`;
               }
               return "No recorded strike frames for this session.";
             })()}
@@ -932,7 +925,7 @@ function ExposurePanel({
                   `Absolute rank ${derived.absoluteRank} · local peak ratio ${derived.localPeakRatio.toFixed(2)}`,
                   `Roles ${roleText.join(", ") || "NORMAL"}`,
                   highlighted ? derived.highlightReason.join(" · ") : `Normal node · rank ${derived.absoluteRank} · below structural threshold`,
-                  payload ? `Snapshot ${payload.asOf} · ${payload.status}` : "Snapshot unavailable",
+                  payload ? `Snapshot ${snapshotCaption} · ${payload.status}` : "Snapshot unavailable",
                 ].join("\n");
                 return (
                   <div
@@ -1127,6 +1120,7 @@ function ExposurePanel({
 }
 
 function GexMapWorkspace({
+  timeZone = "America/New_York",
   market = null,
   externalReplay = null,
   persistedState = null,
@@ -1137,6 +1131,7 @@ function GexMapWorkspace({
   lockedTimeHorizon = null,
   enableDealerModel = false,
 }: GexMapWorkspaceProps = {}) {
+  const replayDisplay = useMemo(() => gexMapReplayDisplay(timeZone), [timeZone]);
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
   // tree, which previously left an otherwise healthy map blank on some page loads.
@@ -1874,7 +1869,7 @@ function GexMapWorkspace({
                     type="button"
                     onClick={() => setReplayWindow(entry.id)}
                     aria-pressed={replayWindow === entry.id}
-                    title={entry.title}
+                    title={replayDisplay.window(entry.id, requestedReplayDate)}
                     className={`h-6 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${
                       replayWindow === entry.id
                         ? "bg-surface text-primary"
@@ -1955,6 +1950,7 @@ function GexMapWorkspace({
               const validPayload = matchesPanel && !replaySessionMismatch ? payload : null;
               return (
                 <ExposurePanel
+                  replayDisplay={replayDisplay}
                   key={panel.id}
                   config={panel}
                   payload={validPayload}
@@ -1983,7 +1979,7 @@ function GexMapWorkspace({
         {replayMode && !externalReplay ? (
           <footer className="shrink-0 overflow-x-auto border-t border-border bg-panel px-3 py-2">
             <div className="flex min-w-max items-center gap-2">
-              <KwantDatePicker
+              <div title="US trading session date (New York). Replay times follow the website timezone."><KwantDatePicker
                 label="Replay date"
                 value={replayDate}
                 max={currentSessionDate || undefined}
@@ -1993,7 +1989,7 @@ function GexMapWorkspace({
                   setPlaying(false);
                 }}
                 className="h-9 rounded-lg px-3 text-[10px]"
-              />
+              /></div>
 
               <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
                 <button type="button" onClick={() => setCursor(0)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
@@ -2007,9 +2003,9 @@ function GexMapWorkspace({
 
               <div className="min-w-[110px]">
                 <div className="font-mono text-[11px] font-semibold text-foreground">
-                  {selectedTimestamp ? `${easternTime.format(selectedTimestamp)} ET` : "No replay frames"}
+                  {selectedTimestamp ? replayDisplay.clock(selectedTimestamp) : "No replay frames"}
                 </div>
-                <div className="text-[8px] text-muted">{replayDate ? formatSessionDate(replayDate) : "Select a session"}</div>
+                <div className="text-[8px] text-muted">{selectedTimestamp ? replayDisplay.date(selectedTimestamp) : "Select a session"}</div>
               </div>
 
               <input
