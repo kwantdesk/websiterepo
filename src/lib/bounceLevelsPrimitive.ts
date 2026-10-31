@@ -54,6 +54,13 @@ export function calculateBounceNodeHeight(minimum: number, maximum: number, visu
   return (minimum + (maximum - minimum) * clamp(visualStrength, 0, 1)) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
 }
 
+/** Presentation only: weak exposure recedes; prominent bands keep their size. */
+export function calculateBounceNodeProminence(strength: number) {
+  const relative = clamp(strength / 0.65, 0, 1);
+  const weight = relative * relative * (3 - 2 * relative);
+  return { heightScale: 0.18 + weight * 0.82, opacityScale: 0.035 + weight * 0.965 };
+}
+
 const rgb = (color: string) => {
   const value = color.replace("#", "");
   const full = value.length === 3 ? value.split("").map((part) => part + part).join("") : value;
@@ -206,6 +213,7 @@ type PreparedNode = {
   right: number;
   y: number;
   height: number;
+  heightScale: number;
   opacity: number;
   strength: number;
   brightness: number;
@@ -228,10 +236,14 @@ function traceRibbon(
   points: PreparedNode[],
   heightScale: number,
   minimumHalfHeight: number,
+  heightForPoint?: (point: PreparedNode) => number,
 ) {
   const first = points[0];
   const last = points[points.length - 1];
-  const halfHeight = (point: PreparedNode) => Math.max(minimumHalfHeight, point.height * heightScale * 0.5);
+  const halfHeight = (point: PreparedNode) => Math.max(
+    minimumHalfHeight * point.heightScale,
+    (heightForPoint ? heightForPoint(point) : point.height) * heightScale * 0.5,
+  );
   const finalHalfHeight = halfHeight(last);
   const nominalWidth = Math.max(3, last.right - last.left);
   const edgeExtension = last.momentum === "building"
@@ -281,6 +293,7 @@ function ribbonGradient(
   edgeX: number,
   opacityScale: number,
   maximumStops = 48,
+  taperEnds = true,
 ) {
   const first = points[0];
   const last = points[points.length - 1];
@@ -290,7 +303,7 @@ function ribbonGradient(
     clamp(offset, 0, 1),
     rgba(point.color, point.opacity * opacityScale * multiplier),
   );
-  add(0, first, 0.72);
+  add(0, first, taperEnds ? 0.72 : 1);
   // Canvas gradients become extremely expensive with hundreds of colour
   // stops. Preserve the temporal shape while bounding the GPU/CPU work.
   const stopStride = Math.max(1, Math.ceil(points.length / maximumStops));
@@ -306,7 +319,7 @@ function ribbonGradient(
       : last.momentum === "weakening"
         ? 0.38
         : 0.08;
-  add(1, last, edgeMultiplier);
+  add(1, last, taperEnds ? edgeMultiplier : 1);
   return gradient;
 }
 
@@ -466,8 +479,9 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             retirementCount: node.retirementCount,
             intensity: data.intensity,
           });
-          const height = calculateBounceNodeHeight(data.minimumNodeHeight, data.maximumNodeHeight, structure.strength);
-          const opacity = clamp(data.opacity * (data.snapshot.mirrorGexMap ? structure.brightness : data.minimumOpacity + (1 - data.minimumOpacity) * structure.brightness), 0.012, 1);
+          const prominence = calculateBounceNodeProminence(structure.strength);
+          const height = calculateBounceNodeHeight(data.minimumNodeHeight, data.maximumNodeHeight, structure.strength) * prominence.heightScale;
+          const opacity = clamp(data.opacity * (data.snapshot.mirrorGexMap ? structure.brightness : data.minimumOpacity + (1 - data.minimumOpacity) * structure.brightness) * prominence.opacityScale, 0, 1);
           const color = (data.snapshot.mirrorGexMap ? node.mapColor : null) || data.roleColors[String(node.sourceStrike)]
             || (node.signedExposure >= 0 ? data.positiveColor : data.negativeColor);
 
@@ -478,6 +492,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             right: left + width,
             y,
             height,
+            heightScale: prominence.heightScale,
             opacity,
             strength: structure.strength,
             brightness: structure.brightness,
@@ -583,15 +598,14 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             context.fill();
           }
 
-          context.beginPath();
-          context.moveTo(points[0].left, points[0].y);
-          for (const point of points) context.lineTo(point.right, point.y);
-          if (body.edgeX > last.right) context.lineTo(body.edgeX, body.edgeY);
-          context.strokeStyle = rgba(last.color, clamp(maximumOpacity * (0.76 + maximumStrength * 0.34), 0.2, 1));
-          context.lineWidth = 0.9 + maximumStrength * 1.8;
+          // A uniform stroke based on the run's historical maximum made
+          // every weak observation look like a permanent grid line. Give the
+          // core the same local thickness/colour/opacity as its own snapshot.
+          traceRibbon(context, points, 1, 0, (point) => (0.9 + point.strength * 1.8) * point.heightScale);
+          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.76 + maximumStrength * 0.34, maximumGradientStops, false);
           context.shadowColor = rgba(last.color, maximumOpacity * 0.8);
           context.shadowBlur = (1.5 + data.glowStrength * 0.4) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
-          context.stroke();
+          context.fill();
           context.shadowBlur = 0;
 
           if (data.extendRight && body.edgeX < mediaSize.width && (!data.snapshot.mirrorGexMap || lastPoint.sliceIndex === slices.length - 1)) {
@@ -602,8 +616,8 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             context.moveTo(body.edgeX, body.edgeY);
             context.lineTo(mediaSize.width, body.edgeY);
             context.setLineDash([6, 5]);
-            context.strokeStyle = rgba(last.color, clamp(maximumOpacity * 0.7, 0.18, 0.9));
-            context.lineWidth = Math.max(1, 0.9 + maximumStrength * 1.2);
+            context.strokeStyle = rgba(last.color, clamp(last.opacity * 0.7, 0, 0.9));
+            context.lineWidth = (0.9 + last.strength * 1.2) * last.heightScale;
             context.stroke();
             context.setLineDash([]);
           }
