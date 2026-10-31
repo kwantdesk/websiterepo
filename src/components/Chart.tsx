@@ -10167,8 +10167,12 @@ function Chart({
       glowStrength: Number(indicatorSettings.glowStrength ?? 5),
       microOrbTexture: indicatorSettings.microOrbTexture !== false,
       showHeader: indicatorSettings.showHeader === true,
-      showLabels: bounceMirrorEnabled ? bounceMirror.profile.starSettings.showRoleLabels : indicatorSettings.showLabels === true,
-      showValues: bounceMirrorEnabled ? bounceMirror.profile.viewMode === "full" || bounceMirror.profile.starSettings.showRawValues : indicatorSettings.showValues === true,
+      // Bounce's side text is a local presentation choice, off in the stock
+      // settings. Linked map labels/full-view values must not turn it back on.
+      showLabels: indicatorSettings.showLabels === true,
+      showValues: bounceMirrorEnabled
+        ? indicatorSettings.showLabels === true && (bounceMirror.profile.viewMode === "full" || bounceMirror.profile.starSettings.showRawValues)
+        : indicatorSettings.showValues === true,
       valueMode: bounceMirrorEnabled ? bounceMirror.profile.starSettings.valueMode : "signed",
       showTouchCount: indicatorSettings.showTouchCount !== false,
       showAirPockets: bounceMirrorEnabled ? bounceMirror.profile.starSettings.showAirPocketLabels : indicatorSettings.showAirPockets !== false,
