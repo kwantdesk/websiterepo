@@ -10206,7 +10206,6 @@ function Chart({
       })(),
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
-      extendRight: bounceMirrorEnabled || indicatorSettings.extendRight === true,
     };
   }, [bounceMirrorEnabled, bounceMirror.profile, bounceGexStrikeColors, bounceLevelsDataSignature, bounceLevelsIndicator, bounceLevelsSnapshot, bounceLevelsSnapshotScope, bounceReplayCheckpoint, instrument, overlayTimelineMs, replayTimestampMs, settings.borderUpColor, settings.gridColor, settings.downColor, settings.upColor]);
   useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);
