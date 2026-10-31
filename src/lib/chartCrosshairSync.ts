@@ -20,6 +20,8 @@ export type ChartCrosshairSyncMove = {
   sourceTimestampMs: number | null;
   price: number | null;
   referencePrice: number | null;
+  viewportLinked?: boolean;
+  verticalFraction?: number;
   visible: boolean;
 };
 

@@ -1,0 +1,23 @@
+# Charts viewport/cursor linking: align real time rather than data tails
+
+Owner's linked SPY/QQQ 1m screenshot shows different cursor timestamps (02:22 vs03:03) and misaligned views. They report GEX Vue linking feels correct while Charts can be far off.
+
+## Causes and changes
+
+- The shared Chart effect rebased horizontal ranges by each pane's candle count and latest-bar offset. Independent instrument histories can differ in start/end times, missing bars, and native time-axis indices introduced by other series. Equal offsets do not imply equal timestamps.
+- Clock-chart snapshots now include two actual native timestamp/index anchors. Recipients map those timestamps onto their own native axis (binary lookup/interpolation for bounds, interval cadence for edge whitespace), preserving fractional range bounds. No OHLC values or missing candles are created/changed. Legacy snapshots and synthetic event-bar spacing retain the previous count fallback. Existing percentage-based price-range projection is unchanged.
+- Initially linked peers could both queue an initial broadcast before either had populated the group. Recheck follower/apply state and seed ownership inside the scheduled frame, so a pending follower cannot overwrite the leader. Normal pointer/wheel ownership and one-frame coalescing remain.
+- History can arrive after the old 80/120ms initial attempt or expand/reset an already-linked pane. After a viewport reset settles, restore the current shared view (including an own prior view), or seed a fresh compatible group. Rebased history with an unchanged tail restores too. Ordinary advancing live bars do not replay an old cached viewport and freeze the live edge. An explicit Return to live action leads the group to its new live viewport.
+- Live/replay dates are separately scoped using New York dates, preventing an old live/session viewport from being applied to a new replay day. A replay seed waits for data from that session. Invalid clocks are safely excluded rather than throwing.
+- A live-edge snapshot also records the source data's last timestamp. If replay data briefly seeds the live group during exit, fresh live history advances that stale view when ready; deliberate historical pans and ordinary same-session appends stay intact. Rechecked seed ownership allows only the first fresh pane to lead. The native browser fixture covers a replay-date change and returning to a newer live day.
+- For two viewport-linked panes, cursor price is derived from the same native-pane vertical fraction rather than different instruments' historical candle-price ratios. Crosshair-only/unlinked comparison behaviour stays unchanged. A recipient missing the actual clock candle clears its cursor rather than labelling an older candle as the same time.
+
+## Verification and limits
+
+- Sixteen viewport regressions pass, including existing percentage-price projection/legacy logical behaviour, 41-bar tail discrepancy, native-vs-array index differences, fractional bounds/whitespace, sparse-bound interpolation without mutating data, missing history, single-anchor translation and New York replay scope.
+- Fifteen isolated actual-native-chart Chrome scenarios use the viewport effect and crosshair handlers extracted from production Chart AST. The old HEAD implementation fails the same fixture with nearly a whole plot-width discrepancy; the fix passes. SPY/QQQ have different prices/pane sizes, 300 extra prefix bars and41 extra tail bars. Shared recorded timestamp coordinates align within0.2% of plot width. Tests cover simultaneous initial linking/one leader, either-pane pan/zoom, native wheel, actual pointer/cursor timestamp plus vertical fraction, unlink/relink, delayed data, prepend/rebase, whitespace, missing-candle cursor clearing and restoration. Zero page errors. All prices/preferences/auth are controlled local fixtures, not an assertion that the owner's live browser was inspected. Evidence: ignored `tmp/linked-chart-before.log`, `tmp/linked-chart-browser.log`, `tmp/linked-chart-browser.png`.
+- Existing crosshair-link, viewport-reset, replay-settings and36 Bounce mirror regressions pass. Scoped library/test lint passes; full production build checks the large Chart component. Never standalone lint the huge Chart file.
+
+This synchronizes views/cursors, not different assets' price paths. Sparse histories still contain their real gaps; no continuous fake-price data is inserted. No new HTTP/provider polling, credentials, trade/account/preference resets, gateway restart or recording changes. The cancelled Bounce unlink/source patch stays cancelled, and the later signed Bounce wording remains.
+
+Release only through the existing main-only Git integration and verify the exact live SHA. Preserve unrelated changes.

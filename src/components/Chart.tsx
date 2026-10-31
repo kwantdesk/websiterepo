@@ -755,6 +755,9 @@ import {
 } from "@/lib/chartCrosshairSync";
 import {
   centerPriceRangeOnAnchor,
+  chartViewportReplayScope,
+  linkedLogicalAtTimestamp,
+  shouldAdvanceLinkedLiveViewport,
   publishChartViewport,
   readLatestChartViewport,
   resolveLinkedLogicalRange,
@@ -3452,6 +3455,12 @@ function Chart({
   const viewportSyncUserInteractionRef = useRef(false);
   const viewportSyncReleaseTimerRef = useRef<number | null>(null);
   const viewportSyncGroupRef = useRef(viewportSyncGroup);
+  const viewportSyncRestoreRef = useRef<((resetToLive?: boolean) => void) | null>(null);
+  const viewportSyncReplayScope = chartViewportReplayScope(replayTimestampMs);
+  const viewportSyncReplayScopeRef = useRef(viewportSyncReplayScope);
+  viewportSyncReplayScopeRef.current = viewportSyncReplayScope;
+  const viewportSyncTimeframeRef = useRef(timeframe);
+  viewportSyncTimeframeRef.current = timeframe;
   // Read through a ref inside the chart-construction effect below. It is only
   // ever consulted by crosshair handlers, never by construction, so having it
   // as a DEPENDENCY tore the whole chart down and rebuilt it every time the
@@ -4469,6 +4478,7 @@ function Chart({
       () => {
         viewportResetFrameRef.current = null;
         if (chartVisualReadyTokenRef.current === readyToken) {
+          viewportSyncRestoreRef.current?.();
           setChartVisualReady(true);
         }
       },
@@ -4486,6 +4496,7 @@ function Chart({
       drawingCandlesRef.current.length,
       () => {
         viewportResetFrameRef.current = null;
+        viewportSyncRestoreRef.current?.(true);
         setViewportVersion((current) => current + 1);
       },
     );
@@ -15040,7 +15051,8 @@ function Chart({
         eventSourceTimeByChartTimeRef.current,
         eventChartTimeBySourceTimeRef.current,
       );
-      if (eventBased || clockCandleTimelineChanged(previousPaintCandles, drawCandles)) {
+      const timelineChanged = eventBased || clockCandleTimelineChanged(previousPaintCandles, drawCandles);
+      if (timelineChanged) {
         drawingTimelineRevisionRef.current += 1;
       }
       candleSeriesRef.current.setData(chartData);
@@ -15057,6 +15069,8 @@ function Chart({
           candleSeriesRef.current,
           candles.length,
         );
+      } else if (timelineChanged && previousPaintCandles.at(-1)?.timestamp === drawCandles.at(-1)?.timestamp) {
+        viewportSyncRestoreRef.current?.();
       }
       applyMarkers(tradesRef.current);
       setTimeout(() => {
@@ -15499,6 +15513,8 @@ function Chart({
         sourceTimestampMs,
         price,
         referencePrice,
+        viewportLinked: viewportSyncRoleRef.current === "peer",
+        verticalFraction: param.point.y / Math.max(1, chart.paneSize().height),
         visible: true,
       });
     };
@@ -15551,9 +15567,16 @@ function Chart({
           hideSynchronizedPriceGuide();
           return;
         }
+        const linkedViewport = viewportSyncRoleRef.current === "peer" && detail.viewportLinked === true;
+        const targetInterval = timeframeToMs(viewportSyncTimeframeRef.current);
+        if (linkedViewport && targetInterval && detail.sourceTimestampMs - targetCandle.timestamp >= targetInterval) {
+          chart.clearCrosshairPosition(); hideSynchronizedPriceGuide(); lastAppliedCrosshairKey = ""; return;
+        }
         const targetTime = eventChartTimeBySourceTimeRef.current.get(targetCandle.timestamp)
           ?? Math.floor(targetCandle.timestamp / 1_000);
-        const synchronizedPrice = crosshairSyncScopeRef.current === "gamvue"
+        const synchronizedPrice = linkedViewport && Number.isFinite(detail.verticalFraction)
+          ? candleSeries.coordinateToPrice(detail.verticalFraction! * chart.paneSize().height)
+          : crosshairSyncScopeRef.current === "gamvue"
           ? resolveEquivalentCrosshairPrice(
               detail.price,
               detail.referencePrice ?? detail.price,
@@ -16818,18 +16841,25 @@ function Chart({
       return 0;
     };
 
-    const applySnapshot = (snapshot: ChartViewportSnapshot) => {
+    const applySnapshot = (snapshot: ChartViewportSnapshot, allowOwn = false) => {
       if (
         !canApplySnapshots
-        || snapshot.sourceChartId === chartInstanceId
+        || (!allowOwn && snapshot.sourceChartId === chartInstanceId)
         || snapshot.timeframe !== (timeframe ?? "")
+        || (snapshot.replayScope ?? "live") !== viewportSyncReplayScopeRef.current
       ) return;
       const currentCandles = viewportSyncCandlesRef.current;
       const anchorPrice = latestAnchor();
       if (!anchorPrice) return;
       viewportSyncApplyingRef.current = true;
       try {
-        const logicalRange = resolveLinkedLogicalRange(snapshot, currentCandles.length);
+        const timeScale = chart.timeScale();
+        const logicalRange = resolveLinkedLogicalRange(snapshot, currentCandles.length, (timestamp) =>
+          linkedLogicalAtTimestamp(timestamp, currentCandles, (time) => {
+            const nativeTime = eventChartTimeBySourceTimeRef.current.get(time) ?? Math.floor(time / 1_000);
+            const index = timeScale.timeToIndex(nativeTime as Time);
+            return index === null ? null : Number(index);
+          }, timeframeToMs(timeframe)));
         if (logicalRange) {
           chart.timeScale().setVisibleLogicalRange(logicalRange);
         } else {
@@ -16857,7 +16887,7 @@ function Chart({
       }
     };
 
-    const publishSnapshot = (allowWithoutInteraction = false, centerOnAnchor = false) => {
+    const publishSnapshot = (allowWithoutInteraction = false, centerOnAnchor = false, seedOnly = false) => {
       // Visible-range callbacks also fire after setVisibleRange() on follower
       // charts. Only a chart receiving direct pointer/wheel input is allowed to
       // lead the group, otherwise followers echo the applied range back and a
@@ -16870,6 +16900,11 @@ function Chart({
       if (viewportSyncPublishFrameRef.current !== null) return;
       viewportSyncPublishFrameRef.current = window.requestAnimationFrame(() => {
         viewportSyncPublishFrameRef.current = null;
+        // Another peer may have become leader after this frame was queued.
+        if (viewportSyncApplyingRef.current) return;
+        const existing = readLatestChartViewport(viewportSyncGroup);
+        if (seedOnly && existing?.timeframe === (timeframe ?? "") && (existing.replayScope ?? "live") === viewportSyncReplayScopeRef.current
+          && !shouldAdvanceLinkedLiveViewport(existing, viewportSyncCandlesRef.current.at(-1)?.timestamp, timeframeToMs(timeframe))) return;
         const timeRange = chart.timeScale().getVisibleRange();
         const logicalRange = chart.timeScale().getVisibleLogicalRange();
         const priceScale = chart.priceScale("right") as ReturnType<IChartApi["priceScale"]> & {
@@ -16889,6 +16924,8 @@ function Chart({
           || !Number.isFinite(from)
           || !Number.isFinite(to)
         ) return;
+        const currentScope = viewportSyncReplayScopeRef.current;
+        if (currentScope !== "live" && chartViewportReplayScope(viewportSyncCandlesRef.current.at(-1)?.timestamp) !== currentScope) return;
         if (centerOnAnchor) {
           // A newly linked group always begins from a common visual origin:
           // the current/reference price sits at the vertical midpoint. The
@@ -16909,6 +16946,13 @@ function Chart({
             to: Number(logicalRange.to),
           },
           sourceDataLength: viewportSyncCandlesRef.current.length,
+          sourceLastTimestamp: viewportSyncCandlesRef.current.at(-1)?.timestamp,
+          // Event bars have synthetic spacing; retain their existing count link.
+          timeScaleAnchors: timeframeToMs(timeframe) === null ? undefined : [from, to].flatMap((time) => {
+            const logical = chart.timeScale().timeToIndex(time as Time);
+            return logical === null ? [] : [{ timestamp: eventSourceTimeByChartTimeRef.current.get(time) ?? time * 1_000, logical: Number(logical) }];
+          }),
+          replayScope: currentScope,
           priceRange,
           anchorPrice,
           updatedAt: Date.now(),
@@ -16977,7 +17021,8 @@ function Chart({
       initialPublishTimer = window.setTimeout(() => {
         // Seed an empty group once. Never let every mounting chart race to
         // become the initial leader and overwrite another chart's viewport.
-        if (!readLatestChartViewport(viewportSyncGroup)) publishSnapshot(true, true);
+        const latest = readLatestChartViewport(viewportSyncGroup);
+        if (!latest || latest.timeframe !== (timeframe ?? "") || (latest.replayScope ?? "live") !== viewportSyncReplayScopeRef.current) publishSnapshot(true, true, true);
       }, 80);
     }
 
@@ -16989,9 +17034,17 @@ function Chart({
       const latest = readLatestChartViewport(viewportSyncGroup);
       if (latest) applySnapshot(latest);
     };
+    const restoreAfterData = (resetToLive = false) => {
+      const latest = readLatestChartViewport(viewportSyncGroup);
+      if (!resetToLive && latest && latest.timeframe === (timeframe ?? "") && (latest.replayScope ?? "live") === viewportSyncReplayScopeRef.current
+        && !shouldAdvanceLinkedLiveViewport(latest, viewportSyncCandlesRef.current.at(-1)?.timestamp, timeframeToMs(timeframe))) applySnapshot(latest, true);
+      else publishSnapshot(true, true, !resetToLive);
+    };
+    viewportSyncRestoreRef.current = restoreAfterData;
     retryLatest();
     const retryTimer = window.setTimeout(retryLatest, 120);
     return () => {
+      if (viewportSyncRestoreRef.current === restoreAfterData) viewportSyncRestoreRef.current = null;
       if (initialPublishTimer !== null) window.clearTimeout(initialPublishTimer);
       if (trailingPublishTimer !== null) window.clearTimeout(trailingPublishTimer);
       window.clearTimeout(retryTimer);
@@ -17015,7 +17068,7 @@ function Chart({
       }
       viewportSyncUserInteractionRef.current = false;
     };
-  }, [chartInstanceId, chartReadyRevision, instrument, timeframe, viewportSyncGroup, viewportSyncRole]);
+  }, [chartInstanceId, chartReadyRevision, instrument, timeframe, viewportSyncGroup, viewportSyncRole, viewportSyncReplayScope]);
 
   useEffect(() => {
     cvdDivergencePricePrimitiveRef.current?.update(baseCalculatedIndicatorSeries.flatMap(definition => {

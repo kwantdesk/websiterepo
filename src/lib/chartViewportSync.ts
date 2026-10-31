@@ -8,13 +8,18 @@ export type ChartViewportSnapshot = {
   visibleTimeRange: { from: number; to: number };
   visibleLogicalRange: { from: number; to: number };
   sourceDataLength: number;
+  sourceLastTimestamp?: number;
+  /** Real native-axis coordinates; candle counts are not comparable across feeds. */
+  timeScaleAnchors?: { timestamp: number; logical: number }[];
+  replayScope?: string;
   priceRange: { from: number; to: number };
   anchorPrice: number;
   updatedAt: number;
 };
 
 /**
- * Rebase a source chart's logical viewport onto another chart's data tail.
+ * Align a viewport through real native-axis timestamp anchors. Legacy packets
+ * without anchors retain the former tail-relative fallback below.
  *
  * Lightweight Charts clips getVisibleRange() to available timestamps. When a
  * user pans near either edge, copying that clipped time range makes a follower
@@ -23,8 +28,9 @@ export type ChartViewportSnapshot = {
  * as a translation and reserves span changes for real zoom gestures.
  */
 export function resolveLinkedLogicalRange(
-  snapshot: Pick<ChartViewportSnapshot, "visibleLogicalRange" | "sourceDataLength">,
+  snapshot: Pick<ChartViewportSnapshot, "visibleLogicalRange" | "sourceDataLength" | "timeScaleAnchors">,
   linkedDataLength: number,
+  logicalAtTimestamp?: (timestamp: number) => number | null,
 ) {
   const from = Number(snapshot.visibleLogicalRange.from);
   const to = Number(snapshot.visibleLogicalRange.to);
@@ -38,10 +44,62 @@ export function resolveLinkedLogicalRange(
     || targetLength === 0
   ) return null;
 
+  if (snapshot.timeScaleAnchors?.length && logicalAtTimestamp) {
+    const anchors = snapshot.timeScaleAnchors.flatMap((anchor) => {
+      const target = logicalAtTimestamp(anchor.timestamp);
+      return Number.isFinite(anchor.logical) && target !== null && Number.isFinite(target)
+        ? [{ source: anchor.logical, target }] : [];
+    });
+    if (!anchors.length) return null;
+    const first = anchors[0], last = anchors.at(-1)!;
+    const scale = last.source > first.source ? (last.target - first.target) / (last.source - first.source) : 1;
+    if (!(scale > 0) || !Number.isFinite(scale)) return null;
+    return { from: first.target + (from - first.source) * scale, to: first.target + (to - first.source) * scale };
+  }
+
   const span = to - from;
   const rightOffset = to - (sourceLength - 1);
   const targetTo = (targetLength - 1) + rightOffset;
   return { from: targetTo - span, to: targetTo };
+}
+
+/** Resolve real time on the recipient's native axis, including fractional bars
+ * and edge whitespace. Never assume that its candle index is its native index. */
+export function linkedLogicalAtTimestamp(
+  timestamp: number,
+  candles: readonly { timestamp: number }[],
+  nativeIndexAt: (timestamp: number) => number | null,
+  intervalMs: number | null,
+) {
+  if (!Number.isFinite(timestamp) || !candles.length) return null;
+  const exact = nativeIndexAt(timestamp);
+  if (exact !== null && Number.isFinite(exact)) return exact;
+  let lo = 0, hi = candles.length;
+  while (lo < hi) { const mid = (lo + hi) >>> 1; if (candles[mid].timestamp < timestamp) lo = mid + 1; else hi = mid; }
+  const left = candles[Math.max(0, lo - 1)], right = candles[Math.min(lo, candles.length - 1)];
+  const a = nativeIndexAt(left.timestamp), b = nativeIndexAt(right.timestamp);
+  if (a === null || b === null) return null;
+  if (right.timestamp > left.timestamp) return a + (b - a) * (timestamp - left.timestamp) / (right.timestamp - left.timestamp);
+  // Outside history, a time chart's whitespace advances in real intervals.
+  // Irregular event charts use their observed edge cadence instead.
+  const neighbor = lo === 0 ? candles[1] : candles.at(-2);
+  const cadence = intervalMs && intervalMs > 0 ? intervalMs : neighbor ? Math.abs(neighbor.timestamp - left.timestamp) : 0;
+  return cadence > 0 ? a + (timestamp - left.timestamp) / cadence : a;
+}
+
+const replayDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+export function chartViewportReplayScope(timestamp: number | null | undefined) {
+  return timestamp == null ? "live" : !Number.isFinite(timestamp) ? "replay:invalid" : "replay:" + replayDay.format(timestamp);
+}
+
+/** A live-edge view seeded with old replay data must advance once live history
+ * arrives. A deliberately historical live view must retain its chosen time. */
+export function shouldAdvanceLinkedLiveViewport(snapshot: ChartViewportSnapshot, latestTimestamp: number | undefined, intervalMs: number | null) {
+  const prior = snapshot.sourceLastTimestamp;
+  return (snapshot.replayScope ?? "live") === "live" && Boolean(snapshot.timeScaleAnchors?.length)
+    && Number.isFinite(prior) && Number.isFinite(latestTimestamp) && latestTimestamp! > prior!
+    && chartViewportReplayScope(prior) !== chartViewportReplayScope(latestTimestamp)
+    && snapshot.visibleTimeRange.to * 1_000 >= prior! - (intervalMs ?? 0);
 }
 
 const VIEWPORT_SYNC_EVENT = "kwantdesk:chart-viewport-sync";
