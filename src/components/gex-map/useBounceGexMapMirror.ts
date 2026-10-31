@@ -1,15 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLinkedGexMapSettingsState } from "./useLinkedGexMapSettings";
+import { effectiveLinkedGexMapModel, linkedGexMapPanel, normalizeLinkedGexMapSettings, readLocalGexMapStarSettings } from "@/lib/gexMapLinkedSettings";
 import { isGexMapSurfaceFor, hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
 import { compactGexMapLiveCacheKey, fetchWorkspaceData, gexMapCacheKey, readWorkspaceData } from "@/lib/workspaceDataCache";
 import { subscribeGexMapSurface, publishGexMapSurface } from "@/lib/gexMapSurfaceBus";
 import { GEX_MAP_PALETTE_CHANGE_EVENT, gexMapSignedScaleHex, loadGexMapPalette } from "@/lib/gexMapPalette";
 import { prepareBounceGexMirror, selectBounceGexMirror } from "@/lib/bounceGexMapMirror";
 import { mergeBounceGexMapHistory } from "@/lib/bounceGexMapHistory";
-import { resolveBounceGexMapConfiguration } from "@/lib/bounceGexMapConfiguration";
+import { resolveBounceGexMapSource } from "@/lib/bounceGexMapSource";
 import { useBounceMappingHistory } from "./useBounceMappingHistory";
 import type { Candle } from "@/lib/backtester";
+import type { GreekMode } from "@/lib/optionsFlow";
 
 const nyDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 export function useBounceGexMapMirror(input: {
@@ -17,12 +19,17 @@ export function useBounceGexMapMirror(input: {
   timestampMs: number | null; candles: { current: Candle[] };
 }) {
   const { settings: shared, hydrated } = useLinkedGexMapSettingsState(input.enabled), cfg = input.settings;
-  const configuration = useMemo(() => resolveBounceGexMapConfiguration(input.instrument, cfg, shared),
-    // Keep history preparation stable through unrelated presentation changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [input.instrument, shared, cfg.linkGexMapSettings, cfg.sourceTicker, cfg.mapColumnId, cfg.greekMode,
-      cfg.mapExpiryScope, cfg.mapRepresentation, cfg.mapExposureModel, cfg.mapViewMode, cfg.mapStepMinutes, cfg.mapStarSettings, cfg.mapPanels]);
-  const { profile, display, source, symbol, greek, model } = configuration;
+  const linked = cfg.linkGexMapSettings !== false;
+  const profile = useMemo(() => linked ? shared : normalizeLinkedGexMapSettings({
+    ...shared, expiryScope: cfg.mapExpiryScope, representation: cfg.mapRepresentation, exposureModel: cfg.mapExposureModel,
+    viewMode: cfg.mapViewMode ?? shared.viewMode, stepMinutes: cfg.mapStepMinutes ?? shared.stepMinutes,
+    starSettings: readLocalGexMapStarSettings(cfg.mapStarSettings, shared.starSettings),
+  }), [linked, shared, cfg.mapExpiryScope, cfg.mapRepresentation, cfg.mapExposureModel, cfg.mapViewMode, cfg.mapStepMinutes, cfg.mapStarSettings]);
+  const { display, source } = resolveBounceGexMapSource(input.instrument, profile, cfg.sourceTicker);
+  const panel = linkedGexMapPanel(profile, source, typeof cfg.mapColumnId === "string" ? cfg.mapColumnId : undefined);
+  const symbol = linked ? panel?.symbol ?? source : source;
+  const greek = (linked ? panel?.greekMode ?? cfg.greekMode ?? "GAMMA" : cfg.greekMode ?? "GAMMA") as GreekMode;
+  const model = effectiveLinkedGexMapModel(profile, greek);
   const sessionDate = input.timestampMs === null ? "" : nyDay.format(input.timestampMs);
   const key = (sessionDate ? gexMapCacheKey(symbol, greek, sessionDate, profile.expiryScope, profile.representation)
     : compactGexMapLiveCacheKey(symbol, greek, profile.expiryScope, profile.representation)) + (model === "DEALER_INVENTORY" ? ":dealer-v3" : "");

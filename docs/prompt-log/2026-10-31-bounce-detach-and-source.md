@@ -1,5 +1,7 @@
 # Bounce Levels: retain settings on unlink; consistent source/metric selection
 
+**Reverted at the owner's explicit request.** The owner says the preceding request was an earlier message and asks to undo this Bounce change. Restore the two modified Bounce components exactly to commit `28d60a37`; remove this task's configuration helper and test. Earlier signed colour-range, side-label and GEX Map replay-preservation changes remain. The implementation and release evidence below describe the cancelled change, not the current implementation.
+
 The owner wants Follow GEX Map off to keep the existing surface, and reports incorrect-looking values when switching the options source to NDX or another ticker.
 
 ## Findings and changes
@@ -17,3 +19,5 @@ No mapping formula or exposure values were changed. Index-to-futures basis, ETF-
 - Eleven regressions cover exact detach profile/source/Greek preservation, latent EOD protection, future shared changes, real preference normalization, missing-column metric consistency, linked/detached precedence, relink/invalid Greek handling, and explicit numeric mapping for NDX→NQ/MNQ, QQQ→NQ, direct NDX, SPX/SPXW→ES/MES, SPY→ES/MES and IWM→RTY/M2K. Raw strikes/exposures remain unchanged.
 - Nine actual-component isolated Chrome scenarios render the real settings, mirror hook and canvas primitive on a 5m NQ host. Entire pre/post-detach snapshots and history match; the fixed-size actual chart PNG is byte/pixel identical. Subsequent shared changes leave it unchanged. NDX shows strikes 19950/20000/20050 mapped to 21950/22000/22050 for source 20000/host 22000, with Vanna matching the editor, including every historical slice. Switching back restores QQQ ratio geometry without stale nodes. Settings and geometry survive reload; relink adopts the current shared NDX/Charm configuration. Zero page errors. All auth/preferences/feeds are controlled local fixtures, not an assertion of a live vendor comparison. Evidence: ignored `tmp/bounce-detach-browser.log` and screenshot.
 - Existing 36 mirror/parity, 22 signed-range and seven replay-settings tests pass. Scoped lint passes. Run the complete production build and verify the exact live commit after the single existing main-only Git deployment. Preserve unrelated local work; no gateway restart, provider/trade/account/recording mutations.
+
+Release verified: final production build passed. Main commit `ec76bb5b97d6e64b1428d950d3979b4bde8b0c39` deployed successfully through existing deployment `EhxGmgAzGkpRtTGnceHx3faiecDe`; live diagnostics returned the exact commit with `matched: true`. No additional deployment or gateway restart.
