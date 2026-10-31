@@ -771,6 +771,7 @@ import {
 } from "@/lib/chartWatermark";
 
 interface ChartProps {
+  focusRange?: { id: string; fromMs: number; toMs: number } | null;
   candles: Candle[];
   marketTrades?: InstitutionalTrade[];
   marketTradesVersion?: number;
@@ -3286,6 +3287,7 @@ function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
 }
 
 function Chart({
+  focusRange,
   candles: rawCandles,
   marketTrades: rawMarketTrades = EMPTY_CHART_ITEMS,
   marketTradesVersion = 0,
@@ -18239,6 +18241,17 @@ function Chart({
   const subscribePrecisionViewport = useCallback((listener: () => void) => (
     repaintNotifierRef.current?.subscribe(listener) ?? (() => {})
   ), []);
+  const appliedFocusRef = useRef("");
+  useEffect(() => {
+    if (!focusRange) { appliedFocusRef.current = ""; return; }
+    const key = focusRange.id + ":" + instrument + ":" + timeframe;
+    if (appliedFocusRef.current === key || !candles.length || !chartRef.current) return;
+    const from = Math.max(focusRange.fromMs, candles[0].timestamp);
+    const to = Math.min(focusRange.toMs, candles[candles.length - 1].timestamp);
+    if (from >= to) return;
+    chartRef.current.timeScale().setVisibleRange({ from: Math.floor(from / 1000) as Time, to: Math.floor(to / 1000) as Time });
+    appliedFocusRef.current = key;
+  }, [focusRange, candles, instrument, timeframe]);
   const precisionAdapter = useMemo<PrecisionChartAdapter>(() => {
     const contract = paperContractSpec(contractSymbol ?? instrument);
     return {

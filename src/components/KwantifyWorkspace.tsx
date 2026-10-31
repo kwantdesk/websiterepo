@@ -1,5 +1,7 @@
 "use client";
 
+import type { AlgoChartIntegration, AlgoChartFocus } from "@/lib/algoChartIntegration";
+import { workspaceReplaySessionBounds } from "@/lib/workspaceReplay";
 import { readChartDrawingStore, updateChartDrawingPane } from "@/lib/chartDrawingPreferences";
 
 import { mergePaperTradingLedgerUpdate } from "@/lib/accountPreferenceMerge";
@@ -5317,6 +5319,7 @@ function WorkspaceChartPaneComponent({
   replayTimestampMs = null,
   replaySessionDate = null,
   trades,
+  focusRange,
   indicators,
   onActivate,
   onOpenSettings,
@@ -5381,6 +5384,7 @@ function WorkspaceChartPaneComponent({
   replayTimestampMs?: number | null;
   replaySessionDate?: string | null;
   trades?: (Trade & { markerVisible?: boolean })[];
+  focusRange?: AlgoChartFocus | null;
   indicators: ChartIndicatorInstance[];
   onActivate: () => void;
   onOpenSettings: () => void;
@@ -9782,6 +9786,7 @@ function WorkspaceChartPaneComponent({
           marketTrades={replayMarketTrades}
           marketTradesVersion={marketTradesVersion}
           trades={trades}
+          focusRange={focusRange}
           levels={replayActive ? [] : chartLevels}
           zones={!replayActive && historicalStructureEnabled ? structure.snapshot.zones : []}
           backgroundLevels={replayActive ? [] : gameplanDecorations.levels}
@@ -10259,9 +10264,13 @@ const PAPER_TRADING_CAPABILITIES: ConnectorCapabilities = {
 export default function KwantifyWorkspace({
   section = "charts",
   socialProfileHandle = "",
+  embedded = false,
+  algo,
 }: {
   section?: PrimaryWorkspaceSection;
   socialProfileHandle?: string;
+  embedded?: boolean;
+  algo?: AlgoChartIntegration;
 }) {
   const router = useRouter();
   const initialChartWorkspaceScope: ChartWorkspaceScope = section === "gamvue" ? "gamma" : "charts";
@@ -10274,6 +10283,16 @@ export default function KwantifyWorkspace({
     if (times) replayTimelines.current.set(paneId, times); else replayTimelines.current.delete(paneId);
   }, []);
   const closeReplayPicker = useCallback(() => setShowReplayPicker(false), []);
+  useEffect(() => {
+    const focus = algo?.focus;
+    if (!focus) return;
+    const date = cmeSessionDateKey(focus.atMs);
+    if (!date) return;
+    setGexVueReplay(current => {
+      const bounds = workspaceReplaySessionBounds(current, date, "charts");
+      return { ...bounds, active: true, playing: false, timestampMs: Math.min(bounds.endMs, focus.toMs + 60000) };
+    });
+  }, [algo?.focus]);
   // Scrubbing the replay slider fires dozens of input events per second; each
   // one re-rendered the entire workspace and every pane's reveal pipeline,
   // which is what made fast scrubs hang. Coalesce to one commit per frame.
@@ -10380,6 +10399,8 @@ export default function KwantifyWorkspace({
     (pane) => pane.id === initialChartWorkspaceRuntime.activePaneId,
   ) ?? initialChartWorkspaceRuntime.panes[0];
   const [selectedInstrument, setSelectedInstrument] = useState(initialWorkspacePane.symbol);
+  useEffect(() => { algo?.onInstrumentChange(displayCmeSymbol(selectedInstrument)); }, [algo?.onInstrumentChange, selectedInstrument]);
+
   const [gammaChartSymbols, setGammaChartSymbols] = useState<string[]>([]);
   const [selectedLiquidityMapInstrument, setSelectedLiquidityMapInstrument] = useState(() => {
     if (typeof window === "undefined") return "NQ.v.0";
@@ -19001,7 +19022,10 @@ export default function KwantifyWorkspace({
         replaySessionDate={gexVueReplay.active
           ? gexVueReplay.sessionDate
           : null}
-        trades={activePaneId === pane.id ? chartTrades : []}
+        trades={algo && displayCmeSymbol(pane.symbol) === algo.symbol
+          ? algo.trades.filter(t => !gexVueReplay.active || t.exitTime <= gexVueReplay.timestampMs)
+          : activePaneId === pane.id ? chartTrades : []}
+        focusRange={algo && displayCmeSymbol(pane.symbol) === algo.symbol ? algo.focus : null}
         indicators={replayPaneIndicators[pane.id] ?? []}
         paperPositions={gexVueReplay.active ? [] : selectedPaperAccountLedger?.positions ?? []}
         paperFills={(gexVueReplay.active ? [] : selectedPaperAccountLedger?.fills ?? []).filter((fill) =>
@@ -19696,7 +19720,7 @@ export default function KwantifyWorkspace({
           ) : null);
 
   return (
-    <div className="flex h-screen select-none overflow-hidden bg-background text-foreground">
+    <div className={"flex " + (embedded ? "h-full min-h-0 " : "h-screen ") + "select-none overflow-hidden bg-background text-foreground"}>
       {showAI && (
         <div style={{ width: aiWidth }} className="relative flex shrink-0 flex-col border-r border-border bg-panel">
           <div className="flex h-12 items-center justify-between border-b border-border px-4"><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><span className="text-[13px] font-semibold">Strategy Builder</span></div><button onClick={() => setShowAI(false)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button></div>
@@ -19713,7 +19737,7 @@ export default function KwantifyWorkspace({
 
       <div className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden" ref={mainRef}>
         <AppSidebar
-          activeItem={bottomWorkspaceSection}
+          activeItem={algo && bottomWorkspaceSection === "charts" ? "algo" : bottomWorkspaceSection}
           accountLabel="Account"
           accountTitle={currentDisplayName ? `${currentDisplayName} · your profile` : currentUsername ? `@${currentUsername} · your profile` : "Your profile"}
           navigationMode="persistent"
@@ -19726,7 +19750,7 @@ export default function KwantifyWorkspace({
             });
           }}
           onNavigateIntent={warmWorkspaceSection}
-          onNavigateStart={handleWorkspaceNavigationStart}
+          onNavigateStart={target => { if (algo && target === "algo") return; handleWorkspaceNavigationStart(target); }}
           orientation="horizontal"
           tradesActive={showTradesMenu || rightPanel === "order"}
         />

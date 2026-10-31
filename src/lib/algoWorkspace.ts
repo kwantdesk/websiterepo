@@ -1,8 +1,9 @@
 /**
- * Frontend contracts for a future VPS strategy runner. Imported source is a draft,
- * never executable here. Every run currently produced by this module is PREVIEW.
+ * Shared strategy report contracts and metrics. The active Algo workspace runs
+ * recorded history through algoBacktest.ts; imported source remains a draft.
+ * The legacy illustrative factory below is retained only for regression fixtures.
  */
-export type AlgoInstrument = "NQ" | "ES" | "GC";
+export type AlgoInstrument = "NQ" | "ES" | "GC" | "MNQ" | "MES" | "MGC";
 export type AlgoInterval = 1 | 5 | 15 | 60;
 export type AlgoInputs = { enabled: boolean; lookback: number; stopTicks: number; targetTicks: number };
 export type AlgoConfig = {
@@ -36,18 +37,21 @@ export type AlgoMetrics = {
   averageR: number; averageMinutes: number; consecutiveLosses: number;
 };
 export type AlgoRun = {
-  kind: "preview"; id: string; config: AlgoConfig; candles: AlgoCandle[];
+  kind: "preview" | "recorded" | "empty"; id: string; config: AlgoConfig; candles: AlgoCandle[];
   trades: AlgoFill[]; equity: AlgoEquityPoint[]; metrics: AlgoMetrics;
 };
 export const ALGO_TEMPLATES = [
-  { id: "opening-range", name: "Opening range breakout", short: "ORB", detail: "Range breakouts after the opening window.", color: "#22c55e", lookback: 15, stopTicks: 24, targetTicks: 48 },
-  { id: "vwap-reversion", name: "VWAP reversion", short: "VWAP", detail: "Reversion to a volume-weighted reference.", color: "#38bdf8", lookback: 45, stopTicks: 32, targetTicks: 56 },
-  { id: "trend-continuation", name: "Trend continuation", short: "TREND", detail: "Continuation following a momentum pullback.", color: "#f59e0b", lookback: 80, stopTicks: 40, targetTicks: 72 },
+  { id: "opening-range", name: "Opening range breakout", short: "ORB", detail: "First close outside the opening range; next-minute open entry. One trade per session.", color: "#22c55e", lookback: 15, stopTicks: 24, targetTicks: 48 },
+  { id: "vwap-reversion", name: "VWAP reversion", short: "VWAP", detail: "After warmup, a close crossing session VWAP; next-minute open entry. One trade per session.", color: "#38bdf8", lookback: 45, stopTicks: 32, targetTicks: 56 },
+  { id: "trend-continuation", name: "Trend continuation", short: "TREND", detail: "First close beyond the previous lookback range; next-minute open entry. One trade per session.", color: "#f59e0b", lookback: 80, stopTicks: 40, targetTicks: 72 },
 ] as const;
 export const ALGO_INSTRUMENTS = {
   NQ: { name: "E-mini Nasdaq-100", tick: 0.25, pointValue: 20, base: 24000 },
   ES: { name: "E-mini S&P 500", tick: 0.25, pointValue: 50, base: 6500 },
   GC: { name: "Gold", tick: 0.1, pointValue: 100, base: 4000 },
+  MNQ: { name: "Micro E-mini Nasdaq-100", tick: 0.25, pointValue: 2, base: 24000 },
+  MES: { name: "Micro E-mini S&P 500", tick: 0.25, pointValue: 5, base: 6500 },
+  MGC: { name: "Micro Gold", tick: 0.1, pointValue: 10, base: 4000 },
 } as const;
 export const ALGO_STORAGE_KEY = "kwantdesk:algo-workspace:v1";
 
@@ -72,12 +76,12 @@ const validDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) &&
 const minuteOfDay = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
 
 export function validateAlgoConfig(config: AlgoConfig, requireSelection = true): string | null {
-  if (!ALGO_INSTRUMENTS[config.instrument]) return "Choose a supported preview instrument.";
+  if (!Object.hasOwn(ALGO_INSTRUMENTS, config.instrument)) return "Choose NQ, ES, GC or their micro contracts for the built-in strategies.";
   if (!validDay(config.from) || !validDay(config.to) || config.from > config.to) return "Choose a valid start and end date.";
-  if ((Date.parse(config.to) - Date.parse(config.from)) / 86400000 > 365) return "Choose up to one year for an interface preview.";
+  if ((Date.parse(config.to) - Date.parse(config.from)) / 86400000 > 365) return "Choose up to one year.";
   try { new Intl.DateTimeFormat("en", { timeZone: config.timeZone }).format(); } catch { return "Choose a valid timezone."; }
   if (![config.sessionStart, config.sessionEnd].every((v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(v))) return "Choose valid session times.";
-  if (minuteOfDay(config.sessionEnd) - minuteOfDay(config.sessionStart) < 30) return "The preview session must last at least 30 minutes and end on the same day.";
+  if (minuteOfDay(config.sessionEnd) - minuteOfDay(config.sessionStart) < 30) return "The test session must last at least 30 minutes and end on the same day.";
   if (!Number.isFinite(config.capital) || config.capital < 100 || config.capital > 1e9) return "Starting capital must be between $100 and $1 billion.";
   if (!Number.isInteger(config.contracts) || config.contracts < 1 || config.contracts > 100) return "Choose 1–100 contracts.";
   if (!Number.isFinite(config.commission) || config.commission < 0 || config.commission > 1000 ||

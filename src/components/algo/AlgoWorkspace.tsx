@@ -1,31 +1,32 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { ArrowDown, ArrowUp, Braces, Check, ChevronDown, ChevronUp, Download, Expand, GripHorizontal, Info, Play, Search, Settings2, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
-import AppSidebar from "@/components/AppSidebar";
 import KwantSelect from "@/components/ui/KwantSelect";
 import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import AlgoEquityChart, { algoMoney } from "./AlgoEquityChart";
 import {
-  ALGO_INSTRUMENTS, ALGO_STORAGE_KEY, ALGO_TEMPLATES, bootstrapAlgoTrades, buildAlgoPreview, defaultAlgoConfig, validateAlgoConfig,
-  type AlgoConfig, type AlgoDraft, type AlgoFill, type AlgoInputs, type AlgoInstrument, type AlgoInterval,
+  ALGO_INSTRUMENTS, ALGO_STORAGE_KEY, ALGO_TEMPLATES, bootstrapAlgoTrades, summarizeAlgoTrades, defaultAlgoConfig, validateAlgoConfig,
+  type AlgoConfig, type AlgoDraft, type AlgoFill, type AlgoInputs, type AlgoInstrument, type AlgoRun,
 } from "@/lib/algoWorkspace";
+import { runAlgoOnRecordedHistory } from "@/lib/algoRecordedHistory";
 import "./algo.css";
 import { legibleOn } from "@/lib/readableContrast";
 
 const AlgoChart = dynamic(() => import("./AlgoChart"), { ssr: false });
 const AlgoMonteCarlo = dynamic(() => import("./AlgoMonteCarlo"), { ssr: false });
-// A fixed, explicitly illustrative fixture keeps static HTML and hydration identical.
-const INITIAL_CONFIG = defaultAlgoConfig(new Date("2026-10-31T00:00:00Z"));
-const INITIAL_RUN = buildAlgoPreview(INITIAL_CONFIG);
+const INITIAL_CONFIG = defaultAlgoConfig();
+// Start with no candles/fills: results exist only after reading recorded history.
+INITIAL_CONFIG.from = new Date(Date.parse(INITIAL_CONFIG.to) - 6 * 86400000).toISOString().slice(0,10);
+const INITIAL_RUN = { kind: "empty" as const, id: "no-run", config: INITIAL_CONFIG, candles: [], trades: [], ...summarizeAlgoTrades([], INITIAL_CONFIG) };
 const TABS = [["overview", "Overview"], ["trades", "List of trades"], ["risk", "Risk & Monte Carlo"], ["inputs", "Algo settings"]] as const;
 type Tab = typeof TABS[number][0];
 const ratio = (n: number | null) => n !== null && Number.isFinite(n) ? n.toFixed(2) : "—";
 const percent = (n: number) => n.toFixed(2) + "%";
 const HOURS = Array.from({ length: 48 }, (_, i) => String(Math.floor(i / 2)).padStart(2, "0") + (i % 2 ? ":30" : ":00"));
-const metricAssumptions = "Daily closed-equity returns, weekdays including no-trade days; 252 sessions/year; 0% risk-free and target return. Preview data only.";
+const metricAssumptions = "Daily closed-equity returns, weekdays including no-trade days; 252 sessions/year; 0% risk-free and target return. Recorded one-minute OHLC; one trade per strategy/session.";
 
 function Metric({ label, value, detail, help, tone }: { label: string; value: string; detail?: string; help?: string; tone?: "profit" | "loss" }) {
   return <div className="algo-metric" title={help}><span>{label}{help && <Info size={11} />}</span>
@@ -41,11 +42,8 @@ function Numeric({ label, value, onChange, min = 0, max, step = 1 }: {
 
 export default function AlgoWorkspace() {
   const [config, setConfig] = useState<AlgoConfig>(INITIAL_CONFIG);
-  const [run, setRun] = useState(INITIAL_RUN);
-  const [interval, setInterval] = useState<AlgoInterval>(1);
-  const [chartType, setChartType] = useState<"candles" | "line">("candles");
+  const [run, setRun] = useState<AlgoRun>(INITIAL_RUN);
   const [showTrades, setShowTrades] = useState(true);
-  const [fitRevision, setFitRevision] = useState(0);
   const [tab, setTab] = useState<Tab>("overview");
   const [trayHeight, setTrayHeight] = useState(400);
   const [collapsed, setCollapsed] = useState(false);
@@ -64,33 +62,40 @@ export default function AlgoWorkspace() {
   const [ready, setReady] = useState(false);
   const [simulations, setSimulations] = useState(120);
   const [seed, setSeed] = useState(42);
-  const runTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runRequest = useRef<AbortController | null>(null);
+  const [activeInstrument, setActiveInstrument] = useState<string>(INITIAL_CONFIG.instrument);
+  const chartSymbolRef = useRef("");
+  const onInstrumentChange = useCallback((symbol: string) => {
+    if (chartSymbolRef.current === symbol) return;
+    chartSymbolRef.current = symbol;
+    runRequest.current?.abort(); runRequest.current = null; setRunning(false);
+    setActiveInstrument(symbol);
+    if (Object.hasOwn(ALGO_INSTRUMENTS, symbol)) setConfig(current => current.instrument === symbol ? current : { ...current, instrument: symbol as AlgoInstrument });
+  }, []);
   const drag = useRef<{ pointer: number; y: number; height: number } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const workspace = useRef<HTMLDivElement>(null);
   const pending = JSON.stringify(config) !== JSON.stringify(run.config);
   const enabled = ALGO_TEMPLATES.filter((a) => config.algorithms[a.id]?.enabled);
   const m = run.metrics;
-  const selected = run.trades.find((t) => t.id === selectedTrade);
+
   const filteredTrades = useMemo(() => run.trades.filter((t) =>
     tradeFilter === "all" || (tradeFilter === "wins" ? t.net > 0 : tradeFilter === "losses" ? t.net < 0 : t.direction.toLowerCase() === tradeFilter)
   ).sort((a, b) => sort === "profit" ? b.net - a.net : b.entryTime - a.entryTime), [run.trades, tradeFilter, sort]);
-  const monteCarlo = useMemo(() => tab === "risk" ? bootstrapAlgoTrades(run.trades, run.config.capital, simulations, seed) : null, [tab, run, simulations, seed]);
+  const monteCarlo = useMemo(() => tab === "risk" && run.kind === "recorded" && run.trades.length ? bootstrapAlgoTrades(run.trades, run.config.capital, simulations, seed) : null, [tab, run, simulations, seed]);
   const balances = useMemo(() => new Map(run.trades.map((t, i) => [t.id, run.equity[i + 1].equity])), [run]);
 
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem(ALGO_STORAGE_KEY) ?? "null");
       if (stored?.config && !validateAlgoConfig(stored.config, false)) setConfig(stored.config);
-      if (stored?.lastRunConfig && !validateAlgoConfig(stored.lastRunConfig)) setRun(buildAlgoPreview(stored.lastRunConfig));
+      // A saved preview configuration is never reconstructed into fake results.
       if (Array.isArray(stored?.drafts)) setDrafts(stored.drafts.filter((d: AlgoDraft) =>
         typeof d.id === "string" && typeof d.name === "string" && d.name.length <= 80 &&
         ["Pine Script", "NinjaScript"].includes(d.language) && typeof d.source === "string" && d.source.length <= 100000).slice(0, 12));
-      if ([1, 5, 15, 60].includes(stored?.interval)) setInterval(stored.interval);
-      if (stored?.chartType === "line") setChartType("line");
     } catch { /* A damaged local draft never prevents the workspace opening. */ }
     setReady(true);
-    return () => { if (runTimer.current) clearTimeout(runTimer.current); };
+    return () => { runRequest.current?.abort(); };
   }, []);
   useEffect(() => {
     const sync = () => {
@@ -108,29 +113,34 @@ export default function AlgoWorkspace() {
   useEffect(() => {
     if (!ready) return;
     try {
-      localStorage.setItem(ALGO_STORAGE_KEY, JSON.stringify({ config, lastRunConfig: run.config, drafts, interval, chartType }));
+      localStorage.setItem(ALGO_STORAGE_KEY, JSON.stringify({ config, drafts }));
       setStorageError("");
     } catch { setStorageError("Browser storage is full. Changes are available until this tab closes."); }
-  }, [ready, config, run.config, drafts, interval, chartType]);
+  }, [ready, config, drafts]);
 
   function updateConfig<K extends keyof AlgoConfig>(key: K, value: AlgoConfig[K]) {
-    if (running && runTimer.current) { clearTimeout(runTimer.current); runTimer.current = null; setRunning(false); }
+    if (runRequest.current) { runRequest.current.abort(); runRequest.current = null; setRunning(false); }
     setError(""); setConfig((current) => ({ ...current, [key]: value }));
   }
   function updateAlgo(id: string, key: keyof AlgoInputs, value: number | boolean) {
     updateConfig("algorithms", { ...config.algorithms, [id]: { ...config.algorithms[id], [key]: value } });
   }
-  function runPreview() {
-    if (runTimer.current) return;
-    const invalid = validateAlgoConfig(config);
+  async function runBacktest() {
+    if (runRequest.current) { runRequest.current.abort(); runRequest.current = null; setRunning(false); return; }
+    if (!(Object.hasOwn(ALGO_INSTRUMENTS, activeInstrument))) { setError("Choose NQ, ES, GC or their micro contracts on the chart for the built-in strategies."); return; }
+    const snapshot = structuredClone({ ...config, instrument: activeInstrument as AlgoInstrument });
+    const invalid = validateAlgoConfig(snapshot);
     if (invalid) { setError(invalid); setCollapsed(false); return; }
+    setConfig(snapshot);
+    const request = new AbortController(); runRequest.current = request;
     setRunning(true); setError("");
-    const snapshot = structuredClone(config);
-    runTimer.current = setTimeout(() => {
-      try { setRun(buildAlgoPreview(snapshot)); setSelectedTrade(null); setCollapsed(false); }
-      catch (e) { setError(e instanceof Error ? e.message : "The preview could not be prepared."); }
-      finally { setRunning(false); runTimer.current = null; }
-    }, 300);
+    try {
+      const result = await runAlgoOnRecordedHistory(snapshot, request.signal);
+      if (runRequest.current !== request) return;
+      setRun(result); setSelectedTrade(result.trades.at(-1)?.id ?? null); setCollapsed(false);
+    } catch (e) {
+      if (runRequest.current === request && !request.signal.aborted) setError(e instanceof Error ? e.message : "The backtest failed.");
+    } finally { if (runRequest.current === request) { runRequest.current = null; setRunning(false); } }
   }
   function beginResize(e: PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
@@ -143,16 +153,16 @@ export default function AlgoWorkspace() {
   }
   function exportTrades() {
     const rows = [["Dataset", "Algo", "Instrument", "Side", "Entry UTC", "Exit UTC", "Entry", "Exit", "SL", "TP", "Contracts", "Exit reason", "Gross USD", "Costs USD", "Net USD", "R"],
-      ...filteredTrades.map((t) => ["ILLUSTRATIVE PREVIEW", t.algo, run.config.instrument, t.direction, new Date(t.entryTime).toISOString(), new Date(t.exitTime).toISOString(),
+      ...filteredTrades.map((t) => ["RECORDED 1M OHLC BACKTEST", t.algo, run.config.instrument, t.direction, new Date(t.entryTime).toISOString(), new Date(t.exitTime).toISOString(),
         t.entryPrice, t.exitPrice, t.stopPrice, t.targetPrice, t.quantity, t.reason, t.gross, t.costs, t.net, t.r])];
     const csv = rows.map((row) => row.map((v) => '"' + String(v).replaceAll('"', '""') + '"').join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a"); link.href = url; link.download = "kwantdesk-algo-PREVIEW-" + run.config.instrument + ".csv"; link.click();
+    const link = document.createElement("a"); link.href = url; link.download = "kwantdesk-algo-backtest-" + run.config.instrument + ".csv"; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   function saveDraft() {
     if (!draft.name.trim() || !draft.source.trim()) { setImportError("Give the import a name and paste or choose a script."); return; }
-    if (draft.source.length > 100000) { setImportError("Keep this placeholder script below 100,000 characters."); return; }
+    if (draft.source.length > 100000) { setImportError("Keep this script draft below 100,000 characters."); return; }
     if (!draft.id && drafts.length >= 12) { setImportError("Keep up to 12 local script drafts."); return; }
     const saved = { ...draft, name: draft.name.trim().slice(0, 80), id: draft.id || crypto.randomUUID() };
     setDrafts((current) => [...current.filter((d) => d.id !== saved.id), saved]); setDraft(saved); setDraftSaved(true); setImportError("");
@@ -169,47 +179,18 @@ export default function AlgoWorkspace() {
       <div><button type="button" role="switch" aria-checked={config.algorithms[algo.id].enabled} aria-label={"Enable " + algo.name}
         className="algo-toggle" onClick={() => updateAlgo(algo.id, "enabled", !config.algorithms[algo.id].enabled)}><span /></button>
         <button type="button" className="algo-template-name" onClick={() => { setTab("inputs"); setCollapsed(false); }}>{algo.name}</button></div>
-      <small>Preview template</small>
+      <small>Recorded-data strategy</small>
     </div>)}
     {drafts.filter((a) => a.name.toLowerCase().includes(librarySearch.toLowerCase())).map((d) => <button type="button" key={d.id} className="algo-draft-row"
       onClick={() => { setDraft(d); setDraftSaved(false); setImportOpen(true); }}><Braces size={13} /><span>{d.name}<small>{d.language} · draft</small></span></button>)}
     <button type="button" className="algo-library-import" onClick={() => { setImportOpen(true); setDraft({ id: "", name: "", language: "Pine Script", source: "" }); setDraftSaved(false); }}><Upload size={13} /> Import an algo</button>
-    <p className="algo-library-note">Templates and results are an interface preview. Your strategy engine will connect here.</p>
+    <p className="algo-library-note">Built-in strategies run on recorded one-minute candles. Imported scripts remain saved drafts until their compiler is connected.</p>
   </div>;
 
   return <div ref={workspace} className="algo-workspace" data-testid="algo-workspace">
-    <AppSidebar activeItem="algo" orientation="horizontal" />
-    <header className="algo-toolbar">
-      <div className="algo-toolbar-group">
-        <span className="algo-title"><Braces size={16} /> ALGO</span><span className="algo-divider" />
-        <KwantSelect aria-label="Algo instrument" value={config.instrument} onChange={(e) => updateConfig("instrument", e.target.value as AlgoInstrument)}>
-          {Object.entries(ALGO_INSTRUMENTS).map(([key, v]) => <option key={key} value={key}>{key} · {v.name}</option>)}
-        </KwantSelect>
-        <div className="algo-intervals" aria-label="Chart timeframe">{([1, 5, 15, 60] as const).map((n) => <button type="button" key={n} aria-pressed={interval === n} onClick={() => setInterval(n)}>{n === 60 ? "1 h" : n + " m"}</button>)}</div>
-        <KwantSelect aria-label="Price chart type" value={chartType} onChange={(e) => setChartType(e.target.value as "candles" | "line")}><option value="candles">Candles</option><option value="line">Line</option></KwantSelect>
-      </div>
-      <div className="algo-toolbar-group">
-        <button type="button" aria-pressed={showTrades} onClick={() => setShowTrades(!showTrades)}><ArrowUp size={13} /> Fills</button>
-        <button type="button" title="Fit entire test window" aria-label="Fit chart" onClick={() => setFitRevision((n) => n + 1)}><Expand size={14} /></button>
-        <button type="button" onClick={() => { setCollapsed(false); setTab("inputs"); }}><SlidersHorizontal size={13} /> Algos</button>
-        <button type="button" aria-expanded={importOpen} onClick={() => setImportOpen(!importOpen)}><Upload size={13} /> Import algo</button>
-      </div>
-    </header>
-
     <div className="algo-main">
-      <section className="algo-chart-panel">
-        <div className="algo-chart-caption"><strong>{run.config.instrument}</strong><span>· {ALGO_INSTRUMENTS[run.config.instrument].name}</span>
-          <span className="algo-preview-badge">Interface preview · not live data</span>
-          {pending && <button type="button" className="algo-pending" onClick={runPreview}>Inputs changed · run preview</button>}
-        </div>
-        <AlgoChart run={run} interval={interval} chartType={chartType} showTrades={showTrades} selectedTrade={selectedTrade} fitRevision={fitRevision} />
-        <div className="algo-chart-foot">
-          <span>{run.config.from} — {run.config.to} · {run.config.timeZone}</span>
-          <span><i className="algo-long-dot" /> Long <i className="algo-short-dot" /> Short · TP / SL / Exit</span>
-        </div>
-        {selected && <div className="algo-selected-trade"><span>{selected.algo} · {selected.direction} · {selected.reason}</span>
-          <strong className={selected.net >= 0 ? "algo-profit" : "algo-loss"}>{algoMoney(selected.net)}</strong>
-          <button type="button" aria-label="Deselect trade" onClick={() => setSelectedTrade(null)}><X size={12} /></button></div>}
+      <section className="algo-native-workspace" aria-label="Algo charts">
+        <AlgoChart run={run} showTrades={showTrades} selectedTrade={selectedTrade} onInstrumentChange={onInstrumentChange} />
       </section>
       {importOpen && <aside className="algo-import-panel" aria-label="Import algorithm">
         <div className="algo-import-title"><strong>Import an algo</strong><button type="button" aria-label="Close import" onClick={() => setImportOpen(false)}><X size={15} /></button></div>
@@ -235,6 +216,17 @@ export default function AlgoWorkspace() {
       </aside>}
     </div>
 
+    <header className="algo-toolbar">
+      <div className="algo-toolbar-group"><span className="algo-title"><Braces size={16} /> ALGO</span><strong>{activeInstrument}</strong>
+        <span className="text-muted">{run.kind === "recorded" ? run.trades.length + " recorded-data trades · " + run.config.instrument : "Choose strategies and run a backtest"}</span>
+        {pending && run.kind === "recorded" && <span className="text-muted">Inputs changed</span>}
+      </div>
+      <div className="algo-toolbar-group">
+        <button type="button" aria-pressed={showTrades} onClick={() => setShowTrades(!showTrades)}><ArrowUp size={13} /> Fills</button>
+        <button type="button" onClick={() => { setCollapsed(false); setTab("inputs"); }}><SlidersHorizontal size={13} /> Algos</button>
+        <button type="button" aria-expanded={importOpen} onClick={() => setImportOpen(!importOpen)}><Upload size={13} /> Import algo</button>
+      </div>
+    </header>
     <section className="algo-tester" style={{ height: collapsed ? 39 : "min(" + trayHeight + "px, calc(100dvh - 300px))" }} aria-label="Strategy tester">
       <div className="algo-resizer" role="separator" aria-label="Resize strategy tester" aria-orientation="horizontal" aria-valuemin={180} aria-valuemax={1200}
         aria-valuenow={trayHeight} tabIndex={0} onPointerDown={beginResize} onPointerMove={resizeTray}
@@ -247,10 +239,10 @@ export default function AlgoWorkspace() {
         <button type="button" className="algo-tester-title" onClick={() => setCollapsed(!collapsed)}><Braces size={14} /> Strategy tester {collapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}</button>
         <nav className="algo-tabs" aria-label="Strategy results">{TABS.map(([id, label]) => <button type="button" key={id} aria-current={tab === id ? "page" : undefined}
           onClick={() => { setTab(id); setCollapsed(false); }}>{label}</button>)}</nav>
-        <div className="algo-tester-actions"><span className="algo-preview-label">PREVIEW</span>
-          <button type="button" title="Export visible preview trades" aria-label="Export trades CSV" onClick={exportTrades}><Download size={14} /></button>
+        <div className="algo-tester-actions"><span className="algo-preview-label">{run.kind === "recorded" ? "RECORDED" : "NO RUN"}</span>
+          <button type="button" title="Export visible backtest trades" aria-label="Export trades CSV" onClick={exportTrades}><Download size={14} /></button>
           <button type="button" aria-label="Expand strategy tester" onClick={() => { setCollapsed(false); const max = window.innerHeight - 300; setTrayHeight(trayHeight >= max - 20 ? Math.min(400, max * .6) : max); }}><Expand size={13} /></button>
-          <button type="button" className="algo-primary-button" disabled={running || enabled.length === 0} onClick={runPreview}><Play size={12} fill="currentColor" />{running ? "Preparing…" : "Run preview"}</button>
+          <button type="button" className="algo-primary-button" disabled={!running && enabled.length === 0} onClick={runBacktest}><Play size={12} fill="currentColor" />{running ? "Cancel test" : "Run backtest"}</button>
         </div>
       </div>
       {!collapsed && <>
@@ -266,7 +258,8 @@ export default function AlgoWorkspace() {
         <div className="algo-tester-body">
           <aside className="algo-library-aside">{library}</aside>
           <div className="algo-results">
-            {tab === "overview" && <>
+            {run.kind === "empty" && tab !== "inputs" ? <p className="algo-empty">No backtest results yet. Select your dates and strategies, then Run backtest.</p> : null}
+            {tab === "overview" && run.kind === "recorded" && <>
               <div className="algo-hero-metrics">
                 <Metric label="Net profit" value={algoMoney(m.net)} detail={percent(m.returnPercent) + " return · after costs"} tone={m.net >= 0 ? "profit" : "loss"} />
                 <Metric label="Win rate" value={percent(m.winRate)} detail={m.wins + " wins / " + m.losses + " losses"} />
@@ -275,7 +268,7 @@ export default function AlgoWorkspace() {
               </div>
               <AlgoEquityChart points={run.equity} timeZone={run.config.timeZone} onSelect={(t) => { const trade = run.trades.find((a) => a.exitTime === t); if (trade) revealTrade(trade); }} />
               <AlgoEquityChart points={run.equity} timeZone={run.config.timeZone} drawdown />
-              <div className="algo-section-title algo-quant-heading">Quantitative performance <span>Illustrative results</span></div>
+              <div className="algo-section-title algo-quant-heading">Quantitative performance <span>Recorded-data results</span></div>
               <div className="algo-quant-grid">
                 <Metric label="Sharpe ratio" value={ratio(m.sharpe)} help={metricAssumptions + " Sample standard deviation."} />
                 <Metric label="Sortino ratio" value={ratio(m.sortino)} help={metricAssumptions + " Downside deviation includes all sampled days."} />
@@ -293,7 +286,7 @@ export default function AlgoWorkspace() {
               <button type="button" className="algo-risk-link" onClick={() => setTab("risk")}>Explore 3D Monte Carlo & risk <ArrowUp size={13} /></button>
             </>}
             {tab === "trades" && <>
-              <div className="algo-trade-filters"><span>{filteredTrades.length} / {run.trades.length} preview trades · click a row to locate it on the chart</span>
+              <div className="algo-trade-filters"><span>{filteredTrades.length} / {run.trades.length} backtest trades · click a row to locate it on the chart</span>
                 <KwantSelect aria-label="Filter trades" value={tradeFilter} onChange={(e) => setTradeFilter(e.target.value)}><option value="all">All trades</option><option value="long">Long</option><option value="short">Short</option><option value="wins">Winners</option><option value="losses">Losers</option></KwantSelect>
                 <KwantSelect aria-label="Sort trades" value={sort} onChange={(e) => setSort(e.target.value as "recent" | "profit")}><option value="recent">Newest first</option><option value="profit">Highest P&L</option></KwantSelect>
               </div>
@@ -309,7 +302,7 @@ export default function AlgoWorkspace() {
               </div>
             </>}
             {tab === "risk" && monteCarlo && <>
-              <div className="algo-risk-controls"><div><strong>Robustness lab</strong><span>Bootstrap resampling of preview trade P&L · not a forecast</span></div>
+              <div className="algo-risk-controls"><div><strong>Robustness lab</strong><span>Bootstrap resampling of backtest trade P&L · not a forecast</span></div>
                 <KwantSelect aria-label="Monte Carlo paths" value={simulations} onChange={(e) => setSimulations(Number(e.target.value))}><option value={120}>120 paths</option><option value={240}>240 paths</option></KwantSelect>
                 <button type="button" onClick={() => setSeed((s) => s + 1)}>Resample</button>
               </div>
@@ -326,7 +319,7 @@ export default function AlgoWorkspace() {
             </>}
             {tab === "inputs" && <div className="algo-inputs">
               <div className="algo-mobile-library">{library}</div>
-              <div className="algo-section-title"><Settings2 size={14} /> Run settings <span>Changes apply on Run preview</span></div>
+              <div className="algo-section-title"><Settings2 size={14} /> Run settings <span>Changes apply on Run backtest</span></div>
               <div className="algo-settings-grid">
                 <Numeric label="Starting capital · USD" value={config.capital} min={100} max={1e9} step={1000} onChange={(v) => updateConfig("capital", v)} />
                 <Numeric label="Contracts per trade" value={config.contracts} min={1} max={100} onChange={(v) => updateConfig("contracts", v)} />
@@ -343,7 +336,7 @@ export default function AlgoWorkspace() {
                   <Numeric label={algo.short + " · target ticks"} value={config.algorithms[algo.id].targetTicks} min={1} max={4000} onChange={(v) => updateAlgo(algo.id, "targetTicks", v)} />
                 </div>
               </section>)}
-              <p className="algo-method-note">These templates demonstrate the controls and report layout. They do not implement or validate the named trading strategies. Preview bars are generated examples; bracket touches use 1-minute bars with stop-first handling when both prices are touched. Display timeframe does not change preview fills.</p>
+              <p className="algo-method-note">Signals use closed one-minute candles and enter at the following open, once per strategy per session. Stops take priority when both brackets are touched in one bar; adverse opening gaps fill at the open. Commission and slippage are charged as cash costs. Chart display intervals do not alter these one-minute strategy rules. Incomplete sessions are rejected; select recorded sessions or shorten the window.</p>
             </div>}
           </div>
         </div>

@@ -4,11 +4,11 @@
   font-size: 12px; --algo-profit: #22c55e; --algo-loss: #ef4444;
 }
 .algo-workspace * { box-sizing: border-box; }
-.algo-workspace button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
-.algo-workspace button:disabled { opacity: .4; cursor: default; }
-.algo-workspace input, .algo-workspace textarea { color: var(--foreground); background: var(--background); border: 1px solid var(--border); border-radius: 5px; font: inherit; outline: none; }
-.algo-workspace input:focus-visible, .algo-workspace textarea:focus-visible { outline: none; box-shadow: none; }
-.algo-workspace button:focus-visible, .algo-resizer:focus-visible { outline: 1px dashed var(--primary); outline-offset: -3px; }
+.algo-workspace :is(.algo-toolbar,.algo-import-panel,.algo-tester) button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.algo-workspace :is(.algo-toolbar,.algo-import-panel,.algo-tester) button:disabled { opacity: .4; cursor: default; }
+.algo-workspace :is(.algo-toolbar,.algo-import-panel,.algo-tester) input, .algo-workspace :is(.algo-toolbar,.algo-import-panel,.algo-tester) textarea { color: var(--foreground); background: var(--background); border: 1px solid var(--border); border-radius: 5px; font: inherit; outline: none; }
+.algo-workspace :is(.algo-toolbar,.algo-import-panel,.algo-tester) input:focus-visible, .algo-workspace :is(.algo-toolbar,.algo-import-panel,.algo-tester) textarea:focus-visible { outline: none; box-shadow: none; }
+.algo-workspace :is(.algo-toolbar,.algo-import-panel,.algo-tester) button:focus-visible, .algo-resizer:focus-visible { outline: 1px dashed var(--primary); outline-offset: -3px; }
 .algo-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 43px; flex-shrink: 0; padding: 5px 12px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: thin; }
 .algo-toolbar-group { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .algo-title { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; letter-spacing: .1em; padding-right: 5px; }
@@ -17,7 +17,7 @@
   min-height: 28px; border: 1px solid var(--border); border-radius: 5px; padding: 4px 9px;
   color: var(--muted); background: var(--background); font-size: 11px; white-space: nowrap;
 }
-.algo-workspace button:hover { color: var(--foreground); }
+.algo-workspace :is(.algo-toolbar,.algo-import-panel,.algo-tester) button:hover { color: var(--foreground); }
 .algo-toolbar button[aria-pressed="true"], .algo-tabs button[aria-current="page"] { color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--background)); }
 .algo-intervals { display: flex; gap: 2px; }
 .algo-intervals button { border-color: transparent; padding-inline: 9px; }
@@ -168,3 +168,5 @@
   .algo-three-columns { grid-template-columns: 1fr; }
   .algo-selected-trade { max-width: calc(100% - 30px); flex-wrap: wrap; }
 }
+
+.algo-native-workspace { flex: 1; min-width: 0; min-height: 0; overflow: hidden; font-size: 1rem; }
