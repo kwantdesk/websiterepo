@@ -1,5 +1,6 @@
 "use client";
 import { formatGexMapExposure as formatCompact } from "@/lib/gexMapFormat";
+import GexMapExposureLegend from "./GexMapExposureLegend";
 import { optionsOpeningRefreshDelay, publishPanelResults } from "@/lib/optionsOpeningRefresh";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -49,6 +50,9 @@ import {
   GEX_MAP_PALETTE_CHANGE_EVENT,
   gexMapPaletteTones,
   gexMapSignedScale,
+  gexMapExposureRange,
+  gexMapHeatStrength,
+  gexMapHeatColorCss,
   gexMapPalettesEqual,
   loadGexMapPalette,
   normalizeGexMapPalette,
@@ -308,23 +312,11 @@ const THEME_HEAT_TONES: GexMapHeatTones = {
 const THEME_SIGNED_SCALE = gexMapSignedScale({ ...DEFAULT_GEX_MAP_PALETTE, useThemeColors: true });
 
 function heatColor(
-  value: number,
+  _value: number,
   strength: number,
   scale: string[] = THEME_SIGNED_SCALE,
 ) {
-  // The ten user-set colours are anchors on one continuous scale with zero
-  // pinned to its middle. `strength` is the row's per-side linear position;
-  // the colour interpolates smoothly between the two neighbouring anchors and
-  // paints SOLID — the reference-map look where the noise floor (zero rows
-  // included: zero is average, never the dark extreme) shares the quiet
-  // middle colours and only the extremes climb to the end colours.
-  const bounded = Math.min(1, Math.max(0, strength));
-  const position = bounded * (scale.length - 1);
-  const lower = Math.min(scale.length - 1, Math.floor(position));
-  const upper = Math.min(scale.length - 1, lower + 1);
-  const fraction = Math.round((position - lower) * 100);
-  if (lower === upper || fraction === 0) return scale[lower];
-  return `color-mix(in srgb, ${scale[upper]} ${fraction}%, ${scale[lower]})`;
+  return gexMapHeatColorCss(strength, scale);
 }
 
 
@@ -523,13 +515,9 @@ function ExposurePanel({
   const spotStrike = spot === null || !rows.length
     ? null
     : rows.reduce((best, row) => Math.abs(row.strike - spot) < Math.abs(best.strike - spot) ? row : best).strike;
-  // Every node's colour is its signed exposure as a PERCENTAGE OF THE STAR
-  // NODE — the panel's largest absolute exposure, the same yardstick on both
-  // sides. Zero is neutral and pinned to the scale's middle; the Star alone
-  // reaches its end of the scale (lightest when positive, darkest when
-  // negative); a node at 30% of the Star sits 30% of the way toward its end
-  // regardless of sign. Noise stays in the quiet middle, structure jumps
-  // bands, and the Star is unmistakable.
+  // Colour uses each sign's current peak. Star identity/percentages remain
+  // based on absolute exposure, independent from this presentation scale.
+  const exposureRange = useMemo(() => gexMapExposureRange(rows.map((row) => row.net)), [rows]);
   const starMagnitude = useMemo(() => {
     let max = 0;
     for (const row of rows) {
@@ -539,8 +527,8 @@ function ExposurePanel({
     return Math.max(1, max);
   }, [rows]);
   const heatStrength = useCallback(
-    (net: number) => 0.5 + 0.5 * Math.max(-1, Math.min(1, net / starMagnitude)),
-    [starMagnitude],
+    (net: number) => gexMapHeatStrength(net, exposureRange),
+    [exposureRange],
   );
   // Numbers beside each strike: raw signed exposure, or the node's share of
   // the Star node's magnitude. Colours are untouched — only the text changes.
@@ -953,7 +941,7 @@ function ExposurePanel({
                     data-star-node={isFocusedStar ? "true" : undefined}
                     data-gex-strike-node="true"
                     data-star-highlighted={highlighted ? "true" : "false"}
-                    className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center overflow-hidden border-b border-border/30 px-2 font-mono text-[9px] ${nearSpot ? "mx-1 my-1 h-[35px]" : highlighted ? "mx-1 my-0.5 h-[30px]" : "h-[25px]"} ${isFocusedStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""} ${starSettings.animateChanges ? "transition-[height,margin,background-color,opacity] duration-200" : ""}`}
+                    className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center overflow-hidden border-b border-border/30 px-2 font-mono text-[9px] ${nearSpot ? "mx-1 my-1 h-[35px]" : highlighted ? "mx-1 my-0.5 h-[30px]" : "h-[25px]"} ${isFocusedStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""} ${starSettings.animateChanges ? "transition-[height,margin,opacity] duration-200" : ""}`}
                     style={{
                       opacity: highlighted || nearSpot ? 1 : Math.max(0.02, starSettings.dimOpacity),
                       textShadow: "0 1px 2px rgba(0,0,0,0.72)",
@@ -1033,7 +1021,7 @@ function ExposurePanel({
                   data-near-spot={nearSpot ? "true" : undefined}
                   data-star-node={isStar ? "true" : undefined}
                   data-gex-strike-node="true"
-                  className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
+                  className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
                   style={{
                     /*
                      * The shadow follows the text, not the theme. A dark halo
@@ -1133,14 +1121,7 @@ function ExposurePanel({
         ) : null}
       </div>
 
-      <div className="border-t border-border bg-panel px-3 py-2">
-        <div className="h-1.5 rounded-full" style={{ background: `linear-gradient(90deg, ${signedScale.join(", ")})` }} />
-        <div className="mt-1 flex justify-between font-mono text-[8px] text-muted">
-          <span>{rows.length ? `-${formatCompact(starMagnitude)}` : "Negative"}</span>
-          <span>0</span>
-          <span>{rows.length ? formatCompact(starMagnitude) : "Positive"}</span>
-        </div>
-      </div>
+      <GexMapExposureLegend range={exposureRange} scale={signedScale} hasData={rows.length > 0} />
     </section>
   );
 }

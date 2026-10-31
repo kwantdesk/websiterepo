@@ -14,7 +14,7 @@ for (const gradient of VOLUME_PROFILE_GRADIENTS) {
   assert.equal(scale.length, 10);
   assert.equal(scale[0], gradient.from.toUpperCase());
   assert.equal(scale[9], gradient.to.toUpperCase());
-  // Endpoints still represent exactly -100% / +100% of Star; no node reranking.
+  // A symmetric example reaches both endpoints; Star identity is independent.
   assert.equal(gexMapHeatColorHex(gexMapHeatStrength(-100, 100), scale), gradient.from.toUpperCase());
   assert.equal(gexMapHeatColorHex(gexMapHeatStrength(100, 100), scale), gradient.to.toUpperCase());
   assert.equal(gexMapHeatStrength(0, 100), 0.5);

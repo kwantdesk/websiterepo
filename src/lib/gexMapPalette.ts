@@ -18,13 +18,15 @@ export type GexMapPalette = {
   negativeStops?: string[];
   /**
    * Ten explicit colours forming one diverging signed-exposure scale:
-   * index 0 = most extreme negative (darkest) … index 9 = most extreme
-   * positive (lightest), with the middle slots holding the average noise.
+   * index 0 = full negative tone; index 9 = full positive tone.
+   * Each half fades toward dim, sign-specific middle slots near zero.
    */
   scaleStops?: string[];
 };
 
 export const GEX_MAP_STOP_COUNT = 10;
+const GEX_MAP_ZERO_TONE = "#10141A";
+const GEX_MAP_HALF_WEIGHTS = [100, 76, 52, 28, 10];
 
 function clamp01(value: number) {
   return Math.min(1, Math.max(0, value));
@@ -72,25 +74,13 @@ export const GEX_MAP_DRAG_BAR_TRACK =
   "linear-gradient(90deg, #000000 0%, #F62D2D 8%, #F6F62D 24.8%, #2DF62D 41.6%, #2DF6F6 58.4%, #2D2DF6 75.2%, #F62DF6 92%, #FFFFFF 100%)";
 
 /**
- * One diverging ten-colour scale across signed exposure. Slot one is the
- * most extreme negative — the darkest colour on the map, barely off black.
- * Slots ramp brighter toward the middle where average/noise exposure sits
- * muted, then the positive side climbs to the palette's full bright tone,
- * and slot ten is lifted toward white so the most extreme positive is
- * unmistakably the lightest thing on the surface.
+ * Full endpoint hues at both extremes, with independent fades toward a dim
+ * neutral. Weak negatives never acquire the positive hue or vice versa.
  */
 export function buildGexMapSignedScale(negative: string, positive: string): string[] {
   return [
-    hexLerp("#000000", negative, 0.26),
-    hexLerp("#000000", negative, 0.42),
-    hexLerp("#000000", negative, 0.58),
-    hexLerp("#000000", negative, 0.72),
-    hexLerp("#000000", negative, 0.86),
-    hexLerp("#000000", positive, 0.58),
-    hexLerp("#000000", positive, 0.72),
-    hexLerp("#000000", positive, 0.86),
-    positive.toUpperCase(),
-    hexLerp(positive, "#FFFFFF", 0.38),
+    ...GEX_MAP_HALF_WEIGHTS.map((weight) => hexLerp(GEX_MAP_ZERO_TONE, negative, weight / 100)),
+    ...[...GEX_MAP_HALF_WEIGHTS].reverse().map((weight) => hexLerp(GEX_MAP_ZERO_TONE, positive, weight / 100)),
   ];
 }
 
@@ -102,16 +92,8 @@ export function buildGexMapSignedScale(negative: string, positive: string): stri
 export function gexMapSignedScale(palette: GexMapPalette): string[] {
   if (palette.useThemeColors) {
     return [
-      "color-mix(in srgb, var(--danger) 26%, black)",
-      "color-mix(in srgb, var(--danger) 42%, black)",
-      "color-mix(in srgb, var(--danger) 58%, black)",
-      "color-mix(in srgb, var(--danger) 72%, black)",
-      "color-mix(in srgb, var(--danger) 86%, black)",
-      "color-mix(in srgb, var(--primary) 58%, black)",
-      "color-mix(in srgb, var(--primary) 72%, black)",
-      "color-mix(in srgb, var(--primary) 86%, black)",
-      "var(--primary)",
-      "color-mix(in srgb, var(--primary) 62%, white)",
+      ...GEX_MAP_HALF_WEIGHTS.map((weight) => `color-mix(in srgb, var(--danger) ${weight}%, ${GEX_MAP_ZERO_TONE})`),
+      ...[...GEX_MAP_HALF_WEIGHTS].reverse().map((weight) => `color-mix(in srgb, var(--primary) ${weight}%, ${GEX_MAP_ZERO_TONE})`),
     ];
   }
   const explicit = Array.isArray(palette.scaleStops)
@@ -122,11 +104,57 @@ export function gexMapSignedScale(palette: GexMapPalette): string[] {
   return explicit ?? buildGexMapSignedScale(palette.negative, palette.positive);
 }
 
-/** The map's per-side linear position for a node: zero exposure sits at the
- * scale's middle and only the Star magnitude reaches an end. */
-export function gexMapHeatStrength(net: number, starMagnitude: number): number {
-  const yardstick = Math.max(1, starMagnitude);
-  return 0.5 + 0.5 * Math.max(-1, Math.min(1, net / yardstick));
+export type GexMapExposureRange = { min: number; max: number };
+
+/** Current surface only: no session-wide, stale or opposite-sign yardstick. */
+export function gexMapExposureRange(values: Iterable<number>): GexMapExposureRange {
+  let min = 0, max = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  }
+  return { min, max };
+}
+
+/** Each sign reaches its own endpoint, even when its peak is below one unit.
+ * The numeric overload retains the former symmetric scale for legacy callers. */
+export function gexMapHeatStrength(net: number, range: GexMapExposureRange | number): number {
+  if (!Number.isFinite(net) || net === 0) return 0.5;
+  const yardstick = typeof range === "number" ? Math.max(1, range)
+    : net < 0 ? Math.abs(range.min) : range.max;
+  if (!(yardstick > 0) || !Number.isFinite(yardstick)) return 0.5;
+  const strength = 0.5 + 0.5 * Math.max(-1, Math.min(1, net / yardstick));
+  // Preserve sign even when an extremely small ratio rounds back to 0.5.
+  return net < 0 ? Math.min(0.5 - Number.EPSILON, strength) : Math.max(0.5 + Number.EPSILON, strength);
+}
+
+/** Sample each half independently: weak negatives must never blend into the
+ * positive half (or vice versa). An even scale has a deliberate zero seam. */
+function heatSample(strength: number, count: number) {
+  const bounded = Number.isFinite(strength) ? clamp01(strength) : 0.5;
+  const negativeEnd = Math.floor((count - 1) / 2);
+  const positiveStart = Math.ceil((count - 1) / 2);
+  const position = bounded < 0.5 ? bounded * 2 * negativeEnd
+    : bounded > 0.5 ? positiveStart + (bounded - 0.5) * 2 * (count - 1 - positiveStart)
+      : (count - 1) / 2;
+  const lower = Math.max(0, Math.min(count - 1, Math.floor(position)));
+  const upper = Math.max(0, Math.min(count - 1, Math.ceil(position)));
+  return { lower, upper, fraction: position - lower };
+}
+
+/** Legend positions match the split sampler, including its zero seam. */
+export function gexMapSignedLegendGradient(scale: string[]): string {
+  if (!scale.length) return "none";
+  if (scale.length === 1) return `linear-gradient(90deg, ${scale[0]}, ${scale[0]})`;
+  const negativeEnd = Math.floor((scale.length - 1) / 2);
+  const positiveStart = Math.ceil((scale.length - 1) / 2);
+  const stops = scale.map((color, index) => {
+    const position = index <= negativeEnd ? (negativeEnd ? index / negativeEnd * 50 : 0)
+      : 50 + (index - positiveStart) / Math.max(1, scale.length - 1 - positiveStart) * 50;
+    return `${color} ${position}%`;
+  });
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
 }
 
 /**
@@ -136,19 +164,27 @@ export function gexMapHeatStrength(net: number, starMagnitude: number): number {
  * map's exact colours.
  */
 export function gexMapHeatColorHex(strength: number, scale: string[]): string {
-  const bounded = clamp01(strength);
-  const position = bounded * (scale.length - 1);
-  const lower = Math.min(scale.length - 1, Math.floor(position));
-  const upper = Math.min(scale.length - 1, lower + 1);
-  const fraction = position - lower;
+  if (!scale.length) return "#000000";
+  const { lower, upper, fraction } = heatSample(strength, scale.length);
   if (lower === upper || fraction === 0) return scale[lower];
   return hexLerp(scale[lower], scale[upper], fraction);
+}
+
+/** DOM and canvas use identical sampling; concrete palettes match byte-for-byte. */
+export function gexMapHeatColorCss(strength: number, scale: string[]): string {
+  if (!scale.length) return "transparent";
+  const { lower, upper, fraction } = heatSample(strength, scale.length);
+  if (lower === upper || fraction === 0) return scale[lower];
+  if (/^#[0-9a-f]{6}$/i.test(scale[lower]) && /^#[0-9a-f]{6}$/i.test(scale[upper])) {
+    return hexLerp(scale[lower], scale[upper], fraction);
+  }
+  return `color-mix(in srgb, ${scale[upper]} ${fraction * 100}%, ${scale[lower]})`;
 }
 
 /**
  * The ten signed-scale colours as concrete hex values. Theme-linked palettes
  * take the caller's resolved theme accents (the computed `--danger` /
- * `--primary` hex values) and rebuild the identical dark→bright shape the
+ * `--primary` hex values) and rebuild the identical two-sided fade the
  * map's `color-mix` stops produce.
  */
 export function gexMapSignedScaleHex(
@@ -210,6 +246,17 @@ export function normalizeGexMapPalette(value: unknown): GexMapPalette {
   const positiveStops = stops(parsed.positiveStops);
   const negativeStops = stops(parsed.negativeStops);
   const scaleStops = stops(parsed.scaleStops);
+  // Upgrade only an unchanged former stock ramp. Any hand-edited slot/soft
+  // tone or side-stop array is custom and must survive byte-for-byte.
+  const sharedUpgrade = scaleStops && !positiveStops && !negativeStops
+    && negativeSoft === hexLerp(negative, positive, 4 / 9)
+    && positiveSoft === hexLerp(negative, positive, 5 / 9)
+    && scaleStops.every((stop, index) => stop === hexLerp(negative, positive, index / 9))
+    ? GEX_MAP_SHARED_PALETTE_PRESETS.find((preset) => preset.negative === negative && preset.positive === positive)
+    : undefined;
+  if (sharedUpgrade) return {
+    ...gexMapPaletteFromPreset(sharedUpgrade), useThemeColors: parsed.useThemeColors !== false, star,
+  };
   const legacyId = LEGACY_PRESET_SIGNATURES[`${positive}|${positiveSoft}|${negative}|${negativeSoft}`];
   const upgraded = !positiveStops && !negativeStops && !scaleStops && legacyId
     ? GEX_MAP_PALETTE_PRESETS.find((preset) => preset.id === legacyId)
@@ -271,10 +318,9 @@ export type GexMapPalettePreset = {
 };
 
 /** Same canonical schemes as Footprint, profiles and the indicator palette picker.
- * Only the colours change: signed exposure still selects the same ten positions. */
+ * Preserve their endpoint hues, fading each sign independently near zero. */
 export const GEX_MAP_SHARED_PALETTE_PRESETS: GexMapPalettePreset[] = VOLUME_PROFILE_GRADIENTS.map((gradient) => {
-  const scale = Array.from({ length: GEX_MAP_STOP_COUNT }, (_, index) =>
-    hexLerp(gradient.from, gradient.to, index / (GEX_MAP_STOP_COUNT - 1)));
+  const scale = buildGexMapSignedScale(gradient.from, gradient.to);
   return {
     id: gradient.id, label: gradient.label, negative: scale[0], negativeSoft: scale[4],
     positiveSoft: scale[5], positive: scale[9], star: gradient.to.toUpperCase(), scale,

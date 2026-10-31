@@ -3,17 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { GexMapDropdown } from "@/components/gex-map/GexMapSettingsDialog";
-import { gexMapSignedScale, type GexMapPalette } from "@/lib/gexMapPalette";
+import { gexMapExposureRange, gexMapHeatColorCss, gexMapHeatStrength, gexMapSignedScale, type GexMapPalette } from "@/lib/gexMapPalette";
+import { parseResolvedColor, readableTextOn } from "@/lib/readableContrast";
+import GexMapExposureLegend from "./GexMapExposureLegend";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 
 // GEX MAP · FUTURE view: the forward positioning matrix. Strikes run down the
 // left, one column per upcoming EXPIRY inside the lookahead window, and every
 // cell is that (strike, expiry)'s real signed exposure from the same
 // QuantData surface GEX CAL reads — GEX (gamma) or VEX (vanna). Colouring
-// follows the map's Star convention exactly: zero pinned to the scale middle,
-// the Star cell alone reaching its end of the gradient, everything else
-// placed by its share of the Star's magnitude, so noise sits quiet and the
-// forward structure jumps out.
+// uses the current matrix's independent negative and positive peaks. Star
+// identity and displayed percentages still use absolute exposure.
 
 type FutureChain = {
   symbol: string;
@@ -149,7 +149,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
       .filter((expiration) => expiration >= chain.sessionDate
         && Date.parse(`${expiration}T21:00:00Z`) <= horizonMs)
       .sort();
-    if (!expirations.length) return { expirations: [], strikes: [], cells: new Map<string, number>(), starKey: "", starMagnitude: 1, columnStars: new Map<string, number>() };
+    if (!expirations.length) return { expirations: [], strikes: [], cells: new Map<string, number>(), starKey: "", starMagnitude: 1, columnStars: new Map<string, number>(), exposureRange: gexMapExposureRange([]) };
     const included = new Set(expirations);
     const cells = new Map<string, number>();
     const strikeSet = new Set<number>();
@@ -178,7 +178,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
       }
     }
     const strikes = [...strikeSet].sort((a, b) => b - a);
-    return { expirations, strikes, cells, starKey, starMagnitude: Math.max(1, starMagnitude), columnStars };
+    return { expirations, strikes, cells, starKey, starMagnitude: Math.max(1, starMagnitude), columnStars, exposureRange: gexMapExposureRange(cells.values()) };
   }, [chain, settings.lookaheadDays]);
 
   const spotStrike = useMemo(() => {
@@ -325,22 +325,16 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
                       return <td key={key} className="px-1.5 py-0.5 text-center text-[9px] text-muted/25">0%</td>;
                     }
                     const share = value / view.starMagnitude;
-                    // The full chain spans orders of magnitude; a linear share
-                    // crushed everything into the dim middle of the gradient
-                    // ("three colours"). Per-side LOG scaling spreads the whole
-                    // palette exactly like the Present ladder's slot picking:
-                    // $11M and $5B land in clearly different bands, zero stays
-                    // pinned to the scale middle, the Star alone reaches its end.
-                    const logShare = Math.log1p(Math.abs(value)) / Math.log1p(view.starMagnitude);
-                    const strength = 0.5 + 0.5 * Math.sign(value) * logShare;
-                    const colour = signedScale[Math.max(0, Math.min(signedScale.length - 1, Math.round(strength * (signedScale.length - 1))))];
+                    const strength = gexMapHeatStrength(value, view.exposureRange);
+                    const colour = gexMapHeatColorCss(strength, signedScale);
                     const magnitudeShare = Math.abs(share);
                     const focused = magnitudeShare * 100 >= settings.highlightPercent;
                     const isStar = key === view.starKey;
                     const isColumnStar = view.columnStars.get(expiration) === strike;
                     // Bright ends of the gradient need dark text for contrast,
                     // matching how the Present ladder prints over solid bands.
-                    const brightCell = strength >= 0.72 || strength <= 0.28;
+                    const cellText = parseResolvedColor(colour) ? readableTextOn(colour)
+                      : strength >= 0.72 || strength <= 0.28 ? "#0A0D14" : "var(--foreground)";
                     const text = settings.valueMode === "star-percent"
                       ? `${(share * 100).toFixed(share * 100 >= 10 || share * 100 <= -10 ? 0 : 1)}%`
                       : formatCompactDollars(value);
@@ -352,7 +346,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
                         style={{
                           backgroundColor: colour,
                           opacity: focused ? 1 : 0.1,
-                          color: brightCell ? "#0A0D14" : "var(--foreground)",
+                          color: cellText,
                           outline: isStar
                             ? "2px solid var(--foreground)"
                             : isColumnStar
@@ -371,6 +365,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
           </table>
         </div>
       )}
+      {view ? <GexMapExposureLegend range={view.exposureRange} scale={signedScale} hasData={view.cells.size > 0} /> : null}
       {error && chain ? (
         <div className="shrink-0 border-t border-border bg-panel px-2 py-1 text-[9px] text-warning">Refresh delayed · showing the last good surface</div>
       ) : null}

@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type PointerEvent as ReactPointerEvent} from "react";
 import {createPortal} from "react-dom";
 import {ChevronDown,X} from "lucide-react";
-import {GEX_MAP_DRAG_BAR_TRACK,GEX_MAP_SHARED_PALETTE_PRESETS,GEX_MAP_STOP_COUNT,gexMapPaletteFromPreset,gexMapDragBarColor,gexMapSignedScale,gexMapPalettesEqual,type GexMapPalette} from "@/lib/gexMapPalette";
+import {GEX_MAP_DRAG_BAR_TRACK,GEX_MAP_SHARED_PALETTE_PRESETS,GEX_MAP_STOP_COUNT,gexMapPaletteFromPreset,gexMapDragBarColor,gexMapSignedScale,gexMapSignedLegendGradient,gexMapPalettesEqual,type GexMapPalette} from "@/lib/gexMapPalette";
 import ChartColorField, {isInsideChartColorPopover} from "@/components/ChartColorField";
 import {RECOMMENDED_GEX_MAP_STAR_SETTINGS,type GexMapStarSettings,type GexMapViewMode} from "@/lib/gexMapStar";
 type GexMapDropdownOption<T extends string> = {
@@ -221,8 +221,15 @@ export default function GexMapSettingsDialog({
   };
   const selectedSlotColor = editSlot.side === "star" ? palette.star : paletteScale[editSlot.index];
   const scaleSlotLabel = (index: number) => {
-    const percent = Math.round((index / (GEX_MAP_STOP_COUNT - 1) * 2 - 1) * 100);
+    if (index === 4) return "0−";
+    if (index === 5) return "0+";
+    const percent = index < 5 ? -100 + index * 25 : (index - 5) * 25;
     return (percent > 0 ? "+" : "") + percent;
+  };
+  const scaleSlotDescription = (index: number) => {
+    const side = index < 5 ? "Negative" : "Positive";
+    return index === 4 || index === 5 ? `${side} exposure near zero`
+      : `${side} exposure ${Math.abs(Number(scaleSlotLabel(index)))}% of this side's peak`;
   };
   const rowClass = "grid grid-cols-[minmax(0,1fr)_160px] items-center gap-4 border-b border-border/60 py-3";
   const content = (<section className={embedded ? "w-full rounded-xl border border-border bg-panel" : "max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]"} onPointerDown={(event) => event.stopPropagation()}>
@@ -356,7 +363,7 @@ export default function GexMapSettingsDialog({
                     className={`relative flex min-h-9 items-center justify-center overflow-hidden rounded-lg border px-1.5 py-1 transition-colors ${
                       active ? "border-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" : "border-border"
                     }`}
-                    style={{ background: `linear-gradient(90deg, ${presetScale.join(", ")})` }}
+                    style={{ background: gexMapSignedLegendGradient(presetScale) }}
                   >
                     <span className="relative rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">{preset.label}</span>
                   </button>
@@ -385,8 +392,8 @@ export default function GexMapSettingsDialog({
                       <button
                         key={index}
                         type="button"
-                        title={`${scaleSlotLabel(index)}% signed-exposure slot`}
-                        aria-label={`Signed exposure ${scaleSlotLabel(index)}% colour`}
+                        title={scaleSlotDescription(index)}
+                        aria-label={`${scaleSlotDescription(index)} colour`}
                         aria-pressed={selected}
                         onClick={() => setEditSlot({ side: "scale", index })}
                         className={`relative h-7 rounded-[3px] border transition-transform hover:scale-110 ${

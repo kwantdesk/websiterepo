@@ -502,6 +502,7 @@ import {
   GEX_MAP_PALETTE_CHANGE_EVENT,
   gexMapHeatColorHex,
   gexMapHeatStrength,
+  gexMapExposureRange,
   gexMapSignedScaleHex,
   loadGexMapPalette,
   type GexMapPalette,
@@ -9806,11 +9807,7 @@ function Chart({
     const rows = (fromFrames.length ? fromFrames : bounceGexSurfacePayload.latestStrikes)
       .filter((row) => row.call !== 0 || row.put !== 0);
     if (!rows.length) return null;
-    let starMagnitude = 0;
-    for (const row of rows) {
-      const magnitude = Math.abs(row.net);
-      if (Number.isFinite(magnitude) && magnitude > starMagnitude) starMagnitude = magnitude;
-    }
+    const exposureRange = gexMapExposureRange(rows.map((row) => row.net));
     const resolveThemeAccentHex = (variable: string, fallback: string) => {
       if (typeof window === "undefined") return fallback;
       const raw = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
@@ -9823,7 +9820,7 @@ function Chart({
     const colors = new Map<number, string>();
     for (const row of rows) {
       if (!Number.isFinite(row.net)) continue;
-      colors.set(row.strike, gexMapHeatColorHex(gexMapHeatStrength(row.net, starMagnitude), scale));
+      colors.set(row.strike, gexMapHeatColorHex(gexMapHeatStrength(row.net, exposureRange), scale));
     }
     return colors;
   // Theme accent colours live in CSS variables; the chart palette props change

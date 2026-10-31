@@ -2,7 +2,7 @@ import type { BounceExposureNode, BounceExposureSlice, BounceLevel, BounceLevels
 import { gexMapProviderTicker, selectGexMapStarNode, type GexMapPanelPayload } from "@/lib/gexMap";
 import { buildGexMapSnapshots, gexMapPriceAt, gexMapSurfaceRows } from "@/lib/gexMapSnapshots";
 import { deriveGexMapStarModel } from "@/lib/gexMapStar";
-import { gexMapHeatColorHex, gexMapHeatStrength } from "@/lib/gexMapPalette";
+import { gexMapExposureRange, gexMapHeatColorHex, gexMapHeatStrength } from "@/lib/gexMapPalette";
 import type { LinkedGexMapSettings } from "@/lib/gexMapLinkedSettings";
 import type { StrikeMappingSnapshot } from "@/lib/netGammaExposureByStrike";
 import { buildGammaHeatmapMapping, mapGammaHeatmapStrike, normalizeGammaHeatmapInstrument } from "@/lib/gammaHeatmap";
@@ -24,6 +24,7 @@ export function prepareBounceGexMirror(input: {
   const direct = gexMapProviderTicker(display) === source;
   const frame = (timestamp: number, current: ReadonlyMap<number, ExposureStrike>, previous: ReadonlyMap<number, ExposureStrike>, spot: number | null, live = false): MirrorFrame | null => {
     const rows = gexMapSurfaceRows(current);
+    const exposureRange = gexMapExposureRange(rows.map((row) => row.net));
     const displayPrice = direct ? spot ?? (live ? input.liveDisplayPrice : input.displayPriceAt(timestamp)) : live ? input.liveDisplayPrice ?? input.displayPriceAt(timestamp) : input.displayPriceAt(timestamp);
     if (!(displayPrice && displayPrice > 0) || (!direct && !(spot && spot > 0))) return null;
     const sourcePrice = spot ?? displayPrice;
@@ -73,7 +74,7 @@ export function prepareBounceGexMirror(input: {
         bucketShare: total ? level.absoluteExposure / total : 0, rateOfChangePercent: level.rateOfChangePercent,
         shortRateOfChange: level.shortRateOfChange, oneMinuteRateOfChange: level.shortRateOfChange, fiveMinuteRateOfChange: 0,
         fifteenMinuteRateOfChange: 0, rollWindowRateOfChange: 0, active: true, retirementCount: 0,
-        mapColor: gexMapHeatColorHex(gexMapHeatStrength(level.signedExposure, max), colorScale),
+        mapColor: gexMapHeatColorHex(gexMapHeatStrength(level.signedExposure, exposureRange), colorScale),
         mapOpacity: highlighted || level.sourceStrike === nearSpot ? 1 : Math.max(.02, settings.starSettings.dimOpacity),
         mapHighlighted: highlighted,
         mapRoleLabel: level.mapRoleLabel,

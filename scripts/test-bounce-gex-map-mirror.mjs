@@ -6,7 +6,7 @@ import { buildGexMapSnapshots, gexMapSurfaceRows } from "../src/lib/gexMapSnapsh
 import { selectGexMapStarNode, DEFAULT_GEX_MAP_EXPIRY_SCOPE, DEFAULT_GEX_MAP_REPRESENTATION } from "../src/lib/gexMap.ts";
 import { deriveGexMapStarModel } from "../src/lib/gexMapStar.ts";
 import { DEFAULT_LINKED_GEX_MAP_SETTINGS, normalizeLinkedGexMapSettings, mergeLinkedGexMapPanels, linkedGexMapPanel, effectiveLinkedGexMapModel } from "../src/lib/gexMapLinkedSettings.ts";
-import { GEX_MAP_SHARED_PALETTE_PRESETS as GEX_MAP_PALETTE_PRESETS, gexMapSignedScaleHex, gexMapHeatStrength, gexMapHeatColorHex } from "../src/lib/gexMapPalette.ts";
+import { GEX_MAP_SHARED_PALETTE_PRESETS as GEX_MAP_PALETTE_PRESETS, gexMapExposureRange, gexMapSignedScaleHex, gexMapHeatStrength, gexMapHeatColorHex } from "../src/lib/gexMapPalette.ts";
 import { defaultIndicatorSettings, normalizeStoredIndicator } from "../src/lib/chartIndicatorConfig.ts";
 import { subscribeGexMapSurface, publishGexMapSurface } from "../src/lib/gexMapSurfaceBus.ts";
 import { formatGexMapExposure } from "../src/lib/gexMapFormat.ts";
@@ -197,13 +197,35 @@ check("missing historical mapping prices cannot be replaced with future live pri
   assert.equal(selectBounceGexMirror(prepared, t + minute), null);
   assert.ok(selectBounceGexMirror(prepared, null));
 });
-check("every palette uses exactly the Map's common signed magnitude scale", () => {
-  const p = payload(), max = Math.max(1, ...p.latestStrikes.map((r) => Math.abs(r.net)));
+check("every palette uses exactly the Map's independent signed peak scale", () => {
+  const p = payload(), range = gexMapExposureRange(p.latestStrikes.map((r) => r.net));
   for (const preset of GEX_MAP_PALETTE_PRESETS) {
     const colorScale = gexMapSignedScaleHex({ useThemeColors: false, ...preset, scaleStops: preset.scale }, { positive: "#00ff00", negative: "#ff0000" });
     const s = selectBounceGexMirror(prepare(p, settings, { colorScale }), null);
-    for (const n of s.exposureField.at(-1).nodes) assert.equal(n.mapColor, gexMapHeatColorHex(gexMapHeatStrength(n.signedExposure, max), colorScale));
+    for (const n of s.exposureField.at(-1).nodes) assert.equal(n.mapColor, gexMapHeatColorHex(gexMapHeatStrength(n.signedExposure, range), colorScale));
   }
+});
+check("both unequal signed peaks saturate, without changing King identity or exposure", () => {
+  const rows = [row(7500, -1.76e9), row(7550, -440e6), row(7600, 44e6), row(7650, 11e6)];
+  const p = payload({ latestStrikes: rows, frames: [{ timestamp: t, updates: rows }] });
+  const colorScale = gexMapSignedScaleHex({ useThemeColors: false, ...GEX_MAP_PALETTE_PRESETS[0], scaleStops: GEX_MAP_PALETTE_PRESETS[0].scale }, { positive: "#00ff00", negative: "#ff0000" });
+  const snapshot = selectBounceGexMirror(prepare(p, settings, { colorScale }), null);
+  const nodes = snapshot.exposureField.at(-1).nodes;
+  assert.equal(nodes.find((n) => n.sourceStrike === 7500).mapColor, colorScale[0]);
+  assert.equal(nodes.find((n) => n.sourceStrike === 7600).mapColor, colorScale[9]);
+  assert.equal(snapshot.king.sourceStrike, 7500);
+  assert.deepEqual(nodes.map((n) => n.signedExposure), rows.map((r) => r.net));
+});
+check("replay colours use the peaks at that snapshot, never a later session peak", () => {
+  const first = [row(7500, -1.76e9), row(7600, 44e6)];
+  const later = [...first, row(7650, 88e6)];
+  const p = payload({ latestStrikes: later, frames: [{ timestamp: t, updates: first }, { timestamp: t + minute, updates: later }] });
+  const prepared = prepare(p);
+  const before = selectBounceGexMirror(prepared, t);
+  const after = selectBounceGexMirror(prepared, t + minute);
+  assert.equal(before.exposureField.at(-1).nodes.find((n) => n.sourceStrike === 7600).mapColor, scale.at(-1));
+  assert.equal(after.exposureField[0].nodes.find((n) => n.sourceStrike === 7600).mapColor, scale.at(-1));
+  assert.notEqual(after.exposureField.at(-1).nodes.find((n) => n.sourceStrike === 7600).mapColor, scale.at(-1));
 });
 check("sub-unit exposures use Map's percentage denominator without numeric scaling", () => {
   const p = payload({ latestStrikes: [row(7635, .1)] }), s = selectBounceGexMirror(prepare(p), null);
