@@ -5,10 +5,10 @@ import { Link2 } from "lucide-react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 import { GEX_MAP_PALETTE_CHANGE_EVENT, gexMapPalettesEqual, loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
-import { linkedGexMapPanel, normalizeLinkedGexMapSettings, publishLinkedGexMapSettings, readLocalGexMapStarSettings, type LinkedGexMapSettings } from "@/lib/gexMapLinkedSettings";
+import { normalizeLinkedGexMapSettings, publishLinkedGexMapSettings, type LinkedGexMapSettings } from "@/lib/gexMapLinkedSettings";
 import GexMapSettingsDialog from "./GexMapSettingsDialog";
 import { useLinkedGexMapSettings } from "./useLinkedGexMapSettings";
-import { resolveBounceGexMapSource } from "@/lib/bounceGexMapSource";
+import { bounceGexMapFollowPatch, resolveBounceGexMapConfiguration } from "@/lib/bounceGexMapConfiguration";
 
 type Settings = Record<string, string | number | boolean>;
 const coreFields = {
@@ -27,12 +27,8 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
   instrument?: string; settings: Settings; onChange: (patch: Settings) => void;
 }) {
   const shared = useLinkedGexMapSettings();
-  const linked = settings.linkGexMapSettings !== false;
-  const profile = normalizeLinkedGexMapSettings(linked ? shared : {
-    ...shared, expiryScope: settings.mapExpiryScope, representation: settings.mapRepresentation,
-    exposureModel: settings.mapExposureModel, viewMode: settings.mapViewMode, stepMinutes: settings.mapStepMinutes,
-    starSettings: readLocalGexMapStarSettings(settings.mapStarSettings, shared.starSettings),
-  });
+  const configuration = resolveBounceGexMapConfiguration(instrument, settings, shared);
+  const { linked, profile, panel: column, greek: metric } = configuration;
   const [appearance, setAppearance] = useState(false);
   const [savedPalette, setSavedPalette] = useState<GexMapPalette>(() => loadGexMapPalette());
   const [previewPalette, setPreviewPalette] = useState<GexMapPalette | null>(null);
@@ -42,10 +38,7 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
     return () => window.removeEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, update);
   }, []);
   const source = String(settings.sourceTicker ?? "AUTO");
-  const resolved = resolveBounceGexMapSource(instrument, profile, source);
-  const column = linkedGexMapPanel(profile, resolved.source, String(settings.mapColumnId ?? ""));
-  const metric = linked ? column?.greekMode ?? "GAMMA"
-    : String(settings.greekMode ?? "GAMMA");
+  const resolved = configuration;
   const update = (patch: Partial<LinkedGexMapSettings>) => {
     const next = normalizeLinkedGexMapSettings({ ...profile, ...patch });
     if (linked) publishLinkedGexMapSettings(next);
@@ -68,22 +61,12 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
   return (
     <div className="space-y-3 rounded-xl border border-border bg-background p-3" data-bounce-gex-settings>
       <button type="button" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-primary/40 bg-primary/15 px-4 py-3 text-sm font-semibold text-foreground hover:bg-primary/25"
-        onClick={() => onChange({
-          gexMapMirror: true, linkGexMapSettings: true, priceMode: "live", greekMode: column?.greekMode ?? "GAMMA",
-          mapExpiryScope: shared.expiryScope, mapRepresentation: shared.representation,
-          mapExposureModel: shared.exposureModel, mapViewMode: shared.viewMode, mapStepMinutes: shared.stepMinutes,
-          mapStarSettings: JSON.stringify(shared.starSettings),
-        })}>
+        onClick={() => onChange({ gexMapMirror: true, ...bounceGexMapFollowPatch(configuration, true) })}>
         <Link2 className="h-4 w-4 shrink-0" /> Import &amp; Link GEX Map Settings
       </button>
       <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
-        <input type="checkbox" className="h-3.5 w-3.5 accent-primary" checked={linked} onChange={(e) => onChange({
-          linkGexMapSettings: e.target.checked,
-          greekMode: column?.greekMode ?? "GAMMA",
-          mapExpiryScope: profile.expiryScope, mapRepresentation: profile.representation,
-          mapExposureModel: profile.exposureModel, mapViewMode: profile.viewMode, mapStepMinutes: profile.stepMinutes,
-          mapStarSettings: JSON.stringify(profile.starSettings),
-        })} />
+        <input type="checkbox" className="h-3.5 w-3.5 accent-primary" checked={linked}
+          onChange={(e) => onChange(bounceGexMapFollowPatch(configuration, e.target.checked))} />
         Follow GEX Map automatically
       </label>
       <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
@@ -98,7 +81,7 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         {select("Options source", source, [["AUTO", resolved.source ? "Auto — " + resolved.source : "Auto — match chart"], ...OPTIONS_FLOW_INSTRUMENTS.map((p): [string, string] => [p.symbol, p.symbol + " — " + p.label])],
-          (v) => onChange({ sourceTicker: v, mapColumnId: "" }))}
+          (v) => onChange({ sourceTicker: v, mapColumnId: "", greekMode: metric }))}
         {select("GEX Map column", String(settings.mapColumnId ?? ""), [["", "Auto — match options source"],
           ...profile.panels.map((p): [string, string] => [p.id, p.symbol + " · " + p.greekMode])],
           (v) => { const p = profile.panels.find((p) => p.id === v); onChange({ mapColumnId: v, ...(p ? { sourceTicker: p.symbol, greekMode: p.greekMode } : {}) }); })}
@@ -124,7 +107,7 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
           {appearance ? "Hide" : "Open"} GEX Map view, nodes &amp; colours
         </button>
       </div>
-      {profile.exposureModel === "DEALER_INVENTORY" && metric !== "AUTO" && metric !== "GAMMA" ? (
+      {profile.exposureModel === "DEALER_INVENTORY" && metric !== "GAMMA" ? (
         <p className="text-[11px] leading-5 text-muted">Dealer inventory applies to Gamma. {metric} uses Structural OI, matching GEX Map.</p>
       ) : null}
       {appearance ? <GexMapSettingsDialog embedded open settings={profile.starSettings} palette={previewPalette ?? savedPalette}
