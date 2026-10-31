@@ -1156,6 +1156,7 @@ function GexMapWorkspace({
   const [panels, setPanels] = useState<PanelConfig[]>(() =>
     initialEmbedStateRef.current?.panels.map((panel) => ({ ...panel })) ?? initialPanelsForMarket(market));
   const panelsRef = useRef(panels);
+  const panelsMarketRef = useRef(linkedMarket);
   // Configuration hydration can change the columns and cache scope together.
   // Update before passive cache restoration so it cannot restore old Greeks.
   useLayoutEffect(() => { panelsRef.current = panels; }, [panels]);
@@ -1374,11 +1375,14 @@ function GexMapWorkspace({
   }, []);
 
   useEffect(() => {
-    // A pane-saved configuration owns the panel set; the market link only
-    // provides defaults for embeds without one.
-    const nextPanels = initialEmbedStateRef.current
-      ? panelsRef.current.map((panel) => ({ ...panel }))
-      : initialPanelsForMarket(linkedMarket);
+    // Cache identity changes for replay/date/model/units must only reload data,
+    // not rebuild the trader's columns. Market defaults apply solely when the
+    // linked market actually changes, and never over a pane-saved configuration.
+    const marketChanged = panelsMarketRef.current !== linkedMarket;
+    panelsMarketRef.current = linkedMarket;
+    const nextPanels = marketChanged && !initialEmbedStateRef.current
+      ? initialPanelsForMarket(linkedMarket)
+      : panelsRef.current.map((panel) => ({ ...panel }));
     const cachedData = Object.fromEntries(nextPanels.map((panel) => [
       panel.id,
       (() => {
@@ -1395,7 +1399,7 @@ function GexMapWorkspace({
       && panel.greekMode === nextPanels[index]?.greekMode
     )) && current.length === nextPanels.length ? current : nextPanels);
     setPanelData(cachedData);
-    setPanelErrors({ left: null, centre: null, right: null });
+    setPanelErrors(Object.fromEntries(nextPanels.map((panel) => [panel.id, null])));
     setLoading(Object.fromEntries(nextPanels.map((panel) => [panel.id, !cachedData[panel.id]])));
   }, [linkedMarket, panelCacheKey, requestedReplayDate]);
   // Report configuration changes to the host workspace so quick-save and
