@@ -14,8 +14,30 @@ export type ChartViewportSnapshot = {
   replayScope?: string;
   priceRange: { from: number; to: number };
   anchorPrice: number;
+  /** The common candle instant used for vertical comparison across peers. */
+  anchorTimestamp?: number;
   updatedAt: number;
 };
+
+/** Never compare one instrument's latest quote with another's older candle.
+ * A clock gap has no valid price anchor; time synchronization can still run. */
+export function linkedPriceAnchorAt(
+  candles: readonly { timestamp: number; close: number }[],
+  timestamp?: number,
+  intervalMs: number | null = null,
+) {
+  if (!candles.length || (timestamp !== undefined && !Number.isFinite(timestamp))) return null;
+  let index = candles.length - 1;
+  if (timestamp !== undefined) {
+    let low = 0, high = candles.length;
+    while (low < high) { const middle = (low + high) >>> 1; if (candles[middle].timestamp <= timestamp) low = middle + 1; else high = middle; }
+    index = low - 1;
+  }
+  const candle = candles[index];
+  if (!candle || !Number.isFinite(candle.close) || candle.close <= 0
+    || (timestamp !== undefined && intervalMs && timestamp - candle.timestamp >= intervalMs)) return null;
+  return { timestamp: candle.timestamp, price: candle.close };
+}
 
 /**
  * Align a viewport through real native-axis timestamp anchors. Legacy packets

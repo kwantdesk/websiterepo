@@ -136,3 +136,29 @@ test("normal live appends and deliberate historical pans never reset the group",
   assert.equal(viewport.shouldAdvanceLinkedLiveViewport(value, old + 60000, 60000), false);
   assert.equal(viewport.shouldAdvanceLinkedLiveViewport({ ...value, visibleTimeRange: { from: old / 1000 - 6000, to: old / 1000 - 600 } }, old + 86400000, 60000), false);
 });
+
+test("vertical peers use the same candle instant instead of different feed tails", () => {
+  const source = [{ timestamp: 1000, close: 760 }, { timestamp: 2000, close: 758 }];
+  const target = [{ timestamp: 1000, close: 7600 }, { timestamp: 2000, close: 7580 }, { timestamp: 3000, close: 7700 }];
+  const a = viewport.linkedPriceAnchorAt(source, 1000, 1000), b = viewport.linkedPriceAnchorAt(target, 1000, 1000);
+  assert.equal(a.price, 760); assert.equal(b.price, 7600);
+  const value = snapshot({ anchorPrice: a.price, anchorTimestamp: a.timestamp, priceRange: { from: 757, to: 763 } });
+  const range = viewport.resolveLinkedPriceRange(value, "SPXW", b.price);
+  assert.ok(Math.abs((b.price - range.from) / (range.to - range.from) - .5) < 1e-10);
+  assert.notEqual(viewport.linkedPriceAnchorAt(target).price, b.price);
+});
+test("missing reference candles cannot silently substitute another minute or future price", () => {
+  const rows = [{ timestamp: 1000, close: 760 }, { timestamp: 3000, close: 758 }], original = structuredClone(rows);
+  assert.equal(viewport.linkedPriceAnchorAt(rows, 0, 1000), null);
+  assert.equal(viewport.linkedPriceAnchorAt(rows, 2000, 1000), null);
+  assert.equal(viewport.linkedPriceAnchorAt(rows, 4000, 1000), null);
+  assert.equal(viewport.linkedPriceAnchorAt(rows, NaN, 1000), null);
+  assert.deepEqual(viewport.linkedPriceAnchorAt(rows, 1500, 1000), { timestamp: 1000, price: 760 });
+  assert.deepEqual(rows, original);
+});
+test("source pivots across overnight gaps retain the actual preceding candle timestamp", () => {
+  const rows = [{ timestamp: 1000, close: 760 }, { timestamp: 86400000, close: 758 }];
+  assert.deepEqual(viewport.linkedPriceAnchorAt(rows, 40000000), { timestamp: 1000, price: 760 });
+  assert.equal(viewport.linkedPriceAnchorAt([], 1000), null);
+  assert.equal(viewport.linkedPriceAnchorAt([{ timestamp: 1000, close: NaN }], 1000), null);
+});

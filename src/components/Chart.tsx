@@ -757,6 +757,7 @@ import {
   centerPriceRangeOnAnchor,
   chartViewportReplayScope,
   linkedLogicalAtTimestamp,
+  linkedPriceAnchorAt,
   shouldAdvanceLinkedLiveViewport,
   publishChartViewport,
   readLatestChartViewport,
@@ -16832,15 +16833,6 @@ function Chart({
     const canApplySnapshots = viewportSyncRole === "peer";
     const canPublishSnapshots = viewportSyncRole === "peer";
 
-    const latestAnchor = () => {
-      const currentCandles = viewportSyncCandlesRef.current;
-      for (let index = currentCandles.length - 1; index >= 0; index -= 1) {
-        const close = Number(currentCandles[index]?.close);
-        if (Number.isFinite(close) && close > 0) return close;
-      }
-      return 0;
-    };
-
     const applySnapshot = (snapshot: ChartViewportSnapshot, allowOwn = false) => {
       if (
         !canApplySnapshots
@@ -16849,8 +16841,8 @@ function Chart({
         || (snapshot.replayScope ?? "live") !== viewportSyncReplayScopeRef.current
       ) return;
       const currentCandles = viewportSyncCandlesRef.current;
-      const anchorPrice = latestAnchor();
-      if (!anchorPrice) return;
+      if (!currentCandles.length) return;
+      const anchor = linkedPriceAnchorAt(currentCandles, snapshot.anchorTimestamp, timeframeToMs(timeframe));
       viewportSyncApplyingRef.current = true;
       try {
         const timeScale = chart.timeScale();
@@ -16868,12 +16860,12 @@ function Chart({
             to: snapshot.visibleTimeRange.to as Time,
           });
         }
-        const targetRange = resolveLinkedPriceRange(snapshot, instrument, anchorPrice);
+        const targetRange = anchor ? resolveLinkedPriceRange(snapshot, instrument, anchor.price) : null;
         const priceScale = chart.priceScale("right") as ReturnType<IChartApi["priceScale"]> & {
           setVisibleRange?: (range: { from: number; to: number } | null) => void;
           setAutoScale?: (enabled: boolean) => void;
         };
-        if (Number.isFinite(targetRange.from) && Number.isFinite(targetRange.to) && targetRange.to > targetRange.from) {
+        if (targetRange && Number.isFinite(targetRange.from) && Number.isFinite(targetRange.to) && targetRange.to > targetRange.from) {
           priceScale.setAutoScale?.(false);
           priceScale.setVisibleRange?.(targetRange);
         }
@@ -16913,9 +16905,13 @@ function Chart({
           setAutoScale?: (enabled: boolean) => void;
         };
         let priceRange = priceScale.getVisibleRange?.() ?? null;
-        const anchorPrice = latestAnchor();
         const from = Number(timeRange?.from);
         const to = Number(timeRange?.to);
+        // Use a shared instant in the visible window, not each feed's tail.
+        // Late/more recent histories otherwise put SPY below its peers and
+        // continually re-center followers around unrelated closing quotes.
+        const anchor = linkedPriceAnchorAt(viewportSyncCandlesRef.current, timeframeToMs(timeframe) === null ? undefined : (from + to) * 500);
+        const anchorPrice = anchor?.price;
         if (
           !timeRange
           || !logicalRange
@@ -16955,6 +16951,7 @@ function Chart({
           replayScope: currentScope,
           priceRange,
           anchorPrice,
+          anchorTimestamp: timeframeToMs(timeframe) === null ? undefined : anchor?.timestamp,
           updatedAt: Date.now(),
         });
       });
@@ -17041,9 +17038,29 @@ function Chart({
       else publishSnapshot(true, true, !resetToLive);
     };
     viewportSyncRestoreRef.current = restoreAfterData;
+    // Adding a grid pane, resizing a wall, or wider price-axis labels changes
+    // plot width. Native bar spacing survives that resize, changing the time
+    // window independently in each peer. Restore the shared window after the
+    // native layout settles, including when this pane was the last leader.
+    let resizeSyncFrame: number | null = null;
+    const handleLinkedPlotResize = () => {
+      if (resizeSyncFrame !== null) return;
+      resizeSyncFrame = window.requestAnimationFrame(() => {
+        resizeSyncFrame = null;
+        if (viewportSyncUserInteractionRef.current) {
+          publishSnapshot();
+          return;
+        }
+        const latest = readLatestChartViewport(viewportSyncGroup);
+        if (latest) applySnapshot(latest, true);
+      });
+    };
+    timeScale.subscribeSizeChange(handleLinkedPlotResize);
     retryLatest();
     const retryTimer = window.setTimeout(retryLatest, 120);
     return () => {
+      timeScale.unsubscribeSizeChange(handleLinkedPlotResize);
+      if (resizeSyncFrame !== null) window.cancelAnimationFrame(resizeSyncFrame);
       if (viewportSyncRestoreRef.current === restoreAfterData) viewportSyncRestoreRef.current = null;
       if (initialPublishTimer !== null) window.clearTimeout(initialPublishTimer);
       if (trailingPublishTimer !== null) window.clearTimeout(trailingPublishTimer);
