@@ -9153,10 +9153,11 @@ function WorkspaceChartPaneComponent({
     // Unticking a window omits its profile entirely rather than folding it
     // into a neighbour, so the remaining sessions keep their own boundaries.
     const enabledSessionIds = new Set<string>([
+      ...(settings.sessionGlobexEnabled === false ? [] : ["globex"]),
       ...(settings.sessionAsiaEnabled === false ? [] : ["asia"]),
       ...(settings.sessionLondonEnabled === false ? [] : ["london"]),
       ...(settings.sessionNewYorkEnabled === false ? [] : ["newyork"]),
-      // Windows outside the three desk sessions are governed by Filter time.
+      // Other windows are governed by Filter time.
       "rth", "eth", "custom",
     ]);
     return resolveSessionSegments(dayStartMs, dayEndMs, {
@@ -9166,7 +9167,7 @@ function WorkspaceChartPaneComponent({
       customEndMinutes: Number(settings.sessionEndMinutes ?? RTH_END_MINUTES),
       useEndSessionAsStartDay,
     }).filter((segment) => (
-      // The three desk sessions are subdivisions of a CME trading day, and a
+      // The named desk sessions are subdivisions of a CME trading day, and a
       // CME day already begins at the 17:00 Globex open. Attributing them by
       // the segment's own calendar date pushed the overnight window onto the
       // NEXT date, so the day that was actually being drawn only ever received
@@ -9426,7 +9427,7 @@ function WorkspaceChartPaneComponent({
           // on every timer multiplied one outage into hundreds of thousands
           // of identical Vercel invocations.
           if (!includeCompletedProfiles && tradingDate !== currentDailyTradingDate) return;
-          // Splitting a day means one profile PER window, so Asia, London and
+          // Splitting a day means one profile PER window, so Globex, Asia, London and
           // New York stand beside each other. Each segment is requested as its
           // own explicit span with no further filtering; the server then has
           // nothing to merge.
@@ -9614,6 +9615,7 @@ function WorkspaceChartPaneComponent({
     dailyProfileSettings.useEndSessionAsStartDay,
     // Without these the effect never re-ran on a session toggle, so clicking
     // Asia off changed a stored flag and nothing else: no refetch, no prune.
+    dailyProfileSettings.sessionGlobexEnabled,
     dailyProfileSettings.sessionAsiaEnabled,
     dailyProfileSettings.sessionLondonEnabled,
     dailyProfileSettings.sessionNewYorkEnabled,

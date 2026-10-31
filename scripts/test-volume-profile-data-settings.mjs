@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { groupVolumeProfileLevels, volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
+import { groupVolumeProfileLevels, resolveVolumeProfileRenderGrouping, volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
 
 /**
  * Data Settings parity with DeepChart's DP: DeltaVol tab — tick grouping
@@ -61,61 +61,22 @@ import { groupVolumeProfileLevels, volumeProfileBinTick } from "../src/lib/volum
     "the request must not derive its own automatic row size",
   );
 
-  /*
-   * Manual is a FLOOR on the row, never a coarser fetch.
-   *
-   * Taking the larger of the arrived bin and the trader's own size means it
-   * cannot draw finer than asked and cannot discard detail the pre-binned
-   * request used to throw away.
-   */
-  {
-    const primitiveSource = readFileSync(
-      new URL("../src/lib/nativeVolumeProfilePrimitive.ts", import.meta.url), "utf8",
-    );
-    assert.match(
-      primitiveSource,
-      /: Math\.max\(profile\.groupTicks, Math\.max\(1, Math\.round\(style\.manualGroupTicks \?\? 1\)\)\)/,
-      "the renderer no longer applies the manual row size",
-    );
-    assert.match(
-      primitiveSource,
-      /const groupedTicks = requestedTicks \* automaticMultiplier;/,
-      "the legibility multiplier no longer applies on top of the manual size",
-    );
-  }
-
-  // The renderer's adaptive multiplier is the one true automatic grouping.
-  const primitive = readFileSync(
-    new URL("../src/lib/nativeVolumeProfilePrimitive.ts", import.meta.url),
-    "utf8",
-  );
-  /*
-   * Matched on behaviour rather than on one expression.
-   *
-   * Both of these were pinned to the exact text of the multiplier and went
-   * stale when the legibility floor was extended to manual profiles - failing
-   * the suite over a refactor they were not testing, which is worse than not
-   * testing it at all.
-   *
-   * What must stay true: the trader's coarsening factor applies ONLY in
-   * automatic mode, and it scales a multiplier derived from how many pixels a
-   * row actually gets.
-   */
-  assert.match(
-    primitive,
-    /style\.automaticGrouping \? style\.autoGroupFactor : 1/,
-    "the coarsening factor is still exclusive to automatic grouping",
-  );
-  assert.match(
-    primitive,
-    /automaticMultiplier = Math\.max\([\s\S]{0,200}?\/ sourceRowPixels/,
-    "and it still scales a multiplier derived from the pixels a row gets",
-  );
-  assert.match(
-    primitive,
-    /groupedTicks = requestedTicks \* automaticMultiplier/,
-    "which is what actually coarsens the rows",
-  );
+  // Grouping now lives in the shared render helper. Exercise its behaviour
+  // instead of pinning the primitive to pre-extraction implementation text.
+  const primitive = readFileSync(new URL("../src/lib/nativeVolumeProfilePrimitive.ts", import.meta.url), "utf8");
+  assert.match(primitive, /resolveVolumeProfileRenderGrouping\(\{/);
+  assert.match(primitive, /manualGroupTicks: style\.manualGroupTicks/);
+  const args = { sourceGroupTicks: 1, sourceRowPixels: 1, automatic: false, manualGroupTicks: 4 };
+  assert.deepEqual(resolveVolumeProfileRenderGrouping(args), { requestedTicks: 4, groupedTicks: 4 });
+  assert.deepEqual(resolveVolumeProfileRenderGrouping({ ...args, autoGroupFactor: 100 }), { requestedTicks: 4, groupedTicks: 4 });
+  assert.deepEqual(resolveVolumeProfileRenderGrouping({ ...args, sourceGroupTicks: 8 }), { requestedTicks: 8, groupedTicks: 8 });
+  const zoomed = resolveVolumeProfileRenderGrouping({ ...args, sourceRowPixels: .1 });
+  assert.equal(zoomed.requestedTicks, 4);
+  assert.ok(zoomed.groupedTicks > 4, "legibility floor applies on top of manual size");
+  const automatic = resolveVolumeProfileRenderGrouping({ ...args, automatic: true, sourceRowPixels: .1 });
+  const coarsened = resolveVolumeProfileRenderGrouping({ ...args, automatic: true, sourceRowPixels: .1, autoGroupFactor: 2 });
+  assert.equal(automatic.requestedTicks, 1);
+  assert.ok(coarsened.groupedTicks > automatic.groupedTicks, "automatic factor coarsens the rendered rows");
 }
 
 // --- manual grouping bins deterministically and never loses a trade ---

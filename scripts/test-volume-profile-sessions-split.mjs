@@ -65,7 +65,7 @@ check("the session is part of a daily profile's identity", () => {
    */
   assert.match(
     workspace,
-    /const profileSessionKey = \(profile: InstitutionalVolumeProfile\) =>\s*\n\s*`\$\{profile\.period\}:\$\{profile\.period === "daily" \? chicagoTradingDate\(profile\.startMs\) : "weekly"\}:\$\{profile\.sessionId \?\? ""\}`/,
+    /const profileSessionKey = \(profile: InstitutionalVolumeProfile\) =>\s*\n\s*`\$\{profile\.period\}:\$\{profile\.period === "daily" \? profileTradingDateFor\(profile\) : "weekly"\}:\$\{profile\.sessionId \?\? ""\}`/,
     "the cached profile key still ignores the session",
   );
 });
@@ -86,7 +86,7 @@ check("both merge paths agree on that identity", () => {
 check("a session the trader unticked is omitted, not folded away", () => {
   // Each remaining window has to keep its own boundaries, or turning one off
   // would silently widen its neighbour.
-  for (const flag of ["sessionAsiaEnabled", "sessionLondonEnabled", "sessionNewYorkEnabled"]) {
+  for (const flag of ["sessionGlobexEnabled", "sessionAsiaEnabled", "sessionLondonEnabled", "sessionNewYorkEnabled"]) {
     assert.ok(workspace.includes(flag), `${flag} is no longer honoured`);
   }
   assert.match(workspace, /enabledSessionIds/, "the enabled-session set is gone");

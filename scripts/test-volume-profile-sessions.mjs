@@ -74,8 +74,8 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
     ...DEFAULT_SESSION_FILTER, mode: "triple",
   });
   const ids = new Set(segments.map((s) => s.id));
-  assert.deepEqual([...ids].sort(), ["asia", "london", "newyork"],
-    "all three DeepChart sessions are produced");
+  assert.deepEqual([...ids].sort(), ["asia", "globex", "london", "newyork"],
+    "all four desk sessions are produced");
 
   for (const segment of segments) {
     assert.ok(segment.endMs > segment.startMs, `${segment.id} window has positive length`);
@@ -105,23 +105,22 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
   assert.equal(owning.length, 1, "an execution belongs to exactly one session");
   assert.equal(owning[0].id, "newyork");
 
-  // DeepChart's Asian window starts at 17:00 Chicago, so the post-bell prints
-  // are part of Asia rather than a KwantDesk-only fourth profile.
+  // Globex owns the opening tape until the separate Asia handover.
   const postBellPrint = chicago("2026-08-19T23:30:00Z"); // 18:30 Chicago
   const postBellOwner = segments.filter((s) => postBellPrint >= s.startMs && postBellPrint < s.endMs);
   assert.equal(postBellOwner.length, 1, "an execution belongs to exactly one session");
-  assert.equal(postBellOwner[0]?.id, "asia", "an 18:30 print is not in DeepChart's Asian window");
+  assert.equal(postBellOwner[0]?.id, "globex", "an 18:30 summer print is Globex");
 
   // Tokyo cash opens 09:00 JST = 19:00 Chicago; from there it is Asia.
   const asiaPrint = chicago("2026-08-20T01:30:00Z"); // 20:30 Chicago
   const asiaOwner = segments.filter((s) => asiaPrint >= s.startMs && asiaPrint < s.endMs);
   assert.equal(asiaOwner[0]?.id, "asia", "a 20:30 print is Asia");
 
-  // The three windows must leave no gap between the bell and NY.
+  // The four windows must leave no gap between the bell and NY.
   // The range spans several days, so each handover is checked against the NEXT
   // window in the same day rather than against whichever segment shares an id -
   // matching by id alone can pair neighbouring trading dates.
-  for (const [earlier, later] of [["asia", "london"], ["london", "newyork"]]) {
+  for (const [earlier, later] of [["globex", "asia"], ["asia", "london"], ["london", "newyork"]]) {
     const earlierWindows = segments.filter((segment) => segment.id === earlier);
     assert.ok(earlierWindows.length, `${earlier} windows exist`);
     for (const window of earlierWindows) {
@@ -214,6 +213,7 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
 {
   const triple = (enabled) => ({
     filterMode: "triple",
+    sessionGlobexEnabled: enabled.includes("globex"),
     sessionAsiaEnabled: enabled.includes("asia"),
     sessionLondonEnabled: enabled.includes("london"),
     sessionNewYorkEnabled: enabled.includes("newyork"),
@@ -222,7 +222,7 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
   const asiaOnly = requestedSessionIds(triple(["asia"]));
   assert.deepEqual([...asiaOnly].sort(), ["asia"], "only the ticked session may be requested");
   assert.ok(profileMatchesRequestedSessions("asia", asiaOnly), "the ticked session was dropped");
-  for (const stale of ["london", "newyork"]) {
+  for (const stale of ["globex", "london", "newyork"]) {
     assert.ok(
       !profileMatchesRequestedSessions(stale, asiaOnly),
       `${stale} survived being unticked - this is the reported bug`,
@@ -233,7 +233,7 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
   // existed still shows every session rather than none.
   assert.deepEqual(
     [...requestedSessionIds({ filterMode: "triple" })].sort(),
-    ["asia", "london", "newyork"],
+    ["asia", "globex", "london", "newyork"],
     "absent flags must default to enabled",
   );
 

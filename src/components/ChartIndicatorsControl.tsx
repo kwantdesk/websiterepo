@@ -3142,7 +3142,7 @@ export default function ChartIndicatorsControl({
                       ["none", "None · whole session"],
                       ["filter", "Filter · keep the window"],
                       ["splitted", "Splitted · per session"],
-                      ["triple", "Sessions · Asia / London / New York"],
+                      ["triple", "Sessions · Globex / Asia / London / New York"],
                     ]],
                     ["Filter time", "filterTime", "rth", [
                       ["rth", "RTH · cash session"],
@@ -3542,7 +3542,7 @@ export default function ChartIndicatorsControl({
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "sessions" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Filter keeps only the executions inside the chosen window. Triple splits the day into Asia, London and New York. A custom window may run past midnight — set an end earlier than the start. Use end session as start day attributes an overnight window to the date it finished on, which is what puts an Asia profile on the right trading day.
+                    Filter keeps only the executions inside the chosen window. Sessions splits the day into Globex, Asia, London and New York. Globex starts at the futures open; Asia starts at 09:00 Tokyo. A custom window may run past midnight — set an end earlier than the start. Use end session as start day attributes an overnight window to the date it finished on.
                   </div>
                 </div>
               ) : null}

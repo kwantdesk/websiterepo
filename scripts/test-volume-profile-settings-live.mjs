@@ -39,6 +39,7 @@ const DIALOG = "ChartIndicatorsControl.tsx";
  */
 const BOOKKEEPING = new Set([
   "profileSettingsVersion",
+  "weeklyWindowSettingsVersion",
   // Interaction state for the settings dialog: it distinguishes the first
   // session pick (isolate) from later multi-select toggles. It is consumed by
   // the dialog itself rather than by the profile renderer.
@@ -177,7 +178,7 @@ check("the shifted POC groups on the row grid", () => {
 });
 
 check("Developing and Extend shifted do not share the same POC trail", () => {
-  const chart = files.find((file) => file.path.endsWith("Chart.tsx"));
+  const chart = files.find((file) => file.path === "src/components/Chart.tsx");
   const primitive = files.find((file) => file.path.endsWith("nativeVolumeProfilePrimitive.ts"));
   assert.ok(chart && primitive, "the profile renderer wiring is gone");
   assert.match(chart.source, /developingPocMode: pocLineMode === "extend-shifted"/);
@@ -223,7 +224,7 @@ check("every removed Inputs control still exists in a named profile tab", () => 
 
 check("DeepCharts VWAP controls live together and drive real renderer settings", () => {
   const dialog = files.find((file) => file.path.endsWith(DIALOG));
-  const chart = files.find((file) => file.path.endsWith("Chart.tsx"));
+  const chart = files.find((file) => file.path === "src/components/Chart.tsx");
   const primitive = files.find((file) => file.path.endsWith("nativeVolumeProfilePrimitive.ts"));
   assert.ok(dialog && chart && primitive, "the VWAP settings or renderer is gone");
   const vwapTab = dialog.source.slice(

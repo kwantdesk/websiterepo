@@ -1,5 +1,5 @@
 /**
- * Session windowing for volume profiles — DeepChart's Filter/Split Time tab.
+ * Session windowing for volume profiles and the desk's session clock.
  *
  * A profile covering a whole CME trading day mixes Asia, London and New York
  * into one shape. Splitting it is what lets a desk see where each session
@@ -58,25 +58,15 @@ export const RTH_END_MINUTES = 15 * 60 + 15;
  * expressed from that bell and the later ones run past 1440 into the next
  * calendar day.
  *
- * Asia, London and New York carry DeepChart's own boundaries, read on
- * 2026-08-31 out of its Sessions Marker defaults (Asian 15:00-03:00, Europe
- * 03:00-11:00, Usa 09:30-16:00 - New York time, which its 09:30 cash open
- * fixes beyond doubt) and converted to Chicago. A profile is only comparable
- * to DeepChart's if it covers the same tape, and ours previously did not: our
- * Asia opened two hours after theirs and our London and New York both closed
- * early. Two different windows over one tape give two different value areas,
- * which is why the mismatch read as a constant offset rather than drift.
+ * Globex is the opening subdivision, not a second full-day envelope. Asia
+ * starts at 09:00 Tokyo (00:00 UTC): 19:00 Chicago during US daylight time,
+ * 18:00 during standard time. In Brisbane Asia stays at 10:00, while Globex
+ * opens at 08:00 / 09:00 as US clocks change.
  *
- * A Triple split is exactly DeepChart's three windows. It used to introduce a
- * fourth, KwantDesk-only Globex profile and shorten Asia to start at 19:00.
- * Selecting "Asia only" therefore measured a different tape from DeepChart
- * before any grouping or value-area maths even ran. Product-specific session
- * clocks may still name Globex separately; the DeepChart-compatible volume
- * profile must not.
- *
- * London and New York still overlap between 08:30 and 10:00, which is
- * DeepChart's own behaviour and is fine: their starts differ, so the chain
- * resolves them.
+ * The former three-window contract combined Globex and Asia under "Asia".
+ * Keep them independently selectable and give both the correct tape window.
+ * London's existing 02:00-10:00 window and New York's 08:30-15:00 window are
+ * unchanged; their deliberate overlap is independent of this opening split.
  *
  * The stored filter mode is still spelled "triple" from when there were three
  * of these. Renaming it would orphan every saved workspace, so the value stays
@@ -90,8 +80,8 @@ const DESK_SESSION_SEGMENTS: {
   start: number;
   end: number;
 }[] = [
-  // DeepChart "Asian", 15:00 -> 03:00 New York.
-  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 17 * 60, end: 26 * 60 },
+  { id: "globex", label: "Globex", settingsKey: "sessionGlobexEnabled", start: 17 * 60, end: 19 * 60 },
+  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 19 * 60, end: 26 * 60 },
   // DeepChart "Europe", 03:00 -> 11:00 New York.
   { id: "london", label: "London", settingsKey: "sessionLondonEnabled", start: 26 * 60, end: 34 * 60 },
   // DeepChart "Usa", 09:30 -> 16:00 New York - the cash session, not the CME close.
@@ -127,10 +117,46 @@ export function exchangeMinuteOfDay(timestampMs: number): number {
   return hour * 60 + minute;
 }
 
-/** Exchange-local midnight at or before an instant, as epoch ms. */
+const calendarFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: CHICAGO_TIME_ZONE,
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+const DAY_MS = 86_400_000;
+const civilEpochCache = new Map<number, number>();
+
+// UTC here encodes a calendar date/clock, not an actual exchange instant.
+function exchangeCivilStamp(timestampMs: number): number {
+  const parts = calendarFormatter.formatToParts(timestampMs);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((entry) => entry.type === type)?.value ?? 0);
+  return Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"));
+}
+
+function exchangeDateStamp(timestampMs: number): number {
+  return Math.floor(exchangeCivilStamp(timestampMs) / DAY_MS) * DAY_MS;
+}
+
+function exchangeCivilEpoch(dateStamp: number, minutes = 0): number {
+  const wallClock = dateStamp + minutes * 60_000;
+  const cached = civilEpochCache.get(wallClock);
+  if (cached !== undefined) return cached;
+  let instant = wallClock;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const correction = wallClock - exchangeCivilStamp(instant);
+    if (correction === 0) {
+      if (civilEpochCache.size >= 1024) civilEpochCache.delete(civilEpochCache.keys().next().value!);
+      civilEpochCache.set(wallClock, instant);
+      return instant;
+    }
+    instant += correction;
+  }
+  // A custom clock in the skipped spring-forward hour has no real instant.
+  return Number.NaN;
+}
+
+/** Exchange-local midnight, including a 23/25-hour DST transition day. */
 export function exchangeMidnightMs(timestampMs: number): number {
-  return timestampMs - exchangeMinuteOfDay(timestampMs) * 60_000
-    - (new Date(timestampMs).getSeconds() * 1000 + new Date(timestampMs).getMilliseconds());
+  return exchangeCivilEpoch(exchangeDateStamp(timestampMs));
 }
 
 function clampMinutes(value: number, fallback: number): number {
@@ -156,9 +182,12 @@ export function resolveSessionSegments(
   // Walk every exchange day the range touches, one day before the start so a
   // window that began the previous evening is still produced.
   const days: number[] = [];
-  const firstMidnight = exchangeMidnightMs(startMs) - 24 * 60 * 60_000;
-  for (let midnight = firstMidnight; midnight <= endMs; midnight += 24 * 60 * 60_000) {
-    days.push(midnight);
+  const firstDate = exchangeDateStamp(startMs) - DAY_MS;
+  const finalDate = exchangeDateStamp(endMs);
+  // Walk calendar dates, not 24 elapsed hours from a midnight. Otherwise every
+  // window after a clock change is shifted by an hour within the same request.
+  for (let date = firstDate; date <= finalDate; date += DAY_MS) {
+    days.push(date);
   }
 
   const spans: { id: SessionSegment["id"]; label: string; start: number; end: number }[] =
@@ -181,10 +210,20 @@ export function resolveSessionSegments(
           : [{ id: "rth", label: "RTH", start: RTH_START_MINUTES, end: RTH_END_MINUTES }];
 
   const segments: SessionSegment[] = [];
-  for (const midnight of days) {
+  for (const date of days) {
+    // Each named split belongs to the CME day opened on this calendar date.
+    // Friday/Saturday evenings do not open sessions. Emitting them lets a
+    // "last trading date" fallback fold empty weekend windows onto Friday.
+    const weekday = new Date(date).getUTCDay();
+    if (config.mode === "triple" && (weekday === 5 || weekday === 6)) continue;
     for (const span of spans) {
-      const segmentStart = midnight + span.start * 60_000;
-      const segmentEnd = midnight + span.end * 60_000;
+      // The Asia handover is Tokyo's fixed 09:00, not a Chicago clock that
+      // would drift by an hour every US winter. `date` encodes the Chicago
+      // opening calendar date; next UTC midnight is that day's Tokyo open.
+      const asiaOpen = date + DAY_MS;
+      const segmentStart = span.id === "asia" ? asiaOpen : exchangeCivilEpoch(date, span.start);
+      const segmentEnd = span.id === "globex" ? asiaOpen : exchangeCivilEpoch(date, span.end);
+      if (!Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd)) continue;
       if (segmentEnd <= startMs || segmentStart >= endMs) continue;
       segments.push({
         id: span.id,
@@ -241,14 +280,11 @@ export function sessionTradingDate(segment: SessionSegment, useEndSessionAsStart
  * about when a session starts; only London's close differs, and it differs for
  * a stated reason.
  */
-const DESK_CLOCK_SEGMENTS: { id: SessionSegment["id"]; label: string; start: number; end: number }[] = [
-  { id: "globex", label: "Globex", start: 17 * 60, end: 19 * 60 },
-  { id: "asia", label: "Asia", start: 19 * 60, end: 26 * 60 },
-  // Hands over at the cash open rather than at DeepChart's 10:00, because from
-  // 08:30 the desk is trading New York.
-  { id: "london", label: "London", start: 26 * 60, end: RTH_START_MINUTES + 24 * 60 },
-  { id: "newyork", label: "New York", start: RTH_START_MINUTES + 24 * 60, end: 15 * 60 + 24 * 60 },
-];
+const DESK_CLOCK_SEGMENTS = DESK_SESSION_SEGMENTS.map(({ id, label, start, end }) => ({
+  id, label, start,
+  // The clock hands over to New York at its open, rather than overlapping it.
+  end: id === "london" ? RTH_START_MINUTES + 24 * 60 : end,
+}));
 
 const chicagoWeekdayFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: CHICAGO_TIME_ZONE,
@@ -283,7 +319,17 @@ export function currentDeskSession(timestampMs: number = Date.now()): DeskSessio
    * carried past midnight rather than compared against a calendar day.
    */
   const offset = minute >= 17 * 60 ? minute : minute + 24 * 60;
-  const segment = DESK_CLOCK_SEGMENTS.find((entry) => offset >= entry.start && offset < entry.end);
+  // Convert Tokyo's UTC-midnight handover to the current Chicago clock. Clock
+  // changes occur outside the active futures week; this also names Sunday
+  // evening correctly immediately after a US daylight-saving transition.
+  const utcMinute = new Date(timestampMs).getUTCHours() * 60 + new Date(timestampMs).getUTCMinutes();
+  const asiaStart = (minute - utcMinute + 24 * 60) % (24 * 60);
+  const clockSegments = DESK_CLOCK_SEGMENTS.map((entry) => ({
+    ...entry,
+    start: entry.id === "asia" ? asiaStart : entry.start,
+    end: entry.id === "globex" ? asiaStart : entry.end,
+  }));
+  const segment = clockSegments.find((entry) => offset >= entry.start && offset < entry.end);
   if (!segment) return null;
   return { id: segment.id, label: segment.label, minutesRemaining: segment.end - offset };
 }
