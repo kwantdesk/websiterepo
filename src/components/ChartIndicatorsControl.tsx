@@ -37,7 +37,7 @@ import {
   VOLUME_PROFILE_INDICATOR_IDS,
   defaultIndicatorSettings,
 } from "@/lib/chartIndicatorConfig";
-import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS } from "@/lib/volumeProfileSessions";
+import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS, profileSessionEnabled } from "@/lib/volumeProfileSessions";
 import type { ChartSettings } from "@/lib/chartSettings";
 import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
 import { supportsPalette as indicatorSupportsPalette } from "@/lib/indicatorPaletteRegistry";
@@ -3142,7 +3142,7 @@ export default function ChartIndicatorsControl({
                       ["none", "None · whole session"],
                       ["filter", "Filter · keep the window"],
                       ["splitted", "Splitted · per session"],
-                      ["triple", "Sessions · Asia / London / New York"],
+                      ["triple", "Sessions · Globex / Asia / London / New York"],
                     ]],
                     ["Filter time", "filterTime", "rth", [
                       ["rth", "RTH · cash session"],
@@ -3193,7 +3193,7 @@ export default function ChartIndicatorsControl({
                         const splitting = String(settingsInstance.settings?.filterMode ?? "none") === "triple";
                         // Off the split there is one profile covering everything,
                         // so no single session reads as selected.
-                        const on = splitting && settingsInstance.settings?.[key] !== false;
+                        const on = splitting && profileSessionEnabled(settingsInstance.settings ?? {}, key);
                         return (
                           <button
                             key={key}
@@ -3242,16 +3242,16 @@ export default function ChartIndicatorsControl({
                                 return { ...current, settings };
                               }
                               const enabledCount = DESK_SESSION_SETTING_KEYS
-                                .filter((sessionKey) => settings[sessionKey] !== false).length;
+                                .filter((sessionKey) => profileSessionEnabled(settings, sessionKey)).length;
                               // Never translate "turn off the last selected
                               // session" into the unrelated whole-day mode.
                               // Keeping the final selection is deterministic
                               // and prevents the study appearing to vanish or
                               // silently changing what it measures.
-                              if (settings[key] !== false && enabledCount === 1) return current;
-                              settings[key] = settings[key] === false;
+                              if (profileSessionEnabled(settings, key) && enabledCount === 1) return current;
+                              settings[key] = !profileSessionEnabled(settings, key);
                               const noneLeft = DESK_SESSION_SETTING_KEYS
-                                .every((sessionKey) => settings[sessionKey] === false);
+                                .every((sessionKey) => !profileSessionEnabled(settings, sessionKey));
                               if (noneLeft) return current;
                               return { ...current, settings };
                             })}
@@ -3269,9 +3269,10 @@ export default function ChartIndicatorsControl({
                     </div>
                     <span className="block text-[8px] leading-4 text-muted">
                       Picking a session splits the day and draws only what is selected; the rest keep their own
-                      boundaries rather than absorbing the ones left out. Asia runs 17:00–02:00,
-                      London 02:00–10:00 and New York 08:30–15:00,
-                      Chicago time, matching DeepChart&apos;s Asian / Europe / USA windows. At least one
+                      boundaries rather than absorbing the ones left out. Globex keeps the original
+                      17:00–02:00 Chicago window. Asia / Tokyo starts at 10:00 Brisbane (09:00 Tokyo)
+                      and overlaps Globex until the same cutoff; selecting it never shortens Globex.
+                      London remains 02:00–10:00 and New York 08:30–15:00 Chicago. At least one
                       session remains selected; choose “None · whole session” explicitly for a whole-day profile.
                     </span>
                   </div>

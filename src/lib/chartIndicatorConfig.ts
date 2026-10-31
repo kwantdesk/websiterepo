@@ -3169,6 +3169,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     // every pick after it toggles.
     sessionSelectionArmed: false,
     sessionAsiaEnabled: true,
+    sessionTokyoEnabled: false,
     sessionLondonEnabled: true,
     sessionNewYorkEnabled: true,
     snapMode: indicatorId === "custom-draw-on-volume-profile"
@@ -3258,6 +3259,12 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance;
   if (normalizedInstance.indicatorId === "market-profile-tpo") {
     normalizedInstance = { ...normalizedInstance, indicatorId: "tpo-chart" };
+  }
+  // Preserve all existing session flags/bounds. Tokyo is a new optional
+  // overlapping profile, not a migration of the existing overnight profile.
+  if (VOLUME_PROFILE_INDICATOR_IDS.has(normalizedInstance.indicatorId)
+    && normalizedInstance.settings?.sessionTokyoEnabled === undefined) {
+    normalizedInstance = { ...normalizedInstance, settings: { ...(normalizedInstance.settings ?? {}), sessionTokyoEnabled: false } };
   }
   if (normalizedInstance.indicatorId === "auction-gap-tracker") {
     return {

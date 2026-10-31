@@ -33,14 +33,14 @@ const chicagoTradingDate = (ms) => cmeSessionDateKey(ms) ?? new Date(ms).toISOSt
 const ownedByDay = (mode) => segmentsForDay(mode)
   .filter((segment) => chicagoTradingDate(segment.startMs) === tradingDate);
 
-check("the three DeepChart sessions are the three the dialog offers", () => {
+check("the dialog adds Tokyo while retaining original session identities", () => {
   assert.deepEqual(
     DESK_SESSIONS.map((session) => session.id),
-    ["asia", "london", "newyork"],
+    ["asia", "tokyo", "london", "newyork"],
   );
   assert.deepEqual(
     DESK_SESSIONS.map((session) => session.settingsKey),
-    ["sessionAsiaEnabled", "sessionLondonEnabled", "sessionNewYorkEnabled"],
+    ["sessionAsiaEnabled", "sessionTokyoEnabled", "sessionLondonEnabled", "sessionNewYorkEnabled"],
   );
 });
 
@@ -51,8 +51,8 @@ check("one CME trading date owns exactly one of each session", () => {
    * date may be drawn on it.
    */
   const owned = ownedByDay("triple");
-  assert.equal(owned.length, 3, `expected three owned windows, got ${owned.length}`);
-  assert.deepEqual(owned.map((segment) => segment.id), ["asia", "london", "newyork"]);
+  assert.equal(owned.length, 4, `expected four owned windows, got ${owned.length}`);
+  assert.deepEqual(owned.map((segment) => segment.id), ["asia", "tokyo", "london", "newyork"]);
 });
 
 check("selecting a subset leaves only that subset", () => {

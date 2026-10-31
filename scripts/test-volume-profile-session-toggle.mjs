@@ -31,17 +31,19 @@ const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); }
 
 const SESSION_KEYS = [
   "sessionAsiaEnabled",
+  "sessionTokyoEnabled",
   "sessionLondonEnabled",
   "sessionNewYorkEnabled",
 ];
 
-check("the three volume-profile sessions match DeepChart", () => {
+check("the original windows remain and Tokyo has its independent control", () => {
   const block = sessions.slice(
     sessions.indexOf("const DESK_SESSION_SEGMENTS"),
     sessions.indexOf("export const DESK_SESSIONS"),
   );
   for (const [id, key] of [
     ["asia", "sessionAsiaEnabled"],
+    ["tokyo", "sessionTokyoEnabled"],
     ["london", "sessionLondonEnabled"],
     ["newyork", "sessionNewYorkEnabled"],
   ]) {
@@ -84,6 +86,11 @@ check("a deselected session's profile is removed from state", () => {
 
 check("every DeepChart session reaches the window resolver", () => {
   for (const key of SESSION_KEYS) {
+    if (key === "sessionTokyoEnabled") {
+      assert.ok(config.includes(`${key}: false`), "new Tokyo profile must default off");
+      assert.ok(config.includes(`normalizedInstance.settings?.${key} === undefined`));
+      continue;
+    }
     assert.ok(config.includes(`${key}: true`), `${key} needs a default`);
     assert.ok(
       config.includes(`${key}: normalizedInstance.settings?.${key} ?? true`),
@@ -96,7 +103,7 @@ check("the buttons render from the shared list, not a second copy", () => {
   // A local array here is how the UI and the windows drift apart - a button
   // with no window behind it, or a drawn session with no way to switch it off.
   assert.match(control, /\{DESK_SESSIONS\.map\(\(\{ label, settingsKey: key \}\) => \{/);
-  assert.match(control, /import \{ DESK_SESSIONS, DESK_SESSION_SETTING_KEYS \}/);
+  assert.match(control, /import \{ DESK_SESSIONS, DESK_SESSION_SETTING_KEYS, profileSessionEnabled \}/);
   assert.doesNotMatch(control, /\["Asia", "sessionAsiaEnabled"\]/, "the hard-coded button list must be gone");
   // The final selected session cannot silently turn into an unrelated
   // whole-day profile.

@@ -41,7 +41,7 @@ export const DEFAULT_SESSION_FILTER: SessionFilterConfig = {
 
 export type SessionSegment = {
   /** Stable identity used to label a split profile. */
-  id: "rth" | "eth" | "globex" | "asia" | "london" | "newyork" | "custom";
+  id: "rth" | "eth" | "globex" | "asia" | "tokyo" | "london" | "newyork" | "custom";
   label: string;
   startMs: number;
   endMs: number;
@@ -58,21 +58,12 @@ export const RTH_END_MINUTES = 15 * 60 + 15;
  * expressed from that bell and the later ones run past 1440 into the next
  * calendar day.
  *
- * Asia, London and New York carry DeepChart's own boundaries, read on
- * 2026-08-31 out of its Sessions Marker defaults (Asian 15:00-03:00, Europe
- * 03:00-11:00, Usa 09:30-16:00 - New York time, which its 09:30 cash open
- * fixes beyond doubt) and converted to Chicago. A profile is only comparable
- * to DeepChart's if it covers the same tape, and ours previously did not: our
- * Asia opened two hours after theirs and our London and New York both closed
- * early. Two different windows over one tape give two different value areas,
- * which is why the mismatch read as a constant offset rather than drift.
- *
- * A Triple split is exactly DeepChart's three windows. It used to introduce a
- * fourth, KwantDesk-only Globex profile and shorten Asia to start at 19:00.
- * Selecting "Asia only" therefore measured a different tape from DeepChart
- * before any grouping or value-area maths even ran. Product-specific session
- * clocks may still name Globex separately; the DeepChart-compatible volume
- * profile must not.
+ * The owner explicitly keeps the existing 17:00–02:00 window intact and
+ * renames its display label from Asia to Globex. Its persisted `asia` id and
+ * sessionAsiaEnabled flag remain unchanged, preserving saved calculations.
+ * Tokyo/Asia is an additional, overlapping window: 09:00 Tokyo / 00:00 UTC
+ * (10:00 Brisbane) through the same existing overnight cutoff. It NEVER
+ * partitions or shortens Globex. It has a new opt-in identity/flag.
  *
  * London and New York still overlap between 08:30 and 10:00, which is
  * DeepChart's own behaviour and is fine: their starts differ, so the chain
@@ -90,8 +81,10 @@ const DESK_SESSION_SEGMENTS: {
   start: number;
   end: number;
 }[] = [
-  // DeepChart "Asian", 15:00 -> 03:00 New York.
-  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 17 * 60, end: 26 * 60 },
+  // Rename only: retain the complete original window, id and saved flag.
+  { id: "asia", label: "Globex", settingsKey: "sessionAsiaEnabled", start: 17 * 60, end: 26 * 60 },
+  // Start is resolved at fixed Tokyo open below, independently of US DST.
+  { id: "tokyo", label: "Asia", settingsKey: "sessionTokyoEnabled", start: 19 * 60, end: 26 * 60 },
   // DeepChart "Europe", 03:00 -> 11:00 New York.
   { id: "london", label: "London", settingsKey: "sessionLondonEnabled", start: 26 * 60, end: 34 * 60 },
   // DeepChart "Usa", 09:30 -> 16:00 New York - the cash session, not the CME close.
@@ -111,6 +104,11 @@ export const DESK_SESSIONS: readonly { id: SessionSegment["id"]; label: string; 
 /** Every desk-session settings flag, in draw order. */
 export const DESK_SESSION_SETTING_KEYS: readonly string[] =
   DESK_SESSION_SEGMENTS.map((segment) => segment.settingsKey);
+
+/** The new overlapping Tokyo profile is opt-in; existing flags keep their defaults. */
+export function profileSessionEnabled(settings: Record<string, unknown>, key: string): boolean {
+  return key === "sessionTokyoEnabled" ? settings[key] === true : settings[key] !== false;
+}
 
 const minuteFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: CHICAGO_TIME_ZONE,
@@ -183,8 +181,13 @@ export function resolveSessionSegments(
   const segments: SessionSegment[] = [];
   for (const midnight of days) {
     for (const span of spans) {
-      const segmentStart = midnight + span.start * 60_000;
+      const segmentStart = span.id === "tokyo"
+        ? Math.floor(midnight / 86_400_000) * 86_400_000 + 86_400_000
+        : midnight + span.start * 60_000;
       const segmentEnd = midnight + span.end * 60_000;
+      // Only the new Tokyo window is weekday constrained. Existing windows
+      // and their time/date implementation are deliberately untouched.
+      if (span.id === "tokyo" && [0, 6].includes(new Date(segmentStart).getUTCDay())) continue;
       if (segmentEnd <= startMs || segmentStart >= endMs) continue;
       segments.push({
         id: span.id,
@@ -309,7 +312,7 @@ export function requestedSessionIds(settings: Record<string, unknown>): Set<stri
   if (mode === "none") return null;
   if (mode === "triple") {
     return new Set(DESK_SESSIONS
-      .filter(({ settingsKey }) => settings[settingsKey] !== false)
+      .filter(({ settingsKey }) => profileSessionEnabled(settings, settingsKey))
       .map(({ id }) => id));
   }
   const requestedWindow = String(settings.filterTime ?? "rth").toLowerCase();

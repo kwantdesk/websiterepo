@@ -68,14 +68,14 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
   assert.equal(isWithinSessionSegments(chicago("2026-08-19T15:00:00Z"), segments), false, "10:00 Chicago is not overnight");
 }
 
-// --- the DeepChart-compatible split produces Asian / Europe / USA ---
+// --- original Globex/Europe/USA windows plus independent Tokyo ---
 {
   const segments = resolveSessionSegments(DAY_START, DAY_END, {
     ...DEFAULT_SESSION_FILTER, mode: "triple",
   });
   const ids = new Set(segments.map((s) => s.id));
-  assert.deepEqual([...ids].sort(), ["asia", "london", "newyork"],
-    "all three DeepChart sessions are produced");
+  assert.deepEqual([...ids].sort(), ["asia", "london", "newyork", "tokyo"],
+    "all original windows and additional Tokyo are produced");
 
   for (const segment of segments) {
     assert.ok(segment.endMs > segment.startMs, `${segment.id} window has positive length`);
@@ -94,7 +94,8 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
    */
   for (let index = 1; index < segments.length; index += 1) {
     assert.ok(
-      segments[index].startMs > segments[index - 1].startMs,
+      segments[index].startMs > segments[index - 1].startMs
+        || (segments[index].startMs === DAY_START && segments[index - 1].startMs === DAY_START),
       `${segments[index].id} starts at the same instant as ${segments[index - 1].id}`,
     );
   }
@@ -105,17 +106,16 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
   assert.equal(owning.length, 1, "an execution belongs to exactly one session");
   assert.equal(owning[0].id, "newyork");
 
-  // DeepChart's Asian window starts at 17:00 Chicago, so the post-bell prints
-  // are part of Asia rather than a KwantDesk-only fourth profile.
+  // The old overnight window keeps its identity and tape, labelled Globex.
   const postBellPrint = chicago("2026-08-19T23:30:00Z"); // 18:30 Chicago
   const postBellOwner = segments.filter((s) => postBellPrint >= s.startMs && postBellPrint < s.endMs);
   assert.equal(postBellOwner.length, 1, "an execution belongs to exactly one session");
   assert.equal(postBellOwner[0]?.id, "asia", "an 18:30 print is not in DeepChart's Asian window");
 
-  // Tokyo cash opens 09:00 JST = 19:00 Chicago; from there it is Asia.
+  // Tokyo cash opens 09:00 JST; both Globex and additional Asia include it.
   const asiaPrint = chicago("2026-08-20T01:30:00Z"); // 20:30 Chicago
   const asiaOwner = segments.filter((s) => asiaPrint >= s.startMs && asiaPrint < s.endMs);
-  assert.equal(asiaOwner[0]?.id, "asia", "a 20:30 print is Asia");
+  assert.deepEqual(asiaOwner.map(s => s.id), ["asia", "tokyo"]);
 
   // The three windows must leave no gap between the bell and NY.
   // The range spans several days, so each handover is checked against the NEXT

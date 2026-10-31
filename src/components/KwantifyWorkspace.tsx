@@ -9154,6 +9154,7 @@ function WorkspaceChartPaneComponent({
     // into a neighbour, so the remaining sessions keep their own boundaries.
     const enabledSessionIds = new Set<string>([
       ...(settings.sessionAsiaEnabled === false ? [] : ["asia"]),
+      ...(settings.sessionTokyoEnabled === true ? ["tokyo"] : []),
       ...(settings.sessionLondonEnabled === false ? [] : ["london"]),
       ...(settings.sessionNewYorkEnabled === false ? [] : ["newyork"]),
       // Windows outside the three desk sessions are governed by Filter time.
@@ -9615,6 +9616,7 @@ function WorkspaceChartPaneComponent({
     // Without these the effect never re-ran on a session toggle, so clicking
     // Asia off changed a stored flag and nothing else: no refetch, no prune.
     dailyProfileSettings.sessionAsiaEnabled,
+    dailyProfileSettings.sessionTokyoEnabled,
     dailyProfileSettings.sessionLondonEnabled,
     dailyProfileSettings.sessionNewYorkEnabled,
     dailyProfileSettings.valueAreaPercent,
