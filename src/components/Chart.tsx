@@ -10167,10 +10167,10 @@ function Chart({
       // Bounce's side text is a local presentation choice, off in the stock
       // settings. Linked map labels/full-view values must not turn it back on.
       showLabels: indicatorSettings.showLabels === true,
-      showValues: bounceMirrorEnabled
-        ? indicatorSettings.showLabels === true && (bounceMirror.profile.viewMode === "full" || bounceMirror.profile.starSettings.showRawValues)
-        : indicatorSettings.showValues === true,
-      valueMode: bounceMirrorEnabled ? bounceMirror.profile.starSettings.valueMode : "signed",
+      showValues: indicatorSettings.showLabels === true || (!bounceMirrorEnabled && indicatorSettings.showValues === true),
+      // Bounce side wording always identifies the actual signed exposure;
+      // Map's own percentage/raw-value display is a separate presentation.
+      valueMode: "signed",
       showTouchCount: indicatorSettings.showTouchCount !== false,
       showAirPockets: bounceMirrorEnabled ? bounceMirror.profile.starSettings.showAirPocketLabels : indicatorSettings.showAirPockets !== false,
       showRolls: indicatorSettings.rollVisualizationEnabled === true,

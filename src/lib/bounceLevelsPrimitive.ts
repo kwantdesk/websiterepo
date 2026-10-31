@@ -7,7 +7,7 @@ import type {
   Time,
 } from "@/lib/lightweightChartsCompat";
 import type { BounceExposureNode, BounceLevelsSnapshot } from "@/lib/bounceLevels";
-import { formatGexMapExposure } from "@/lib/gexMapFormat";
+import { formatGexMapExposureLegend } from "@/lib/gexMapFormat";
 
 type CandleSeriesApi = SeriesAttachedParameter<Time, "Candlestick">["series"];
 
@@ -150,14 +150,14 @@ export function calculateSameSideLeaderStrength({
   return clamp(0.025 + competitiveStrength + clamp(providerStrength, 0, 1) * 0.08, 0.025, 0.62);
 }
 
-const compactExposure = (value: number) => {
-  const absolute = Math.abs(value);
-  const sign = value < 0 ? "-" : value > 0 ? "+" : "";
-  if (absolute >= 1_000_000_000) return `${sign}${(absolute / 1_000_000_000).toFixed(1)}B`;
-  if (absolute >= 1_000_000) return `${sign}${(absolute / 1_000_000).toFixed(1)}M`;
-  if (absolute >= 1_000) return `${sign}${(absolute / 1_000).toFixed(1)}K`;
-  return `${sign}${absolute.toFixed(0)}`;
-};
+export function formatBounceExposureLabel(value: number, percentOfKing: number, mode: "signed" | "star-percent" = "signed") {
+  if (!Number.isFinite(value)) return "—";
+  if (mode === "star-percent") {
+    const sign = value < 0 ? "−" : value > 0 ? "+" : "";
+    return sign + (Math.abs(percentOfKing) * 100).toFixed(1) + "%";
+  }
+  return value === 0 ? "$0" : formatGexMapExposureLegend(value);
+}
 
 export function calculateBounceNodeVisualStructure({
   visualStrength,
@@ -706,7 +706,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         if (data.snapshot.mirrorGexMap && occupiedLabels.some((r) => point.y - 8 < r.bottom && point.y + 8 > r.top)) continue;
         const parts = [
           data.showLabels ? `${point.node.mapRoleLabel ?? level?.role ?? "NODE"} ${point.node.mappedPrice.toFixed(2)}` : "",
-          data.showValues ? data.valueMode === "star-percent" ? (point.node.signedExposure < 0 ? "-" : "") + (point.node.percentOfKing * 100).toFixed(1) + "%" : data.snapshot.mirrorGexMap ? formatGexMapExposure(point.node.signedExposure) : compactExposure(point.node.signedExposure) : "",
+          data.showValues ? formatBounceExposureLabel(point.node.signedExposure, point.node.percentOfKing, data.valueMode) : "",
           data.showTouchCount && level ? `${level.touches}T` : "",
         ].filter(Boolean);
         if (!parts.length) continue;

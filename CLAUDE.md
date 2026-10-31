@@ -1,5 +1,9 @@
 # KwantDesk Engineering Handoff
 
+## 2026-10-31 — Bounce wording shows signed dollars
+
+Owner wants enabled Bounce wording to show +$5B / −$5B clearly. Chart now includes signed cash exposure whenever local Show side labels is on, independent of Map Full/Star/raw-value/percent settings. Legacy value-only option retained, stock labels still off. Primitive uses shared signed compact currency formatting (B/M/K and small-value precision), zero $0; optional percentage callers also include positive sign. Map formatting/data/colours/mapping/history/linking untouched. Preserve the explicit cancellation of the prior unlink/source task. Six isolated actual-hook/canvas browser scenarios use bindings extracted from production Chart AST and verify nine formatter samples, actual positive/negative5B cash text, Star/Full with Map percentage/raw values off, checkbox off and reload. Existing36 mirror/48 palette/22 range tests, scoped primitive lint and full production build pass. Detail: docs/prompt-log/2026-10-31-bounce-signed-wording.md. Main-only release and exact live SHA verification.
+
 ## 2026-10-31 — Owner cancels latest Bounce change
 
 Owner says the preceding Bounce request was an earlier message and explicitly asks to undo it. Restore BounceGexMapSettings and useBounceGexMapMirror exactly to28d60a37; remove ec76bb5b task helper/test. The signed-colour range, side-label and GEX Map replay fixes remain. Existing36 mirror,22 range and7 replay checks, scoped lint and full production build pass. No preference, trade, provider or recording resets. The historical detach/source task note is marked REVERTED; do not reapply that cancelled patch without a new request. Existing main-only production release and live SHA verification required.
