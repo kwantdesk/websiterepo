@@ -9153,22 +9153,20 @@ function WorkspaceChartPaneComponent({
     // Unticking a window omits its profile entirely rather than folding it
     // into a neighbour, so the remaining sessions keep their own boundaries.
     const enabledSessionIds = new Set<string>([
-      ...(settings.sessionGlobexEnabled === false ? [] : ["globex"]),
       ...(settings.sessionAsiaEnabled === false ? [] : ["asia"]),
       ...(settings.sessionLondonEnabled === false ? [] : ["london"]),
       ...(settings.sessionNewYorkEnabled === false ? [] : ["newyork"]),
-      // Other windows are governed by Filter time.
+      // Windows outside the three desk sessions are governed by Filter time.
       "rth", "eth", "custom",
     ]);
     return resolveSessionSegments(dayStartMs, dayEndMs, {
       mode,
-      namedSessions: mode === "splitted" && settings.sessionSelectionArmed === true,
       window: sessionFilterTimeFor(settings),
       customStartMinutes: Number(settings.sessionStartMinutes ?? RTH_START_MINUTES),
       customEndMinutes: Number(settings.sessionEndMinutes ?? RTH_END_MINUTES),
       useEndSessionAsStartDay,
     }).filter((segment) => (
-      // The named desk sessions are subdivisions of a CME trading day, and a
+      // The three desk sessions are subdivisions of a CME trading day, and a
       // CME day already begins at the 17:00 Globex open. Attributing them by
       // the segment's own calendar date pushed the overnight window onto the
       // NEXT date, so the day that was actually being drawn only ever received
@@ -9176,7 +9174,7 @@ function WorkspaceChartPaneComponent({
       // session key encodes that 17:00 roll, so it is the correct owner here
       // whatever the end-session toggle says — that toggle governs custom
       // windows, whose day boundary is the trader's to define.
-      mode === "triple" || (mode === "splitted" && settings.sessionSelectionArmed === true)
+      mode === "triple"
         ? chicagoTradingDate(segment.startMs) === tradingDate
         : sessionTradingDate(segment, useEndSessionAsStartDay) === tradingDate
     )).filter((segment) => enabledSessionIds.has(segment.id));
@@ -9428,7 +9426,7 @@ function WorkspaceChartPaneComponent({
           // on every timer multiplied one outage into hundreds of thousands
           // of identical Vercel invocations.
           if (!includeCompletedProfiles && tradingDate !== currentDailyTradingDate) return;
-          // Splitting a day means one profile PER window, so Globex, Asia, London and
+          // Splitting a day means one profile PER window, so Asia, London and
           // New York stand beside each other. Each segment is requested as its
           // own explicit span with no further filtering; the server then has
           // nothing to merge.
@@ -9610,14 +9608,12 @@ function WorkspaceChartPaneComponent({
     dailyProfileInstance?.indicatorId,
     dailyProfileSettings.autoGroupFactor,
     dailyProfileSettings.filterMode,
-    dailyProfileSettings.sessionSelectionArmed,
     dailyProfileSettings.filterTime,
     dailyProfileSettings.sessionStartMinutes,
     dailyProfileSettings.sessionEndMinutes,
     dailyProfileSettings.useEndSessionAsStartDay,
     // Without these the effect never re-ran on a session toggle, so clicking
     // Asia off changed a stored flag and nothing else: no refetch, no prune.
-    dailyProfileSettings.sessionGlobexEnabled,
     dailyProfileSettings.sessionAsiaEnabled,
     dailyProfileSettings.sessionLondonEnabled,
     dailyProfileSettings.sessionNewYorkEnabled,

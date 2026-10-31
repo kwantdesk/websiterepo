@@ -1,5 +1,7 @@
 # Splitted volume profiles: full Globex plus independent New York
 
+**Status: REVERTED at the owner's request on 2026-10-31. The authoritative rollback is documented in `2026-10-31-volume-profile-session-rollback.md`; do not reapply this feature without a new request.**
+
 Owner says selecting Splitted then Globex/New York no longer works as before: Globex must calculate its whole session with the selected New York profile alongside it and without unwanted Asia/London profiles.
 
 The session buttons recognized only `triple` (the separate opening-block Sessions mode) and forced that mode on every initial pick. Selecting Splitted therefore could not retain its mode and named choices. The recently separated Globex opening block in Sessions stops at Asia's Tokyo open, which is not the full Globex envelope the owner requests in Splitted.

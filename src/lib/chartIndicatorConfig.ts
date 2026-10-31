@@ -3168,7 +3168,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     // False until the trader picks a session, so the first pick isolates and
     // every pick after it toggles.
     sessionSelectionArmed: false,
-    sessionGlobexEnabled: true,
     sessionAsiaEnabled: true,
     sessionLondonEnabled: true,
     sessionNewYorkEnabled: true,
@@ -3259,19 +3258,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance;
   if (normalizedInstance.indicatorId === "market-profile-tpo") {
     normalizedInstance = { ...normalizedInstance, indicatorId: "tpo-chart" };
-  }
-  if (VOLUME_PROFILE_INDICATOR_IDS.has(normalizedInstance.indicatorId)
-    && normalizedInstance.settings?.sessionGlobexEnabled === undefined) {
-    // The old Asia window included both opening subdivisions. Preserve that
-    // coverage when restoring a three-session workspace; keep an explicitly
-    // saved Globex choice independent from Asia and New York.
-    normalizedInstance = {
-      ...normalizedInstance,
-      settings: {
-        ...(normalizedInstance.settings ?? {}),
-        sessionGlobexEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
-      },
-    };
   }
   if (normalizedInstance.indicatorId === "auction-gap-tracker") {
     return {
@@ -4136,7 +4122,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         // schema upgrade; a settings migration must never retune a profile.
         groupingMode: normalizedInstance.settings?.groupingMode ?? "manual",
         gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
-        sessionGlobexEnabled: normalizedInstance.settings?.sessionGlobexEnabled ?? true,
         sessionAsiaEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
         sessionLondonEnabled: normalizedInstance.settings?.sessionLondonEnabled ?? true,
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
@@ -4225,7 +4210,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
         groupingMode: normalizedInstance.settings?.groupingMode ?? "manual",
         gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
-        sessionGlobexEnabled: normalizedInstance.settings?.sessionGlobexEnabled ?? true,
         sessionAsiaEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
         sessionLondonEnabled: normalizedInstance.settings?.sessionLondonEnabled ?? true,
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,

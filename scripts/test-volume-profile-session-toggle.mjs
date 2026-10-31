@@ -30,19 +30,17 @@ let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
 const SESSION_KEYS = [
-  "sessionGlobexEnabled",
   "sessionAsiaEnabled",
   "sessionLondonEnabled",
   "sessionNewYorkEnabled",
 ];
 
-check("the four volume-profile sessions separate Globex from Asia", () => {
+check("the three volume-profile sessions match DeepChart", () => {
   const block = sessions.slice(
     sessions.indexOf("const DESK_SESSION_SEGMENTS"),
     sessions.indexOf("export const DESK_SESSIONS"),
   );
   for (const [id, key] of [
-    ["globex", "sessionGlobexEnabled"],
     ["asia", "sessionAsiaEnabled"],
     ["london", "sessionLondonEnabled"],
     ["newyork", "sessionNewYorkEnabled"],
@@ -50,7 +48,7 @@ check("the four volume-profile sessions separate Globex from Asia", () => {
     assert.ok(block.includes(`id: "${id}"`), `${id} window is missing`);
     assert.ok(block.includes(`settingsKey: "${key}"`), `${id} has no settings flag`);
   }
-  assert.match(block, /id: "asia".*start: 19 \* 60, end: 26 \* 60/);
+  assert.match(block, /id: "asia".*start: 17 \* 60, end: 26 \* 60/);
 });
 
 check("the toggles are in the effect's dependency array", () => {
@@ -84,7 +82,7 @@ check("a deselected session's profile is removed from state", () => {
   assert.match(refresh, /kept\.length === current\.length \? current : kept/);
 });
 
-check("every desk session reaches the window resolver", () => {
+check("every DeepChart session reaches the window resolver", () => {
   for (const key of SESSION_KEYS) {
     assert.ok(config.includes(`${key}: true`), `${key} needs a default`);
     assert.ok(

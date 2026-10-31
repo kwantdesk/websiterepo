@@ -1,5 +1,7 @@
 # Daily Volume Profile: separate Globex and Asia
 
+**Status: REVERTED at the owner's request on 2026-10-31. The authoritative rollback is documented in `2026-10-31-volume-profile-session-rollback.md`; do not reapply this feature without a new request.**
+
 The owner reported that the 08:00 Brisbane opening profile was labelled Asia, while Asia should begin at 10:00. They want to keep Globex and New York independently of Asia/London.
 
 ## Cause and correction
