@@ -723,6 +723,7 @@ import {
   type HedgeChartLevel,
   type HedgeLevelsPayload,
 } from "@/lib/hedgeLevels";
+import { chartDrawingPersistenceInstrument } from "@/lib/chartWorkspaceScope";
 import PrecisionToolsLayer from "@/chart/precision-tools/PrecisionToolsLayer";
 import { CLEAR_CHART_DRAWINGS_EVENT } from "@/chart/precision-tools/PrecisionToolsLayer";
 import PrecisionToolsBoundary from "@/chart/precision-tools/PrecisionToolsBoundary";
@@ -3767,7 +3768,7 @@ function Chart({
   const tpoModelsSignatureRef = useRef("");
   const tpoMergeSelectionRef = useRef(tpoMergeSelection);
   const tpoMergeStorageKey = `kwantdesk:tpo-merges:v1:${chartInstanceId}:${instrument}`;
-  const drawingPersistenceInstrument = `${instrument}::${chartInstanceId.slice(-16)}`;
+  const drawingPersistenceInstrument = chartDrawingPersistenceInstrument(instrument, chartInstanceId);
   const [copiedPrice, setCopiedPrice] = useState(false);
   const [selectedTool, setSelectedTool] = useState<DrawingToolId>("cursor");
   const [crosshairSyncEnabled, setCrosshairSyncEnabled] = useState(false);
@@ -13736,7 +13737,7 @@ function Chart({
     try {
       const raw = window.localStorage.getItem(drawingsStorageKey(instrument, chartInstanceId));
       cached = normalizeProfessionalDrawings(raw ? JSON.parse(raw) : []);
-      if (!cached.length && !window.localStorage.getItem(migrationClaimKey)) {
+      if (!chartInstanceId.startsWith("algo:") && !cached.length && !window.localStorage.getItem(migrationClaimKey)) {
         ownsLegacyMigration = true;
         window.localStorage.setItem(migrationClaimKey, chartInstanceId);
         const legacyRaw = window.localStorage.getItem(`kwantify-chart-drawings:${instrument}`);

@@ -10,7 +10,7 @@ const NormalCharts = dynamic(() => import("@/components/KwantifyWorkspace"), {
   ssr: false, loading: () => <KwantLoader title="Opening charts" />,
 });
 
-/** The actual Charts workspace: same feed, panes, tools, studies and saved drawings. */
+/** The normal chart engine with independently saved Algo workspaces. */
 export default memo(function AlgoChart({ run, showTrades, selectedTrade, onInstrumentChange }: {
   run: AlgoRun; showTrades: boolean; selectedTrade: string | null;
   onInstrumentChange: (symbol: string) => void;

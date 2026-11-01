@@ -5,7 +5,7 @@ export const CHART_CROSSHAIR_SYNC_STORAGE_KEY = "kwantdesk:chart-crosshair-sync:
 export const CHART_CROSSHAIR_SYNC_TOGGLE_EVENT = "kwantdesk:chart-crosshair-sync-toggle";
 export const CHART_CROSSHAIR_SYNC_MOVE_EVENT = "kwantdesk:chart-crosshair-sync-move";
 
-export type ChartCrosshairSyncScope = "matching" | "gamvue";
+export type ChartCrosshairSyncScope = "matching" | "gamvue" | "algo";
 
 export type ChartCrosshairSyncToggle = {
   scope: ChartCrosshairSyncScope;
@@ -88,7 +88,7 @@ export function chartCrosshairSyncGroup(
   viewportGroup: string,
   shareGroup: boolean,
 ) {
-  if (scope === "gamvue") return shareGroup ? viewportGroup.trim() : "";
+  if (scope === "gamvue" || scope === "algo") return shareGroup ? viewportGroup.trim() : "";
   return instrumentKey.trim();
 }
 
@@ -97,6 +97,7 @@ export function chartCrosshairInstrumentKey(symbol: string | null | undefined) {
 }
 
 function crosshairSyncStorageKey(scope: ChartCrosshairSyncScope) {
+  if (scope === "algo") return `kwantdesk:algo-charting:${CHART_CROSSHAIR_SYNC_STORAGE_KEY}`;
   return scope === "gamvue"
     ? `${CHART_CROSSHAIR_SYNC_STORAGE_KEY}:gamvue`
     : CHART_CROSSHAIR_SYNC_STORAGE_KEY;

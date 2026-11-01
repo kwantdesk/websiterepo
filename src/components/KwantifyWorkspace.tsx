@@ -1,6 +1,7 @@
 "use client";
 
 import type { AlgoChartIntegration, AlgoChartFocus } from "@/lib/algoChartIntegration";
+import { workspaceScopeStorageKey, workspaceStoragePrefix, workspaceTemplateStorageKey, workspaceChartInstanceId, viewportSyncGroupForScope, type ChartWorkspaceScope } from "@/lib/chartWorkspaceScope";
 import { workspaceReplaySessionBounds } from "@/lib/workspaceReplay";
 import { readChartDrawingStore, updateChartDrawingPane } from "@/lib/chartDrawingPreferences";
 
@@ -1170,16 +1171,6 @@ const CHARTING_DRAWINGS_STORAGE_KEY = "kwantdesk:chart-drawtools:v1";
 const EMPTY_CHART_DRAWINGS: Drawing[] = [];
 const CHART_TEMPLATES_STORAGE_KEY = "olisa-chart-templates";
 const CHART_WORKSPACE_SETTINGS_STORAGE_KEY = "kwantdesk:chart-workspace-settings:v1";
-type ChartWorkspaceScope = "charts" | "gamma";
-const GAMMA_CHART_WORKSPACE_STORAGE_PREFIX = "kwantdesk:gamma-charting";
-const GEX_VUE_VIEWPORT_SYNC_GROUP = "gex-vue-linked-viewport";
-const CHARTS_VIEWPORT_SYNC_GROUP = "charts-linked-viewport";
-// Charts and GEX Vue each own a distinct sync group so linked charts never
-// bleed viewport state across workspaces.
-const viewportSyncGroupForScope = (scope: ChartWorkspaceScope) =>
-  scope === "gamma" ? GEX_VUE_VIEWPORT_SYNC_GROUP : CHARTS_VIEWPORT_SYNC_GROUP;
-const workspaceScopeStorageKey = (scope: ChartWorkspaceScope, chartKey: string) =>
-  scope === "charts" ? chartKey : `${GAMMA_CHART_WORKSPACE_STORAGE_PREFIX}:${chartKey}`;
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v1";
@@ -1299,8 +1290,10 @@ const GEX_STANDARD_WORKSPACE_ID = "gex-standard";
 const GEX_STANDARD_WORKSPACE_NAME = "GEX STANDARD";
 const GEX_STANDARD_WORKSPACE_UPDATED_AT = "2026-08-17T00:00:00.000Z";
 
+const DEFAULT_ALGO_WORKSPACE_PANES = DEFAULT_WORKSPACE_PANES.map((pane) => ({ ...pane, id: `algo-${pane.id}` }));
+
 function defaultWorkspacePanes(scope: ChartWorkspaceScope) {
-  return scope === "gamma" ? DEFAULT_GAMMA_WORKSPACE_PANES : DEFAULT_WORKSPACE_PANES;
+  return scope === "gamma" ? DEFAULT_GAMMA_WORKSPACE_PANES : scope === "algo" ? DEFAULT_ALGO_WORKSPACE_PANES : DEFAULT_WORKSPACE_PANES;
 }
 
 function createGexStandardLayout(panes: WorkspacePane[]): WorkspaceLayoutNode {
@@ -2483,7 +2476,7 @@ function loadScopedChartTemplates(scope: ChartWorkspaceScope): ChartTemplate[] {
   if (typeof window === "undefined") return [];
   try {
     const sharedValue = JSON.parse(
-      window.localStorage.getItem(CHART_TEMPLATES_STORAGE_KEY) ?? "[]",
+      window.localStorage.getItem(workspaceTemplateStorageKey(scope, CHART_TEMPLATES_STORAGE_KEY)) ?? "[]",
     ) as unknown;
     const legacyScopedValue = scope === "gamma"
       ? JSON.parse(
@@ -2711,7 +2704,7 @@ function persistChartWorkspaceRuntime(
   write(PANE_LEVEL_VISIBILITY_STORAGE_KEY, JSON.stringify(clonePaneLevelVisibility(runtime.levelVisibility)));
   write("olisa-chart-favourite-intervals", JSON.stringify(runtime.favouriteTimeframes));
   write("olisa-chart-workspace-linked-panes", JSON.stringify(runtime.linkedPaneIds));
-  writeProtectedItem(CHART_TEMPLATES_STORAGE_KEY, JSON.stringify(runtime.templates));
+  writeProtectedItem(workspaceTemplateStorageKey(scope, CHART_TEMPLATES_STORAGE_KEY), JSON.stringify(runtime.templates));
   saveScopedChartSettings(scope, runtime.chartSettings);
 }
 
@@ -5306,6 +5299,7 @@ function readValueAreaOverlayCache(
 
 function WorkspaceChartPaneComponent({
   pane,
+  chartInstanceId = pane.id,
   active,
   embedded = false,
   quietLoading = false,
@@ -5368,11 +5362,12 @@ function WorkspaceChartPaneComponent({
   onReplayTimeline,
 }: {
   pane: WorkspacePane;
+  chartInstanceId?: string;
   active: boolean;
   embedded?: boolean;
   period: string;
   settings: ChartSettings;
-  crosshairSyncScope?: "matching" | "gamvue";
+  crosshairSyncScope?: "matching" | "gamvue" | "algo";
   quietLoading?: boolean;
   /** Whether this chart shares its crosshair while keeping its own viewport. */
   crosshairLinked?: boolean;
@@ -9794,7 +9789,7 @@ function WorkspaceChartPaneComponent({
           backgroundLevels={replayActive ? [] : gameplanDecorations.levels}
           backgroundZones={replayActive ? [] : gameplanDecorations.zones}
           instrument={displayCmeSymbol(pane.symbol)}
-          chartInstanceId={pane.id}
+          chartInstanceId={chartInstanceId}
           quietLoading={quietLoading}
           crosshairSyncScope={crosshairSyncScope}
           crosshairLinked={crosshairLinked}
@@ -10275,7 +10270,9 @@ export default function KwantifyWorkspace({
   algo?: AlgoChartIntegration;
 }) {
   const router = useRouter();
-  const initialChartWorkspaceScope: ChartWorkspaceScope = section === "gamvue" ? "gamma" : "charts";
+  const isAlgoWorkspace = Boolean(algo);
+  const initialChartWorkspaceScope: ChartWorkspaceScope = isAlgoWorkspace ? "algo" : section === "gamvue" ? "gamma" : "charts";
+  const chartingDrawingsStorageKey = workspaceScopeStorageKey(isAlgoWorkspace ? "algo" : "charts", CHARTING_DRAWINGS_STORAGE_KEY);
   const chartWorkspaceScopeRef = useRef<ChartWorkspaceScope>(initialChartWorkspaceScope);
   const [chartWorkspaceScope, setChartWorkspaceScope] = useState<ChartWorkspaceScope>(initialChartWorkspaceScope);
   const [gexVueReplay, setGexVueReplay] = useState<GexVueReplayState>(() => createGexVueReplayState());
@@ -11218,7 +11215,7 @@ export default function KwantifyWorkspace({
   const paneChartDrawingsSavedRef = useRef<{ serialized: string; drawings: Record<string, Drawing[]> } | null>(null);
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(CHARTING_DRAWINGS_STORAGE_KEY);
+      const raw = window.localStorage.getItem(chartingDrawingsStorageKey);
       const next = readChartDrawingStore(raw);
       if (next) {
         paneChartDrawingsRef.current = next;
@@ -11228,34 +11225,34 @@ export default function KwantifyWorkspace({
       // A missing/corrupt store starts with no charting drawings.
     }
     setPaneChartDrawingsHydrated(true);
-  }, []);
+  }, [chartingDrawingsStorageKey]);
   useEffect(() => {
     if (!paneChartDrawingsHydrated || paneChartDrawings !== paneChartDrawingsRef.current) return;
     if (paneChartDrawingsSavedRef.current?.drawings === paneChartDrawings) return;
     const serialized = JSON.stringify(paneChartDrawings);
     try {
-      window.localStorage.setItem(CHARTING_DRAWINGS_STORAGE_KEY, serialized);
+      window.localStorage.setItem(chartingDrawingsStorageKey, serialized);
       paneChartDrawingsSavedRef.current = { serialized, drawings: paneChartDrawings };
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     } catch {
       // Drawings still apply this session without persistence.
     }
-  }, [paneChartDrawings, paneChartDrawingsHydrated]);
+  }, [paneChartDrawings, paneChartDrawingsHydrated, chartingDrawingsStorageKey]);
   const setChartDrawingsForPane = useCallback((paneId: string, drawings: Drawing[], renderedPane?: Drawing[]) => {
     let stored: string | null = null;
-    try { stored = window.localStorage.getItem(CHARTING_DRAWINGS_STORAGE_KEY); } catch { /* Session state still works without storage. */ }
+    try { stored = window.localStorage.getItem(chartingDrawingsStorageKey); } catch { /* Session state still works without storage. */ }
     const next = updateChartDrawingPane(paneChartDrawingsRef.current, stored, paneId, drawings, paneChartDrawingsSavedRef.current?.serialized, renderedPane);
     paneChartDrawingsRef.current = next;
     // Persist at the edit boundary, before exiting replay/navigating/unmounting.
     // React's later passive save must never overwrite this with an older frame.
     try {
       const serialized = JSON.stringify(next);
-      window.localStorage.setItem(CHARTING_DRAWINGS_STORAGE_KEY, serialized);
+      window.localStorage.setItem(chartingDrawingsStorageKey, serialized);
       paneChartDrawingsSavedRef.current = { serialized, drawings: next };
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     } catch { /* Keep edits in memory and let the passive save retry. */ }
     setPaneChartDrawings(next);
-  }, []);
+  }, [chartingDrawingsStorageKey]);
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
   const [liveGexError, setLiveGexError] = useState("");
@@ -11327,7 +11324,7 @@ export default function KwantifyWorkspace({
   const [chartSettingsSnapshot, setChartSettingsSnapshot] = useState<ChartSettings>(chartSettings);
   const [templates, setTemplates] = useState<ChartTemplate[]>(initialChartWorkspaceRuntime.templates);
   useEffect(() => {
-    const nextScope: ChartWorkspaceScope | null = bottomWorkspaceSection === "gamvue"
+    const nextScope: ChartWorkspaceScope | null = isAlgoWorkspace ? "algo" : bottomWorkspaceSection === "gamvue"
       ? "gamma"
       : bottomWorkspaceSection === "charts"
         ? "charts"
@@ -11395,6 +11392,7 @@ export default function KwantifyWorkspace({
     activePaneId,
     activeWorkspacePresetId,
     bottomWorkspaceSection,
+    isAlgoWorkspace,
     chartSettings,
     favTFs,
     paneIndicators,
@@ -12701,7 +12699,7 @@ export default function KwantifyWorkspace({
     const nextTemplates = [...templates.filter((template) => template.name !== name), { name, settings: savedSettings }];
     setTemplates(nextTemplates);
     writeProtectedItem(
-      CHART_TEMPLATES_STORAGE_KEY,
+      workspaceTemplateStorageKey(chartWorkspaceScopeRef.current, CHART_TEMPLATES_STORAGE_KEY),
       JSON.stringify(nextTemplates),
     );
     setTemplateName("");
@@ -12712,7 +12710,7 @@ export default function KwantifyWorkspace({
     const nextTemplates = templates.filter((template) => template.name !== name);
     setTemplates(nextTemplates);
     writeProtectedItem(
-      CHART_TEMPLATES_STORAGE_KEY,
+      workspaceTemplateStorageKey(chartWorkspaceScopeRef.current, CHART_TEMPLATES_STORAGE_KEY),
       JSON.stringify(nextTemplates),
     );
   }
@@ -15082,6 +15080,20 @@ export default function KwantifyWorkspace({
           } catch {
             setPaneLevelVisibility({});
           }
+          } else if (chartWorkspaceScopeRef.current === "algo") {
+            const next = loadChartWorkspaceRuntime("algo");
+            const pane = next.panes.find(item => item.id === next.activePaneId) ?? next.panes[0];
+            setWorkspaceLayout(next.layout); setWorkspaceLocked(next.locked);
+            setWorkspaceSplitRatio(next.splitRatio); setWorkspaceQuadSplit(next.quadSplit);
+            setWorkspacePanes(next.panes); setWorkspaceTree(next.tree);
+            setWorkspaceFloatingWindows(next.floatingWindows);
+            setWorkspacePresets(next.presets); setActiveWorkspacePresetId(next.activePresetId);
+            setActivePaneId(next.activePaneId); setPaneIndicators(next.indicators);
+            setPaneLevelVisibility(next.levelVisibility); setLinkedViewportPaneIds(new Set(next.linkedPaneIds));
+            setChartSettings(next.chartSettings); setDraftChartSettings(next.chartSettings);
+            setChartSettingsSnapshot(next.chartSettings); setTemplates(next.templates);
+            setSelectedInstrument(pane.symbol); setSelectedTimeframe(pane.timeframe);
+            setSelectedPeriod(pane.period); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
           } else {
             // Cloud chart preferences belong to Charts. Gamma keeps its own
             // layout and behaviour while inheriting only the active theme.
@@ -15195,8 +15207,8 @@ export default function KwantifyWorkspace({
       const keys = detail?.keys;
       const changed = (key: string) => !keys || keys.includes(key);
       const scope = chartWorkspaceScopeRef.current;
-      const workspaceChanged = !keys || keys.some(key => scope === "gamma"
-        ? key.startsWith("kwantdesk:gamma-charting:")
+      const workspaceChanged = !keys || keys.some(key => scope !== "charts"
+        ? key.startsWith(workspaceStoragePrefix(scope))
         : key.startsWith("olisa-chart-workspace-") || key === CHART_INDICATORS_STORAGE_KEY
           || key === CHART_WORKSPACE_SETTINGS_STORAGE_KEY || key === PANE_LEVEL_VISIBILITY_STORAGE_KEY
           || key === WORKSPACE_PRESETS_STORAGE_KEY || key === ACTIVE_WORKSPACE_PRESET_STORAGE_KEY
@@ -15221,8 +15233,8 @@ export default function KwantifyWorkspace({
       const read = <T,>(key: string, fallback: T): T => {
         try { return JSON.parse(window.localStorage.getItem(key) ?? "null") ?? fallback; } catch { return fallback; }
       };
-      if (changed(CHARTING_DRAWINGS_STORAGE_KEY)) {
-        const stored = read<Record<string, unknown>>(CHARTING_DRAWINGS_STORAGE_KEY, {});
+      if (changed(chartingDrawingsStorageKey)) {
+        const stored = read<Record<string, unknown>>(chartingDrawingsStorageKey, {});
         const next = readChartDrawingStore(JSON.stringify(stored));
         if (next) {
           paneChartDrawingsRef.current = next;
@@ -15240,7 +15252,7 @@ export default function KwantifyWorkspace({
     };
     window.addEventListener(PREFERENCES_HYDRATED_EVENT, restoreAccountRevision);
     return () => window.removeEventListener(PREFERENCES_HYDRATED_EVENT, restoreAccountRevision);
-  }, [preferenceUserId]);
+  }, [preferenceUserId, chartingDrawingsStorageKey]);
 
   useEffect(() => {
     const syncChartPalette = (event?: Event) => {
@@ -16950,7 +16962,7 @@ export default function KwantifyWorkspace({
       setChartSettings(nextChartSettings);
       setDraftChartSettings(nextChartSettings);
       setChartSettingsSnapshot(nextChartSettings);
-      saveStoredChartSettings(nextChartSettings);
+      if (chartWorkspaceScopeRef.current !== "algo") saveStoredChartSettings(nextChartSettings);
       saveScopedChartSettings(chartWorkspaceScopeRef.current, nextChartSettings);
     }
     if (preset.indicators) {
@@ -19003,6 +19015,7 @@ export default function KwantifyWorkspace({
       <WorkspaceChartPane
         key={`${pane.id}:refresh-${paneRefreshNonces[pane.id] ?? 0}`}
         pane={pane}
+        chartInstanceId={workspaceChartInstanceId(chartWorkspaceScope, pane.id)}
         active={activePaneId === pane.id}
         embedded
         period={pane.period}
@@ -19010,7 +19023,7 @@ export default function KwantifyWorkspace({
         crosshairLinked={linkedCrosshairPaneIds.has(pane.id)}
         candlesVisible={!candlesHiddenPaneIds.has(pane.id)}
         candleSettings={candleSettingsByPane[pane.id] ?? null}
-        crosshairSyncScope={chartWorkspaceScope === "gamma"
+        crosshairSyncScope={chartWorkspaceScope === "algo" ? "algo" : chartWorkspaceScope === "gamma"
           || linkedViewportPaneIds.has(pane.id)
           || linkedCrosshairPaneIds.has(pane.id)
           ? "gamvue"
@@ -19620,7 +19633,7 @@ export default function KwantifyWorkspace({
     );
   }
 
-  const replayScope = bottomWorkspaceSection === "kwanty" ? "gamma" : chartWorkspaceScope;
+  const replayScope = bottomWorkspaceSection === "kwanty" || chartWorkspaceScope === "gamma" ? "gamma" : "charts";
   const renderReplayTransport = () => (gexVueReplay.active ? (
             <div className="flex w-full shrink-0 items-center gap-2 overflow-x-auto border-t border-primary/25 bg-panel/95 px-3 py-2 backdrop-blur-xl [scrollbar-width:thin]">
                   <span className="shrink-0 font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">
@@ -20275,7 +20288,7 @@ export default function KwantifyWorkspace({
                 className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${
                   showWorkspacePresetMenu ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"
                 }`}
-                title="Saved workspaces"
+                title={chartWorkspaceScope === "algo" ? "Saved Algo workspaces" : "Saved workspaces"}
               >
                 <Save className="h-3.5 w-3.5" strokeWidth={1.55} />
                 <span>WORKSPACES</span>
@@ -20306,7 +20319,7 @@ export default function KwantifyWorkspace({
                 >
                   <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
                     <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-                      Saved workspaces
+                      {chartWorkspaceScope === "algo" ? "Saved Algo workspaces" : "Saved workspaces"}
                     </span>
                     <span className="flex items-center gap-1.5 text-[9px] font-medium text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -20473,7 +20486,7 @@ export default function KwantifyWorkspace({
           <div className="kwant-chart-toolbar-track flex items-center gap-2">
           <div className="flex shrink-0 items-center gap-2">
           {activePaneIsChart ? <ChartIndicatorsControl
-            chartInstanceId={activePaneId}
+            chartInstanceId={workspaceChartInstanceId(chartWorkspaceScope, activePaneId)}
             instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
             broker={activeWorkspacePane.broker}
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
@@ -20584,7 +20597,7 @@ export default function KwantifyWorkspace({
         </div>
         )}
 
-        {showReplayPicker ? <WorkspaceReplayDialog state={gexVueReplay} scope={chartWorkspaceScope} initialTimeZone={chartSettings.timezone} onClose={closeReplayPicker} onGo={(next, timeZone) => { changeChartTimeZone(timeZone); setGexVueReplay(next); setShowReplayPicker(false); }} /> : null}
+        {showReplayPicker ? <WorkspaceReplayDialog state={gexVueReplay} scope={chartWorkspaceScope === "gamma" ? "gamma" : "charts"} initialTimeZone={chartSettings.timezone} onClose={closeReplayPicker} onGo={(next, timeZone) => { changeChartTimeZone(timeZone); setGexVueReplay(next); setShowReplayPicker(false); }} /> : null}
         {showLevelsExport && typeof document !== "undefined"
           ? createPortal(
             <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">

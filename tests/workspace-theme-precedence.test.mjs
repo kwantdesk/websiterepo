@@ -33,8 +33,8 @@ test("manually customised workspace colours survive later account theme changes"
 });
 
 test("chart colour templates are shared by Charts and GEX Vue", () => {
-  assert.match(workspace, /localStorage\.getItem\(CHART_TEMPLATES_STORAGE_KEY\)/);
-  assert.match(workspace, /writeProtectedItem\(\s*CHART_TEMPLATES_STORAGE_KEY,[\s\S]{0,120}JSON\.stringify\(nextTemplates\)/);
+  assert.match(workspace, /localStorage\.getItem\(workspaceTemplateStorageKey\(scope, CHART_TEMPLATES_STORAGE_KEY\)\)/);
+  assert.match(workspace, /writeProtectedItem\(\s*workspaceTemplateStorageKey\(chartWorkspaceScopeRef\.current, CHART_TEMPLATES_STORAGE_KEY\),[\s\S]{0,120}JSON\.stringify\(nextTemplates\)/);
   assert.match(workspace, /savedSettings = normalizeChartSettings\(\{ \.\.\.draftChartSettings, themeLinked: false \}\)/);
   assert.match(workspace, /Link colours to website theme/);
 });

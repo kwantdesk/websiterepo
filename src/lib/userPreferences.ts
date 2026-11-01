@@ -124,6 +124,7 @@ const TRACKED_STORAGE_KEYS = new Set([
 ]);
 
 const TRACKED_STORAGE_PREFIXES = [
+  "kwantdesk:algo-charting:",
   "kwantdesk:gamma-charting:",
   "kwantify-chart-drawings:",
   "kwantdesk:chart-drawings:v1:",
