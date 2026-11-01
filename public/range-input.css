@@ -1,0 +1,26 @@
+/* Range inputs are tracks and handles, not recessed text fields. This is shared
+   by the main app and embedded workspaces. Keep native hit areas, colour-picker
+   gradients and the chart navigators' custom tracks/thumbs intact. The narrow
+   !important resets beat the generic input and focused-input treatments. */
+:root input[type="range"] {
+  border: 0 !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  accent-color: var(--primary, var(--site-primary, var(--ui-accent, var(--accent, currentColor))));
+}
+
+:root input[type="range"]:focus,
+:root input[type="range"]:focus-visible {
+  outline: none !important;
+}
+
+/* Keyboard focus belongs on the handle, never around the rectangular input. */
+:root input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 1px solid var(--primary, var(--site-primary, var(--ui-accent, var(--accent, currentColor))));
+  outline-offset: 2px;
+}
+
+:root input[type="range"]:focus-visible::-moz-range-thumb {
+  outline: 1px solid var(--primary, var(--site-primary, var(--ui-accent, var(--accent, currentColor))));
+  outline-offset: 2px;
+}
