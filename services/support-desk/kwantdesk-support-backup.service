@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up the KwantDesk support inbox
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/kwantdesk/support-desk/backup.py
+User=root
+UMask=0077
+ProtectSystem=strict
+ReadOnlyPaths=/opt/kwantdesk/support-desk
+ReadWritePaths=/var/lib/kwantdesk-support /var/backups/kwantdesk-support
+PrivateTmp=true
+NoNewPrivileges=true

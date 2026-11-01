@@ -3,6 +3,7 @@ import ThemeProvider from "@/components/ThemeProvider";
 import ViewportLock from "@/components/ViewportLock";
 import PrivateTerminologyGuard from "@/components/PrivateTerminologyGuard";
 import StandaloneAccountSync from "@/components/StandaloneAccountSync";
+import SupportAssistantWidget from "@/components/SupportAssistantWidget";
 import { themeBootstrapScript } from "@/lib/theme";
 import "../../public/fonts/aleph/aleph.css";
 import "./globals.css";
@@ -55,7 +56,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="preload" href="/fonts/aleph/Aleph-Bold.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
         <style>{`.kwant-private-copy-pending body { visibility: hidden; }`}</style>
       </head>
-      <body><PrivateTerminologyGuard /><ViewportLock /><ThemeProvider><StandaloneAccountSync />{children}</ThemeProvider></body>
+      <body><PrivateTerminologyGuard /><ViewportLock /><ThemeProvider><StandaloneAccountSync />{children}<SupportAssistantWidget /></ThemeProvider></body>
     </html>
   );
 }

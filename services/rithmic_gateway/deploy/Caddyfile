@@ -10,6 +10,7 @@
 feed.kwantdesk.com {
 	encode zstd gzip
 	log_skip /liquidity-history
+	log_skip /support/*
 
 	# /health is intentionally public and carries no market data or account
 	# information — it is what uptime monitoring reads.
@@ -22,6 +23,11 @@ feed.kwantdesk.com {
 	@liquidityHistory path /v1/heatmap/replay /v1/heatmap/replay/chunk /liquidity-history
 	handle @liquidityHistory {
 		reverse_proxy heatmap-history:8796
+	}
+
+	# The independent support service verifies signed account-scoped requests.
+	handle /support/* {
+		reverse_proxy support-desk:8797
 	}
 
 	handle {

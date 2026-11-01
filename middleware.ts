@@ -65,6 +65,9 @@ const DESKTOP_PROTOCOL_PATHS = [
 ] as const;
 
 function isDesktopProtocolRequest(pathname: string) {
+  // Operator-only health/probe endpoint verifies a derived server credential
+  // in its handler. It never accepts a browser identity or returns ticket data.
+  if (pathname === "/api/support/_diagnostics") return true;
   return DESKTOP_PROTOCOL_PATHS.includes(pathname as (typeof DESKTOP_PROTOCOL_PATHS)[number]);
 }
 
@@ -138,6 +141,10 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/login") return response;
+
+  // Support handlers verify the signed-in Supabase user themselves; avoid
+  // adding a second network auth lookup to every message and inbox refresh.
+  if (pathname.startsWith("/api/support/")) return response;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

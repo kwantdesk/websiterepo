@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily backup of the KwantDesk support inbox
+[Timer]
+OnCalendar=*-*-* 05:20:00 UTC
+RandomizedDelaySec=600
+Persistent=true
+[Install]
+WantedBy=timers.target

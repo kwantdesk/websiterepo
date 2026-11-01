@@ -1,0 +1,42 @@
+services:
+  support-desk:
+    # Reuse the already-installed Node 22 runtime; do not rebuild the feed image.
+    image: kwantdesk-gateway:3c712357
+    entrypoint: ["node"]
+    command: ["/app/support/server.mjs"]
+    user: "65534:65534"
+    init: true
+    restart: unless-stopped
+    env_file: /etc/kwantdesk/support-desk.env
+    environment:
+      SUPPORT_DATABASE: /data/support.db
+      PORT: "8797"
+      NODE_OPTIONS: --max-old-space-size=128
+    volumes:
+      - /opt/kwantdesk/support-desk:/app/support:ro
+      - /var/lib/kwantdesk-support:/data
+    read_only: true
+    tmpfs: ["/tmp:size=8m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 192m
+    cpus: 0.25
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 2m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "/app/support/healthcheck.mjs"]
+      interval: 60s
+      timeout: 8s
+      retries: 3
+      start_period: 10s
+    networks:
+      production:
+        aliases: [support-desk]
+networks:
+  production:
+    external: true
+    name: kwantdesk-production_default
