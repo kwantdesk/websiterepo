@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "../../public/range-input.css";
+@import "../../public/gex-data-app/range-input.css";
 
 :root {
   /* The CHARTS workspace header is the shell's vertical rhythm reference. */

@@ -4,7 +4,7 @@ Request: settings sliders should show only their theme-coloured track and handle
 
 ## Cause and change
 
-The cockpit's general input treatment applied a recessed background, 1px border and inset shadow to range inputs too. Embedded Kwanty and GEX Data also have general input rules using important backgrounds/borders. A shared `public/range-input.css` now clears only the range input shell (border/background colour/shadow and enclosing focus outline). It uses sufficient specificity for the embedded general-input rules. Keyboard focus stays on the thumb; existing thumb/track rendering, hue gradient background images and custom chart navigator geometry remain owned by their existing styles.
+The cockpit's general input treatment applied a recessed background, 1px border and inset shadow to range inputs too. Embedded Kwanty and GEX Data also have general input rules using important backgrounds/borders. A shared `public/gex-data-app/range-input.css` now clears only the range input shell (border/background colour/shadow and enclosing focus outline). It uses sufficient specificity for the embedded general-input rules. Keyboard focus stays on the thumb; existing thumb/track rendering, hue gradient background images and custom chart navigator geometry remain owned by their existing styles.
 
 The main globals stylesheet imports the shared CSS into its build; GEX Data, Liquidity Map and Kwanty each link it in their document head. The selector also covers dynamically created sliders and the ranges in the 20 React component files found by the literal range-input inventory, including the reusable numeric indicator control. No value/range/step/event/provider/archive/account/layout change.
 
@@ -18,3 +18,5 @@ The main globals stylesheet imports the shared CSS into its build; GEX Data, Liq
 Evidence: tmp/range-shell-browser.cjs, tmp/range-shell-browser.log, tmp/range-shell-{before,mono,dark,purple}.png, tmp/range-shell-numeric-tests.log, tmp/range-shell-build.log. Temporary evidence is local, not included in the release.
 
 Release limited to the shared stylesheet, one globals import, three HTML stylesheet links and this task's own notes. Preserve all unrelated dirty work and ALGO/.
+
+Live verification caught the initial root-level CSS URL being routed through sign-in middleware. The shared file was moved into the existing exempt gex-data-app public asset prefix; all three links and the globals import were updated. No authentication policy changed. Browser checks were repeated with the corrected path; final build and deployment verified separately.
