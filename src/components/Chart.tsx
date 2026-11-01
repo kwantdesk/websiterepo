@@ -725,6 +725,9 @@ import {
 } from "@/lib/hedgeLevels";
 import { chartDrawingPersistenceInstrument } from "@/lib/chartWorkspaceScope";
 import PrecisionToolsLayer from "@/chart/precision-tools/PrecisionToolsLayer";
+import { DRAWING_CLEAR_BARRIERS_KEY, drawingClearToken, markDrawingDocumentCleared } from "@/lib/drawingClearBarriers";
+import { queueDrawingSave } from "@/lib/drawingSaveQueue";
+import { precisionObjectStorageKey, savePrecisionDocument } from "@/chart/precision-tools/persistence";
 import { CLEAR_CHART_DRAWINGS_EVENT } from "@/chart/precision-tools/PrecisionToolsLayer";
 import PrecisionToolsBoundary from "@/chart/precision-tools/PrecisionToolsBoundary";
 import type { PrecisionChartAdapter, PrecisionTheme, PrecisionToolId } from "@/chart/precision-tools/types";
@@ -820,7 +823,7 @@ interface ChartProps {
   onCreateAlertAtPrice?: (price: string) => void;
   onRemoveAllIndicators?: () => void;
   chartingDrawings?: Drawing[];
-  onChartingDrawingsChange?: (drawings: Drawing[]) => void;
+  onChartingDrawingsChange?: (drawings: Drawing[], options?: { clearAll?: boolean }) => void;
   indicators?: ChartIndicatorInstance[];
   overlaySeries?: ChartOverlaySeries[];
   initialBalanceCandles?: Candle[];
@@ -3777,6 +3780,7 @@ function Chart({
   const chartingDrawingsRef = useRef<Drawing[]>(chartingDrawings);
   chartingDrawingsRef.current = chartingDrawings;
   const professionalDrawingsLoadGenerationRef = useRef(0);
+  const professionalDrawingsRenderGeneration = professionalDrawingsLoadGenerationRef.current;
   const professionalDrawingManagerRef = useRef<DrawingManager | null>(null);
   const professionalDrawingPreviewRef = useRef<ProfessionalDrawing | null>(null);
   const professionalBrushDrawingRef = useRef<ProfessionalDrawing | null>(null);
@@ -4052,10 +4056,10 @@ function Chart({
       unsubscribeRepaint?.();
     };
   }, []);
-  const commitDrawings = useCallback((next: Drawing[]) => {
+  const commitDrawings = useCallback((next: Drawing[], clearAll = false) => {
     const normalized = normalizeDrawings(next);
     chartingDrawingsRef.current = normalized;
-    onChartingDrawingsChange?.(normalized);
+    onChartingDrawingsChange?.(normalized, { clearAll });
   }, [onChartingDrawingsChange]);
   // Backspace / Delete removes the selected charting drawing (only on the
   // focused pane, and never while typing into a field).
@@ -13687,8 +13691,31 @@ function Chart({
     // every one of them or the ones it misses look like a broken button.
     // chartingDrawings is the engine the MOUNTED toolbar draws into, and it was
     // the one being skipped: clearing left every current drawing on screen.
-    window.dispatchEvent(new Event(CLEAR_CHART_DRAWINGS_EVENT));
-    commitDrawings([]);
+    const precisionChartId = `${chartInstanceId}:${normalizePaperSymbol(contractSymbol ?? instrument)}`;
+    const professionalKey = drawingsStorageKey(instrument, chartInstanceId);
+    const positionKey = positionDrawingsStorageKey(instrument, chartInstanceId);
+    const precisionKey = precisionObjectStorageKey(workspaceId, precisionChartId);
+    const legacyKey = `kwantify-chart-drawings:${instrument}`;
+    const migrationClaimKey = `kwantdesk:chart-drawings:migrated:v1:${instrument}`;
+    for (const key of [professionalKey, positionKey, precisionKey]) markDrawingDocumentCleared(key);
+    try {
+      const legacyOwner = window.localStorage.getItem(migrationClaimKey);
+      if (!chartInstanceId.startsWith("algo:") && (!legacyOwner || legacyOwner === chartInstanceId)) {
+        markDrawingDocumentCleared(legacyKey);
+        window.localStorage.setItem(legacyKey, "[]");
+        window.localStorage.setItem(migrationClaimKey, chartInstanceId);
+      }
+      window.localStorage.setItem(professionalKey, "[]");
+      window.localStorage.setItem(positionKey, "[]");
+      window.localStorage.setItem(precisionKey, JSON.stringify({ schemaVersion: 1, workspaceId, chartId: precisionChartId, objects: [], savedAt: Date.now() }));
+    } catch { /* The in-memory clear still applies without browser storage. */ }
+    commitDrawings([], true);
+    savePrecisionDocument({ schemaVersion: 1, workspaceId, chartId: precisionChartId, objects: [], savedAt: Date.now() });
+    window.dispatchEvent(new CustomEvent(CLEAR_CHART_DRAWINGS_EVENT, { detail: { workspaceId, chartId: precisionChartId } }));
+    setDrawTool("cursor");
+    setDrawTextInput(null);
+    drawTextCommitRef.current = null;
+    drawTextDismissRef.current = true;
     setDrawSelectedId(null);
     setDrawSettingsOpen(false);
     setProfessionalDrawings([]);
@@ -13702,18 +13729,16 @@ function Chart({
     setShowDrawingSettings(false);
     setDrawingHistoryRevision((revision) => revision + 1);
     setPrecisionClearRevision((revision) => revision + 1);
+    selectedToolRef.current = "cursor";
+    setSelectedTool("cursor");
 
     try {
       window.localStorage.setItem(drawingsStorageKey(instrument, chartInstanceId), "[]");
     } catch {
       // The account-backed save below remains authoritative when local storage is unavailable.
     }
-    void fetch("/api/chart-drawings", {
-      method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instrument: drawingPersistenceInstrument, drawings: [] }),
-    }).catch(() => undefined);
+    void queueDrawingSave(drawingsStorageKey(instrument, chartInstanceId), "/api/chart-drawings",
+      { instrument: drawingPersistenceInstrument, drawings: [] });
   }
 
   useEffect(() => {
@@ -13727,7 +13752,7 @@ function Chart({
     try {
       const raw = window.localStorage.getItem(drawingsStorageKey(instrument, chartInstanceId));
       cached = normalizeProfessionalDrawings(raw ? JSON.parse(raw) : []);
-      if (!chartInstanceId.startsWith("algo:") && !cached.length && !window.localStorage.getItem(migrationClaimKey)) {
+      if (!chartInstanceId.startsWith("algo:") && raw === null && !drawingClearToken(`kwantify-chart-drawings:${instrument}`) && !drawingClearToken(drawingsStorageKey(instrument, chartInstanceId)) && !window.localStorage.getItem(migrationClaimKey)) {
         ownsLegacyMigration = true;
         window.localStorage.setItem(migrationClaimKey, chartInstanceId);
         const legacyRaw = window.localStorage.getItem(`kwantify-chart-drawings:${instrument}`);
@@ -13795,7 +13820,7 @@ function Chart({
       let records = payload?.configured && Array.isArray(payload.drawings)
         ? normalizeProfessionalDrawings(payload.drawings)
         : [];
-      if (!records.length && ownsLegacyMigration) {
+      if (!records.length && ownsLegacyMigration && !drawingClearToken(`kwantify-chart-drawings:${instrument}`)) {
         const legacyResponse = await fetch(`/api/chart-drawings?instrument=${encodeURIComponent(instrument)}`, {
           cache: "no-store",
           credentials: "include",
@@ -13812,7 +13837,7 @@ function Chart({
 
     void loadPersistedDrawings()
       .then((records) => {
-        if (cancelled || professionalDrawingsLoadGenerationRef.current !== loadGeneration || !records.length) return;
+        if (cancelled || professionalDrawingsLoadGenerationRef.current !== loadGeneration || drawingClearToken(drawingsStorageKey(instrument, chartInstanceId)) || !records.length) return;
         setProfessionalDrawings(records);
         replaceProfessionalManagerDrawings(records);
       })
@@ -13831,18 +13856,22 @@ function Chart({
   }, [chartInstanceId, drawingPersistenceInstrument, instrument]);
 
   useEffect(() => {
+    let clearToken = drawingClearToken(drawingsStorageKey(instrument, chartInstanceId));
     const restore = (event: Event) => {
       const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys;
+      const nextToken = drawingClearToken(drawingsStorageKey(instrument, chartInstanceId));
+      const clearedHere = nextToken !== clearToken;
+      clearToken = nextToken;
       const professionalKey = drawingsStorageKey(instrument, chartInstanceId);
       const positionKey = positionDrawingsStorageKey(instrument, chartInstanceId);
       try {
-        if (!keys || keys.includes(professionalKey)) {
+        if (!keys || keys.includes(professionalKey) || (keys.includes(DRAWING_CLEAR_BARRIERS_KEY) && clearedHere)) {
           const records = normalizeProfessionalDrawings(JSON.parse(window.localStorage.getItem(professionalKey) ?? "[]"));
           ++professionalDrawingsLoadGenerationRef.current;
           professionalDrawingsRef.current = records;
           setProfessionalDrawings(records); replaceProfessionalManagerDrawings(records);
         }
-        if (!keys || keys.includes(positionKey)) setDrawings(normalizePositionDrawings(JSON.parse(window.localStorage.getItem(positionKey) ?? "[]")));
+        if (!keys || keys.includes(positionKey) || (keys.includes(DRAWING_CLEAR_BARRIERS_KEY) && clearedHere)) setDrawings(normalizePositionDrawings(JSON.parse(window.localStorage.getItem(positionKey) ?? "[]")));
       } catch { /* Keep valid mounted drawings if a saved document is malformed. */ }
     };
     window.addEventListener(PREFERENCES_HYDRATED_EVENT, restore);
@@ -13852,6 +13881,7 @@ function Chart({
   }, [chartInstanceId, instrument]);
 
   useEffect(() => {
+    if (professionalDrawingsRenderGeneration !== professionalDrawingsLoadGenerationRef.current) return;
     professionalDrawingsRef.current = professionalDrawings;
     if (typeof window === "undefined") return;
     if (!professionalDrawingsHydrationRef.current.ready || professionalDrawingsHydrationRef.current.instrument !== instrument) return;
@@ -13860,13 +13890,11 @@ function Chart({
     } catch {
       // Keep drawing responsive when browser storage is unavailable.
     }
+    const generation = professionalDrawingsLoadGenerationRef.current;
     const timeout = window.setTimeout(() => {
-      void fetch("/api/chart-drawings", {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instrument: drawingPersistenceInstrument, drawings: professionalDrawings }),
-      }).catch(() => undefined);
+      if (generation !== professionalDrawingsLoadGenerationRef.current) return;
+      void queueDrawingSave(drawingsStorageKey(instrument, chartInstanceId), "/api/chart-drawings",
+        { instrument: drawingPersistenceInstrument, drawings: professionalDrawings });
     }, 500);
     return () => window.clearTimeout(timeout);
   }, [chartInstanceId, drawingPersistenceInstrument, instrument, professionalDrawings]);
@@ -13874,6 +13902,7 @@ function Chart({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const key = positionDrawingsStorageKey(instrument, chartInstanceId);
+    if (professionalDrawingsRenderGeneration !== professionalDrawingsLoadGenerationRef.current) return;
     const hydration = positionDrawingsHydrationRef.current;
     if (!hydration.ready || hydration.key !== key) return;
     try {
@@ -19001,7 +19030,7 @@ function Chart({
             setDrawSelectedId(null);
             setDrawSettingsOpen(false);
           }}
-          onClearAll={() => { commitDrawings([]); setDrawSelectedId(null); setDrawSettingsOpen(false); }}
+          onClearAll={clearAllChartDrawings}
         />
       ) : null}
       <div
@@ -19066,6 +19095,7 @@ function Chart({
       {toolbarEnabled ? (
         <>
           <ChartDrawLayer
+            key={`drawings:${precisionClearRevision}`}
             width={overlaySize.width}
             height={overlaySize.height}
             priceScaleWidth={nativePriceScaleWidth}

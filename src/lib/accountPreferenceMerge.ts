@@ -1,3 +1,4 @@
+import { mergeDrawingClearBarriers } from './drawingClearBarriers';
 import type { UserPreferenceSnapshot } from './userPreferences';
 import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from './chartDrawingPreferences';
 import { normalizePaperTradingLedger, paperAccountJournalFills, type PaperAccountLedger, type PaperPosition, type PaperTradeFill, type PaperTradingLedger } from './paperTrading';
@@ -175,7 +176,7 @@ export function mergePaperTradingLedgerUpdate(current: PaperTradingLedger, incom
 }
 
 export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, local: UserPreferenceSnapshot, remote: UserPreferenceSnapshot): UserPreferenceSnapshot {
-  const values = { ...remote.values };
+  let values = { ...remote.values };
   const keys = new Set([...Object.keys(base.values), ...Object.keys(local.values)]);
   for (const key of keys) {
     if (preferenceValueFingerprint(key, base.values[key]) === preferenceValueFingerprint(key, local.values[key])
@@ -199,5 +200,6 @@ export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, loca
       values[key] = JSON.stringify(mergeById(parse(base.values[key]) ?? [], parse(local.values[key]) ?? [], parse(remote.values[key]) ?? []));
     } else values[key] = local.values[key];
   }
+  values = mergeDrawingClearBarriers(local.values, remote.values, values);
   return { version: 1, complete: true, updatedAt: same(values, remote.values) ? remote.updatedAt : new Date().toISOString(), values };
 }

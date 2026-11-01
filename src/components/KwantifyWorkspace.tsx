@@ -1,6 +1,7 @@
 "use client";
 
 import type { AlgoChartIntegration, AlgoChartFocus } from "@/lib/algoChartIntegration";
+import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from "@/lib/drawingClearBarriers";
 import { workspaceScopeStorageKey, workspaceStoragePrefix, workspaceTemplateStorageKey, workspaceChartInstanceId, viewportSyncGroupForScope, type ChartWorkspaceScope } from "@/lib/chartWorkspaceScope";
 import { workspaceReplaySessionBounds } from "@/lib/workspaceReplay";
 import { readChartDrawingStore, updateChartDrawingPane } from "@/lib/chartDrawingPreferences";
@@ -5387,7 +5388,7 @@ function WorkspaceChartPaneComponent({
   onRemoveAllIndicators: () => void;
   onUpdateIndicatorSetting: (instanceId: string, key: string, value: number | string | boolean) => void;
   chartingDrawings: Drawing[];
-  onChartingDrawingsChange: (drawings: Drawing[]) => void;
+  onChartingDrawingsChange: (drawings: Drawing[], options?: { clearAll?: boolean }) => void;
   onSelectPeriod: (period: string) => void;
   onSelectTimeframe: (timeframe: string) => boolean;
   onDetach?: () => void;
@@ -11238,7 +11239,8 @@ export default function KwantifyWorkspace({
       // Drawings still apply this session without persistence.
     }
   }, [paneChartDrawings, paneChartDrawingsHydrated, chartingDrawingsStorageKey]);
-  const setChartDrawingsForPane = useCallback((paneId: string, drawings: Drawing[], renderedPane?: Drawing[]) => {
+  const setChartDrawingsForPane = useCallback((paneId: string, drawings: Drawing[], renderedPane?: Drawing[], clearAll = false) => {
+    if (clearAll) markDrawingDocumentCleared(chartDrawingPaneDocumentKey(chartingDrawingsStorageKey, paneId));
     let stored: string | null = null;
     try { stored = window.localStorage.getItem(chartingDrawingsStorageKey); } catch { /* Session state still works without storage. */ }
     const next = updateChartDrawingPane(paneChartDrawingsRef.current, stored, paneId, drawings, paneChartDrawingsSavedRef.current?.serialized, renderedPane);
@@ -15233,7 +15235,7 @@ export default function KwantifyWorkspace({
       const read = <T,>(key: string, fallback: T): T => {
         try { return JSON.parse(window.localStorage.getItem(key) ?? "null") ?? fallback; } catch { return fallback; }
       };
-      if (changed(chartingDrawingsStorageKey)) {
+      if (changed(chartingDrawingsStorageKey) || changed(DRAWING_CLEAR_BARRIERS_KEY)) {
         const stored = read<Record<string, unknown>>(chartingDrawingsStorageKey, {});
         const next = readChartDrawingStore(JSON.stringify(stored));
         if (next) {
@@ -19069,7 +19071,7 @@ export default function KwantifyWorkspace({
         onCreateAlertAtPrice={openCreateAlert}
         onRemoveAllIndicators={() => removeAllIndicatorsFromPane(pane.id)}
         chartingDrawings={paneChartDrawings[pane.id] ?? EMPTY_CHART_DRAWINGS}
-        onChartingDrawingsChange={(drawings) => setChartDrawingsForPane(pane.id, drawings, paneChartDrawings[pane.id] ?? EMPTY_CHART_DRAWINGS)}
+        onChartingDrawingsChange={(drawings, options) => setChartDrawingsForPane(pane.id, drawings, paneChartDrawings[pane.id] ?? EMPTY_CHART_DRAWINGS, options?.clearAll)}
         onUpdateIndicatorSetting={(instanceId, key, value) =>
           updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}

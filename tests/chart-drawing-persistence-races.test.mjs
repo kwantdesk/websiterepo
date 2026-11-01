@@ -42,7 +42,7 @@ test('actual mount effects do not publish an empty drawing document before resto
   const save=find(source,n=>ts.isCallExpression(n)&&n.expression.getText(source)==='useEffect'&&n.arguments[0]?.getText(source).includes('JSON.stringify(paneChartDrawings)'));
   assert.ok(hydrate);assert.ok(save);
   const writes=[];let restored;
-  const ctx=vm.createContext({paneChartDrawings:{},paneChartDrawingsHydrated:false,CHARTING_DRAWINGS_STORAGE_KEY:key,normalizeDrawings,readChartDrawingStore,paneChartDrawingsRef:{current:{}},paneChartDrawingsSavedRef:{current:null},
+  const ctx=vm.createContext({paneChartDrawings:{},paneChartDrawingsHydrated:false,chartingDrawingsStorageKey:key,CHARTING_DRAWINGS_STORAGE_KEY:key,normalizeDrawings,readChartDrawingStore,paneChartDrawingsRef:{current:{}},paneChartDrawingsSavedRef:{current:null},
     setPaneChartDrawings:next=>{restored=next;},setPaneChartDrawingsHydrated:()=>{},CustomEvent:class{},
     window:{localStorage:{getItem:()=>store([short]),setItem:(_key,value)=>writes.push(value)},dispatchEvent:()=>{}},
   });

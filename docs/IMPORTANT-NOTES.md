@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-11-02 — Drawing clears are durable
+
+Left CLR now calls the complete four-engine chart clear, matching context-menu Clear. Account-synced per-document/pane clear epochs prevent older saved snapshots or stale peer edits from restoring removed drawings. Precision clear flushes immediately/cancels drafts; late precision/professional API reads cannot supersede a cleared account document. Full-document saves serialize per owner/key and stale effects are guarded. Own legacy archive is cleared without clearing another pane's claimed archive or Algo/Charts data. Remount only drawing SVG on clear, cancel text/freehand input, scope precision clear events.42 persistence/replay/account tests,5 actual headless Workspace/Chart checks and focused lint pass; full final production build required/passed before release. Details/limits: docs/prompt-log/2026-11-02-drawings-stay-cleared.md. One scoped main-only release/exact live SHA verification. No gateway restart or production user-drawing deletion; preserve unrelated dirty/native/ALGO work.
+
 ## 2026-11-02 — Remove Charts level-export button
 
 Owner requests removing the top-right download button Export chart levels. Removed only the9-line button in shared chart toolbar (KwantifyWorkspace.tsx); surrounding timezone/Replay/indicator controls and all feeds/settings/accounts remain unchanged. Dormant export implementation retained; other Download icons are still used. Exact diff reviewed and full Next/TypeScript build passes. No new tests for reversible UI removal; no standalone giant-workspace lint. Detail: docs/prompt-log/2026-11-02-remove-chart-level-export-button.md. One scoped main-only release/exact live SHA verification. Preserve unrelated dirty/native/ALGO work; no VPS operations.

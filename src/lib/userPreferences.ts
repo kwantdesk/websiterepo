@@ -6,6 +6,8 @@ import { inFlightGexWorkspace } from "./gexDataPreferenceOwnership.ts";
 import { accountPreferenceFingerprint } from "./accountPreferenceMerge";
 import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from "./chartDrawingPreferences";
 
+import { mergeDrawingClearBarriers } from "./drawingClearBarriers";
+
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
 const LEGACY_PREFERENCES_OWNER_KEY = "kwantdesk:legacy-preferences-owner:v1";
@@ -492,6 +494,8 @@ export async function hydrateUserPreferences(
       values: { ...selected.values, [CHART_DRAWING_PREFERENCE_KEY]: drawings } };
   }
 
+  if (localPreferencesBelongToUser) selected = { ...selected,
+    values: mergeDrawingClearBarriers(latest.values, selected.values, selected.values) };
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
   applyBrowserPreferences(selected);
   applyTheme();

@@ -1,5 +1,7 @@
 "use client";
 
+import { DRAWING_CLEAR_BARRIERS_KEY, drawingClearToken } from "@/lib/drawingClearBarriers";
+import { queueDrawingSave } from "@/lib/drawingSaveQueue";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useChartDrawingClipboard } from '@/components/useChartDrawingClipboard';
 import { PREFERENCES_HYDRATED_EVENT } from '@/lib/userPreferences';
@@ -183,9 +185,14 @@ export default function PrecisionToolsLayer({
 
   useEffect(() => store.subscribe(() => setRevision((value) => value + 1)), [store]);
   useEffect(() => {
+    const key = precisionObjectStorageKey(workspaceId, chartId);
+    let clearToken = drawingClearToken(key);
     const restore = (event: Event) => {
       const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys;
-      if (!keys || keys.includes(precisionObjectStorageKey(workspaceId, chartId))) {
+      const nextToken = drawingClearToken(key);
+      const clearedHere = nextToken !== clearToken;
+      clearToken = nextToken;
+      if (!keys || keys.includes(key) || (keys.includes(DRAWING_CLEAR_BARRIERS_KEY) && clearedHere)) {
         const document = loadPrecisionDocument(workspaceId, chartId);
         if (JSON.stringify(document.objects) !== JSON.stringify(store.getSnapshot().objects)) store.replaceDocument(document);
       }
@@ -213,7 +220,7 @@ export default function PrecisionToolsLayer({
       .then(async (response) => response.ok ? await response.json() as { configured?: boolean; objects?: PrecisionObject[]; configs?: PrecisionToolConfig[]; toolbar?: PrecisionToolbarState } : null)
       .then((payload) => {
         if (!payload?.configured) return;
-        if (Array.isArray(payload.objects) && payload.objects.length) {
+        if (!controller.signal.aborted && !drawingClearToken(precisionObjectStorageKey(workspaceId, chartId)) && Array.isArray(payload.objects) && payload.objects.length) {
           // A chart tool can be placed while the account-backed document is
           // still arriving. Merge by object identity instead of replacing the
           // live document so a late response cannot erase that new drawing.
@@ -243,10 +250,12 @@ export default function PrecisionToolsLayer({
   useEffect(() => {
     if (!cloudHydrated) return;
     const timer = window.setTimeout(() => {
-      void fetch("/api/precision-tools", { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, chartId, objects: snapshot.objects, configs, toolbar: snapshot.toolbar }) }).catch(() => undefined);
+      if (snapshot.objects !== store.getSnapshot().objects) return;
+      void queueDrawingSave(precisionObjectStorageKey(workspaceId, chartId), "/api/precision-tools",
+        { workspaceId, chartId, objects: snapshot.objects, configs, toolbar: snapshot.toolbar });
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [chartId, cloudHydrated, configs, snapshot.objects, snapshot.toolbar, workspaceId]);
+  }, [chartId, cloudHydrated, configs, snapshot.objects, snapshot.toolbar, store, workspaceId]);
   useEffect(() => subscribeChartInteractionOwner((owner) => {
     if (owner !== "precision-tools") {
       setEngaged(false);
@@ -267,14 +276,22 @@ export default function PrecisionToolsLayer({
   // them on screen. The chart broadcasts this event and every drawing surface
   // clears itself, rather than the chart needing a reference to each store.
   useEffect(() => {
-    const onClearAll = () => {
+    const onClearAll = (event: Event) => {
+      const target = (event as CustomEvent<{ workspaceId: string; chartId: string }>).detail;
+      if (target && (target.workspaceId !== workspaceId || target.chartId !== chartId)) return;
+      dragRef.current = null;
+      pencilScreenPathRef.current = [];
+      zoomStartRef.current = null;
+      lassoRef.current = null;
+      placedCountRef.current = 0;
+      setSelectionBox(null);
       store.cancelDraft();
       store.select([]);
       store.clear();
     };
     window.addEventListener(CLEAR_CHART_DRAWINGS_EVENT, onClearAll);
     return () => window.removeEventListener(CLEAR_CHART_DRAWINGS_EVENT, onClearAll);
-  }, [store]);
+  }, [chartId, store, workspaceId]);
   const resizeCanvas = useCallback((canvas: HTMLCanvasElement | null, allocate = true) => {
     if (!canvas) return null;
     canvas.style.width = `${adapter.width}px`;
@@ -483,7 +500,7 @@ export default function PrecisionToolsLayer({
   useEffect(() => {
     if (appliedClearRevisionRef.current === clearRevision) return;
     appliedClearRevisionRef.current = clearRevision;
-    store.clear();
+    if (store.getSnapshot().objects.length || store.getSnapshot().draft) store.clear();
   }, [clearRevision, store]);
 
   const completeExternalPlacement = useCallback(() => {

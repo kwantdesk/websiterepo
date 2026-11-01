@@ -1,5 +1,7 @@
 "use client";
 
+import { markDrawingDocumentCleared } from "@/lib/drawingClearBarriers";
+import { precisionObjectStorageKey } from "./persistence";
 import { defaultPrecisionLabels, defaultPrecisionStyle, defaultPrecisionToolbarState, defaultToolOptions } from "./defaults";
 import { getPrecisionTool } from "./registry";
 import { loadPrecisionDocument, savePrecisionDocument } from "./persistence";
@@ -199,11 +201,15 @@ export class PrecisionToolsStore {
   }
 
   clear(): void {
-    if (!this.objects.length) return;
     this.checkpoint();
     this.objects = [];
     this.selectedIds = [];
-    this.emit();
+    this.draft = null;
+    markDrawingDocumentCleared(precisionObjectStorageKey(this.workspaceId, this.chartId));
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    savePrecisionDocument({ schemaVersion: 1, workspaceId: this.workspaceId, chartId: this.chartId, objects: [], savedAt: Date.now() });
+    this.emit(false);
   }
 
   undo(): void {
