@@ -93,6 +93,7 @@ import {
   saveJournalState,
 } from "@/lib/journalStore";
 import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, normalizePaperJournalAccounts, paperJournalAccountName } from "@/lib/paperJournal";
+import { ZYON_JOURNAL_VISIBLE, visibleJournalAccountFilter } from "@/lib/journalFeatureVisibility";
 import { readPaperTradingAccounts } from "@/lib/paperAccounts";
 import { loadPaperTradingLedger } from "@/lib/paperTrading";
 import {
@@ -948,7 +949,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     setResetJournalError("");
   }, [resolvedAccountKey]);
   const [zyonTrades, setZyonTrades] = useState<JournalTrade[]>(() => initialMemory?.zyonTrades ?? []);
-  const [zyonLoading, setZyonLoading] = useState(() => !initialMemory);
+  const [zyonLoading, setZyonLoading] = useState(() => ZYON_JOURNAL_VISIBLE && !initialMemory);
   const [showZyonReset, setShowZyonReset] = useState(false);
   const [zyonResetConfirmation, setZyonResetConfirmation] = useState("");
   const [zyonResetError, setZyonResetError] = useState("");
@@ -997,7 +998,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [journalLifecycleBusy, setJournalLifecycleBusy] = useState<string | null>(null);
   const [journalLifecycleMessage, setJournalLifecycleMessage] = useState("");
   const [query, setQuery] = useState("");
-  const [accountFilter, setAccountFilter] = useState(() => initialMemory?.accountFilter ?? "all");
+  const [accountFilter, setAccountFilter] = useState(() => visibleJournalAccountFilter(initialMemory?.accountFilter ?? "all"));
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("closedAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -1058,7 +1059,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     disabled: !showManualTrade || manualTradeSaving,
   });
 
-  const zyonJournalSelected = accountFilter === ZYON_JOURNAL_ACCOUNT;
+  const zyonJournalSelected = ZYON_JOURNAL_VISIBLE && accountFilter === ZYON_JOURNAL_ACCOUNT;
   const importTargetsZyon = isZyonJournalAccountName(importAccount);
 
   useEffect(() => {
@@ -1073,7 +1074,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       setZyonLoading(false);
       setCloudState(memory.cloudState);
       setTab(memory.tab);
-      setAccountFilter(memory.accountFilter);
+      setAccountFilter(visibleJournalAccountFilter(memory.accountFilter));
       setReady(true);
       setSaveStatus("saved");
     } else {
@@ -1194,6 +1195,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   }, [accountFilter, cloudState, ready, resolvedAccountKey, state, tab, zyonTrades]);
 
   const loadZyonOutcomes = useCallback(async () => {
+    if (!ZYON_JOURNAL_VISIBLE) { setZyonLoading(false); return; }
     const requestId = ++zyonOutcomeRequest.current;
     try {
       const response = await fetch("/api/socials?mine=1&types=precord,receipt", { cache: "no-store" });
@@ -1241,6 +1243,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   };
 
   useEffect(() => {
+    if (!ZYON_JOURNAL_VISIBLE) return;
     void loadZyonOutcomes();
     const refresh = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadZyonOutcomes();
@@ -1326,7 +1329,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     ].filter((account) => account && !known.has(account) && !isZyonJournalAccountName(account) && !archivedAccountNames.has(account));
     return [...new Set([...activeAccounts, ...orphaned])];
   }, [archivedAccountNames, state.accounts, state.evidence, state.imports, state.trades]);
-  const accounts = useMemo(() => [ZYON_JOURNAL_ACCOUNT, ...customAccounts], [customAccounts]);
+  const accounts = useMemo(() => [...(ZYON_JOURNAL_VISIBLE ? [ZYON_JOURNAL_ACCOUNT] : []), ...customAccounts], [customAccounts]);
   const accountSource = useMemo(() => new Map(state.accounts.map((account) => [account.name, account.source])), [state.accounts]);
   const accountRecord = useMemo(() => new Map(state.accounts.map((account) => [account.name, account])), [state.accounts]);
   const manageableJournals = useMemo(() => [...new Set([...customAccounts, ...archivedAccounts.map(account => account.name)])]
@@ -1335,7 +1338,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const visibleManageableJournals = manageableJournals.filter(name => name.toLocaleLowerCase().includes(journalManagerQuery.trim().toLocaleLowerCase()));
   const selectedJournals = manageableJournals.filter(name => journalSelection.includes(name));
   const allTrades = useMemo(
-    () => [...zyonTrades, ...state.trades.filter((trade) => !isZyonJournalAccountName(trade.account) && !archivedAccountNames.has(trade.account))],
+    () => [...(ZYON_JOURNAL_VISIBLE ? zyonTrades : []), ...state.trades.filter((trade) => !isZyonJournalAccountName(trade.account) && !archivedAccountNames.has(trade.account))],
     [archivedAccountNames, state.trades, zyonTrades],
   );
   const accountViews = useMemo(() => [
