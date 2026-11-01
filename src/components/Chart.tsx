@@ -3143,19 +3143,14 @@ function CandleCountdownBadge({
   candleIntervalMs,
   hasCandles,
   latestCandleRef,
-  chartRef,
   marketIsActive,
-  bottom = 56,
 }: {
   candleIntervalMs: number | null;
   hasCandles: boolean;
   latestCandleRef: RefObject<Candle | null>;
-  chartRef: RefObject<IChartApi | null>;
   marketIsActive?: boolean;
-  bottom?: number;
 }) {
   const [label, setLabel] = useState<string | null>(null);
-  const [rightInset, setRightInset] = useState(76);
 
   useEffect(() => {
     if (!candleIntervalMs || candleIntervalMs <= 0 || !hasCandles) {
@@ -3177,24 +3172,19 @@ function CandleCountdownBadge({
 
       const now = Date.now();
       const remainingMs = candleCountdownRemainingMs(lastCandle.timestamp, candleIntervalMs, now, marketIsActive);
-      const priceScaleWidth = chartRef.current?.priceScale("right").width() ?? 64;
-      // Match the range selector's `left-3` inset: keep twelve pixels of
-      // breathing room between this badge and the live right price scale.
-      setRightInset(Math.max(76, Math.ceil(priceScaleWidth) + 12));
       setLabel(remainingMs === null ? "-" : formatCountdown(remainingMs));
     };
 
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 1_000);
     return () => window.clearInterval(timer);
-  }, [candleIntervalMs, chartRef, hasCandles, latestCandleRef, marketIsActive]);
+  }, [candleIntervalMs, hasCandles, latestCandleRef, marketIsActive]);
 
   if (!label) return null;
 
   return (
     <div
-      className="pointer-events-none absolute z-10 flex h-3.5 w-[27px] items-center justify-center rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
-      style={{ bottom, right: rightInset }}
+      className="pointer-events-none absolute bottom-0 right-0 z-10 flex h-3.5 min-w-[27px] items-center justify-center whitespace-nowrap rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
       title={label === "-" ? "No active candle countdown — market closed, paused or awaiting fresh data" : "Time until next candle opens"}
     >
       {label}
@@ -20417,9 +20407,7 @@ function Chart({
         candleIntervalMs={candleIntervalMs}
         hasCandles={hasCandles}
         latestCandleRef={latestCandleRef}
-        chartRef={chartRef}
         marketIsActive={marketIsActive}
-        bottom={56 + indicatorPaneHeight}
       />
 
       {hedgeLevelsIndicator ? (
