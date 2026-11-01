@@ -20582,15 +20582,6 @@ export default function KwantifyWorkspace({
             compact
             className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME}
           />
-          <button
-            type="button"
-            onClick={openLevelsExport}
-            title="Export chart levels"
-            aria-label="Export chart levels"
-            className="kwant-chart-row-control flex h-7 w-7 items-center justify-center rounded-[3px] border border-transparent text-muted transition-colors hover:bg-surface hover:text-foreground"
-          >
-            <Download className="h-3.5 w-3.5" />
-          </button>
           </div>
           </div>
           </div>
