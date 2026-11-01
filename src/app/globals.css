@@ -1530,6 +1530,41 @@ header.kwant-command-rail .kwant-primary-nav-control {
   box-sizing: border-box;
 }
 
+/* Keep a real plot and intact controls when a docked/floating pane is narrow.
+   The pane owns one bottom scrollbar; its chart measures the same usable
+   surface as the header rather than collapsing behind the tool/price rails. */
+.kwant-chart-pane-scrollport {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.kwant-chart-pane-scrollport > .kwant-workspace-pane-header,
+.kwant-chart-pane-scrollport > .kwant-chart-pane-content {
+  min-width: 520px;
+  width: 100%;
+}
+
+.kwant-chart-pane-scrollport > .kwant-workspace-pane-header {
+  overflow: visible;
+}
+
+.kwant-chart-pane-scrollport > .kwant-workspace-pane-header > div,
+.kwant-chart-pane-scrollport > .kwant-workspace-pane-header button {
+  flex-shrink: 0;
+}
+
+.kwant-chart-pane-scrollport::-webkit-scrollbar {
+  height: 8px;
+}
+
+/* Keep the floating window's resize handles below the scrollbar hit area. */
+.kwant-floating-chart-surface {
+  height: calc(100% - 8px);
+}
+
 /* Each chart toolbar lane owns its scrolling. Reserve a scrollbar gutter in
    addition to the compact button lane: native thin bars are platform-sized
    (10px in Windows), not necessarily the WebKit fallback's 7px. Scoped rules

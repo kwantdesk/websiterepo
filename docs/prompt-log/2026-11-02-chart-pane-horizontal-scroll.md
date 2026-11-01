@@ -1,0 +1,11 @@
+# Compressed chart panes retain a usable surface
+
+Owner screenshot shows narrow chart headers overlapping and a plot collapsed between the drawing toolbar and price axis. Requests a bottom scrollbar instead of squeezing the chart.
+
+Docked chart panes now own a native horizontal scrollport. Header and chart body share a 520 px minimum surface, then grow normally at wider widths. Header groups/buttons do not shrink over one another. A theme-linked thin scrollbar appears at the bottom only when content exceeds the pane's width. The chart measures the usable body width, so rails no longer consume its entire plotting area. No chart data, logical viewport, saved layout, drawing, feed or account settings change.
+
+Detached chart windows use the same scrollport and a separate 8 px bottom resize gutter, keeping resize handles outside the scrollbar hit area. Other floating panels retain the equivalent full-height header/body layout without the chart minimum. Portaled instrument/timeframe menus remain outside the clipped content. Existing mobile header scrollbar hiding does not affect the owning chart scrollport.
+
+Validation: eight actual full-workspace/Chart headless Chrome checks using isolated auth, preferences and history. Widths200/320/760 verify intact nonoverlapping header buttons, chart/body measurements, usable real canvas and conditional overflow; native scrollbar mouse drag succeeds (Chrome's test-only hide-scrollbars flag disabled); final header control is reachable; instrument menu still opens outside the narrow pane; detached surface/gutter and mobile light-theme scrolling verified. Zero page errors or external provider requests. Visual narrow-pane receipt includes the bottom scrollbar. Full Next production build passes; scoped diff/whitespace review passes. No standalone ESLint of the large Workspace per repository memory guard, and no redundant implementation-mirroring unit test for this CSS/layout change.
+
+Release: one scoped main-only push to existing websiterepo-yfmi and exact live SHA verification. Preserve unrelated dirty/native work, Algo isolation, support system and all market/account/history state. No gateway or other backend service operation is necessary.

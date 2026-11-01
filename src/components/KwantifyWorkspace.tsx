@@ -19117,7 +19117,7 @@ export default function KwantifyWorkspace({
     const chartOption = ALL_WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
     const ChartPanelIcon = chartOption?.icon ?? BarChart3;
     return (
-      <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
+      <div className="kwant-chart-pane-scrollport relative flex h-full min-h-0 flex-col rounded-2xl border border-border bg-panel">
         <div className="kwant-workspace-pane-header flex shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
           <div
             onPointerDown={(event) => beginWorkspacePaneDrag(pane.id, event)}
@@ -19267,7 +19267,7 @@ export default function KwantifyWorkspace({
             </button>
           </div>
         </div>
-        <div className="relative min-h-0 flex-1 overflow-hidden">{chartPane}</div>
+        <div className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden">{chartPane}</div>
       </div>
     );
   }
@@ -19299,6 +19299,7 @@ export default function KwantifyWorkspace({
           contain: "layout paint size",
         }}
       >
+        <div className={isWorkspaceChartKind(pane.content) ? "kwant-chart-pane-scrollport kwant-floating-chart-surface flex min-h-0 flex-col" : "flex h-full min-h-0 flex-col"}>
         <div
           onPointerDown={(event) => startFloatingWorkspaceMove(floating.paneId, event)}
           className={`kwant-workspace-pane-header flex shrink-0 touch-none items-center border-b border-border bg-background/95 px-2 ${
@@ -19451,8 +19452,7 @@ export default function KwantifyWorkspace({
           </div>
         </div>
         <div
-          className="absolute inset-x-0 bottom-0 min-h-0 overflow-hidden"
-          style={{ top: "var(--kwant-shell-bar-height)" }}
+          className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden"
         >
           {workspacePaneIsMounted(floating.paneId) ? renderWorkspacePane(floating.paneId, true) : (
             <KwantLoader
@@ -19462,6 +19462,7 @@ export default function KwantifyWorkspace({
               quiet={chartWorkspaceScope === "gamma"}
             />
           )}
+        </div>
         </div>
         <>
           <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "n", event)} className="absolute inset-x-3 top-0 z-[180] h-1.5 touch-none cursor-ns-resize" title="Resize from top" />
