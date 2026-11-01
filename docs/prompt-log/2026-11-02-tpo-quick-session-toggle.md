@@ -1,0 +1,9 @@
+# Daily TPO quick sessions can be cleared
+
+Owner cannot click an active quick-session preset (for example RTH only) again to return to the full default session.
+
+The existing handler always applied its preset. It now checks the latest indicator state inside the existing synchronous `replace` updater: an inactive preset applies as before; the active preset restores only its six session-clock fields from `defaultTpoSettings`/`tpoSettingsToRecord`, using the current instrument's CME/cash defaults. The existing daily/multiple-profile/no-filter and custom-range-clearing behavior is retained. Styling, row grouping, colours, auction analytics and unrelated indicator settings are not reset. No new selection flag or settings migration is needed; the existing `aria-pressed` state follows the actual schedule. Help text explains that clicking the selected session again clears it. Weekly TPO and the profile engine are unchanged.
+
+Validation: eight actual full-workspace headless Chrome checks with isolated auth/preferences/history. All six presets independently select/clear and restore the original full-session clock with no preset highlighted; switching presets and rapid double-clicking use the latest state; the cleared session survives Save/reload. Zero page errors/external provider requests. All43 existing TPO engine/level/left-edge tests pass using `node --import ./scripts/alias-hook.mjs --test ...`; the initial plain Node run could not resolve existing @ aliases and was rerun with the repository loader, not treated as a product failure. Scoped ChartIndicatorsControl ESLint with2304MB cap passes. Full Next production build passes.
+
+One scoped main-only release to existing websiterepo-yfmi, exact live SHA verification. No gateway/provider, account, historical-data, ALGO/native or unrelated dirty-work changes.

@@ -68,6 +68,7 @@ import {
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
 import BounceGexMapSettings, { isBounceMirrorPresentationKey } from "@/components/gex-map/BounceGexMapSettings";
+import { defaultTpoSettings, tpoSettingsToRecord } from "@/lib/tpo/settings";
 import KstIndicatorSettings from "@/components/KstIndicatorSettings";
 import {
   FOOTPRINT_CHART_TYPES,
@@ -5476,7 +5477,7 @@ export default function ChartIndicatorsControl({
                     <div className="space-y-2 border border-border bg-background/65 p-2.5">
                       <div>
                         <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">Quick session</div>
-                        <div className="mt-0.5 text-[8px] leading-3 text-muted">Select the market open that owns each Daily TPO calculation.</div>
+                        <div className="mt-0.5 text-[8px] leading-3 text-muted">Select a session, or click the selected session again to show the full default session.</div>
                       </div>
                       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                         {DAILY_TPO_SESSION_PRESETS.map((preset) => {
@@ -5487,19 +5488,27 @@ export default function ChartIndicatorsControl({
                               key={preset.label}
                               type="button"
                               aria-pressed={active}
-                              onClick={() => replace(settingsInstance.instanceId, (current) => ({
-                                ...current,
-                                settings: {
-                                  ...(current.settings ?? {}),
-                                  scheduleKind: "daily",
-                                  periodMode: "multiple-profiles",
-                                  filterMode: "none",
-                                  customStartMs: 0,
-                                  customEndMs: 0,
-                                  customEndFollowsLatest: false,
-                                  ...preset.settings,
-                                },
-                              }))}
+                              onClick={() => replace(settingsInstance.instanceId, (current) => {
+                                const selected = Object.entries(preset.settings).every(([key, value]) =>
+                                  String(current.settings?.[key] ?? "") === String(value));
+                                const defaults = tpoSettingsToRecord(defaultTpoSettings("daily-tpo", chartSettings, instrument));
+                                const session = selected
+                                  ? Object.fromEntries(Object.keys(preset.settings).map((key) => [key, defaults[key]]))
+                                  : preset.settings;
+                                return {
+                                  ...current,
+                                  settings: {
+                                    ...(current.settings ?? {}),
+                                    scheduleKind: "daily",
+                                    periodMode: "multiple-profiles",
+                                    filterMode: "none",
+                                    customStartMs: 0,
+                                    customEndMs: 0,
+                                    customEndFollowsLatest: false,
+                                    ...session,
+                                  },
+                                };
+                              })}
                               className={`min-h-12 border px-2 py-1.5 text-left transition-colors ${active
                                 ? "border-primary/60 bg-primary/12 text-primary"
                                 : "border-border bg-background text-muted hover:border-primary/40 hover:text-foreground"}`}
