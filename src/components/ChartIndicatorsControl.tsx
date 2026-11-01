@@ -4227,6 +4227,17 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "bounce-levels" ? (
+                <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-background p-3 text-[12px] text-foreground">
+                  <input type="checkbox" className="h-3.5 w-3.5 shrink-0 accent-primary"
+                    checked={settingsInstance.settings?.tooltipsEnabled !== false}
+                    onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current, settings: { ...(current.settings ?? {}), tooltipsEnabled: event.target.checked },
+                    }))} />
+                  <span>Show hover info popups</span>
+                </label>
+              ) : null}
+
               {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
                 <BounceGexMapSettings instrument={instrument} settings={settingsInstance.settings ?? {}} onChange={(patch) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...patch } }))} />
               ) : null}
@@ -8346,6 +8357,7 @@ export default function ChartIndicatorsControl({
 
               {(() => {
                 const entries = Object.entries(settingsInstance.settings ?? {})
+                  .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
                   .filter(([key]) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(key))
                   .filter(([key, value]) =>
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
