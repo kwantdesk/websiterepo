@@ -1,10 +1,9 @@
 "use client";
-import dynamic from "next/dynamic";
+import Panel from "@/components/support/SupportDeskPanel";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { LifeBuoy } from "lucide-react";
-const Panel = dynamic(() => import("@/components/support/SupportDeskPanel"), { ssr: false, loading: () => <div className="rounded-2xl border border-border bg-panel p-5 text-[12px] text-foreground">Opening support…</div> });
 export default function SupportAssistantWidget() {
     const path = usePathname(), [open, setOpen] = useState(false), trigger = useRef<HTMLButtonElement>(null);
     function close() { setOpen(false); trigger.current?.focus(); }

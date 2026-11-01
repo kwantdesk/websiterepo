@@ -1,0 +1,362 @@
+[
+  {
+    "id": "home",
+    "label": "Home",
+    "path": "/",
+    "query": ""
+  },
+  {
+    "id": "charts",
+    "label": "Charts",
+    "path": "/charts",
+    "query": ""
+  },
+  {
+    "id": "gex-view",
+    "label": "GEX Vue",
+    "path": "/gamvue",
+    "query": ""
+  },
+  {
+    "id": "gex-data",
+    "label": "GEX Data",
+    "path": "/gex-data",
+    "query": ""
+  },
+  {
+    "id": "kwanty",
+    "label": "Kwanty",
+    "path": "/kwanty",
+    "query": ""
+  },
+  {
+    "id": "kwanty-classic",
+    "label": "Kwanty — Classic",
+    "path": "/kwanty",
+    "query": "botView=classic"
+  },
+  {
+    "id": "kwanty-state",
+    "label": "Kwanty — State",
+    "path": "/kwanty",
+    "query": "botView=state"
+  },
+  {
+    "id": "kwanty-orderflow",
+    "label": "Kwanty — Order Flow",
+    "path": "/kwanty",
+    "query": "botView=orderflow"
+  },
+  {
+    "id": "options",
+    "label": "Options",
+    "path": "/gamma",
+    "query": ""
+  },
+  {
+    "id": "gex-map",
+    "label": "GEX Map",
+    "path": "/gexmap",
+    "query": ""
+  },
+  {
+    "id": "liquidity",
+    "label": "Liquidity Map",
+    "path": "/liqmap",
+    "query": ""
+  },
+  {
+    "id": "options-heatmap",
+    "label": "Options Heat Map",
+    "path": "/heatmap",
+    "query": ""
+  },
+  {
+    "id": "gex-desk",
+    "label": "GEX Desk",
+    "path": "/gexdesk",
+    "query": ""
+  },
+  {
+    "id": "kwantbot",
+    "label": "KwantBot",
+    "path": "/kwantbot",
+    "query": ""
+  },
+  {
+    "id": "algo",
+    "label": "Algo",
+    "path": "/algo",
+    "query": ""
+  },
+  {
+    "id": "news",
+    "label": "News",
+    "path": "/news",
+    "query": ""
+  },
+  {
+    "id": "news-calendar",
+    "label": "News — Economic Calendar",
+    "path": "/news",
+    "query": "view=calendar"
+  },
+  {
+    "id": "news-financial-info",
+    "label": "News — Financial Info",
+    "path": "/news",
+    "query": "view=financial-info"
+  },
+  {
+    "id": "news-macro",
+    "label": "News — Macroeconomics",
+    "path": "/news",
+    "query": "view=macro"
+  },
+  {
+    "id": "news-developments",
+    "label": "News — Live Macro Developments",
+    "path": "/news",
+    "query": "view=developments"
+  },
+  {
+    "id": "news-options-expirations",
+    "label": "News — Options Expiration Calendar",
+    "path": "/news",
+    "query": "view=options-expirations"
+  },
+  {
+    "id": "news-futures-expirations",
+    "label": "News — Futures Expiration Calendar",
+    "path": "/news",
+    "query": "view=futures-expirations"
+  },
+  {
+    "id": "social",
+    "label": "Socials",
+    "path": "/socials",
+    "query": ""
+  },
+  {
+    "id": "journal",
+    "label": "Journal",
+    "path": "/journal",
+    "query": ""
+  },
+  {
+    "id": "backtesting",
+    "label": "Backtesting",
+    "path": "/backtesting",
+    "query": ""
+  },
+  {
+    "id": "accounts",
+    "label": "Accounts / Paper Trading",
+    "path": "/accounts",
+    "query": ""
+  },
+  {
+    "id": "account",
+    "label": "Account / Sign-in",
+    "path": "/login",
+    "query": ""
+  },
+  {
+    "id": "settings",
+    "label": "Settings",
+    "path": "/settings",
+    "query": ""
+  },
+  {
+    "id": "ai",
+    "label": "AI",
+    "path": "/ai",
+    "query": ""
+  },
+  {
+    "id": "agent",
+    "label": "Agent",
+    "path": "/agent",
+    "query": ""
+  },
+  {
+    "id": "alerts",
+    "label": "Alerts",
+    "path": "/alerts",
+    "query": ""
+  },
+  {
+    "id": "vault",
+    "label": "Vault",
+    "path": "/vault",
+    "query": ""
+  },
+  {
+    "id": "leaderboard",
+    "label": "Leaderboard",
+    "path": "/leaderboard",
+    "query": ""
+  },
+  {
+    "id": "converter",
+    "label": "Converter",
+    "path": "/converter",
+    "query": ""
+  },
+  {
+    "id": "editor",
+    "label": "Code Editor",
+    "path": "/editor",
+    "query": ""
+  },
+  {
+    "id": "connector",
+    "label": "Connector",
+    "path": "/connector",
+    "query": ""
+  },
+  {
+    "id": "connector-futures",
+    "label": "Connector — Futures",
+    "path": "/connector/futures",
+    "query": ""
+  },
+  {
+    "id": "connector-cfds",
+    "label": "Connector — CFDs",
+    "path": "/connector/cfds",
+    "query": ""
+  },
+  {
+    "id": "support",
+    "label": "Help / Support",
+    "path": "/support",
+    "query": ""
+  },
+  {
+    "id": "trade-syncer",
+    "label": "Trade Syncer",
+    "path": "/trade-syncer",
+    "query": ""
+  },
+  {
+    "id": "trade-syncer-dashboard",
+    "label": "Trade Syncer — Dashboard",
+    "path": "/trade-syncer/dashboard",
+    "query": ""
+  },
+  {
+    "id": "trade-syncer-accounts",
+    "label": "Trade Syncer — Accounts",
+    "path": "/trade-syncer/accounts",
+    "query": ""
+  },
+  {
+    "id": "trade-syncer-account-trades",
+    "label": "Trade Syncer — Account Trades",
+    "path": "/trade-syncer/account-trades",
+    "query": ""
+  },
+  {
+    "id": "trade-syncer-integrations",
+    "label": "Trade Syncer — Integrations",
+    "path": "/trade-syncer/integrations",
+    "query": ""
+  },
+  {
+    "id": "trade-syncer-templates",
+    "label": "Trade Syncer — Templates",
+    "path": "/trade-syncer/templates",
+    "query": ""
+  },
+  {
+    "id": "trade-syncer-copier-engine",
+    "label": "Trade Syncer — Copier Engine",
+    "path": "/trade-syncer/copier-engine",
+    "query": ""
+  },
+  {
+    "id": "trade-syncer-copier-logs",
+    "label": "Trade Syncer — Copier Logs",
+    "path": "/trade-syncer/copier-logs",
+    "query": ""
+  },
+  {
+    "id": "automation",
+    "label": "Automation",
+    "path": "/automation",
+    "query": ""
+  },
+  {
+    "id": "automation-connections",
+    "label": "Automation — Connections",
+    "path": "/automation/connections",
+    "query": ""
+  },
+  {
+    "id": "automation-strategies",
+    "label": "Automation — Strategies",
+    "path": "/automation/strategies",
+    "query": ""
+  },
+  {
+    "id": "automation-scanner",
+    "label": "Automation — Scanner",
+    "path": "/automation/scanner",
+    "query": ""
+  },
+  {
+    "id": "automation-risk",
+    "label": "Automation — Risk",
+    "path": "/automation/risk",
+    "query": ""
+  },
+  {
+    "id": "automation-replay",
+    "label": "Automation — Replay",
+    "path": "/automation/replay",
+    "query": ""
+  },
+  {
+    "id": "automation-journal",
+    "label": "Automation — Journal",
+    "path": "/automation/journal",
+    "query": ""
+  },
+  {
+    "id": "automation-execution",
+    "label": "Automation — Execution",
+    "path": "/automation/execution",
+    "query": ""
+  },
+  {
+    "id": "automation-backtests",
+    "label": "Automation — Backtests",
+    "path": "/automation/backtests",
+    "query": ""
+  },
+  {
+    "id": "landing",
+    "label": "Public Website / Landing",
+    "path": "/landing",
+    "query": ""
+  },
+  {
+    "id": "desktop",
+    "label": "Desktop Connection",
+    "path": "/desktop/authorize",
+    "query": ""
+  },
+  {
+    "id": "connector-trade-syncer",
+    "label": "Connector — Trade Syncer",
+    "path": "/connector/trade-syncer",
+    "query": ""
+  },
+  {
+    "id": "other",
+    "label": "Other",
+    "path": "",
+    "query": ""
+  }
+]

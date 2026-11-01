@@ -1,6 +1,6 @@
 # KwantDesk support desk
 
-The global, lazy-loaded Help launcher opens AI product help, a problem-report form and private customer conversations. `/support` provides the full inbox. Staff can search reports, reply and change status; the owner can invite/revoke staff by verified sign-in email. Reports and replies are stored on the VPS, not in browser storage. AI conversation drafts are session-local until a customer explicitly includes them with a report.
+The global Help launcher opens AI product help, a problem-report form and private customer conversations. `/support` provides the full inbox. Staff can search reports, reply and change status; the owner can invite/revoke staff by verified sign-in email. Reports and replies are stored on the VPS, not in browser storage. AI conversation drafts are session-local until a customer explicitly includes them with a report.
 
 ## Identity and privacy
 
@@ -30,7 +30,11 @@ Required root-private `/etc/kwantdesk/support-desk.env`: `SUPPORT_SERVICE_SECRET
 
 Install the backup service/timer and precreate root-private `/var/backups/kwantdesk-support`. `backup.py` uses SQLite's consistent backup API, retains 14 copies and protects them with mode 0600. These are **local VPS backups, not offsite backups**. Monitor disk capacity alongside existing recordings. Restoration requires stopping only the support service, restoring a verified backup and its ownership, removing stale WAL/SHM companions, then starting support; never overwrite a running database.
 
-The launcher makes zero support/provider requests while closed. Inbox/thread refresh is every 20 seconds only while open and visible. No automatic AI messages, hidden polling, email promises or new paid infrastructure are introduced. Customers receive replies in **My reports**; the owner/team receives reports in **Support inbox**. Email/push delivery is not configured or claimed.
+The launcher makes zero support/provider requests while closed. Inbox/thread refresh is every 20 seconds only while open and visible. No automatic AI messages, hidden polling, email promises or new paid infrastructure are introduced. Customers receive replies in **My reports**; the owner/team receives reports in **Support inbox**. The panel shell and report draft render immediately without waiting for the identity request. The eagerly imported panel does not mount or send requests until opened. areas.json is shared with the frontend, covers all active website sections/sub-tabs and is accepted by the service.
+
+## Email follow-up
+
+Reports default to in-app contact only. An optional checkbox authorizes email contact about that specific report, using only the authenticated, verified account email. The service ignores caller-supplied alternate addresses or consent dates, records its own timestamp and migrates existing reports with consent OFF. Only the customer may change permission through tickets/:id/contact; changes are recorded in the thread. Staff sees an Email customer mailto action only with permission, alongside the existing in-app reply form. This opens the staff member’s email application. Automated email notifications/delivery are not configured; no new mail service or paid infrastructure is introduced. Staff must refresh a report before relying on its permission state.
 
 ## Verification
 

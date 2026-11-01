@@ -50,7 +50,7 @@ export async function supportProxy(request: NextRequest, path: string[]) {
                 return json({ error: "Sign in to use support.", code: "SIGN_IN_REQUIRED" }, 401);
             actor = { id: user.id, email: user.email || "", label: String(user.user_metadata?.display_name || user.user_metadata?.full_name || "Customer").slice(0, 80), verified: Boolean(user.email_confirmed_at) };
         }
-        if (!diagnostic && !/^(session|claim|staff|ai|tickets|tickets\/[a-f0-9-]{36}(\/(messages|status|read|attachment))?)$/.test(path.join("/")))
+        if (!diagnostic && !/^(session|claim|staff|ai|tickets|tickets\/[a-f0-9-]{36}(\/(messages|status|read|attachment|contact))?)$/.test(path.join("/")))
             return json({ error: "Support action not found." }, 404);
         const input = request.method === "GET" ? null : await body(request);
         if (request.method !== "GET" && (!input || typeof input !== "object" || Array.isArray(input)))

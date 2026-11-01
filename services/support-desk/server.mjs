@@ -48,6 +48,8 @@ export function supportServer(desk, secret) {
                 result = desk.thread(actor, parts[1]);
             else if (req.method === 'POST' && parts[0] === 'tickets' && parts[2] === 'messages')
                 result = desk.reply(actor, parts[1], input.body);
+            else if (req.method === 'POST' && parts[0] === 'tickets' && parts[2] === 'contact')
+                result = desk.contact(actor, parts[1], input.emailConsent);
             else if (req.method === 'POST' && parts[0] === 'tickets' && parts[2] === 'status')
                 result = desk.status(actor, parts[1], input.status);
             else if (req.method === 'POST' && parts[0] === 'tickets' && parts[2] === 'read')

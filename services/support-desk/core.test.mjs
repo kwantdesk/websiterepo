@@ -142,3 +142,77 @@ test('staff pagination keeps equal-time reports and search escapes SQL wildcards
 finally {
     d.close();
 } });
+
+test('every website area is accepted and remains attached to the report', async () => {
+    const { readFileSync } = await import('node:fs');
+    const areas = JSON.parse(readFileSync(new URL('./areas.json', import.meta.url), 'utf8'));
+    const d = desk(); try {
+        const ids = new Set(areas.map(area => area.id));
+        assert.equal(ids.size, areas.length);
+        for (const id of ['home','charts','gex-view','gex-data','kwanty','kwanty-state','kwanty-orderflow','news-financial-info','news-options-expirations','news-futures-expirations','settings','support']) assert.ok(ids.has(id), id);
+        for (const area of areas) {
+            const customer = { ...a, id: randomUUID() };
+            assert.equal(d.create(customer, { ...report(), category: area.id }).ticket.category, area.id);
+        }
+    } finally { d.close(); }
+});
+
+test('email permission is explicit, verified, durable and cannot nominate another address', () => {
+    const d = desk(); try {
+        const ordinary = d.create(a, { ...report(), contactEmail: 'someone-else@example.invalid' });
+        assert.equal(ordinary.ticket.emailConsent, false);
+        assert.equal(ordinary.ticket.contactEmail, '');
+        const input = { ...report(), emailConsent: true, contactEmail: 'someone-else@example.invalid', emailConsentAt: 'invented' };
+        const opted = d.create(a, input);
+        assert.equal(opted.ticket.contactEmail, a.email);
+        assert.equal(opted.ticket.emailConsent, true);
+        assert.ok(Number.isFinite(Date.parse(opted.ticket.emailConsentAt)));
+        assert.deepEqual(d.create(a, input).ticket, opted.ticket);
+        assert.throws(() => d.create({ ...b, verified: false }, { ...report(), emailConsent: true }), e => e.status === 400);
+        assert.throws(() => d.create(b, { ...report(), emailConsent: 'yes' }), e => e.status === 400);
+    } finally { d.close(); }
+});
+
+test('only the report customer can grant or withdraw email permission; in-app replies survive withdrawal', () => {
+    const d = desk(); try {
+        d.claim(owner, token);
+        const id = d.create(a, { ...report(), emailConsent: true }).ticket.id;
+        assert.equal(d.thread(owner, id).canManageContact, false);
+        assert.throws(() => d.contact(owner, id, false), e => e.status === 403);
+        assert.throws(() => d.contact(b, id, false), e => e.status === 404);
+        assert.throws(() => d.contact(a, id, undefined), e => e.status === 400);
+        const revoked = d.contact(a, id, false);
+        assert.equal(revoked.ticket.emailConsent, false);
+        assert.equal(revoked.ticket.contactEmail, '');
+        assert.equal(revoked.ticket.emailConsentAt, null);
+        assert.equal(revoked.canManageContact, true);
+        d.reply(owner, id, 'We can continue helping inside KwantDesk.');
+        assert.ok(d.thread(a, id).messages.some(message => message.body === 'We can continue helping inside KwantDesk.'));
+        assert.equal(d.contact(a, id, true).ticket.contactEmail, a.email);
+    } finally { d.close(); }
+});
+
+test('legacy report migration preserves messages and defaults email permission to off', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kwantdesk-support-migration-')), path = join(dir, 'support.db');
+    let d = new SupportDesk(path, options); try {
+        const id = d.create(a, report()).ticket.id;
+        for (const column of ['contact_email','email_consent','email_consent_at']) d.db.exec('ALTER TABLE tickets DROP COLUMN ' + column);
+        d.close(); d = new SupportDesk(path, options);
+        const migrated = d.thread(a, id);
+        assert.equal(migrated.ticket.emailConsent, false);
+        assert.equal(migrated.ticket.contactEmail, '');
+        assert.equal(migrated.messages[0].body, report().description);
+        d.close(); d = new SupportDesk(path, options);
+        assert.equal(d.thread(a, id).messages.length, 1);
+    } finally { d.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('repeated opt-ins are bounded while withdrawal always remains available', () => {
+    const d = desk(); try {
+        const id = d.create(a, report()).ticket.id;
+        for (let i = 0; i < 20; i++) { d.contact(a, id, true); d.contact(a, id, false); }
+        assert.throws(() => d.contact(a, id, true), e => e.status === 429);
+        assert.equal(d.contact(a, id, false).ticket.emailConsent, false);
+        assert.equal(d.thread(a, id).messages.length, 41);
+    } finally { d.close(); }
+});

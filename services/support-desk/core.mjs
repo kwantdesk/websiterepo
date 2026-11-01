@@ -9,7 +9,14 @@ const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, m
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const iso = () => new Date().toISOString();
-const CATEGORIES = new Set(['charts', 'options', 'liquidity', 'journal', 'algo', 'news', 'social', 'account', 'other']);
+const CATEGORIES = new Set(JSON.parse(readFileSync(new URL('./areas.json', import.meta.url), 'utf8')).map(area => area.id));
+function contactDetails(actor, allowed) {
+    if (allowed !== undefined && typeof allowed !== 'boolean')
+        fail(400, 'Choose whether support may email you.');
+    if (allowed && (!actor.verified || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(actor.email)))
+        fail(400, 'Email follow-up requires a verified sign-in email.');
+    return { allowed: allowed === true, email: allowed ? actor.email.toLowerCase() : '', at: allowed ? iso() : null };
+}
 export function pagePath(value) { return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value.split(/[?#]/)[0].slice(0, 180) : '/'; }
 export function screenshot(value) {
     if (!value)
@@ -47,6 +54,11 @@ export class SupportDesk {
       CREATE TABLE IF NOT EXISTS rate_events(user_id TEXT NOT NULL,kind TEXT NOT NULL,at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS rate_lookup ON rate_events(user_id,kind,at);
       CREATE TABLE IF NOT EXISTS ai_budget(month TEXT PRIMARY KEY,spent_micro INTEGER NOT NULL);`);
+        // Existing reports remain in-app only until their customer opts in.
+        const columns = new Set(this.db.prepare('PRAGMA table_info(tickets)').all().map(column => column.name));
+        for (const [name, definition] of [['contact_email', "TEXT NOT NULL DEFAULT ''"], ['email_consent', 'INTEGER NOT NULL DEFAULT 0'], ['email_consent_at', 'TEXT']]) {
+            if (!columns.has(name)) this.db.exec(`ALTER TABLE tickets ADD COLUMN ${name} ${definition}`);
+        }
     }
     close() { this.db.close(); }
     transaction(fn) { this.db.exec('BEGIN IMMEDIATE'); try {
@@ -92,7 +104,7 @@ export class SupportDesk {
     visible(actor, id) { if (!uuid(id))
         fail(404, 'Report not found.'); const row = this.db.prepare('SELECT * FROM tickets WHERE id=?').get(id); if (!row || (row.user_id !== actor.id && !this.role(actor)))
         fail(404, 'Report not found.'); return row; }
-    format(row) { return { id: row.id, reference: 'KD-' + row.id.replaceAll('-', '').slice(0, 12).toUpperCase(), subject: row.subject, category: row.category, status: row.status, page: row.page, createdAt: row.created_at, updatedAt: row.updated_at, ...(row.email ? { email: row.email, label: row.label } : {}), unread: Boolean(row.unread) }; }
+    format(row) { return { id: row.id, reference: 'KD-' + row.id.replaceAll('-', '').slice(0, 12).toUpperCase(), subject: row.subject, category: row.category, status: row.status, page: row.page, createdAt: row.created_at, updatedAt: row.updated_at, ...(row.email ? { email: row.email, label: row.label } : {}), emailConsent: row.email_consent === 1, contactEmail: row.email_consent === 1 ? row.contact_email : '', emailConsentAt: row.email_consent_at, unread: Boolean(row.unread) }; }
     list(actor, { staff = false, status = '', before = '', search = '' } = {}) {
         if (staff && !this.role(actor))
             fail(403, 'Support staff access required.');
@@ -121,7 +133,7 @@ export class SupportDesk {
         return { tickets: rows.slice(0, 25).map(r => this.format(r)), next: rows.length > 25 ? rows[24].updated_at + '|' + rows[24].id : null };
     }
     session(actor) { return { user: { id: actor.id, email: actor.email, label: actor.label }, role: this.role(actor), monthlyAiCapUsd: this.monthlyCapMicro / 1e6 }; }
-    thread(actor, id) { const row = this.visible(actor, id); return { ticket: this.format(row), context: JSON.parse(row.context), messages: this.db.prepare('SELECT id,role,body,created_at AS createdAt FROM messages WHERE ticket_id=? ORDER BY id LIMIT 200').all(id), hasAttachment: Boolean(this.db.prepare('SELECT 1 FROM attachments WHERE ticket_id=?').get(id)) }; }
+    thread(actor, id) { const row = this.visible(actor, id); return { ticket: this.format(row), canManageContact: row.user_id === actor.id, context: JSON.parse(row.context), messages: this.db.prepare('SELECT id,role,body,created_at AS createdAt FROM messages WHERE ticket_id=? ORDER BY id LIMIT 200').all(id), hasAttachment: Boolean(this.db.prepare('SELECT 1 FROM attachments WHERE ticket_id=?').get(id)) }; }
     read(actor, id) { this.visible(actor, id); const n = this.db.prepare('SELECT COALESCE(max(id),0) AS id FROM messages WHERE ticket_id=?').get(id).id; this.db.prepare('INSERT INTO reads VALUES(?,?,?) ON CONFLICT(ticket_id,user_id) DO UPDATE SET last_message=excluded.last_message').run(id, actor.id, n); return { ok: true }; }
     create(actor, input) {
         if (!uuid(input.clientId))
@@ -133,12 +145,28 @@ export class SupportDesk {
         if (subject.length < 4 || body.length < 15)
             fail(400, 'Add a subject and a description of at least 15 characters.');
         const picture = screenshot(input.screenshot);
+        const contact = contactDetails(actor, input.emailConsent);
         const conversation = Array.isArray(input.conversation) ? input.conversation.slice(-12).filter(m => m && typeof m === 'object').map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: text(m.content, 1500) })) : [];
         const context = { page: pagePath(input.page), browser: text(input.browser, 300), viewport: text(input.viewport, 40), conversation };
         const id = randomUUID(), now = iso();
         this.transaction(() => { this.rate(actor, 'ticket', 12, 86400000); if (picture && this.db.prepare('SELECT COALESCE(sum(length(bytes)),0) AS n FROM attachments').get().n + picture.bytes.length > 250 * 1024 * 1024)
             fail(413, 'Screenshot storage is full. Submit the report without the screenshot.'); this.db.prepare('INSERT INTO tickets(id,client_id,user_id,email,label,subject,category,page,context,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id, input.clientId, actor.id, actor.email, actor.label, subject, CATEGORIES.has(input.category) ? input.category : 'other', context.page, JSON.stringify(context), now, now); this.db.prepare("INSERT INTO messages(ticket_id,user_id,role,body,created_at) VALUES(?,?,'customer',?,?)").run(id, actor.id, body, now); if (picture)
-            this.db.prepare('INSERT INTO attachments VALUES(?,?,?)').run(id, picture.mime, picture.bytes); });
+            this.db.prepare('INSERT INTO attachments VALUES(?,?,?)').run(id, picture.mime, picture.bytes); this.db.prepare('UPDATE tickets SET contact_email=?,email_consent=?,email_consent_at=? WHERE id=?').run(contact.email, contact.allowed ? 1 : 0, contact.at, id); });
+        return this.thread(actor, id);
+    }
+    contact(actor, id, allowed) {
+        const row = this.visible(actor, id);
+        if (row.user_id !== actor.id) fail(403, 'Only the customer can change email permission.');
+        if (typeof allowed !== 'boolean') fail(400, 'Choose whether support may email you.');
+        const contact = contactDetails(actor, allowed);
+        if (Boolean(row.email_consent) === contact.allowed && row.contact_email === contact.email) return this.thread(actor, id);
+        this.transaction(() => {
+            // Bound audit-message growth without ever blocking withdrawal.
+            if (allowed) this.rate(actor, 'email-contact', 20, 3600000);
+            const now = iso();
+            this.db.prepare('UPDATE tickets SET contact_email=?,email_consent=?,email_consent_at=?,updated_at=? WHERE id=?').run(contact.email, contact.allowed ? 1 : 0, contact.at, now, id);
+            this.db.prepare("INSERT INTO messages(ticket_id,user_id,role,body,created_at) VALUES(?,?,'system',?,?)").run(id, actor.id, contact.allowed ? 'Customer allowed email follow-up for this report.' : 'Customer turned off email follow-up. Reply in KwantDesk.', now);
+        });
         return this.thread(actor, id);
     }
     reply(actor, id, body) { this.visible(actor, id); body = text(body, 6000); if (!body)
