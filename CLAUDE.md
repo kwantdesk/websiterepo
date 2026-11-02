@@ -1,4 +1,9 @@
 
+## 2026-11-02 — remove Annotations Overlay
+
+Removed the Annotations Overlay study from the catalog, rendered/live/replay registries, settings and Chart mirroring renderer. Old saved instances normalize disabled. Removed its chart-annotation publish/subscribe work now that no chart consumes it. Actual drawing annotations and other indicators remain unchanged. Full production build and scoped main/yfmi release; no gateway changes.
+
+
 ## 2026-11-02 — Anchored VWAP is drawing-tool only
 
 Removed Anchored VWAP from the chart indicator catalog, supported indicator sets and indicator-library drawing dispatch shortcut. The Chart anchoredVwap drawing engine, left-toolbar tool, settings and saved drawings are unchanged. Normal VWAP, Rolling VWAP and VWAP Envelopes remain. Full production build and scoped main/yfmi deployment; no feed restart.

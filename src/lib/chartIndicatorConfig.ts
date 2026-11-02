@@ -129,7 +129,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "overlay-timeframe-highlight",
   "candlestick-bar",
   "shift-candle",
-  "annotations-overlay",
   "important-levels",
   "speed-of-tape",
   "pivot-points",
@@ -1727,12 +1726,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sellMarkerColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.sellMarkerColor,
     freshBuyZoneColor: theme?.upColor ?? SHIFT_CANDLE_DEFAULTS.freshBuyZoneColor,
     freshSellZoneColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.freshSellZoneColor,
-  } : {}),
-  ...(indicatorId === "annotations-overlay" ? {
-    sourceChartId: "",
-    sourceIndicatorId: "",
-    preserveSourceColors: true,
-    annotationsOverlaySettingsVersion: 1,
   } : {}),
   ...(indicatorId === "important-levels" ? {
     ...IMPORTANT_LEVELS_DEFAULTS,
@@ -3355,15 +3348,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...defaultIndicatorSettings("shift-candle"), ...(normalizedInstance.settings ?? {}),
     }) };
   }
+  // Retired study: old workspaces must not reactivate annotation mirroring.
   if (normalizedInstance.indicatorId === "annotations-overlay") {
-    const settings = { ...defaultIndicatorSettings("annotations-overlay"), ...(normalizedInstance.settings ?? {}) };
-    return { ...normalizedInstance, settings: {
-      ...settings,
-      sourceChartId: String(settings.sourceChartId ?? "").trim(),
-      sourceIndicatorId: String(settings.sourceIndicatorId ?? "").trim(),
-      preserveSourceColors: settings.preserveSourceColors !== false,
-      annotationsOverlaySettingsVersion: 1,
-    } };
+    return { ...normalizedInstance, enabled: false };
   }
   if (normalizedInstance.indicatorId === "important-levels") {
     const settings: Record<string, number | string | boolean> = { ...defaultIndicatorSettings("important-levels"), ...(normalizedInstance.settings ?? {}) };

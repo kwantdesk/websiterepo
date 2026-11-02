@@ -10,7 +10,7 @@ export const REPLAY_UNAVAILABLE_INDICATORS = new Set([
   "depth-of-market", "mini-dom", "big-blocks-options", "implied-volatility-rank",
   "classic-gex-profile", "expected-move", "gamma-environment", "gamma-levels",
   "net-gamma-exposure-by-strike", "dark-pool-map", "hedge-levels", "tpo-levels",
-  "annotations-overlay", "divergence-detector",
+  "divergence-detector",
 ]);
 
 export function replaySafeIndicators(indicators: readonly ChartIndicatorInstance[], clock: number | null | undefined) {
