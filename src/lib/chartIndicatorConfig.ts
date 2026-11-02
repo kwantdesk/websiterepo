@@ -132,7 +132,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "annotations-overlay",
   "important-levels",
   "speed-of-tape",
-  "anchored-vwap",
   "pivot-points",
   "gap-detector",
   "fvg-identifier",

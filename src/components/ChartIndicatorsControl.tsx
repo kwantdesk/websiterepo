@@ -575,7 +575,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "monthly-volume-profile",
   "session-volume-profile",
   "visible-range-volume-profile",
-  "anchored-vwap",
   "zig-zag",
   "gamma-levels",
   "overlay-chart",
@@ -1712,9 +1711,9 @@ export default function ChartIndicatorsControl({
     // A draw-on profile is a placement tool, not a study that can exist with
     // no anchors. Arm the real fixed-range profile on the active chart. The
     // resulting drawing is what persists and owns its settings/templates.
-    if (indicatorId === "custom-draw-on-volume-profile" || indicatorId === "anchored-vwap") {
+    if (indicatorId === "custom-draw-on-volume-profile") {
       window.dispatchEvent(new CustomEvent("kwantdesk:activate-chart-drawing", {
-        detail: { chartInstanceId, tool: indicatorId === "anchored-vwap" ? "anchoredVwap" : "fixedRangeVolumeProfile" },
+        detail: { chartInstanceId, tool: "fixedRangeVolumeProfile" },
       }));
       setLibraryOpen(false);
       return;

@@ -1,4 +1,9 @@
 
+## 2026-11-02 — Anchored VWAP is drawing-tool only
+
+Removed Anchored VWAP from the chart indicator catalog, supported indicator sets and indicator-library drawing dispatch shortcut. The Chart anchoredVwap drawing engine, left-toolbar tool, settings and saved drawings are unchanged. Normal VWAP, Rolling VWAP and VWAP Envelopes remain. Full production build and scoped main/yfmi deployment; no feed restart.
+
+
 ## 2026-11-02 — remove source-display switches
 
 Removed Show Source from the generic indicator Style list and Data source from VIX Environment controls. Removed Gamma/VIX source-label rendering, removed showSource defaults, and strip the legacy flag when restoring any saved indicator. Confluence contributing-level plotting remains a chart calculation control, labelled Contributing levels rather than Show source levels. Source selection inputs/calculations and server receipts remain intact. Full production build and scoped main/yfmi deployment; no feed restart.

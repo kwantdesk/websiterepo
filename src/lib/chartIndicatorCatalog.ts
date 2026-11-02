@@ -139,7 +139,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("TPO Levels", "Volume & Profiles", "Automated TPO rejection zones - tails, single prints, ledges, failed auctions, profile edges and low-time seams from completed RTH sessions.", false, "Kwantify"),
   indicator("VWAP", "Volume & Profiles", "Session volume-weighted average price.", false, "Kwantify"),
   indicator("VWAP Envelopes", "Volume & Profiles", "VWAP with configurable standard-deviation envelopes."),
-  indicator("Anchored VWAP", "Volume & Profiles", "VWAP anchored to a selected chart point.", true, "Kwantify"),
   indicator("Rolling VWAP", "Volume & Profiles", "Continuous rolling-period VWAP.", false, "Kwantify"),
   indicator("Market Statistics", "Volume & Profiles", "Compact market and participation statistics.", true),
   indicator("On Candle Stats", "Volume & Profiles", "Displays selected statistics directly on candles.", true),
