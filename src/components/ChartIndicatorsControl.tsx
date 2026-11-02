@@ -6568,12 +6568,11 @@ export default function ChartIndicatorsControl({
                     ["showRank", "52-week rank"],
                     ["showPercentile", "52-week percentile"],
                     ["showFreshness", "Freshness"],
-                    ["showSource", "Data source"],
                   ].map(([key, label]) => (
                     <label key={key} className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <input
                         type="checkbox"
-                        checked={settingsInstance.settings?.[key] !== false && (key !== "showSource" || settingsInstance.settings?.showSource === true)}
+                        checked={settingsInstance.settings?.[key] !== false}
                         onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
                           settings: { ...(current.settings ?? {}), [key]: event.target.checked },
@@ -7970,7 +7969,7 @@ export default function ChartIndicatorsControl({
                       {toggle("75% retracement", "enableRetracement75")}
                       {toggle("Exclude previous retracements", "excludePreviousRetracements")}
                       {toggle("Show developing Zig Zag", "showDevelopingLines")}
-                      {toggle("Show source levels", "showSourceLines")}
+                      {toggle("Contributing levels", "showSourceLines")}
                       {toggle("Show zone labels", "showLabels")}
                     </div>
                     {(["first", "second", "third"] as const).map((slot, index) => (
@@ -8366,6 +8365,7 @@ export default function ChartIndicatorsControl({
 
               {(() => {
                 const entries = Object.entries(settingsInstance.settings ?? {})
+                  .filter(([key]) => key !== "showSource")
                   .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
                   .filter(([key]) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(key))
                   .filter(([key, value]) =>

@@ -1,4 +1,9 @@
 
+## 2026-11-02 — remove source-display switches
+
+Removed Show Source from the generic indicator Style list and Data source from VIX Environment controls. Removed Gamma/VIX source-label rendering, removed showSource defaults, and strip the legacy flag when restoring any saved indicator. Confluence contributing-level plotting remains a chart calculation control, labelled Contributing levels rather than Show source levels. Source selection inputs/calculations and server receipts remain intact. Full production build and scoped main/yfmi deployment; no feed restart.
+
+
 ## 2026-11-02 — Gamma Environment shadow removal
 
 Removed the Gamma Environment badge shadow-xl class and inline regime-coloured boxShadow glow in Chart.tsx. Placement, scale, background, border and indicator data remain unchanged. Production build validation and a scoped main-only yfmi deployment are required; no gateway restart.

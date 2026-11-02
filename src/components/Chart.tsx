@@ -19256,11 +19256,6 @@ function Chart({
               <span>{new Date(gammaEnvironment.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
           ) : null}
-          {gammaEnvironmentIndicator.settings?.showSource === true && gammaEnvironment ? (
-            <div className="mt-1 max-w-[240px] truncate text-[7px] uppercase tracking-[0.08em] text-muted">
-              {gammaEnvironment.sourceLabel}
-            </div>
-          ) : null}
         </div>
       ) : null}
       {vixEnvironmentIndicator ? (
@@ -19321,11 +19316,6 @@ function Chart({
               </span>
               <span>·</span>
               <span>{new Date(vixEnvironment.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-            </div>
-          ) : null}
-          {vixEnvironmentIndicator.settings?.showSource === true && vixEnvironment ? (
-            <div className="mt-1 max-w-[260px] truncate text-[7px] uppercase tracking-[0.08em] text-muted">
-              {vixEnvironment.sourceLabel}
             </div>
           ) : null}
         </div>

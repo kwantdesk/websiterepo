@@ -1842,7 +1842,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "gamma-environment" ? {
     position: "top-right",
     showFreshness: true,
-    showSource: false,
     // Semantic green/red by default so positive vs negative gamma is always
     // distinguishable (theme candle colours are monochrome on some themes).
     useThemeColors: false,
@@ -1859,7 +1858,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     showRank: true,
     showPercentile: true,
     showFreshness: true,
-    showSource: false,
     useThemeColors: false,
     calmColor: "#22C55E",
     normalColor: "#38BDF8",
@@ -3243,6 +3241,12 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
 });
 
 export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): ChartIndicatorInstance => {
+  // Source attribution is no longer an optional indicator display setting.
+  if (instance.settings && "showSource" in instance.settings) {
+    const settings = { ...instance.settings };
+    delete settings.showSource;
+    instance = { ...instance, settings };
+  }
   const canonicalId = canonicalChartIndicatorId(instance.indicatorId);
   if (canonicalId !== instance.indicatorId) instance = { ...instance, indicatorId: canonicalId };
   let normalizedInstance = instance.indicatorId === "deep-profile"
@@ -4407,7 +4411,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       showRank: settings.showRank !== false,
       showPercentile: settings.showPercentile !== false,
       showFreshness: settings.showFreshness !== false,
-      showSource: settings.showSource === true,
       useThemeColors: settings.useThemeColors === true,
       vixEnvironmentSettingsVersion: 1,
     });
