@@ -103,7 +103,6 @@ import { SESSION_IMBALANCE_DEFAULTS, normalizeSessionImbalanceSettings } from "@
 import { AVERAGE_DAILY_RANGE_TARGET_DEFAULTS, normalizeAverageDailyRangeTargetSettings } from "@/lib/averageDailyRangeTarget";
 import { VOLUME_DELTA_SPRINT_DEFAULTS, normalizeVolumeDeltaSprintSettings } from "@/lib/volumeDeltaSprint";
 import { OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS, normalizeOverlayTimeframeHighlightSettings } from "@/lib/overlayTimeframeHighlight";
-import { CANDLESTICK_BAR_DEFAULTS, normalizeCandlestickBarSettings } from "@/lib/candlestickBar";
 import { SHIFT_CANDLE_DEFAULTS, normalizeShiftCandleSettings } from "@/lib/shiftCandle";
 import { IMPORTANT_LEVELS_DEFAULTS } from "@/lib/importantLevels";
 import { SPEED_OF_TAPE_DEFAULTS } from "@/lib/speedOfTape";
@@ -127,7 +126,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "average-daily-range-target",
   "volume-delta-sprint",
   "overlay-timeframe-highlight",
-  "candlestick-bar",
   "shift-candle",
   "important-levels",
   "speed-of-tape",
@@ -1473,13 +1471,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "summaryTextSize", label: "Summary text size", defaultValue: 9, min: 6, max: 24, step: 1 },
     { key: "summaryToView", label: "Summary candles to view", defaultValue: 3, min: 1, max: 100, step: 1 },
   ],
-  "candlestick-bar": [
-    { key: "parameter1", label: "Parameter 1 · minutes / target / range ticks", defaultValue: 15, min: 1, max: 100000, step: 1 },
-    { key: "parameter2", label: "Parameter 2 · Vol Bars reversal ticks", defaultValue: 4, min: 1, max: 100000, step: 1 },
-    { key: "candleWidth", label: "Candle width (%)", defaultValue: 86, min: 10, max: 100, step: 1 },
-    { key: "borderWidth", label: "Border width", defaultValue: 1, min: 1, max: 4, step: 1 },
-    { key: "opacity", label: "Body opacity (%)", defaultValue: 68, min: 5, max: 100, step: 1 },
-  ],
   "deep-m-ivb": [
     { key: "lookbackSessions", label: "Completed sessions in empirical model", defaultValue: 20, min: 3, max: 120, step: 1 },
     { key: "zoneWidthTicks", label: "Support / resistance zone width (ticks)", defaultValue: 4, min: 1, max: 40, step: 1 },
@@ -1714,11 +1705,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     bidColor: theme?.downColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.bidColor,
     textColor: theme?.borderUpColor ?? theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.textColor,
     summaryTextColor: theme?.borderUpColor ?? theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.summaryTextColor,
-  } : {}),
-  ...(indicatorId === "candlestick-bar" ? {
-    ...CANDLESTICK_BAR_DEFAULTS,
-    positiveColor: theme?.upColor ?? CANDLESTICK_BAR_DEFAULTS.positiveColor,
-    negativeColor: theme?.downColor ?? CANDLESTICK_BAR_DEFAULTS.negativeColor,
   } : {}),
   ...(indicatorId === "shift-candle" ? {
     ...SHIFT_CANDLE_DEFAULTS,
@@ -3335,13 +3321,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...defaultIndicatorSettings("overlay-timeframe-highlight"), ...(normalizedInstance.settings ?? {}),
     }) };
   }
+  // Retired overlay: preserve normal chart candles but disable old study instances.
   if (normalizedInstance.indicatorId === "candlestick-bar") {
-    return { ...normalizedInstance, settings: {
-      ...normalizeCandlestickBarSettings({
-        ...defaultIndicatorSettings("candlestick-bar"), ...(normalizedInstance.settings ?? {}),
-      }),
-      candlestickBarSettingsVersion: 1,
-    } };
+    return { ...normalizedInstance, enabled: false };
   }
   if (normalizedInstance.indicatorId === "shift-candle") {
     return { ...normalizedInstance, settings: normalizeShiftCandleSettings({

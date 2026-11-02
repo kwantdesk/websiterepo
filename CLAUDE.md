@@ -1,4 +1,9 @@
 
+## 2026-11-02 — remove Candlestick Bar overlay study
+
+Removed Candlestick Bar from the indicator catalog, live/render IDs, settings, numeric/default config and Chart overlay renderer. Old saved candlestick-bar instances normalize disabled. Normal chart candles/wicks, chart types, Overlay Chart and Overlay Timeframe Highlight remain unchanged. Full production build then one main/yfmi release; no gateway restart.
+
+
 ## 2026-11-02 — remove Annotations Overlay
 
 Removed the Annotations Overlay study from the catalog, rendered/live/replay registries, settings and Chart mirroring renderer. Old saved instances normalize disabled. Removed its chart-annotation publish/subscribe work now that no chart consumes it. Actual drawing annotations and other indicators remain unchanged. Full production build and scoped main/yfmi release; no gateway changes.

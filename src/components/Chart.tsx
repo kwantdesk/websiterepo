@@ -129,7 +129,6 @@ import {
   type ChartOverlaySeries as ChartOverlaySeriesModel,
 } from "@/lib/chartOverlays";
 import { OverlayVolumeWidthPrimitive } from "@/lib/chartOverlayPrimitive";
-import { buildCandlestickBarCandles, normalizeCandlestickBarSettings } from "@/lib/candlestickBar";
 export type ChartOverlaySeries = ChartOverlaySeriesModel;
 import type { VixEnvironmentSnapshot } from "@/lib/vixEnvironment";
 import {
@@ -16640,46 +16639,7 @@ function Chart({
           closeBoundaryColor: higher.closeBoundaryColor,
         };
       });
-    const candlestickBarOverlays: ChartOverlaySeries[] = indicators
-      .filter((instance) => instance.enabled && instance.indicatorId === "candlestick-bar")
-      .map((instance) => {
-        const study = normalizeCandlestickBarSettings(instance.settings, {
-          upColor: settings.upColor,
-          downColor: settings.downColor,
-        });
-        const studyCandles = buildCandlestickBarCandles({
-          candles: indicatorWindowCandles,
-          trades: indicatorMarketTrades,
-          symbol: instrument,
-          settings: instance.settings,
-        });
-        return {
-          id: instance.instanceId,
-          name: `Candlestick Bar · ${study.parameterType}`,
-          symbol: instrument,
-          timeframe: study.parameterType === "minutes" ? `${study.parameter1}m` : study.parameterType,
-          style: "candlestick" as const,
-          useSecondaryAxis: false,
-          widthBasedOnVolume: false,
-          colorBasedOnDelta: false,
-          openCloseBorder: true,
-          filled: study.filled,
-          maxVolumeWidthPercent: 100,
-          standardDeviation: 2,
-          borderWidth: study.borderWidth,
-          opacity: study.opacity,
-          useThemeColors: study.useThemeColors,
-          upColor: study.positiveColor,
-          downColor: study.negativeColor,
-          lineColor: study.positiveColor,
-          candles: studyCandles,
-          spanIntervalMs: study.parameterType === "minutes" ? study.parameter1 * 60_000 : undefined,
-          fixedWidthPercent: study.candleWidth,
-          drawCloseBoundary: study.showVerticalLineOnClose,
-          closeBoundaryColor: study.positiveColor,
-        };
-      });
-    const visible = [...overlaySeries, ...timeframeOverlays, ...candlestickBarOverlays].filter((overlay) => overlay.style !== "hidden");
+    const visible = [...overlaySeries, ...timeframeOverlays].filter((overlay) => overlay.style !== "hidden");
     const visibleIds = new Set(visible.map((overlay) => overlay.id));
     for (const [id, runtime] of overlayChartSeriesRef.current) {
       if (visibleIds.has(id)) continue;
