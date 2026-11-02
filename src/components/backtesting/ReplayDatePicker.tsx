@@ -1,5 +1,7 @@
 "use client";
 
+import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -97,7 +99,7 @@ export default function ReplayDatePicker({
 
   useEffect(() => {
     if (!open) return;
-    const closeOnOutside = (event: PointerEvent) => {
+    const closeOnOutside = (event: Event) => {
       const target = event.target as Node;
       if (!triggerRef.current?.contains(target) && !popoverRef.current?.contains(target)) setOpen(false);
     };
@@ -108,12 +110,12 @@ export default function ReplayDatePicker({
       }
     };
     const closeOnViewportChange = () => setOpen(false);
-    document.addEventListener("pointerdown", closeOnOutside);
+    const stopOutsideDismissal = captureDropdownDismissal(closeOnOutside);
     document.addEventListener("keydown", closeOnEscape);
     window.addEventListener("resize", closeOnViewportChange);
     window.addEventListener("scroll", closeOnViewportChange, true);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutside);
+      stopOutsideDismissal();
       document.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("resize", closeOnViewportChange);
       window.removeEventListener("scroll", closeOnViewportChange, true);

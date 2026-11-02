@@ -1,5 +1,7 @@
 "use client";
 
+import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+
 import type { AlgoChartIntegration, AlgoChartFocus } from "@/lib/algoChartIntegration";
 import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from "@/lib/drawingClearBarriers";
 import { workspaceScopeStorageKey, workspaceStoragePrefix, workspaceTemplateStorageKey, workspaceChartInstanceId, viewportSyncGroupForScope, type ChartWorkspaceScope } from "@/lib/chartWorkspaceScope";
@@ -1677,7 +1679,7 @@ function PaneHeaderDropdown({
       });
     };
     place();
-    const closeOnOutside = (event: PointerEvent) => {
+    const closeOnOutside = (event: Event) => {
       const target = event.target as Node;
       if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
       setOpen(false);
@@ -1695,12 +1697,12 @@ function PaneHeaderDropdown({
       if (target instanceof Element && triggerRef.current && !target.contains(triggerRef.current)) return;
       setOpen(false);
     };
-    document.addEventListener("pointerdown", closeOnOutside);
+    const stopOutsideDismissal = captureDropdownDismissal(closeOnOutside);
     document.addEventListener("keydown", closeOnEscape);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", closeOnScroll, true);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutside);
+      stopOutsideDismissal();
       document.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", closeOnScroll, true);
@@ -17261,7 +17263,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (!showWorkspacePresetMenu) return;
     positionWorkspacePresetMenu();
-    const closeOnOutsideClick = (event: MouseEvent) => {
+    const closeOnOutsideClick = (event: Event) => {
       const target = event.target as Node;
       if (
         workspacePresetButtonRef.current?.contains(target)
@@ -17277,12 +17279,12 @@ export default function KwantifyWorkspace({
     };
     window.addEventListener("resize", positionWorkspacePresetMenu);
     window.addEventListener("scroll", positionWorkspacePresetMenu, true);
-    document.addEventListener("mousedown", closeOnOutsideClick);
+    const stopOutsideDismissal = captureDropdownDismissal(closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
       window.removeEventListener("resize", positionWorkspacePresetMenu);
       window.removeEventListener("scroll", positionWorkspacePresetMenu, true);
-      document.removeEventListener("mousedown", closeOnOutsideClick);
+      stopOutsideDismissal();
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [positionWorkspacePresetMenu, showWorkspacePresetMenu]);
@@ -17933,24 +17935,24 @@ export default function KwantifyWorkspace({
   // interaction elsewhere instead of waiting for the release.
   useEffect(() => {
     if (!showAllTF) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
+    const closeOnOutsidePointer = (event: Event) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
       // The panel lives at <body>, so it is NOT inside the deck's subtree any
       // more. Without its own check, pressing an interval would dismiss the
       // menu on pointerdown and the click would never land - the menu would
       // look just as dead as it did when it was being clipped.
-      if (timeframeMenuRef.current?.contains(target)) return;
+      if (timeframeButtonRef.current?.contains(target)) return;
       if (timeframePanelRef.current?.contains(target)) return;
       setShowAllTF(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setShowAllTF(false);
     };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    const stopOutsideDismissal = captureDropdownDismissal(closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      stopOutsideDismissal();
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [showAllTF]);

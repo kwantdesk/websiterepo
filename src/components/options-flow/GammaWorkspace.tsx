@@ -1,5 +1,7 @@
 "use client";
 
+import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -383,16 +385,16 @@ function OptionsChartTimeframeSelect({
 
   useEffect(() => {
     if (!open) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
+    const closeOnOutsidePointer = (event: Event) => {
       if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    const stopOutsideDismissal = captureDropdownDismissal(closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      stopOutsideDismissal();
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
@@ -829,16 +831,16 @@ export default function GammaWorkspace() {
 
   useEffect(() => {
     if (!instrumentMenuOpen) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
+    const closeOnOutsidePointer = (event: Event) => {
       if (!instrumentMenuRef.current?.contains(event.target as Node)) setInstrumentMenuOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setInstrumentMenuOpen(false);
     };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    const stopOutsideDismissal = captureDropdownDismissal(closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      stopOutsideDismissal();
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [instrumentMenuOpen]);

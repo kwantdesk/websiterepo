@@ -1,5 +1,7 @@
 "use client";
 
+import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+
 import { Check, ChevronDown, Clock3, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -74,7 +76,7 @@ export default function TimeZoneSelect({
 
   useEffect(() => {
     if (!open) return;
-    const handlePointerDown = (event: PointerEvent) => {
+    const handlePointerDown = (event: Event) => {
       const target = event.target as Node;
       if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) close();
     };
@@ -94,12 +96,12 @@ export default function TimeZoneSelect({
         updateMenuPosition();
       });
     };
-    document.addEventListener("pointerdown", handlePointerDown);
+    const stopOutsideDismissal = captureDropdownDismissal(handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
     window.addEventListener("resize", followViewport);
     window.addEventListener("scroll", followViewport, true);
     return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
+      stopOutsideDismissal();
       document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("resize", followViewport);
       window.removeEventListener("scroll", followViewport, true);

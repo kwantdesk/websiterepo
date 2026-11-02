@@ -1,5 +1,7 @@
 "use client";
 
+import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+
 import {
   Children,
   Fragment,
@@ -149,7 +151,7 @@ export default function KwantSelect({
 
   useEffect(() => {
     if (!open) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
+    const closeOnOutsidePointer = (event: Event) => {
       const target = event.target as Node;
       if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) closeMenu();
     };
@@ -169,12 +171,12 @@ export default function KwantSelect({
         updateMenuPosition();
       });
     };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    const stopOutsideDismissal = captureDropdownDismissal(closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape);
     window.addEventListener("resize", followViewport);
     window.addEventListener("scroll", followViewport, true);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      stopOutsideDismissal();
       document.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("resize", followViewport);
       window.removeEventListener("scroll", followViewport, true);

@@ -1,5 +1,7 @@
 "use client";
 
+import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
@@ -54,6 +56,7 @@ export default function KwantDatePicker({
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   const [month, setMonth] = useState(() => startOfMonth(toDate(value || toValue(new Date()))));
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) setMonth(startOfMonth(toDate(value || toValue(new Date()))));
@@ -61,16 +64,16 @@ export default function KwantDatePicker({
 
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (isInsideKwantDatePicker(event.target)) return;
+    const onPointerDown = (event: Event) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
       if (triggerRef.current?.contains(event.target as Node)) return;
       setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
-    window.addEventListener("pointerdown", onPointerDown, true);
+    const stopOutsideDismissal = captureDropdownDismissal(onPointerDown);
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
+      stopOutsideDismissal();
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
@@ -133,6 +136,7 @@ export default function KwantDatePicker({
       {open && position && typeof document !== "undefined"
         ? createPortal(
           <div
+            ref={menuRef}
             data-kwant-date-menu
             className="fixed z-[12000] overflow-hidden rounded-2xl border border-border bg-panel/95 p-2 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
             style={{ left: position.left, top: position.top, width: WIDTH }}

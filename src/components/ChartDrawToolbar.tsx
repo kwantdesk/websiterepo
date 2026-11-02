@@ -1,5 +1,7 @@
 "use client";
 
+import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
@@ -179,26 +181,26 @@ export default function ChartDrawToolbar({
 
   useEffect(() => {
     if (!openGroup) return;
-    const close = (event: PointerEvent) => {
+    const close = (event: Event) => {
       const target = event.target as Node;
       if (menuRef.current?.contains(target)) return;
       if (Object.values(triggers.current).some((n) => n?.contains(target))) return;
       setOpenGroup(null);
     };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
+    const stopOutsideDismissal = captureDropdownDismissal(close);
+    return () => stopOutsideDismissal();
   }, [openGroup]);
 
   useEffect(() => {
     if (!magnetMenuOpen) return;
-    const close = (event: PointerEvent) => {
+    const close = (event: Event) => {
       const target = event.target as Node;
       if (magnetMenuRef.current?.contains(target)) return;
       if (magnetTrigger.current?.contains(target)) return;
       setMagnetMenuOpen(false);
     };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
+    const stopOutsideDismissal = captureDropdownDismissal(close);
+    return () => stopOutsideDismissal();
   }, [magnetMenuOpen]);
 
   const openFlyout = (group: DrawToolGroupId) => {

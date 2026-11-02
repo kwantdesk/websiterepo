@@ -1,0 +1,9 @@
+# Neighbouring dropdowns close one another — 2 November 2026
+
+The owner reported Charts instrument and timeframe menus overlapping. Pane-header pointer guards stop propagation to prevent chart dragging; document bubble-phase outside listeners therefore never saw presses on the neighbouring trigger.
+
+Added shared capture-phase pointer dismissal and focus dismissal for leaf selectors. Focus checks run after portal refs attach and ignore superseded focus/unmounted listeners, preserving autofocus/search. Applied to pane-header instrument/timeframe, the main timeframe/workspace pickers, shared selects/timezones/dates, replay dates, Options instrument/timeframe menus and drawing-tool/magnet flyouts. Date calendars now check their own portal instead of treating every calendar as inside the same dropdown. The main timeframe boundary uses its actual button rather than the whole neighbouring-control row.
+
+Validation: actual Workspace/Chart in isolated headless Chrome reproduces two overlapping menus on unchanged HEAD. Corrected source passes ten browser checks: both instrument/timeframe directions, keyboard focus/Enter, search/internal scrolling, same-trigger toggle, neighbouring shared selects inside a stopped-pointer container, timezone/select switching, option selection, date/select switching and Escape. No browser errors or external requests. Artifacts: tmp/dropdown-baseline-result.json, tmp/dropdown-browser-result.json, corresponding screenshots and browser harnesses. Full production build passed. Focused lint has no errors; the existing KwantSelect aria-required/button warning remains unchanged. No standalone lint of the giant Workspace component.
+
+Frontend only: data feeds, recordings, chart calculations and backend processes were not changed or restarted. One scoped main push to existing websiterepo-yfmi; verify Ready and the exact public SHA. Open tabs need one refresh to load the deployment. Preserve all unrelated dirty/native/ALGO work.
