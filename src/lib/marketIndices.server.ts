@@ -35,7 +35,7 @@ const CBOE_VIX_DAILY_HISTORY_URL =
   "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv";
 
 export function hasLiveMarketIndexAccess() {
-  return vendorMarketDataConfigured("massive");
+  return vendorMarketDataConfigured("massive") || Boolean(getConfiguredQuantDataApiKey());
 }
 
 export function hasIntradayMarketIndexHistoryAccess() {
@@ -205,7 +205,7 @@ function newYorkMarketOpen(timestamp = Date.now()) {
 
 async function fetchKwantDataUnderlyingSnapshot(symbol: string): Promise<MarketIndexSnapshot | null> {
   const definition = getMarketIndexDefinition(symbol);
-  if (!definition || definition.group !== "Options Underlyings") return null;
+  if (!definition || (definition.group !== "Options Underlyings" && definition.symbol !== "VIX")) return null;
   const pulse = await getOptionsMarketPulse(definition.symbol, "CASH", false);
   const marketData = pulse.marketData;
   const lastPrice = marketData.lastPrice;
@@ -377,7 +377,7 @@ export async function fetchMarketIndexCandles(options: {
   if (!definition) throw new Error(`${options.symbol} is not a supported market instrument.`);
   const canUseOfficialVixArchive = definition.symbol === "VIX"
     && ["1D", "1W", "1M"].includes(options.timeframe);
-  const canUseKwantDataHistory = definition.group === "Options Underlyings"
+  const canUseKwantDataHistory = (definition.group === "Options Underlyings" || definition.symbol === "VIX")
     && Boolean(getConfiguredQuantDataApiKey());
   // These instruments belong to the options surface and KwantData is the
   // authoritative shared VPS adapter for their chart history. Prefer it before
@@ -469,7 +469,7 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
     return [
       ...snapshots,
       ...quantDataSnapshots,
-      ...await fetchCboeVixEodSnapshots(unresolved),
+      ...await fetchCboeVixEodSnapshots(unresolved.filter(symbol => !quantDataSnapshots.some(row => row.symbol === symbol))),
     ];
   }
 

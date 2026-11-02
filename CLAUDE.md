@@ -5625,3 +5625,14 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   whole-word replacement so `logarithmic` and similar legitimate words are not
   corrupted. Prompt/outcome:
   `docs/prompt-log/2026-09-07-private-terminology-scrub.md`.
+
+
+## 2026-11-02 — full Charts instrument history/recording audit
+
+Audited 53 futures + 15 stock/index symbols; repaired canonical completed futures sessions and verified 283,110 minute OHLCV bars against fresh Rithmic replay with zero final differences, plus 265 timeframe delivery checks. See docs/audits/2026-11-02-charts-instrument-data.md and adjacent JSON for every instrument, limitations, deployed hashes and backups.
+
+Production /opt/kwantdesk/compose.yml now persistently enables RITHMIC_ARCHIVE_CATALOG_TRADES_ENABLED=true: unopened allowed roots get trades+BBO, core depth streams stay full, explicit consumers upgrade once. Daily catalogue maintenance uses --days=9; hourly repair's old 40-instrument ceiling was fixed. Never count payload.isSnapshot as a new execution. Canonical full-session provider history is authoritative for continuous charts, including empty minutes; explicit named-contract requests retain their own archive. Do not overwrite runtime mount overrides blindly with the old image.
+
+QG empty-root replay retries its actual provider contract; fallback reference ranking uses recent provider volume with real expiry validation (SR3Z6 at audit). Closed-session corrective replacements require explicit flags and original-file backups; normal hydration preserves published rows. VIX routes through owned QuantData history/shared quotes. VXN has no configured intraday feed; do not invent it. Ten VIX RTH minute omissions match the provider. Minute backfill is not execution/depth backfill.
+
+Chart price precision now uses the shared futures tick mapping for all 53 products, including 6M/6J and fractional bonds. time-v6 browser keys exclude old partial candle caches without clearing drawings/workspaces/accounts. 109 targeted tests, route coverage, scoped lint and full production build passed. One old static index-cache assertion also fails on unchanged HEAD and is recorded in the audit.

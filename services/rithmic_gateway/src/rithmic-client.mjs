@@ -1,4 +1,6 @@
 import { selectReferenceContract } from "./instrument-resolution.mjs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import WebSocket from "ws";
 import { openProviderSocket } from "./provider-socket.mjs";
@@ -456,14 +458,22 @@ export class RithmicMarketDataClient extends EventEmitter {
       }
     }).catch(async (error) => {
       const live = liveFallback();
-      if (!live?.symbol) {
-        if (!/\(7\)/.test(error.message) || this.socket?.readyState !== WebSocket.OPEN) throw error;
+      if (/\(7\)/.test(error.message) && this.socket?.readyState === WebSocket.OPEN) {
+       try {
         const rows=await this.searchReferenceContracts(normalizedExchange,normalizedRoot,timeoutMs);
-        const listed=selectReferenceContract(rows,{exchange:normalizedExchange,root:normalizedRoot});
+        const activity=await readFile(join(this.config.recordDir||'/recordings','history-import','reference-contract-activity.json'),'utf8').then(JSON.parse).then(data=>data.entries?.[key]).catch(()=>null);
+        const fresh=activity&&Date.now()-Date.parse(activity.observedAt)<7*86400000&&Date.now()>=Date.parse(activity.observedAt);
+        const listed=selectReferenceContract(rows,{exchange:normalizedExchange,root:normalizedRoot,activityBySymbol:fresh?activity.volumes:{}});
         if(!listed)throw error;
-        const resolved={exchange:normalizedExchange,root:normalizedRoot,contractSymbol:listed.symbol,resolvedAt:Date.now(),source:'rithmic-reference-expiry-fallback'};
+        const resolved={exchange:normalizedExchange,root:normalizedRoot,contractSymbol:listed.symbol,resolvedAt:Date.now(),source:fresh&&activity.volumes?.[listed.symbol]>0?'rithmic-reference-volume-fallback':'rithmic-reference-expiry-fallback'};
         this.frontMonthCache.set(key,resolved);this.applyFrontMonthResolution(resolved);return resolved;
+       } catch (referenceError) {
+        // A temporary reference outage must not discard an already captured
+        // product quote. Retry reference discovery at the next shared poll.
+        if (!live?.symbol) throw referenceError;
+       }
       }
+      if (!live?.symbol) throw error;
       const resolved = {
         exchange: normalizedExchange,
         root: normalizedRoot,
@@ -496,7 +506,9 @@ export class RithmicMarketDataClient extends EventEmitter {
     const contractSymbol = String(resolved?.contractSymbol || "").trim().toUpperCase();
     if (!exchange || !root || !isExactContractForRoot(contractSymbol, root)) return false;
 
-    this.subscribe(exchange, contractSymbol);
+    const sameRoot = [...this.subscriptions.values()].filter(row => row.exchange === exchange && contractRoot(row.symbol) === root);
+    const archiveOnly = this.config.archiveCatalogTradesEnabled === true && !sameRoot.some(row => !row.archiveOnly);
+    this.subscribe(exchange, contractSymbol, { archiveOnly });
     for (const row of [...this.subscriptions.values()]) {
       if (
         row.exchange === exchange
@@ -511,8 +523,12 @@ export class RithmicMarketDataClient extends EventEmitter {
 
   async reconcileSubscribedFrontMonths() {
     if (this.socket?.readyState !== WebSocket.OPEN || !this.status.authenticated) return;
+    const archiveRoots = this.config.archiveCatalogTradesEnabled && this.allowedRoots.size <= 64 ? [...this.allowedRoots] : [];
+    this.status.lastCatalogArchiveError = this.config.archiveCatalogTradesEnabled && this.allowedRoots.size > 64
+      ? "Catalogue recording is bounded to 64 product roots." : null;
     const roots = [...new Set(
-      [...this.subscriptions.values()].map((row) => `${row.exchange}:${contractRoot(row.symbol)}`),
+      [...this.subscriptions.values()].map((row) => `${row.exchange}:${contractRoot(row.symbol)}`)
+        .concat(archiveRoots),
     )];
     for (const key of roots) {
       const separator = key.indexOf(":");
@@ -527,17 +543,27 @@ export class RithmicMarketDataClient extends EventEmitter {
     }
   }
 
-  subscribe(exchange, symbol) {
+  subscribe(exchange, symbol, options = {}) {
     const row = {
       exchange: String(exchange).trim().toUpperCase(),
       symbol: String(symbol).trim().toUpperCase(),
     };
+    if (options.archiveOnly === true) row.archiveOnly = true;
     if (!row.exchange || !row.symbol) {
       throw new Error("Both exchange and symbol are required.");
     }
     const key = instrumentKey(row.exchange, row.symbol);
     const existing = this.subscriptions.get(key);
     if (existing) {
+      if (existing.archiveOnly && !row.archiveOnly) {
+        // A depth consumer explicitly opened this product. Upgrade once on
+        // the same provider socket; a background sweep never downgrades it.
+        this.subscriptions.set(key, row);
+        this.status.subscriptions = [...this.subscriptions.values()];
+        if (this.socket?.readyState === WebSocket.OPEN) this.sendSubscription(row);
+        this.book.ensure(row.exchange, row.symbol);
+        return row;
+      }
       // Already subscribed: serve from the local book and transmit nothing.
       // This is the path every website read takes, so reads cost Rithmic
       // zero requests no matter how many clients or tabs are open.
@@ -569,6 +595,7 @@ export class RithmicMarketDataClient extends EventEmitter {
       exchange: String(exchange).trim().toUpperCase(),
       symbol: String(symbol).trim().toUpperCase(),
     };
+    if (this.subscriptions.get(instrumentKey(row.exchange, row.symbol))?.archiveOnly) row.archiveOnly = true;
     this.subscriptions.delete(instrumentKey(row.exchange, row.symbol));
     this.depthIntegrityChecks.delete(instrumentKey(row.exchange, row.symbol));
     this.status.subscriptions = [...this.subscriptions.values()];
@@ -581,7 +608,7 @@ export class RithmicMarketDataClient extends EventEmitter {
         request: 2,
         updateBits: ALL_UPDATE_BITS,
       });
-      if (this.config.enableDepthByOrder) {
+      if (this.config.enableDepthByOrder && !row.archiveOnly) {
         this.send("RequestDepthByOrderUpdates", {
           templateId: TEMPLATE_IDS.DEPTH_UPDATES_REQUEST,
           userMsg: [`dbo-unsubscribe:${row.exchange}:${row.symbol}`],
@@ -601,9 +628,9 @@ export class RithmicMarketDataClient extends EventEmitter {
       symbol: row.symbol,
       exchange: row.exchange,
       request: 1,
-      updateBits: ALL_UPDATE_BITS,
+      updateBits: row.archiveOnly ? UPDATE_BITS.LAST_TRADE | UPDATE_BITS.BBO : ALL_UPDATE_BITS,
     });
-    if (this.config.enableDepthByOrder) {
+    if (this.config.enableDepthByOrder && !row.archiveOnly) {
       this.send("RequestDepthByOrderSnapshot", {
         templateId: TEMPLATE_IDS.DEPTH_SNAPSHOT_REQUEST,
         userMsg: [`dbo-snapshot:${row.exchange}:${row.symbol}`],
@@ -626,7 +653,7 @@ export class RithmicMarketDataClient extends EventEmitter {
       || !["depth", "bbo"].includes(event?.type)) return false;
     const subscription = this.subscriptions.get(event.instrument);
     const instrument = this.book.instruments.get(event.instrument);
-    if (!subscription || !instrument || instrument.depthMode !== "L3"
+    if (!subscription || subscription.archiveOnly || !instrument || instrument.depthMode !== "L3"
       || instrument.pendingDepthSnapshot) return false;
     const state = this.depthIntegrityChecks.get(event.instrument)
       || { checkedAt: -Infinity, crossedSince: null, requestedAt: -Infinity };

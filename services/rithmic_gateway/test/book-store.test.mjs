@@ -451,3 +451,9 @@ test("keeps lightweight snapshots bounded while exposing the complete retained i
     500,
   );
 });
+test('subscription last-trade snapshots seed quotes without creating executions',()=>{
+ const store=new RithmicBookStore();
+ const payload={exchange:'CME',symbol:'NQZ6',tradePrice:100,tradeSize:4,ssboe:1790000000,isSnapshot:true};
+ assert.equal(store.applyTrade(payload),null);assert.equal(store.ensure('CME','NQZ6').lastPrice,100);assert.equal(store.ensure('CME','NQZ6').trades.length,0);
+ const event=store.applyTrade({...payload,isSnapshot:false,tradePrice:101});assert.equal(event.type,'trade');assert.equal(store.ensure('CME','NQZ6').trades.length,1);
+});

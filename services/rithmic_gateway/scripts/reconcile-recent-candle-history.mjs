@@ -40,7 +40,10 @@ export async function reconcileRecentHistory({ dir = "/recordings", now = Date.n
       if (match) instruments.set(name, { exchange: match[1], symbol: match[2] });
     }
   }
-  if (instruments.size > 40) throw Error("Unexpected contract count; refusing an unbounded replay");
+  // The enabled catalogue contains up to 64 roots, with multiple contracts
+  // around rollover. The old 40-contract ceiling stopped the entire job.
+  // Retain the separate 32MiB transfer budget and a hard three-contract/root cap.
+  if (instruments.size > 192) throw Error("Unexpected contract count; refusing an unbounded replay");
   const client = new RithmicHistoryPlantClient(loadConfig(), { requestTimeoutMs: 120000 });
   const run = new Date(now).toISOString().replaceAll(/[:.]/g, "-");
   const receipt = { run, bytes: 0, sessions: [], failed: [] };
@@ -49,6 +52,10 @@ export async function reconcileRecentHistory({ dir = "/recordings", now = Date.n
     for (const [name, instrument] of instruments) {
       const needed = [];
       for (const day of days) {
+        const root = instrument.symbol.replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "");
+        const canonical = await readFile(join(dir, "bars", day, `${instrument.exchange}-${root}.json`), "utf8").then(JSON.parse).catch(() => null);
+        if (canonical?.completedSession === true && canonical.markerConvention === "bar-open"
+            && canonical.source === "Rithmic History Plant minute bars") continue;
         const existing = await readFile(join(dir, "bars", day, name), "utf8").then(JSON.parse).catch(() => null);
         if (existing?.completedSession === true && existing.markerConvention === "bar-open"
             && existing.source === "Rithmic History Plant minute bars") continue;

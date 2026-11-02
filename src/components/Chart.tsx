@@ -1,5 +1,6 @@
 "use client";
 import { recordChartTickPaint } from "@/lib/chartTickAudit";
+import { futuresAwarePriceFormat } from "@/lib/instrumentPriceFormat";
 
 import { beginPaperProtectionDrag } from "@/lib/paperProtectionDrag";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
@@ -2809,7 +2810,7 @@ function getPriceFormat(instrument: string) {
   if (threeDecimalForex.includes(normalized)) return { type: "price" as const, precision: 3, minMove: 0.001 };
   if (threeDecimal.includes(normalized)) return { type: "price" as const, precision: 3, minMove: 0.001 };
   if (oneDecimal.includes(normalized)) return { type: "price" as const, precision: 1, minMove: 0.1 };
-  return { type: "price" as const, precision: 2, minMove: 0.01 };
+  return futuresAwarePriceFormat(instrument);
 }
 
 function withAlpha(color: string, alpha: number) {

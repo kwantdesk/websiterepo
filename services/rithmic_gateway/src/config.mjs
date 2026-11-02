@@ -139,6 +139,9 @@ export function loadConfig(env = process.env) {
     // This keeps the collector bounded while avoiding a restart every time
     // the front month rolls or a user opens another entitled CME product.
     allowedRoots: parseSubscriptions(env.RITHMIC_ALLOWED_ROOTS),
+    // Record catalogue-wide executions without opening 53 full L3 books.
+    // Explicit chart/depth subscriptions can upgrade an archive-only stream.
+    archiveCatalogTradesEnabled: String(env.RITHMIC_ARCHIVE_CATALOG_TRADES_ENABLED || "false").toLowerCase() === "true",
     enableDepthByOrder:
       String(env.RITHMIC_ENABLE_DEPTH_BY_ORDER || "true").toLowerCase() !==
       "false",

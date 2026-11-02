@@ -122,9 +122,9 @@ function cacheKey(symbol: string, timeframe: string) {
   // the malformed volume/range/Renko history this pipeline replaces.
   return isEventBasedChartInterval(timeframe)
     ? `event-v7::${symbol}::${timeframe}`
-    // v5 excludes quote/midpoint-built tails and stale rollover OHLC. Restore
-    // execution-backed history instead. Event history has its own schema.
-    : `time-v5::${symbol}::${timeframe}`;
+    // v6 refreshes time bars after the catalogue-wide provider reconciliation.
+    // Old partial captures must not shadow the repaired VPS history for days.
+    : `time-v6::${symbol}::${timeframe}`;
 }
 
 function executionTapeCacheKey(symbol: string, _timeframe: string) {
@@ -470,7 +470,7 @@ async function readAllCachedHistory(symbol: string) {
     const matchingKeys = storedKeys
       .map(String)
       .filter((key) => (
-        key.startsWith(`time-v5::${symbol}::`)
+        key.startsWith(`time-v6::${symbol}::`)
         || key.startsWith(`event-v7::${symbol}::`)
       ));
     // Read only this symbol's candle series, sequentially. The former getAll

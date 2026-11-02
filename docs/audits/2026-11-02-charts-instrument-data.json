@@ -1,0 +1,4122 @@
+{
+  "auditDate": "2026-11-02",
+  "providerComparisonAt": "2026-11-02T01:08:15.546Z",
+  "deliveryCheckAt": "2026-11-02T01:14:27.803Z",
+  "liveCheckAt": "2026-11-02T01:15:28.786Z",
+  "scope": {
+    "futures": 53,
+    "cashAndIndices": 15,
+    "providerMinuteBars": 283110,
+    "timeframeChecks": 265
+  },
+  "before": {
+    "roots": 53,
+    "changed": 2826,
+    "extra": 3,
+    "missing": 0
+  },
+  "after": {
+    "missing": 0,
+    "extra": 0,
+    "different": 0
+  },
+  "runtime": {
+    "connected": true,
+    "authenticated": true,
+    "subscriptions": 53,
+    "tradeOnlySubscriptions": 43,
+    "actualTradeRoots": 50,
+    "dropped": {},
+    "eventLoop": {
+      "overloaded": false,
+      "lastLagMs": 0,
+      "maxLagMs": 259,
+      "tripCount": 0,
+      "recoveryMsRemaining": 0
+    }
+  },
+  "sourceHashes": {
+    "config": {
+      "path": "/opt/kwantdesk/runtime-overrides/config.catalog-recording-20261102.mjs",
+      "sha256Lf": "5a1b030a5749e03a4edfeb201088d88a0263090c6490b5685f657694801f617c"
+    },
+    "rithmic-client": {
+      "path": "/opt/kwantdesk/runtime-overrides/rithmic-client.catalog-recording-20261102.mjs",
+      "sha256Lf": "781ac8a123322f53595bb3a9bd723d73299268dc5840cdba3e54abb506732978"
+    },
+    "server": {
+      "path": "/opt/kwantdesk/runtime-overrides/server.catalog-recording-20261102.mjs",
+      "sha256Lf": "5475f55cf06a628a6bd5b77596298cceb109ce797ea02f7f693e6f3dfbbc6989"
+    },
+    "book-store": {
+      "path": "/opt/kwantdesk/runtime-overrides/book-store.hotpath-20261024.mjs",
+      "sha256Lf": "3bd6468026f361af75d170593e0e26197b6a858e1988e013242ddb91e4a3702a"
+    },
+    "futures-bar-archive": {
+      "path": "/opt/kwantdesk/runtime-overrides/futures-bar-archive.serial-flush-20261028.mjs",
+      "sha256Lf": "fed3e2c4b95011372c971a1fc9c498fa2d00e6d80e7c4c17c8d78a3e7a403e98"
+    },
+    "instrument-resolution": {
+      "path": "/opt/kwantdesk/runtime-overrides/instrument-resolution.futures-20261027.mjs",
+      "sha256Lf": "35ce4940959b7f227084326b1ac1abc37df0796aa6d7b7d0aa9eda55a5e69362"
+    },
+    "hydrate-futures-catalog-history": {
+      "path": "/opt/kwantdesk/hydrate-futures-catalog-history.mjs",
+      "sha256Lf": "f98837a103b7c2e512e358668d32c98dbdd8426db6144423f19c86be1c043d5d"
+    },
+    "reconcile-recent-candle-history": {
+      "path": "/opt/kwantdesk/reconcile-recent-candle-history.mjs",
+      "sha256Lf": "ddc23f3dea62d5068580996e8a718c4ea5afb40ac4ed1647099d66b72c4a0559"
+    }
+  },
+  "futures": [
+    {
+      "root": "ES",
+      "venue": "CME",
+      "label": "E-mini S&P 500",
+      "historyContract": "ES",
+      "liveContract": "ESZ6",
+      "providerMinutes": 6900,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 25199,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6901,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 1085
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2301,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 186
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1381,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 102
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 116,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 111
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 356
+        }
+      ]
+    },
+    {
+      "root": "NQ",
+      "venue": "CME",
+      "label": "E-mini Nasdaq-100",
+      "historyContract": "NQ",
+      "liveContract": "NQZ6",
+      "providerMinutes": 6900,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 25087,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6901,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 68
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2301,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 99
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1381,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 126
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 116,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 86
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 280
+        }
+      ]
+    },
+    {
+      "root": "YM",
+      "venue": "CBOT",
+      "label": "E-mini Dow",
+      "historyContract": "YM",
+      "liveContract": "YMZ6",
+      "providerMinutes": 6825,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 1928,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6825,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 55
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2299,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 154
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 124
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 86
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 328
+        }
+      ]
+    },
+    {
+      "root": "RTY",
+      "venue": "CME",
+      "label": "E-mini Russell 2000",
+      "historyContract": "RTY",
+      "liveContract": "RTYZ6",
+      "providerMinutes": 6803,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 2733,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6803,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 71
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2300,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 95
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 120
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 91
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 366
+        }
+      ]
+    },
+    {
+      "root": "MES",
+      "venue": "CME",
+      "label": "Micro E-mini S&P 500",
+      "historyContract": "MES",
+      "liveContract": "MESZ6",
+      "providerMinutes": 6900,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 25182,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6900,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 125
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2300,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 161
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 139
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 109
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 355
+        }
+      ]
+    },
+    {
+      "root": "MNQ",
+      "venue": "CME",
+      "label": "Micro E-mini Nasdaq-100",
+      "historyContract": "MNQ",
+      "liveContract": "MNQZ6",
+      "providerMinutes": 6900,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 25904,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6900,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 81
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2300,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 138
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 102
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 148
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 382
+        }
+      ]
+    },
+    {
+      "root": "M2K",
+      "venue": "CME",
+      "label": "Micro E-mini Russell 2000",
+      "historyContract": "M2K",
+      "liveContract": "M2KZ6",
+      "providerMinutes": 6626,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 364,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6626,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 66
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2295,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 175
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1379,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 106
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 93
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 341
+        }
+      ]
+    },
+    {
+      "root": "MYM",
+      "venue": "CBOT",
+      "label": "Micro E-mini Dow",
+      "historyContract": "MYM",
+      "liveContract": "MYMZ6",
+      "providerMinutes": 6873,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 854,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6873,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 103
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2300,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 140
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 121
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 98
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 298
+        }
+      ]
+    },
+    {
+      "root": "CL",
+      "venue": "NYMEX",
+      "label": "WTI Crude Oil",
+      "historyContract": "CL",
+      "liveContract": "CLZ6",
+      "providerMinutes": 6879,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 7575,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6879,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 75
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2300,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 135
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 109
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 111
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 355
+        }
+      ]
+    },
+    {
+      "root": "MCL",
+      "venue": "NYMEX",
+      "label": "Micro WTI Crude Oil",
+      "historyContract": "MCL",
+      "liveContract": "MCLZ6",
+      "providerMinutes": 6898,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 3390,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6898,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 74
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2300,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 136
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 128
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 106
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 284
+        }
+      ]
+    },
+    {
+      "root": "QM",
+      "venue": "NYMEX",
+      "label": "E-mini Crude Oil",
+      "historyContract": "QMZ6",
+      "liveContract": "QMZ6",
+      "providerMinutes": 4741,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 88,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4741,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 51
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2105,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 109
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1332,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 65
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 59
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 223
+        }
+      ]
+    },
+    {
+      "root": "NG",
+      "venue": "NYMEX",
+      "label": "Henry Hub Natural Gas",
+      "historyContract": "NG",
+      "liveContract": "NGZ26",
+      "providerMinutes": 6379,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 311,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6379,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 47
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2281,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 121
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1381,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 104
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 116,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 85
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 275
+        }
+      ]
+    },
+    {
+      "root": "QG",
+      "venue": "NYMEX",
+      "label": "E-mini Natural Gas",
+      "historyContract": "QGZ6",
+      "liveContract": "QGZ6",
+      "providerMinutes": 2157,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 9,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 2157,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 30
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1342,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 32
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 990,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 72
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 41
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 92
+        }
+      ]
+    },
+    {
+      "root": "RB",
+      "venue": "NYMEX",
+      "label": "RBOB Gasoline",
+      "historyContract": "RB",
+      "liveContract": "RBZ6",
+      "providerMinutes": 5489,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 129,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 5489,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 38
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2097,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 113
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1312,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 414
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 89
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 233
+        }
+      ]
+    },
+    {
+      "root": "HO",
+      "venue": "NYMEX",
+      "label": "ULSD Heating Oil",
+      "historyContract": "HO",
+      "liveContract": "HOZ6",
+      "providerMinutes": 5321,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 123,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 5321,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 52
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2112,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 82
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1327,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 70
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 58
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 209
+        }
+      ]
+    },
+    {
+      "root": "GC",
+      "venue": "COMEX",
+      "label": "Gold",
+      "historyContract": "GC",
+      "liveContract": "GCZ6",
+      "providerMinutes": 6898,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 11350,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6898,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 40
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2300,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 99
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 76
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 77
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 255
+        }
+      ]
+    },
+    {
+      "root": "MGC",
+      "venue": "COMEX",
+      "label": "Micro Gold",
+      "historyContract": "MGC",
+      "liveContract": "MGCZ6",
+      "providerMinutes": 6901,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 11723,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6901,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 65
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2301,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 102
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1381,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 96
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 116,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 92
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 264
+        }
+      ]
+    },
+    {
+      "root": "SI",
+      "venue": "COMEX",
+      "label": "Silver",
+      "historyContract": "SI",
+      "liveContract": "SIZ6",
+      "providerMinutes": 6719,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 2646,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6719,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 39
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2297,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 89
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 114
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 82
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 298
+        }
+      ]
+    },
+    {
+      "root": "SIL",
+      "venue": "COMEX",
+      "label": "Micro Silver",
+      "historyContract": "SIL",
+      "liveContract": "SILZ6",
+      "providerMinutes": 6862,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 4984,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6862,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 69
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2301,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 113
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1381,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 111
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 116,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 99
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 355
+        }
+      ]
+    },
+    {
+      "root": "HG",
+      "venue": "COMEX",
+      "label": "Copper",
+      "historyContract": "HG",
+      "liveContract": "HGZ6",
+      "providerMinutes": 6469,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 704,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6469,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 39
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2274,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 105
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1378,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 100
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 87
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 310
+        }
+      ]
+    },
+    {
+      "root": "PL",
+      "venue": "NYMEX",
+      "label": "Platinum",
+      "historyContract": "PL",
+      "liveContract": "PLF7",
+      "providerMinutes": 6077,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 434,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6077,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 45
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2252,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 113
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1371,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 162
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 78
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 291
+        }
+      ]
+    },
+    {
+      "root": "PA",
+      "venue": "NYMEX",
+      "label": "Palladium",
+      "historyContract": "PA",
+      "liveContract": "PAZ6",
+      "providerMinutes": 4461,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 165,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4461,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 34
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1976,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 98
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1256,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 101
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 70
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 185
+        }
+      ]
+    },
+    {
+      "root": "ZN",
+      "venue": "CBOT",
+      "label": "10-Year Treasury Note",
+      "historyContract": "ZN",
+      "liveContract": "ZNZ6",
+      "providerMinutes": 6557,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 11112,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6557,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 63
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2286,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 99
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1378,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 97
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 119
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 315
+        }
+      ]
+    },
+    {
+      "root": "ZB",
+      "venue": "CBOT",
+      "label": "30-Year Treasury Bond",
+      "historyContract": "ZB",
+      "liveContract": "ZBZ6",
+      "providerMinutes": 6224,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 1315,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6224,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 40
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2274,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 95
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1377,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 83
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 66
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 232
+        }
+      ]
+    },
+    {
+      "root": "ZF",
+      "venue": "CBOT",
+      "label": "5-Year Treasury Note",
+      "historyContract": "ZF",
+      "liveContract": "ZFZ6",
+      "providerMinutes": 6372,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 2564,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6372,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 84
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2289,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 88
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 76
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 73
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 276
+        }
+      ]
+    },
+    {
+      "root": "ZT",
+      "venue": "CBOT",
+      "label": "2-Year Treasury Note",
+      "historyContract": "ZT",
+      "liveContract": "ZTZ6",
+      "providerMinutes": 6072,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 946,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6072,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 39
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2247,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 73
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1367,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 72
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 70
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 260
+        }
+      ]
+    },
+    {
+      "root": "TN",
+      "venue": "CBOT",
+      "label": "Ultra 10-Year Treasury Note",
+      "historyContract": "TN",
+      "liveContract": "TNZ6",
+      "providerMinutes": 6108,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 4832,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6108,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 77
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2262,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 118
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1378,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 136
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 90
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 324
+        }
+      ]
+    },
+    {
+      "root": "UB",
+      "venue": "CBOT",
+      "label": "Ultra Treasury Bond",
+      "historyContract": "UBZ6",
+      "liveContract": "UBZ6",
+      "providerMinutes": 6085,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 1259,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6085,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 37
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2250,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 82
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1366,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 77
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 73
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 268
+        }
+      ]
+    },
+    {
+      "root": "10Y",
+      "venue": "CBOT",
+      "label": "10-Year Treasury Yield",
+      "historyContract": "10YX6",
+      "liveContract": "10YX6",
+      "providerMinutes": 576,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 29,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 576,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 15
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 455,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 15
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 379,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 25
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 100,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 28
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 28
+        }
+      ]
+    },
+    {
+      "root": "SR3",
+      "venue": "CME",
+      "label": "3-Month SOFR",
+      "historyContract": "SR3Z6",
+      "liveContract": "SR3Z6",
+      "providerMinutes": 3574,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 35,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 3574,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 26
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1647,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 56
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1099,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 48
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 114,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 50
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 141
+        }
+      ]
+    },
+    {
+      "root": "6E",
+      "venue": "CME",
+      "label": "Euro FX",
+      "historyContract": "6E",
+      "liveContract": "6EZ6",
+      "providerMinutes": 6792,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 2859,
+      "recordingTier": "Full depth + trades",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6792,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 43
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2298,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 97
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 92
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 88
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 280
+        }
+      ]
+    },
+    {
+      "root": "6J",
+      "venue": "CME",
+      "label": "Japanese Yen",
+      "historyContract": "6J",
+      "liveContract": "6JZ6",
+      "providerMinutes": 6723,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 2578,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6723,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 46
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2299,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 94
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 116
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 86
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 324
+        }
+      ]
+    },
+    {
+      "root": "6B",
+      "venue": "CME",
+      "label": "British Pound",
+      "historyContract": "6B",
+      "liveContract": "6BZ6",
+      "providerMinutes": 6228,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 235,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6229,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 45
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2275,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 82
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1379,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 89
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 117,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 78
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 250
+        }
+      ]
+    },
+    {
+      "root": "6A",
+      "venue": "CME",
+      "label": "Australian Dollar",
+      "historyContract": "6A",
+      "liveContract": "6AZ6",
+      "providerMinutes": 6589,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 664,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6589,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 87
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2297,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 103
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1380,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 88
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 116,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 97
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 303
+        }
+      ]
+    },
+    {
+      "root": "6C",
+      "venue": "CME",
+      "label": "Canadian Dollar",
+      "historyContract": "6C",
+      "liveContract": "6CZ6",
+      "providerMinutes": 6066,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 372,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6066,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 38
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2261,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 102
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1376,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 106
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 79
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 239
+        }
+      ]
+    },
+    {
+      "root": "6S",
+      "venue": "CME",
+      "label": "Swiss Franc",
+      "historyContract": "6S",
+      "liveContract": "6SZ6",
+      "providerMinutes": 6022,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 470,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6022,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 57
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2237,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 106
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1364,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 80
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 79
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 248
+        }
+      ]
+    },
+    {
+      "root": "6N",
+      "venue": "CME",
+      "label": "New Zealand Dollar",
+      "historyContract": "6N",
+      "liveContract": "6NZ6",
+      "providerMinutes": 6089,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 196,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 6089,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 38
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2269,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 95
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1372,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 76
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 68
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 226
+        }
+      ]
+    },
+    {
+      "root": "6M",
+      "venue": "CME",
+      "label": "Mexican Peso",
+      "historyContract": "6M",
+      "liveContract": "6MZ6",
+      "providerMinutes": 5219,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 162,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 5219,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 66
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2116,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 100
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1330,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 76
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 80
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 223
+        }
+      ]
+    },
+    {
+      "root": "M6E",
+      "venue": "CME",
+      "label": "Micro Euro FX",
+      "historyContract": "M6E",
+      "liveContract": "M6EZ6",
+      "providerMinutes": 5620,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 107,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 5620,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 56
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2244,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 109
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1374,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 97
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 87
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 296
+        }
+      ]
+    },
+    {
+      "root": "M6B",
+      "venue": "CME",
+      "label": "Micro British Pound",
+      "historyContract": "M6B",
+      "liveContract": "M6BZ6",
+      "providerMinutes": 2015,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 14,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 2015,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 21
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1358,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 40
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1038,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 39
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 33
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 113
+        }
+      ]
+    },
+    {
+      "root": "M6A",
+      "venue": "CME",
+      "label": "Micro Australian Dollar",
+      "historyContract": "M6A",
+      "liveContract": "M6AZ6",
+      "providerMinutes": 2959,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 26,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 2959,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 23
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1754,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 56
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1231,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 62
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 115,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 47
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 130
+        }
+      ]
+    },
+    {
+      "root": "BTC",
+      "venue": "CME",
+      "label": "Bitcoin",
+      "historyContract": "BTC",
+      "liveContract": "BTCX6",
+      "providerMinutes": 4587,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 126,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4587,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 73
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2010,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 110
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1299,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 60
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 119,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 49
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 182
+        }
+      ]
+    },
+    {
+      "root": "MBT",
+      "venue": "CME",
+      "label": "Micro Bitcoin",
+      "historyContract": "MBT",
+      "liveContract": "MBTX6",
+      "providerMinutes": 5947,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 313,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 5947,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 32
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2277,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 79
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1402,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 118
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 119,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 83
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 241
+        }
+      ]
+    },
+    {
+      "root": "ETH",
+      "venue": "CME",
+      "label": "Ether",
+      "historyContract": "ETH",
+      "liveContract": "ETHX6",
+      "providerMinutes": 4729,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 140,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4729,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 29
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 2029,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 76
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1297,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 70
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 119,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 57
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 208
+        }
+      ]
+    },
+    {
+      "root": "MET",
+      "venue": "CME",
+      "label": "Micro Ether",
+      "historyContract": "MET",
+      "liveContract": "METX6",
+      "providerMinutes": 2354,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 119,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 2354,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 21
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1437,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 34
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1038,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 31
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 119,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 36
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 96
+        }
+      ]
+    },
+    {
+      "root": "ZC",
+      "venue": "CBOT",
+      "label": "Corn",
+      "historyContract": "ZC",
+      "liveContract": "ZCZ6",
+      "providerMinutes": 4193,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 1647,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4193,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 22
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1667,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 73
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1035,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 47
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 95,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 50
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 179
+        }
+      ]
+    },
+    {
+      "root": "ZS",
+      "venue": "CBOT",
+      "label": "Soybeans",
+      "historyContract": "ZS",
+      "liveContract": "ZSF7",
+      "providerMinutes": 4619,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 1080,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4619,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 29
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1711,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 74
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1043,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 80
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 95,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 65
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 199
+        }
+      ]
+    },
+    {
+      "root": "ZW",
+      "venue": "CBOT",
+      "label": "Wheat",
+      "historyContract": "ZW",
+      "liveContract": "ZWZ6",
+      "providerMinutes": 4275,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 732,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4275,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 29
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1686,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 72
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1045,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 79
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 95,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 78
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 219
+        }
+      ]
+    },
+    {
+      "root": "ZM",
+      "venue": "CBOT",
+      "label": "Soybean Meal",
+      "historyContract": "ZM",
+      "liveContract": "ZMZ6",
+      "providerMinutes": 4569,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 487,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4569,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 56
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1727,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 76
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1051,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 79
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 95,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 75
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 205
+        }
+      ]
+    },
+    {
+      "root": "ZL",
+      "venue": "CBOT",
+      "label": "Soybean Oil",
+      "historyContract": "ZL",
+      "liveContract": "ZLZ6",
+      "providerMinutes": 4855,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 692,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 4855,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 59
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 1743,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 117
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 1053,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 65
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 95,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 78
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 266
+        }
+      ]
+    },
+    {
+      "root": "LE",
+      "venue": "CME",
+      "label": "Live Cattle",
+      "historyContract": "LE",
+      "liveContract": "LEZ6",
+      "providerMinutes": 1374,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 0,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 1374,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 20
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 460,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 41
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 275,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 34
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 30,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 55
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 118
+        }
+      ]
+    },
+    {
+      "root": "HE",
+      "venue": "CME",
+      "label": "Lean Hogs",
+      "historyContract": "HE",
+      "liveContract": "HEZ6",
+      "providerMinutes": 1369,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 0,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 1369,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 35
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 460,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 43
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 275,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 36
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 30,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 35
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 76
+        }
+      ]
+    },
+    {
+      "root": "GF",
+      "venue": "CME",
+      "label": "Feeder Cattle",
+      "historyContract": "GF",
+      "liveContract": "GFF7",
+      "providerMinutes": 1371,
+      "missing": 0,
+      "extra": 0,
+      "different": 0,
+      "observedTrades": 0,
+      "recordingTier": "Trades + BBO",
+      "timeframes": [
+        {
+          "interval": "1m",
+          "status": 200,
+          "rows": 1371,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 19
+        },
+        {
+          "interval": "3m",
+          "status": 200,
+          "rows": 460,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 40
+        },
+        {
+          "interval": "5m",
+          "status": 200,
+          "rows": 275,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 44
+        },
+        {
+          "interval": "1h",
+          "status": 200,
+          "rows": 30,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 24
+        },
+        {
+          "interval": "1D",
+          "status": 200,
+          "rows": 5,
+          "invalid": 0,
+          "duplicates": 0,
+          "unordered": false,
+          "ms": 69
+        }
+      ]
+    }
+  ],
+  "cash": [
+    {
+      "symbol": "VIX",
+      "providerTicker": "VIX",
+      "status": 200,
+      "rows": 2376,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "VIX",
+          "rows": 491,
+          "rthRows": 388,
+          "missingRthMinutes": 2,
+          "zeroRange": 66,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "VIX",
+          "rows": 470,
+          "rthRows": 388,
+          "missingRthMinutes": 2,
+          "zeroRange": 95,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "VIX",
+          "rows": 435,
+          "rthRows": 387,
+          "missingRthMinutes": 3,
+          "zeroRange": 64,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "VIX",
+          "rows": 462,
+          "rthRows": 387,
+          "missingRthMinutes": 3,
+          "zeroRange": 48,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "VIX",
+          "rows": 518,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 2,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "VXN",
+      "providerTicker": "VXN",
+      "status": 503,
+      "rows": 0,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26"
+        },
+        {
+          "day": "2026-10-27"
+        },
+        {
+          "day": "2026-10-28"
+        },
+        {
+          "day": "2026-10-29"
+        },
+        {
+          "day": "2026-10-30"
+        }
+      ],
+      "liveVerification": "US cash session closed during audit",
+      "error": "Market Index history is not configured on the VPS."
+    },
+    {
+      "symbol": "SPX",
+      "providerTicker": "SPX",
+      "status": 200,
+      "rows": 4881,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "SPX",
+          "rows": 971,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "SPX",
+          "rows": 979,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "SPX",
+          "rows": 979,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "SPX",
+          "rows": 974,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "SPX",
+          "rows": 978,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 2,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "SPXW",
+      "providerTicker": "SPX",
+      "status": 200,
+      "rows": 4881,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "SPX",
+          "rows": 971,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "SPX",
+          "rows": 979,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "SPX",
+          "rows": 979,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "SPX",
+          "rows": 974,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "SPX",
+          "rows": 978,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 2,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "SPY",
+      "providerTicker": "SPY",
+      "status": 200,
+      "rows": 2602,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "SPY",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "SPY",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "SPY",
+          "rows": 521,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "SPY",
+          "rows": 521,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "SPY",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "NDX",
+      "providerTicker": "NDX",
+      "status": 200,
+      "rows": 2025,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "NDX",
+          "rows": 405,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "NDX",
+          "rows": 405,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "NDX",
+          "rows": 405,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "NDX",
+          "rows": 405,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "NDX",
+          "rows": 405,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "QQQ",
+      "providerTicker": "QQQ",
+      "status": 200,
+      "rows": 2602,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "QQQ",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "QQQ",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "QQQ",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "QQQ",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "QQQ",
+          "rows": 522,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "IWM",
+      "providerTicker": "IWM",
+      "status": 200,
+      "rows": 2556,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "IWM",
+          "rows": 497,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "IWM",
+          "rows": 514,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "IWM",
+          "rows": 508,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "IWM",
+          "rows": 517,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "IWM",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "AAPL",
+      "providerTicker": "AAPL",
+      "status": 200,
+      "rows": 2417,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "AAPL",
+          "rows": 496,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "AAPL",
+          "rows": 446,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "AAPL",
+          "rows": 460,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "AAPL",
+          "rows": 498,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "AAPL",
+          "rows": 517,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "NVDA",
+      "providerTicker": "NVDA",
+      "status": 200,
+      "rows": 2506,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "NVDA",
+          "rows": 505,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "NVDA",
+          "rows": 497,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "NVDA",
+          "rows": 496,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "NVDA",
+          "rows": 488,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "NVDA",
+          "rows": 520,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "TSLA",
+      "providerTicker": "TSLA",
+      "status": 200,
+      "rows": 2528,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "TSLA",
+          "rows": 508,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "TSLA",
+          "rows": 500,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "TSLA",
+          "rows": 514,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "TSLA",
+          "rows": 490,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "TSLA",
+          "rows": 516,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "MSFT",
+      "providerTicker": "MSFT",
+      "status": 200,
+      "rows": 2184,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "MSFT",
+          "rows": 407,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "MSFT",
+          "rows": 400,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "MSFT",
+          "rows": 415,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "MSFT",
+          "rows": 491,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "MSFT",
+          "rows": 471,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "AMZN",
+      "providerTicker": "AMZN",
+      "status": 200,
+      "rows": 2279,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "AMZN",
+          "rows": 436,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "AMZN",
+          "rows": 424,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "AMZN",
+          "rows": 427,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "AMZN",
+          "rows": 486,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "AMZN",
+          "rows": 506,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "META",
+      "providerTicker": "META",
+      "status": 200,
+      "rows": 2382,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "META",
+          "rows": 499,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "META",
+          "rows": 460,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "META",
+          "rows": 461,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "META",
+          "rows": 471,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "META",
+          "rows": 491,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    },
+    {
+      "symbol": "AMD",
+      "providerTicker": "AMD",
+      "status": 200,
+      "rows": 2192,
+      "invalid": 0,
+      "regularSessions": [
+        {
+          "day": "2026-10-26",
+          "ticker": "AMD",
+          "rows": 414,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-27",
+          "ticker": "AMD",
+          "rows": 418,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-28",
+          "ticker": "AMD",
+          "rows": 435,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-29",
+          "ticker": "AMD",
+          "rows": 435,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        },
+        {
+          "day": "2026-10-30",
+          "ticker": "AMD",
+          "rows": 490,
+          "rthRows": 390,
+          "missingRthMinutes": 0,
+          "zeroRange": 0,
+          "invalidOHLC": 0,
+          "complete": true
+        }
+      ],
+      "liveVerification": "US cash session closed during audit"
+    }
+  ]
+}

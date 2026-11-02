@@ -363,6 +363,17 @@ export class RithmicBookStore {
     const price = Number(payload.tradePrice);
     const size = Number(payload.tradeSize);
     if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) return null;
+    if (payload.isSnapshot === true) {
+      // Subscription baselines describe the last execution, not a new fill.
+      // Seed the quote without duplicating volume, CVD, bubbles or candles.
+      const timestampMs = eventTimestampMs(payload) || Date.now();
+      instrument.asOfMs = Math.max(instrument.asOfMs || 0, timestampMs);
+      if (timestampMs >= instrument.lastTradeTimeMs) {
+        instrument.lastPrice = price;
+        instrument.lastTradeTimeMs = timestampMs;
+      }
+      return null;
+    }
     instrument.sequence += 1;
     instrument.sourceSequence = String(
       payload.sourceTradeId || payload.exchangeOrderId || payload.aggressorExchangeOrderId || instrument.sequence,

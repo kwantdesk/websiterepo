@@ -414,8 +414,8 @@ function tickSize(symbol) {
   if (root === "ZF") return 1 / 128;
   if (root === "ZT") return 1 / 256;
   if (root === "SR3") return 0.0025;
-  if (["6E", "6C"].includes(root)) return 0.00005;
-  if (["6A", "6B", "6S", "6N", "M6E", "M6A", "M6B"].includes(root)) return 0.0001;
+  if (["6E", "6A", "6C", "6S", "6N"].includes(root)) return 0.00005;
+  if (["6B", "M6E", "M6A", "M6B"].includes(root)) return 0.0001;
   if (root === "6J") return 0.0000005;
   if (root === "6M") return 0.00001;
   if (["ZC", "ZW", "ZS"].includes(root)) return 0.25;
@@ -1702,6 +1702,9 @@ const server = createServer(async (request, response) => {
           : await chartHistory.load({
               exchange: instrument.exchange,
               symbol: instrument.symbol,
+              // Continuous chart requests use one provider minute baseline.
+              // Explicit named-contract requests retain their exact archive.
+              canonicalRoot: (() => { const requested = String(url.searchParams.get("contractSymbol") || url.searchParams.get("symbol") || url.searchParams.get("root") || "").toUpperCase(); return requested === contractRoot(requested); })(),
               interval,
               fromMs: url.searchParams.get("fromMs"),
               toMs: url.searchParams.get("toMs"),
@@ -2409,6 +2412,15 @@ const server = createServer(async (request, response) => {
         instruments: gatewayInstrumentCatalog(),
       });
     }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/reference-contracts") {
+      const root = contractRoot(String(url.searchParams.get("root") || "").toUpperCase());
+      const exchange = String(url.searchParams.get("exchange") || exchangeForRoot(root)).toUpperCase();
+      if (!gatewayInstrumentCatalog().some(row => row.root === root && row.exchange === exchange)) {
+        return json(response, 400, { error: "The requested product is not enabled." });
+      }
+      const rows = await client.searchReferenceContracts(exchange, root);
+      return json(response, 200, { root, exchange, contracts: rows.slice(0, 200).map(row => ({ symbol: row.symbol, exchange: row.exchange, expirationDate: row.expirationDate })) });
+    }
     if (request.method === "GET" && url.pathname === "/v1/market-data/resolve") {
       const requestedRoot = contractRoot(
         String(url.searchParams.get("root") || url.searchParams.get("symbol") || "").toUpperCase(),
@@ -2425,7 +2437,7 @@ const server = createServer(async (request, response) => {
         });
       }
       const resolved = await client.resolveFrontMonth(requestedExchange, requestedRoot);
-      client.subscribe(resolved.exchange, resolved.contractSymbol);
+      client.subscribe(resolved.exchange, resolved.contractSymbol, { archiveOnly: url.searchParams.get("archiveOnly") === "1" });
       const metadata = contractMetadata(resolved.contractSymbol);
       return json(response, 200, {
         root: requestedRoot,

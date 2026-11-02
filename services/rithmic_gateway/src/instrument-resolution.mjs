@@ -48,7 +48,7 @@ export function resolveInstrumentCandidate(candidates, { requestedSymbol, ownRoo
 }
 
 /** Select only a provider-listed, unexpired contract if its front-month map is absent. */
-export function selectReferenceContract(rows,{exchange,root,now=Date.now()}) {
+export function selectReferenceContract(rows,{exchange,root,now=Date.now(),activityBySymbol={}}) {
  const today=new Date(now).toISOString().slice(0,10);
  return rows.flatMap(row=>{
   const symbol=String(row.symbol??'').toUpperCase(),venue=String(row.exchange??'').toUpperCase();
@@ -58,5 +58,5 @@ export function selectReferenceContract(rows,{exchange,root,now=Date.now()}) {
   const expiration=date[1]+'-'+date[2]+'-'+date[3];
   if(expiration<today||!Number.isFinite(Date.parse(expiration)))return [];
   return [{symbol,expiration}];
- }).sort((a,b)=>a.expiration.localeCompare(b.expiration)||a.symbol.localeCompare(b.symbol))[0]??null;
+ }).sort((a,b)=>Math.max(0,Number(activityBySymbol[b.symbol])||0)-Math.max(0,Number(activityBySymbol[a.symbol])||0)||a.expiration.localeCompare(b.expiration)||a.symbol.localeCompare(b.symbol))[0]??null;
 }

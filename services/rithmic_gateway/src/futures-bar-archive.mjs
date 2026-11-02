@@ -146,7 +146,7 @@ export function tradeTimestampMs(payload, receivedAt) {
 /** A print, or one of the many other messages on the same stream. */
 export function tradeFromRecord(record) {
   const payload = record?.payload || record;
-  if (!payload) return null;
+  if (!payload || payload.isSnapshot === true) return null;
   const price = Number(payload.tradePrice);
   const size = Number(payload.tradeSize);
   if (!Number.isFinite(price) || price <= 0) return null;
@@ -484,7 +484,7 @@ export class FuturesBarArchive {
    * one still being built, so the live edge is continuous with the past
    * rather than arriving as a separate seam.
    */
-  async load({ exchange, symbol, interval, fromMs, toMs, limit }) {
+  async load({ exchange, symbol, interval, fromMs, toMs, limit, canonicalRoot = false }) {
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
     const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();
@@ -499,9 +499,17 @@ export class FuturesBarArchive {
       const openDay = this.open.get(tradingDate);
       const dayDir = this.dayDir(tradingDate);
       const file = join(dayDir, instrumentFileName(upper, upperSymbol));
+      if (canonicalRoot && contractRoot(upperSymbol) !== upperSymbol) {
+        const canonicalMetadata = {};
+        const canonicalBars = await this.readFile(join(dayDir, instrumentFileName(upper, contractRoot(upperSymbol))), canonicalMetadata);
+        if (canonicalMetadata.authoritativeSession) {
+          for (const bar of canonicalBars) merged.set(bar.t, bar);
+          continue;
+        }
+      }
       const metadata = {};
       const exactBars = await this.readFile(file, metadata);
-      if (metadata.authoritativeSession && exactBars.length) {
+      if (metadata.authoritativeSession) {
         // This file was rebuilt from a reconciled, completed exact-contract
         // replay. Do not fill its genuine empty minutes with a stale root
         // archive or an old live snapshot from the maintenance break.
@@ -514,9 +522,16 @@ export class FuturesBarArchive {
       // as one exact-contract minute existed, preserving every local gap and
       // partial wick for the chart.
       const root = contractRoot(upperSymbol);
+      const rootMetadata = {};
       const historyPlantBars = root === upperSymbol
         ? []
-        : await this.readFile(join(dayDir, instrumentFileName(upper, root)));
+        : await this.readFile(join(dayDir, instrumentFileName(upper, root)), rootMetadata);
+      if (rootMetadata.authoritativeSession) {
+        // A complete session also confirms the absence of trades in its empty
+        // minutes. Partial local files cannot create candles in those slots.
+        for (const bar of historyPlantBars) merged.set(bar.t, bar);
+        continue;
+      }
       const recordedByMinute = new Map();
       for (const bar of exactBars) preferLiquidContractBar(recordedByMinute, bar);
       // Read every concrete contract for this product. Otherwise asking for

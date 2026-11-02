@@ -50,7 +50,7 @@ const WATCHDOG_REQUEST_TIMEOUT_MS = 12_000;
 // REST fallback both freezes the ticker behind its short client timeout and
 // multiplies paid provider requests at the opening bell.
 const VPS_STREAM_SYMBOLS = new Set([
-  "SPX", "SPXW", "NDX",
+  "SPX", "SPXW", "NDX", "VIX",
   "SPY", "QQQ", "IWM",
   "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD",
 ]);

@@ -450,3 +450,32 @@ test("the served window is bounded and keeps the most recent bars", async () => 
 });
 
 test('overlapping periodic flush calls share one writer and retain prints arriving mid-write',async()=>{await withArchive(async archive=>{archive.record(print(0,100,1));const original=archive.readFile.bind(archive);let release,reads=0;archive.readFile=async(...args)=>{reads++;await new Promise(r=>release=r);return original(...args)};const first=archive.flush();const second=archive.flush();assert.equal(reads,1);archive.record(print(1000,105,2));release();await Promise.all([first,second]);assert.equal(archive.lastError,null);archive.readFile=original;await archive.flush();const result=await archive.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000});assert.equal(result.candles[0].volume,3);assert.equal(result.candles[0].high,105)})});
+test('subscription snapshots cannot enter permanent candle or execution archives',()=>{
+ assert.equal(tradeFromRecord({payload:{exchange:'CME',symbol:'NQU6',tradePrice:100,tradeSize:1,isSnapshot:true,ssboe:T0/1000}}),null);
+});
+test('complete canonical root sessions exclude stray exact-contract bars in provider-confirmed quiet minutes',async()=>{
+ await withArchive(async archive=>{
+  const folder=archive.dayDir(chicagoTradingDate(T0));mkdirSync(folder,{recursive:true});
+  writeFileSync(join(folder,'CME-NQ.json'),JSON.stringify({source:'Rithmic History Plant minute bars',markerConvention:'bar-open',completedSession:true,bars:[[T0,100,110,90,104,50]]}));
+  writeFileSync(join(folder,'CME-NQU6.json'),JSON.stringify({bars:[[T0,999,999,999,999,1],[T0+60000,999,999,999,999,1]]}));
+  const result=await archive.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+120000});
+  assert.deepEqual(result.candles,[{timestamp:T0,open:100,high:110,low:90,close:104,volume:50}]);
+ });
+});
+test('an authoritative empty session stays empty instead of reviving local snapshot candles',async()=>{
+ await withArchive(async archive=>{const folder=archive.dayDir(chicagoTradingDate(T0));mkdirSync(folder,{recursive:true});
+ writeFileSync(join(folder,'CME-NQ.json'),JSON.stringify({source:'Rithmic History Plant minute bars',markerConvention:'bar-open',completedSession:true,bars:[]}));
+ writeFileSync(join(folder,'CME-NQU6.json'),JSON.stringify({bars:[[T0,999,999,999,999,1]]}));
+ assert.equal((await archive.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000})).candles.length,0);
+ });
+});
+test('continuous charts choose the canonical provider session over a different exact-replay clock',async()=>{
+ await withArchive(async archive=>{const folder=archive.dayDir(chicagoTradingDate(T0));mkdirSync(folder,{recursive:true});
+ const metadata={source:'Rithmic History Plant minute bars',markerConvention:'bar-open',completedSession:true};
+ writeFileSync(join(folder,'CME-NQ.json'),JSON.stringify({...metadata,bars:[[T0,100,110,90,104,50]]}));
+ writeFileSync(join(folder,'CME-NQU6.json'),JSON.stringify({...metadata,bars:[[T0,100,110,90,103,49]]}));
+ const args={exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000};
+ assert.equal((await archive.load({...args,canonicalRoot:true})).candles[0].close,104);
+ assert.equal((await archive.load(args)).candles[0].close,103,'an explicit contract keeps its own replay');
+ });
+});
