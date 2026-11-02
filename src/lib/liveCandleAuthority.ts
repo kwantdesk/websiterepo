@@ -3,16 +3,19 @@ import type { Candle } from "@/lib/backtester";
 /** Publish every bar touched by a clock-bar rollover, including the final
  * executions of the closing bar. Publishing only the new tail loses that
  * close in the renderer's independently retained live observations. */
-export function executionCandlePaintBatch(previous: Candle[], next: Candle[]) {
+export function executionCandlePaintBatch(previous: Candle[], next: Candle[], earliestTouchedTimestamp?: number) {
   const tail = next.at(-1);
   if (!tail) return [];
   const previousTail = previous.at(-1);
-  if (!previousTail || previousTail.timestamp === tail.timestamp) return [tail];
+  if (!previousTail) return [tail];
+  const first = Number.isFinite(earliestTouchedTimestamp)
+    ? Math.min(previousTail.timestamp, Number(earliestTouchedTimestamp)) : previousTail.timestamp;
+  if (first === tail.timestamp) return [tail];
   let low = 0;
   let high = next.length;
   while (low < high) {
     const middle = (low + high) >>> 1;
-    if (next[middle].timestamp < previousTail.timestamp) low = middle + 1;
+    if (next[middle].timestamp < first) low = middle + 1;
     else high = middle;
   }
   return next.slice(low);
@@ -125,7 +128,10 @@ export function retainFormingCandleExtrema(
   return {
     ...previous,
     ...incoming,
-    open: previous.open,
+    // Earlier exchange evidence may correct a first-arrival open. An ordinary
+    // snapshot without an earlier execution watermark must never move it.
+    open: incoming.sourceStartTimestamp !== undefined && previous.sourceStartTimestamp !== undefined
+      && incoming.sourceStartTimestamp < previous.sourceStartTimestamp ? incoming.open : previous.open,
     high: Math.max(previous.high, incoming.high, previous.open, incoming.open, incoming.close),
     low: Math.min(previous.low, incoming.low, previous.open, incoming.open, incoming.close),
     close: incoming.close,

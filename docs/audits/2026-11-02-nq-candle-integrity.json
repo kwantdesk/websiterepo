@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-11-02T08:09:34.735Z",
+  "source": "VPS-owned recorded live executions",
+  "instrument": "NQZ6",
+  "interval": "1m",
+  "from": 1793605740000,
+  "to": 1793606940000,
+  "records": 3666,
+  "tapeBars": 20,
+  "historyBars": 20,
+  "differences": [],
+  "matchedOhlc": 20,
+  "negativeControl": {
+    "originalCodeLostLateHigh": 20002,
+    "originalCodeLostLateLow": 20000,
+    "expectedRecordedHigh": 20010,
+    "expectedRecordedLow": 19995,
+    "barTimestamp": 1793604000000
+  },
+  "scope": "20 most recent completed NQ one-minute bars only; no provider history downloaded; no gateway restart"
+}

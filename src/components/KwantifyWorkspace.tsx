@@ -6505,6 +6505,8 @@ function WorkspaceChartPaneComponent({
 
       const flushNow = Date.now();
       const flushedNewBar = previousCandles.at(-1)?.timestamp !== nextCandles.at(-1)!.timestamp;
+      const insertedHistoricalBar = !flushedNewBar && (nextCandles.length !== previousCandles.length
+        || nextCandles[0]?.timestamp !== previousCandles[0]?.timestamp);
       // Self-heal accumulated flow against the deduped tape on every bar close
       // and at a bounded cadence in between (the forming bar benefits too).
       let reconciledCandles = nextCandles;
@@ -6520,7 +6522,9 @@ function WorkspaceChartPaneComponent({
       const latest = reconciledCandles.at(-1)!;
       const paintBatch = isEventBasedChartInterval(pane.timeframe)
         ? [latest]
-        : executionCandlePaintBatch(previousCandles, reconciledCandles);
+        : executionCandlePaintBatch(previousCandles, reconciledCandles,
+            records.reduce((earliest, record) => Number.isFinite(record.timestamp)
+              ? Math.min(earliest, getTimeframeBucketStart(record.timestamp, pane.timeframe)) : earliest, Infinity));
       for (const candle of paintBatch) {
         window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
           detail: { key: pane.id, candle,
@@ -6535,7 +6539,7 @@ function WorkspaceChartPaneComponent({
       // is not anchored against the previous sampled candle during rollover.
       publishExecutions();
       const newBar = flushedNewBar;
-      if (newBar) {
+      if (newBar || insertedHistoricalBar) {
         lastCandleStateSyncRef.current = flushNow;
         // Direct candle and execution events already paint the forming bar.
         // Commit the full React history only at a real bar boundary; the old

@@ -4661,7 +4661,9 @@ function Chart({
           ? lastRenderedCandleTimeRef.current
           : Math.max(naturalTime, lastRenderedCandleTimeRef.current + 1)
         : naturalTime;
-      if (
+      const historicalUpdate = !eventBased && lastRenderedCandleTimeRef.current !== null
+        && candleTime < lastRenderedCandleTimeRef.current;
+      if (eventBased &&
         lastRenderedCandleTimeRef.current !== null
         && candleTime < lastRenderedCandleTimeRef.current
       ) {
@@ -4685,9 +4687,9 @@ function Chart({
           high: candle.high,
           low: candle.low,
           close: candle.close,
-        });
+        }, historicalUpdate);
         recordChartTickPaint(instrument, candle.sourceEndTimestamp);
-        if (liveFootprintEnabledRef.current && footprintPrimitiveRef.current) {
+        if (!historicalUpdate && liveFootprintEnabledRef.current && footprintPrimitiveRef.current) {
           liveFootprintSourceCandlesRef.current = mergeLiveIndicatorCandle(
             liveFootprintSourceCandlesRef.current,
             candle,
@@ -4709,8 +4711,10 @@ function Chart({
             };
           }
         }
-        lastRenderedCandleTimeRef.current = candleTime;
-        lastRenderedSourceTimestampRef.current = candle.timestamp;
+        if (!historicalUpdate) {
+          lastRenderedCandleTimeRef.current = candleTime;
+          lastRenderedSourceTimestampRef.current = candle.timestamp;
+        }
         if (eventBased) {
           eventSourceTimeByChartTimeRef.current.set(candleTime, candle.timestamp);
           eventChartTimeBySourceTimeRef.current.set(candle.timestamp, candleTime);

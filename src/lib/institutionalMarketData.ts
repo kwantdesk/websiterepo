@@ -1524,7 +1524,35 @@ export function applyInstitutionalTradesToCandles(
   for (const record of records) {
     if (!Number.isFinite(record.timestamp) || !Number.isFinite(record.close) || record.close <= 0) continue;
     const timestamp = bucketMs ? chartTimeBucketStartMs(record.timestamp, timeframe) : record.timestamp;
-    const last = next.at(-1);
+    let candleIndex = next.length - 1;
+    let last = next.at(-1);
+    let insertAt: number | null = null;
+    // Exchange delivery can straddle a clock rollover. Route a late print to
+    // its actual bucket instead of discarding its high/low or moving it into
+    // the new candle. Do not extend the retained history window backwards.
+    if (bucketMs && last && timestamp < last.timestamp) {
+      if (timestamp < next[0].timestamp) continue;
+      let left = 0;
+      let right = next.length;
+      while (left < right) {
+        const middle = (left + right) >>> 1;
+        if (next[middle].timestamp < timestamp) left = middle + 1;
+        else right = middle;
+      }
+      candleIndex = left;
+      last = next[left]?.timestamp === timestamp ? next[left] : undefined;
+      if (!last) insertAt = left;
+      // A saved full bar has no live watermarks. A delayed partial print may
+      // extend its extrema, but cannot replace its proven open/close or count
+      // an execution already represented in its historical volume twice.
+      if (last && last.sourceEndTimestamp === undefined) {
+        next[left] = { ...last,
+          high: Math.max(last.high, record.high || record.close, record.close),
+          low: Math.min(last.low, record.low || record.close, record.close),
+        };
+        continue;
+      }
+    }
     const recordDelta = Number.isFinite(record.delta)
       ? record.delta
       : (record.askVolume || 0) - (record.bidVolume || 0);
@@ -1551,7 +1579,7 @@ export function applyInstitutionalTradesToCandles(
       const candleTimestamp = threshold && last
         ? Math.max(timestamp, last.timestamp + 1)
         : timestamp;
-      next.push({
+      const created: Candle = {
         timestamp: candleTimestamp,
         ...(bucketMs ? { sourceStartTimestamp: record.timestamp, sourceEndTimestamp: record.timestamp } : {}),
         open: (eventPrice ?? record.open) || record.close,
@@ -1569,16 +1597,20 @@ export function applyInstitutionalTradesToCandles(
         deltaHigh: Math.max(0, recordDelta),
         deltaLow: Math.min(0, recordDelta),
         deltaClose: recordDelta,
-      });
+      };
+      if (insertAt === null) next.push(created);
+      else next.splice(insertAt, 0, created);
       continue;
     }
-    if (bucketMs && timestamp < last.timestamp) continue;
 
     const deltaClose = (last.deltaClose ?? last.delta ?? 0) + recordDelta;
-    next[next.length - 1] = {
+    next[candleIndex] = {
       ...last,
       ...(bucketMs ? {
-        sourceStartTimestamp: Math.min(last.sourceStartTimestamp ?? record.timestamp, record.timestamp),
+        open: last.sourceStartTimestamp !== undefined && record.timestamp < last.sourceStartTimestamp
+          ? record.open || record.close : last.open,
+        sourceStartTimestamp: last.sourceStartTimestamp === undefined
+          ? undefined : Math.min(last.sourceStartTimestamp, record.timestamp),
         sourceEndTimestamp: Math.max(last.sourceEndTimestamp ?? record.timestamp, record.timestamp),
       } : {}),
       high: Math.max(last.high, record.high || record.close, record.close),

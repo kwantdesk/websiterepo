@@ -1,4 +1,9 @@
 
+## 2026-11-02 — late clock executions and disappearing wicks
+
+Confirmed negative control: applyInstitutionalTradesToCandles discarded an execution whose clock bucket preceded the current tail, losing rollover extrema. It now binary-routes late prints into the correct existing/interior bucket, keeps chronological live opens/closes using source watermarks, preserves seeded historical opens, and creates a missing interior bucket only from real prints. Paint batches include earliest touched bucket; Chart uses historical series.update for old OHLC without rewinding live refs/Footprint tail. Recovered interior bars also commit React history for a structural redraw. 41/43 candle checks pass; two old source-regex failures reproduce against HEAD. Final production build passed. VPS read-only audit: 20 closed NQ minutes match 3666 owned tape executions exactly. Real inter-bar gaps/zero wicks are not filled with fabricated prices. docs/audits/2026-11-02-nq-candle-integrity.json and docs/prompt-log/2026-11-02-late-candle-wicks.md. Main/yfmi only; no gateway restart.
+
+
 ## 2026-11-02 — resting entry activation time
 
 Resting limit/stop fills now require execution timestamps strictly after the current price activation time; OHLC reconciliation excludes every bar opening at/before it. Repricing stores durable priceActivatedAt without rewriting original createdAt. Workspace passes an explicit live placement/reprice clock and the replay clock when replay trading, preventing delayed tape or old candle ranges from executing a new price. Legacy orders fall back to createdAt. 34 targeted execution/receipt/activation tests pass; reconciliation 10/10 and drag 7/7. Full paper suite: 125/131; the six old source-regex integration failures reproduce on HEAD. Full production build plus scoped main/yfmi release; no gateway or account reset.

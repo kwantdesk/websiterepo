@@ -29,7 +29,7 @@ test('actual execution rollover publication retains the final close and wick bef
   const publish=find(node => ts.isForOfStatement(node) && node.expression.getText(source)==='paintBatch');
   assert.ok(batch); assert.ok(publish);
   const received=[];
-  const ctx=vm.createContext({previousCandles:before,reconciledCandles:next,latest:next.at(-1),pane:{id:scope,timeframe:'1m'},
+  const ctx=vm.createContext({records,getTimeframeBucketStart: t => Math.floor(t/60000)*60000,previousCandles:before,reconciledCandles:next,latest:next.at(-1),pane:{id:scope,timeframe:'1m'},
     document:{visibilityState:'visible'},
     isEventBasedChartInterval:()=>false,executionCandlePaintBatch,LIVE_CHART_CANDLE_EVENT:'candle',
     CustomEvent:class {constructor(type,options){this.type=type;this.detail=options.detail;}},
