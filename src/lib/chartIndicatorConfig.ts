@@ -1820,7 +1820,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   } : {}),
   ...(indicatorId === "gamma-environment" ? {
     position: "top-right",
-    sourceSymbol: "AUTO",
+    sourceSymbol: "SPX",
     showFreshness: true,
     // Semantic green/red by default so positive vs negative gamma is always
     // distinguishable (theme candle colours are monochrome on some themes).

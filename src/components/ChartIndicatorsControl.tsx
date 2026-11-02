@@ -6370,7 +6370,7 @@ export default function ChartIndicatorsControl({
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Gamma ticker</span>
                     <KwantSelect
-                      value={String(settingsInstance.settings?.sourceSymbol ?? "AUTO")}
+                      value={String(settingsInstance.settings?.sourceSymbol ?? "SPX")}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                         ...current,
                         settings: { ...(current.settings ?? {}), sourceSymbol: event.target.value },
@@ -6379,7 +6379,6 @@ export default function ChartIndicatorsControl({
                       menuLabel="Gamma Environment ticker"
                       aria-label="Gamma Environment ticker"
                     >
-                      <option value="AUTO">Automatic · follow chart</option>
                       {GAMMA_ENVIRONMENT_SOURCES.map(symbol => <option key={symbol} value={symbol}>{symbol}</option>)}
                     </KwantSelect>
                   </label>
@@ -6453,7 +6452,7 @@ export default function ChartIndicatorsControl({
                     </>
                   ) : null}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
-                    Reads the selected ticker&apos;s options gamma. Automatic follows the chart&apos;s gamma source. The current ticker is shown on the chart badge.
+                    Reads the selected options underlying&apos;s gamma. The selected ticker is shown on the chart badge.
                   </p>
                 </div>
               ) : null}

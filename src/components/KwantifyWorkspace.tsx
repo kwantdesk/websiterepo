@@ -5795,7 +5795,7 @@ function WorkspaceChartPaneComponent({
     thresholds: vixEnvironmentThresholds,
   });
   const directGammaEnvironmentConversion = gammaEnvironmentIndicator
-    ? resolveGammaEnvironmentConversion(gammaEnvironmentIndicator.settings?.sourceSymbol, gammaInstrument)
+    ? resolveGammaEnvironmentConversion(gammaEnvironmentIndicator.settings?.sourceSymbol)
     : null;
   const directGammaEnvironmentInstrument = directGammaEnvironmentConversion?.source ?? null;
   const classicGexSettings = classicGexIndicator?.settings ?? {};

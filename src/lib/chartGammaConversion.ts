@@ -9,17 +9,18 @@ import {
 export type GammaSourceSymbol = ChartGammaSourceSnapshot["symbol"];
 export type GammaChartInstrument = "NQ" | "MNQ" | "ES" | "MES";
 export type DirectGammaEnvironmentInstrument = "SPX" | "SPXW" | "SPY" | "NDX" | "QQQ";
-export const GAMMA_ENVIRONMENT_SOURCES = ["ES", "NDX", "NQ", "QQQ", "SPX", "SPXW", "SPY"] as const;
+export const GAMMA_ENVIRONMENT_SOURCES = ["NDX", "QQQ", "SPX", "SPXW", "SPY"] as const;
 
 export function normalizeGammaEnvironmentSource(value: unknown): string {
-  const source = String(value ?? "AUTO").trim().toUpperCase();
-  return GAMMA_ENVIRONMENT_SOURCES.some(symbol => symbol === source) ? source : "AUTO";
+  const source = String(value ?? "SPX").trim().toUpperCase();
+  // Repair the briefly exposed futures choices into their options underlying.
+  if (source === "NQ" || source === "MNQ") return "NDX";
+  return GAMMA_ENVIRONMENT_SOURCES.some(symbol => symbol === source) ? source : "SPX";
 }
 
 /** Explicit sources select their own options frame, independently of chart price. */
-export function resolveGammaEnvironmentConversion(sourceSetting: unknown, chartInstrument: string): GammaConversionDefinition | null {
+export function resolveGammaEnvironmentConversion(sourceSetting: unknown): GammaConversionDefinition | null {
   const source = normalizeGammaEnvironmentSource(sourceSetting);
-  if (source === "AUTO") return resolveDirectGammaEnvironmentConversion(chartInstrument);
   return GAMMA_CONVERSIONS.find(conversion => conversion.source === source) ?? null;
 }
 export type GammaConversionId =

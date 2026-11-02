@@ -1,4 +1,9 @@
 
+## 2026-11-03 — Gamma Environment correction: options only
+
+Supersedes the preceding selectable-ticker note: owner rejects futures choices. Only NDX/QQQ/SPX/SPXW/SPY remain; no ES, NQ or Automatic. Default explicitly SPX and badge shows actual source. All calculator requests use direct options frames, independently of chart instrument; old NQ/MNQ migrate to NDX, old ES/MES/AUTO/invalid to SPX. Other gamma/levels conversions unchanged. Functional routing/migration and actual browser exact-menu checks pass; full build/main-yfmi release required. No VPS restart. docs/prompt-log/2026-11-03-gamma-options-only.md.
+
+
 ## 2026-11-03 — Gamma Environment selectable ticker
 
 Chart badge now opens its pane's existing indicator settings. Themed Gamma ticker selector: Automatic plus ES/NDX/NQ/QQQ/SPX/SPXW/SPY. Explicit sources use their own options frame regardless of chart instrument; AUTO preserves existing cash/futures routing. Badge identifies selected or actual calibrated source. Normalized sourceSymbol persists with indicator, no changes to Kwant Levels settings. Three routing/persistence tests and three actual headless badge/settings interaction checks pass; scoped library lint and full production build required/pass. Legacy gamma suite's two source-pattern failures reproduce on HEAD. No feed restart or account/history changes; existing replay acquisition behaviour unchanged. Detail: docs/prompt-log/2026-11-03-gamma-environment-ticker.md. One scoped main/yfmi release and live SHA verification.
