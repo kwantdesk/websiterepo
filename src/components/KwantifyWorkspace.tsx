@@ -272,7 +272,7 @@ import {
   isGammaChartInstrument,
   isNativeGammaConversion,
   loadChartGammaCalibration,
-  resolveDirectGammaEnvironmentConversion,
+  resolveGammaEnvironmentConversion,
   resolveGammaConversion,
   roundedGammaPrice,
   saveChartGammaCalibration,
@@ -5324,6 +5324,7 @@ function WorkspaceChartPaneComponent({
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
   onUpdateIndicatorSetting,
+  onOpenIndicatorSettings,
   chartingDrawings,
   onChartingDrawingsChange,
   onSelectTimeframe,
@@ -5390,6 +5391,7 @@ function WorkspaceChartPaneComponent({
   onCreateAlertAtPrice: (price: string) => void;
   onRemoveAllIndicators: () => void;
   onUpdateIndicatorSetting: (instanceId: string, key: string, value: number | string | boolean) => void;
+  onOpenIndicatorSettings?: (instanceId: string) => void;
   chartingDrawings: Drawing[];
   onChartingDrawingsChange: (drawings: Drawing[], options?: { clearAll?: boolean }) => void;
   onSelectPeriod: (period: string) => void;
@@ -5793,7 +5795,7 @@ function WorkspaceChartPaneComponent({
     thresholds: vixEnvironmentThresholds,
   });
   const directGammaEnvironmentConversion = gammaEnvironmentIndicator
-    ? resolveDirectGammaEnvironmentConversion(gammaInstrument)
+    ? resolveGammaEnvironmentConversion(gammaEnvironmentIndicator.settings?.sourceSymbol, gammaInstrument)
     : null;
   const directGammaEnvironmentInstrument = directGammaEnvironmentConversion?.source ?? null;
   const classicGexSettings = classicGexIndicator?.settings ?? {};
@@ -9882,6 +9884,8 @@ function WorkspaceChartPaneComponent({
           gammaLevelsLoading={gammaLevelsLoading}
           gammaLevelsError={gammaLevelsError}
           gammaEnvironment={gammaEnvironmentIndicator || (gammaLevelsIndicator && kwantLevelsSettings.showEnvironment) ? currentGammaEnvironment : null}
+          gammaEnvironmentSourceSymbol={directGammaEnvironmentInstrument ?? currentGammaOverlay?.calibration.sourceSymbol ?? null}
+          onOpenIndicatorSettings={onOpenIndicatorSettings}
           gammaEnvironmentLoading={Boolean((gammaEnvironmentIndicator || (gammaLevelsIndicator && kwantLevelsSettings.showEnvironment)) && currentGammaEnvironmentLoading)}
           gammaEnvironmentError={gammaEnvironmentIndicator || (gammaLevelsIndicator && kwantLevelsSettings.showEnvironment) ? currentGammaEnvironmentError : null}
           vixEnvironment={vixEnvironmentIndicator ? vixEnvironment : null}
@@ -19069,6 +19073,10 @@ export default function KwantifyWorkspace({
     const chartPane = (
       <WorkspaceChartPane
         key={`${pane.id}:refresh-${paneRefreshNonces[pane.id] ?? 0}`}
+        onOpenIndicatorSettings={(instanceId) => {
+          setActivePaneId(pane.id);
+          setIndicatorSettingsOpenRequest({ paneId: pane.id, instanceId, requestId: Date.now() });
+        }}
         pane={pane}
         chartInstanceId={workspaceChartInstanceId(chartWorkspaceScope, pane.id)}
         active={activePaneId === pane.id}

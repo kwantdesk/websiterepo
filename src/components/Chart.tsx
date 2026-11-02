@@ -853,6 +853,7 @@ interface ChartProps {
     stale: boolean;
   } | null;
   gammaEnvironmentLoading?: boolean;
+  gammaEnvironmentSourceSymbol?: string | null;
   gammaEnvironmentError?: string | null;
   vixEnvironment?: VixEnvironmentSnapshot | null;
   vixEnvironmentLoading?: boolean;
@@ -3274,6 +3275,7 @@ function Chart({
   gammaLevelsError = null,
   gammaEnvironment = null,
   gammaEnvironmentLoading = false,
+  gammaEnvironmentSourceSymbol = null,
   gammaEnvironmentError = null,
   vixEnvironment = null,
   vixEnvironmentLoading = false,
@@ -19084,8 +19086,12 @@ function Chart({
         </div>
       ) : null },
           { id: "gamma-environment", position: gammaEnvironmentPosition, content: gammaEnvironmentIndicator ? (
-        <div
-          className="pointer-events-none min-w-[142px] border bg-panel/94 px-3 py-2 font-mono backdrop-blur"
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => { event.stopPropagation(); onOpenIndicatorSettings?.(gammaEnvironmentIndicator.instanceId); }}
+          title="Change Gamma Environment ticker and settings"
+          className="pointer-events-auto min-w-[142px] cursor-pointer border bg-panel/94 px-3 py-2 text-left font-mono backdrop-blur"
           style={{
             borderColor: `color-mix(in srgb, ${gammaEnvironmentColor} 58%, transparent)`,
             ...(gammaEnvironmentScale !== 1 ? { zoom: gammaEnvironmentScale } as CSSProperties : {}),
@@ -19097,7 +19103,7 @@ function Chart({
               className={`h-1.5 w-1.5 rounded-full ${gammaEnvironmentLoading && !gammaEnvironment ? "animate-pulse" : ""}`}
               style={{ backgroundColor: gammaEnvironmentError && !gammaEnvironment ? settings.downColor : gammaEnvironmentColor }}
             />
-            <span>Gamma Environment</span>
+            <span>Gamma Environment{gammaEnvironmentSourceSymbol ? ` · ${gammaEnvironmentSourceSymbol}` : ""}</span>
           </div>
           <div
             className="mt-1 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.04em]"
@@ -19115,7 +19121,7 @@ function Chart({
               <span>{new Date(gammaEnvironment.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
           ) : null}
-        </div>
+        </button>
       ) : null },
           { id: "vix-environment", position: vixEnvironmentPosition, content: vixEnvironmentIndicator ? (
         <div

@@ -1,6 +1,7 @@
 "use client";
 
 import SuperTrendIndicatorSettings from "@/components/SuperTrendIndicatorSettings";
+import { GAMMA_ENVIRONMENT_SOURCES } from "@/lib/chartGammaConversion";
 import AuctionGapIndicatorSettings from "@/components/AuctionGapIndicatorSettings";
 import { auctionGapSettingsSection, auctionGapThemeColors } from "@/lib/auctionGapSettings";
 
@@ -6367,6 +6368,22 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "gamma-environment" ? (
                 <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Gamma ticker</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.sourceSymbol ?? "AUTO")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), sourceSymbol: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Gamma Environment ticker"
+                      aria-label="Gamma Environment ticker"
+                    >
+                      <option value="AUTO">Automatic · follow chart</option>
+                      {GAMMA_ENVIRONMENT_SOURCES.map(symbol => <option key={symbol} value={symbol}>{symbol}</option>)}
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Box position</span>
                     <KwantSelect
                       value={String(settingsInstance.settings?.position ?? "top-right")}
@@ -6436,7 +6453,7 @@ export default function ChartIndicatorsControl({
                     </>
                   ) : null}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
-                    Uses the same authoritative gamma-environment frame as Kwant Levels and keeps the latest good snapshot visible between refreshes.
+                    Reads the selected ticker&apos;s options gamma. Automatic follows the chart&apos;s gamma source. The current ticker is shown on the chart badge.
                   </p>
                 </div>
               ) : null}

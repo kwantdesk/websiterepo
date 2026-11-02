@@ -1,4 +1,9 @@
 
+## 2026-11-03 — Gamma Environment selectable ticker
+
+Chart badge now opens its pane's existing indicator settings. Themed Gamma ticker selector: Automatic plus ES/NDX/NQ/QQQ/SPX/SPXW/SPY. Explicit sources use their own options frame regardless of chart instrument; AUTO preserves existing cash/futures routing. Badge identifies selected or actual calibrated source. Normalized sourceSymbol persists with indicator, no changes to Kwant Levels settings. Three routing/persistence tests and three actual headless badge/settings interaction checks pass; scoped library lint and full production build required/pass. Legacy gamma suite's two source-pattern failures reproduce on HEAD. No feed restart or account/history changes; existing replay acquisition behaviour unchanged. Detail: docs/prompt-log/2026-11-03-gamma-environment-ticker.md. One scoped main/yfmi release and live SHA verification.
+
+
 ## 2026-11-03 — candle timer activity and plot placement
 
 Corrected previous corner-timer placement: all right-corner entries now clear the measured price axis, including the countdown. Extracted CandleCountdownBadge. Futures quotes returned before marking activity; fresh non-cached futures quotes, execution flushes and seeds now mark the true source timestamp, once per batch. Seconds/minutes/hours count down; D/W/M deadlines use cached binary searches of the same calendar bucket function as recorded aggregation (DST/month/leap aware). Event bars show explicitly labelled elapsed time, not an invented close deadline. Replay uses the replay clock. Closed/stale feeds still do not manufacture active countdowns. 12 permanent tests pass; 82 headless browser checks pass across all 50 presets, ticker reuse, scale/panel resizing, real ticking and paused replay, zero browser errors/external requests. Scoped lint passes; final production build required. Main/yfmi only; no VPS/data restart.

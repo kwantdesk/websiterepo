@@ -9,6 +9,19 @@ import {
 export type GammaSourceSymbol = ChartGammaSourceSnapshot["symbol"];
 export type GammaChartInstrument = "NQ" | "MNQ" | "ES" | "MES";
 export type DirectGammaEnvironmentInstrument = "SPX" | "SPXW" | "SPY" | "NDX" | "QQQ";
+export const GAMMA_ENVIRONMENT_SOURCES = ["ES", "NDX", "NQ", "QQQ", "SPX", "SPXW", "SPY"] as const;
+
+export function normalizeGammaEnvironmentSource(value: unknown): string {
+  const source = String(value ?? "AUTO").trim().toUpperCase();
+  return GAMMA_ENVIRONMENT_SOURCES.some(symbol => symbol === source) ? source : "AUTO";
+}
+
+/** Explicit sources select their own options frame, independently of chart price. */
+export function resolveGammaEnvironmentConversion(sourceSetting: unknown, chartInstrument: string): GammaConversionDefinition | null {
+  const source = normalizeGammaEnvironmentSource(sourceSetting);
+  if (source === "AUTO") return resolveDirectGammaEnvironmentConversion(chartInstrument);
+  return GAMMA_CONVERSIONS.find(conversion => conversion.source === source) ?? null;
+}
 export type GammaConversionId =
   | "NQ-NQ"
   | "NQ-MNQ"

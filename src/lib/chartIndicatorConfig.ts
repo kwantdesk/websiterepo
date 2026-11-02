@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { normalizeGammaEnvironmentSource } from "@/lib/chartGammaConversion";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 import { BIG_BLOCKS_OPTIONS_DEFAULTS } from "@/lib/bigBlocksOptions";
 import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors, normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
@@ -1819,6 +1820,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   } : {}),
   ...(indicatorId === "gamma-environment" ? {
     position: "top-right",
+    sourceSymbol: "AUTO",
     showFreshness: true,
     // Semantic green/red by default so positive vs negative gamma is always
     // distinguishable (theme candle colours are monochrome on some themes).
@@ -4321,6 +4323,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "gamma-environment") {
     const defaults = defaultIndicatorSettings("gamma-environment");
     const settings = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    settings.sourceSymbol = normalizeGammaEnvironmentSource(settings.sourceSymbol);
     const allowedPositions = new Set([
       "top-left",
       "top-middle",
