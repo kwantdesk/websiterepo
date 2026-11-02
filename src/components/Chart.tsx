@@ -19225,11 +19225,10 @@ function Chart({
       ) : null}
       {gammaEnvironmentIndicator ? (
         <div
-          className="pointer-events-none absolute z-[32] min-w-[142px] border bg-panel/94 px-3 py-2 font-mono shadow-xl backdrop-blur"
+          className="pointer-events-none absolute z-[32] min-w-[142px] border bg-panel/94 px-3 py-2 font-mono backdrop-blur"
           style={{
             ...gammaEnvironmentPositionStyle,
             borderColor: `color-mix(in srgb, ${gammaEnvironmentColor} 58%, transparent)`,
-            boxShadow: `0 0 18px color-mix(in srgb, ${gammaEnvironmentColor} 14%, transparent)`,
             ...(gammaEnvironmentScale !== 1 ? { zoom: gammaEnvironmentScale } as CSSProperties : {}),
           }}
           aria-label="Gamma Environment"

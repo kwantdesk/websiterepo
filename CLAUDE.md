@@ -1,4 +1,9 @@
 
+## 2026-11-02 — Gamma Environment shadow removal
+
+Removed the Gamma Environment badge shadow-xl class and inline regime-coloured boxShadow glow in Chart.tsx. Placement, scale, background, border and indicator data remain unchanged. Production build validation and a scoped main-only yfmi deployment are required; no gateway restart.
+
+
 ## 2026-11-02 — neighbouring dropdown exclusivity
 
 Chart header drag guards swallowed bubble-phase outside presses, allowing instrument/timeframe portals to overlap. Shared captureDropdownDismissal now observes pointer capture and deferred, current-focus containment after portal refs attach. Apply this to leaf dropdowns, not parent dialogs with nested portaled children. Shared selectors, timezone/date/replay controls, chart/preset pickers, Options selectors and drawing flyouts use it; date checks are instance-local. Existing scroll/search/selection/Escape preserved. Actual isolated headless Workspace/Chart reproduces old overlap and passes ten corrected interaction checks with no errors/external requests. Full production build passed; focused lint has only the pre-existing aria-required warning. Details: docs/prompt-log/2026-11-02-exclusive-dropdowns.md. Frontend-only main/yfmi release; no feed restart or data changes.
