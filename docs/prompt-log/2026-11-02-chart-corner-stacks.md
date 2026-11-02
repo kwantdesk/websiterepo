@@ -1,0 +1,7 @@
+# Main chart corner badges above study panes
+
+The candle countdown used bottom:0 on the complete chart container, and Gamma/VIX bottom positions ignored bottom-docked study heights. CVD/Delta panes could cover them.
+
+Added ChartCornerBadges as the shared six-position layout owner. Bottom stacks anchor at the main price-pane boundary (bottom study stack plus time-axis height); top stacks clear top-docked studies. Flex layout uses actual badge sizes and CSS zoom. Countdown is last at bottom-right, at the outer edge; Gamma/VIX and other right badges retain existing price-axis clearance and stack above it. Flow/TPO status badges share the layout. Empty countdown contents do not reserve space. Resize/collapse/dock changes flow through existing pane-height state; no hard-coded combined badge heights.
+
+Validation: 18 isolated headless Chromium layout checks, zero browser errors/external requests. Covers all six positions, panel sizes 0/38/340/480px, badge scales 60/100/200 percent and no timer. Three permanent component/integration tests pass; scoped lint and full production build pass. Countdown behavior suite: five pass; a pre-existing Workspace source-count assertion expects two older code expressions but finds one. Workspace is unchanged by this task. No change to countdown timing, market data or theme settings. Scoped main-only push to websiterepo-yfmi and Ready/public SHA verification.

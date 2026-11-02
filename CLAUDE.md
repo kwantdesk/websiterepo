@@ -1,4 +1,9 @@
 
+## 2026-11-02 — main price-pane corner badge stacks
+
+ChartCornerBadges owns six corner stacks, anchored above bottom-docked study height plus the time axis and below top-docked studies. Gamma/VIX environment badges and flow/TPO status badges are in normal flex flow, so actual CSS zoom/height cannot overlap siblings. The countdown is the final bottom-right entry, flush with the outer main-pane corner; other right badges retain price-axis clearance above it. Removed full-container absolute timer offsets and per-environment offset scaling. Browser: 18 checks pass across all corners, resized/collapsed panels, 60/100/200 percent scale and absent timer. Three permanent layout/integration checks pass; scoped lint and production build pass. Countdown logic suite 5/6: pre-existing Workspace source-count assertion fails; Workspace is untouched. No data/feed changes; scoped main/yfmi release.
+
+
 ## 2026-11-02 — late clock executions and disappearing wicks
 
 Confirmed negative control: applyInstitutionalTradesToCandles discarded an execution whose clock bucket preceded the current tail, losing rollover extrema. It now binary-routes late prints into the correct existing/interior bucket, keeps chronological live opens/closes using source watermarks, preserves seeded historical opens, and creates a missing interior bucket only from real prints. Paint batches include earliest touched bucket; Chart uses historical series.update for old OHLC without rewinding live refs/Footprint tail. Recovered interior bars also commit React history for a structural redraw. 41/43 candle checks pass; two old source-regex failures reproduce against HEAD. Final production build passed. VPS read-only audit: 20 closed NQ minutes match 3666 owned tape executions exactly. Real inter-bar gaps/zero wicks are not filled with fabricated prices. docs/audits/2026-11-02-nq-candle-integrity.json and docs/prompt-log/2026-11-02-late-candle-wicks.md. Main/yfmi only; no gateway restart.

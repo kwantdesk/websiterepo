@@ -33,6 +33,7 @@ import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTr
 
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
+import ChartCornerBadges from "@/components/ChartCornerBadges";
 import { candleCountdownRemainingMs } from "@/lib/chartCountdown";
 import {
   CHART_QUICK_EMOJI_EVENT,
@@ -3187,7 +3188,7 @@ function CandleCountdownBadge({
 
   return (
     <div
-      className="pointer-events-none absolute bottom-0 right-0 z-10 flex h-3.5 min-w-[27px] items-center justify-center whitespace-nowrap rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
+      className="pointer-events-none flex h-3.5 min-w-[27px] items-center justify-center whitespace-nowrap rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
       title={label === "-" ? "No active candle countdown — market closed, paused or awaiting fresh data" : "Time until next candle opens"}
     >
       {label}
@@ -13256,28 +13257,6 @@ function Chart({
       dragDotSize: smooth(9, 3.8),
     };
   }, [overlaySize.height, overlaySize.width]);
-  // The badge sits INSIDE the chart plot: clear of the measured price scale on
-  // the right, the time axis at the bottom, and the pinned drawing toolbar on
-  // the left. CSS zoom scales offset values too, so they are divided back out.
-  const environmentPositionStyle = (position: string, scale: number) => {
-    const unzoom = (value: number) => value / scale;
-    const rightInsetPx = unzoom(nativePriceScaleWidth + 10);
-    const bottomInsetPx = unzoom(26 + 8);
-    // The old left rail is gone, so nothing docks on the left any more and the
-    // plot inset is the plain margin.
-    const leftInsetPx = unzoom(12);
-    const topInsetPx = unzoom(12);
-    switch (position) {
-      case "top-left": return { left: leftInsetPx, top: topInsetPx } as CSSProperties;
-      case "top-middle": return { left: "50%", top: topInsetPx, transform: "translateX(-50%)" } as CSSProperties;
-      case "bottom-left": return { left: leftInsetPx, bottom: bottomInsetPx } as CSSProperties;
-      case "bottom-middle": return { left: "50%", bottom: bottomInsetPx, transform: "translateX(-50%)" } as CSSProperties;
-      case "bottom-right": return { right: rightInsetPx, bottom: bottomInsetPx } as CSSProperties;
-      default: return { right: rightInsetPx, top: topInsetPx } as CSSProperties;
-    }
-  };
-  const gammaEnvironmentPositionStyle = environmentPositionStyle(gammaEnvironmentPosition, gammaEnvironmentScale);
-  const vixEnvironmentPositionStyle = environmentPositionStyle(vixEnvironmentPosition, vixEnvironmentScale);
   const toolbarButtonStyle = {
     width: toolbarMetrics.buttonSize,
     height: toolbarMetrics.buttonSize,
@@ -19153,11 +19132,27 @@ function Chart({
           />
         </div>
       ) : null}
-      {gammaEnvironmentIndicator ? (
+      <ChartCornerBadges
+        bottomInset={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
+        topInset={topIndicatorPaneHeight}
+        leftInset={toolbarPlotLeftInset}
+        priceScaleWidth={nativePriceScaleWidth}
+        badges={[
+          { id: "flow-status", position: "bottom-right", content: orderFlowPaneStatus ? (
+        <div className="pointer-events-none flex items-center gap-1.5 border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+          {orderFlowPaneStatus}
+        </div>
+      ) : null },
+          { id: "tpo-status", position: "bottom-left", content: tpoDataStatus ? (
+        <div className="pointer-events-none border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
+          {tpoDataStatus}
+        </div>
+      ) : null },
+          { id: "gamma-environment", position: gammaEnvironmentPosition, content: gammaEnvironmentIndicator ? (
         <div
-          className="pointer-events-none absolute z-[32] min-w-[142px] border bg-panel/94 px-3 py-2 font-mono backdrop-blur"
+          className="pointer-events-none min-w-[142px] border bg-panel/94 px-3 py-2 font-mono backdrop-blur"
           style={{
-            ...gammaEnvironmentPositionStyle,
             borderColor: `color-mix(in srgb, ${gammaEnvironmentColor} 58%, transparent)`,
             ...(gammaEnvironmentScale !== 1 ? { zoom: gammaEnvironmentScale } as CSSProperties : {}),
           }}
@@ -19187,12 +19182,11 @@ function Chart({
             </div>
           ) : null}
         </div>
-      ) : null}
-      {vixEnvironmentIndicator ? (
+      ) : null },
+          { id: "vix-environment", position: vixEnvironmentPosition, content: vixEnvironmentIndicator ? (
         <div
-          className="pointer-events-none absolute z-[32] min-w-[168px] border bg-panel/94 px-3 py-2 font-mono shadow-xl backdrop-blur"
+          className="pointer-events-none min-w-[168px] border bg-panel/94 px-3 py-2 font-mono shadow-xl backdrop-blur"
           style={{
-            ...vixEnvironmentPositionStyle,
             borderColor: `color-mix(in srgb, ${vixEnvironmentColor} 58%, transparent)`,
             boxShadow: `0 0 18px color-mix(in srgb, ${vixEnvironmentColor} 14%, transparent)`,
             ...(vixEnvironmentScale !== 1 ? { zoom: vixEnvironmentScale } as CSSProperties : {}),
@@ -19249,7 +19243,15 @@ function Chart({
             </div>
           ) : null}
         </div>
-      ) : null}
+      ) : null },
+          { id: "candle-countdown", position: "bottom-right", flushToEdge: true, content: (<CandleCountdownBadge
+        candleIntervalMs={candleIntervalMs}
+        hasCandles={hasCandles}
+        latestCandleRef={latestCandleRef}
+        marketIsActive={marketIsActive}
+      />) },
+        ]}
+      />
       {pullingStackingIndicator && pullingStackingSettings.showHeader ? (
         <div
           className="pointer-events-none absolute left-2 top-2 z-[26] flex h-6 max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
@@ -20369,12 +20371,7 @@ function Chart({
         }}
       />
 
-      <CandleCountdownBadge
-        candleIntervalMs={candleIntervalMs}
-        hasCandles={hasCandles}
-        latestCandleRef={latestCandleRef}
-        marketIsActive={marketIsActive}
-      />
+
 
       {hedgeLevelsIndicator ? (
         <div className="pointer-events-none absolute right-[70px] top-3 z-[18] flex max-w-[370px] items-center gap-1.5 rounded-full border border-border bg-panel/92 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
@@ -21598,19 +21595,6 @@ function Chart({
       {tpoMergeSelection ? (
         <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 border border-primary/45 bg-panel/95 px-3 py-2 text-[11px] font-medium text-foreground shadow-xl backdrop-blur">
           Select the other end of the TPO range <span className="ml-2 text-muted">Esc to cancel</span>
-        </div>
-      ) : null}
-
-      {orderFlowPaneStatus ? (
-        <div className="pointer-events-none absolute bottom-8 right-3 z-20 flex items-center gap-1.5 border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-          {orderFlowPaneStatus}
-        </div>
-      ) : null}
-
-      {tpoDataStatus ? (
-        <div className="pointer-events-none absolute bottom-8 left-3 z-20 border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
-          {tpoDataStatus}
         </div>
       ) : null}
 
