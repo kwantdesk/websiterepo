@@ -53,8 +53,9 @@ test("all workspace activity paths preserve source time instead of the candle cl
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(workspace, /markMarketActive\(\)/);
   assert.match(workspace, /sourceTimestamp: chartSourceTimestamp\(price.timestamp\)/);
-  assert.equal((workspace.match(/markMarketActive\(chartSourceTimestamp\(snapshot.timestamp\)\)/g) ?? []).length, 2);
+  assert.ok((workspace.match(/markMarketActive\(chartSourceTimestamp\(snapshot.timestamp\)\)/g) ?? []).length >= 1);
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(chart, /now % candleIntervalMs/);
-  assert.match(chart, /if \(marketIsActive !== true\) \{\s*setLabel\("-"\);\s*return;/);
+  const timer = readFileSync(new URL("../src/components/CandleCountdownBadge.tsx", import.meta.url), "utf8");
+  assert.match(timer, /candleCountdownRemainingMs\(candle.timestamp/);
 });

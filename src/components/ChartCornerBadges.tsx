@@ -6,8 +6,6 @@ export type ChartCornerBadge = {
   id: string;
   position: string;
   content: ReactNode;
-  /** The candle timer belongs at the outer corner, beside the price axis. */
-  flushToEdge?: boolean;
 };
 
 const positions = ["top-left", "top-middle", "top-right", "bottom-left", "bottom-middle", "bottom-right"] as const;
@@ -36,7 +34,7 @@ export default function ChartCornerBadges({ badges, bottomInset, topInset, leftI
       maxWidth: `calc(100% - ${leftInset}px)`,
     };
     return <div key={position} data-chart-corner={position} className="pointer-events-none absolute z-[32] flex flex-col gap-2" style={style}>
-      {entries.map(badge => <div key={badge.id} data-chart-corner-badge={badge.id} className="empty:hidden" style={{ marginRight: right && !badge.flushToEdge ? priceScaleWidth + 10 : 0 }}>
+      {entries.map(badge => <div key={badge.id} data-chart-corner-badge={badge.id} className="empty:hidden" style={{ marginRight: right ? priceScaleWidth + 10 : 0 }}>
         {badge.content}
       </div>)}
     </div>;

@@ -18,7 +18,7 @@ const render = (patch = {}) => renderToStaticMarkup(React.createElement(CornerBa
   badges: [
     { id: 'gamma', position: 'bottom-right', content: React.createElement('div', { style: { zoom: 2 } }, 'Gamma') },
     { id: 'vix', position: 'bottom-right', content: React.createElement('div', null, 'VIX') },
-    { id: 'timer', position: 'bottom-right', flushToEdge: true, content: '00:42' },
+    { id: 'timer', position: 'bottom-right', content: '00:42' },
   ], ...patch,
 }));
 
@@ -27,7 +27,7 @@ test('bottom-right badges use the price-pane boundary and countdown is last', ()
   assert.match(html, /data-chart-corner="bottom-right"[^>]*bottom:364px;right:0/);
   assert.ok(html.indexOf('data-chart-corner-badge="gamma"') < html.indexOf('data-chart-corner-badge="vix"'));
   assert.ok(html.indexOf('data-chart-corner-badge="vix"') < html.indexOf('data-chart-corner-badge="timer"'));
-  assert.match(html, /data-chart-corner-badge="timer"[^>]*margin-right:0/);
+  assert.match(html, /data-chart-corner-badge="timer"[^>]*margin-right:70px/);
   assert.match(html, /zoom:2/);
   assert.match(render({ bottomInset: 504 }), /bottom:504px/);
 });
@@ -44,7 +44,7 @@ test('all other corners clear the docked panes, and absent badges add no item', 
 test('the actual chart supplies both pane offsets and leaves countdown positioning to the stack', () => {
   const chart = readFileSync(new URL('../src/components/Chart.tsx', import.meta.url), 'utf8');
   assert.match(chart, /<ChartCornerBadges\s+bottomInset=\{indicatorPaneHeight \+ CHART_TIME_AXIS_HEIGHT\}\s+topInset=\{topIndicatorPaneHeight\}/);
-  const start = chart.indexOf('function CandleCountdownBadge('), end = chart.indexOf('function formatPriceDistance', start);
-  assert.doesNotMatch(chart.slice(start, end), /absolute|bottom-0|right-0/);
+  const timer = readFileSync(new URL('../src/components/CandleCountdownBadge.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(timer, /absolute|bottom-0|right-0/);
   assert.ok(chart.indexOf('id: "gamma-environment", position: gammaEnvironmentPosition') < chart.indexOf('id: "candle-countdown", position: "bottom-right"'));
 });

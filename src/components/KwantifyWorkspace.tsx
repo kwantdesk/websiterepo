@@ -6435,12 +6435,15 @@ function WorkspaceChartPaneComponent({
       pendingExecutionRecords = [];
       // Execution-only charts must establish live authority too; quote
       // delivery is independent and may arrive later or not arrive at all.
+      let newestExecutionTimestamp = -Infinity;
       for (const record of records) {
         if (!Number.isFinite(record.timestamp)) continue;
+        newestExecutionTimestamp = Math.max(newestExecutionTimestamp, record.timestamp);
         liveTailStartTimestampRef.current = liveTailStartTimestampRef.current === null
           ? record.timestamp
           : Math.min(liveTailStartTimestampRef.current, record.timestamp);
       }
+      markMarketActive(newestExecutionTimestamp);
 
       if (needsOrderFlowHistory) {
         // All panes for one contract consume the same canonical tape. The
@@ -6588,6 +6591,8 @@ function WorkspaceChartPaneComponent({
       },
       onSeed: (records) => {
         if (!records.length) return;
+        markMarketActive(records.reduce((newest, record) => Number.isFinite(record.timestamp)
+          ? Math.max(newest, record.timestamp) : newest, -Infinity));
         rithmicConnectedRef.current = true;
         // A reconnect seed is authoritative execution history for the active
         // session. Develop the just-opened daily profile immediately instead
@@ -6672,6 +6677,7 @@ function WorkspaceChartPaneComponent({
       pendingExecutionRecords = [];
     };
   }, [
+    markMarketActive,
     needsLiveVolumeProfiles,
     needsOrderFlowHistory,
     beginContinuityRecovery,
@@ -8471,6 +8477,7 @@ function WorkspaceChartPaneComponent({
       // comes only from the lossless execution subscriber: even trade quotes
       // omit intermediate prints and cannot supply a bar's true extrema/open.
       if (usingDatabentoPaneFeed) {
+        if (!price.cached) markMarketActive(chartSourceTimestamp(price.timestamp));
         if (price.contractSymbol) witnessRithmicExecution({
           symbol: displayCmeSymbol(pane.symbol), contractSymbol: price.contractSymbol,
           timestamp: chartSourceTimestamp(price.timestamp), isTrade: price.isTrade, cached: price.cached,

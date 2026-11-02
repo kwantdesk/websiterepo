@@ -34,7 +34,7 @@ import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTr
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import ChartCornerBadges from "@/components/ChartCornerBadges";
-import { candleCountdownRemainingMs } from "@/lib/chartCountdown";
+import CandleCountdownBadge from "@/components/CandleCountdownBadge";
 import {
   CHART_QUICK_EMOJI_EVENT,
   CHART_QUICK_EMOJI_STORAGE_KEY,
@@ -3128,72 +3128,6 @@ function inferCandleIntervalMs(candles: Candle[]) {
 
   if (diffs.length === 0) return null;
   return diffs[Math.floor(diffs.length / 2)];
-}
-
-function formatCountdown(ms: number) {
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const seconds = totalSeconds % 60;
-  const totalMinutes = Math.floor(totalSeconds / 60);
-  const minutes = totalMinutes % 60;
-  const hours = Math.floor(totalMinutes / 60);
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function CandleCountdownBadge({
-  candleIntervalMs,
-  hasCandles,
-  latestCandleRef,
-  marketIsActive,
-}: {
-  candleIntervalMs: number | null;
-  hasCandles: boolean;
-  latestCandleRef: RefObject<Candle | null>;
-  marketIsActive?: boolean;
-}) {
-  const [label, setLabel] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!candleIntervalMs || candleIntervalMs <= 0 || !hasCandles) {
-      setLabel(null);
-      return;
-    }
-
-    if (marketIsActive !== true) {
-      setLabel("-");
-      return;
-    }
-
-    const updateCountdown = () => {
-      const lastCandle = latestCandleRef.current;
-      if (!lastCandle || !Number.isFinite(lastCandle.timestamp)) {
-        setLabel(null);
-        return;
-      }
-
-      const now = Date.now();
-      const remainingMs = candleCountdownRemainingMs(lastCandle.timestamp, candleIntervalMs, now, marketIsActive);
-      setLabel(remainingMs === null ? "-" : formatCountdown(remainingMs));
-    };
-
-    updateCountdown();
-    const timer = window.setInterval(updateCountdown, 1_000);
-    return () => window.clearInterval(timer);
-  }, [candleIntervalMs, hasCandles, latestCandleRef, marketIsActive]);
-
-  if (!label) return null;
-
-  return (
-    <div
-      className="pointer-events-none flex h-3.5 min-w-[27px] items-center justify-center whitespace-nowrap rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
-      title={label === "-" ? "No active candle countdown — market closed, paused or awaiting fresh data" : "Time until next candle opens"}
-    >
-      {label}
-    </div>
-  );
 }
 
 function formatPriceDistance(entry: number, other: number, precision: number) {
@@ -19244,8 +19178,10 @@ function Chart({
           ) : null}
         </div>
       ) : null },
-          { id: "candle-countdown", position: "bottom-right", flushToEdge: true, content: (<CandleCountdownBadge
+          { id: "candle-countdown", position: "bottom-right", content: (<CandleCountdownBadge
         candleIntervalMs={candleIntervalMs}
+        timeframe={timeframe}
+        replayTimestampMs={replayTimestampMs}
         hasCandles={hasCandles}
         latestCandleRef={latestCandleRef}
         marketIsActive={marketIsActive}

@@ -1,4 +1,9 @@
 
+## 2026-11-03 — candle timer activity and plot placement
+
+Corrected previous corner-timer placement: all right-corner entries now clear the measured price axis, including the countdown. Extracted CandleCountdownBadge. Futures quotes returned before marking activity; fresh non-cached futures quotes, execution flushes and seeds now mark the true source timestamp, once per batch. Seconds/minutes/hours count down; D/W/M deadlines use cached binary searches of the same calendar bucket function as recorded aggregation (DST/month/leap aware). Event bars show explicitly labelled elapsed time, not an invented close deadline. Replay uses the replay clock. Closed/stale feeds still do not manufacture active countdowns. 12 permanent tests pass; 82 headless browser checks pass across all 50 presets, ticker reuse, scale/panel resizing, real ticking and paused replay, zero browser errors/external requests. Scoped lint passes; final production build required. Main/yfmi only; no VPS/data restart.
+
+
 ## 2026-11-02 — main price-pane corner badge stacks
 
 ChartCornerBadges owns six corner stacks, anchored above bottom-docked study height plus the time axis and below top-docked studies. Gamma/VIX environment badges and flow/TPO status badges are in normal flex flow, so actual CSS zoom/height cannot overlap siblings. The countdown is the final bottom-right entry, flush with the outer main-pane corner; other right badges retain price-axis clearance above it. Removed full-container absolute timer offsets and per-environment offset scaling. Browser: 18 checks pass across all corners, resized/collapsed panels, 60/100/200 percent scale and absent timer. Three permanent layout/integration checks pass; scoped lint and production build pass. Countdown logic suite 5/6: pre-existing Workspace source-count assertion fails; Workspace is untouched. No data/feed changes; scoped main/yfmi release.

@@ -1,0 +1,9 @@
+# Candle timer: plot placement and real activity
+
+Owner reported the previous corner timer was in the price sidebar and still showed a dash during active NQ trading. The previous flushToEdge exception put it on the price axis; removed that exception so it shares the inside-plot right inset with the environment badges. Lower-pane clearance and stacking above the timer remain.
+
+Confirmed activity fault: the futures quote handler returned before the downstream activity mark. Fresh non-cached futures quotes now mark their real source timestamp before returning; lossless execution batches and reconnect seeds do so once using their newest execution timestamp. OHLC continues to be execution-only. Cached/stale source timestamps cannot claim live activity.
+
+CandleCountdownBadge is a small shared component. Time-based charts count down on the actual bar clock; calendar days/weeks/months resolve their next boundary with the same bucket function as aggregation, including DST and leap months. Event charts (range, volume, trade, Renko, PNF etc.) show elapsed time, clearly labelled, because their closing time cannot be predicted. Replay uses replay time rather than the computer clock. No data or synthetic candles added; closed/stale feeds and an expired candle awaiting its next real bar can still show an inactive timer.
+
+Validation: 12 permanent timer/layout/activity tests pass, including execution of the actual futures quote early-return branch and execution watermark code; calendar DST/week/month/leap cases. 82 isolated headless Chromium checks pass, zero page errors/external requests: real one-second countdown, all 50 interval presets, reuse across 12 ticker labels, event elapsed ticking, paused replay, six corners and panel/scale changes. Scoped lint passes. Full production build required; one main/yfmi push and Ready/public commit verification. No gateway restart.
