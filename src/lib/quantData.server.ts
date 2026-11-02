@@ -1102,6 +1102,9 @@ export async function getOptionsUnderlyingHistory(input: {
   const to = Math.max(input.from, input.to);
   // The backend already owns the multi-session archive and resampling. One
   // bounded request avoids a separate relay/health/cache round trip per day.
+  if (!isInstitutionalMarketDataConfigured()) {
+    throw new QuantDataError("Recorded chart history requires the VPS recorder.", 503, null);
+  }
   if (isInstitutionalMarketDataConfigured()) {
     const query = new URLSearchParams({ symbol: cashTicker, timeframe: input.timeframe, from: String(from), to: String(to) });
     const response = await fetchInstitutionalMarketData(`v1/market-data/index-history?${query}`);

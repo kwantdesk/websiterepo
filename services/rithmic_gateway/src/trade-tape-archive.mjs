@@ -151,10 +151,8 @@ export function backfillFileName(exchange, symbol) {
 
 export function sessionTradeFiles(tapeDir, tradingDate, exchange, symbol) {
   const day = join(tapeDir, tradingDate);
-  const history = join(day, `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.trades.history.ndjson.gz`);
-  // Atomic completed-session replay replaces, rather than duplicates, any
-  // partial live recording. Original recordings stay untouched on disk.
-  if (existsSync(history)) return [history];
+  // Only our live capture and sidecars extracted from our raw recorder.
+  // Provider replay imports must never replace the owned execution tape.
   return [backfillFileName(exchange, symbol), instrumentFileName(exchange, symbol)]
     .map(name => join(day, name)).filter(file => existsSync(file));
 }

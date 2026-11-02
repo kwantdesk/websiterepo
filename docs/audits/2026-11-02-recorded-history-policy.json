@@ -1,0 +1,696 @@
+{
+  "checkedAt": "2026-11-02T02:14:31.236Z",
+  "sourcePolicy": "recorded-live-only",
+  "connected": true,
+  "authenticated": true,
+  "subscriptions": 53,
+  "dropped": {},
+  "rows": [
+    {
+      "root": "ES",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6839
+    },
+    {
+      "root": "NQ",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6839
+    },
+    {
+      "root": "YM",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6765
+    },
+    {
+      "root": "RTY",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6742
+    },
+    {
+      "root": "MES",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6839
+    },
+    {
+      "root": "MNQ",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6839
+    },
+    {
+      "root": "M2K",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 269
+    },
+    {
+      "root": "MYM",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 272
+    },
+    {
+      "root": "CL",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6818
+    },
+    {
+      "root": "MCL",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 272
+    },
+    {
+      "root": "QM",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 2321
+    },
+    {
+      "root": "NG",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 272
+    },
+    {
+      "root": "QG",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 155
+    },
+    {
+      "root": "RB",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 271
+    },
+    {
+      "root": "HO",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 268
+    },
+    {
+      "root": "GC",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6837
+    },
+    {
+      "root": "MGC",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 388
+    },
+    {
+      "root": "SI",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 270
+    },
+    {
+      "root": "SIL",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 270
+    },
+    {
+      "root": "HG",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 270
+    },
+    {
+      "root": "PL",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 266
+    },
+    {
+      "root": "PA",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 250
+    },
+    {
+      "root": "ZN",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6496
+    },
+    {
+      "root": "ZB",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 265
+    },
+    {
+      "root": "ZF",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 266
+    },
+    {
+      "root": "ZT",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 260
+    },
+    {
+      "root": "TN",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 259
+    },
+    {
+      "root": "UB",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 3004
+    },
+    {
+      "root": "10Y",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 434
+    },
+    {
+      "root": "SR3",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 9
+    },
+    {
+      "root": "6E",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 6731
+    },
+    {
+      "root": "6J",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 265
+    },
+    {
+      "root": "6B",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 267
+    },
+    {
+      "root": "6A",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 266
+    },
+    {
+      "root": "6C",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 260
+    },
+    {
+      "root": "6S",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 260
+    },
+    {
+      "root": "6N",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 250
+    },
+    {
+      "root": "6M",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 259
+    },
+    {
+      "root": "M6E",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 244
+    },
+    {
+      "root": "M6B",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 100
+    },
+    {
+      "root": "M6A",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 113
+    },
+    {
+      "root": "BTC",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 213
+    },
+    {
+      "root": "MBT",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 240
+    },
+    {
+      "root": "ETH",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 246
+    },
+    {
+      "root": "MET",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 109
+    },
+    {
+      "root": "ZC",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 204
+    },
+    {
+      "root": "ZS",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 215
+    },
+    {
+      "root": "ZW",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 212
+    },
+    {
+      "root": "ZM",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 211
+    },
+    {
+      "root": "ZL",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 209
+    },
+    {
+      "root": "LE",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 75
+    },
+    {
+      "root": "HE",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 74
+    },
+    {
+      "root": "GF",
+      "http": 200,
+      "source": "VPS recorded live trades",
+      "recordedOnly": true,
+      "bars": 75
+    }
+  ],
+  "errors": [
+    null,
+    null,
+    null
+  ],
+  "liveRecording": {
+    "tradingDate": "2026-11-01",
+    "printingProducts": 48,
+    "written": {
+      "CME:MNQZ6": 5355,
+      "CME:ESZ6": 1065,
+      "CME:MESZ6": 793,
+      "CME:NQZ6": 862,
+      "NYMEX:CLZ6": 581,
+      "COMEX:SILZ6": 182,
+      "NYMEX:MCLZ6": 593,
+      "CME:M2KZ6": 22,
+      "CBOT:YMZ6": 41,
+      "CBOT:MYMZ6": 68,
+      "CBOT:ZCZ6": 52,
+      "COMEX:MGCZ6": 351,
+      "NYMEX:RBZ6": 73,
+      "CBOT:ZFZ6": 264,
+      "NYMEX:QMZ6": 20,
+      "NYMEX:HOZ6": 17,
+      "CBOT:ZMZ6": 37,
+      "CBOT:ZLZ6": 14,
+      "NYMEX:NGZ26": 13,
+      "CBOT:ZNZ6": 398,
+      "CME:ETHX6": 31,
+      "COMEX:SIZ6": 129,
+      "CME:6JZ6": 322,
+      "CBOT:ZSF7": 151,
+      "CME:6SZ6": 30,
+      "CBOT:TNZ6": 138,
+      "CME:6CZ6": 37,
+      "CME:6MZ6": 13,
+      "COMEX:GCZ6": 162,
+      "COMEX:HGZ6": 84,
+      "CME:6BZ6": 34,
+      "CME:M6EZ6": 7,
+      "CME:6EZ6": 115,
+      "NYMEX:PLF7": 33,
+      "CME:M6BZ6": 10,
+      "CBOT:ZBZ6": 172,
+      "CBOT:UBZ6": 119,
+      "NYMEX:PAZ6": 24,
+      "CME:MBTX6": 43,
+      "CME:BTCX6": 11,
+      "CME:M6AZ6": 3,
+      "CBOT:ZWZ6": 34,
+      "CME:RTYZ6": 63,
+      "CBOT:ZTZ6": 120,
+      "CME:METX6": 11,
+      "CME:6AZ6": 27,
+      "CME:6NZ6": 80,
+      "NYMEX:QGZ6": 1
+    },
+    "barFiles": [
+      {
+        "file": "CBOT-10YX6.json",
+        "bars": 18
+      },
+      {
+        "file": "CBOT-MYMZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 98
+      },
+      {
+        "file": "CBOT-TNZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 163
+      },
+      {
+        "file": "CBOT-UBZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 102
+      },
+      {
+        "file": "CBOT-YMZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 197
+      },
+      {
+        "file": "CBOT-ZBZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 92
+      },
+      {
+        "file": "CBOT-ZCZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 74
+      },
+      {
+        "file": "CBOT-ZFZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 88
+      },
+      {
+        "file": "CBOT-ZLZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 72
+      },
+      {
+        "file": "CBOT-ZMZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 60
+      },
+      {
+        "file": "CBOT-ZNZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 190
+      },
+      {
+        "file": "CBOT-ZSF7.json",
+        "source": "VPS recorded live trades",
+        "bars": 73
+      },
+      {
+        "file": "CBOT-ZTZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 76
+      },
+      {
+        "file": "CBOT-ZWZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 65
+      },
+      {
+        "file": "CME-6AZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 94
+      },
+      {
+        "file": "CME-6BZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 84
+      },
+      {
+        "file": "CME-6CZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 92
+      },
+      {
+        "file": "CME-6EZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 196
+      },
+      {
+        "file": "CME-6JZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 98
+      },
+      {
+        "file": "CME-6MZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 83
+      },
+      {
+        "file": "CME-6NZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 87
+      },
+      {
+        "file": "CME-6SZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 97
+      },
+      {
+        "file": "CME-BTCX6.json",
+        "source": "VPS recorded live trades",
+        "bars": 83
+      },
+      {
+        "file": "CME-ESZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 197
+      },
+      {
+        "file": "CME-ETHX6.json",
+        "source": "VPS recorded live trades",
+        "bars": 81
+      },
+      {
+        "file": "CME-M2KZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 96
+      },
+      {
+        "file": "CME-M6AZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 34
+      },
+      {
+        "file": "CME-M6BZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 26
+      },
+      {
+        "file": "CME-M6EZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 67
+      },
+      {
+        "file": "CME-MBTX6.json",
+        "source": "VPS recorded live trades",
+        "bars": 89
+      },
+      {
+        "file": "CME-MESZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 197
+      },
+      {
+        "file": "CME-METX6.json",
+        "source": "VPS recorded live trades",
+        "bars": 92
+      },
+      {
+        "file": "CME-MNQZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 197
+      },
+      {
+        "file": "CME-NQZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 197
+      },
+      {
+        "file": "CME-RTYZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 197
+      },
+      {
+        "file": "CME-SR3Z6.json",
+        "bars": 9
+      },
+      {
+        "file": "COMEX-GCZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 197
+      },
+      {
+        "file": "COMEX-HGZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 96
+      },
+      {
+        "file": "COMEX-MGCZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 98
+      },
+      {
+        "file": "COMEX-SILZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 98
+      },
+      {
+        "file": "COMEX-SIZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 98
+      },
+      {
+        "file": "NYMEX-CLZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 197
+      },
+      {
+        "file": "NYMEX-HOZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 79
+      },
+      {
+        "file": "NYMEX-MCLZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 98
+      },
+      {
+        "file": "NYMEX-NGZ26.json",
+        "source": "VPS recorded live trades",
+        "bars": 82
+      },
+      {
+        "file": "NYMEX-PAZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 59
+      },
+      {
+        "file": "NYMEX-PLF7.json",
+        "source": "VPS recorded live trades",
+        "bars": 92
+      },
+      {
+        "file": "NYMEX-QGZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 13
+      },
+      {
+        "file": "NYMEX-QMZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 65
+      },
+      {
+        "file": "NYMEX-RBZ6.json",
+        "source": "VPS recorded live trades",
+        "bars": 83
+      }
+    ],
+    "dropped": {},
+    "errors": [
+      null,
+      null,
+      null
+    ]
+  }
+}

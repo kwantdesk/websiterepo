@@ -116,32 +116,31 @@ function executionFingerprint(records: InstitutionalTrade[]) {
 }
 
 function cacheKey(symbol: string, timeframe: string) {
-  // Event-bar schema v7 is built from the ordered native execution tape and
+  // v8 excludes provider-imported event history. Bars use only captured prints
+  // from the ordered native execution tape and
   // carries source watermarks into live continuation. Keep v6's approximate
   // one-second reconstructions isolated so returning browsers cannot restore
   // the malformed volume/range/Renko history this pipeline replaces.
   return isEventBasedChartInterval(timeframe)
-    ? `event-v7::${symbol}::${timeframe}`
-    // v6 refreshes time bars after the catalogue-wide provider reconciliation.
+    ? `event-v8::${symbol}::${timeframe}`
+    // v7 serves only VPS-recorded live history, excluding provider-import caches.
     // Old partial captures must not shadow the repaired VPS history for days.
-    : `time-v6::${symbol}::${timeframe}`;
+    : `time-v7::${symbol}::${timeframe}`;
 }
 
 function executionTapeCacheKey(symbol: string, _timeframe: string) {
   // Execution prints are contract-level data, not timeframe-level data. Tape
-  // v3 deliberately shares one warm cache across 1m, 5m and Footprint panes,
+  // v4 deliberately shares one warm cache across 1m, 5m and Footprint panes,
   // avoiding several identical 25k-55k arrays in IndexedDB and browser RAM.
   // Tape v2 kept compact historical flow separately from exact executions.
   // Post-halt subscription snapshots are retained in the raw tape for audit,
   // then rejected by the event-bar execution boundary during enrichment.
   // Ignore older tail-only records, otherwise a returning browser can restore
   // the broken cache and make CVD appear only on the newest candle again.
-  return `tape-v3::${symbol}`;
+  return `tape-v4::${symbol}`;
 }
 
-function legacyExecutionTapeCacheKey(symbol: string, timeframe: string) {
-  return `tape-v2::${symbol}::${timeframe}`;
-}
+
 
 function timeframeDurationMs(timeframe: string) {
   const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
@@ -470,8 +469,8 @@ async function readAllCachedHistory(symbol: string) {
     const matchingKeys = storedKeys
       .map(String)
       .filter((key) => (
-        key.startsWith(`time-v6::${symbol}::`)
-        || key.startsWith(`event-v7::${symbol}::`)
+        key.startsWith(`time-v7::${symbol}::`)
+        || key.startsWith(`event-v8::${symbol}::`)
       ));
     // Read only this symbol's candle series, sequentially. The former getAll
     // path also cloned every execution tape and every unrelated symbol merely
@@ -628,25 +627,13 @@ export async function readExecutionTapeCache(symbol: string, timeframe: string) 
   if (memoryRecord?.records.length) return memoryRecord;
   try {
     const database = await openDatabase();
-    let record = await new Promise<CachedExecutionTape | null>((resolve, reject) => {
+    const record = await new Promise<CachedExecutionTape | null>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readonly");
       const request = transaction.objectStore(STORE_NAME).get(key);
       request.onsuccess = () => resolve((request.result as CachedExecutionTape | undefined) ?? null);
       request.onerror = () => reject(request.error ?? new Error("Unable to read cached executions."));
     });
-    // One-release migration keeps an existing warm tape useful, then the next
-    // write stores it under the shared v3 key. Old per-timeframe entries are
-    // naturally removed by the bounded persistent-cache pruner.
-    if (!record) {
-      record = await new Promise<CachedExecutionTape | null>((resolve, reject) => {
-        const transaction = database.transaction(STORE_NAME, "readonly");
-        const request = transaction.objectStore(STORE_NAME).get(
-          legacyExecutionTapeCacheKey(symbol, timeframe),
-        );
-        request.onsuccess = () => resolve((request.result as CachedExecutionTape | undefined) ?? null);
-        request.onerror = () => reject(request.error ?? new Error("Unable to read cached executions."));
-      });
-    }
+    // Older caches may contain provider replay imports; do not migrate them.
     if (!record || record.kind !== "execution-tape") return null;
     const normalized = {
       ...record,

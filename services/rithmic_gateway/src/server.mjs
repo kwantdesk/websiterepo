@@ -2,10 +2,9 @@ import { createServer } from "node:http";
 import { sendBufferedResponse } from "./buffered-response.mjs";
 import { URL } from "node:url";
 
-import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
-import { buildHistoryValueAreaProfile } from "./history-value-area.mjs";
+import { finalizeValueAreaRows } from "./archive-value-area.mjs";
 import { replayCompactTradeTapeIntoBook } from "./archive-replay.mjs";
-import { CashIndexArchiver } from "./cash-index-archiver.mjs";
+import { RecordedCashHistory } from "./recorded-cash-history.mjs";
 import { HeatmapReplayStore } from "./heatmap-replay.mjs";
 import { LabRepositoryStore } from "./lab-repository.mjs";
 import { RithmicBookStore, instrumentKey } from "./book-store.mjs";
@@ -39,7 +38,6 @@ import { loadDesktopTicketVerifierFromEnv } from "./desktop-ticket-verifier.mjs"
 import { GatewayAuthorizer } from "./gateway-authorizer.mjs";
 import { MassiveIndicesStream } from "./massive-indices-stream.mjs";
 import { NormalizedAnalyticsProxy, normalizedAnalyticsProblem } from "./normalized-analytics-proxy.mjs";
-import { MarketIndexHistoryError, QuantDataMarketHistoryService } from "./quantdata-market-history.mjs";
 import { QuantDataMarketSnapshotStream } from "./quantdata-market-snapshot-stream.mjs";
 import { QuantDataRequestBudget, createQuantDataBudgetFetch } from "./quantdata-request-budget.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
@@ -155,21 +153,8 @@ const quantDataRequestBudget = config.quantDataApiKey
     requestTimeoutMs: config.vendorRequestTimeoutMs })
   : null;
 const quantDataFetch = createQuantDataBudgetFetch(quantDataRequestBudget);
-// Our OWN daily copy of each completed cash-index session's real minute OHLC
-// (the provider only serves it after the close, and keeps it on its own
-// terms). Archived minutes after every close, retried until complete,
-// backfilled on startup — replays never depend on the provider again.
-const cashIndexArchiver = new CashIndexArchiver({
-  dir: config.recordDir,
-  apiKey: config.quantDataApiKey,
-  fetchImpl: quantDataFetch,
-  tickers: String(process.env.CASH_INDEX_ARCHIVE_TICKERS || "")
-    .split(",")
-    .map((ticker) => ticker.trim())
-    .filter(Boolean),
-  archiveResponse: archiveQuantDataResponse,
-  log: (line) => process.stdout.write(`${line}\n`),
-});
+// Record live quotes on the VPS; chart history never downloads vendor history.
+const recordedCashHistory = new RecordedCashHistory({ dir: config.recordDir });
 const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver, quantDataFetch);
 const nativePositioningEdge = await createNativePositioningEdge();
 const financialInfo = new FinancialInfoService({
@@ -278,13 +263,6 @@ const quantDataMarketSnapshots = new QuantDataMarketSnapshotStream({
   equitySymbols: ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD"],
   indexSymbols: ["SPX", "NDX", "VIX"],
 }, quantDataFetch, archiveQuantDataResponse);
-const quantDataMarketHistory = new QuantDataMarketHistoryService({
-  apiKey: config.quantDataApiKey,
-  fetchImpl: quantDataFetch,
-  timeoutMs: Math.min(15_000, config.vendorRequestTimeoutMs),
-  archiveResponse: archiveQuantDataResponse,
-  archiveReadSession: (ticker, sessionDate) => cashIndexArchiver.readSession(ticker, sessionDate),
-});
 const massiveIndices = new MassiveIndicesStream({
   apiKey: config.massiveApiKey,
   websocketUrl: config.massiveWebsocketUrl,
@@ -1191,6 +1169,7 @@ client.on("gatewayError", (error) => {
 });
 
 function emitMarketIndexQuote(snapshot) {
+  recordedCashHistory.record(snapshot);
   for (const subscriber of [...marketIndexSseClients]) {
     if (
       subscriber.response.destroyed
@@ -1287,7 +1266,8 @@ const server = createServer(async (request, response) => {
       quantDataArchive: exposureArchiver.status(),
       quantDataRequestBudget: quantDataRequestBudget?.status() ?? { configured: false },
       vendorData: vendorDataEdge.health(),
-      chartHistory: chartHistory.status(),
+      chartHistory: { ...chartHistory.status(), sourcePolicy: "recorded-live-only" },
+      recordedCashHistory: recordedCashHistory.status(),
       tradeTape: tradeTape.status(),
       barFlow: barFlow.status(),
       sessionProfiles: sessionProfiles.status(),
@@ -1702,9 +1682,6 @@ const server = createServer(async (request, response) => {
           : await chartHistory.load({
               exchange: instrument.exchange,
               symbol: instrument.symbol,
-              // Continuous chart requests use one provider minute baseline.
-              // Explicit named-contract requests retain their exact archive.
-              canonicalRoot: (() => { const requested = String(url.searchParams.get("contractSymbol") || url.searchParams.get("symbol") || url.searchParams.get("root") || "").toUpperCase(); return requested === contractRoot(requested); })(),
               interval,
               fromMs: url.searchParams.get("fromMs"),
               toMs: url.searchParams.get("toMs"),
@@ -2063,38 +2040,11 @@ const server = createServer(async (request, response) => {
       const timeframe = String(url.searchParams.get("timeframe") || "5m").trim();
       const from = Number(url.searchParams.get("from"));
       const to = Number(url.searchParams.get("to"));
-      let providerFailure = null;
-      if (quantDataMarketHistory.supports(symbol) && config.quantDataApiKey) {
-        try {
-          return json(response, 200, await quantDataMarketHistory.load({ symbol, timeframe, from, to }));
-        } catch (error) {
-          if (error instanceof MarketIndexHistoryError && error.status < 500) {
-            return json(response, error.status, { error: error.message, code: error.code });
-          }
-          providerFailure = error;
-        }
+      try {
+        return json(response, 200, await recordedCashHistory.load({ symbol, timeframe, from, to }));
+      } catch {
+        return json(response, 400, { error: "Invalid recorded history request.", code: "recorded_history_invalid" });
       }
-      if (config.massiveApiKey) {
-        try {
-          const candles = await massiveIndices.history({ symbol, timeframe, from, to });
-          return json(response, 200, {
-            candles,
-            symbol,
-            source: "Massive (VPS)",
-            from,
-            to,
-            truncated: candles.length >= 50_000,
-          });
-        } catch (error) {
-          providerFailure = error;
-        }
-      }
-      return json(response, providerFailure ? 502 : 503, {
-        error: providerFailure
-          ? "Market Index history is unavailable from the configured VPS providers."
-          : "Market Index history is not configured on the VPS.",
-        code: providerFailure ? "index_history_unavailable" : "index_history_unconfigured",
-      });
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/trades") {
       let instrument = requestedInstrument(url);
@@ -2779,27 +2729,24 @@ const server = createServer(async (request, response) => {
         tickSize: tickSize(instrument.symbol),
         valueAreaPercent: 0.7,
       };
-      // History Plant returns exact volume-at-price rows in seconds and is not
-      // affected by a collector restart. Prefer it for completed levels; only
-      // scan the much larger local raw tape when History Plant is unavailable.
-      const historyProfile = config.sourceMode === "protocol"
-        ? await buildHistoryValueAreaProfile(config, profileArgs).catch(() => null)
-        : null;
-      const archivedProfile = historyProfile
-        ? null
-        : await buildArchivedValueAreaProfile(profileArgs);
-      const profile = historyProfile || (
-        archivedProfile
-        && Number(archivedProfile.integrityGaps || 0) === 0
-        && Number(archivedProfile.droppedMessages || 0) === 0
-          ? archivedProfile
-          : null
-      );
+      // Reuse the owned compact-tape folds; never scan gigabytes of raw L3
+      // or call a provider's History Plant on an HTTP request.
+      const folded = await sessionProfiles.load({ exchange: instrument.exchange, symbol: instrument.symbol,
+        tickSize: profileArgs.tickSize, fromMs: startMs, toMs: endMs, waitForWarmMs: 8000 });
+      const rows = new Map(), totals = { volume: 0, priceVolume: 0, trades: 0,
+        firstTradeAt: folded?.coverageStartMs ?? null, lastTradeAt: folded?.coverageEndMs ?? null };
+      for (const level of folded?.levels || []) {
+        rows.set(Math.round(level.price / profileArgs.tickSize), level.volume);
+        totals.volume += level.volume; totals.priceVolume += level.price * level.volume; totals.trades += level.trades;
+      }
+      const values = finalizeValueAreaRows(rows, totals, profileArgs.tickSize, 0.7);
+      const profile = values ? { ...values, source: "VPS recorded live trades", recordedOnly: true,
+        contractSymbol: instrument.symbol, startMs, endMs, coverageStartMs: totals.firstTradeAt,
+        coverageEndMs: totals.lastTradeAt, missingSessionDates: folded?.missingSessionDates || [] } : null;
       if (!profile) {
         return json(response, 404, {
           error: "No complete Rithmic trade profile is available for that session.",
-          recordedIntegrityGaps: Number(archivedProfile?.integrityGaps || 0),
-          recordedDroppedMessages: Number(archivedProfile?.droppedMessages || 0),
+          recordedOnly: true,
         });
       }
       return json(response, 200, profile);
@@ -2810,11 +2757,11 @@ const server = createServer(async (request, response) => {
       if (!symbol || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
         return json(response, 400, { error: "symbol and sessionDate (YYYY-MM-DD) are required." });
       }
-      const archived = await cashIndexArchiver.readSession(symbol, sessionDate);
+      const archived = await recordedCashHistory.load({symbol,timeframe:"1m",from:Date.parse(sessionDate+"T00:00:00Z"),to:Date.parse(sessionDate+"T23:59:59.999Z")});
       if (!archived) {
         return json(response, 404, {
           error: `No archived ${symbol} session for ${sessionDate}.`,
-          archiver: cashIndexArchiver.status(),
+          archiver: recordedCashHistory.status(),
         });
       }
       return json(response, 200, archived);
@@ -2954,12 +2901,7 @@ server.listen(config.port, config.host, () => {
   } else {
     process.stdout.write("[exposure] DISABLED - gamma history will not accumulate\n");
   }
-  if (cashIndexArchiver.enabled) {
-    cashIndexArchiver.start();
-    process.stdout.write(`[cash-index] archiving ${cashIndexArchiver.tickers.join(", ")} after every cash close\n`);
-  } else {
-    process.stdout.write("[cash-index] DISABLED - needs recordDir and the QuantData key\n");
-  }
+  process.stdout.write("[cash-index] recording live observations; provider history imports disabled\n");
 });
 
 /**
@@ -2994,7 +2936,7 @@ async function shutdown() {
   // the budget aborts held requests and rejects new work without spending quota.
   quantDataMarketSnapshots.stop();
   quantDataSurfaces.stop();
-  cashIndexArchiver.stop();
+  await recordedCashHistory.close();
   quantDataRequestBudget?.close();
   try { await exposureArchiver.stop(); } catch { /* ignore */ }
   for (const stop of [

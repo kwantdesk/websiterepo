@@ -111,8 +111,6 @@ export async function reconcileRecentHistory({ dir = "/recordings", now = Date.n
   return receipt;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const result = await reconcileRecentHistory({ dir: process.env.RITHMIC_RECORD_DIR || "/recordings", apply: process.argv.includes("--apply") });
-  console.log(JSON.stringify(result));
-  if (result.failed.length) process.exitCode = 1;
+if(process.argv[1]===fileURLToPath(import.meta.url)){
+ throw Error('Provider history imports are disabled by the recorded-live-only policy. Use scripts/rebuild-recorded-history.mjs.');
 }

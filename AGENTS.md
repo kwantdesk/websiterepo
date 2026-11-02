@@ -1,5 +1,10 @@
 # KwantDesk agent instructions
 
+
+## 2026-11-02 — OWNER HISTORY POLICY: VPS live recordings are authoritative
+
+This owner clarification supersedes earlier provider-history priority/backfill notes. All live input must be continuously recorded on the VPS. Chart/replay history must come from our own captured executions and saved live quote observations: provider live feed → VPS raw/compact recording → owned historical aggregates → website. Do not use Rithmic History Plant or other downloaded provider history to fill or replace our recorded candles/trades. Preserve imported files separately and exclude them from serving. Recover missing aggregates only from our own saved raw/tape/live-response recordings. Do not fabricate history for periods never recorded. All 53 futures remain persistently subscribed; this must not depend on an open browser. Provider-history maintenance timers are disabled; the replacement daily maintenance has no network access and bounded CPU/memory. See docs/audits/2026-11-02-recorded-history-policy.md for evidence and limits.
+
 Read `CLAUDE.md` completely before changing this repository. It is the canonical engineering handoff and applies to Codex and every repository-aware coding agent, despite its filename.
 
 Before changing anything under `native/`, also read

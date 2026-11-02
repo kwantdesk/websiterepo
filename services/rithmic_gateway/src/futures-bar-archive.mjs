@@ -411,7 +411,7 @@ export class FuturesBarArchive {
           for (const bar of live.values()) merged.set(bar.t, bar);
           const rows = [...merged.values()].sort((a, b) => a.t - b.t).map(encodeBar);
           const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
-          await writeFile(temporary, JSON.stringify({ tradingDate, exchange, symbol, bars: rows }));
+          await writeFile(temporary, JSON.stringify({ tradingDate, exchange, symbol, source: "VPS recorded live trades", markerConvention: "bar-open", bars: rows }));
           await rename(temporary, file);
           this.lastFlushAt = new Date().toISOString();
         } catch (error) {
@@ -429,6 +429,7 @@ export class FuturesBarArchive {
     try {
       const text = await readFile(file, "utf8");
       const parsed = JSON.parse(text);
+      if (/history\s*plant|provider[- ]import/i.test(String(parsed?.source || ''))) return [];
       if (metadata) metadata.authoritativeSession = parsed?.markerConvention === "bar-open"
         && (parsed?.source === "Rithmic History Plant individual trades"
           || parsed?.source === "Rithmic History Plant minute bars" && parsed?.completedSession === true);
@@ -484,7 +485,7 @@ export class FuturesBarArchive {
    * one still being built, so the live edge is continuous with the past
    * rather than arriving as a separate seam.
    */
-  async load({ exchange, symbol, interval, fromMs, toMs, limit, canonicalRoot = false }) {
+  async load({ exchange, symbol, interval, fromMs, toMs, limit }) {
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
     const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();
@@ -499,39 +500,9 @@ export class FuturesBarArchive {
       const openDay = this.open.get(tradingDate);
       const dayDir = this.dayDir(tradingDate);
       const file = join(dayDir, instrumentFileName(upper, upperSymbol));
-      if (canonicalRoot && contractRoot(upperSymbol) !== upperSymbol) {
-        const canonicalMetadata = {};
-        const canonicalBars = await this.readFile(join(dayDir, instrumentFileName(upper, contractRoot(upperSymbol))), canonicalMetadata);
-        if (canonicalMetadata.authoritativeSession) {
-          for (const bar of canonicalBars) merged.set(bar.t, bar);
-          continue;
-        }
-      }
-      const metadata = {};
-      const exactBars = await this.readFile(file, metadata);
-      if (metadata.authoritativeSession) {
-        // This file was rebuilt from a reconciled, completed exact-contract
-        // replay. Do not fill its genuine empty minutes with a stale root
-        // archive or an old live snapshot from the maintenance break.
-        for (const bar of exactBars) merged.set(bar.t, bar);
-        continue;
-      }
-      // History Plant bars are stored by product root (NQ), while live capture
-      // is stored by exact active contract (NQU6). Read BOTH. The old all-or-
-      // nothing fallback discarded the complete History Plant session as soon
-      // as one exact-contract minute existed, preserving every local gap and
-      // partial wick for the chart.
+      // Chart history is built ONLY from our persisted live recordings.
+      const exactBars = await this.readFile(file);
       const root = contractRoot(upperSymbol);
-      const rootMetadata = {};
-      const historyPlantBars = root === upperSymbol
-        ? []
-        : await this.readFile(join(dayDir, instrumentFileName(upper, root)), rootMetadata);
-      if (rootMetadata.authoritativeSession) {
-        // A complete session also confirms the absence of trades in its empty
-        // minutes. Partial local files cannot create candles in those slots.
-        for (const bar of historyPlantBars) merged.set(bar.t, bar);
-        continue;
-      }
       const recordedByMinute = new Map();
       for (const bar of exactBars) preferLiquidContractBar(recordedByMinute, bar);
       // Read every concrete contract for this product. Otherwise asking for
@@ -557,22 +528,8 @@ export class FuturesBarArchive {
           for (const bar of liveBars.values()) preferLiquidContractBar(recordedByMinute, bar);
         }
       }
-      const archived = mergeRithmicHistoryBars(historyPlantBars, [...recordedByMinute.values()]);
-      for (const bar of archived) merged.set(bar.t, bar);
-      if (recordedByMinute.size) {
-        const canonicalEnd = historyPlantBars.at(-1)?.t ?? Number.NEGATIVE_INFINITY;
-        for (const bar of recordedByMinute.values()) {
-          if (!validArchivedBar(bar)) continue;
-          const existing = merged.get(bar.t);
-          // The current edge continues after History Plant's last closed bar.
-          // If both sources contain that final minute, accept the live version
-          // only when it has accumulated at least as much traded volume.
-          if (
-            !existing
-            || bar.t > canonicalEnd
-            || (bar.t === canonicalEnd && bar.v >= existing.v)
-          ) merged.set(bar.t, bar);
-        }
+      for (const bar of recordedByMinute.values()) {
+        if (validArchivedBar(bar)) merged.set(bar.t, bar);
       }
     }
 
@@ -589,7 +546,8 @@ export class FuturesBarArchive {
       exchange: upper,
       symbol: upperSymbol,
       interval: String(interval || "1m"),
-      source: "Rithmic History Plant + recorded trade tape",
+      source: "VPS recorded live trades",
+      recordedOnly: true,
       startMs: start,
       endMs: end,
       candles: served.map((bar) => ({

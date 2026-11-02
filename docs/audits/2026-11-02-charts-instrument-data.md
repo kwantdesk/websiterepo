@@ -1,3 +1,5 @@
+> **SUPERSEDED SOURCE POLICY:** Provider replay comparisons below are not evidence of owned recording coverage. The owner requires VPS-recorded live data only; see [recorded-history policy](2026-11-02-recorded-history-policy.md). Provider imports have been separated and excluded.
+
 # Charts instrument data audit — 2 November 2026
 
 The fixed catalogue contains **53 futures products and 15 stock/index symbols**. The five completed CME sessions checked start on 25–29 October 2026 (25 October 22:00 UTC through 30 October 21:00 UTC). Cash history was checked for 26–30 October. SPXW correctly uses the physical SPX price tape. Dynamic individual CME option contracts are not part of this 68-symbol audit.

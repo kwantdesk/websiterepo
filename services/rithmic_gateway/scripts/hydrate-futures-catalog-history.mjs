@@ -114,6 +114,5 @@ export async function hydrateFuturesCatalogHistory({roots=null,resolveContract=r
  return receipt;
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
- const receipt=await hydrateFuturesCatalogHistory({dir:process.env.RITHMIC_RECORD_DIR||'/recordings',days:Number(process.argv.find(arg=>arg.startsWith('--days='))?.slice(7)??7),apply:process.argv.includes('--apply'),repairAmbiguous:process.argv.includes('--repair-ambiguous'),repairContract:process.argv.includes('--repair-contract'),repairAuthoritative:process.argv.includes('--repair-authoritative'),roots:process.argv.find(arg=>arg.startsWith('--roots='))?.slice(8).split(',')??null});
- console.log(JSON.stringify(receipt));if(receipt.instruments.some(row=>row.status==='failed'))process.exitCode=1;
+ throw Error('Provider history imports are disabled by the recorded-live-only policy. Use scripts/rebuild-recorded-history.mjs.');
 }

@@ -373,84 +373,10 @@ export async function fetchMarketIndexCandles(options: {
   from: number;
   to: number;
 }): Promise<Candle[] & { historyCoverage?: UnderlyingHistoryCoverage }> {
-  const definition = getMarketIndexDefinition(options.symbol);
-  if (!definition) throw new Error(`${options.symbol} is not a supported market instrument.`);
-  const canUseOfficialVixArchive = definition.symbol === "VIX"
-    && ["1D", "1W", "1M"].includes(options.timeframe);
-  const canUseKwantDataHistory = (definition.group === "Options Underlyings" || definition.symbol === "VIX")
-    && Boolean(getConfiguredQuantDataApiKey());
-  // These instruments belong to the options surface and KwantData is the
-  // authoritative shared VPS adapter for their chart history. Prefer it before
-  // probing Massive: an account without the matching minute entitlement used
-  // to burn the full Massive timeout before falling back, which made 1m/5m
-  // charts appear frozen even though valid KwantData candles were available.
-  if (canUseKwantDataHistory) {
-    // SPX/SPXW/NDX/SPY/QQQ belong to the options surface. Their authoritative
-    // history is already on the shared KwantData adapter; falling through to
-    // Massive after a transient miss both changes provenance and, on the VPS
-    // without a Massive key, returns a definitive 503 that trips a breaker.
-    // Surface the real KwantData failure instead of manufacturing a misleading
-    // "Massive gateway is cooling down" error.
-    const candles = await getOptionsUnderlyingHistory(options);
-    if (candles.length) return candles;
-    return [];
-  }
-  if (!vendorMarketDataConfigured("massive")) {
-    if (definition.symbol !== "VIX") {
-      throw new Error(`${definition.symbol} market history is not configured.`);
-    }
-    return fetchCboeVixEodCandles(options);
-  }
-  const { multiplier, timespan } = timeframeToAggregate(options.timeframe);
-  const fromDate = new Date(options.from).toISOString().slice(0, 10);
-  const toDate = new Date(options.to).toISOString().slice(0, 10);
-  const endpoint = new URL(
-    `${MASSIVE_API_BASE}/v2/aggs/ticker/${encodeURIComponent(definition.providerTicker)}/range/${multiplier}/${timespan}/${fromDate}/${toDate}`,
-  );
-  endpoint.searchParams.set("adjusted", "true");
-  endpoint.searchParams.set("sort", "asc");
-  endpoint.searchParams.set("limit", "50000");
-
-  try {
-    const payload = await fetchMassiveJson(endpoint.toString());
-    const rows = Array.isArray(payload.results) ? payload.results : [];
-    const candles = rows.flatMap((value) => {
-      if (!isRecord(value)) return [];
-      const timestamp = finiteNumber(value.t ?? value.timestamp);
-      const open = finiteNumber(value.o ?? value.open);
-      const high = finiteNumber(value.h ?? value.high);
-      const low = finiteNumber(value.l ?? value.low);
-      const close = finiteNumber(value.c ?? value.close);
-      if (
-        timestamp === null || open === null || high === null || low === null || close === null
-        || !validOhlc(open, high, low, close)
-      ) return [];
-      return [{
-        timestamp,
-        open,
-        high,
-        low,
-        close,
-        volume: finiteNumber(value.v ?? value.volume) ?? 0,
-      }];
-    });
-    if (candles.length) return candles;
-    if (canUseKwantDataHistory) {
-      const fallback = await getOptionsUnderlyingHistory(options);
-      if (fallback.length) return fallback;
-    }
-    if (!canUseOfficialVixArchive) return [];
-  } catch (error) {
-    if (canUseKwantDataHistory) {
-      const fallback = await getOptionsUnderlyingHistory(options).catch(() => []);
-      if (fallback.length) return fallback;
-    }
-    if (!canUseOfficialVixArchive) throw error;
-  }
-
-  // A configured Massive key may still lack the indices entitlement. VIX
-  // daily/weekly/monthly charts must remain usable in that case.
-  return fetchCboeVixEodCandles(options);
+  if (!getMarketIndexDefinition(options.symbol)) throw new Error(options.symbol + " is not a supported market instrument.");
+  // Historical candles are served from the VPS's recorded live observations.
+  // Never fall through to Massive/CBOE/QuantData historical downloads.
+  return getOptionsUnderlyingHistory(options);
 }
 
 export async function fetchMarketIndexSnapshots(symbols: string[]) {

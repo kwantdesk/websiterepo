@@ -4118,5 +4118,7 @@
       ],
       "liveVerification": "US cash session closed during audit"
     }
-  ]
+  ],
+  "sourcePolicySupersededBy": "2026-11-02-recorded-history-policy.md",
+  "providerComparisonIsOwnedRecordingCoverage": false
 }

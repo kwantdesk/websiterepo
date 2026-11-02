@@ -1,5 +1,10 @@
 # KWANTDESK important notes
 
+
+## 2026-11-02 — OWNER HISTORY POLICY: VPS live recordings are authoritative
+
+This owner clarification supersedes earlier provider-history priority/backfill notes. All live input must be continuously recorded on the VPS. Chart/replay history must come from our own captured executions and saved live quote observations: provider live feed → VPS raw/compact recording → owned historical aggregates → website. Do not use Rithmic History Plant or other downloaded provider history to fill or replace our recorded candles/trades. Preserve imported files separately and exclude them from serving. Recover missing aggregates only from our own saved raw/tape/live-response recordings. Do not fabricate history for periods never recorded. All 53 futures remain persistently subscribed; this must not depend on an open browser. Provider-history maintenance timers are disabled; the replacement daily maintenance has no network access and bounded CPU/memory. See docs/audits/2026-11-02-recorded-history-policy.md for evidence and limits.
+
 ## 2026-11-02 — Profiles start at 100% opacity
 
 All new volume-profile families and daily/weekly TPO now default to 100% opacity, including drawn fixed-range/anchored profiles, Deep Profile Swing and standalone profile workspaces. Missing-setting rendering/control fallbacks align at100; explicitly saved opacity remains authoritative.13 existing profile-style/drawing checks and20 TPO engine tests pass, all default families/custom-opacity retention verified, focused lint clean, full production build required before release. One unrelated static TPO clamp-regex test is already inconsistent with unchanged HEAD renderer; confirmed and documented without touching it. Details: docs/prompt-log/2026-11-02-profile-opacity-defaults.md. One scoped main-only push/exact live SHA verification. No gateway/feed/session/palette changes; preserve unrelated dirty/native/ALGO work.
