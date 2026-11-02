@@ -17643,7 +17643,8 @@ function Chart({
           replayTimestampMs == null && cached
           && developing?.developing
           && cached.calculationKey === calculationKey
-          && calculationSettings.periodMode !== "custom-range",
+          && calculationSettings.periodMode !== "custom-range"
+          && !calculationSettings.quickSessions.includes(","),
         );
         if (canRefreshDevelopingOnly && developing) {
           const liveProfiles = buildTpoProfiles({

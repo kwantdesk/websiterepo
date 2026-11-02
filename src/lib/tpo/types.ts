@@ -84,6 +84,8 @@ export interface TpoIndicatorSettings {
    * instead of keeping the other venue's day boundary.
    */
   tpoSessionFamily?: "cme" | "cash";
+  /** Independent daily profile schedules; empty uses the custom/default clock. */
+  quickSessions: string;
   dailyStartTime: string;
   dailyEndMode: "next-daily-start" | "explicit-time";
   dailyEndTime: string;

@@ -1,4 +1,9 @@
 
+## 2026-11-02 — multi-select TPO Quick Sessions
+
+Quick Sessions now stores independent comma-separated selections (rth/globex/new-york/london/tokyo/sydney). Shared preset definitions drive UI and per-session engine calculations, with unique profile IDs and actual IANA clocks; each selection has the existing per-session profile count. Clear the last selection to restore the venue default schedule. Legacy one-session presets migrate; manual schedule edits clear named selections, while style edits retain them. Include selections in calculation cache identity and disable the single-developing-profile refresh optimization for overlapping multiple schedules so older profiles are retained. Weekly/custom-range calculations retain their existing behavior. 23 TPO engine/settings tests pass, including standalone-versus-combined model equality across DST. Full production build and scoped main/yfmi release; no gateway changes.
+
+
 ## 2026-11-02 — remove Candlestick Bar overlay study
 
 Removed Candlestick Bar from the indicator catalog, live/render IDs, settings, numeric/default config and Chart overlay renderer. Old saved candlestick-bar instances normalize disabled. Normal chart candles/wicks, chart types, Overlay Chart and Overlay Timeframe Highlight remain unchanged. Full production build then one main/yfmi release; no gateway restart.

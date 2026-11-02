@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { selectedTpoQuickSessions } from "./quickSessions.ts";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { VOLUME_PROFILE_GRADIENT_OFF } from "@/lib/volumeProfileGradients";
 import {
@@ -87,6 +88,7 @@ export function defaultTpoSettings(
     lengthValue: 1,
     lengthUnit: weekly ? "week" : "day",
     timezone: "America/Chicago",
+    quickSessions: "",
     dailyStartTime: "17:00:00",
     dailyEndMode: "next-daily-start",
     dailyEndTime: "16:00:00",
@@ -301,6 +303,7 @@ export function validateTpoSettings(
     ...defaults,
     ...source,
     tpoSessionFamily: family,
+    quickSessions: variant === "daily-tpo" ? selectedTpoQuickSessions(source).join(",") : "",
     schemaVersion: TPO_SETTINGS_SCHEMA_VERSION,
     indicatorVariant: variant,
     scheduleKind: enumValue("scheduleKind", ["daily", "weekly", "generic-period", "custom-range"], defaults.scheduleKind),
@@ -423,6 +426,7 @@ export function tpoCalculationSettingsKey(settings: TpoIndicatorSettings): strin
     lengthValue: settings.lengthValue,
     lengthUnit: settings.lengthUnit,
     timezone: settings.timezone,
+    quickSessions: settings.quickSessions,
     dailyStartTime: settings.dailyStartTime,
     dailyEndMode: settings.dailyEndMode,
     dailyEndTime: settings.dailyEndTime,

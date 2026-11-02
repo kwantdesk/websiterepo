@@ -8,6 +8,7 @@ import type {
   TpoSubperiod,
   TpoTrade,
 } from "./types.ts";
+import { DAILY_TPO_SESSION_PRESETS } from "./quickSessions.ts";
 import { priceToTick } from "./types.ts";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 
@@ -828,7 +829,16 @@ export function buildTpoProfiles({
   bars: TpoBar[];
   settings: TpoIndicatorSettings;
   nowMs?: number;
-}) {
+}): TpoProfileModel[] {
+  if (settings.scheduleKind === "daily" && settings.periodMode === "multiple-profiles" && settings.quickSessions) {
+    const selected = new Set(settings.quickSessions.split(","));
+    return DAILY_TPO_SESSION_PRESETS.filter(preset => selected.has(preset.id)).flatMap(preset =>
+      buildTpoProfiles({ trades, bars, nowMs, settings: {
+        ...settings, ...preset.settings, quickSessions: "",
+        enabledWeekdays: preset.settings.enabledWeekdays.split(",").map(Number),
+      } }).map(profile => ({ ...profile, id: `quick:${preset.id}:${profile.id}` })))
+      .sort((left, right) => left.startTimeMs - right.startTimeMs || left.id.localeCompare(right.id));
+  }
   const exactAvailable = trades.some((trade) => Number.isFinite(trade.price) && trade.size > 0);
   const preferredSource: "exact-trades" | "bar-range" = settings.visitSource === "bar-range"
     ? "bar-range"

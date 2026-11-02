@@ -69,6 +69,7 @@ import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
 import BounceGexMapSettings, { isBounceMirrorPresentationKey } from "@/components/gex-map/BounceGexMapSettings";
 import { defaultTpoSettings, tpoSettingsToRecord } from "@/lib/tpo/settings";
+import { DAILY_TPO_SESSION_PRESETS, selectedTpoQuickSessions, toggleTpoQuickSession } from "@/lib/tpo/quickSessions";
 import KstIndicatorSettings from "@/components/KstIndicatorSettings";
 import {
   FOOTPRINT_CHART_TYPES,
@@ -206,74 +207,7 @@ const TPO_PRESETS = [
     settings: { showDevelopingPoc: true, showDevelopingValueArea: true, pocLineMode: "developing", showInitialBalance: true },
   },
 ] as const;
-const DAILY_TPO_SESSION_PRESETS = [
-  {
-    label: "RTH only",
-    description: "09:30-16:00 New York",
-    settings: {
-      timezone: "America/New_York",
-      dailyStartTime: "09:30:00",
-      dailyEndMode: "explicit-time",
-      dailyEndTime: "16:00:00",
-      enabledWeekdays: "1,2,3,4,5",
-    },
-  },
-  {
-    label: "Globex open",
-    description: "18:00-17:00 New York",
-    settings: {
-      timezone: "America/New_York",
-      dailyStartTime: "18:00:00",
-      dailyEndMode: "explicit-time",
-      dailyEndTime: "17:00:00",
-      enabledWeekdays: "0,1,2,3,4",
-    },
-  },
-  {
-    label: "New York open",
-    description: "09:30 to next NY open",
-    settings: {
-      timezone: "America/New_York",
-      dailyStartTime: "09:30:00",
-      dailyEndMode: "next-daily-start",
-      dailyEndTime: "09:30:00",
-      enabledWeekdays: "1,2,3,4,5",
-    },
-  },
-  {
-    label: "London open",
-    description: "08:00 to next London open",
-    settings: {
-      timezone: "Europe/London",
-      dailyStartTime: "08:00:00",
-      dailyEndMode: "next-daily-start",
-      dailyEndTime: "08:00:00",
-      enabledWeekdays: "1,2,3,4,5",
-    },
-  },
-  {
-    label: "Tokyo open",
-    description: "09:00 to next Tokyo open",
-    settings: {
-      timezone: "Asia/Tokyo",
-      dailyStartTime: "09:00:00",
-      dailyEndMode: "next-daily-start",
-      dailyEndTime: "09:00:00",
-      enabledWeekdays: "1,2,3,4,5",
-    },
-  },
-  {
-    label: "Sydney open",
-    description: "10:00 to next Sydney open",
-    settings: {
-      timezone: "Australia/Sydney",
-      dailyStartTime: "10:00:00",
-      dailyEndMode: "next-daily-start",
-      dailyEndTime: "10:00:00",
-      enabledWeekdays: "1,2,3,4,5",
-    },
-  },
-] as const;
+
 const VOLUME_PROFILE_TEMPLATES_STORAGE_KEY = "kwantdesk:volume-profile-templates:v1";
 
 type VolumeProfileTemplate = {
@@ -1557,7 +1491,16 @@ export default function ChartIndicatorsControl({
   }, [indicators]);
 
   const replace = useCallback((instanceId: string, update: (current: ChartIndicatorInstance) => ChartIndicatorInstance) => {
-    const next = indicatorsRef.current.map((instance) => instance.instanceId === instanceId ? update(instance) : instance);
+    const next = indicatorsRef.current.map((instance) => {
+      if (instance.instanceId !== instanceId) return instance;
+      const updated = update(instance);
+      // Manual schedule edits use a custom clock; style edits keep selections.
+      if (instance.indicatorId === "tpo-chart" && updated.settings?.quickSessions === instance.settings?.quickSessions
+        && ["timezone", "dailyStartTime", "dailyEndMode", "dailyEndTime", "enabledWeekdays", "scheduleKind", "periodMode", "filterMode"].some(key => updated.settings?.[key] !== instance.settings?.[key])) {
+        return { ...updated, settings: { ...updated.settings, quickSessions: "" } };
+      }
+      return updated;
+    });
     indicatorsRef.current = next;
     if (settingsOpenSnapshotRef.current?.instanceId === instanceId) {
       settingsHasPendingEditRef.current = true;
@@ -5464,24 +5407,21 @@ export default function ChartIndicatorsControl({
                     <div className="space-y-2 border border-border bg-background/65 p-2.5">
                       <div>
                         <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">Quick session</div>
-                        <div className="mt-0.5 text-[8px] leading-3 text-muted">Select a session, or click the selected session again to show the full default session.</div>
+                        <div className="mt-0.5 text-[8px] leading-3 text-muted">Select any sessions to keep together. Click again to remove one; clear all to use the default session.</div>
                       </div>
                       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                         {DAILY_TPO_SESSION_PRESETS.map((preset) => {
-                          const active = Object.entries(preset.settings).every(([key, value]) =>
-                            String(settingsInstance.settings?.[key] ?? "") === String(value));
+                          const active = selectedTpoQuickSessions(settingsInstance.settings).includes(preset.id);
                           return (
                             <button
-                              key={preset.label}
+                              key={preset.id}
                               type="button"
                               aria-pressed={active}
                               onClick={() => replace(settingsInstance.instanceId, (current) => {
-                                const selected = Object.entries(preset.settings).every(([key, value]) =>
-                                  String(current.settings?.[key] ?? "") === String(value));
+                                const quickSessions = toggleTpoQuickSession(current.settings, preset.id);
                                 const defaults = tpoSettingsToRecord(defaultTpoSettings("daily-tpo", chartSettings, instrument));
-                                const session = selected
-                                  ? Object.fromEntries(Object.keys(preset.settings).map((key) => [key, defaults[key]]))
-                                  : preset.settings;
+                                const first = DAILY_TPO_SESSION_PRESETS.find(candidate => quickSessions.split(",").includes(candidate.id));
+                                const session = first?.settings ?? Object.fromEntries(Object.keys(preset.settings).map(key => [key, defaults[key]]));
                                 return {
                                   ...current,
                                   settings: {
@@ -5493,6 +5433,7 @@ export default function ChartIndicatorsControl({
                                     customEndMs: 0,
                                     customEndFollowsLatest: false,
                                     ...session,
+                                    quickSessions,
                                   },
                                 };
                               })}
