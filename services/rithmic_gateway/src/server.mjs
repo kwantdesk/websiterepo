@@ -1645,6 +1645,8 @@ const server = createServer(async (request, response) => {
           code: "history_instrument_not_enabled",
         });
       }
+      const requestedHistorySymbol = String(url.searchParams.get("symbol") || url.searchParams.get("root") || "").toUpperCase().replace(/\.[VNC]\.\d+$/, "");
+      const continuous = !url.searchParams.get("contractSymbol") && gatewayInstrumentCatalog().some(row => row.root === requestedHistorySymbol);
       try {
         const interval = url.searchParams.get("interval");
         const wantsAuctionGap = url.searchParams.get("auctionGap") === "1";
@@ -1657,6 +1659,8 @@ const server = createServer(async (request, response) => {
             toMs: url.searchParams.get("toMs"),
             limit: url.searchParams.get("limit"),
             auctionGap: wantsAuctionGap,
+            continuous,
+            beforeTimestamp: url.searchParams.get("beforeTimestamp"),
           });
           return json(response, 200, {
             ...eventHistory,
@@ -1678,6 +1682,7 @@ const server = createServer(async (request, response) => {
               toMs: url.searchParams.get("toMs"),
               limit: url.searchParams.get("limit"),
               auctionGap: wantsAuctionGap,
+              continuous,
             })
           : await chartHistory.load({
               exchange: instrument.exchange,
@@ -1686,6 +1691,7 @@ const server = createServer(async (request, response) => {
               fromMs: url.searchParams.get("fromMs"),
               toMs: url.searchParams.get("toMs"),
               limit: url.searchParams.get("limit"),
+              continuous,
             });
         const responseHistory = wantsAuctionGap && !subMinute ? {
           ...history,

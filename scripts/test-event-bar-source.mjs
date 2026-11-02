@@ -110,7 +110,7 @@ check("the module the chart route actually calls reads the tape", () => {
     !/GLBX\.MDP3/.test(eventHistory),
     "the event-history module still asks the vendor for CME data",
   );
-  assert.match(tape, /createEventBarBuilder\(interval, upperSymbol, cap\)/);
+  assert.match(tape, /createEventBarBuilder\(interval, upperSymbol,/);
 });
 
 check("order flow comes from the same prints as the geometry", () => {
@@ -121,10 +121,10 @@ check("order flow comes from the same prints as the geometry", () => {
    * match the bars it is drawn on.
    */
   const fold = tape.slice(tape.indexOf("async loadEventBars"));
-  assert.match(fold, /builder\.add\(\{ timestamp: trade\.timestamp, price, size, trades: 1, delta \}\)/);
+  assert.match(fold, /builder\.add\(\{ timestamp: trade\.timestamp, price, size, trades: 1, delta, contractSymbol: sourceContract \}\)/);
   assert.match(fold, /const ask = delta > 0 \? size : 0;/);
   assert.match(fold, /const bid = delta < 0 \? size : 0;/);
-  assert.match(fold, /if \(!delta \|\| trade\.timestamp < flowStart\) return;/);
+  assert.match(fold, /if \(!delta \|\| trade\.timestamp < Math\.max\(flowStart, start\)\) return;/);
 });
 
 check("there is one reader, not a copy per consumer", () => {
@@ -148,7 +148,7 @@ check("a micro chart is built from the micro's own prints", () => {
    * expected. Measured before the fix: an MNQ range chart and an NQ range
    * chart returned byte-identical bars, down to the bar count.
    */
-  const route = server.slice(server.indexOf('url.pathname === "/v1/market-data/trade-tape"'));
+  const route = server.slice(server.lastIndexOf('url.pathname === "/v1/market-data/trade-tape"'));
   assert.match(
     route.slice(0, 1200),
     /requestedInstrument\(url, \{\}, \{ exactRoot: true \}\)/,

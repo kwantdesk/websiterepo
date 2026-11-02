@@ -1,3 +1,4 @@
+import { chartTimeBucketStartMs } from "./chartTimeBucket.ts";
 import type { Candle } from "@/lib/backtester";
 
 export const MINIMUM_CHART_HISTORY_SESSIONS = 5;
@@ -350,15 +351,15 @@ export function cmeChartTailNeedsReconciliation(
   );
   if (!marketIsOpen) return false;
 
-  const activeBucket = Math.floor(now / durationMs) * durationMs;
+  const activeBucket = chartTimeBucketStartMs(now, timeframe);
   const latestObservedTimestamp = observedTimestamps.reduce(
     (latest, timestamp) => Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest,
     Number.NEGATIVE_INFINITY,
   );
-  const latestBucket = Math.floor(Math.max(
+  const latestBucket = chartTimeBucketStartMs(Math.max(
     candles.at(-1)?.timestamp ?? Number.NEGATIVE_INFINITY,
     latestObservedTimestamp,
-  ) / durationMs) * durationMs;
+  ), timeframe);
   // A history archive may end at the last COMPLETED bucket. The forming
   // candle does not exist until an actual execution creates it. Requiring it
   // before admitting history deadlocked startup when the independent snapshot

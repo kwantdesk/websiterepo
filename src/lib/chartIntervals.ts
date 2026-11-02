@@ -10,6 +10,10 @@ export type ChartIntervalKind =
   | "point-figure"
   | "delta";
 
+// Keep the full requested execution window when the first live batch arrives.
+// This is a safety ceiling, not a short live-tail target.
+export const MAX_CHART_HISTORY_BARS = 500_000;
+
 export type ChartIntervalOption = {
   id: string;
   label: string;
@@ -210,8 +214,8 @@ export function parseChartIntervalInput(input: string): string | null {
   if (/^(h|hr|hrs|hour|hours)$/.test(unit)) return `${value}h`;
   if (/^(d|day|days)$/.test(unit)) return `${value}D`;
   if (/^(w|wk|wks|week|weeks)$/.test(unit)) return `${value}W`;
-  if (/^(r|range|ranges)$/.test(unit)) return `${value}r`;
   if (originalUnit === "R" || /^(renko|renkos)$/.test(unit)) return `${value}R`;
+  if (/^(r|range|ranges)$/.test(unit)) return `${value}r`;
   if (/^(v|vol|volume|volumes)$/.test(unit)) return `${value}v`;
   if (/^(t|tick|ticks|trade|trades)$/.test(unit)) return `${value}t`;
   if (/^(dv|delta|deltas)$/.test(unit)) return `${value}dv`;

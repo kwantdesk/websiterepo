@@ -31,6 +31,7 @@ function belongsToAuthCookie(name: string, baseName: string) {
 // stalls price, history and every level overlay at the same time.
 const FAST_MARKET_READ_PATHS = [
   "/api/cme-history",
+  "/api/cme-history-page",
   "/api/databento/live",
   "/api/databento/market",
   "/api/databento/value-area",

@@ -1,6 +1,7 @@
 import { causalArrayView } from "@/lib/causalArrayView";
 
 export interface Candle {
+  sourceContractSymbol?: string;
   timestamp: number;
   open: number;
   high: number;

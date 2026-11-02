@@ -1,4 +1,4 @@
-import { getChartInterval, isEventBasedChartInterval } from "@/lib/chartIntervals";
+import { getChartInterval, isEventBasedChartInterval, MAX_CHART_HISTORY_BARS } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, type MarketTrade } from "@/lib/eventBars";
 import type { Candle } from "@/lib/backtester";
 import {
@@ -508,7 +508,7 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
       trades: 1,
       delta: trade.side > 0 ? trade.size : trade.side < 0 ? -trade.size : 0,
     }));
-    return applyMarketTradesToEventBars([], trades, timeframe, symbol, 250_000).map((bar) => ({
+    return applyMarketTradesToEventBars([], trades, timeframe, symbol, MAX_CHART_HISTORY_BARS).map((bar) => ({
       timestamp: bar.timestamp,
       open: bar.open,
       high: bar.high,

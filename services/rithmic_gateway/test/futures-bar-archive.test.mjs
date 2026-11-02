@@ -107,7 +107,7 @@ test("sub-millisecond source ordering survives archive flush and restore", async
 test("legacy restore keeps its known open and rejects pre-restore closes without freezing fresh prints", async () => {
   await withArchive(async (archive,dir) => {
     const day=join(dir,'bars',chicagoTradingDate(T0));mkdirSync(day,{recursive:true});
-    writeFileSync(join(day,'CME-NQU6.json'),JSON.stringify({bars:[[T0,100,110,95,105,5]]}));
+    writeFileSync(join(day,'CME-NQU6.json'),JSON.stringify({source:"VPS recorded live trades",bars:[[T0,100,110,95,105,5]]}));
     await archive.restore(T0+30000);
     archive.record(print(10000,99,1));
     let result=await archive.load({exchange:'CME',symbol:'NQU6',interval:'1m',fromMs:T0,toMs:T0+60000});
@@ -171,12 +171,14 @@ test("continuous history spans locally recorded contracts across a rollover", as
     const dayDir = join(dir, "bars", tradingDate);
     mkdirSync(dayDir, { recursive: true });
     writeFileSync(join(dayDir, "CME-NQU6.json"), JSON.stringify({
+      source: "VPS recorded live trades",
       bars: [
         [T0, 100, 101, 99, 100.5, 200],
         [T0 + 60_000, 100.5, 102, 100, 101.5, 50],
       ],
     }));
     writeFileSync(join(dayDir, "CME-NQZ6.json"), JSON.stringify({
+      source: "VPS recorded live trades",
       bars: [
         // Both contracts trade during the handover. The higher-volume minute
         // wins rather than combining two different price series.
@@ -334,3 +336,7 @@ test('overlapping periodic flush calls share one writer and retain prints arrivi
 test('subscription snapshots cannot enter permanent candle or execution archives',()=>{
  assert.equal(tradeFromRecord({payload:{exchange:'CME',symbol:'NQU6',tradePrice:100,tradeSize:1,isSnapshot:true,ssboe:T0/1000}}),null);
 });
+
+ test("unattributed legacy minute files cannot establish recorded execution history",async()=>{await withArchive(async(archive,dir)=>{const day=join(dir,"bars",chicagoTradingDate(T0));mkdirSync(day,{recursive:true});writeFileSync(join(day,"CME-NQU6.json"),JSON.stringify({bars:[[T0,100,110,95,105,5]]}));const result=await archive.load({exchange:"CME",symbol:"NQU6",interval:"1m",fromMs:T0,toMs:T0+60000});assert.equal(result.candles.length,0);});});
+
+test("a requested monthly candle includes all captured minutes in its calendar bucket",async()=>{await withArchive(async archive=>{archive.record({exchange:"CME",symbol:"NQU6",payload:{ssboe:T0/1000,tradePrice:100,tradeSize:2}});archive.record({exchange:"CME",symbol:"NQU6",payload:{ssboe:(T0+120000)/1000,tradePrice:105,tradeSize:3}});const result=await archive.load({exchange:"CME",symbol:"NQU6",interval:"1M",fromMs:T0+60000,toMs:T0+180000});assert.equal(result.candles[0].open,100);assert.equal(result.candles[0].volume,5);})});

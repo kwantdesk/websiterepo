@@ -1,5 +1,6 @@
-import { readdir, readFile, writeFile, mkdir, rename, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { createHash } from "node:crypto";
+import { readdir, readFile, writeFile, mkdir, rename, stat, rmdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FuturesBarArchive, tradeFromRecord } from '../src/futures-bar-archive.mjs';
 import { readArchiveRecords } from '../src/archive-reader.mjs';
@@ -8,7 +9,7 @@ import { RecordedCashHistory } from '../src/recorded-cash-history.mjs';
 import { __test as cashQuotes } from '../src/quantdata-market-snapshot-stream.mjs';
 
 /** Offline recovery from OUR recordings. This module has no history-provider client. */
-export async function rebuildRecordedHistory({dir='/recordings',days=9,now=Date.now(),apply=false,rawByteBudget=2*1024**3}={}){
+export async function rebuildRecordedHistory({dir='/recordings',days=9,now=Date.now(),apply=false,rawByteBudget=2*1024**3,tapeOnly=false,futuresOnly=false,reconcile=false}={}){
  if(!Number.isInteger(days)||days<1||days>30)throw Error('Recorded recovery window must be 1–30 days');
  const cutoff=new Date(now-days*86400000).toISOString().slice(0,10),receipt={at:new Date(now).toISOString(),source:'VPS live recordings only',futures:[],cashResponses:0,rawBytes:0};
  const maintenance=join(dir,'recording-maintenance'),checkpoint=await readFile(join(maintenance,'checkpoint.json'),'utf8').then(JSON.parse).catch(()=>({}));
@@ -18,20 +19,20 @@ export async function rebuildRecordedHistory({dir='/recordings',days=9,now=Date.
   const groups=new Map();for(const name of await readdir(join(tapeDir,date))){const m=name.match(/^([A-Z0-9]+)-([A-Z0-9]+)\.trades(?:\.backfill)?\.ndjson\.gz$/i);if(!m)continue;const key=m[1]+':'+m[2];if(!groups.has(key))groups.set(key,[]);groups.get(key).push(name)}
   for(const[key,names]of groups){const[exchange,symbol]=key.split(':'),file=join(dir,'bars',date,exchange+'-'+symbol+'.json');
    const existing=await readFile(file,'utf8').then(JSON.parse).catch(()=>null);
-   const ownedMinutes=new Set(existing&&!/history\s*plant|provider[- ]import/i.test(String(existing.source||''))?(existing.bars||[]).map(b=>b[0]):[]);
+   const ownedMinutes=new Set(!reconcile&&existing?.source==='VPS recorded live trades'?(existing.bars||[]).map(b=>b[0]):[]);
    const identity=date+':'+key,sourceStats=await Promise.all(names.sort().map(async name=>{const info=await stat(join(tapeDir,date,name));return[name,info.size,info.mtimeMs]})),fingerprint=JSON.stringify(sourceStats);
    if(ownedMinutes.size&&checkpoint[identity]===fingerprint){receipt.futures.push({date,exchange,symbol,status:'checked-owned-unchanged'});continue}
    const bytes=sourceStats.reduce((n,row)=>n+row[1],0);if(receipt.rawBytes+bytes>rawByteBudget){receipt.futures.push({date,exchange,symbol,status:'recorded-recovery-budget-deferred',bytes});continue}receipt.rawBytes+=bytes;
-   const archive=new FuturesBarArchive({dir,enabled:true});let prints=0,breaks=0;
+   const stageDir=reconcile?join(dir,'recorded-history-staging',exchange+'-'+symbol+'-'+date):dir;const archive=new FuturesBarArchive({dir:stageDir,enabled:true});let prints=0,breaks=0;
    for(const name of names.sort()){const result=await readArchiveRecords(join(tapeDir,date,name),row=>{if(!Array.isArray(row)||row.length<3)return;const[t,p,q]=row;if(![t,p,q].every(Number.isFinite)||q<=0||p<=0||ownedMinutes.has(Math.floor(t/60000)*60000))return;archive.record({exchange,symbol,payload:{ssboe:Math.floor(t/1000),usecs:(t%1000)*1000,tradePrice:p,tradeSize:q}});prints++});breaks+=result.breaks}
-   if(apply&&prints){await mkdir(join(dir,'recorded-history-originals',date),{recursive:true});if(existing)await writeFile(join(dir,'recorded-history-originals',date,exchange+'-'+symbol+'.json'),JSON.stringify(existing));await archive.flush()}
+   if(apply&&prints){await mkdir(join(dir,'recorded-history-originals',date),{recursive:true});if(existing){const original=JSON.stringify(existing),hash=createHash('sha256').update(original).digest('hex').slice(0,12);await writeFile(join(dir,'recorded-history-originals',date,exchange+'-'+symbol+'-'+hash+'.json'),original,{flag:'wx'}).catch(e=>{if(e.code!=='EEXIST')throw e})}await archive.flush();if(reconcile){await mkdir(dirname(file),{recursive:true});await rename(join(stageDir,'bars',date,exchange+'-'+symbol+'.json'),file);for(const empty of[join(stageDir,'bars',date),join(stageDir,'bars'),stageDir])await rmdir(empty).catch(()=>{})}}
    if(apply&&(prints||ownedMinutes.size))checkpoint[identity]=fingerprint;
    receipt.futures.push({date,exchange,symbol,status:prints?'recovered-owned-tape':ownedMinutes.size?'existing-owned':'no-recorded-prints',prints,breaks});
   }
  }
  // Recover remaining missing exact-contract files from our raw recorder,
  // with a hard byte ceiling and no scans of large already-materialised books.
- for(const date of (await readdir(dir)).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&d>=cutoff&&d<currentTradingDate).sort()){
+ if(!tapeOnly)for(const date of (await readdir(dir)).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&d>=cutoff&&d<currentTradingDate).sort()){
   for(const name of (await readdir(join(dir,date))).sort()){
    const m=name.match(/^([A-Z0-9]+)-([A-Z0-9]+)\.ndjson(?:\.gz)?$/i);if(!m||m[1]==='UNKNOWN')continue;
    const[_,exchange,symbol]=m,file=join(dir,'bars',date,exchange+'-'+symbol+'.json');
@@ -46,7 +47,7 @@ export async function rebuildRecordedHistory({dir='/recordings',days=9,now=Date.
  // Cash live responses were already archived by the shared provider boundary.
  // Recover only the observations current when captured, never the historical
  // portion of a provider response or an after-close historical download.
- if(apply){const cash=new RecordedCashHistory({dir}),sessions=new Map(),cashDate=cashQuotes.newYorkSession(now).date;
+ if(apply&&!futuresOnly){const cash=new RecordedCashHistory({dir}),sessions=new Map(),cashDate=cashQuotes.newYorkSession(now).date;
   const sessionAt=time=>{const bucket=Math.floor(time/60000);if(!sessions.has(bucket))sessions.set(bucket,cashQuotes.newYorkSession(time));return sessions.get(bucket)};
   const quote=(symbol,lastPrice,time,candle=null)=>({symbol,lastPrice,timestamp:time,marketOpen:sessionAt(time).open,...(candle?{candle}:{})});
   for(const date of (await readdir(join(dir,'exposure')).catch(()=>[])).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&d>=cutoff&&d<currentTradingDate).sort()){
@@ -66,4 +67,4 @@ export async function rebuildRecordedHistory({dir='/recordings',days=9,now=Date.
  if(apply){await mkdir(maintenance,{recursive:true});await writeFile(join(maintenance,'checkpoint.json'),JSON.stringify(checkpoint));await writeFile(join(maintenance,'last-recovery.json'),JSON.stringify(receipt,null,2))}
  return receipt;
 }
-if(process.argv[1]===fileURLToPath(import.meta.url)){const result=await rebuildRecordedHistory({dir:process.env.RITHMIC_RECORD_DIR||'/recordings',days:Number(process.argv.find(a=>a.startsWith('--days='))?.slice(7)??9),apply:process.argv.includes('--apply')});console.log(JSON.stringify(result));}
+if(process.argv[1]===fileURLToPath(import.meta.url)){const result=await rebuildRecordedHistory({dir:process.env.RITHMIC_RECORD_DIR||'/recordings',days:Number(process.argv.find(a=>a.startsWith('--days='))?.slice(7)??9),apply:process.argv.includes('--apply'),tapeOnly:process.argv.includes('--tape-only'),futuresOnly:process.argv.includes('--futures-only'),reconcile:process.argv.includes('--reconcile')});console.log(JSON.stringify(result));}

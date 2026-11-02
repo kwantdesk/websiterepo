@@ -1,3 +1,8 @@
+
+## 2026-11-02 — complete chart interval/source audit
+
+Owner requires every picker instrument and preset checked, not only minutes. Completed 68 x 50 outcome matrix and all 53 futures tape folds. Canonical evidence: docs/audits/2026-11-02-chart-interval-catalog.md and .json. All chart history stays VPS live capture -> owned tape/minutes -> chart/replay; no provider historical imports. Untagged legacy minutes are unverified, not implicitly owned: 192 closed files reconciled from 64.7M saved prints with originals retained. Time-v8/event-v9 caches; 50k event initial page plus older paging; shared calendar buckets/full calendar prefixes; seeded continuous event boundaries; uppercase Renko parsing; shared recorded-contract-segments.mjs for minute/second/event roots. Ten mounted gateway modules verified against source. Maintenance needs both chart-time-bucket and recorded-contract-segments mounts, eleven-day window; keep provider-history timers disabled. No native or root ALGO changes. VXN has no captured candles; quote feed cannot supply seconds/event bars; absent classifications remain unknown. Exact scope, verification limits and the pre-existing history-state source-pattern failure are in the audit. Release only main to existing websiterepo-yfmi.
+
 # KwantDesk Engineering Handoff
 
 

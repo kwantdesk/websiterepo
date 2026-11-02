@@ -685,3 +685,79 @@ test("sub-minute Auction Gap output fails closed without a coverage receipt", as
     assert.deepEqual(result.auctionGap.rows, []);
   });
 });
+
+test('event requests in the same prior cache bucket retain their exact start/end bounds',async()=>{
+ await withArchive(async(archive,dir)=>{
+  const date=chicagoTradingDate(T0),folder=join(dir,'trades',date);mkdirSync(folder,{recursive:true});
+  const rows=[0,1000,2000,3000].map(i=>[T0+i,100+i/1000*.25,2,1]);
+  writeFileSync(join(folder,backfillFileName('CME','NQU6')),gzipSync(rows.map(JSON.stringify).join('\n')+'\n'));
+  const first=await archive.loadEventBars({exchange:'CME',symbol:'NQU6',interval:'1t',fromMs:T0,toMs:T0+3000});
+  const second=await archive.loadEventBars({exchange:'CME',symbol:'NQU6',interval:'1t',fromMs:T0+2000,toMs:T0+2500});
+  assert.equal(first.sourceRecordCount,4);assert.equal(second.sourceRecordCount,1);assert.equal(second.endMs,T0+2500);
+  assert.ok(second.candles.every(b=>b.sourceEndTimestamp<=T0+2500));
+ });
+});
+test('bounded event history reports its actual discarded bars rather than claiming complete coverage',async()=>{
+ await withArchive(async(archive,dir)=>{
+  const date=chicagoTradingDate(T0),folder=join(dir,'trades',date);mkdirSync(folder,{recursive:true});
+  writeFileSync(join(folder,backfillFileName('CME','NQU6')),gzipSync(Array.from({length:20},(_,i)=>JSON.stringify([T0+i*1000,100,1,1])).join('\n')+'\n'));
+  const result=await archive.loadEventBars({exchange:'CME',symbol:'NQU6',interval:'1t',fromMs:T0,toMs:T0+20000,limit:3});
+  assert.equal(result.candles.length,3);assert.equal(result.totalBarCount,20);assert.equal(result.truncated,true);
+ });
+});
+test('second bars preserve the earliest open and latest close when captured packets arrive out of timestamp order',async()=>{
+ await withArchive(async(archive,dir)=>{
+  const date=chicagoTradingDate(T0),folder=join(dir,'trades',date);mkdirSync(folder,{recursive:true});
+  writeFileSync(join(folder,backfillFileName('CME','NQU6')),gzipSync([[T0+500,101,1,1],[T0+100,100,2,-1],[T0+900,102,3,1],[T0+300,99,1,-1]].map(JSON.stringify).join('\n')+'\n'));
+  const result=await archive.loadTimeBars({exchange:'CME',symbol:'NQU6',interval:'1s',intervalMs:1000,fromMs:T0,toMs:T0+1000});
+  assert.equal(result.candles.length,1);const b=result.candles[0];assert.deepEqual([b.open,b.high,b.low,b.close,b.volume],[100,102,99,102,7]);
+ });
+});
+
+test('a continuous root reaches prior recorded contracts while an exact-contract request stays isolated',async()=>{
+ await withArchive(async(archive,dir)=>{
+  const date=chicagoTradingDate(T0),folder=join(dir,'trades',date);mkdirSync(folder,{recursive:true});
+  writeFileSync(join(folder,backfillFileName('CME','NQM6')),gzipSync([[T0,100,3,1],[T0+1000,101,4,-1]].map(JSON.stringify).join('\n')+'\n'));
+  const args={exchange:'CME',symbol:'NQU6',interval:'1t',fromMs:T0,toMs:T0+2000};
+  assert.equal((await archive.loadEventBars(args)).candles.length,0);
+  const root=await archive.loadEventBars({...args,continuous:true});assert.equal(root.candles.length,2);assert.equal(root.candles[0].sourceContractSymbol,'NQM6');
+  assert.equal((await archive.loadTimeBars({...args,interval:'1s',intervalMs:1000,continuous:true})).candles.length,2);
+ });
+});
+test('rolling requested starts and older pages preserve the same continuous event-bar boundaries',async()=>{
+ await withArchive(async(archive,dir)=>{
+  const date=chicagoTradingDate(T0),folder=join(dir,'trades',date);mkdirSync(folder,{recursive:true});
+  writeFileSync(join(folder,backfillFileName('CME','NQU6')),gzipSync(Array.from({length:100},(_,i)=>JSON.stringify([T0+i*1000,100+i%7*.25,3,i%2?1:-1])).join('\n')+'\n'));
+  const args={exchange:'CME',symbol:'NQU6',interval:'10v',fromMs:T0+5500,toMs:T0+99000,limit:500};
+  const a=await archive.loadEventBars(args),b=await archive.loadEventBars({...args,fromMs:T0+8500});assert.deepEqual(a.candles.slice(-b.candles.length),b.candles);
+  const tail=await archive.loadEventBars({...args,limit:5}),first=tail.candles[0];
+  const older=await archive.loadEventBars({...args,toMs:first.sourceStartTimestamp,beforeTimestamp:first.timestamp,limit:7});
+  assert.ok(older.candles.every(c=>c.timestamp<first.timestamp));
+  assert.deepEqual(older.candles,a.candles.filter(c=>c.timestamp<first.timestamp).slice(-7));
+ });
+});
+test('continuation seeds from earlier owned sessions match a single uninterrupted tape fold',async()=>{
+ await withArchive(async(archive,dir)=>{
+  const earlier=T0-86400000,rows=[...Array.from({length:7},(_,i)=>[earlier+i*1000,100+i*.25,3,1]),...Array.from({length:9},(_,i)=>[T0+i*1000,102+i*.25,4,-1])];
+  for(const row of rows){const date=chicagoTradingDate(row[0]),folder=join(dir,'trades',date);mkdirSync(folder,{recursive:true});const file=join(folder,backfillFileName('CME','NQU6'));const existing=rows.filter(r=>chicagoTradingDate(r[0])===date);writeFileSync(file,gzipSync(existing.map(JSON.stringify).join('\n')+'\n'));}
+  const {buildEventBars}=await import('../src/event-bar-builder.mjs');
+  for(const interval of ['10v','3t','4r','4R','4/2VB','1/27PF','10dv']){
+   const expected=buildEventBars(rows.map(([timestamp,price,size,side])=>({timestamp,price,size,delta:side*size,trades:1,contractSymbol:'NQU6'})),interval,'NQU6').filter(b=>b.sourceEndTimestamp>=T0);
+   const actual=await archive.loadEventBars({exchange:'CME',symbol:'NQU6',interval,fromMs:T0,toMs:T0+9000});assert.deepEqual(actual.candles,expected,interval);
+  }
+ });
+});
+
+test('intraday root rolls preserve the earlier prefix and exclude old-contract prints after the switch',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'intraday-roll-')),t=Date.parse('2026-10-27T14:30:00Z'),date=chicagoTradingDate(t);
+ try{mkdirSync(join(dir,'trades',date),{recursive:true});mkdirSync(join(dir,'bars',date),{recursive:true});
+ for(const[symbol,rows]of[['NQU6',[[t,100,1,1],[t+60000,101,1,-1],[t+180000,99999,99,1]]],['NQZ6',[[t+120000,110,1,1],[t+180000,111,1,-1]]]]){
+  writeFileSync(join(dir,'trades',date,'CME-'+symbol+'.trades.ndjson.gz'),gzipSync(rows.map(JSON.stringify).join('\n')+'\n'));
+  writeFileSync(join(dir,'bars',date,'CME-'+symbol+'.json'),JSON.stringify({source:'VPS recorded live trades',bars:rows.map(r=>[r[0],r[1],r[1],r[1],r[1],r[2]])}));
+ }
+ const archive=new TradeTapeArchive({dir,enabled:false});for(const interval of['1t','1v','4r','4R','1/3PF','1dv','4/2VB']){const result=await archive.loadEventBars({exchange:'CME',symbol:'NQZ6',interval,fromMs:t,toMs:t+240000,continuous:true});assert.equal(result.sourceRecordCount,4,interval);assert.ok(result.candles.every(c=>c.high<200),interval)}
+ const seconds=await archive.loadTimeBars({exchange:'CME',symbol:'NQZ6',interval:'1s',intervalMs:1000,fromMs:t,toMs:t+240000,continuous:true});assert.deepEqual(seconds.candles.map(c=>c.close),[100,101,110,111]);
+ const{FuturesBarArchive}=await import('../src/futures-bar-archive.mjs');const minute=await new FuturesBarArchive({dir,enabled:false}).load({exchange:'CME',symbol:'NQZ6',interval:'1m',fromMs:t,toMs:t+240000,continuous:true});assert.deepEqual(minute.candles.map(c=>c.close),[100,101,110,111]);
+ const exact=await archive.loadEventBars({exchange:'CME',symbol:'NQZ6',interval:'1t',fromMs:t,toMs:t+240000,continuous:false});assert.equal(exact.sourceRecordCount,2);
+ }finally{rmSync(dir,{recursive:true,force:true})}
+});

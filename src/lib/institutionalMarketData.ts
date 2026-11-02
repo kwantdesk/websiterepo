@@ -1,3 +1,4 @@
+import { chartTimeBucketStartMs } from "./chartTimeBucket.ts";
 import type { Candle } from "@/lib/backtester";
 import { fetchWithDeadline } from "./marketDataRequest.ts";
 import { auctionGapHistorySource } from "./auctionGapHistorySource.ts";
@@ -1395,7 +1396,7 @@ export function applyInstitutionalTradesToVolumeProfile(
 }
 
 function timeframeMilliseconds(timeframe: string) {
-  const match = timeframe.trim().match(/^(\d+)(s|m|h|D|W)$/);
+  const match = timeframe.trim().match(/^(\d+)(s|m|h|D|W|M)$/);
   if (!match) return null;
   const value = Math.max(1, Number(match[1]));
   const unit = match[2];
@@ -1403,7 +1404,7 @@ function timeframeMilliseconds(timeframe: string) {
   if (unit === "m") return value * 60_000;
   if (unit === "h") return value * 60 * 60_000;
   if (unit === "D") return value * 24 * 60 * 60_000;
-  return value * 7 * 24 * 60 * 60_000;
+  return value * (unit === "M" ? 30 : 7) * 24 * 60 * 60_000;
 }
 
 /*
@@ -1522,7 +1523,7 @@ export function applyInstitutionalTradesToCandles(
 
   for (const record of records) {
     if (!Number.isFinite(record.timestamp) || !Number.isFinite(record.close) || record.close <= 0) continue;
-    const timestamp = bucketMs ? Math.floor(record.timestamp / bucketMs) * bucketMs : record.timestamp;
+    const timestamp = bucketMs ? chartTimeBucketStartMs(record.timestamp, timeframe) : record.timestamp;
     const last = next.at(-1);
     const recordDelta = Number.isFinite(record.delta)
       ? record.delta

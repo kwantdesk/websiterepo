@@ -189,7 +189,7 @@ function addRenko(bars, record, threshold) {
   }
   const owner = bars.length - 1;
   const distance = record.price - forming.open;
-  const count = Math.floor(Math.abs(distance) / threshold.value);
+  const count = Math.floor((Math.abs(distance) + Number.EPSILON * Math.max(Math.abs(record.price), Math.abs(forming.open)) * 8) / threshold.value + 1e-9);
   if (!count) {
     update(forming, record.price, record.size, record.trades || 1, record.delta || 0);
     return owner;
@@ -299,22 +299,31 @@ function addTargetReversal(bars, record, threshold) {
   return bars.length - 1;
 }
 
-export function createEventBarBuilder(interval, symbol, limit = 250_000) {
+export function createEventBarBuilder(interval, symbol, limit = 500_000, seed = []) {
   const threshold = thresholdFor(interval, symbol);
   if (!threshold) throw new Error(`Unsupported event interval: ${interval}`);
-  const bars = [];
-  let processedThrough = Number.NEGATIVE_INFINITY;
+  const bars = seed.map(bar => ({ ...bar }));
+  let processedThrough = Number(bars.at(-1)?.sourceEndTimestamp ?? Number.NEGATIVE_INFINITY);
+  let discarded = 0;
   return {
     add(record) {
       if (!Number.isFinite(record?.timestamp) || !Number.isFinite(record?.price) || record.price <= 0) return;
       if (record.timestamp < processedThrough) return;
       let owner;
-      if (["volume", "trade", "delta"].includes(threshold.kind)) owner = addThreshold(bars, record, threshold);
+      const priorContract = bars.at(-1)?.sourceContractSymbol;
+      if (priorContract && record.contractSymbol && priorContract !== record.contractSymbol) {
+        bars.push(makeCandle(record, safeTimestamp(record.timestamp, bars.at(-1)), record.size, record.trades || 1, record.delta || 0));
+        owner = bars.length - 1;
+      } else if (["volume", "trade", "delta"].includes(threshold.kind)) owner = addThreshold(bars, record, threshold);
       else if (threshold.kind === "volume-bars") owner = addTargetReversal(bars, record, threshold);
       else if (threshold.kind === "renko") owner = addRenko(bars, record, threshold);
       else if (threshold.kind === "point-figure") owner = addPointFigure(bars, record, threshold);
       else owner = addRange(bars, record, threshold);
+      const owned = bars[owner];
+      if (owned) owned.sourceEndTimestamp = Math.max(Number(owned.sourceEndTimestamp ?? record.timestamp), record.timestamp);
+      if (record.contractSymbol && owned) owned.sourceContractSymbol = record.contractSymbol;
       const forming = bars.at(-1);
+      if (record.contractSymbol && forming) forming.sourceContractSymbol = record.contractSymbol;
       if (forming) {
         forming.sourceStartTimestamp = Number.isFinite(Number(forming.sourceStartTimestamp)) ? Number(forming.sourceStartTimestamp) : record.timestamp;
         forming.sourceEndTimestamp = Math.max(Number(forming.sourceEndTimestamp ?? record.timestamp), record.timestamp);
@@ -324,6 +333,7 @@ export function createEventBarBuilder(interval, symbol, limit = 250_000) {
       if (bars.length > limit * 2) {
         removed = bars.length - limit;
         bars.splice(0, removed);
+        discarded += removed;
       }
       return Number.isSafeInteger(owner) && owner >= removed
         ? { chartIndex: owner - removed, removed }
@@ -332,10 +342,12 @@ export function createEventBarBuilder(interval, symbol, limit = 250_000) {
     finish() {
       return bars.length > limit ? bars.slice(-limit) : bars;
     },
+    get totalBarCount() { return discarded + bars.length; },
+    get retainedOffset() { return Math.max(0, bars.length - limit); },
   };
 }
 
-export function buildEventBars(records, interval, symbol, limit = 250_000) {
+export function buildEventBars(records, interval, symbol, limit = 500_000) {
   const builder = createEventBarBuilder(interval, symbol, limit);
   for (const record of records) builder.add(record);
   return builder.finish();

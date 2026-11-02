@@ -1,3 +1,5 @@
+import { recordedContractSegments } from "./recorded-contract-segments.mjs";
+import { chartTimeBucketStartMs } from "./chart-time-bucket.mjs";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { readFile, writeFile, rename } from "node:fs/promises";
@@ -179,25 +181,8 @@ export function resampleBars(bars, intervalMs, interval = "") {
   if (!Number.isFinite(intervalMs) || intervalMs <= BAR_MS) return bars;
   const buckets = new Map();
   for (const bar of bars) {
-    const tradingDate = chicagoTradingDate(bar.t);
-    let identity;
-    let timestamp;
-    if (/^\d+D$/.test(interval)) {
-      identity = `D:${tradingDate}`;
-      timestamp = cmeSessionBounds(tradingDate)?.startMs ?? bar.t;
-    } else if (/^\d+W$/.test(interval)) {
-      const date = new Date(`${tradingDate}T00:00:00Z`);
-      const mondayOffset = (date.getUTCDay() + 6) % 7;
-      date.setUTCDate(date.getUTCDate() - mondayOffset);
-      identity = `W:${date.toISOString().slice(0, 10)}`;
-      timestamp = bar.t;
-    } else if (/^\d+M$/.test(interval)) {
-      identity = `M:${tradingDate.slice(0, 7)}`;
-      timestamp = bar.t;
-    } else {
-      timestamp = Math.floor(bar.t / intervalMs) * intervalMs;
-      identity = `T:${timestamp}`;
-    }
+    const timestamp = chartTimeBucketStartMs(bar.t, interval || `${Math.round(intervalMs / 60000)}m`);
+    const identity = timestamp;
     const existing = buckets.get(identity);
     if (!existing) {
       buckets.set(identity, { t: timestamp, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v });
@@ -429,7 +414,7 @@ export class FuturesBarArchive {
     try {
       const text = await readFile(file, "utf8");
       const parsed = JSON.parse(text);
-      if (/history\s*plant|provider[- ]import/i.test(String(parsed?.source || ''))) return [];
+      if (parsed?.source !== "VPS recorded live trades") return [];
       if (metadata) metadata.authoritativeSession = parsed?.markerConvention === "bar-open"
         && (parsed?.source === "Rithmic History Plant individual trades"
           || parsed?.source === "Rithmic History Plant minute bars" && parsed?.completedSession === true);
@@ -485,15 +470,16 @@ export class FuturesBarArchive {
    * one still being built, so the live edge is continuous with the past
    * rather than arriving as a separate seam.
    */
-  async load({ exchange, symbol, interval, fromMs, toMs, limit }) {
+  async load({ exchange, symbol, interval, fromMs, toMs, limit, continuous = true }) {
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
     const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();
     const requestedFrom = Number(fromMs);
-    const start = Number.isFinite(requestedFrom) && requestedFrom > 0
+    let start = Number.isFinite(requestedFrom) && requestedFrom > 0
       ? requestedFrom
       : end - 5 * 86_400_000;
     const intervalMs = parseIntervalMs(interval);
+    start = chartTimeBucketStartMs(start, String(interval || "1m"));
     const merged = new Map();
 
     for (const tradingDate of tradingDatesBetween(start, end)) {
@@ -503,12 +489,14 @@ export class FuturesBarArchive {
       // Chart history is built ONLY from our persisted live recordings.
       const exactBars = await this.readFile(file);
       const root = contractRoot(upperSymbol);
+      const segments = continuous ? recordedContractSegments(join(this.dir, ".."), tradingDate, upper, upperSymbol) : [];
+      const accepts = (candidate, bar) => !continuous || !segments.length || segments.some(segment => segment.symbol === candidate && bar.t >= segment.start && bar.t < segment.end);
       const recordedByMinute = new Map();
-      for (const bar of exactBars) preferLiquidContractBar(recordedByMinute, bar);
+      for (const bar of exactBars) if (accepts(upperSymbol, bar)) preferLiquidContractBar(recordedByMinute, bar);
       // Read every concrete contract for this product. Otherwise asking for
       // NQZ6 after roll loses the locally-recorded NQU6 side of the requested
       // window whenever History Plant has not filled that older minute yet.
-      if (existsSync(dayDir)) {
+      if (continuous && existsSync(dayDir)) {
         let names = [];
         try { names = readdirSync(dayDir).filter((name) => name.endsWith(".json")); } catch {}
         for (const name of names) {
@@ -517,15 +505,15 @@ export class FuturesBarArchive {
           const candidateSymbol = match[2].toUpperCase();
           if (candidateSymbol === root || candidateSymbol === upperSymbol || contractRoot(candidateSymbol) !== root) continue;
           for (const bar of await this.readFile(join(dayDir, name))) {
-            preferLiquidContractBar(recordedByMinute, bar);
+            if (accepts(candidateSymbol, bar)) preferLiquidContractBar(recordedByMinute, bar);
           }
         }
       }
       if (openDay) {
         for (const [instrument, liveBars] of openDay) {
           const [liveExchange, liveSymbol] = instrument.split(":");
-          if (liveExchange !== upper || contractRoot(liveSymbol) !== root) continue;
-          for (const bar of liveBars.values()) preferLiquidContractBar(recordedByMinute, bar);
+          if (liveExchange !== upper || (continuous ? contractRoot(liveSymbol) !== root : liveSymbol !== upperSymbol)) continue;
+          for (const bar of liveBars.values()) if (accepts(liveSymbol, bar)) preferLiquidContractBar(recordedByMinute, bar);
         }
       }
       for (const bar of recordedByMinute.values()) {

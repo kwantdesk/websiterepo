@@ -1,3 +1,4 @@
+import { chunkedJsonBody } from "./chunkedJsonBody";
 import { createHash } from "node:crypto";
 
 /**
@@ -24,6 +25,7 @@ import { createHash } from "node:crypto";
  */
 
 export type ConditionalJsonOptions = {
+  streamLargePayload?: boolean;
   /**
    * A string that changes exactly when the payload does — normally the
    * request's own cache key plus the payload's `asOf`. Hashing the body would
@@ -73,7 +75,9 @@ export function conditionalJson<T>(
     });
   }
 
-  return new Response(JSON.stringify(payload), {
+  const json = JSON.stringify(payload);
+  const body = options.streamLargePayload && json.length > 2_000_000 ? chunkedJsonBody(json) : json;
+  return new Response(body, {
     headers: {
       "Content-Type": "application/json",
       ETag: etag,

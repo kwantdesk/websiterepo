@@ -7,7 +7,7 @@ import {
   foldPrintsToMinuteLevels,
 } from "./session-profile-archive.mjs";
 import { chicagoTradingDate } from "./trading-session.mjs";
-import { decodeTrade } from "./trade-tape-archive.mjs";
+import { decodeTrade, TradeTapeArchive } from "./trade-tape-archive.mjs";
 import { createExactFootprintFold } from "./exact-footprint-fold.mjs";
 
 async function readSession(files, tradingDate, ceiling) {
@@ -25,6 +25,11 @@ async function readSession(files, tradingDate, ceiling) {
 }
 
 async function run() {
+  if (workerData?.kind === "chart-event-history" || workerData?.kind === "chart-time-history") {
+    const archive = new TradeTapeArchive({ dir: workerData.dir, enabled: false });
+    return workerData.kind === "chart-event-history"
+      ? archive.loadEventBars(workerData.args) : archive.loadTimeBars(workerData.args);
+  }
   if (workerData?.kind === "exact-footprint") {
     const fold = createExactFootprintFold(workerData);
     for (const file of workerData.files ?? []) await readArchiveRecords(file, row => {

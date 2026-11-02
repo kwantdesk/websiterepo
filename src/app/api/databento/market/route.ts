@@ -11,7 +11,6 @@ import {
 import type { Candle } from "@/lib/backtester";
 import {
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
-  hasMinimumChartHistory,
 } from "@/lib/chartHistoryWindow";
 import { isEventBasedChartInterval } from "@/lib/chartIntervals";
 import {
@@ -105,8 +104,8 @@ async function getDurableEventBars(
 ): Promise<EventBarsPayload> {
   const encoded = await unstable_cache(
     async () => {
-      const candles = await getDatabentoEventBars(symbol, timeframe, start, end);
-      if (candles.length < 2) {
+      const candles = await getDatabentoEventBars(symbol, timeframe, start, end, { limit: cacheScope.startsWith("range-") ? 500_000 : 50_000 });
+      if (!candles.length) {
         throw new Error("CME event history returned no historical bars.");
       }
       return encodeHistory({
@@ -114,7 +113,7 @@ async function getDurableEventBars(
         executions: [] as DatabentoExecutionTuple[],
       });
     },
-    ["cme-event-bars-v4", symbol, timeframe, cacheScope],
+    ["cme-event-bars-v5", symbol, timeframe, cacheScope],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventBarsPayload>(encoded);
@@ -139,15 +138,12 @@ async function getDurableEventHistory(
   const encoded = await unstable_cache(
     async () => {
       const history = await getDatabentoEventHistory(
-        symbol, timeframe, start, end, undefined, { auctionGap: includeAuctionGap },
+        symbol, timeframe, start, end, undefined, { auctionGap: includeAuctionGap, limit: cacheScope.startsWith("range-") ? 500_000 : 50_000 },
       );
-      if (!history.candles.some((candle) =>
-        Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)) {
-        throw new Error("CME event flow returned no aggressor history.");
-      }
+      if (!history.candles.length) throw new Error("No recorded event bars are available.");
       return encodeHistory(history);
     },
-    ["cme-event-flow-v6", symbol, timeframe, cacheScope, includeAuctionGap ? "gap-v2" : "base"],
+    ["cme-event-flow-v7", symbol, timeframe, cacheScope, includeAuctionGap ? "gap-v2" : "base"],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventHistoryPayload>(encoded);
@@ -172,7 +168,7 @@ async function getDurableTimeHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-time-flow-v8", symbol, timeframe, cacheScope, includeAuctionGap ? "gap-v2" : "base"],
+    ["cme-time-flow-v9", symbol, timeframe, cacheScope, includeAuctionGap ? "gap-v2" : "base"],
     { revalidate: DURABLE_TIME_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<TimeHistoryPayload>(encoded);
@@ -332,7 +328,7 @@ export async function GET(request: Request) {
         cachedAt: cached.updatedAt,
       },
       {
-        identity: bodyIdentity(cached.updatedAt),
+        streamLargePayload: true, identity: bodyIdentity(cached.updatedAt),
         maxAgeMs: Math.max(0, cacheLifetime - (now - cached.updatedAt)),
       },
     );
@@ -374,11 +370,8 @@ export async function GET(request: Request) {
             auctionGap: undefined,
           };
     const { candles, executions, auctionGap } = history;
-    if (!hasExplicitRange && !hasMinimumChartHistory(candles, timeframe)) {
-      throw new Error(
-        `Rithmic has not recorded five complete trading sessions for ${symbol} ${timeframe}; partial candle history was rejected.`,
-      );
-    }
+    // Deliver every genuine recorded bar even when a newly recorded product
+    // has fewer than five sessions. Missing coverage must not hide valid data.
     if (candles.length) historyCache.set(cacheKey, { candles, executions, auctionGap, updatedAt: now });
     return conditionalJson(
       request,
@@ -394,7 +387,7 @@ export async function GET(request: Request) {
       },
       // Just stored as the cache entry for `cacheLifetime`, so that is exactly
       // how long the same request would be answered from it.
-      { identity: bodyIdentity(now), maxAgeMs: cacheLifetime },
+      { streamLargePayload: true, identity: bodyIdentity(now), maxAgeMs: cacheLifetime },
     );
   } catch (error) {
     if (cached?.candles.length) {
@@ -414,7 +407,7 @@ export async function GET(request: Request) {
         // Held past its lifetime because the provider failed. The body is still
         // worth a 304, but the browser must come back every time so it picks up
         // the moment the provider answers again.
-        { identity: bodyIdentity(cached.updatedAt, "::stale"), maxAgeMs: 0 },
+        { streamLargePayload: true, identity: bodyIdentity(cached.updatedAt, "::stale"), maxAgeMs: 0 },
       );
     }
     logProviderError("cme-history", error);

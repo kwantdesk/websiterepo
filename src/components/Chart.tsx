@@ -781,6 +781,7 @@ import {
 } from "@/lib/chartWatermark";
 
 interface ChartProps {
+  onHistoryEdgeReached?: () => void;
   focusRange?: { id: string; fromMs: number; toMs: number } | null;
   candles: Candle[];
   marketTrades?: InstitutionalTrade[];
@@ -3287,6 +3288,7 @@ function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
 }
 
 function Chart({
+  onHistoryEdgeReached,
   focusRange,
   candles: rawCandles,
   marketTrades: rawMarketTrades = EMPTY_CHART_ITEMS,
@@ -3438,6 +3440,8 @@ function Chart({
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const historyEdgeCallbackRef = useRef(onHistoryEdgeReached);
+  historyEdgeCallbackRef.current = onHistoryEdgeReached;
   const chartRef = useRef<IChartApi | null>(null);
   const drawingTimelineRevisionRef = useRef(0);
   const candleSeriesRef = useRef<ReturnType<IChartApi["addCandlestickSeries"]> | null>(null);
@@ -15076,6 +15080,9 @@ function Chart({
       if (timelineChanged) {
         drawingTimelineRevisionRef.current += 1;
       }
+      const pageViewport = chartRef.current?.timeScale().getVisibleLogicalRange();
+      const prependCount = eventBased && previousPaintCandles.length
+        ? drawCandles.findIndex(bar => bar.timestamp === previousPaintCandles[0].timestamp) : 0;
       candleSeriesRef.current.setData(chartData);
       lastRenderedCandleTimeRef.current = chartData.length
         ? Number(chartData[chartData.length - 1].time)
@@ -15084,7 +15091,11 @@ function Chart({
       const historyExpanded =
         previousCandleCount === 0
         || candles.length >= Math.max(50, previousCandleCount * 1.5);
-      if (historyExpanded) {
+      if (prependCount > 0 && pageViewport) {
+        chartRef.current?.timeScale().setVisibleLogicalRange({
+          from: pageViewport.from + prependCount, to: pageViewport.to + prependCount,
+        });
+      } else if (historyExpanded) {
         resetViewportBeforeReveal(
           chartRef.current,
           candleSeriesRef.current,
@@ -16270,6 +16281,10 @@ function Chart({
     container.addEventListener("wheel", handlePriceScaleWheel, { capture: true, passive: false });
     window.addEventListener("resize", handleResize);
     window.addEventListener(WORKSPACE_LAYOUT_SETTLED_EVENT, handleResize);
+    const requestEarlierHistory = (range: { from: number; to: number } | null) => {
+      if (range && range.from < 100) historyEdgeCallbackRef.current?.();
+    };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(requestEarlierHistory);
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
     // Never bridge the live chart repaint loop back into React state. A live
     // auto-scale changes the price projection on nearly every tick; subscribing
@@ -16317,6 +16332,7 @@ function Chart({
         window.cancelAnimationFrame(synchronizedCrosshairReleaseFrame);
         synchronizedCrosshairReleaseFrame = null;
       }
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(requestEarlierHistory);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
       resizeObserver.disconnect();
       if (viewportFrameRef.current != null) {

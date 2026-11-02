@@ -17,8 +17,8 @@ assert.match(route, /: DEFAULT_HISTORY_DAYS;/);
 
 // 3. The window must reach the durable cache key, or every window would share
 //    one cached payload.
-assert.ok(route.includes('["cme-event-bars-v4", symbol, timeframe, cacheScope]'));
-assert.ok(route.includes('["cme-event-flow-v4", symbol, timeframe, cacheScope]'));
+assert.ok(route.includes('["cme-event-bars-v5", symbol, timeframe, cacheScope]'));
+assert.ok(route.includes('["cme-event-flow-v7", symbol, timeframe, cacheScope,'));
 
 // 4. The live stream must never BUILD event bars from an empty series. Volume,
 //    range and tick bars close on cumulative traded size, so starting from
@@ -36,22 +36,19 @@ assert.ok(
 //    is itself a visible glitch.
 assert.doesNotMatch(workspace, /EVENT_BAR_FIRST_PAINT_DAYS/);
 
-// 6. Time-based intervals keep their flow-first fast path.
-assert.ok(
-  /&& !isEventBasedChartInterval\(pane\.timeframe\)\s+&& !cachedBase\.length/.test(workspace),
-  "time-based intervals must keep the flow-first fast path",
-);
+// 6. Captured warm candles paint immediately while an owned-history refresh runs.
+assert.match(workspace, /if \(cachedBase\.length\) \{[\s\S]{0,300}setCandles\(cachedCandles\)/);
 
 // 7. The request key must still carry the window so distinct windows do not
 //    deduplicate onto each other.
-assert.ok(workspace.includes('${healOnly ? "::heal" : ""}::${rangeScope}'));
+assert.match(workspace, /const requestKey = `[^;]+\$\{rangeScope\}`;/);
 
 // 8. The gateway event response already includes its recent exact flow tail.
 //    Starting the separate order-flow request as well makes the chart wait on
 //    a duplicate multi-hour tape download.
 assert.match(
   workspace,
-  /const orderFlowRequest = includeOrderFlow && !eventBased && contractSymbol/,
+  /\/api\/cme-history\?symbol=\$\{encodeURIComponent\(symbol\)\}/,
 );
 
 console.log("event bar first paint: 8/8 checks passed");

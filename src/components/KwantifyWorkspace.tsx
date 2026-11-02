@@ -362,6 +362,7 @@ import {
   supportsChartInterval,
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
+import { chartTimeBucketStartMs } from "@/lib/chartTimeBucket";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
 import { DESK_SESSIONS, RTH_END_MINUTES, profileMatchesRequestedSessions, requestedSessionIds, RTH_START_MINUTES, currentDeskSession, resolveSessionSegments, sessionTradingDate } from "@/lib/volumeProfileSessions";
 import type { ValueAreaProfile } from "@/lib/valueArea";
@@ -2885,7 +2886,7 @@ function getHistoricalCandleLimit(period: string, timeframe: string, fallback = 
 function getTimeframeBucketStart(timestampMs: number, timeframe: string) {
   const timeframeMs = getTimeframeMs(timeframe);
   if (!Number.isFinite(timestampMs) || timeframeMs <= 0) return timestampMs;
-  return Math.floor(timestampMs / timeframeMs) * timeframeMs;
+  return chartTimeBucketStartMs(timestampMs, timeframe);
 }
 
 function trimCandlesAfterActiveBucket(
@@ -3937,7 +3938,7 @@ async function fetchWorkspaceCandles(
         );
       }
       const downloaded = includeOrderFlow && eventBased && executionTape.length
-        ? enrichCandlesWithInstitutionalTrades(rawDownloaded, executionTape, rawDownloaded.length)
+        ? mergeMissingEventBarOrderFlow(rawDownloaded, executionTape)
         : rawDownloaded;
       if (replayCacheKey && downloaded.length) retainWorkspaceReplayCandles(replayCacheKey, downloaded);
       // IndexedDB is the live restore cache. A closed replay session belongs
@@ -5544,6 +5545,36 @@ function WorkspaceChartPaneComponent({
     const toMs = newYorkSessionTimestamp(replaySessionDate, GEX_VUE_REPLAY_CLOSE_MINUTE + 5);
     return replayChartHistoryRange({ startMs: fromMs, endMs: toMs }, period);
   }, [pane.broker, pane.timeframe, period, replayActive, replaySessionDate]);
+  const eventPageScope = `${pane.id}:${pane.symbol}:${pane.timeframe}:${replayHistoryRange?.key ?? "live"}`;
+  const eventPagesRef = useRef({ scope: eventPageScope, candles: [] as Candle[], busy: false, done: false, retryAt: 0 });
+  if (eventPagesRef.current.scope !== eventPageScope) eventPagesRef.current = { scope: eventPageScope, candles: [], busy: false, done: false, retryAt: 0 };
+  const loadEarlierEventHistory = useCallback(async () => {
+    if (pane.broker !== "Databento" || !isEventBasedChartInterval(pane.timeframe)) return;
+    if (eventPagesRef.current.scope !== eventPageScope) eventPagesRef.current = { scope: eventPageScope, candles: [], busy: false, done: false, retryAt: 0 };
+    const state = eventPagesRef.current;
+    const first = latestCandlesRef.current[0];
+    if (!first || latestCandlesRef.current.length < 50_000 || state.busy || state.done || state.retryAt > Date.now()) return;
+    state.busy = true;
+    const to = first.sourceStartTimestamp ?? first.timestamp;
+    const from = replayHistoryRange?.fromMs ?? Date.now() - DEFAULT_CHART_HISTORY_CALENDAR_DAYS * 86400000;
+    try {
+      const query = new URLSearchParams({ symbol: pane.symbol, timeframe: pane.timeframe,
+        from: String(from), to: String(to), before: String(first.timestamp) });
+      const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(`/api/cme-history-page?${query}`, 150_000);
+      if (!response.ok) throw new Error("Recorded history page unavailable");
+      if (eventPagesRef.current !== state) return;
+      const older = sanitizeCandles(Array.isArray(payload.candles) ? payload.candles as Candle[] : [], pane.symbol, pane.timeframe)
+        .filter(bar => bar.timestamp < first.timestamp);
+      state.done = older.length < 50_000;
+      state.candles = mergeChartHistory(older, state.candles);
+      if (older.length) {
+        const merged = mergeChartHistory(older, latestCandlesRef.current);
+        latestCandlesRef.current = merged;
+        setCandles(merged);
+      }
+    } catch { state.retryAt = Date.now() + 10_000; }
+    finally { state.busy = false; }
+  }, [eventPageScope, pane.broker, pane.symbol, pane.timeframe, replayHistoryRange]);
   const replayVisibleCandleCount = useMemo(() => {
     if (!replayActive || !replayTimestampMs) return -1;
     return replayObservationCount(plottedCandles, replayTimestampMs);
@@ -6449,6 +6480,7 @@ function WorkspaceChartPaneComponent({
             previousCandles,
             records.map((record) => ({
               timestamp: record.timestamp,
+              contractSymbol: resolvedContractSymbol,
               price: record.close,
               size: Math.max(0, Number(record.volume ?? 0)),
               trades: Math.max(1, Number(record.trades ?? 1)),
@@ -6596,6 +6628,7 @@ function WorkspaceChartPaneComponent({
               latestCandlesRef.current,
               records.map((record) => ({
                 timestamp: record.timestamp,
+                contractSymbol: resolvedContractSymbol,
                 price: record.close,
                 size: Math.max(0, Number(record.volume ?? 0)),
                 trades: Math.max(1, Number(record.trades ?? 1)),
@@ -7080,7 +7113,7 @@ function WorkspaceChartPaneComponent({
           5 * 60_000,
           getTimeframeMs(pane.timeframe) * 2,
         );
-      const cachedIsHydrated = cachedCandles.length > 0
+      const cachedIsHydrated = !cached?.derived && cachedCandles.length > 0
         && cachedTailIsFresh
         && cachedMarketIndexTailIsCurrent
         && !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe)
@@ -7216,12 +7249,15 @@ function WorkspaceChartPaneComponent({
         const clean = pane.broker === "Databento"
           ? trimChartHistoryForPeriod(downloaded, period, requestedFrom)
           : downloaded;
-        const mergedHistory = pane.broker === "Databento"
+        let mergedHistory = pane.broker === "Databento"
           ? mergeChartHistory(
               mergeAuthoritativeChartHistory(cachedCandles, clean, pane.timeframe),
               liveSeam,
             )
           : clean;
+        if (isEventBasedChartInterval(pane.timeframe) && eventPagesRef.current.scope === eventPageScope) {
+          mergedHistory = mergeChartHistory(eventPagesRef.current.candles, mergedHistory);
+        }
         if (!mergedHistory.length) throw new Error("CME returned no usable candles.");
         const latestObserved = pane.broker === "Databento"
           ? readDatabentoLiveTail(pane.symbol)
@@ -7257,11 +7293,7 @@ function WorkspaceChartPaneComponent({
             : clean;
         const merged = needsOrderFlowHistory
           ? isEventBasedChartInterval(pane.timeframe)
-            ? enrichCandlesWithInstitutionalTrades(
-                mergedBase,
-                nextMarketTrades,
-                mergedBase.length,
-              )
+            ? mergeMissingEventBarOrderFlow(mergedBase, nextMarketTrades)
             : enrichCandlesWithInstitutionalCandleFlow(
                 mergedBase,
                 latestOrderFlowCandlesRef.current,
@@ -9779,6 +9811,7 @@ function WorkspaceChartPaneComponent({
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (
         <Chart
+          onHistoryEdgeReached={loadEarlierEventHistory}
           candles={replayDisplayCandles}
           bigContractHistory={replayHistoryRange || bigContractHistory.symbol !== pane.symbol ? undefined : bigContractHistory.records}
           marketTrades={replayMarketTrades}

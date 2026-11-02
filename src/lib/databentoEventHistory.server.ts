@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getChartInterval, isEventBasedChartInterval } from "@/lib/chartIntervals";
+import { getChartInterval, isEventBasedChartInterval, MAX_CHART_HISTORY_BARS } from "@/lib/chartIntervals";
 import {
   applyMarketTradesToEventBars,
   type MarketTrade,
@@ -36,7 +36,7 @@ import {
 // reject its own correctly-built result as incomplete. Keep this aligned with
 // the browser's 500k persistent-history ceiling while retaining headroom for
 // the other chart state held alongside it.
-const MAX_EVENT_BARS = 250_000;
+const MAX_EVENT_BARS = Math.min(MAX_CHART_HISTORY_BARS, 50_000);
 const EVENT_BAR_FLUSH_SIZE = 16_384;
 // Keep one exact aggressor-flow bucket per second instead of retaining only
 // the final 25,000 raw prints. NQ can exhaust 25,000 executions in minutes,
@@ -87,6 +87,8 @@ async function fetchGatewayEventHistory(args: {
   endMs: number;
   includeExecutions: boolean;
   includeAuctionGap?: boolean;
+  limit?: number;
+  beforeTimestamp?: number;
 }): Promise<GatewayEventHistory> {
   const query = new URLSearchParams({
     // The browser catalog can carry continuous aliases such as NQ.v.0, while
@@ -96,10 +98,11 @@ async function fetchGatewayEventHistory(args: {
     interval: args.timeframe,
     fromMs: String(Math.round(args.startMs)),
     toMs: String(Math.round(args.endMs)),
-    limit: String(MAX_EVENT_BARS),
+    limit: String(args.limit ?? MAX_EVENT_BARS),
     orderFlow: args.includeExecutions ? "1" : "0",
     exec: args.includeExecutions ? "1" : "0",
   });
+  if (args.beforeTimestamp) query.set("beforeTimestamp", String(args.beforeTimestamp));
   if (args.includeAuctionGap) query.set("auctionGap", "1");
   const response = await fetchInstitutionalMarketData(
     `/v1/market-data/history?${query}`,
@@ -318,6 +321,7 @@ export async function getDatabentoEventBars(
   timeframe: string,
   start: string,
   end: string,
+  options: { limit?: number } = {},
 ) {
   const requestedStart = Date.parse(start);
   const requestedEnd = Date.parse(end);
@@ -331,6 +335,7 @@ export async function getDatabentoEventBars(
     startMs: adaptiveEventStart(timeframe, requestedStart, requestedEnd, eventHistorySchema(timeframe)),
     endMs: requestedEnd,
     includeExecutions: false,
+    limit: options.limit,
   });
   return history.candles;
 }
@@ -345,7 +350,7 @@ export async function getDatabentoEventHistory(
    * which still want the most recent window ending at `end`.
    */
   executionStartMs?: number,
-  options: { auctionGap?: boolean } = {},
+  options: { auctionGap?: boolean; limit?: number; beforeTimestamp?: number; includeExecutions?: boolean } = {},
 ): Promise<GatewayEventHistory> {
   const requestedStart = Date.parse(start);
   const requestedEnd = Date.parse(end);
@@ -365,8 +370,10 @@ export async function getDatabentoEventHistory(
       timeframe,
       startMs: requestedStart,
       endMs: requestedEnd,
-      includeExecutions: true,
+      includeExecutions: options.includeExecutions !== false,
       includeAuctionGap: options.auctionGap,
+      limit: options.limit,
+      beforeTimestamp: options.beforeTimestamp,
     });
   }
 

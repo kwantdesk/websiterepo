@@ -1,5 +1,6 @@
+import { chartTimeBucketStartMs } from "./chartTimeBucket.ts";
 import type { Candle } from "./backtester.ts";
-import { isEventBasedChartInterval } from "./chartIntervals.ts";
+import { isEventBasedChartInterval, MAX_CHART_HISTORY_BARS } from "./chartIntervals.ts";
 import type { InstitutionalTrade } from "./institutionalMarketData.ts";
 
 type CachedHistory = {
@@ -25,7 +26,7 @@ const DATABASE_NAME = "kwantdesk-market-data";
 const DATABASE_VERSION = 1;
 const STORE_NAME = "cme-history";
 const MAX_CACHE_AGE_MS = 12 * 24 * 60 * 60_000;
-const MAX_CANDLES_PER_SERIES = 120_000;
+const MAX_CANDLES_PER_SERIES = MAX_CHART_HISTORY_BARS;
 // Historical Big Trades is a time-distributed, server-compacted tape. Retain
 // enough of it to cover the loaded chart instead of silently reducing it to
 // only the most recent minutes.
@@ -122,10 +123,10 @@ function cacheKey(symbol: string, timeframe: string) {
   // one-second reconstructions isolated so returning browsers cannot restore
   // the malformed volume/range/Renko history this pipeline replaces.
   return isEventBasedChartInterval(timeframe)
-    ? `event-v8::${symbol}::${timeframe}`
+    ? `event-v9::${symbol}::${timeframe}`
     // v7 serves only VPS-recorded live history, excluding provider-import caches.
     // Old partial captures must not shadow the repaired VPS history for days.
-    : `time-v7::${symbol}::${timeframe}`;
+    : `time-v8::${symbol}::${timeframe}`;
 }
 
 function executionTapeCacheKey(symbol: string, _timeframe: string) {
@@ -157,9 +158,8 @@ function timeframeDurationMs(timeframe: string) {
   return value * unitMs[match[2]];
 }
 
-function normalizeCandles(candles: Candle[]) {
+function normalizeCandles(candles: Candle[], limit = MAX_CANDLES_PER_SERIES) {
   const byTimestamp = new Map<number, Candle>();
-  const cutoff = Date.now() - MAX_CACHE_AGE_MS;
 
   for (const candle of candles) {
     const timestamp = Number(candle.timestamp);
@@ -169,7 +169,7 @@ function normalizeCandles(candles: Candle[]) {
     const close = Number(candle.close);
     if (
       !Number.isFinite(timestamp)
-      || timestamp < cutoff
+      || timestamp <= 0
       || ![open, high, low, close].every((value) => Number.isFinite(value) && value > 0)
     ) {
       continue;
@@ -215,6 +215,7 @@ function normalizeCandles(candles: Candle[]) {
     // erase bid/ask metadata that is already persisted for the same event bar;
     // doing so forced CVD to redownload seven days of trades after an ordinary
     // chart refresh. New flow values still win whenever they are present.
+    if (typeof candle.sourceContractSymbol === "string") normalized.sourceContractSymbol = candle.sourceContractSymbol;
     const existing = byTimestamp.get(timestamp);
     if (existing) {
       flowKeys.forEach((key) => {
@@ -239,7 +240,7 @@ function normalizeCandles(candles: Candle[]) {
 
   return [...byTimestamp.values()]
     .sort((a, b) => a.timestamp - b.timestamp)
-    .slice(-MAX_CANDLES_PER_SERIES);
+    .slice(-limit);
 }
 
 function normalizeExecutionTape(records: InstitutionalTrade[]) {
@@ -302,7 +303,7 @@ function resampleCandles(candles: Candle[], timeframe: string) {
 
   const buckets = new Map<number, Candle>();
   for (const candle of normalizeCandles(candles)) {
-    const timestamp = Math.floor(candle.timestamp / durationMs) * durationMs;
+    const timestamp = chartTimeBucketStartMs(candle.timestamp, timeframe);
     const existing = buckets.get(timestamp);
     if (!existing) {
       buckets.set(timestamp, { ...candle, timestamp });
@@ -444,7 +445,7 @@ export async function readChartHistoryCache(symbol: string, timeframe: string) {
       request.onsuccess = () => resolve((request.result as CachedHistory | undefined) ?? null);
       request.onerror = () => reject(request.error ?? new Error("Unable to read cached market data."));
     });
-    if (!record) return null;
+    if (!record || Date.now() - record.updatedAt > MAX_CACHE_AGE_MS) return null;
     const normalized = { ...record, candles: normalizeCandles(record.candles ?? []) };
     if (!normalized.candles.length) return null;
     storeBounded(memoryCache, key, normalized, MAX_MEMORY_HISTORY_RECORDS);
@@ -469,8 +470,8 @@ async function readAllCachedHistory(symbol: string) {
     const matchingKeys = storedKeys
       .map(String)
       .filter((key) => (
-        key.startsWith(`time-v7::${symbol}::`)
-        || key.startsWith(`event-v8::${symbol}::`)
+        key.startsWith(`time-v8::${symbol}::`)
+        || key.startsWith(`event-v9::${symbol}::`)
       ));
     // Read only this symbol's candle series, sequentially. The former getAll
     // path also cloned every execution tape and every unrelated symbol merely
@@ -482,7 +483,7 @@ async function readAllCachedHistory(symbol: string) {
         request.onsuccess = () => resolve((request.result as CachedHistory | undefined) ?? null);
         request.onerror = () => reject(request.error ?? new Error("Unable to read cached market data."));
       });
-      if (record && Array.isArray(record.candles)) records.set(record.key, record);
+      if (record && Date.now() - record.updatedAt <= MAX_CACHE_AGE_MS && Array.isArray(record.candles)) records.set(record.key, record);
     }
   } catch {
     // The in-memory records can still supply a compatible timeframe.
@@ -495,6 +496,8 @@ function buildCompatibleRecord(
   symbol: string,
   timeframe: string,
 ) {
+  // A short intraday cache cannot establish a complete calendar candle.
+  if (/^\d+[DWM]$/.test(timeframe)) return null;
   const targetDuration = timeframeDurationMs(timeframe);
   if (!targetDuration) return null;
 
@@ -706,7 +709,7 @@ export async function writeExecutionTapeCache(
 }
 
 export function mergeChartHistory(cached: Candle[], incoming: Candle[]) {
-  return normalizeCandles([...cached, ...incoming]);
+  return normalizeCandles([...cached, ...incoming], Math.max(MAX_CANDLES_PER_SERIES, cached.length + incoming.length));
 }
 
 /**

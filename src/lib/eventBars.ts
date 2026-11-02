@@ -1,5 +1,5 @@
 import type { Candle } from "@/lib/backtester";
-import { getChartInterval, isEventBasedChartInterval } from "./chartIntervals.ts";
+import { getChartInterval, isEventBasedChartInterval, MAX_CHART_HISTORY_BARS } from "./chartIntervals.ts";
 
 export type MarketTrade = {
   timestamp: number;
@@ -7,6 +7,7 @@ export type MarketTrade = {
   size: number;
   trades?: number;
   delta?: number;
+  contractSymbol?: string;
 };
 
 export type EventCandle = Candle & {
@@ -247,6 +248,7 @@ function addRangeTrade(
     // volume and delta into every synthetic bridge bar, multiplying order flow
     // whenever a feed gap occurred.
     updateCandle(last, boundary, unassignedVolume, unassignedTrades, unassignedDelta);
+    last.sourceEndTimestamp = Math.max(last.sourceEndTimestamp ?? record.timestamp, record.timestamp);
     unassignedVolume = 0;
     unassignedTrades = 0;
     unassignedDelta = 0;
@@ -283,7 +285,7 @@ function addRenkoTrade(
   }
 
   const distance = record.price - forming.open;
-  const brickCount = Math.floor(Math.abs(distance) / threshold.value);
+  const brickCount = Math.floor((Math.abs(distance) + Number.EPSILON * Math.max(Math.abs(record.price), Math.abs(forming.open)) * 8) / threshold.value + 1e-9);
   if (brickCount === 0) {
     updateCandle(forming, record.price, record.size, record.trades ?? 1, record.delta ?? 0);
     return;
@@ -299,6 +301,7 @@ function addRenkoTrade(
     // real only once. Fractionally copying it into every brick invented trade
     // counts and delta at prices where nothing executed.
     updateCandle(forming, close, unassignedVolume, unassignedTrades, unassignedDelta);
+    forming.sourceEndTimestamp = Math.max(forming.sourceEndTimestamp ?? record.timestamp, record.timestamp);
     unassignedVolume = 0;
     unassignedTrades = 0;
     unassignedDelta = 0;
@@ -435,7 +438,7 @@ export function applyMarketTradesToEventBars(
   records: MarketTrade[],
   timeframe: string,
   symbol: string,
-  limit = 5_000,
+  limit = Math.max(MAX_CHART_HISTORY_BARS, current.length),
 ) {
   const threshold = eventThreshold(timeframe, symbol);
   if (!threshold || records.length === 0) return current;
@@ -452,7 +455,7 @@ export function applyMarketTradesToEventBars(
   // fallback for caches written before the watermark existed. Keep records
   // at the exact boundary: separate executions can legitimately share one
   // millisecond and upstream live batches are ordered/non-overlapping.
-  const processedThrough = Number(
+  let processedThrough = Number(
     bars.at(-1)?.sourceEndTimestamp
     ?? bars.at(-1)?.timestamp
     ?? Number.NEGATIVE_INFINITY,
@@ -461,7 +464,10 @@ export function applyMarketTradesToEventBars(
   for (const record of records) {
     if (!Number.isFinite(record.timestamp) || !Number.isFinite(record.price) || record.price <= 0) continue;
     if (record.timestamp < processedThrough) continue;
-    if (threshold.kind === "volume" || threshold.kind === "trade" || threshold.kind === "delta") {
+    const priorContract = bars.at(-1)?.sourceContractSymbol;
+    if (priorContract && record.contractSymbol && priorContract !== record.contractSymbol) {
+      bars.push(makeCandle(record, safeTimestamp(record.timestamp, bars.at(-1)), record.size, record.trades ?? 1, record.delta ?? 0));
+    } else if (threshold.kind === "volume" || threshold.kind === "trade" || threshold.kind === "delta") {
       addThresholdTrade(bars, record, threshold);
     } else if (threshold.kind === "volume-bars") {
       addTargetReversalTrade(bars, record, threshold);
@@ -474,6 +480,7 @@ export function applyMarketTradesToEventBars(
     }
     const forming = bars.at(-1);
     if (forming) {
+      if (record.contractSymbol) forming.sourceContractSymbol = record.contractSymbol;
       forming.sourceStartTimestamp = Number.isFinite(Number(forming.sourceStartTimestamp))
         ? Number(forming.sourceStartTimestamp)
         : record.timestamp;
@@ -482,6 +489,7 @@ export function applyMarketTradesToEventBars(
         record.timestamp,
       );
     }
+    processedThrough = Math.max(processedThrough, record.timestamp);
     if (bars.length > limit * 2) bars.splice(0, bars.length - limit);
   }
 

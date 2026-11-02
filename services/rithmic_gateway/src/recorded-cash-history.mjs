@@ -1,3 +1,4 @@
+import { chartTimeBucketStartMs } from './chart-time-bucket.mjs';
 import { readFileSync } from 'node:fs';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -33,6 +34,7 @@ export class RecordedCashHistory {
   symbol=String(symbol||'').toUpperCase();if(symbol==='SPXW')symbol='SPX';
   if(!/^[A-Z0-9]{1,10}$/.test(symbol))throw Error('Invalid recorded cash symbol');
   from=Number(from);to=Number(to);if(!Number.isFinite(from)||!Number.isFinite(to)||to<from||to-from>730*86400000)throw Error('Invalid recorded history window');
+  from=chartTimeBucketStartMs(from,timeframe);
   await this.flush();const rows=[];
   for(let d=Date.parse(new Date(from).toISOString().slice(0,10)+'T00:00:00Z');d<=to;d+=86400000){const stored=await readFile(join(this.dir,new Date(d).toISOString().slice(0,10),symbol+'.json'),'utf8').then(JSON.parse).catch(()=>null);if(stored?.source==='VPS recorded live quotes')rows.push(...stored.candles.filter(b=>b.timestamp>=from&&b.timestamp<=to));}
   const candles=resampleBars(rows.sort((a,b)=>a.timestamp-b.timestamp).map(b=>({t:b.timestamp,o:b.open,h:b.high,l:b.low,c:b.close,v:0})),parseIntervalMs(timeframe),timeframe).map(b=>({timestamp:b.t,open:b.o,high:b.h,low:b.l,close:b.c,volume:0}));

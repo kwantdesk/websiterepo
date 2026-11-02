@@ -1,8 +1,12 @@
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { recordedContractSegments } from "./recorded-contract-segments.mjs";
+import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { constants as zlibConstants, createGzip } from "node:zlib";
-import { join } from "node:path";
+import { join, dirname, basename } from "node:path";
+import { isMainThread } from "node:worker_threads";
+import { runArchiveFold } from "./archive-fold-worker-client.mjs";
 
-import { chicagoTradingDate } from "./trading-session.mjs";
+import { loadEventBarSeed } from "./event-bar-seeds.mjs";
+import { chicagoTradingDate, cmeSessionBounds } from "./trading-session.mjs";
 import { resolveInstrument } from "./recorder.mjs";
 import { tradeFromRecord } from "./futures-bar-archive.mjs";
 import { readArchiveRecords } from "./archive-reader.mjs";
@@ -43,8 +47,7 @@ const DEFAULT_FLUSH_MS = 5_000;
 // recorder's reasoning: throughput beats ratio when the alternative is a hole.
 const GZIP_LEVEL = 1;
 const MAX_SERVED_TIME_BARS = 500_000;
-const MAX_SERVED_EVENT_BARS = 250_000;
-const EVENT_CACHE_MS = 15_000;
+const MAX_SERVED_EVENT_BARS = 500_000;
 const EVENT_FLOW_LOOKBACK_MS = 6 * 60 * 60_000;
 const MAX_EVENT_FLOW_BUCKETS = 30_000;
 
@@ -149,12 +152,41 @@ export function backfillFileName(exchange, symbol) {
   return `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.trades.backfill.ndjson.gz`;
 }
 
-export function sessionTradeFiles(tapeDir, tradingDate, exchange, symbol) {
+export function sessionTradeFiles(tapeDir, tradingDate, exchange, symbol, continuous = false) {
   const day = join(tapeDir, tradingDate);
   // Only our live capture and sidecars extracted from our raw recorder.
   // Provider replay imports must never replace the owned execution tape.
-  return [backfillFileName(exchange, symbol), instrumentFileName(exchange, symbol)]
+  const exact = [backfillFileName(exchange, symbol), instrumentFileName(exchange, symbol)]
     .map(name => join(day, name)).filter(file => existsSync(file));
+  if (!continuous) return exact;
+  const segmented = recordedContractSegments(dirname(tapeDir), tradingDate, exchange, symbol)
+    .flatMap(segment => sessionTradeFiles(tapeDir, tradingDate, exchange, segment.symbol));
+  if (segmented.length) return segmented;
+  if (exact.length) return exact;
+  const root = String(symbol).replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "");
+  let candidates = [];
+  try { candidates = [...new Set(readdirSync(day).map(name => {
+    const m = name.match(/^([A-Z0-9]+)-([A-Z0-9]+)\.trades(?:\.backfill)?\.ndjson\.gz$/);
+    return m && m[1] === exchange && m[2].replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "") === root ? m[2] : null;
+  }).filter(Boolean))]; } catch {}
+  const volume = candidate => {
+    try { const b = JSON.parse(readFileSync(join(dirname(tapeDir), "bars", tradingDate, exchange + "-" + candidate + ".json"), "utf8"));
+      return /history\s*plant|provider[- ]import/i.test(b.source || "") ? -1 : (b.bars || []).reduce((n, b) => n + Number(b[5] || 0), 0);
+    } catch { return 0; }
+  };
+  candidates.sort((a, b) => volume(b) - volume(a) || a.localeCompare(b));
+  return candidates.length ? sessionTradeFiles(tapeDir, tradingDate, exchange, candidates[0]) : [];
+}
+
+export function sessionTradeFileBounds(file, symbol, continuous=false) {
+  if (!continuous) return {start:-Infinity,end:Infinity};
+  const [exchange,contract]=basename(file).split(".")[0].split("-");
+  return recordedContractSegments(dirname(dirname(dirname(file))),basename(dirname(file)),exchange,symbol)
+    .find(row=>row.symbol===contract)??{start:-Infinity,end:Infinity};
+}
+export function readSessionTradeRecords(file,symbol,continuous,accept) {
+  const {start,end}=sessionTradeFileBounds(file,symbol,continuous);
+  return readArchiveRecords(file,row=>{if(Number(row?.[0])>=start&&Number(row?.[0])<end)accept(row)});
 }
 
 export class TradeTapeArchive {
@@ -453,8 +485,27 @@ export class TradeTapeArchive {
    * browser panes share one promise, and the live bucket is refreshed every
    * fifteen seconds so a newly opened chart has no historical/live hole.
    */
+  cachedHistory(key, build) {
+    const existing = this.eventRequests.get(key);
+    if (existing) return existing;
+    const request = Promise.resolve().then(build).then(value => {
+      this.historyResultSizes ??= new Map();
+      this.historyResultSizes.set(key, (value.candles?.length || 0) * 224
+        + (value.executions?.length || 0) * 96
+        + (value.auctionGap?.rows || []).reduce((n, bar) => n + 128 + (bar.rows?.length || 0) * 64 + (bar.slices?.length || 0) * 96, 0));
+      let bytes = [...this.historyResultSizes.values()].reduce((a, b) => a + b, 0);
+      for (const [oldKey, size] of this.historyResultSizes) {
+        if (bytes <= 96 * 1024 * 1024 && this.historyResultSizes.size <= 24) break;
+        this.eventRequests.delete(oldKey); this.historyResultSizes.delete(oldKey); bytes -= size;
+      }
+      return value;
+    }).catch(error => { this.eventRequests.delete(key); throw error; });
+    this.eventRequests.set(key, request);
+    return request;
+  }
+
   async loadEventBars({ exchange, symbol, interval, fromMs, toMs, limit = MAX_SERVED_EVENT_BARS,
-    auctionGap = false }) {
+    auctionGap = false, beforeTimestamp = null, continuous = false }) {
     if (!eventInterval(interval)) throw new Error(`Unsupported event interval: ${interval}`);
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
@@ -463,14 +514,15 @@ export class TradeTapeArchive {
       ? Number(fromMs)
       : end - 10 * 86_400_000;
     const cap = Math.max(1, Math.min(MAX_SERVED_EVENT_BARS, Number(limit) || MAX_SERVED_EVENT_BARS));
-    const startDate = chicagoTradingDate(start);
-    const endBucket = Math.floor(end / EVENT_CACHE_MS);
-    const key = `${upper}:${upperSymbol}:${interval}:${startDate}:${endBucket}:${cap}:${auctionGap ? "gap" : "base"}`;
-    const existing = this.eventRequests.get(key);
-    if (existing) return existing;
-
-    const request = (async () => {
-      const builder = createEventBarBuilder(interval, upperSymbol, cap);
+    const key = `event:${upper}:${upperSymbol}:${interval}:${start}:${end}:${cap}:${auctionGap ? "gap" : "base"}:${beforeTimestamp ?? "tail"}:${continuous}`;
+    return this.cachedHistory(key, () => isMainThread
+      ? runArchiveFold({ kind: "chart-event-history", dir: dirname(this.dir),
+          args: { exchange: upper, symbol: upperSymbol, interval, fromMs: start, toMs: end, limit: cap, auctionGap, beforeTimestamp, continuous } }, 120_000)
+      : (async () => {
+      const firstDate = chicagoTradingDate(start);
+      const foldStart = cmeSessionBounds(firstDate).startMs;
+      const seed = await loadEventBarSeed(dirname(this.dir), upper, upperSymbol, interval, firstDate, continuous);
+      const builder = createEventBarBuilder(interval, upperSymbol, beforeTimestamp ? cap * 2 : cap, seed);
       const executions = [];
       let auctionRows = new Map();
       let auctionSlices = new Map();
@@ -478,20 +530,22 @@ export class TradeTapeArchive {
       let ownershipTruncated = false;
       const flowStart = end - EVENT_FLOW_LOOKBACK_MS;
       const dates = new Set();
-      for (let at = start; at < end; at += 6 * 60 * 60_000) dates.add(chicagoTradingDate(at));
+      for (let at = foldStart; at < end; at += 6 * 60 * 60_000) dates.add(chicagoTradingDate(at));
       dates.add(chicagoTradingDate(end));
       let sourceRecordCount = 0;
+      let foldedSourceRecordCount = 0;
       let earliestMs = null;
       let latestMs = null;
 
+      let sourceContract = upperSymbol;
       const accept = (row) => {
         const trade = decodeTrade(row);
-        if (!trade || trade.timestamp < start || trade.timestamp > end) return;
+        if (!trade || trade.timestamp < foldStart || trade.timestamp > end) return;
         const price = Number(trade.price);
         const size = Math.max(0, Number(trade.size) || 0);
         if (!Number.isFinite(price) || price <= 0 || size <= 0) return;
         const delta = Number(trade.side) > 0 ? size : Number(trade.side) < 0 ? -size : 0;
-        const ownership = builder.add({ timestamp: trade.timestamp, price, size, trades: 1, delta });
+        const ownership = builder.add({ timestamp: trade.timestamp, price, size, trades: 1, delta, contractSymbol: sourceContract });
         if (auctionGap) {
           if (!ownership || !Number.isSafeInteger(ownership.chartIndex)) {
             ownershipTruncated = true;
@@ -520,10 +574,13 @@ export class TradeTapeArchive {
             auctionSlices.set(ownership.chartIndex, slices);
           }
         }
-        sourceRecordCount += 1;
-        earliestMs = earliestMs === null ? trade.timestamp : Math.min(earliestMs, trade.timestamp);
-        latestMs = latestMs === null ? trade.timestamp : Math.max(latestMs, trade.timestamp);
-        if (!delta || trade.timestamp < flowStart) return;
+        foldedSourceRecordCount += 1;
+        if (trade.timestamp >= start) {
+          sourceRecordCount += 1;
+          earliestMs = earliestMs === null ? trade.timestamp : Math.min(earliestMs, trade.timestamp);
+          latestMs = latestMs === null ? trade.timestamp : Math.max(latestMs, trade.timestamp);
+        }
+        if (!delta || trade.timestamp < Math.max(flowStart, start)) return;
         const bucket = Math.floor(trade.timestamp / 1_000) * 1_000;
         const previous = executions.at(-1);
         const ask = delta > 0 ? size : 0;
@@ -549,12 +606,16 @@ export class TradeTapeArchive {
           if (receipt) coverageReceipts.push(receipt);
         }
         // Backfill is older than the first live print by construction.
-        for (const file of sessionTradeFiles(this.dir, tradingDate, upper, upperSymbol)) {
-          if (existsSync(file)) await readArchiveRecords(file, accept);
+        for (const file of sessionTradeFiles(this.dir, tradingDate, upper, upperSymbol, continuous)) {
+          sourceContract = file.split(/[\\/]/).at(-1).split(".")[0].slice(upper.length + 1);
+          if (existsSync(file)) await readSessionTradeRecords(file, upperSymbol, continuous, accept);
         }
       }
 
-      const candles = builder.finish();
+      const retained = builder.finish();
+      const candles = retained.filter(bar => Number(bar.sourceEndTimestamp ?? bar.timestamp) >= start
+        && (!beforeTimestamp || bar.timestamp < Number(beforeTimestamp))).slice(-cap);
+      const rowOffset = builder.retainedOffset + Math.max(0, retained.indexOf(candles[0]));
       let auctionGapRows = null;
       if (auctionGap) {
         const compact = candles.map((candle, chartIndex) => ({
@@ -562,9 +623,9 @@ export class TradeTapeArchive {
           timestamp: candle.timestamp,
           sourceStartTimestamp: candle.sourceStartTimestamp,
           sourceEndTimestamp: candle.sourceEndTimestamp,
-          rows: [...(auctionRows.get(chartIndex)?.values() ?? [])]
+          rows: [...(auctionRows.get(chartIndex + rowOffset)?.values() ?? [])]
             .sort((left, right) => left.tickIndex - right.tickIndex),
-          slices: compactAuctionGapMinuteSlices(auctionSlices.get(chartIndex) ?? new Map()),
+          slices: compactAuctionGapMinuteSlices(auctionSlices.get(chartIndex + rowOffset) ?? new Map()),
         }));
         const volumesMatch = compact.every((bar, index) => Math.abs(
           bar.rows.reduce((sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0)
@@ -604,22 +665,16 @@ export class TradeTapeArchive {
         earliestMs,
         latestMs,
         sourceRecordCount,
-        truncated: false,
+        foldedSourceRecordCount,
+        truncated: builder.totalBarCount > cap,
+        totalBarCount: builder.totalBarCount,
+        returnedBarCount: candles.length,
+        recordedOnly: true,
         candles,
         executions,
         ...(auctionGap ? { auctionGap: auctionGapRows } : {}),
       };
-    })().finally(() => {
-      // Retain the settled promise for this live time bucket, while preventing
-      // a long-running process from accumulating old buckets forever.
-      if (this.eventRequests.size > 128) {
-        for (const oldKey of [...this.eventRequests.keys()].slice(0, this.eventRequests.size - 96)) {
-          this.eventRequests.delete(oldKey);
-        }
-      }
-    });
-    this.eventRequests.set(key, request);
-    return request;
+    })());
   }
 
   /**
@@ -627,7 +682,12 @@ export class TradeTapeArchive {
    * minute candles. The old history route returned 1m rows for 1s/5s/15s/30s
    * requests, so the selector changed while the data did not.
    */
-  async loadTimeBars({ exchange, symbol, interval, intervalMs, fromMs, toMs, limit, auctionGap = false }) {
+  async loadTimeBars({ exchange, symbol, interval, intervalMs, fromMs, toMs, limit, auctionGap = false, continuous = false }) {
+    if (isMainThread) {
+      const args = { exchange, symbol, interval, intervalMs, fromMs, toMs, limit, auctionGap, continuous };
+      return this.cachedHistory("time:" + JSON.stringify(args),
+        () => runArchiveFold({ kind: "chart-time-history", dir: dirname(this.dir), args }, 120_000));
+    }
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
     const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();
@@ -654,8 +714,8 @@ export class TradeTapeArchive {
         ));
         if (receipt) coverageReceipts.push(receipt);
       }
-      for (const file of sessionTradeFiles(this.dir, tradingDate, upper, upperSymbol)) {
-        await readArchiveRecords(file, (row) => {
+      for (const file of sessionTradeFiles(this.dir, tradingDate, upper, upperSymbol, continuous)) {
+        await readSessionTradeRecords(file, upperSymbol, continuous, (row) => {
           const trade = decodeTrade(row);
           if (!trade || trade.timestamp < start || trade.timestamp > end) return;
           const price = Number(trade.price);
@@ -666,6 +726,7 @@ export class TradeTapeArchive {
           if (!bar) {
             bar = {
               timestamp, open: price, high: price, low: price, close: price,
+              sourceStartTimestamp: trade.timestamp, sourceEndTimestamp: trade.timestamp,
               volume: 0, trades: 0, askVolume: 0, bidVolume: 0,
               delta: 0, deltaOpen: 0, deltaHigh: 0, deltaLow: 0, deltaClose: 0,
             };
@@ -673,7 +734,8 @@ export class TradeTapeArchive {
           }
           bar.high = Math.max(bar.high, price);
           bar.low = Math.min(bar.low, price);
-          bar.close = price;
+          if (trade.timestamp < bar.sourceStartTimestamp) { bar.open = price; bar.sourceStartTimestamp = trade.timestamp; }
+          if (trade.timestamp >= bar.sourceEndTimestamp) { bar.close = price; bar.sourceEndTimestamp = trade.timestamp; }
           bar.volume += size;
           bar.trades += 1;
           const signed = Number(trade.side) > 0 ? size : Number(trade.side) < 0 ? -size : 0;
@@ -753,6 +815,7 @@ export class TradeTapeArchive {
       symbol: upperSymbol,
       interval: String(interval),
       source: "Rithmic recorded trade tape",
+      recordedOnly: true,
       startMs: start,
       endMs: end,
       truncated: ordered.length > cap,
