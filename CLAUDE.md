@@ -1,4 +1,9 @@
 
+## 2026-11-02 — resting entry activation time
+
+Resting limit/stop fills now require execution timestamps strictly after the current price activation time; OHLC reconciliation excludes every bar opening at/before it. Repricing stores durable priceActivatedAt without rewriting original createdAt. Workspace passes an explicit live placement/reprice clock and the replay clock when replay trading, preventing delayed tape or old candle ranges from executing a new price. Legacy orders fall back to createdAt. 34 targeted execution/receipt/activation tests pass; reconciliation 10/10 and drag 7/7. Full paper suite: 125/131; the six old source-regex integration failures reproduce on HEAD. Full production build plus scoped main/yfmi release; no gateway or account reset.
+
+
 ## 2026-11-02 — multi-select TPO Quick Sessions
 
 Quick Sessions now stores independent comma-separated selections (rth/globex/new-york/london/tokyo/sydney). Shared preset definitions drive UI and per-session engine calculations, with unique profile IDs and actual IANA clocks; each selection has the existing per-session profile count. Clear the last selection to restore the venue default schedule. Legacy one-session presets migrate; manual schedule edits clear named selections, while style edits retain them. Include selections in calculation cache identity and disable the single-developing-profile refresh optimization for overlapping multiple schedules so older profiles are retained. Weekly/custom-range calculations retain their existing behavior. 23 TPO engine/settings tests pass, including standalone-versus-combined model equality across DST. Full production build and scoped main/yfmi release; no gateway changes.

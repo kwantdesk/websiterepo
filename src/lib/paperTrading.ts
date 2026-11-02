@@ -120,6 +120,8 @@ export type PaperOrder = {
   price: number | null;
   status: PaperOrderStatus;
   createdAt: number;
+  /** The current entry price only becomes executable after this placement/reprice time. */
+  priceActivatedAt?: number;
   filledAt?: number;
   filledPrice?: number;
   positionId?: string;
@@ -1052,6 +1054,7 @@ export function placePaperOrder(
   accounts: PaperTradingAccountRecord[],
   draft: PaperOrderDraft,
   quote: PaperQuote,
+  placedAt: number = quote.timestamp,
 ): { ledger: PaperTradingLedger; order: PaperOrder; error?: string } {
   const accountRecord = accounts.find((account) => account.id === draft.accountId);
   const fallbackOrder: PaperOrder = {
@@ -1063,7 +1066,8 @@ export function placePaperOrder(
     quantity: paperOrderQuantity(draft.symbol, draft.quantity),
     price: draft.type === "market" ? null : draft.price == null ? null : snapPaperPrice(draft.symbol, draft.price),
     status: "rejected",
-    createdAt: quote.timestamp,
+    createdAt: placedAt,
+    priceActivatedAt: placedAt,
     stopLoss: draft.stopLoss == null ? null : snapPaperPrice(draft.symbol, draft.stopLoss),
     takeProfits: (draft.takeProfits ?? []).map((target) => ({
       price: snapPaperPrice(draft.symbol, target.price),
@@ -1224,7 +1228,7 @@ export function processPaperQuote(
     const workingOrders = executionAuthorized
       ? account.orders.filter((order) =>
           normalizePaperSymbol(order.symbol) === normalizedSymbol
-          && quote.timestamp >= order.createdAt
+          && quote.timestamp > Math.max(order.createdAt, order.priceActivatedAt ?? order.createdAt)
           && orderTriggered(order, quote))
       : [];
     for (const order of workingOrders) {
@@ -1701,6 +1705,7 @@ export function updatePaperOrderPrice(
   accountId: string,
   orderId: string,
   price: number,
+  activatedAt: number = Date.now(),
 ): PaperTradingLedger {
   const account = ledger.accounts[accountId];
   if (!account) return ledger;
@@ -1712,7 +1717,10 @@ export function updatePaperOrderPrice(
   if (nextPrice === order.price) return ledger;
   if (!protectionValid(order.side, nextPrice, order.stopLoss, order.takeProfits)) return ledger;
 
-  const nextOrder: PaperOrder = { ...order, price: nextPrice };
+  const nextOrder: PaperOrder = {
+    ...order, price: nextPrice,
+    priceActivatedAt: Math.max(order.createdAt, order.priceActivatedAt ?? order.createdAt, activatedAt),
+  };
   return {
     ...ledger,
     accounts: {
@@ -1871,7 +1879,7 @@ export type PaperReconcileBar = {
  *
  * Deliberate rules:
  *
- *   - Only bars that OPENED after the order was placed. The bar containing the
+ *   - Only bars that OPENED after the current order price was activated. The bar containing the
  *     placement carries price action from before the order existed, and filling
  *     from that would be inventing a fill out of the past.
  *   - The fill is at the order's own price. A limit cannot do worse than its
@@ -1909,7 +1917,7 @@ export function reconcilePaperOrdersAgainstBars(
     for (const order of resting) {
       const limit = order.price as number;
       const crossed = usable.find((bar) => {
-        if (bar.timestamp <= order.createdAt) return false;
+        if (bar.timestamp <= Math.max(order.createdAt, order.priceActivatedAt ?? order.createdAt)) return false;
         if (order.type === "limit") {
           return order.side === "buy" ? bar.low <= limit : bar.high >= limit;
         }

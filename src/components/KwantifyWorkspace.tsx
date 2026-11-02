@@ -18280,6 +18280,8 @@ export default function KwantifyWorkspace({
         takeProfits: takeProfitPrice ? [{ price: takeProfitPrice, quantity: submitQuantity }] : [],
       },
       quote,
+      bottomWorkspaceSection === "backtesting" || (chartWorkspaceScope === "gamma" && gexVueReplay.active)
+        ? quote.timestamp : Math.max(Date.now(), quote.timestamp),
     );
     const receipt = paperOrderReceipt(result);
     commitPaperLedger(result.ledger);
@@ -18313,7 +18315,12 @@ export default function KwantifyWorkspace({
    */
   const handlePaperOrderPriceUpdate = (accountId: string, orderId: string, price: number) => {
     const current = paperLedgerRef.current;
-    const next = updatePaperOrderPrice(current, accountId, orderId, price);
+    const order = current.accounts[accountId]?.orders.find(candidate => candidate.id === orderId);
+    const quote = order ? resolvePaperExecutionQuote(order.symbol) : null;
+    const replayClock = bottomWorkspaceSection === "backtesting" || (chartWorkspaceScope === "gamma" && gexVueReplay.active);
+    if (replayClock && !quote) return;
+    const activatedAt = replayClock ? quote!.timestamp : Math.max(Date.now(), quote?.timestamp ?? 0);
+    const next = updatePaperOrderPrice(current, accountId, orderId, price, activatedAt);
     if (next === current) return;
     commitPaperLedger(next);
   };

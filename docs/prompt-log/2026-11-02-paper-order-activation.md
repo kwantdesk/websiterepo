@@ -1,0 +1,7 @@
+# Pending order activation after placement and repricing
+
+Reported: a sell limit filled using price action from before placement/movement. Repricing previously changed only the price, leaving historical reconciliation free to use touches since the original order creation.
+
+Added durable priceActivatedAt for resting entries, updated on repricing while retaining original createdAt. Quote/execution processing requires a timestamp strictly later than activation; reconciliation only accepts bars opening later, excluding the mixed pre/post-placement minute. Placement and dragging receive an explicit live clock or replay clock from the Workspace. Old ledgers remain readable. Buy and sell limits/stops use the same activation gate. Normal limit marketability/price improvement remains: a sell below the current bid or buy above the ask may fill at a current executable price. No account balances, historical fills or existing protection levels are reset.
+
+Validation: 34 targeted execution, order receipt and new activation tests pass (stale/equal-time ticks, bars before placement, old touches after repricing, reload, future touches and marketable limits for both sides). Reconciliation 10/10 and dragging 7/7 pass. Full paper suite: 125 pass, six stale source-regex integration checks fail; a HEAD-source baseline reproduces the same six failures. Full production build required, one scoped main/yfmi release, Ready/public SHA verification. No gateway restart.

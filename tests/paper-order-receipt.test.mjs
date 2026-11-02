@@ -31,7 +31,8 @@ test("chart-independent pricing accepts real incoming trades, never summary/flow
 
 function harness(overrides = {}) {
   const messages = [], persisted = [];
-  const context = { preferencesReady: true, paperAccountsHydrated: true, selectedPaperTradingAccount: account,
+  const context = { bottomWorkspaceSection: "charts", chartWorkspaceScope: "charts", gexVueReplay: { active: false },
+    Date: class extends Date { static now() { return now; } }, preferencesReady: true, paperAccountsHydrated: true, selectedPaperTradingAccount: account,
     paperTradingAccounts: [account], paperTradingInstrument: "NQ", orderSide: "buy", orderType: "market", selectedOrderQuantity: 2,
     orderPrice: "", tpEnabled: false, slEnabled: false, selectedMidPrice: 24000,
     paperLedgerRef: { current: emptyPaperTradingLedger() },
