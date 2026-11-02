@@ -1,5 +1,9 @@
 # KWANTDESK important notes
 
+## 2026-11-02 — Profiles start at 100% opacity
+
+All new volume-profile families and daily/weekly TPO now default to 100% opacity, including drawn fixed-range/anchored profiles, Deep Profile Swing and standalone profile workspaces. Missing-setting rendering/control fallbacks align at100; explicitly saved opacity remains authoritative.13 existing profile-style/drawing checks and20 TPO engine tests pass, all default families/custom-opacity retention verified, focused lint clean, full production build required before release. One unrelated static TPO clamp-regex test is already inconsistent with unchanged HEAD renderer; confirmed and documented without touching it. Details: docs/prompt-log/2026-11-02-profile-opacity-defaults.md. One scoped main-only push/exact live SHA verification. No gateway/feed/session/palette changes; preserve unrelated dirty/native/ALGO work.
+
 ## 2026-11-02 — Drawing clears are durable
 
 Left CLR now calls the complete four-engine chart clear, matching context-menu Clear. Account-synced per-document/pane clear epochs prevent older saved snapshots or stale peer edits from restoring removed drawings. Precision clear flushes immediately/cancels drafts; late precision/professional API reads cannot supersede a cleared account document. Full-document saves serialize per owner/key and stale effects are guarded. Own legacy archive is cleared without clearing another pane's claimed archive or Algo/Charts data. Remount only drawing SVG on clear, cancel text/freehand input, scope precision clear events.42 persistence/replay/account tests,5 actual headless Workspace/Chart checks and focused lint pass; full final production build required/passed before release. Details/limits: docs/prompt-log/2026-11-02-drawings-stay-cleared.md. One scoped main-only release/exact live SHA verification. No gateway restart or production user-drawing deletion; preserve unrelated dirty/native/ALGO work.

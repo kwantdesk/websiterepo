@@ -512,6 +512,9 @@ const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   if (tool === "emoji") {
     return { ...DEFAULT_DRAW_STYLE, useThemeColor: false, fontSize: 36, showLabels: false };
   }
+  if (tool === "fixedRangeVolumeProfile" || tool === "anchoredVolumeProfile") {
+    return { ...DEFAULT_DRAW_STYLE, profileOpacity: 100 };
+  }
   if (tool === "highlighter") return { ...DEFAULT_DRAW_STYLE, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
   // New position calculators show their readout immediately. The style panel
   // can still hide it, and explicitly saved choices remain authoritative.

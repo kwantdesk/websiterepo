@@ -9,7 +9,7 @@ export function drawingVolumeProfileStyle(style: Drawing["style"], theme: Drawin
   return {
     mode: style.profileMode ?? "volume", visualStyle: style.profileVisualStyle ?? "automatic",
     widthBasis: "period-percent", widthPercent: style.profileWidthPercent ?? 32,
-    opacity: (style.profileOpacity ?? 68) / 100,
+    opacity: (style.profileOpacity ?? 100) / 100,
     positiveDeltaColor: style.profileAskColor ?? theme.upColor,
     negativeDeltaColor: style.profileBidColor ?? theme.downColor,
     valueAreaColor: volumeColor, valueAreaLineColor: style.valueAreaColor, outsideValueAreaColor: style.outsideColor ?? theme.borderDownColor,

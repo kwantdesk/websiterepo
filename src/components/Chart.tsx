@@ -17297,7 +17297,7 @@ function Chart({
           ),
           currentOffsetPx: clamp(Number(profileSettings.currentProfileOffset ?? 0), -400, 400),
           previousOffsetPx: clamp(Number(profileSettings.previousProfileOffset ?? 0), -400, 400),
-          opacity: clamp(Number(profileSettings.opacity ?? (profile.period === "weekly" ? 42 : 68)) / 100, 0.1, 1),
+          opacity: clamp(Number(profileSettings.opacity ?? 100) / 100, 0.1, 1),
           positiveDeltaColor: useThemeColors ? settings.upColor : String(profileSettings.askColor ?? settings.upColor),
           negativeDeltaColor: useThemeColors ? settings.downColor : String(profileSettings.bidColor ?? settings.downColor),
           outsideValueAreaColor: useThemeColors ? settings.borderDownColor : String(profileSettings.volumeColor ?? settings.borderDownColor),

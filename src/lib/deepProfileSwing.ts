@@ -85,7 +85,7 @@ export const DEFAULT_DEEP_PROFILE_SWING_SETTINGS: DeepProfileSwingSettings = {
   valueAreaPercent: 68,
   maxProfiles: 12,
   profileWidth: 34,
-  opacity: 68,
+  opacity: 100,
   showPocLine: true,
   showValueAreaLines: true,
   showVwapLine: true,
@@ -134,7 +134,7 @@ export function normalizeDeepProfileSwingSettings(input?: Record<string, unknown
   result.valueAreaPercent = clamp(finite(source.valueAreaPercent, 68), 1, 100);
   result.maxProfiles = integer(source.maxProfiles, 12, 1, 100);
   result.profileWidth = clamp(finite(source.profileWidth, 34), 1, 100);
-  result.opacity = clamp(finite(source.opacity, 68), 0, 100);
+  result.opacity = clamp(finite(source.opacity, 100), 0, 100);
   result.lineWidth = clamp(finite(source.lineWidth, 1), 0.5, 6);
   return result;
 }

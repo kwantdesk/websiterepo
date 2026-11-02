@@ -120,7 +120,7 @@ const DEFAULT_SETTINGS: WorkspaceSettings = {
   profileSide: "left",
   volumeDisplay: "total",
   volumeScale: "linear",
-  opacityPercent: 86,
+  opacityPercent: 100,
   gradientPreset: VOLUME_PROFILE_GRADIENT_OFF,
   showVwap: true,
   showRowValues: false,

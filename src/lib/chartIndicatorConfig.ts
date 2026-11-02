@@ -526,7 +526,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "valueAreaPercent", label: "Value area (%)", defaultValue: 68, min: 1, max: 100, step: 1 },
     { key: "maxProfiles", label: "Profiles to show", defaultValue: 12, min: 1, max: 100, step: 1 },
     { key: "profileWidth", label: "Profile width (%)", defaultValue: 34, min: 1, max: 100, step: 1 },
-    { key: "opacity", label: "Profile opacity (%)", defaultValue: 68, min: 0, max: 100, step: 1 },
+    { key: "opacity", label: "Profile opacity (%)", defaultValue: 100, min: 0, max: 100, step: 1 },
     { key: "lineWidth", label: "Level line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
   ],
   "deep-profile-values": [
@@ -1300,7 +1300,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "singlePrintVolumeSensitivity", label: "Single Print low-volume sensitivity (0 all - 100 lowest-volume only)", defaultValue: 0, min: 0, max: 100, step: 5 },
     { key: "blockSize", label: "Block size", defaultValue: 8, min: 2, max: 24, step: 0.5 },
     { key: "blockGap", label: "Block gap", defaultValue: 1, min: 0, max: 6, step: 0.25 },
-    { key: "opacityPercent", label: "Profile opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
+    { key: "opacityPercent", label: "Profile opacity (%)", defaultValue: 100, min: 0, max: 100, step: 1 },
     { key: "borderWidth", label: "Block border width", defaultValue: 0.75, min: 0, max: 6, step: 0.25 },
     { key: "barMarkerWidth", label: "Subperiod OHLC marker width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
     { key: "range1Minimum", label: "Colour range 1 minimum", defaultValue: 0, min: -1000000, max: 1000000, step: 1 },
@@ -1345,7 +1345,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "singlePrintVolumeSensitivity", label: "Single Print low-volume sensitivity (0 all - 100 lowest-volume only)", defaultValue: 0, min: 0, max: 100, step: 5 },
     { key: "blockSize", label: "Block size", defaultValue: 8, min: 2, max: 24, step: 0.5 },
     { key: "blockGap", label: "Block gap", defaultValue: 1, min: 0, max: 6, step: 0.25 },
-    { key: "opacityPercent", label: "Profile opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
+    { key: "opacityPercent", label: "Profile opacity (%)", defaultValue: 100, min: 0, max: 100, step: 1 },
     { key: "borderWidth", label: "Block border width", defaultValue: 0.75, min: 0, max: 6, step: 0.25 },
     { key: "barMarkerWidth", label: "Subperiod OHLC marker width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
     { key: "range1Minimum", label: "Colour range 1 minimum", defaultValue: 0, min: -1000000, max: 1000000, step: 1 },
@@ -3066,6 +3066,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   } : {}),
   ...(["kwant-profile", "weekly-volume-profile", "monthly-volume-profile", "session-volume-profile", "visible-range-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     profileWidth: DEFAULT_VOLUME_PROFILE_WIDTH,
+    opacity: 100,
     valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     // Data Settings — the input series, the trade-size band applied before
     // binning, and how many ticks share a profile row. Automatic derives the
