@@ -1,7 +1,7 @@
 // Keep saved settings, native controls and toolbar states in the same units.
 // Browser range elements silently clamp their UI; normalize the model too.
 export const SETTING_CONTROLS = Object.freeze({
-  paletteSelect: 'palette', sensitivityRange: 'sensitivity', quickHeatRange: 'sensitivity',
+  sensitivityRange: 'sensitivity', quickHeatRange: 'sensitivity',
   dimmingRange: 'heatmapDimming', heatmapFilterSelect: 'heatmapFilter', sigmaRange: 'gaussianSigma',
   bubbleRange: 'circleSize', transparencyRange: 'circleTransparency', clusteringRange: 'smartClustering',
   minimumTradeSizeRange: 'minimumTradeSize', minimumVolumeRange: 'minimumPixelVolume',

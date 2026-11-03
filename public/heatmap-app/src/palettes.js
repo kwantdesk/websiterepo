@@ -1,11 +1,23 @@
 import { websiteThemeColors } from './ui-themes.js?v=20261017-aleph-font';
 
-export const DEFAULT_PALETTE = 'auto';
+import { INDICATOR_GRADIENT_SCHEMES } from '../../shared/indicator-gradients.js';
+export const HEAT_GRADIENT_PRESETS = INDICATOR_GRADIENT_SCHEMES;
+export const DEFAULT_PALETTE = 'cyan-magenta';
+const gradientStops = Object.fromEntries(HEAT_GRADIENT_PRESETS.map(({id, from, to}) => [
+  id, [[0, [0, 0, 0]], [.18, rgb(from)], [1, rgb(to)]],
+]));
+export function normalizeHeatPalette(name) {
+  if (Object.hasOwn(gradientStops, name)) return name;
+  if (name === 'mono') return 'black-white';
+  if (name === 'chromeymono') return 'chromey-mono';
+  return DEFAULT_PALETTE;
+}
 
 const BOOKMAP_LANDMARKS = Object.freeze([0, 0.18, 0.422422, 0.624625, 0.722723, 0.877878, 1]);
 const atLandmarks = colors => colors.map((color, index) => [BOOKMAP_LANDMARKS[index], color]);
 
 export const PALETTES = Object.freeze({
+  ...gradientStops,
   /*
    * The DeepChart look, matching the "Chromey Mono" website theme.
    *
@@ -254,7 +266,7 @@ export function paletteAccents(name) {
     rgb(site.chartBackground || site.background, [10, 10, 11]),
     rgb(site.panel, [12, 12, 14]),
   ];
-  if (name === DEFAULT_PALETTE) {
+  if (name === 'auto' || Object.hasOwn(gradientStops, name)) {
     const bid = rgb(site.candleUp || site.primary, [0, 245, 160]);
     const ask = rgb(site.candleDown || site.danger, [239, 68, 68]);
     // A hollow candle legitimately uses the chart background as its body. It
@@ -278,13 +290,13 @@ export function paletteAccents(name) {
 }
 
 export function paletteRenderKey(name) {
-  return name === DEFAULT_PALETTE
+  return name === 'auto'
     ? `${DEFAULT_PALETTE}:${automaticThemeSignature()}`
     : name;
 }
 
 export function paletteLut(name) {
-  if (name !== DEFAULT_PALETTE) return PALETTE_LUTS[name] || PALETTE_LUTS.kwantify;
+  if (name !== 'auto') return PALETTE_LUTS[name] || PALETTE_LUTS.kwantify;
   const signature = automaticThemeSignature();
   if (automaticPaletteCache.signature !== signature || !automaticPaletteCache.lut) {
     automaticPaletteCache = {
@@ -296,7 +308,7 @@ export function paletteLut(name) {
 }
 
 export function paletteCssGradient(name) {
-  const stops = name === DEFAULT_PALETTE
+  const stops = name === 'auto'
     ? automaticThemePalette()
     : PALETTES[name] || PALETTES.kwantify;
   return `linear-gradient(90deg, ${stops.map(([position, [red, green, blue]]) => (
