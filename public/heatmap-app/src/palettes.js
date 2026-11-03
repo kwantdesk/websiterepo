@@ -1,10 +1,18 @@
 import { websiteThemeColors } from './ui-themes.js?v=20261017-aleph-font';
 
 import { INDICATOR_GRADIENT_SCHEMES } from '../../shared/indicator-gradients.js';
-export const HEAT_GRADIENT_PRESETS = INDICATOR_GRADIENT_SCHEMES;
+export const HEAT_GRADIENT_PRESETS = Object.freeze([
+  ...INDICATOR_GRADIENT_SCHEMES,
+  { id: 'white-cyan-magenta', label: 'Cyan → Magenta', from: '#65D9EE', to: '#B00079', light: true },
+  { id: 'white-pink-blue', label: 'Pink → Blue', from: '#FFA9CD', to: '#164BB7', light: true },
+  { id: 'white-yellow-blue', label: 'Yellow → Blue', from: '#FFE46D', to: '#2543B1', light: true },
+  { id: 'white-orange-green', label: 'Orange → Green', from: '#FFB268', to: '#087047', light: true },
+  { id: 'white-violet-amber', label: 'Violet → Amber', from: '#C7ACF4', to: '#A44D00', light: true },
+  { id: 'white-lime-teal', label: 'Lime → Teal', from: '#CBEC79', to: '#006A70', light: true },
+]);
 export const DEFAULT_PALETTE = 'cyan-magenta';
-const gradientStops = Object.fromEntries(HEAT_GRADIENT_PRESETS.map(({id, from, to}) => [
-  id, [[0, [0, 0, 0]], [.18, rgb(from)], [1, rgb(to)]],
+const gradientStops = Object.fromEntries(HEAT_GRADIENT_PRESETS.map(({id, from, to, light}) => [
+  id, [[0, light ? [255, 255, 255] : [0, 0, 0]], [.18, rgb(from)], [1, rgb(to)]],
 ]));
 export function normalizeHeatPalette(name) {
   if (Object.hasOwn(gradientStops, name)) return name;
@@ -259,6 +267,14 @@ export function createPalette(stops) {
 export const PALETTE_LUTS = Object.freeze(Object.fromEntries(
   Object.entries(PALETTES).map(([name, stops]) => [name, createPalette(stops)]),
 ));
+
+export function heatOverlayAccents(name) {
+  const background = paletteLut(name).subarray(0, 3);
+  const light = colorContrast(background, [0, 0, 0]) > colorContrast(background, [255, 255, 255]);
+  return light
+    ? { bid: [0, 94, 158], ask: [166, 42, 17] }
+    : { bid: [69, 224, 255], ask: [255, 153, 80] };
+}
 
 export function paletteAccents(name) {
   const site = websiteThemeColors();

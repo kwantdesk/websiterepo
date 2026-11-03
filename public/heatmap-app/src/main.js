@@ -5,7 +5,7 @@ import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20261030-smart-clustering';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=heat-gradient-presets';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=heat-gradient-contrast';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -20,7 +20,7 @@ import {
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from './live-market.js?v=20261030-bubble-source-time';
-import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient } from './palettes.js?v=heat-gradient-presets';
+import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient } from './palettes.js?v=heat-gradient-contrast';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
@@ -273,7 +273,7 @@ class DepthForgeApp {
       const swatch = document.createElement('span');
       swatch.setAttribute('aria-hidden', 'true');
       swatch.style.cssText = 'display:block;height:9px;border-radius:3px;margin-bottom:4px';
-      swatch.style.background = `linear-gradient(90deg, ${preset.from}, ${preset.to})`;
+      swatch.style.background = `linear-gradient(90deg, ${preset.light ? '#fff, ' : ''}${preset.from}, ${preset.to})`;
       button.append(swatch, preset.label);
       button.style.whiteSpace = 'normal';
       button.addEventListener('click', () => {
@@ -282,7 +282,7 @@ class DepthForgeApp {
         this.#saveSettings();
         this.requestRender();
       });
-      $('heatGradientPresets').append(button);
+      $(preset.light ? 'lightHeatGradientPresets' : 'heatGradientPresets').append(button);
     }
     this.#syncPaletteControls();
     $('sensitivityRange').addEventListener('input', event => {
@@ -1109,7 +1109,7 @@ class DepthForgeApp {
 
   #syncPaletteControls() {
     this.settings.palette = normalizeHeatPalette(this.settings.palette);
-    for (const button of $('heatGradientPresets').children) {
+    for (const button of document.querySelectorAll('#heatGradientPresets button, #lightHeatGradientPresets button')) {
       const selected = button.dataset.palette === this.settings.palette;
       button.setAttribute('aria-pressed', String(selected));
       button.classList.toggle('active-toggle', selected);

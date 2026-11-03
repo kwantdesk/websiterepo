@@ -1,7 +1,7 @@
 import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=20261030-smart-clustering';
 import { cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
-import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=heat-gradient-presets';
+import { heatOverlayAccents, paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=heat-gradient-contrast';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
 import { writeHeatRgba } from './heat-raster.js?v=20261020-smooth-motion';
 
@@ -19,7 +19,7 @@ function dimPalette(palette, level) {
     const floor = palette[channel];
     for (let index = 0; index < 256; index += 1) {
       const offset = index * 3 + channel;
-      output[offset] = Math.max(floor, Math.round(palette[offset] - (palette[offset] - floor) * dimming));
+      output[offset] = Math.round(palette[offset] + (floor - palette[offset]) * dimming);
     }
   }
   return output;
@@ -315,6 +315,7 @@ export class DepthRenderer {
     const end = Math.min(history.length - 1, endIndex);
     const current = history[end];
     const accents = paletteAccents(settings.palette);
+    const overlayAccents = settings.heatmap ? heatOverlayAccents(settings.palette) : accents;
     this.chrome = canvasUiTheme(settings.uiTheme);
     // Reading computed styles in every market frame forces a synchronous style
     // calculation for the entire embedded terminal. Fonts change only when a
@@ -456,13 +457,13 @@ export class DepthRenderer {
     ctx.fillRect(0, 0, width, height);
     if (settings.heatmap) this.#drawHeatmap(ctx, history, start, end, current, settings);
     this.#drawGrid(ctx, history, settings);
-    if (settings.trails) this.#drawInsideMarket(ctx, history, accents);
+    if (settings.trails) this.#drawInsideMarket(ctx, history, overlayAccents);
     // Viewport interaction must never change what market data is visible.
     // The heat raster itself is cached while the user drags, but executions
     // and the right-side bid/ask profiles are inexpensive overlays and must
     // stay painted. Hiding them on pointer-down made a harmless grab look like
     // the live trade feed and resting book had disappeared.
-    if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
+    if (settings.trades) this.#drawTrades(ctx, history, settings, overlayAccents);
     this.#drawBottomVolume(ctx, history, accents);
     if (volumeRatioWidth > 0) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
@@ -633,7 +634,9 @@ export class DepthRenderer {
     const trailWidth = Number.isFinite(minimumSpreadPixels)
       ? Math.max(0.5, Math.min(3, minimumSpreadPixels * 0.65))
       : 3;
-    const drawTrail = (field, color, extensionColor) => {
+    const drawTrail = (field, accent) => {
+      const color = colorCss(accent);
+      const outline = colorCss(readableAccentText(accent));
       ctx.save();
       const path = new Path2D();
       let started = false;
@@ -653,21 +656,29 @@ export class DepthRenderer {
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       ctx.setLineDash([]);
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = trailWidth + 2;
+      ctx.stroke(path);
       ctx.strokeStyle = color;
       ctx.lineWidth = trailWidth;
       ctx.stroke(path);
       ctx.beginPath();
       ctx.moveTo(layout.dataWidth, previousY);
       ctx.lineTo(layout.plotWidth, previousY);
-      ctx.strokeStyle = extensionColor;
+      ctx.strokeStyle = color;
       ctx.lineWidth = trailWidth;
       ctx.lineCap = 'butt';
       ctx.setLineDash([8, 8]);
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = trailWidth + 2;
+      ctx.stroke();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = trailWidth;
       ctx.stroke();
       ctx.restore();
     };
-    drawTrail('bestBid', colorCss(accents.bid), colorCss(accents.bid, .95));
-    drawTrail('bestAsk', colorCss(accents.ask), colorCss(accents.ask, .95));
+    drawTrail('bestBid', accents.bid);
+    drawTrail('bestAsk', accents.ask);
   }
 
   #drawTrades(ctx, history, settings, accents) {
@@ -776,6 +787,7 @@ export class DepthRenderer {
     sprite.height = diameter;
     const spriteContext = sprite.getContext('2d');
     const image = spriteContext.createImageData(diameter, diameter);
+    const rim = readableAccentText(color);
     for (let x = 0; x < diameter; x += 1) {
       const normalX = (x - radius) / radius;
       for (let y = 0; y < diameter; y += 1) {
@@ -787,9 +799,8 @@ export class DepthRenderer {
         light = Math.pow(light, 0.7);
         const intensity = Math.sqrt(light * light * 0.98 + 0.02);
         const offset = (y * diameter + x) * 4;
-        image.data[offset] = color[0] * intensity;
-        image.data[offset + 1] = color[1] * intensity;
-        image.data[offset + 2] = color[2] * intensity;
+        const shade = distance > .88 ? rim : color.map(channel => channel * (.45 + .55 * intensity));
+        image.data.set(shade, offset);
         // The user's transparency control is applied once when the cluster is
         // drawn. Baking a second 75% alpha into the sphere made even the zero
         // transparency position look washed out. Keep the sphere itself fully

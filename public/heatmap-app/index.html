@@ -335,6 +335,10 @@
           <legend>Heat gradient</legend>
           <div id="heatGradientPresets" role="group" aria-label="Heat gradient" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px"></div>
         </fieldset>
+        <fieldset>
+          <legend>Light gradients</legend>
+          <div id="lightHeatGradientPresets" role="group" aria-label="Light gradients" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px"></div>
+        </fieldset>
         <label>Heat sensitivity <output id="sensitivityOutput">0.10</output><input id="sensitivityRange" type="range" min="0.1" max="2.5" step="0.05" value="0.1"></label>
         <label>Heatmap dimming <output id="dimmingOutput">40</output><input id="dimmingRange" type="range" min="0" max="100" step="1" value="40"></label>
         <label>Heatmap filter<select id="heatmapFilterSelect"><option value="auto">Auto</option><option value="gaussian">Gaussian</option><option value="none">None</option></select></label>
@@ -396,6 +400,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=heat-gradient-presets"></script>
+  <script type="module" src="src/main.js?v=heat-gradient-contrast"></script>
 </body>
 </html>
