@@ -232,6 +232,12 @@ export class PrecisionToolsStore {
     this.emit();
   }
 
+  restoreObjects(objects: PrecisionObject[]): void {
+    this.objects = cloneObjects(objects);
+    this.selectedIds = []; this.draft = null;
+    this.emit();
+  }
+
   replaceDocument(document: PrecisionDocument): void {
     this.checkpoint();
     this.objects = cloneObjects(document.objects);

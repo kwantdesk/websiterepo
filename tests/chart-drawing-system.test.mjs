@@ -53,15 +53,15 @@ test("all 41 actions resolve through the authoritative canvas registry", () => {
 });
 
 test("drawings are isolated by chart pane and migrated from the legacy key", () => {
-  assert.match(workspace, /chartInstanceId=\{pane\.id\}/);
+  assert.match(workspace, /chartInstanceId=\{workspaceChartInstanceId\(chartWorkspaceScope, pane\.id\)\}/);
   assert.match(chart, /kwantdesk:chart-drawings:v1:\$\{chartInstanceId\}:\$\{instrument\}/);
   assert.match(chart, /kwantify-chart-drawings:\$\{instrument\}/);
   assert.match(chart, /drawingPersistenceInstrument/);
 });
 
 test("drawing controls include history, clipboard, templates, magnet and keep mode", () => {
-  assert.match(chart, /professionalUndoStackRef/);
-  assert.match(chart, /professionalRedoStackRef/);
+  assert.match(chart, /useChartDrawingUndo/);
+  assert.match(chart, /drawingUndo.record/);
   assert.match(chart, /professionalClipboardRef/);
   assert.match(chart, /kwantdesk:drawing-templates:v1/);
   assert.match(chart, /kwantdesk:drawing-favourites:v1/);
@@ -179,8 +179,7 @@ test("clear all drawings removes every chart-scoped drawing layer and persisted 
   assert.match(clearAction, /professionalDrawingManagerRef\.current\?\.clearAll\(\)/);
   assert.match(clearAction, /setProfessionalDrawings\(\[\]\)/);
   assert.match(clearAction, /setDrawings\(\[\]\)/);
-  assert.match(clearAction, /professionalUndoStackRef\.current = \[\]/);
-  assert.match(clearAction, /professionalRedoStackRef\.current = \[\]/);
+  assert.match(clearAction, /drawingUndo\.clear\(\)/);
   assert.match(clearAction, /setSelectedProfessionalDrawingId\(null\)/);
   assert.match(clearAction, /setPrecisionClearRevision\(\(revision\) => revision \+ 1\)/);
   assert.match(clearAction, /drawingsStorageKey\(instrument, chartInstanceId\)/);

@@ -31,6 +31,7 @@ interface Props {
   externalSelectionMode?: boolean;
   externalKeepDrawing?: boolean;
   clearRevision?: number;
+  onHistoryEdit?: (before: PrecisionObject[], after: PrecisionObject[], restore: (objects: PrecisionObject[]) => void) => void;
   onExternalToolComplete?: () => void;
   onExternalSelectionBox?: (bounds: { left: number; right: number; top: number; bottom: number }) => boolean;
 }
@@ -140,6 +141,7 @@ export default function PrecisionToolsLayer({
   theme,
   enabled = true,
   externalActiveTool = null,
+  onHistoryEdit,
   externalSelectionMode = false,
   externalKeepDrawing = false,
   clearRevision = 0,
@@ -812,6 +814,10 @@ export default function PrecisionToolsLayer({
       zoomStartRef.current = null;
     }
     if (dragRef.current) {
+      const original = dragRef.current.original;
+      const after = store.getSnapshot().objects;
+      const before = after.map(object => object.id === original.id ? original : object);
+      onHistoryEdit?.(before, after, objects => store.restoreObjects(objects));
       const wasDormantGrab = dragRef.current.dormantGrab === true;
       dragRef.current = null;
       store.finishObjectEdit();
@@ -840,7 +846,7 @@ export default function PrecisionToolsLayer({
       const meta = event.ctrlKey || event.metaKey;
       if (event.key === "Escape") { release(); return; }
       if ((event.key === "Delete" || event.key === "Backspace") && snapshot.selectedIds.length) { event.preventDefault(); store.remove(); }
-      if (meta && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? store.redo() : store.undo(); }
+      if (!onHistoryEdit && !event.defaultPrevented && meta && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? store.redo() : store.undo(); }
       if (meta && event.key.toLowerCase() === "d") { event.preventDefault(); store.duplicate(); }
       if (meta && event.key.toLowerCase() === "l" && snapshot.selectedIds.length) { event.preventDefault(); snapshot.selectedIds.forEach((id) => store.toggleObjectLock(id)); }
       if (event.altKey && /^[1-9]$/.test(event.key)) { event.preventDefault(); setActiveConfigSlot(Number(event.key)); }
@@ -853,7 +859,7 @@ export default function PrecisionToolsLayer({
     };
     window.addEventListener("keydown", handle); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", handle); window.removeEventListener("keyup", up); };
-  }, [chartId, engaged, release, setActiveConfigSlot, snapshot.objects, snapshot.selectedIds, store, workspaceId]);
+  }, [chartId, engaged, onHistoryEdit, release, setActiveConfigSlot, snapshot.objects, snapshot.selectedIds, store, workspaceId]);
 
   const clipboardMenu = useChartDrawingClipboard({
     svgRef: interactionCanvasRef, selectedId: snapshot.selectedIds[0] ?? null,

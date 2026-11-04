@@ -57,9 +57,10 @@ test('actual retained layer callbacks cannot discard a drawing created after the
   const layer=find(source,n=>ts.isJsxSelfClosingElement(n)&&n.tagName.getText(source)==='ChartDrawLayer');
   const declaration=find(source,n=>ts.isVariableDeclaration(n)&&n.name.getText(source)==='commitDrawings');
   assert.ok(layer);assert.ok(declaration);
-  const ctx=vm.createContext({chartingDrawings:[],chartingDrawingsRef:{current:[]},normalizeDrawings,onChartingDrawingsChange:()=>{},setDrawSelectedId:()=>{}});
+  const ctx=vm.createContext({chartingDrawings:[],chartingDrawingsRef:{current:[]},normalizeDrawings,drawingUndo:{record:()=>{}},onChartingDrawingsChange:()=>{},setDrawSelectedId:()=>{}});
   const callback=declaration.initializer.arguments[0].getText(source);
-  let code=`var commitDrawings=${callback};`;
+  const update=find(source,n=>ts.isFunctionDeclaration(n)&&n.name?.text==='updateSvgDrawing');
+  let code=`var commitDrawings=${callback};${update.getText(source)}`;
   for(const name of ['onCommit','onUpdate']){
     const attr=layer.attributes.properties.find(a=>a.name?.getText(source)===name);
     code+=`var ${name}=${attr.initializer.expression.getText(source)};`;

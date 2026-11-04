@@ -1,4 +1,5 @@
 "use client";
+import { useChartDrawingUndo } from "@/components/useChartDrawingUndo";
 import { recordChartTickPaint } from "@/lib/chartTickAudit";
 import { futuresAwarePriceFormat } from "@/lib/instrumentPriceFormat";
 
@@ -3735,18 +3736,8 @@ function Chart({
   // rather than to whatever was current when the effect was created.
   const chartingDrawingsRef = useRef<Drawing[]>(chartingDrawings);
   chartingDrawingsRef.current = chartingDrawings;
-  const svgUndo = useRef<{ id: string; before: Drawing; after: Drawing }[]>([]);
-  const svgRedo = useRef<typeof svgUndo.current>([]);
-  const svgGesture = useRef<string | null>(null);
-  useEffect(() => {
-    svgUndo.current = [];
-    svgRedo.current = [];
-    svgGesture.current = null;
-    const resetGesture = () => { svgGesture.current = null; };
-    window.addEventListener("pointerdown", resetGesture, true);
-    return () => window.removeEventListener("pointerdown", resetGesture, true);
-  }, [instrument, chartInstanceId]);
-
+  const drawingUndo = useChartDrawingUndo(chartContainerRef, `${chartInstanceId}:${instrument}`, keyboardActive);
+  const legacyMoveBeforeRef = useRef<ChartDrawing[] | null>(null);
   const professionalDrawingsLoadGenerationRef = useRef(0);
   const professionalDrawingsRenderGeneration = professionalDrawingsLoadGenerationRef.current;
   const professionalDrawingManagerRef = useRef<DrawingManager | null>(null);
@@ -3755,14 +3746,10 @@ function Chart({
   const professionalSuppressNextClickRef = useRef(false);
   const professionalPendingAnchorsRef = useRef<ProfessionalDrawingAnchor[]>([]);
   const professionalSyncSuppressedRef = useRef(false);
-  const professionalUndoStackRef = useRef<ProfessionalDrawingRecord[][]>([]);
-  const professionalRedoStackRef = useRef<ProfessionalDrawingRecord[][]>([]);
   const professionalClipboardRef = useRef<ProfessionalDrawingRecord | null>(null);
   const professionalClipboardPasteCountRef = useRef(0);
   const legacyDrawingClipboardRef = useRef<ChartDrawing | null>(null);
   const legacyDrawingPasteCountRef = useRef(0);
-  const professionalUpdateHistoryOpenRef = useRef(false);
-  const professionalUpdateHistoryTimerRef = useRef<number | null>(null);
   const selectedToolRef = useRef<DrawingToolId>("cursor");
   const crosshairSyncEnabledRef = useRef(crosshairSyncEnabled);
   const [draftDrawing, setDraftDrawing] = useState<ChartDrawing | null>(null);
@@ -4032,30 +4019,12 @@ function Chart({
   function updateSvgDrawing(drawing: Drawing) {
     const previous = chartingDrawingsRef.current.find(({ id }) => id === drawing.id);
     if (!previous || JSON.stringify(previous) === JSON.stringify(drawing)) return;
-    const entry = svgUndo.current.at(-1);
-    if (svgGesture.current === drawing.id && entry?.id === drawing.id) {
-      entry.after = drawing;
-    } else {
-      svgUndo.current.push({ id: drawing.id, before: previous, after: drawing });
-      if (svgUndo.current.length > 100) svgUndo.current.shift();
-      svgGesture.current = drawing.id;
-    }
-    svgRedo.current = [];
+    drawingUndo.record("svg:" + drawing.id, previous, drawing, value => {
+      commitDrawings(chartingDrawingsRef.current.map(item => item.id === value.id ? value : item));
+    });
     commitDrawings(chartingDrawingsRef.current.map((item) => item.id === drawing.id ? drawing : item));
   }
 
-  function restoreSvgDrawingEdit(redo: boolean) {
-    const source = redo ? svgRedo.current : svgUndo.current;
-    const destination = redo ? svgUndo.current : svgRedo.current;
-    const entry = source.at(-1);
-    if (!entry || !chartingDrawingsRef.current.some(({ id }) => id === entry.id)) return false;
-    source.pop();
-    destination.push(entry);
-    svgGesture.current = null;
-    commitDrawings(chartingDrawingsRef.current.map((item) =>
-      item.id === entry.id ? (redo ? entry.after : entry.before) : item));
-    return true;
-  }
 
   // Backspace / Delete removes the selected charting drawing (only on the
   // focused pane, and never while typing into a field).
@@ -5069,10 +5038,6 @@ function Chart({
     if (indicatorSampleTimerRef.current !== null) {
       window.clearTimeout(indicatorSampleTimerRef.current);
       indicatorSampleTimerRef.current = null;
-    }
-    if (professionalUpdateHistoryTimerRef.current !== null) {
-      window.clearTimeout(professionalUpdateHistoryTimerRef.current);
-      professionalUpdateHistoryTimerRef.current = null;
     }
     cancelChartFrameWork(`indicators:${chartFrameWorkKey}`);
   }, [chartFrameWorkKey]);
@@ -13487,20 +13452,6 @@ function Chart({
     setDrawingHistoryRevision((revision) => revision + 1);
   }
 
-  function undoProfessionalDrawing() {
-    const snapshot = professionalUndoStackRef.current.pop();
-    if (!snapshot) return;
-    professionalRedoStackRef.current.push(professionalDrawingsRef.current);
-    restoreProfessionalDrawingSnapshot(snapshot);
-  }
-
-  function redoProfessionalDrawing() {
-    const snapshot = professionalRedoStackRef.current.pop();
-    if (!snapshot) return;
-    professionalUndoStackRef.current.push(professionalDrawingsRef.current);
-    restoreProfessionalDrawingSnapshot(snapshot);
-  }
-
   function copySelectedProfessionalDrawing() {
     const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
     if (selected) {
@@ -13563,6 +13514,7 @@ function Chart({
     const manager = professionalDrawingManagerRef.current;
     if (!manager) return;
     const records = manager.exportDrawings().filter((record) => record.id !== "__kwantdesk_drawing_preview__");
+    drawingUndo.record("professional", professionalDrawingsRef.current, records, restoreProfessionalDrawingSnapshot);
     professionalDrawingsRef.current = records;
     setProfessionalDrawings(records);
     setDrawingHistoryRevision((revision) => revision + 1);
@@ -13574,17 +13526,6 @@ function Chart({
   ) {
     const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
     if (!selected) return;
-    if (!professionalUpdateHistoryOpenRef.current) {
-      professionalUndoStackRef.current.push(professionalDrawingsRef.current);
-      if (professionalUndoStackRef.current.length > 100) professionalUndoStackRef.current.shift();
-      professionalRedoStackRef.current = [];
-      professionalUpdateHistoryOpenRef.current = true;
-    }
-    if (professionalUpdateHistoryTimerRef.current !== null) window.clearTimeout(professionalUpdateHistoryTimerRef.current);
-    professionalUpdateHistoryTimerRef.current = window.setTimeout(() => {
-      professionalUpdateHistoryOpenRef.current = false;
-      professionalUpdateHistoryTimerRef.current = null;
-    }, 250);
     selected.updateStyle(stylePatch);
     selected.updateOptions(optionsPatch);
     syncProfessionalManagerNow();
@@ -13698,18 +13639,12 @@ function Chart({
   }
 
   function clearAllChartDrawings() {
+    drawingUndo.clear();
     // Invalidate any in-flight hydration before clearing so an older server response
     // cannot restore drawings after the user has removed them.
     professionalDrawingsLoadGenerationRef.current += 1;
     professionalDrawingsHydrationRef.current = { instrument, ready: true };
 
-    if (professionalUpdateHistoryTimerRef.current !== null) {
-      window.clearTimeout(professionalUpdateHistoryTimerRef.current);
-      professionalUpdateHistoryTimerRef.current = null;
-    }
-    professionalUpdateHistoryOpenRef.current = false;
-    professionalUndoStackRef.current = [];
-    professionalRedoStackRef.current = [];
     professionalClipboardRef.current = null;
     professionalPendingAnchorsRef.current = [];
     professionalDrawingPreviewRef.current = null;
@@ -14449,6 +14384,7 @@ function Chart({
         setPositionSettingsDrawingId((current) => current && current !== interactive.drawing.id ? null : current);
         if (!drawingsLocked) {
           event.currentTarget.setPointerCapture(event.pointerId);
+          legacyMoveBeforeRef.current = structuredClone(drawings);
           setDrawingInteraction({
             drawingId: interactive.drawing.id,
             mode: interactive.hit.mode,
@@ -14599,6 +14535,8 @@ function Chart({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     if (drawingInteraction) {
+      if (legacyMoveBeforeRef.current) drawingUndo.record("legacy", legacyMoveBeforeRef.current, drawings, setDrawings);
+      legacyMoveBeforeRef.current = null;
       setDrawingInteraction(null);
       return;
     }
@@ -15705,17 +15643,7 @@ function Chart({
       const records = drawingManager.exportDrawings().filter((record) => record.id !== "__kwantdesk_drawing_preview__");
       const previous = professionalDrawingsRef.current;
       if (JSON.stringify(previous) === JSON.stringify(records)) return;
-      if (!professionalUpdateHistoryOpenRef.current) {
-        professionalUndoStackRef.current.push(previous);
-        if (professionalUndoStackRef.current.length > 100) professionalUndoStackRef.current.shift();
-        professionalRedoStackRef.current = [];
-        professionalUpdateHistoryOpenRef.current = true;
-      }
-      if (professionalUpdateHistoryTimerRef.current !== null) window.clearTimeout(professionalUpdateHistoryTimerRef.current);
-      professionalUpdateHistoryTimerRef.current = window.setTimeout(() => {
-        professionalUpdateHistoryOpenRef.current = false;
-        professionalUpdateHistoryTimerRef.current = null;
-      }, 250);
+      drawingUndo.record("professional", previous, records, restoreProfessionalDrawingSnapshot);
       professionalDrawingsRef.current = records;
       setProfessionalDrawings(records);
       setDrawingHistoryRevision((revision) => revision + 1);
@@ -15837,6 +15765,7 @@ function Chart({
     const resetMagnetGesture = () => magnetResolverRef.current.reset();
     window.addEventListener("mouseup", resetMagnetGesture, true);
     window.addEventListener("mouseup", flushProfessionalDrawingStateSync);
+    window.addEventListener("pointerup", flushProfessionalDrawingStateSync);
 
     const isDrawingUiTarget = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -16336,6 +16265,7 @@ function Chart({
       window.removeEventListener("mouseup", handleProfessionalDrawingPointerUp, true);
       window.removeEventListener("mouseup", resetMagnetGesture, true);
       window.removeEventListener("mouseup", flushProfessionalDrawingStateSync);
+      window.removeEventListener("pointerup", flushProfessionalDrawingStateSync);
       if (professionalDrawingStateTimer !== null) {
         window.clearTimeout(professionalDrawingStateTimer);
         professionalDrawingStateTimer = null;
@@ -18139,20 +18069,8 @@ function Chart({
       // Legacy drawing handlers must not paste into every mounted panel.
       if (commandKey && ["c", "v", "d"].includes(event.key.toLowerCase())
         && (activeChartKeyboardTargetId !== chartInstanceId || event.defaultPrevented)) return;
-      if (commandKey && ["z", "y"].includes(event.key.toLowerCase())) {
-        if (isTypingContext || event.defaultPrevented || activeChartKeyboardTargetId !== chartInstanceId) return;
-        const redo = event.shiftKey || event.key.toLowerCase() === "y";
-        const professionalHistory = redo ? professionalRedoStackRef.current : professionalUndoStackRef.current;
-        if ((drawSelectedId || professionalHistory.length === 0) && restoreSvgDrawingEdit(redo)) {
-          event.preventDefault();
-          return;
-        }
-        if (professionalHistory.length === 0) return;
-        event.preventDefault();
-        if (redo) redoProfessionalDrawing();
-        else undoProfessionalDrawing();
-        return;
-      }
+      // Drawing undo/redo is routed once, in capture, by useChartDrawingUndo.
+      if (commandKey && ["z", "y"].includes(event.key.toLowerCase())) return;
       if (!isTypingContext && commandKey && event.key.toLowerCase() === "c") {
         if (selectedDrawingId) copyLegacyDrawing(selectedDrawingId);
         else copySelectedProfessionalDrawing();
@@ -21109,6 +21027,7 @@ function Chart({
           <PrecisionToolsLayer
             workspaceId={workspaceId}
             chartId={`${chartInstanceId}:${normalizePaperSymbol(contractSymbol ?? instrument)}`}
+            onHistoryEdit={(before, after, restore) => drawingUndo.record("precision", before, after, restore)}
             adapter={precisionAdapter}
             theme={precisionTheme}
             externalActiveTool={precisionToolForDrawingTool(selectedTool)}
