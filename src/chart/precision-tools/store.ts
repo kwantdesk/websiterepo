@@ -232,8 +232,8 @@ export class PrecisionToolsStore {
     this.emit();
   }
 
-  restoreObjects(objects: PrecisionObject[]): void {
-    this.objects = cloneObjects(objects);
+  restoreObject(object: PrecisionObject): void {
+    this.objects = this.objects.map(current => current.id === object.id ? cloneObjects([object])[0] : current);
     this.selectedIds = []; this.draft = null;
     this.emit();
   }

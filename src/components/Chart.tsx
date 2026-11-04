@@ -14535,7 +14535,12 @@ function Chart({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     if (drawingInteraction) {
-      if (legacyMoveBeforeRef.current) drawingUndo.record("legacy", legacyMoveBeforeRef.current, drawings, setDrawings);
+      const movedId = drawingInteraction.drawingId;
+      const before = legacyMoveBeforeRef.current?.find(drawing => drawing.id === movedId);
+      const after = drawings.find(drawing => drawing.id === movedId);
+      if (before && after) drawingUndo.record("legacy:" + movedId, before, after, value => {
+        setDrawings(current => current.map(drawing => drawing.id === movedId ? value : drawing));
+      });
       legacyMoveBeforeRef.current = null;
       setDrawingInteraction(null);
       return;

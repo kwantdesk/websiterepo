@@ -815,9 +815,10 @@ export default function PrecisionToolsLayer({
     }
     if (dragRef.current) {
       const original = dragRef.current.original;
-      const after = store.getSnapshot().objects;
-      const before = after.map(object => object.id === original.id ? original : object);
-      onHistoryEdit?.(before, after, objects => store.restoreObjects(objects));
+      const latest = store.getSnapshot().objects.find(object => object.id === original.id);
+      if (latest) onHistoryEdit?.([original], [latest], objects => {
+        if (objects[0]) store.restoreObject(objects[0]);
+      });
       const wasDormantGrab = dragRef.current.dormantGrab === true;
       dragRef.current = null;
       store.finishObjectEdit();
