@@ -1,0 +1,19 @@
+{
+  "tests": 14,
+  "passed": 14,
+  "failed": 0,
+  "scope": "Actual Next middleware matcher and existing authentication/deadline regression suites",
+  "publicAssets": [
+    "/phone-workspace.css",
+    "/phone-workspace.js"
+  ],
+  "protectedExamples": [
+    "/charts",
+    "/journal",
+    "/api/kwanty/snapshot",
+    "/api/gex-data/status",
+    "/api/phone-workspace.js",
+    "/phone-workspace.js/other",
+    "/phone-workspace.css/private"
+  ]
+}

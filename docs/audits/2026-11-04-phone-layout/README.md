@@ -46,6 +46,11 @@ were added by this change.
 - KWANTY's actual timeframe button updates its original interval input. GEX
   Data's saved panels remain selectable, with one full-width tool visible.
 - All three embedded pages restore original desktop control DOM positions.
+- Production probing caught the new root-level phone CSS/JS being redirected
+  through the sign-in middleware. Their exact two paths now bypass middleware,
+  like the existing public presentation bundles. Next's real matcher verifies
+  versioned asset URLs bypass it while account/data routes and path suffixes
+  remain protected. All 14 phone/middleware-auth regression tests pass.
 - Full Next production build and final TypeScript check passed. Scoped lint
   passed with two existing AppSidebar image-optimization warnings.
 

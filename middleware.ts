@@ -231,5 +231,5 @@ export const config = {
   // browser then renders the map's raw HTML controls without its stylesheet.
   // Live data still comes from protected /api routes, so bypass only the
   // immutable presentation bundle here.
-  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|cookie-recovery.html|heatmap-app/|shared/indicator-gradients[.]js$|gex-data-app/|kwanty-app/|fonts/aleph/|images/|brand/).*)"],
+  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|cookie-recovery.html|heatmap-app/|shared/indicator-gradients[.]js$|gex-data-app/|kwanty-app/|phone-workspace[.]css$|phone-workspace[.]js$|fonts/aleph/|images/|brand/).*)"],
 };
