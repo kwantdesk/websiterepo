@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-11-04T04:45:35.021Z",
+  "catalogue": 124,
+  "defaultSettings": 4302,
+  "dialogIndicators": 124,
+  "dialogInteractions": 10230,
+  "interactionErrors": 0,
+  "lifecyclePassed": 122,
+  "drawingPlacementArmed": 1,
+  "intentionallyInternalAdapters": 1,
+  "saveCloseReopenPassed": 124,
+  "inputSaveChecks": 2397,
+  "inputConstraints": [
+    {
+      "id": "pulling-stacking",
+      "keys": [
+        "includeOwnOrders",
+        "includeImpliedOrders"
+      ],
+      "reason": "unsupported pipeline capabilities; disabled and labelled"
+    },
+    {
+      "id": "deep-delta",
+      "keys": [
+        "range4Maximum"
+      ],
+      "reason": "ordered-range guard raises nonzero maximum to the minimum (31); zero remains unlimited"
+    }
+  ],
+  "gradientSaveRestoreChecks": 1488,
+  "colourSaveChecks": 669,
+  "genericCalculators": 49,
+  "outputMutationsChanged": 340,
+  "authoritativeSuitesPassed": 11,
+  "authoritativeSuites": 11,
+  "targetedBehavioralTests": {
+    "tests": 31,
+    "passed": 31,
+    "failed": 0
+  },
+  "numericSliderExistingChecks": {
+    "tests": 9,
+    "passed": 9
+  },
+  "dropdownIndicators": 124,
+  "dropdownChoices": 2072,
+  "dropdownOptionsWithoutSavedChange": 0,
+  "initialExistingCommands": {
+    "total": 237,
+    "passed": 182,
+    "failed": 55
+  },
+  "build": "full Next production build passed",
+  "lint": "modified library files passed; modified components passed standard React/Next lint with 138 warnings. Optional React Compiler analysis disabled for this invocation after memory exhaustion; default full lint is not claimed as passed."
+}

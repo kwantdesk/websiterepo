@@ -4,40 +4,40 @@
     "id": "depth-of-market",
     "key": "showCumulative",
     "value": false,
-    "status": "open legacy control reconciliation",
-    "evidence": "No literal runtime consumer; current DOM columns are domColumns"
+    "status": "fixed; dedicated DOM controls tests",
+    "evidence": "src/lib/domPro.ts + DepthOfMarketPanel.tsx + ChartIndicatorsControl.tsx"
   },
   {
     "indicator": "DOM Pro",
     "id": "depth-of-market",
     "key": "showOrderCount",
     "value": false,
-    "status": "open legacy control reconciliation",
-    "evidence": "No literal runtime consumer; current DOM columns are domColumns"
+    "status": "fixed; dedicated DOM controls tests",
+    "evidence": "src/lib/domPro.ts + DepthOfMarketPanel.tsx + ChartIndicatorsControl.tsx"
   },
   {
     "indicator": "DOM Pro",
     "id": "depth-of-market",
     "key": "showPullStack",
     "value": true,
-    "status": "open legacy control reconciliation",
-    "evidence": "No literal runtime consumer; current DOM columns are domColumns"
+    "status": "fixed; dedicated DOM controls tests",
+    "evidence": "src/lib/domPro.ts + DepthOfMarketPanel.tsx + ChartIndicatorsControl.tsx"
   },
   {
     "indicator": "DOM Pro",
     "id": "depth-of-market",
     "key": "showRecentTrades",
     "value": true,
-    "status": "open legacy control reconciliation",
-    "evidence": "No literal runtime consumer; current DOM columns are domColumns"
+    "status": "fixed; dedicated DOM controls tests",
+    "evidence": "src/lib/domPro.ts + DepthOfMarketPanel.tsx + ChartIndicatorsControl.tsx"
   },
   {
     "indicator": "DOM Pro",
     "id": "depth-of-market",
     "key": "lastTradeColor",
     "value": "#FDE047",
-    "status": "open legacy control reconciliation",
-    "evidence": "No literal runtime consumer; current DOM columns are domColumns"
+    "status": "fixed; dedicated DOM controls tests",
+    "evidence": "src/lib/domPro.ts + DepthOfMarketPanel.tsx + ChartIndicatorsControl.tsx"
   },
   {
     "indicator": "Daily Volume Profile",
@@ -380,8 +380,8 @@
     "id": "ib-levels",
     "key": "globexColor",
     "value": "#A461BB",
-    "status": "requires individual trace",
-    "evidence": ""
+    "status": "dynamic path traced",
+    "evidence": "marketSessions.resolveMarketSessions reads `${session.key}Color`; Chart initialBalanceRenderData uses level.session.color when useSessionColors is on."
   },
   {
     "indicator": "Session Marker",

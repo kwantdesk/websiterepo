@@ -10,6 +10,7 @@ import type { BounceExposureNode, BounceLevelsSnapshot } from "@/lib/bounceLevel
 import { formatGexMapExposureLegend } from "@/lib/gexMapFormat";
 
 type CandleSeriesApi = SeriesAttachedParameter<Time, "Candlestick">["series"];
+export type BounceAlertMarker = { id: string; time: number; price: number; label: string };
 
 export type BounceLevelsPrimitiveData = {
   snapshot: BounceLevelsSnapshot;
@@ -330,6 +331,22 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
     if (!series || !chart || !data?.snapshot.exposureField.length) { this.primitive.setHits([]); return; }
     target.useMediaCoordinateSpace(({ context: targetContext, mediaSize }) => {
       if (mediaSize.width < 80 || mediaSize.height < 80) { this.primitive.setHits([]); return; }
+      const paintAlertMarkers = () => {
+        targetContext.save();
+        targetContext.beginPath();
+        targetContext.rect(0, 0, mediaSize.width, mediaSize.height);
+        targetContext.clip();
+        targetContext.fillStyle = data.positiveColor;
+        for (const marker of this.primitive.alertMarkers()) {
+          const x = chart.timeScale().timeToCoordinate(marker.time as Time);
+          const y = series.priceToCoordinate(marker.price);
+          if (x === null || y === null) continue;
+          targetContext.beginPath();
+          targetContext.arc(x, y, 4, 0, Math.PI * 2);
+          targetContext.fill();
+        }
+        targetContext.restore();
+      };
       const anchors = data.timeAnchors;
       const firstAnchor = anchors[0] ?? 0;
       const lastAnchor = anchors.at(-1) ?? firstAnchor;
@@ -361,6 +378,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           mediaSize.width,
           mediaSize.height,
         );
+        paintAlertMarkers();
         return;
       }
       const transformedLayer = this.primitive.transformedLayer(viewport);
@@ -387,6 +405,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         // tooltips during a gesture, then restore them with the settled draw.
         this.primitive.setHits([]);
         this.primitive.scheduleRefinement(layerKey);
+        paintAlertMarkers();
         return;
       }
       const layer = this.primitive.createLayer(mediaSize.width, mediaSize.height);
@@ -742,6 +761,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         mediaSize.width,
         mediaSize.height,
       );
+      paintAlertMarkers();
     });
   }
 }
@@ -760,6 +780,7 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
   private chartApi: IChartApi | null = null;
   private requestRedraw: (() => void) | null = null;
   private renderData: BounceLevelsPrimitiveData | null = null;
+  private eventMarkers: BounceAlertMarker[] = [];
   private hits: RenderedHit[] = [];
   private renderRevision = 0;
   private layerKey = "";
@@ -904,6 +925,8 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
     this.layerPanelCount = this.activePanelCount();
   }
   series() { return this.candleSeries; }
+  setAlertMarkers(markers: BounceAlertMarker[]) { this.eventMarkers = markers; this.requestRedraw?.(); }
+  alertMarkers() { return this.eventMarkers; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }
   setHits(hits: RenderedHit[]) { this.hits = hits; }

@@ -40,6 +40,7 @@ import {
 } from "@/lib/chartIndicatorConfig";
 import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS, profileSessionEnabled } from "@/lib/volumeProfileSessions";
 import type { ChartSettings } from "@/lib/chartSettings";
+import { domProColumnToggleValue, patchDomProColumnToggle } from "@/lib/domPro";
 import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
 import { supportsPalette as indicatorSupportsPalette } from "@/lib/indicatorPaletteRegistry";
 import { CANDLE_STYLES, CANDLE_SETTING_KEYS, OPEN_CANDLE_SETTINGS_EVENT, candleSettingsUseThemeColors, resolveCandleStyle } from "@/lib/candleStyle";
@@ -693,7 +694,8 @@ function titleFromKey(key: string, indicatorId?: string) {
 }
 
 function isColourSetting(key: string, value: unknown) {
-  return /color$/i.test(key) && typeof value === "string";
+  return /color$/i.test(key) && typeof value === "string"
+    && /^(?:#|rgba?\(|hsla?\(|transparent$)/i.test(value);
 }
 
 const bounceThemeColours = (chartSettings: ChartSettings) => ({
@@ -1039,7 +1041,7 @@ function IndicatorSettingsSections({ children }: { children: ReactNode }) {
   }
   return (
     <>
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div data-indicator-settings-tabs="sections" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {sections.map((section) => (
           <button
             key={section}
@@ -2329,7 +2331,7 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
-                <div className="flex gap-1 overflow-x-auto border-b border-border pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div data-indicator-settings-tabs="profile" className="flex gap-1 overflow-x-auto border-b border-border pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {VOLUME_PROFILE_SETTINGS_TABS.map((tab) => (
                     <button
                       key={tab.id}
@@ -2555,7 +2557,8 @@ export default function ChartIndicatorsControl({
                       setVolumeProfileTemplateName("");
                       setVolumeProfileTemplateStatus(`Deleted ${target.name}`);
                     }}
-                    className="h-9 border border-border bg-background px-2 text-[8px] uppercase tracking-[0.1em] text-muted hover:text-foreground"
+                    disabled={!volumeProfileTemplates.some(template => template.name.toLowerCase() === volumeProfileTemplateName.trim().toLowerCase())}
+                    className="h-9 border border-border bg-background px-2 text-[8px] uppercase tracking-[0.1em] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
                   >
                     Delete template
                   </button>
@@ -3993,7 +3996,7 @@ export default function ChartIndicatorsControl({
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      <button type="button" onClick={() => {
+                      <button type="button" disabled={!gexIntervalPresetName.trim()} onClick={() => {
                         const name = gexIntervalPresetName.trim();
                         if (!name) return;
                         const preset = { id: crypto.randomUUID(), name, settings: { ...(settingsInstance.settings ?? {}) } };
@@ -4001,7 +4004,7 @@ export default function ChartIndicatorsControl({
                         setGexIntervalUserPresets(next);
                         setSelectedGexIntervalPresetId(preset.id);
                         persistGexIntervalUserPresets(next);
-                      }} className="h-8 border border-primary/35 bg-primary/10 text-[8px] font-semibold uppercase tracking-[0.08em] text-primary">Save new</button>
+                      }} className="h-8 border border-primary/35 bg-primary/10 text-[8px] font-semibold uppercase tracking-[0.08em] text-primary disabled:cursor-not-allowed disabled:opacity-35">Save new</button>
                       <button type="button" disabled={!selectedGexIntervalPresetId} onClick={() => {
                         const next = gexIntervalUserPresets.map((preset) => preset.id === selectedGexIntervalPresetId
                           ? { ...preset, name: gexIntervalPresetName.trim() || preset.name, settings: { ...(settingsInstance.settings ?? {}) } }
@@ -5496,6 +5499,7 @@ export default function ChartIndicatorsControl({
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       <button
                         type="button"
+                        disabled={!tpoPresetName.trim()}
                         onClick={() => {
                           const name = tpoPresetName.trim();
                           if (!name) return;
@@ -5510,7 +5514,7 @@ export default function ChartIndicatorsControl({
                           setSelectedTpoPresetId(preset.id);
                           persistTpoUserPresets(next);
                         }}
-                        className="h-8 border border-primary/35 bg-primary/10 text-[8px] font-semibold uppercase tracking-[0.08em] text-primary"
+                        className="h-8 border border-primary/35 bg-primary/10 text-[8px] font-semibold uppercase tracking-[0.08em] text-primary disabled:cursor-not-allowed disabled:opacity-35"
                       >Save new</button>
                       <button
                         type="button"
@@ -8333,19 +8337,25 @@ export default function ChartIndicatorsControl({
                   VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
                   || isTpoIndicator(settingsDefinition.id)
                 ) && isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset);
+                const unsupportedOrderFilter = (key: string) => settingsDefinition.id === "pulling-stacking"
+                  && (key === "includeOwnOrders" || key === "includeImpliedOrders");
                 const control = ([key, value]: readonly [string, unknown, string]) => (
                     typeof value === "boolean" ? (
                       <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
                         <input
                           type="checkbox"
-                          checked={value === true}
+                          disabled={unsupportedOrderFilter(key)}
+                          title={unsupportedOrderFilter(key) ? "Unavailable: own and implied order filters are not supported by the current depth pipeline." : undefined}
+                          checked={settingsDefinition.id === "depth-of-market" ? domProColumnToggleValue(settingsInstance.settings, key) ?? value === true : value === true}
                           onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
-                            settings: { ...(current.settings ?? {}), [key]: event.target.checked },
+                            settings: settingsDefinition.id === "depth-of-market"
+                              ? patchDomProColumnToggle(current.settings ?? {}, key, event.target.checked)
+                              : { ...(current.settings ?? {}), [key]: event.target.checked },
                           }))}
                           className="accent-primary"
                         />
-                        <span>{titleFromKey(key, settingsDefinition.id)}</span>
+                        <span>{titleFromKey(key, settingsDefinition.id)}{unsupportedOrderFilter(key) ? " · not supported" : ""}</span>
                       </label>
                     ) : (
                       <div key={key} className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">

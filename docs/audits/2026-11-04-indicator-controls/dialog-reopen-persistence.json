@@ -1,0 +1,994 @@
+[
+  {
+    "id": "big-blocks-options",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "gamma-environment",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "vix-environment",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "zero-gamma-line",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "options-delta",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "zero-gamma-bars",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "gamma-heatmap",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "net-gamma-exposure-by-strike",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "gex-interval-map",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "bounce-levels",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "dark-pool-map",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "dark-pool-gex",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "implied-volatility-rank",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "cumulative-volume-delta",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "cvd-divergence",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "pulling-stacking",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "delta-bar",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "delta-highlight",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "delta-cumulative-candlestick",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "delta-cumulative-histogram",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "imbalance-tracker",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "imbalance-rejector",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "unfinished-auction",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "bar-poc-indicator",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "dynamic-poc",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "speed-of-tape",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "speed-of-tape-instant",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "volume-delta-sprint",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "tape-speed-order-flow-burst",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "big-trades",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "ratio-highlight",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "stop-spotter",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "auction-gap-tracker",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "session-imbalance",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "absorption-detector",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "stacked-imbalance-suite",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "iceberg-refresh-detector",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "liquidity-stop-sweep-detector",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "poc-auction-suite",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "cumulative-iceberg-stop",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "book-speed",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "depth-of-market",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "mini-dom",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-print-footprint",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-delta",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-wall",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-v-tracker",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "volume",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "kwant-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "tpo-chart",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "weekly-tpo",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "weekly-volume-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "monthly-volume-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "session-volume-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "composite-volume-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "visible-range-volume-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "custom-draw-on-volume-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "ask-bid-volume-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "delta-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-profile-swing",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-profile-values",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "tpo-levels",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "vwap",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "vwap-envelopes",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "rolling-vwap",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "market-statistics",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "on-candle-stats",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "important-levels",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "absolute-levels",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "pivot-points",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "price-movement-levels",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "fvg-identifier",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "gap-detector",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "divergence-detector",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "confluence-identifier",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "swing-point",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "average-daily-range-target",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "sessions",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "session-highs-lows",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "ib-levels",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "gamma-levels",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "classic-gex-profile",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "session-marker",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "shift-candle",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "moving-average",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "ichimoku-indicator",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "parabolic-sar",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "linear-regression",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "regression-channel",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "super-trend",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "super-trend-difference",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "keltner-channel",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "bollinger-bands",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "donchian-channel",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "tillson-t3",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "zig-zag",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "relative-strength-index-rsi",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "rate-of-change-roc",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "macd-indicator",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "momentum-indicator",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "commodity-channel-index-cci",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "know-sure-thing-kst",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "inverse-cyber-cycle",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "aroon-up-down",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "aroon-oscillator",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "awesome-oscillator",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "stochastic-oscillator",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "williams-r",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "chaikin-accumulation-distribution",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "average-directional-index-adx",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "standard-deviation",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "average-true-range-atr",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "expected-move",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "overlay-chart",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "overlay-symbol",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "overlay-timeframe-candlestick",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "overlay-timeframe-highlight",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "text-on-chart",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "source-code-indicator",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "kwant-stats",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "hedge-levels",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-m-ivb",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-pattern-builder",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  },
+  {
+    "id": "deep-m-effort-nq",
+    "status": "passed",
+    "phases": [
+      "save",
+      "JSON restore / reopen"
+    ]
+  }
+]

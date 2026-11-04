@@ -1,0 +1,387 @@
+[
+  {
+    "name": "test:vwap-family",
+    "initialExitCode": 1,
+    "classification": "outdated requirement",
+    "evidence": "Anchored VWAP indicator card was explicitly removed; its drawing tool is retained. Failure expects the retired card.",
+    "failure": "✖ Anchored VWAP library card arms the authoritative drawing tool (142.5904ms) ✖ failing tests: ✖ Anchored VWAP library card arms the authoritative drawing tool (142.5904ms)"
+  },
+  {
+    "name": "test:mini-dom",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: the volume profile must dock against the ladder, not the pane"
+  },
+  {
+    "name": "test:delta-ladder",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: the ladder needs the executed price levels the footprint is built from"
+  },
+  {
+    "name": "test:candle-visibility",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: hiding must reuse the transparent-candle path"
+  },
+  {
+    "name": "test:deploy-cost",
+    "initialExitCode": 1,
+    "classification": "requires independent investigation",
+    "evidence": "Failure is retained. The indicator-control work does not establish its root cause. Do not mark this command passing.",
+    "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+  },
+  {
+    "name": "test:quantdata-coalescing",
+    "initialExitCode": 1,
+    "classification": "source slicing failure",
+    "evidence": "Source extraction reports a 222,791-character slice; fixture could not isolate its intended function.",
+    "failure": "AssertionError [ERR_ASSERTION]: slice looks wrong: 222791 chars"
+  },
+  {
+    "name": "test:draw-layer-anchoring",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: capturing the basis must run synchronously after the DOM update"
+  },
+  {
+    "name": "test:index-history-timeout",
+    "initialExitCode": 1,
+    "classification": "source slicing failure",
+    "evidence": "Source extraction rejects a 4,521-character slice; runtime deadline behavior was not exercised.",
+    "failure": "AssertionError [ERR_ASSERTION]: slice looks wrong: 4521 chars"
+  },
+  {
+    "name": "test:right-rail-drag",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: during a drag it tracks the pointer; otherwise it rests at one end"
+  },
+  {
+    "name": "test:indicator-plot-colors",
+    "initialExitCode": 1,
+    "classification": "conditional/dynamic plot contract",
+    "evidence": "Compares default visible output with every optional slot. Dynamic dated Important Levels, optional second colours, clouds and primitive text cannot be matched one-for-one by that rule. Dedicated output/settings fixtures are required.",
+    "failure": "AssertionError [ERR_ASSERTION]: slot map is stale — regenerate it:"
+  },
+  {
+    "name": "test:indicator-history-depth",
+    "initialExitCode": 1,
+    "classification": "timing threshold",
+    "evidence": "Ichimoku measured 8.1ms against an 8ms threshold at 20,000 bars. Benchmark sensitivity under concurrent load; repeat in isolated performance testing before changing history depth.",
+    "failure": "AssertionError [ERR_ASSERTION]: \"ichimoku-indicator\" costs 8.1ms at 20000 bars, over the 8ms budget. The recompute is main-thread and runs every 1-2s; leave this study on the lite window."
+  },
+  {
+    "name": "test:toolbar-single-source",
+    "initialExitCode": 1,
+    "classification": "runner/extension failure",
+    "evidence": "Runner cannot resolve extensionless chartDrawGeometry import; no feature assertion ran.",
+    "failure": "Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\src\\lib\\chartDrawGeometry' imported from C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\src\\lib\\chartDrawTools.ts"
+  },
+  {
+    "name": "test:chart-emoji-zoom-scale",
+    "initialExitCode": 1,
+    "classification": "source assertion",
+    "evidence": "Expected dynamic import; picker implementation changed. Zoom/render behavior is not measured by this assertion.",
+    "failure": "✖ toolbar exposes a scrollable picker including the magnet (1.0653ms) ✖ failing tests: ✖ toolbar exposes a scrollable picker including the magnet (1.0653ms)"
+  },
+  {
+    "name": "test:preference-hydration",
+    "initialExitCode": 1,
+    "classification": "runner/alias failure",
+    "evidence": "Node command omitted the repository alias hook; cannot resolve @/lib import.",
+    "failure": "Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@/lib' imported from C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\src\\lib\\chartSettings.ts"
+  },
+  {
+    "name": "test:volume-profile-split",
+    "initialExitCode": 1,
+    "classification": "outdated session count",
+    "evidence": "Fixture expects three sessions. Owner added independent Tokyo/Asia alongside Globex, London and New York.",
+    "failure": "AssertionError [ERR_ASSERTION]: expected Asia/London/New York, got 4"
+  },
+  {
+    "name": "test:volume-profile-grouping",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /groupingFloorFactor/. Input:"
+  },
+  {
+    "name": "test:volume-profile-gradients",
+    "initialExitCode": 1,
+    "classification": "label policy assertion",
+    "evidence": "Rejects existing Chromey Mono label under its endpoint-name heuristic; not a computed gradient failure.",
+    "failure": "AssertionError [ERR_ASSERTION]: chromey-mono label names neither its endpoints nor a real theme"
+  },
+  {
+    "name": "test:volume-profile-labels",
+    "initialExitCode": 1,
+    "classification": "outdated clipping expectation",
+    "evidence": "Fixture expects a label whose source is completely outside the visible plot to be pinned at the edge. Current placement may return null rather than stack off-screen labels at chart edges.",
+    "failure": "TypeError: Cannot read properties of null (reading 'top')"
+  },
+  {
+    "name": "test:overlay-in-frame",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /if \\(viewportFrame !== null\\) return;/. Input:"
+  },
+  {
+    "name": "test:profile-fold",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /appendBoundedPaneRecords\\(pendingProfileRecords, records\\)/. Input:"
+  },
+  {
+    "name": "test:drawing-selection",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /const handles = selected\\s*\\r?\\n?\\s*\\?/. Input:"
+  },
+  {
+    "name": "test:draw-tool-theme",
+    "initialExitCode": 1,
+    "classification": "requires independent investigation",
+    "evidence": "Failure is retained. The indicator-control work does not establish its root cause. Do not mark this command passing.",
+    "failure": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:"
+  },
+  {
+    "name": "test:position-tool-behaviour",
+    "initialExitCode": 1,
+    "classification": "requires independent investigation",
+    "evidence": "Failure is retained. The indicator-control work does not establish its root cause. Do not mark this command passing.",
+    "failure": "AssertionError [ERR_ASSERTION]: longPosition must not place three pills across the chart"
+  },
+  {
+    "name": "test:initial-balance-timeframe",
+    "initialExitCode": 1,
+    "classification": "requires independent investigation",
+    "evidence": "Failure is retained. The indicator-control work does not establish its root cause. Do not mark this command passing.",
+    "failure": "AssertionError [ERR_ASSERTION]: the live minute fetch must be off during replay"
+  },
+  {
+    "name": "test:profile-indicator-parity",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /profile\\.period === \"custom\" \\? compositeInstance : dailyInstance/. Input:"
+  },
+  {
+    "name": "test:tpo-default-visuals",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /clamp\\(periodEndX - offset, 2, mediaSize\\.width - 2\\)/. Input:"
+  },
+  {
+    "name": "test:live-chart-memory",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /marketTrades = EMPTY_CHART_ITEMS/. Input:"
+  },
+  {
+    "name": "test:live-overlay-lifetimes",
+    "initialExitCode": 1,
+    "classification": "source slicing failure",
+    "evidence": "Fixture start marker no longer exists; lifetime behavior was not exercised.",
+    "failure": "AssertionError [ERR_ASSERTION]: drawing viewport lifecycle: start marker was not found"
+  },
+  {
+    "name": "test:weekly-profile-window",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /endMs: weekEndMs \\?\\? undefined,/. Input:"
+  },
+  {
+    "name": "test:big-trade-levels",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: clearing the selection does not disarm it"
+  },
+  {
+    "name": "test:rithmic-bar-source",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /applyMarketTradesToEventBars\\(\\[\\], trades, timeframe, symbol, 250_000\\)/. Input:"
+  },
+  {
+    "name": "test:chart-watermark",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: Chart hardcodes the asset path"
+  },
+  {
+    "name": "test:gex-map-velocity",
+    "initialExitCode": 1,
+    "classification": "runner parse failure",
+    "evidence": "Duplicate declaration buildGexMapSnapshots prevents the test from loading.",
+    "failure": "SyntaxError: Identifier 'buildGexMapSnapshots' has already been declared"
+  },
+  {
+    "name": "test:gex-map-v2-first-paint",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /if \\(next\\[panel\\.id\\] && next\\[panel\\.id\\]\\?\\.model !== expectedModel\\) delete next\\[panel\\.id\\];/. Input:"
+  },
+  {
+    "name": "test:gex-map-v2-wiring",
+    "initialExitCode": 1,
+    "classification": "requires independent investigation",
+    "evidence": "Failure is retained. The indicator-control work does not establish its root cause. Do not mark this command passing.",
+    "failure": "AssertionError [ERR_ASSERTION]: exactly one mount may offer the dealer model"
+  },
+  {
+    "name": "test:liq-cache-busting",
+    "initialExitCode": 1,
+    "classification": "requires independent investigation",
+    "evidence": "Failure is retained. The indicator-control work does not establish its root cause. Do not mark this command passing.",
+    "failure": "AssertionError [ERR_ASSERTION]: index.html loads main.js with no ?v= at all"
+  },
+  {
+    "name": "test:indicator-palettes",
+    "initialExitCode": 1,
+    "classification": "obsolete palette ID assertion",
+    "evidence": "Fixture applies old indicator-to-profile scheme relationship and rejects chromey-mono. Shared profile schemes are now authoritative.",
+    "failure": "AssertionError [ERR_ASSERTION]: chromey-mono is not one of the profile schemes"
+  },
+  {
+    "name": "test:indicator-visibility",
+    "initialExitCode": 1,
+    "classification": "removed theme fixture",
+    "evidence": "Looks up removed Chromey Mono website theme without checking existence. Not evidence that current indicators are invisible.",
+    "failure": "TypeError: Cannot read properties of undefined (reading 'colors')"
+  },
+  {
+    "name": "test:news-provider-surface",
+    "initialExitCode": 1,
+    "classification": "outside indicator audit",
+    "evidence": "Loader sizing source assertion for NewsWorkspace. Tracked separately from indicator setting controls.",
+    "failure": "AssertionError [ERR_ASSERTION]: NewsWorkspace.tsx still sizes its loader by hand"
+  },
+  {
+    "name": "test:indicator-settings-save",
+    "initialExitCode": 1,
+    "classification": "source shape assertion replaced by interaction evidence",
+    "evidence": "Looks for a literal section tag and fixed-header source span. Actual header Save and normalized settings are exercised in dialog-interactions.json.",
+    "failure": "AssertionError [ERR_ASSERTION]: the shared Save is not in the fixed dialog header"
+  },
+  {
+    "name": "test:candle-style",
+    "initialExitCode": 1,
+    "classification": "mode key misclassified as colour",
+    "evidence": "Expected-colour list includes useThemeColors because of its name suffix; it is a boolean mode. Actual six candle colour pickers agree.",
+    "failure": "AssertionError [ERR_ASSERTION]: the candle pickers and the candle resolver disagree"
+  },
+  {
+    "name": "test:chart-history-state",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: whether a retry is scheduled is not established before deciding to keep loading"
+  },
+  {
+    "name": "test:chart-hydration-cover",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "✖ every workspace chart keeps a loader over empty candle state (3.0346ms) ✖ chart construction and workspace module transitions both show loaders (1.0021ms) ✖ failing tests:"
+  },
+  {
+    "name": "test:weekly-profile-week",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /endMs: weekEndMs \\?\\? undefined,/. Input:"
+  },
+  {
+    "name": "test:indicator-opacity",
+    "initialExitCode": 1,
+    "classification": "overbroad default-opacity requirement",
+    "evidence": "Fixture demands 100% for every primary-named opacity, including intentional washes, minor/shifted POC and overlay settings. Owner specifically requested full opacity for profile bodies; check those separately.",
+    "failure": "AssertionError [ERR_ASSERTION]: these still arrive faded:"
+  },
+  {
+    "name": "test:indicator-colour-controls",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: the shared Colours section no longer excludes the hand-built studies"
+  },
+  {
+    "name": "test:index-history-cache",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: the restore path is gated on Databento again"
+  },
+  {
+    "name": "test:page-loaders",
+    "initialExitCode": 1,
+    "classification": "outside indicator audit",
+    "evidence": "Page-loader sizing assertions; not indicator output behavior.",
+    "failure": "AssertionError [ERR_ASSERTION]: these show a loader in place of a page without filling it:"
+  },
+  {
+    "name": "test:indicator-both-sides",
+    "initialExitCode": 1,
+    "classification": "overbroad rendering assertion",
+    "evidence": "Flags SAR, regression lines/channel and KST signal for uniform point colours. Those are configurable/conditional line modes, unlike the directional delta histograms targeted by the original test. Do not force arbitrary alternate colours to satisfy this.",
+    "failure": "AssertionError [ERR_ASSERTION]: these paint one colour on data that alternates:"
+  },
+  {
+    "name": "test:value-area-rows",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: the value area is no longer measured at the requested bin"
+  },
+  {
+    "name": "test:theme-account-sync",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: the re-apply no longer re-reads storage"
+  },
+  {
+    "name": "test:session-boundaries",
+    "initialExitCode": 1,
+    "classification": "outdated session count",
+    "evidence": "Expected asia/london/newyork; actual includes added tokyo. Existing time-boundary assertions passed before the count failure.",
+    "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+  },
+  {
+    "name": "test:indicator-side-colours",
+    "initialExitCode": 1,
+    "classification": "removed theme fixture",
+    "evidence": "Requires removed Solar Flare theme. Current palette choices differ from that retired catalogue.",
+    "failure": "AssertionError [ERR_ASSERTION]: Solar Flare is gone from the presets"
+  },
+  {
+    "name": "test:value-area-percent",
+    "initialExitCode": 1,
+    "classification": "source-shape assertion; runtime verification separate",
+    "evidence": "The failing assertion compares source text with a literal regex. This is a test-maintenance finding, not sufficient proof of a live defect or of correct live behavior. Retain failure pending its own behavior-focused replacement.",
+    "failure": "AssertionError [ERR_ASSERTION]: the request no longer sends the setting"
+  },
+  {
+    "name": "test:chart-emoji-tool",
+    "initialExitCode": 1,
+    "classification": "duplicate source assertion",
+    "evidence": "Same test file/obsolete dynamic-import check as chart-emoji-zoom-scale.",
+    "failure": "✖ toolbar exposes a scrollable picker including the magnet (1.0634ms) ✖ failing tests: ✖ toolbar exposes a scrollable picker including the magnet (1.0634ms)"
+  }
+]

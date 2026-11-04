@@ -38,6 +38,7 @@ export type DomProSettings = {
   showHistogram: boolean;
   showHeaderStats: boolean;
   showImbalance: boolean;
+  showCumulative: boolean;
   depthScaleCap: number;
   highlightThreshold: number;
   columns: DomProColumn[];
@@ -121,6 +122,7 @@ export const DEFAULT_DOM_PRO_SETTINGS: DomProSettings = {
   showHistogram: true,
   showHeaderStats: true,
   showImbalance: true,
+  showCumulative: false,
   depthScaleCap: 0,
   highlightThreshold: 0,
   columns: DEFAULT_COLUMNS,
@@ -171,10 +173,30 @@ export function domProSettingsFromRecord(record: Record<string, unknown> | undef
     showHistogram: bool(source.showDepthHistogram, true),
     showHeaderStats: bool(source.showHeaderStats, true),
     showImbalance: bool(source.showImbalance, true),
+    showCumulative: bool(source.showCumulative, false),
     depthScaleCap: Math.max(0, finite(source.depthScaleCap, 0)),
     highlightThreshold: Math.max(0, finite(source.highlightThreshold, 0)),
     columns,
   };
+}
+
+const COLUMN_TOGGLE_IDS: Record<string, DomProColumnId[]> = {
+  showOrderCount: ["orders"],
+  showPullStack: ["pullStack"],
+  showRecentTrades: ["buy", "sell", "trades"],
+};
+
+export function domProColumnToggleValue(record: Record<string, unknown> | undefined, key: string): boolean | undefined {
+  const ids = COLUMN_TOGGLE_IDS[key];
+  if (!ids) return undefined;
+  return domProSettingsFromRecord(record).columns.some(column => ids.includes(column.id) && column.enabled);
+}
+
+export function patchDomProColumnToggle(record: Record<string, number | string | boolean>, key: string, enabled: boolean) {
+  const ids = COLUMN_TOGGLE_IDS[key];
+  if (!ids) return { ...record, [key]: enabled };
+  const columns = domProSettingsFromRecord(record).columns.map(column => ids.includes(column.id) ? { ...column, enabled } : column);
+  return { ...record, [key]: enabled, domColumns: JSON.stringify(columns) };
 }
 
 export function domProPreset(
@@ -371,6 +393,7 @@ export function visibleDomProRows(args: {
   offsetTicks?: number;
   recentWindowMs?: number;
   now?: number;
+  cumulative?: boolean;
 }) {
   const { state } = args;
   const rowCount = Math.max(1, Math.round(args.rowCount));
@@ -390,12 +413,21 @@ export function visibleDomProRows(args: {
     else current.sell += trade.size;
     recentByTick.set(trade.tick, current);
   }
+  const bids = args.cumulative ? [...state.levels.values()].filter(level => level.bidSize > 0 && state.bestBidTick !== null && level.tick <= state.bestBidTick).sort((a, b) => b.tick - a.tick) : [];
+  const asks = args.cumulative ? [...state.levels.values()].filter(level => level.askSize > 0 && state.bestAskTick !== null && level.tick >= state.bestAskTick).sort((a, b) => b.tick - a.tick) : [];
+  let bidIndex = 0;
+  let askIndex = 0;
+  let bidTotal = 0;
+  let askTotal = asks.reduce((total, level) => total + level.askSize, 0);
   return Array.from({ length: rowCount }, (_, index) => {
     const tick = topTick - index;
     const level = state.levels.get(tick) ?? emptyLevel(tick);
     const recent = recentByTick.get(tick) ?? { buy: 0, sell: 0 };
+    while (bidIndex < bids.length && bids[bidIndex].tick >= tick) bidTotal += bids[bidIndex++].bidSize;
+    while (askIndex < asks.length && asks[askIndex].tick > tick) askTotal -= asks[askIndex++].askSize;
     return {
       ...level,
+      ...(args.cumulative ? { bidSize: bidTotal, askSize: askTotal } : {}),
       buyVolume: recent.buy,
       sellVolume: recent.sell,
       price: tick * state.tickSize,

@@ -23,7 +23,7 @@ assert.equal(fixture.expectedLevels.find((level) => level.kind === "LOCAL_SIGN_T
 const defaults = defaultIndicatorSettings("gamma-heatmap");
 assert.equal(defaults.historyHours, 24);
 assert.equal(defaults.binSize, 5);
-assert.equal(defaults.opacity, 68);
+assert.equal(defaults.opacity, 100);
 assert.equal(defaults.intensity, 1);
 assert.equal(defaults.refreshSeconds, 30);
 assert.equal(defaults.metric, "GAMMA");

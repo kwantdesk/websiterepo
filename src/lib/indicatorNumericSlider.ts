@@ -32,7 +32,12 @@ export function normalizeIndicatorNumericValue(
   const precision = Math.max(decimalPlaces(safeStep), decimalPlaces(safeMin), decimalPlaces(safeMax));
   const source = Number.isFinite(requested) ? requested : fallback;
   const clamped = Math.min(safeMax, Math.max(safeMin, Number.isFinite(source) ? source : safeMin));
-  const stepped = safeMin + Math.round((clamped - safeMin) / safeStep) * safeStep;
+  // Absolute price controls span billions with 8-decimal precision. Measuring
+  // a tiny edit from that distant minimum exceeds integer precision and can
+  // round the edit back to zero. Use the local zero grid for that extreme
+  // case; ordinary bounded sliders retain their minimum-anchored step grid.
+  const origin = Math.abs(safeMin / safeStep) > Number.MAX_SAFE_INTEGER ? 0 : safeMin;
+  const stepped = origin + Math.round((clamped - origin) / safeStep) * safeStep;
   return Number(Math.min(safeMax, Math.max(safeMin, stepped)).toFixed(Math.min(12, precision + 2)));
 }
 

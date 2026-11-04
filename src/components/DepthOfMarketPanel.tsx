@@ -107,6 +107,7 @@ function drawDom(args: {
   const rows = visibleDomProRows({
     state, rowCount: Math.min(settings.rows, availableRows), offsetTicks,
     recentWindowMs: settings.recentWindowMs,
+    cumulative: settings.showCumulative,
   });
   const maxDepth = Math.max(1, settings.depthScaleCap, ...rows.flatMap((row) => [row.bidSize, row.askSize]));
   const maxTrade = Math.max(1, ...rows.flatMap((row) => [row.buyVolume, row.sellVolume]));
@@ -255,7 +256,9 @@ export default function DepthOfMarketPanel({
       palette: {
         background: cssColor(styles, "--background", "#050607"), surface: cssColor(styles, "--surface", "#0b0d0f"),
         border: cssColor(styles, "--border", "#20242a"), foreground: cssColor(styles, "--foreground", "#f5f7fa"),
-        muted: cssColor(styles, "--muted", "#7b8490"), primary: cssColor(styles, "--primary", chartSettings.upColor),
+        muted: cssColor(styles, "--muted", "#7b8490"), primary: settings.useThemeColors
+          ? cssColor(styles, "--primary", chartSettings.upColor)
+          : String(indicator.settings?.lastTradeColor ?? chartSettings.upColor),
         bid: settings.useThemeColors ? chartSettings.upColor : String(indicator.settings?.bidColor ?? chartSettings.upColor),
         ask: settings.useThemeColors ? chartSettings.downColor : String(indicator.settings?.askColor ?? chartSettings.downColor),
       },

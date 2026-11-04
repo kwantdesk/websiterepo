@@ -197,7 +197,9 @@ export function inferIndicatorColorRoles(
   const cached = inferredRoles.get(indicatorId);
   if (cached) return cached;
   const roles = Object.keys(defaultSettings)
-    .filter((key) => /colou?r$/i.test(key))
+    .filter((key) => /colou?r$/i.test(key)
+      && typeof defaultSettings[key] === "string"
+      && /^(?:#|rgba?\(|hsla?\(|transparent$)/i.test(String(defaultSettings[key])))
     .map((key) => ({ key, label: labelForKey(key), fallback: inferredFallback(key) }));
   inferredRoles.set(indicatorId, roles);
   return roles;

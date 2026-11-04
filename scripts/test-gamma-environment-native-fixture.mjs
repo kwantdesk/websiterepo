@@ -11,6 +11,9 @@ const fixture = JSON.parse(readFileSync(new URL(
 
 const defaults = defaultIndicatorSettings(fixture.indicatorId);
 for (const [key, expected] of Object.entries(fixture.defaultSettings)) {
+  // The owner removed this optional control site-wide after this shared
+  // native fixture was captured. Its absence is now the browser contract.
+  if (key === "showSource") { assert.equal(key in defaults, false); continue; }
   assert.deepEqual(defaults[key], expected, `browser default mismatch for ${key}`);
 }
 

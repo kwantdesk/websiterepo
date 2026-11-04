@@ -92,29 +92,31 @@
     "change": "These internal fields are excluded from generated user controls."
   },
   {
-    "id": "O001",
+    "id": "F010",
     "indicator": "Big Blocks",
     "controls": [
       "enableAlertSound",
       "enableMessage",
       "alertMessage"
     ],
-    "status": "open; implementation needed",
+    "status": "implemented; actual producer transition/replay/deduplication tests pass",
     "problem": "No alert producer currently consumes these settings. The chart study itself has a separate live state machine.",
-    "next": "Add a deduplicated live directional-bias transition producer and verify bar-close, intrabar and replay behavior before enabling delivery."
+    "next": "Add a deduplicated live directional-bias transition producer and verify bar-close, intrabar and replay behavior before enabling delivery.",
+    "change": "Big Blocks emits the selected message/sound on fresh live directional-bias transitions, seeds historical state silently, ignores older bars and replay, and suppresses repeated direction alerts within a bar."
   },
   {
-    "id": "O002",
+    "id": "F011",
     "indicator": "Bounce Levels",
     "controls": [
       "chartMarkers"
     ],
-    "status": "open; implementation needed",
+    "status": "implemented; renderer coordinate/cache tests pass",
     "problem": "This toggle is saved and exposed but no renderer consumes it.",
-    "next": "Define and add alert-event markers in chart time/price coordinates. Existing exposure nodes are a separate renderer."
+    "next": "Define and add alert-event markers in chart time/price coordinates. Existing exposure nodes are a separate renderer.",
+    "change": "Observed live Bounce alert events can draw dots in chart time/price coordinates. Toggle off clears them even when the exposure raster is cached. This does not manufacture retrospective alert events or a saved marker archive."
   },
   {
-    "id": "O003",
+    "id": "F012",
     "indicator": "DOM Pro",
     "controls": [
       "showCumulative",
@@ -123,25 +125,28 @@
       "showRecentTrades",
       "lastTradeColor"
     ],
-    "status": "open; reconcile legacy controls with current DOM column settings",
+    "status": "implemented; state/column and cumulative-book tests pass; authoritative DOM fixture passes",
     "problem": "Literal runtime reads are absent; current DOM columns have a separate domColumns contract.",
-    "next": "Verify which generic legacy controls are exposed, then map to current columns or remove duplicate controls while preserving saved configurations."
+    "next": "Verify which generic legacy controls are exposed, then map to current columns or remove duplicate controls while preserving saved configurations.",
+    "change": "Generic order-count, pull/stack and recent-trade switches now control the actual domColumns contract. Cumulative displays true outward depth sums without changing raw book quantities. Last-trade colour reaches its renderer when theme colours are off."
   },
   {
     "id": "O004",
     "indicator": "All categories",
     "controls": [],
-    "status": "open; end-to-end verification",
+    "status": "settings/lifecycle/calculation/fixture evidence collected; live-session visual sign-off remains open",
     "problem": "Source references and calculation mutations cannot prove every visible control changes the intended live drawing.",
-    "next": "Complete per-indicator dialog interaction, output, persistence, and live/replay verification. The checklist intentionally remains unchecked for this requirement."
+    "next": "Complete per-indicator dialog interaction, output, persistence, and live/replay verification. The checklist intentionally remains unchecked for this requirement.",
+    "change": "See dialog-interactions.json, library-lifecycle.json, input-persistence.json, palette-persistence.json and authoritative-fixtures.json. Settings persistence is not proof of every live chart drawing or every conditional combination."
   },
   {
     "id": "O005",
     "indicator": "Test suite",
     "controls": [],
-    "status": "open; failure triage",
+    "status": "initial 55 command failures classified; independent runtime/performance findings retained",
     "problem": "55 of 237 initial commands failed. Some are stale source assertions, some are loading/runner errors, and others need product triage.",
-    "next": "Track each initial failure separately. Do not mark an indicator broken merely because one legacy test fails, or healthy merely because a source-reference assertion passes."
+    "next": "Track each initial failure separately. Do not mark an indicator broken merely because one legacy test fails, or healthy merely because a source-reference assertion passes.",
+    "change": "TEST-FAILURE-TRIAGE.md classifies each initial failure without converting failed exit codes into passes. Three additional authoritative fixture expectations were updated for retired Show Source controls, full opacity, and causally completed VIX daily replay history; their numerical checks remain intact."
   },
   {
     "id": "F009",
@@ -149,8 +154,97 @@
     "controls": [
       "showMidline"
     ],
-    "status": "fixed; source traced; visual verification pending",
+    "status": "implemented; actual midpoint renderer test passes",
     "problem": "The generic checkbox was exposed and persisted, but the session renderer had no midpoint path.",
-    "change": "A midpoint line is now projected at (session high + session low) / 2 when enabled."
+    "change": "showMidline paints exactly the high/low arithmetic midpoint through the chart price coordinate transform and obeys on/off."
+  },
+  {
+    "id": "F013",
+    "indicator": "Shared indicator palettes",
+    "controls": [
+      "gradientPreset"
+    ],
+    "status": "fixed; all 1,488 catalogue × gradient save/restore combinations pass",
+    "problem": "Study-specific settings whitelists discarded the shared gradient selection on Save or workspace restore.",
+    "change": "Validate and retain shared palette presentation state outside study-input whitelists. Invalid scheme values fall back to Off."
+  },
+  {
+    "id": "F014",
+    "indicator": "KWANT Delta",
+    "controls": [
+      "positiveColor",
+      "negativeColor",
+      "range1AskColor",
+      "range1BidColor",
+      "range2AskColor",
+      "range2BidColor",
+      "range3AskColor",
+      "range3BidColor",
+      "range4AskColor",
+      "range4BidColor",
+      "maximumPositiveColor",
+      "minimumNegativeColor",
+      "level1Color",
+      "level2Color",
+      "markerColor"
+    ],
+    "status": "fixed; save/restore and populated output-series test passes",
+    "problem": "The numeric settings normalizer reset user-selected colours back to defaults.",
+    "change": "Retain validated hex overrides for declared colours alongside normalized calculation inputs."
+  },
+  {
+    "id": "F015",
+    "indicator": "Stop Spotter / Inverse Cyber Cycle / shared colour discovery",
+    "controls": [
+      "autoColor",
+      "cycleAAutoColor",
+      "cycleBAutoColor"
+    ],
+    "status": "fixed; colour-role and mode-preservation tests pass",
+    "problem": "Settings ending in Color were treated as paint colours even when their values were modes such as none/direction.",
+    "change": "Discover colour pickers only from actual colour values; schemes no longer replace mode selections with hex strings."
+  },
+  {
+    "id": "F016",
+    "indicator": "Pulling & Stacking",
+    "controls": [
+      "includeOwnOrders",
+      "includeImpliedOrders"
+    ],
+    "status": "unsupported capability now labelled and disabled; targeted dialog checks pass",
+    "problem": "Clickable checkboxes were normalized back to false without explaining that the current pipeline does not support these filters.",
+    "change": "Disable and label these filters. Do not invent ownership or implied-order classifications. Implementing the feature requires end-to-end tagged depth support."
+  },
+  {
+    "id": "F017",
+    "indicator": "Volume profiles / TPO / GEX Interval Map",
+    "controls": [
+      "Delete template",
+      "Save new"
+    ],
+    "status": "fixed; targeted checks cover all nine profile variants and both TPO variants",
+    "problem": "Some template actions accepted clicks while missing the required name or selected saved template, then returned without feedback.",
+    "change": "Save new requires a nonempty name; Delete template requires a matching saved template. Applicable actions remain enabled."
+  },
+  {
+    "id": "F018",
+    "indicator": "Absolute Levels / shared numeric controls",
+    "controls": [
+      "firstValue",
+      "secondValue"
+    ],
+    "status": "fixed; precision/bounds tests and actual dialog saves pass",
+    "problem": "A tiny edit measured from a billion-point minimum exceeded integer precision and could round back to zero.",
+    "change": "Use a local zero-based step grid only when the distant minimum would exceed safe integer precision; preserve ordinary minimum-anchored slider grids."
+  },
+  {
+    "id": "O006",
+    "indicator": "Ichimoku deep-history performance",
+    "controls": [
+      "deep-history computation"
+    ],
+    "status": "open; repeatable performance-budget miss",
+    "problem": "The existing 20,000-bar benchmark measured 8.18ms against an 8ms per-study budget on repeat. Correct outputs do not establish that the performance target is met.",
+    "change": "Retain full accurate history. Profile allocations and the combined multi-study frame budget in a dedicated performance pass; do not silently shorten history or weaken the benchmark."
   }
 ]

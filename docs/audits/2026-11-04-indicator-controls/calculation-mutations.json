@@ -711,77 +711,77 @@
       {
         "key": "positiveColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "negativeColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "range1AskColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "range1BidColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "range2AskColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "range2BidColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "range3AskColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "range3BidColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "range4AskColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "range4BidColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "maximumPositiveColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "minimumNegativeColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "level1Color",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "level2Color",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "markerColor",
         "status": "no change on fixture; trace renderer/data-dependent path",
-        "persisted": false
+        "persisted": true
       },
       {
         "key": "barGrouping",

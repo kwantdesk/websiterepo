@@ -1,0 +1,1234 @@
+[
+  {
+    "id": "big-blocks-options",
+    "name": "Big Blocks (Options)",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "gamma-environment",
+    "name": "Gamma Environment",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "zero-gamma-line",
+    "name": "Zero Gamma Line",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "options-delta",
+    "name": "Options Delta",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "zero-gamma-bars",
+    "name": "Zero Gamma Bars",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "gamma-heatmap",
+    "name": "Gamma Heatmap",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "net-gamma-exposure-by-strike",
+    "name": "Net Gamma Exposure By Strike",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "gex-interval-map",
+    "name": "GEX Interval Map",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "bounce-levels",
+    "name": "Bounce Levels",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "dark-pool-map",
+    "name": "Dark Pool Map",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "dark-pool-gex",
+    "name": "Dark Pool (GEX)",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "implied-volatility-rank",
+    "name": "Implied Volatility Rank",
+    "instrument": "QQQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "cumulative-volume-delta",
+    "name": "Cumulative Volume Delta",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "cvd-divergence",
+    "name": "CVD Divergence",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "pulling-stacking",
+    "name": "Pulling & Stacking",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "delta-bar",
+    "name": "Delta Bar",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "delta-highlight",
+    "name": "Delta % Highlight",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "delta-cumulative-candlestick",
+    "name": "Delta Cumulative Candlestick",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "delta-cumulative-histogram",
+    "name": "Delta Cumulative Histogram",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "imbalance-tracker",
+    "name": "Imbalance Tracker",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "imbalance-rejector",
+    "name": "Imbalance Rejector",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "unfinished-auction",
+    "name": "Unfinished Auction",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "bar-poc-indicator",
+    "name": "Bar POC Indicator",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "dynamic-poc",
+    "name": "Dynamic POC",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "speed-of-tape",
+    "name": "Speed of Tape",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "speed-of-tape-instant",
+    "name": "Speed of Tape (Instant)",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "volume-delta-sprint",
+    "name": "Volume/Delta Sprint",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "tape-speed-order-flow-burst",
+    "name": "Tape Speed & Order-Flow Burst",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "big-trades",
+    "name": "Big Contracts",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "ratio-highlight",
+    "name": "Ratio Highlight",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "stop-spotter",
+    "name": "Stop Spotter",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "auction-gap-tracker",
+    "name": "Auction Gap Tracker",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "session-imbalance",
+    "name": "Session Imbalance",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "absorption-detector",
+    "name": "Absorption Detector",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "stacked-imbalance-suite",
+    "name": "Stacked Imbalance Suite",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "iceberg-refresh-detector",
+    "name": "Iceberg / Refresh Detector",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "liquidity-stop-sweep-detector",
+    "name": "Liquidity Sweep / Stop Sweep Detector",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "poc-auction-suite",
+    "name": "POC & Auction Suite",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "cumulative-iceberg-stop",
+    "name": "Cumulative Iceberg/Stop",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "book-speed",
+    "name": "Book Speed",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "depth-of-market",
+    "name": "DOM Pro",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "mini-dom",
+    "name": "Mini DOM",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-print-footprint",
+    "name": "Footprint",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-delta",
+    "name": "KWANT Delta",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-wall",
+    "name": "KWANT Wall",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-v-tracker",
+    "name": "KWANT V-Tracker",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "volume",
+    "name": "Volume",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "kwant-profile",
+    "name": "Daily Volume Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "tpo-chart",
+    "name": "TPO Daily",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "weekly-tpo",
+    "name": "TPO Weekly",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "weekly-volume-profile",
+    "name": "Weekly Volume Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "monthly-volume-profile",
+    "name": "Monthly Volume Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "session-volume-profile",
+    "name": "Session Volume Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "composite-volume-profile",
+    "name": "Composite Volume Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "visible-range-volume-profile",
+    "name": "Visible Range Volume Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "custom-draw-on-volume-profile",
+    "name": "Custom Draw-On Volume Profile",
+    "instrument": "NQ",
+    "status": "drawing placement armed"
+  },
+  {
+    "id": "ask-bid-volume-profile",
+    "name": "Ask/Bid Volume Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "delta-profile",
+    "name": "Delta Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-profile-swing",
+    "name": "KWANT Profile Swing",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-profile-values",
+    "name": "KWANT Profile Values",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "tpo-levels",
+    "name": "TPO Levels",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "vwap",
+    "name": "VWAP",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "vwap-envelopes",
+    "name": "VWAP Envelopes",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "rolling-vwap",
+    "name": "Rolling VWAP",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "market-statistics",
+    "name": "Market Statistics",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "on-candle-stats",
+    "name": "On Candle Stats",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "important-levels",
+    "name": "Important Levels",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "absolute-levels",
+    "name": "Absolute Levels",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "pivot-points",
+    "name": "Pivot Points",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "price-movement-levels",
+    "name": "Price Movement Levels",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "fvg-identifier",
+    "name": "FVG Identifier",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "gap-detector",
+    "name": "Gap Detector",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "divergence-detector",
+    "name": "Divergence Detector",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "confluence-identifier",
+    "name": "Confluence Identifier",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "swing-point",
+    "name": "Swing Point",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "average-daily-range-target",
+    "name": "Average Daily Range Target",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "sessions",
+    "name": "Sessions",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "session-highs-lows",
+    "name": "Session Highs & Lows",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "ib-levels",
+    "name": "IB Levels",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "gamma-levels",
+    "name": "Kwant Levels",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "classic-gex-profile",
+    "name": "Classic GEX Profile",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "session-marker",
+    "name": "Session Marker",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "shift-candle",
+    "name": "Shift Candle",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "moving-average",
+    "name": "Moving Average",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "ichimoku-indicator",
+    "name": "Ichimoku Indicator",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "parabolic-sar",
+    "name": "Parabolic SAR",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "linear-regression",
+    "name": "Linear Regression",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "regression-channel",
+    "name": "Regression Channel",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "super-trend",
+    "name": "Super Trend",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "super-trend-difference",
+    "name": "Super Trend Difference",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "keltner-channel",
+    "name": "Keltner Channel",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "bollinger-bands",
+    "name": "Bollinger Bands",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "donchian-channel",
+    "name": "Donchian Channel",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "tillson-t3",
+    "name": "Tillson T3",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "zig-zag",
+    "name": "Zig Zag",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "relative-strength-index-rsi",
+    "name": "Relative Strength Index (RSI)",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "rate-of-change-roc",
+    "name": "Rate of Change (ROC)",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "macd-indicator",
+    "name": "MACD Indicator",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "momentum-indicator",
+    "name": "Momentum Indicator",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "commodity-channel-index-cci",
+    "name": "Commodity Channel Index (CCI)",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "know-sure-thing-kst",
+    "name": "Know Sure Thing (KST)",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "inverse-cyber-cycle",
+    "name": "Inverse Cyber Cycle",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "aroon-up-down",
+    "name": "Aroon Up/Down",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "aroon-oscillator",
+    "name": "Aroon Oscillator",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "awesome-oscillator",
+    "name": "Awesome Oscillator",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "stochastic-oscillator",
+    "name": "Stochastic Oscillator",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "williams-r",
+    "name": "Williams %R",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "chaikin-accumulation-distribution",
+    "name": "Chaikin Accumulation/Distribution",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "average-directional-index-adx",
+    "name": "Average Directional Index (ADX)",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "vix-environment",
+    "name": "VIX Environment",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "standard-deviation",
+    "name": "Standard Deviation",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "average-true-range-atr",
+    "name": "Average True Range (ATR)",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "expected-move",
+    "name": "Expected Move",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "overlay-chart",
+    "name": "Overlay Chart",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "overlay-symbol",
+    "name": "Overlay Symbol",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "overlay-timeframe-candlestick",
+    "name": "Overlay Timeframe Candlestick",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "overlay-timeframe-highlight",
+    "name": "Overlay Timeframe Highlight",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "text-on-chart",
+    "name": "Text on Chart",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "source-code-indicator",
+    "name": "Source Code Indicator",
+    "instrument": "NQ",
+    "status": "internal saved-script adapter; intentionally absent from library"
+  },
+  {
+    "id": "kwant-stats",
+    "name": "KWANT Stats",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "hedge-levels",
+    "name": "Hedge Levels",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-m-ivb",
+    "name": "KWANT-M IVB",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-pattern-builder",
+    "name": "KWANT Pattern Builder",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  },
+  {
+    "id": "deep-m-effort-nq",
+    "name": "Big Blocks",
+    "instrument": "NQ",
+    "added": true,
+    "disabled": true,
+    "enabled": true,
+    "removed": true,
+    "status": "passed"
+  }
+]

@@ -21,7 +21,7 @@ import { KST_DEFAULTS, KST_NUMERIC_SETTINGS } from "@/lib/knowSureThingSettings"
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { canonicalChartIndicatorId } from "@/lib/chartIndicatorCatalog";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
-import { VOLUME_PROFILE_GRADIENT_OFF } from "@/lib/volumeProfileGradients";
+import { VOLUME_PROFILE_GRADIENT_OFF, VOLUME_PROFILE_GRADIENTS } from "@/lib/volumeProfileGradients";
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
 import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
 import { DEFAULT_DOM_PRO_VISIBLE_ROWS, DOM_PRO_SETTINGS_VERSION } from "@/lib/domPro";
@@ -3221,7 +3221,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   } : {}),
 });
 
-export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): ChartIndicatorInstance => {
+const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIndicatorInstance => {
   // Source attribution is no longer an optional indicator display setting.
   if (instance.settings && "showSource" in instance.settings) {
     const settings = { ...instance.settings };
@@ -3543,7 +3543,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (normalizedInstance.indicatorId === "deep-delta") {
     const defaults = defaultIndicatorSettings("deep-delta");
-    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepDeltaSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+    const savedColors = Object.fromEntries(Object.keys(defaults)
+      .filter(key => /Color$/.test(key) && /^#[0-9a-f]{6}$/i.test(String(normalizedInstance.settings?.[key] ?? "")))
+      .map(key => [key, String(normalizedInstance.settings![key]).toUpperCase()]));
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepDeltaSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }), ...savedColors } };
   }
   if (normalizedInstance.indicatorId === "deep-wall") {
     const defaults = defaultIndicatorSettings("deep-wall");
@@ -4582,6 +4585,19 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       cvdSettingsVersion: 5,
     },
   };
+};
+
+// Palette selection is shared presentation state. Study-specific normalizers
+// intentionally whitelist their own inputs, so keep this validated shared key
+// outside those whitelists rather than silently dropping it on Save/restore.
+export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): ChartIndicatorInstance => {
+  const normalized = normalizeStoredIndicatorCore(instance);
+  const requested = instance.settings?.gradientPreset;
+  if (requested === undefined) return normalized;
+  const gradientPreset = requested === VOLUME_PROFILE_GRADIENT_OFF
+    || VOLUME_PROFILE_GRADIENTS.some(gradient => gradient.id === requested)
+    ? requested : VOLUME_PROFILE_GRADIENT_OFF;
+  return { ...normalized, settings: { ...normalized.settings, gradientPreset } };
 };
 
 export const clonePaneIndicatorState = (state: Record<string, ChartIndicatorInstance[]>) =>

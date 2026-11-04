@@ -3559,6 +3559,7 @@ function Chart({
   const pocAuctionLastReactPublishRef = useRef(0);
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const bounceLevelsPrimitiveRef = useRef<BounceLevelsPrimitive | null>(null);
+  const [bounceAlertMarkers, setBounceAlertMarkers] = useState<{ id: string; time: number; price: number; label: string }[]>([]);
   const bounceLevelsAlertStateRef = useRef<{ key: string; states: Map<string, string>; lastFired: Map<string, number> }>({ key: "", states: new Map(), lastFired: new Map() });
   const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
   const gexIntervalAlertStateRef = useRef<{
@@ -10171,6 +10172,12 @@ function Chart({
     };
   }, [bounceMirrorEnabled, bounceMirror.profile, bounceGexStrikeColors, bounceLevelsDataSignature, bounceLevelsIndicator, bounceLevelsSnapshot, bounceLevelsSnapshotScope, bounceReplayCheckpoint, instrument, overlayTimelineMs, replayTimestampMs, settings.borderUpColor, settings.gridColor, settings.downColor, settings.upColor]);
   useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);
+  useEffect(() => { setBounceAlertMarkers([]); }, [instrument, timeframe, bounceLevelsIndicator?.instanceId]);
+  useEffect(() => {
+    bounceLevelsPrimitiveRef.current?.setAlertMarkers(
+      bounceLevelsIndicator?.settings?.chartMarkers !== false && !liveReplayActiveRef.current ? bounceAlertMarkers : [],
+    );
+  }, [bounceAlertMarkers, bounceLevelsIndicator, chartReadyRevision, replayTimestampMs]);
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !bounceLevelsIndicator || bounceLevelsIndicator.settings?.tooltipsEnabled === false) { setBounceLevelsTooltip(null); return; }
@@ -10214,6 +10221,11 @@ function Chart({
     const notify = (eventKey: string, title: string, message: string, eventPrice = price) => {
       if (Date.now() - (state.lastFired.get(eventKey) ?? 0) < cooldownMs) return;
       state.lastFired.set(eventKey, Date.now());
+      const candleTime = drawingCandlesRef.current.at(-1)?.timestamp;
+      if (!liveReplayActiveRef.current && candleTime != null && Number.isFinite(eventPrice)) {
+        const time = eventChartTimeBySourceTimeRef.current.get(candleTime) ?? Math.floor(candleTime / 1000);
+        setBounceAlertMarkers(markers => [...markers, { id: `${eventKey}:${Date.now()}`, time, price: eventPrice, label: title }].slice(-100));
+      }
       window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: { indicatorId: "bounce-levels", instanceId: bounceLevelsIndicator.instanceId, instrument, title, message } }));
       window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId: `bounce:${eventKey}`, message, price: eventPrice, condition: title } }));
       if (bounceLevelsIndicator.settings?.browserNotifications === true && typeof Notification !== "undefined" && Notification.permission === "granted") new Notification(title, { body: message });
@@ -12637,6 +12649,37 @@ function Chart({
       pendingDeepEffortCandleRef.current = null;
     };
   }, [bigBlocksLiveState, deepEffortZonesVisible, deepEffortOptions, liveCandleEventKey]);
+  useEffect(() => {
+    const instance = deepEffortIndicator;
+    const settings = instance?.settings ?? {};
+    if (!instance || (settings.enableAlertSound !== true && settings.enableMessage !== true) || !liveCandleEventKey) return;
+    let source = sampledIndicatorCandlesRef.current.slice(-240);
+    let bias = calculateDeepEffort(source, deepEffortOptions).average.at(-1)?.bias;
+    let lastTimestamp = source.at(-1)?.timestamp ?? -Infinity;
+    const emitted = new Set<string>();
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
+      if (!detail || detail.key !== liveCandleEventKey || liveReplayActiveRef.current) return;
+      const observed = Number(detail.sourceTimestampMs);
+      if (!Number.isFinite(observed) || Date.now() - observed > 15000 || observed > Date.now() + 1000 || detail.candle.timestamp < lastTimestamp) return;
+      source = mergeLiveIndicatorCandle(source, detail.candle).slice(-240);
+      const next = calculateDeepEffort(source, deepEffortOptions).average.at(-1)?.bias;
+      if (detail.candle.timestamp !== lastTimestamp) emitted.clear();
+      lastTimestamp = detail.candle.timestamp;
+      const changed = bias !== undefined && next !== undefined && next !== bias;
+      bias = next;
+      if (!changed || !next || emitted.has(next)) return;
+      emitted.add(next);
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+        indicatorId: instance.indicatorId, instanceId: instance.instanceId, instrument,
+        title: String(settings.alertMessage ?? "Big Blocks directional bias changed"),
+        popup: settings.enableMessage === true,
+        sound: settings.enableAlertSound === true ? "default" : null,
+      } }));
+    };
+    window.addEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+    return () => window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+  }, [deepEffortIndicator, deepEffortOptions, instrument, liveCandleEventKey]);
   const imbalanceTracker = useMemo(() => {
     const instance = indicators.find((candidate) =>
       candidate.enabled && candidate.indicatorId === "imbalance-tracker");

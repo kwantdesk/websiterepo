@@ -19,6 +19,8 @@ const fixture = JSON.parse(readFileSync(new URL(
 
 const defaults = defaultIndicatorSettings(fixture.indicatorId);
 for (const [key, expected] of Object.entries(fixture.defaultSettings)) {
+  // Retired browser control; retain all numerical/classification fixture checks.
+  if (key === "showSource") { assert.equal(key in defaults, false); continue; }
   assert.deepEqual(defaults[key], expected, `browser default mismatch for ${key}`);
 }
 for (const row of fixture.classificationCases) {
@@ -81,7 +83,13 @@ const replay = buildVixEnvironmentSnapshot({
   replay: true,
 });
 
-for (const [actual, receipt] of [[live, fixture.snapshots[0]], [replay, fixture.snapshots[1]]]) {
+// The old native replay receipt used the current day's final OHLC before that
+// day had completed. Browser replay now correctly excludes that future range.
+const causalReplayReceipt = {
+  ...fixture.snapshots[1], value: 20, open: 20, change: 10, changePercent: 100,
+  sessionHigh: 22, sessionLow: 18, regime: "ELEVATED", checkedAtMs: 1786586400000,
+};
+for (const [actual, receipt] of [[live, fixture.snapshots[0]], [replay, causalReplayReceipt]]) {
   assert.ok(actual);
   for (const key of [
     "symbol", "value", "open", "change", "changePercent", "sessionHigh", "sessionLow",
@@ -91,6 +99,6 @@ for (const [actual, receipt] of [[live, fixture.snapshots[0]], [replay, fixture.
   assert.equal(Date.parse(actual.checkedAt), receipt.checkedAtMs);
 }
 assert.equal(live.sourceLabel, fixture.snapshots[0].sourceLabel);
-assert.equal(replay.sourceLabel, "VIX · official daily history");
+assert.equal(replay.sourceLabel, "VIX · completed daily history (not intraday)");
 assert.ok(fixture.positionChoices.includes(defaults.position));
 console.log("VIX Environment browser/native authority fixture passed.");
