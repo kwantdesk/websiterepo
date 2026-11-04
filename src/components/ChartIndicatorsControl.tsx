@@ -8289,7 +8289,7 @@ export default function ChartIndicatorsControl({
 
               {(() => {
                 const entries = Object.entries(settingsInstance.settings ?? {})
-                  .filter(([key]) => key !== "showSource")
+                  .filter(([key]) => !["showSource", "stableFootprintRows", "sessionSelectionArmed"].includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
                   .filter(([key]) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(key))
                   .filter(([key, value]) =>

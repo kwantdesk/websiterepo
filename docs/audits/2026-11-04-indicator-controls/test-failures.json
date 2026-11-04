@@ -1,0 +1,497 @@
+[
+  {
+    "name": "test:vwap-family",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/vwap-family.test.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 947,
+    "initialFailureExcerpt": "(node:33732) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/vwap.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ VWAP source modes use their documented OHLC inputs (0.7797ms)\n✔ period VWAP resets at the 17:00 Chicago trading-day boundary (0.7603ms)\n✔ minute period VWAP resets on the exact bucket (0.1575ms)\n✔ rolling VWAP remains continuous across the session boundary and evicts by window (0.2266ms)\n✔ percentage and deviation envelopes are distinct and exact (0.1584ms)\n✔ all VWAP studies persist their complete five-band contract (3.7752ms)\n✔ legacy rolling VWAP window migrates without retaining the old session reset (2.5255ms)\n✔ indicator engine wires five switchable bands, styles, colours and hidden price tabs (3.5246ms)\n✔ draw-on VWAP keeps theme linkage, bands and template-compatible settings (3.4989ms)\n✖ Anchored VWAP library card arms the authoritative drawing tool (142.5904ms)\nℹ tests 10\nℹ suites 0\nℹ pass 9\nℹ fail 1",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:mini-dom",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-mini-dom.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 438,
+    "initialFailureExcerpt": "  ok  the study is registered and addable\n  ok  the library offers it rather than showing it as Pending\n  ok  bars are thick enough to carry a number, not per-tick hairlines\n  ok  bar height stays between the floor and the cap at any zoom\n  ok  zooming right in still bands at one tick rather than a fraction\n  ok  resting size is summed into bands, keeping bid and ask apart\n  ok  only what is on screen is banded and scaled\n  ok  switching a rail off gives the other the whole ladder\n  ok  the rails grow away from each other and never overlap\n  ok  it sits where a right-docked volume profile sits\n  ok  the ladder never outgrows or escapes the pane\n  ok  counts are dropped rather than overprinted on a narrow rail\n  ok  a band bigger than the frame's peak is clamped, not drawn past its rail\n  ok  an empty or impossible band draws nothing\n  ok  it reuses the shared book stream rather than opening another\n  ok  it is the chart's right edge, not a pane laid over it\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:delta-ladder",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-delta-ladder.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 475,
+    "initialFailureExcerpt": "  ok  the lower pane stays the default\n  ok  every spike leaves the spine toward the candles\n  ok  the spine sits on the edge it is docked to\n  ok  a full-length spike stays inside the pane on either side\n  ok  delta is summed per price band and scaled on the largest, either way\n  ok  buying and selling cancel inside a band rather than both drawing\n  ok  only what is on screen is banded\n  ok  a flat band draws nothing\n  ok  it covers the pane top to bottom with readable spikes\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the ladder needs the executed price levels the footprint is built from\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-delta-ladder.mjs:126:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-delta-ladder.mjs:24:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-delta-ladder.mjs:120:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:candle-visibility",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-candle-visibility.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 104,
+    "initialFailureExcerpt": "  ok  candles are the first row in the indicator list\n  ok  they can be switched off but not removed\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: hiding must reuse the transparent-candle path\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-candle-visibility.mjs:42:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-candle-visibility.mjs:21:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-candle-visibility.mjs:39:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '\"use client\";\\n' +\r\n    'import { recordChartTickPaint } from \"@/lib/chartTickAudit\";\\n' +\r\n    'import { futuresAwarePriceFormat } from \"@/lib/instrumentPriceFormat\";\\n' +\r\n    '\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:deploy-cost",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-deploy-cost.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 659,
+    "initialFailureExcerpt": "  ok  an unchanged surface comes back as a bodiless 304\n  ok  a surface that HAS changed is sent in full\n  ok  the response stays private, so the auth boundary does not move\n  ok  the browser may reuse its copy for the data's own refresh window\n  ok  it reads If-None-Match the way a cache actually writes it\n  ok  the tag is derived, not hashed from the body\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\r\ntrue !== false\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-deploy-cost.mjs:150:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-deploy-cost.mjs:22:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-deploy-cost.mjs:148:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: true,\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:quantdata-coalescing",
+    "command": "node scripts/test-quantdata-coalescing.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 86,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: slice looks wrong: 222791 chars\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-quantdata-coalescing.mjs:35:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-quantdata-coalescing.mjs:27:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-quantdata-coalescing.mjs:34:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:draw-layer-anchoring",
+    "command": "node scripts/test-draw-layer-anchoring.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 88,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: capturing the basis must run synchronously after the DOM update\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-draw-layer-anchoring.mjs:35:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-draw-layer-anchoring.mjs:28:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-draw-layer-anchoring.mjs:30:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '// BEFORE paint, not after.\\n' +\r\n    '  //\\n' +\r\n    '  // This ran as a plain effect on every render, which on a live chart is\\n' +\r\n    '  // constantly — every tick, every indicator sample. Effects fire AFTER the\\n' +\r\n    '  // browser has painted, and by then the chart may already have moved past the\\n' +\r\n    '  // coordinates this render drew. It stored that MOVED projection as the basis\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:index-history-timeout",
+    "command": "node scripts/test-index-history-timeout.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 98,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: slice looks wrong: 4521 chars\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-index-history-timeout.mjs:31:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-index-history-timeout.mjs:28:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-index-history-timeout.mjs:30:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:right-rail-drag",
+    "command": "node scripts/test-right-rail-drag.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 88,
+    "initialFailureExcerpt": "  ok  the width is a constant, shared by the maths and the transform\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: during a drag it tracks the pointer; otherwise it rests at one end\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-right-rail-drag.mjs:27:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-right-rail-drag.mjs:16:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-right-rail-drag.mjs:25:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '',\r\n  expected: /translateX\\(\\$\\{railDragPx \\?\\? \\(railHidden \\? RAIL_WIDTH_PX : 0\\)\\}px\\)/,\r\n  operator: 'match',\r\n  diff: 'simple'\r\n}\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-plot-colors",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-plot-colors.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 553,
+    "initialFailureExcerpt": "  ok  the study list is not silently empty\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: slot map is stale — regenerate it:\r\n  volume-delta-sprint: plots \"deltaColor\" with no picker\r\n  important-levels: plots \"importantDaily20231113AverageColor\" with no picker\r\n  important-levels: plots \"importantDaily20231113LowColor\" with no picker\r\n  important-levels: plots \"importantDaily20231113HighColor\" with no picker\r\n  important-levels: plots \"importantDaily20231113OpenColor\" with no picker\r\n  important-levels: plots \"importantDaily20231113CloseColor\" with no picker\r\n  important-levels: plots \"importantDaily20231113VWAPColor\" with no picker\r\n  important-levels: plots \"importantDaily20231114AverageColor\" with no picker\r\n  important-levels: plots \"importantDaily20231114LowColor\" with no picker\r\n  important-levels: plots \"importantDaily20231114HighColor\" with no picker\r\n  important-levels: plots \"importantDaily20231114OpenColor\" with no picker\r\n  important-levels: plots \"importantDaily20231114CloseColor\" with no picker\r\n  important-levels: plots \"importantDaily20231114VWAPColor\" with no picker\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-history-depth",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-history-depth.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 493,
+    "initialFailureExcerpt": "measuring 19 deep-history studies at 20,000 bars\n  inverse-cyber-cycle               4.88 ms   39900 pts\n  ichimoku-indicator                8.08 ms   99865 pts\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: \"ichimoku-indicator\" costs 8.1ms at 20000 bars, over the 8ms budget. The recompute is main-thread and runs every 1-2s; leave this study on the lite window.\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-history-depth.mjs:69:10\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:toolbar-single-source",
+    "command": "node --experimental-strip-types scripts/test-toolbar-single-source.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 150,
+    "initialFailureExcerpt": "(node:30508) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartDrawTools.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\nnode:internal/modules/esm/resolve:271\r\n    throw new ERR_MODULE_NOT_FOUND(\r\n          ^\r\nError [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\src\\lib\\chartDrawGeometry' imported from C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\src\\lib\\chartDrawTools.ts\r\n    at finalizeResolution (node:internal/modules/esm/resolve:271:11)\r\n    at moduleResolve (node:internal/modules/esm/resolve:861:10)\r\n    at defaultResolve (node:internal/modules/esm/resolve:988:11)\r\n    at #cachedDefaultResolve (node:internal/modules/esm/loader:697:20)\r\n    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:714:38)\r\n    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:746:52)\r\n    at #resolve (node:internal/modules/esm/loader:679:17)\r\n    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:599:35)\r\n    at ModuleJob.syncLink (node:internal/modules/esm/module_job:162:33)\r\n    at ModuleJob.link (node:internal/modules/esm/module_job:252:17) {\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:chart-emoji-zoom-scale",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-emoji-tool.test.mjs tests/chart-emoji-zoom-scale.test.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 226,
+    "initialFailureExcerpt": "(node:41640) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartDrawTools.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ emoji is directly below Measure and places with one chart anchor (0.6637ms)\n✔ emoji value and size survive drawing persistence (1.8007ms)\n✖ toolbar exposes a scrollable picker including the magnet (1.0653ms)\n✔ toolbar button displays the last selected emoji instead of a fixed icon (0.2192ms)\n✔ emoji paints at chart coordinates and has a bounded resize handle (0.3966ms)\n✔ chart owns the selected emoji and passes it to the persisted drawing layer (0.511ms)\n✔ emoji settings only expose real emoji and size controls (0.1073ms)\n(node:33716) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartEmojiScale.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ emoji keeps its placed size at the reference chart scale (1.0302ms)\n✔ emoji shrinks with chart zoom instead of staying fixed in pixels (0.2188ms)\n✔ manual resizing remains proportional at the zoomed scale (0.1489ms)",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:preference-hydration",
+    "command": "node --experimental-strip-types scripts/test-preference-hydration.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 138,
+    "initialFailureExcerpt": "node:internal/modules/package_json_reader:301\r\n  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);\r\n        ^\r\nError [ERR_MODULE_NOT_FOUND]: Cannot find package '@/lib' imported from C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\src\\lib\\chartSettings.ts\r\n    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:301:9)\r\n    at packageResolve (node:internal/modules/esm/resolve:764:81)\r\n    at moduleResolve (node:internal/modules/esm/resolve:855:18)\r\n    at defaultResolve (node:internal/modules/esm/resolve:988:11)\r\n    at #cachedDefaultResolve (node:internal/modules/esm/loader:697:20)\r\n    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:714:38)\r\n    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:746:52)\r\n    at #resolve (node:internal/modules/esm/loader:679:17)\r\n    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:599:35)\r\n    at ModuleJob.syncLink (node:internal/modules/esm/module_job:162:33) {\r\n  code: 'ERR_MODULE_NOT_FOUND'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:volume-profile-split",
+    "command": "node scripts/test-volume-profile-split.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 3684,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: expected Asia/London/New York, got 4\r\n4 !== 3\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-volume-profile-split.mjs:46:8 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 4,\r\n  expected: 3,\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:volume-profile-grouping",
+    "command": "node scripts/test-volume-profile-grouping.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 88,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /groupingFloorFactor/. Input:\r\n'import type { CanvasRenderingTarget2D } from \"fancy-canvas\";\\n' +\r\n  'import { fineVolumeProfileWidth } from \"./volumeProfileWidth\";\\n' +\r\n  'import type {\\n' +\r\n  '  ISeriesPrimitive,\\n' +\r\n  '  Logical,\\n' +\r\n  '  SeriesAttachedParameter,\\n' +\r\n  '  Time,\\n' +\r\n  '} from \"@/lib/lightweightChartsCompat\";\\n' +\r\n  'import {\\n' +\r\n  '  isCandleBackedVolumeProfile,\\n' +\r\n  '  isExecutionBackedVolumeProfile,\\n' +\r\n  '  type InstitutionalVolumeProfile,\\n' +\r\n  '} from \"@/lib/institutionalMarketData\";\\n' +\r\n  'import {\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:volume-profile-gradients",
+    "command": "node scripts/test-volume-profile-gradients.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 1568,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: chromey-mono label names neither its endpoints nor a real theme\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-volume-profile-gradients.mjs:48:10 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:volume-profile-labels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-labels.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 190,
+    "initialFailureExcerpt": "file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-volume-profile-labels.mjs:13\r\n  assert.equal(above.top, bounds.top);\r\n                     ^\r\nTypeError: Cannot read properties of null (reading 'top')\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-volume-profile-labels.mjs:13:22\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:overlay-in-frame",
+    "command": "node scripts/test-overlay-in-frame.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 89,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /if \\(viewportFrame !== null\\) return;/. Input:\r\n'\"use client\";\\n' +\r\n  '\\n' +\r\n  'import { chartSvgHitTargets, chartSvgBodyHit } from \"@/lib/chartSvgHitTargets\";\\n' +\r\n  'import { DRAWING_HANDLE_HIT_RADIUS } from \"@/lib/drawingPaintedHit\";\\n' +\r\n  '\\n' +\r\n  \"import { useChartDrawingClipboard } from './useChartDrawingClipboard';\\n\" +\r\n  '\\n' +\r\n  'import { clampPositionStopPrice, nearestPositionHandle } from \"@/lib/positionToolConstraints\";\\n' +\r\n  '\\n' +\r\n  'import { fineVolumeProfileWidth } from \"@/lib/volumeProfileWidth\";\\n' +\r\n  '\\n' +\r\n  'import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from \"react\";\\n' +\r\n  'import {\\n' +\r\n  '  DRAW_TOOL_SPECS,\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:profile-fold",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-profile-fold.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 204,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /appendBoundedPaneRecords\\(pendingProfileRecords, records\\)/. Input:\r\n'\"use client\";\\n' +\r\n  '\\n' +\r\n  'import { captureDropdownDismissal } from \"@/lib/dropdownDismissal\";\\n' +\r\n  '\\n' +\r\n  'import type { AlgoChartIntegration, AlgoChartFocus } from \"@/lib/algoChartIntegration\";\\n' +\r\n  'import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from \"@/lib/drawingClearBarriers\";\\n' +\r\n  'import { workspaceScopeStorageKey, workspaceStoragePrefix, workspaceTemplateStorageKey, workspaceChartInstanceId, viewportSyncGroupForScope, type ChartWorkspaceScope } from \"@/lib/chartWorkspaceScope\";\\n' +\r\n  'import { workspaceReplaySessionBounds } from \"@/lib/workspaceReplay\";\\n' +\r\n  'import { readChartDrawingStore, updateChartDrawingPane } from \"@/lib/chartDrawingPreferences\";\\n' +\r\n  '\\n' +\r\n  'import { mergePaperTradingLedgerUpdate } from \"@/lib/accountPreferenceMerge\";\\n' +\r\n  '\\n' +\r\n  'import { scopedFuturesContract } from \"@/lib/futuresInstrumentIdentity\";\\n' +\r\n  \"import { createExecutionPaintScheduler } from '@/lib/executionPaintScheduler';\\n\" +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:drawing-selection",
+    "command": "node scripts/test-drawing-selection.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 92,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /const handles = selected\\s*\\r?\\n?\\s*\\?/. Input:\r\n'\"use client\";\\n' +\r\n  '\\n' +\r\n  'import { chartSvgHitTargets, chartSvgBodyHit } from \"@/lib/chartSvgHitTargets\";\\n' +\r\n  'import { DRAWING_HANDLE_HIT_RADIUS } from \"@/lib/drawingPaintedHit\";\\n' +\r\n  '\\n' +\r\n  \"import { useChartDrawingClipboard } from './useChartDrawingClipboard';\\n\" +\r\n  '\\n' +\r\n  'import { clampPositionStopPrice, nearestPositionHandle } from \"@/lib/positionToolConstraints\";\\n' +\r\n  '\\n' +\r\n  'import { fineVolumeProfileWidth } from \"@/lib/volumeProfileWidth\";\\n' +\r\n  '\\n' +\r\n  'import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from \"react\";\\n' +\r\n  'import {\\n' +\r\n  '  DRAW_TOOL_SPECS,\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:draw-tool-theme",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-draw-tool-theme.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 155,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\r\n  assert.ok(chart.includes(\"profitColor: visualStyle.targetColor ?? settings.upColor\"))\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-draw-tool-theme.mjs:111:10\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: true,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:position-tool-behaviour",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-position-tool-behaviour.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 147,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: longPosition must not place three pills across the chart\r\ntrue !== false\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-position-tool-behaviour.mjs:26:12\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: true,\r\n  expected: false,\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:initial-balance-timeframe",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-initial-balance-timeframe.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 160,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the live minute fetch must be off during replay\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-initial-balance-timeframe.mjs:131:10\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:profile-indicator-parity",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-profile-indicator-parity.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 443,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /profile\\.period === \"custom\" \\? compositeInstance : dailyInstance/. Input:\r\n'\"use client\";\\n' +\r\n  'import { recordChartTickPaint } from \"@/lib/chartTickAudit\";\\n' +\r\n  'import { futuresAwarePriceFormat } from \"@/lib/instrumentPriceFormat\";\\n' +\r\n  '\\n' +\r\n  'import { beginPaperProtectionDrag } from \"@/lib/paperProtectionDrag\";\\n' +\r\n  'import { PREFERENCES_HYDRATED_EVENT } from \"@/lib/userPreferences\";\\n' +\r\n  '\\n' +\r\n  'import { mergeBigContractHistory } from \"@/lib/bigContractHistory\";\\n' +\r\n  '\\n' +\r\n  'import { clampPositionStopPrice, nearestPositionHandle } from \"@/lib/positionToolConstraints\";\\n' +\r\n  '\\n' +\r\n  'import { clipReplayIndicatorSeries, replayCausalCandles, replayCausalTrades, replaySafeIndicators, replayRetentionMustReset, REPLAY_UNAVAILABLE_INDICATORS } from \"@/lib/replayIndicatorSafety\";\\n' +\r\n  'import { replayProfileWithinClock } from \"@/lib/replayVolumeProfiles\";\\n' +\r\n  'import { useReplayFrameState } from \"@/lib/useReplayFrameState\";\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:tpo-default-visuals",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-default-visuals.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 158,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /clamp\\(periodEndX - offset, 2, mediaSize\\.width - 2\\)/. Input:\r\n'import type { CanvasRenderingTarget2D } from \"fancy-canvas\";\\n' +\r\n  'import { mixHexColors, resolveVolumeProfileGradient } from \"@/lib/volumeProfileGradients\";\\n' +\r\n  'import type { ISeriesPrimitive, Logical, SeriesAttachedParameter, Time } from \"@/lib/lightweightChartsCompat\";\\n' +\r\n  'import type { TpoExtensionMode, TpoIndicatorSettings, TpoProfileModel } from \"@/lib/tpo/types\";\\n' +\r\n  'import { tickToPrice } from \"@/lib/tpo/types\";\\n' +\r\n  '\\n' +\r\n  'export type TpoTheme = {\\n' +\r\n  '  background: string;\\n' +\r\n  '  foreground: string;\\n' +\r\n  '  muted: string;\\n' +\r\n  '  profile: string;\\n' +\r\n  '  bullish: string;\\n' +\r\n  '  bearish: string;\\n' +\r\n  '  poc: string;\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:live-chart-memory",
+    "command": "node --experimental-strip-types scripts/test-live-chart-memory-guard.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 2778,
+    "initialFailureExcerpt": "(node:38548) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/lightweightSeriesDataSync.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /marketTrades = EMPTY_CHART_ITEMS/. Input:\r\n'\"use client\";\\n' +\r\n  'import { recordChartTickPaint } from \"@/lib/chartTickAudit\";\\n' +\r\n  'import { futuresAwarePriceFormat } from \"@/lib/instrumentPriceFormat\";\\n' +\r\n  '\\n' +\r\n  'import { beginPaperProtectionDrag } from \"@/lib/paperProtectionDrag\";\\n' +\r\n  'import { PREFERENCES_HYDRATED_EVENT } from \"@/lib/userPreferences\";\\n' +\r\n  '\\n' +\r\n  'import { mergeBigContractHistory } from \"@/lib/bigContractHistory\";\\n' +\r\n  '\\n' +\r\n  'import { clampPositionStopPrice, nearestPositionHandle } from \"@/lib/positionToolConstraints\";\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:live-overlay-lifetimes",
+    "command": "node scripts/test-live-overlay-lifetimes.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 95,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: drawing viewport lifecycle: start marker was not found\r\n    at between (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-live-overlay-lifetimes.mjs:11:10)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-live-overlay-lifetimes.mjs:49:25\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:weekly-profile-window",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-weekly-profile-window.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 152,
+    "initialFailureExcerpt": "  ok  weekday fallback supplies five sessions while candles hydrate\n  ok  a weekend window ends at Friday close instead of inventing Saturday\n  ok  calendar-week boundary helper remains stable for user overrides\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /endMs: weekEndMs \\?\\? undefined,/. Input:\r\n'\"use client\";\\n' +\r\n  '\\n' +\r\n  'import { captureDropdownDismissal } from \"@/lib/dropdownDismissal\";\\n' +\r\n  '\\n' +\r\n  'import type { AlgoChartIntegration, AlgoChartFocus } from \"@/lib/algoChartIntegration\";\\n' +\r\n  'import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from \"@/lib/drawingClearBarriers\";\\n' +\r\n  'import { workspaceScopeStorageKey, workspaceStoragePrefix, workspaceTemplateStorageKey, workspaceChartInstanceId, viewportSyncGroupForScope, type ChartWorkspaceScope } from \"@/lib/chartWorkspaceScope\";\\n' +\r\n  'import { workspaceReplaySessionBounds } from \"@/lib/workspaceReplay\";\\n' +\r\n  'import { readChartDrawingStore, updateChartDrawingPane } from \"@/lib/chartDrawingPreferences\";\\n' +\r\n  '\\n' +\r\n  'import { mergePaperTradingLedgerUpdate } from \"@/lib/accountPreferenceMerge\";\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:big-trade-levels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-big-trade-levels.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 432,
+    "initialFailureExcerpt": "  ok  the level is off by default\n  ok  a marker carries where its level stops\n  ok  an unresolved level runs to the right edge\n  ok  levels are drawn under the markers\n  ok  a close through the level ends it, a wick does not\n  ok  the forward scan is bounded\n  ok  nothing is computed while the level is switched off\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: clearing the selection does not disarm it\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-big-trade-levels.mjs:108:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-big-trade-levels.mjs:30:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-big-trade-levels.mjs:93:1 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '\"use client\";\\n' +\r\n    '\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:rithmic-bar-source",
+    "command": "node scripts/test-rithmic-bar-source.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 93,
+    "initialFailureExcerpt": "  ok  the gateway serves history from its own recording\n  ok  the website asks the gateway, not the vendor\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /applyMarketTradesToEventBars\\(\\[\\], trades, timeframe, symbol, 250_000\\)/. Input:\r\n'if (isEventBasedChartInterval(timeframe)) {\\n' +\r\n  '    /*\\r\\n' +\r\n  '     * Range, volume, renko and tick bars are BUILT from individual prints.\\r\\n' +\r\n  '     *\\r\\n' +\r\n  '     * They close on price travelled or contracts traded, so the path taken\\r\\n' +\r\n  '     * within a minute is exactly the information they need and exactly what an\\r\\n' +\r\n  '     * OHLC bar discards - a minute-bar history cannot produce them at any\\r\\n' +\r\n  '     * resolution. This asked the vendor for a raw trades feed; that\\r\\n' +\r\n  '     * subscription is gone (the account answers 402), so these chart types had\\r\\n' +\r\n  '     * no history at all.\\r\\n' +\r\n  '     *\\r\\n' +\r\n  \"     * The prints come from the desk's own recorded tape now, served by the\\r\\n\" +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:chart-watermark",
+    "command": "node scripts/test-chart-watermark.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 122,
+    "initialFailureExcerpt": "  ok  the asset exists, is a PNG, and is the white wordmark\n  ok  the declared aspect matches the file\n  ok  it grows with the chart and stops growing\n  ok  a short pane does not get a tall mark\n  ok  panes too small to carry it show nothing\n  ok  the aspect ratio is never distorted\n(node:33520) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartWatermark.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: Chart hardcodes the asset path\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-chart-watermark.mjs:114:12\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-chart-watermark.mjs:36:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-chart-watermark.mjs:105:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:gex-map-velocity",
+    "command": "node scripts/test-gex-map-velocity.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 81,
+    "initialFailureExcerpt": "file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-gex-map-velocity.mjs:4\r\nimport { buildGexMapSnapshots } from \"../src/lib/gexMapSnapshots.ts\";\r\n         ^^^^^^^^^^^^^^^^^^^^\r\nSyntaxError: Identifier 'buildGexMapSnapshots' has already been declared\r\n    at compileSourceTextModule (node:internal/modules/esm/utils:318:16)\r\n    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:90:18)\r\n    at #translate (node:internal/modules/esm/loader:451:20)\r\n    at afterLoad (node:internal/modules/esm/loader:507:29)\r\n    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:512:12)\r\n    at #getOrCreateModuleJobAfterResolve (node:internal/modules/esm/loader:555:36)\r\n    at afterResolve (node:internal/modules/esm/loader:603:52)\r\n    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:609:12)\r\n    at node:internal/modules/esm/loader:628:32\r\n    at TracingChannel.tracePromise (node:diagnostics_channel:362:14)\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:gex-map-v2-first-paint",
+    "command": "node scripts/test-gex-map-v2-first-paint.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 99,
+    "initialFailureExcerpt": "  ok  a warm-up can never run in front of the panel it is warming\n  ok  every expensive read the panel does not need is on that lane\n  ok  the warm-up is started from the request scope, never inside the cache\n  ok  a finished read is remembered by the instance that ran it\n  ok  the first paint reads recent flow, and says that it did\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /if \\(next\\[panel\\.id\\] && next\\[panel\\.id\\]\\?\\.model !== expectedModel\\) delete next\\[panel\\.id\\];/. Input:\r\n'\"use client\";\\r\\n' +\r\n  'import { formatGexMapExposure as formatCompact } from \"@/lib/gexMapFormat\";\\n' +\r\n  'import GexMapExposureLegend from \"./GexMapExposureLegend\";\\r\\n' +\r\n  'import { optionsOpeningRefreshDelay, publishPanelResults } from \"@/lib/optionsOpeningRefresh\";\\r\\n' +\r\n  '\\r\\n' +\r\n  'import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from \"react\";\\r\\n' +\r\n  'import {\\r\\n' +\r\n  '  ChevronLeft,\\r\\n' +\r\n  '  ChevronRight,\\r\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:gex-map-v2-wiring",
+    "command": "node scripts/test-gex-map-v2-wiring.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 94,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: exactly one mount may offer the dealer model\r\n2 !== 1\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-gex-map-v2-wiring.mjs:30:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-gex-map-v2-wiring.mjs:23:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-gex-map-v2-wiring.mjs:25:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 2,\r\n  expected: 1,\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:liq-cache-busting",
+    "command": "node scripts/test-liquidity-map-cache-busting.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 136,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: index.html loads main.js with no ?v= at all\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-liquidity-map-cache-busting.mjs:39:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-liquidity-map-cache-busting.mjs:27:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-liquidity-map-cache-busting.mjs:37:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-palettes",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-palettes.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 143,
+    "initialFailureExcerpt": "  ok  an indicator with no roles declared gets no palette\n  ok  with nothing chosen every role falls back to the theme\n  ok  an explicit colour beats the theme\n  ok  a scheme beats an explicit colour\n  ok  a two-role indicator takes the scheme's endpoints exactly\n  ok  a lone series takes the scheme's finishing colour\n  ok  middle roles are spread across the scheme\n  ok  scheme off is the same as no scheme\n  ok  the theme toggle hides explicit colours, but never a scheme\n  ok  a malformed stored colour is ignored rather than painted\n  ok  every declared role is usable and uniquely keyed\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: chromey-mono is not one of the profile schemes\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-palettes.mjs:183:12\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-palettes.mjs:42:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-palettes.mjs:175:1 {\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-visibility",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-visibility.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 152,
+    "initialFailureExcerpt": "  ok  no theme seeds a study with the chart's own colour\nfile:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-visibility.mjs:66\r\n  const t = themePresets.find((preset) => preset.name === \"Chromey Mono\").colors;\r\n                                                                         ^\r\nTypeError: Cannot read properties of undefined (reading 'colors')\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-visibility.mjs:66:74\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-visibility.mjs:21:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-visibility.mjs:65:1\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:news-provider-surface",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-news-and-provider-surface.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 149,
+    "initialFailureExcerpt": "  ok  high impact is red on every theme, not the theme's danger\n  ok  medium impact is orange, not the theme's accent\n  ok  no impact colour is taken from the theme any more\n  ok  the proxy never forwards a provider's refusal verbatim\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: NewsWorkspace.tsx still sizes its loader by hand\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-news-and-provider-surface.mjs:84:12\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-news-and-provider-surface.mjs:16:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-news-and-provider-surface.mjs:71:1 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '\"use client\";\\n' +\r\n    '\\n' +\r\n    'import {\\n' +\r\n    '  AlarmClock,\\n' +\r\n    '  AlertTriangle,\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-settings-save",
+    "command": "node --experimental-strip-types scripts/test-indicator-settings-save.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 115,
+    "initialFailureExcerpt": "(node:37120) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/indicatorSettingsDraft.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the shared Save is not in the fixed dialog header\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-settings-save.mjs:37:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-settings-save.mjs:27:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-settings-save.mjs:29:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:candle-style",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-candle-style.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 174,
+    "initialFailureExcerpt": "  ok  an unconfigured chart paints exactly the theme\n  ok  an unknown style falls back to candles\n  ok  hollow empties the body and keeps the outline\n  ok  an explicit colour beats the theme, and a scheme beats both\n  ok  body opacity dims the fill and never the outline\n  ok  Heikin Ashi keeps every body inside its own wick\n  ok  Heikin Ashi does not touch anything but the bars it is given\n  ok  the style flags agree with the style list\n  ok  every style button writes its own catalogue id\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the candle pickers and the candle resolver disagree\r\n+ actual - expected\r\n  [\r\n    'candleBorderDownColor',\r\n    'candleBorderUpColor',\r\n    'candleDownColor',\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:chart-history-state",
+    "command": "node scripts/test-chart-history-state.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 104,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: whether a retry is scheduled is not established before deciding to keep loading\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-chart-history-state.mjs:27:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-chart-history-state.mjs:24:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-chart-history-state.mjs:26:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '\"use client\";\\n' +\r\n    '\\n' +\r\n    'import { captureDropdownDismissal } from \"@/lib/dropdownDismissal\";\\n' +\r\n    '\\n' +\r\n    'import type { AlgoChartIntegration, AlgoChartFocus } from \"@/lib/algoChartIntegration\";\\n' +\r\n    'import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from \"@/lib/drawingClearBarriers\";\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:chart-hydration-cover",
+    "command": "node --experimental-strip-types --test tests/chart-hydration-cover.test.mjs tests/chart-loading-states.test.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 287,
+    "initialFailureExcerpt": "(node:14080) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartHydration.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ an unsettled chart request always keeps the loading cover visible (0.983ms)\n✔ switching instrument or interval hides the previous chart synchronously (0.2869ms)\n✔ verified candles release the cover only for their exact request (0.2091ms)\n✔ a settled live chart stays visible while continuity repairs in place (0.1481ms)\n✔ the watchdog observes behind a just-opened candle boundary (0.2365ms)\n✔ a settled failure reveals the honest error instead of dots or an endless loader (0.1488ms)\n✖ every workspace chart keeps a loader over empty candle state (3.0346ms)\n✖ chart construction and workspace module transitions both show loaders (1.0021ms)\nℹ tests 8\nℹ suites 0\nℹ pass 6\nℹ fail 2\nℹ cancelled 0\nℹ skipped 0",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:weekly-profile-week",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-weekly-profile-week.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 151,
+    "initialFailureExcerpt": "  ok  stock weekly profile is the latest five trading sessions\n  ok  actual trading dates skip a weekday holiday\n  ok  current and previous calendar-week overrides remain available\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: The input did not match the regular expression /endMs: weekEndMs \\?\\? undefined,/. Input:\r\n'\"use client\";\\n' +\r\n  '\\n' +\r\n  'import { captureDropdownDismissal } from \"@/lib/dropdownDismissal\";\\n' +\r\n  '\\n' +\r\n  'import type { AlgoChartIntegration, AlgoChartFocus } from \"@/lib/algoChartIntegration\";\\n' +\r\n  'import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from \"@/lib/drawingClearBarriers\";\\n' +\r\n  'import { workspaceScopeStorageKey, workspaceStoragePrefix, workspaceTemplateStorageKey, workspaceChartInstanceId, viewportSyncGroupForScope, type ChartWorkspaceScope } from \"@/lib/chartWorkspaceScope\";\\n' +\r\n  'import { workspaceReplaySessionBounds } from \"@/lib/workspaceReplay\";\\n' +\r\n  'import { readChartDrawingStore, updateChartDrawingPane } from \"@/lib/chartDrawingPreferences\";\\n' +\r\n  '\\n' +\r\n  'import { mergePaperTradingLedgerUpdate } from \"@/lib/accountPreferenceMerge\";\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-opacity",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-opacity.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 468,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: these still arrive faded:\r\n  big-blocks-options.opacity = 85\r\n  zero-gamma-line.opacity = 72\r\n  unfinished-auction.opacity = 22\r\n  ratio-highlight.opacity = 70\r\n  deep-wall.opacity = 92\r\n  kwant-profile.shiftedPocOpacity = 35\r\n  weekly-volume-profile.shiftedPocOpacity = 35\r\n  monthly-volume-profile.shiftedPocOpacity = 35\r\n  session-volume-profile.shiftedPocOpacity = 35\r\n  composite-volume-profile.shiftedPocOpacity = 35\r\n  visible-range-volume-profile.shiftedPocOpacity = 35\r\n  custom-draw-on-volume-profile.shiftedPocOpacity = 35\r\n  ask-bid-volume-profile.shiftedPocOpacity = 35\r\n  delta-profile.shiftedPocOpacity = 35\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-colour-controls",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-controls.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 423,
+    "initialFailureExcerpt": "  ok  the dialog's own list is the one used here\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the shared Colours section no longer excludes the hand-built studies\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-colour-controls.mjs:47:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-colour-controls.mjs:28:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-colour-controls.mjs:46:1 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '\"use client\";\\n' +\r\n    '\\n' +\r\n    'import SuperTrendIndicatorSettings from \"@/components/SuperTrendIndicatorSettings\";\\n' +\r\n    'import { GAMMA_ENVIRONMENT_SOURCES } from \"@/lib/chartGammaConversion\";\\n' +\r\n    'import AuctionGapIndicatorSettings from \"@/components/AuctionGapIndicatorSettings\";\\n' +\r\n    'import { auctionGapSettingsSection, auctionGapThemeColors } from \"@/lib/auctionGapSettings\";\\n' +\r\n    '\\n' +\r\n    'import { Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from \"react\";\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:index-history-cache",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-index-history-cache.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 97,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the restore path is gated on Databento again\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-index-history-cache.mjs:36:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-index-history-cache.mjs:27:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-index-history-cache.mjs:35:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '\"use client\";\\n' +\r\n    '\\n' +\r\n    'import { captureDropdownDismissal } from \"@/lib/dropdownDismissal\";\\n' +\r\n    '\\n' +\r\n    'import type { AlgoChartIntegration, AlgoChartFocus } from \"@/lib/algoChartIntegration\";\\n' +\r\n    'import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from \"@/lib/drawingClearBarriers\";\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:page-loaders",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-page-loaders.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 89,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: these show a loader in place of a page without filling it:\r\n  src/components/news/NewsWorkspace.tsx\r\n+ actual - expected\r\n+ [\r\n+   'src/components/news/NewsWorkspace.tsx'\r\n+ ]\r\n- []\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-page-loaders.mjs:47:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-page-loaders.mjs:37:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-page-loaders.mjs:41:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\r\n    at async node:internal/modules/esm/loader:639:26\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-both-sides",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-both-sides.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 530,
+    "initialFailureExcerpt": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: these paint one colour on data that alternates:\r\n  parabolic-sar / parabolic-sar: all 399 bars #3B82F6\r\n  linear-regression / linear-regression: all 380 bars #3B82F6\r\n  regression-channel / regression-channel-mid: all 100 bars #22C55E\r\n  regression-channel / regression-channel-upper: all 100 bars #22C55E\r\n  regression-channel / regression-channel-lower: all 100 bars #22C55E\r\n  know-sure-thing-kst / know-sure-thing-kst-signal: all 348 bars #8B5CF6\r\n+ actual - expected\r\n+ [\r\n+   'parabolic-sar / parabolic-sar: all 399 bars #3B82F6',\r\n+   'linear-regression / linear-regression: all 380 bars #3B82F6',\r\n+   'regression-channel / regression-channel-mid: all 100 bars #22C55E',\r\n+   'regression-channel / regression-channel-upper: all 100 bars #22C55E',\r\n+   'regression-channel / regression-channel-lower: all 100 bars #22C55E',\r\n+   'know-sure-thing-kst / know-sure-thing-kst-signal: all 348 bars #8B5CF6'\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:value-area-rows",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-rows.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 118,
+    "initialFailureExcerpt": "  ok  a level bins to the same row the chart draws it in\n  ok  an exact bin boundary does not fall a row low\n  ok  the edges sit on row boundaries\n  ok  both edges move with the bin size, not just one\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the value area is no longer measured at the requested bin\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-value-area-rows.mjs:95:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-value-area-rows.mjs:25:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-value-area-rows.mjs:92:1 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 'import type { CanvasRenderingTarget2D } from \"fancy-canvas\";\\n' +\r\n    'import { fineVolumeProfileWidth } from \"./volumeProfileWidth\";\\n' +\r\n    'import type {\\n' +\r\n    '  ISeriesPrimitive,\\n' +\r\n    '  Logical,\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:theme-account-sync",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-theme-account-sync.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 136,
+    "initialFailureExcerpt": "  ok  the theme is an account preference, not a browser one\n  ok  choosing a theme pushes it\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the re-apply no longer re-reads storage\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-theme-account-sync.mjs:61:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-theme-account-sync.mjs:29:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-theme-account-sync.mjs:50:1 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: '\"use client\";\\n' +\r\n    '\\n' +\r\n    'import { useEffect } from \"react\";\\n' +\r\n    'import { applyTheme, THEME_STORAGE_KEY } from \"@/lib/theme\";\\n' +\r\n    'import { PREFERENCES_HYDRATED_EVENT } from \"@/lib/userPreferences\";\\n' +\r\n    '\\n' +\r\n    '/**\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:session-boundaries",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-session-boundaries.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 133,
+    "initialFailureExcerpt": "  ok  Asia runs 17:00 to 02:00, matching DeepChart's Asian\n  ok  London runs 02:00 to 10:00, matching DeepChart's Europe\n  ok  New York runs 08:30 to 15:00, matching DeepChart's Usa\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\r\n+ actual - expected\r\n  [\r\n    'asia',\r\n+   'tokyo',\r\n    'london',\r\n    'newyork'\r\n  ]\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-session-boundaries.mjs:68:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-session-boundaries.mjs:22:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-session-boundaries.mjs:67:1 {\r\n  generatedMessage: true,\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:indicator-side-colours",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-side-colours.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 433,
+    "initialFailureExcerpt": "  ok  no palette leaves bull and bear reading as one colour\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: Solar Flare is gone from the presets\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-side-colours.mjs:67:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-side-colours.mjs:28:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-indicator-side-colours.mjs:61:1 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: undefined,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\nNode.js v24.15.0\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:value-area-percent",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-percent.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 184,
+    "initialFailureExcerpt": "  ok  a wider percentage cannot narrow the value area\n  ok  the percentage actually changes the answer\n  ok  the POC is the same either way\n  ok  the live top-up uses the profile's own percentage\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\nAssertionError [ERR_ASSERTION]: the request no longer sends the setting\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-value-area-percent.mjs:114:10\r\n    at check (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-value-area-percent.mjs:22:31)\r\n    at file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/scripts/test-value-area-percent.mjs:88:1 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 'export async function fetchInstitutionalVolumeProfile(\\n' +\r\n    '  args: InstitutionalVolumeProfileRequest,\\n' +\r\n    '): Promise<InstitutionalVolumeProfile | null> {\\n' +\r\n    '  const { askedValueAreaPercent, query, cacheKey } = institutionalVolumeProfileRequest(args);\\n' +\r\n    '  const cached = volumeProfileResponseCache.get(cacheKey);\\n' +\r",
+    "classification": "needs triage; not a confirmed product defect"
+  },
+  {
+    "name": "test:chart-emoji-tool",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-emoji-tool.test.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 231,
+    "initialFailureExcerpt": "(node:23944) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartDrawTools.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to C:\\Users\\Karen\\Documents\\QUANT DESK\\kwantdesk-websiterepo\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ emoji is directly below Measure and places with one chart anchor (0.7139ms)\n✔ emoji value and size survive drawing persistence (1.8559ms)\n✖ toolbar exposes a scrollable picker including the magnet (1.0634ms)\n✔ toolbar button displays the last selected emoji instead of a fixed icon (0.2345ms)\n✔ emoji paints at chart coordinates and has a bounded resize handle (0.4054ms)\n✔ chart owns the selected emoji and passes it to the persisted drawing layer (0.5082ms)\n✔ emoji settings only expose real emoji and size controls (0.1093ms)\nℹ tests 7\nℹ suites 0\nℹ pass 6\nℹ fail 1\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0",
+    "classification": "needs triage; not a confirmed product defect"
+  }
+]

@@ -1,0 +1,3655 @@
+[
+  {
+    "id": "big-blocks-options",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "gamma-environment",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "zero-gamma-line",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "options-delta",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "zero-gamma-bars",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "gamma-heatmap",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "net-gamma-exposure-by-strike",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "gex-interval-map",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "bounce-levels",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "dark-pool-map",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "dark-pool-gex",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "implied-volatility-rank",
+    "category": "Options Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "cumulative-volume-delta",
+    "category": "Order Flow",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "periodValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "filterMinVolume",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "filterMaxVolume",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "zeroLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showName",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "showValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showBidAskVolumes",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "filteredEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "filteredSeparateAxis",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "showZeroLine",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "deltaAskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "deltaBidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "volumeAskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "volumeBidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "filteredAskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "filteredBidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "zeroLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "cvd-divergence",
+    "category": "Order Flow",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "bullishColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "bearishColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "pivotStrength",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lookbackBars",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "pulling-stacking",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "delta-bar",
+    "category": "Order Flow",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "ladderWidthPx",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "ladderEdgeGapPx",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "ladderLevelSpacingPx",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "ladderOpacity",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "ladderFontSize",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "showLadderValues",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "buyColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "sellColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "spineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "delta-highlight",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "delta-cumulative-candlestick",
+    "category": "Order Flow",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "filterMinVolume",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "filterMaxVolume",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "sessionStartHour",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "averageLength",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "averageLineWidth",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "averageDeviation",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "zeroLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "resetToSession",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showAverage",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showAverageDeviations",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "showZeroLine",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showName",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "showValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "deltaAskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "deltaBidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "averageColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "deviationColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "zeroLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "delta-cumulative-histogram",
+    "category": "Order Flow",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "filterMinVolume",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "filterMaxVolume",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "sessionStartHour",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "zeroLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "resetToSession",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showName",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "showValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showZeroLine",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "deltaAskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "deltaBidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "zeroLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "imbalance-tracker",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "imbalance-rejector",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "unfinished-auction",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "bar-poc-indicator",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "dynamic-poc",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "speed-of-tape",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "speed-of-tape-instant",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "volume-delta-sprint",
+    "category": "Order Flow",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "filterMin",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "filterMax",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "smoothingEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "smoothingLength",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "showDelta",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showBid",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showAsk",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "positiveColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "negativeColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "bidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "askColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "tape-speed-order-flow-burst",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "big-trades",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "ratio-highlight",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "stop-spotter",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "auction-gap-tracker",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "session-imbalance",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "absorption-detector",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "stacked-imbalance-suite",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "iceberg-refresh-detector",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "liquidity-stop-sweep-detector",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "poc-auction-suite",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "cumulative-iceberg-stop",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "book-speed",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "depth-of-market",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "mini-dom",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "deep-print-footprint",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "deep-delta",
+    "category": "Order Flow",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "positiveColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "negativeColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "range1AskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "range1BidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "range2AskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "range2BidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "range3AskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "range3BidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "range4AskColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "range4BidColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "maximumPositiveColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "minimumNegativeColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "level1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "level2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "markerColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "barGrouping",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "range1Minimum",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "range1Maximum",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "range2Minimum",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "range2Maximum",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "range3Minimum",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "range3Maximum",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "range4Minimum",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "range4Maximum",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "level1Value",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "level1LineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "level2Value",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "level2LineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "markerMinimumDelta",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "range1Enabled",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "range2Enabled",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "range3Enabled",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "range4Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "level1Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "level2Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "markerEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "deep-wall",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "deep-v-tracker",
+    "category": "Order Flow",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "volume",
+    "category": "Volume & Profiles",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "minimumTotalVolume",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "kwant-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "tpo-chart",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "weekly-tpo",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "weekly-volume-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "monthly-volume-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "session-volume-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "composite-volume-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "visible-range-volume-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "custom-draw-on-volume-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "ask-bid-volume-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "delta-profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "deep-profile-swing",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "deep-profile-values",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "tpo-levels",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "vwap",
+    "category": "Volume & Profiles",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "mainColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper3Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower3Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper4Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower4Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper5Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower5Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "periodValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "sessionStartHour",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "bandLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band1",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band2",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band3",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band4",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band5",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band1Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band2Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band3Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band4Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band5Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showCurrentValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "vwap-envelopes",
+    "category": "Volume & Profiles",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "mainColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper3Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower3Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper4Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower4Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper5Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower5Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "periodValue",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "bandLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band1",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band2",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band3",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band4",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band5",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band1Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band2Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band3Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band4Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band5Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showCurrentValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "rolling-vwap",
+    "category": "Volume & Profiles",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper3Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower3Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper4Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower4Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upper5Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lower5Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "periodValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "bandLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band1",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band2",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band3",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band4",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band5",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band1Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band2Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band3Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band4Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "band5Enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showCurrentValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "market-statistics",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "on-candle-stats",
+    "category": "Volume & Profiles",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "important-levels",
+    "category": "Market Structure",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "days",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "weeks",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "months",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "skipLast",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "fontSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "dailyAverage",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "dailyLow",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "dailyHigh",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "dailyOpen",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "dailyClose",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "dailyPoc",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "dailyValueArea",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "dailyVwap",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "weeklyAverage",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "weeklyLow",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "weeklyHigh",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "weeklyOpen",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "weeklyClose",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "weeklyPoc",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "weeklyValueArea",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "weeklyVwap",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "monthlyAverage",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "monthlyLow",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "monthlyHigh",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "monthlyOpen",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "monthlyClose",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "monthlyPoc",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "monthlyValueArea",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "monthlyVwap",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lowColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "highColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "openColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "closeColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "midColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "pocColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "valueAreaColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "vwapColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "absolute-levels",
+    "category": "Market Structure",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "firstValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "secondValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "firstLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "secondLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "firstLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "secondLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "pivot-points",
+    "category": "Market Structure",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "fontSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "periodsToShow",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "customReferenceEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "referenceValue",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "customSessionEnabled",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "pivotPointColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "r1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "r2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "s1Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "s2Color",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "price-movement-levels",
+    "category": "Market Structure",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "daysToLoad",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "stepValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "fontSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "minimumLevels",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "supportLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "resistanceLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "zeroLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "customTimeEnabled",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "textColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "supportLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "resistanceLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "zeroLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "fvg-identifier",
+    "category": "Market Structure",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "minNumTicks",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "maxNumTicks",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "backgroundOpacity",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "resetStartDay",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "removeOnShadowTriggered",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "maxBarsExtension",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "breakoutPercent",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "upColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "downColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "gap-detector",
+    "category": "Market Structure",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "percentValue",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "tickValue",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "triggerWholeBar",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "backgroundOpacity",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "upColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "downColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "divergence-detector",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "confluence-identifier",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "swing-point",
+    "category": "Market Structure",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "leftBars",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "rightBars",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "filterSwing",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "textTickOffset",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "textSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "highColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "highTextColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowTextColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "average-daily-range-target",
+    "category": "Market Structure",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "fontSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "backgroundColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "textColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "sessions",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "session-highs-lows",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "ib-levels",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "gamma-levels",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "classic-gex-profile",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "session-marker",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "shift-candle",
+    "category": "Market Structure",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "moving-average",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "ichimoku-indicator",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "baseLinePeriod",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "laggingSpanPeriod",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "tenkanLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kijunLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "chikouLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "senkouLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "tenkanNameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "tenkanValueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kijunNameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kijunValueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "chikouNameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "chikouValueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "senkouNameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "senkouValueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "tenkanIncludeOnAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kijunIncludeOnAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "chikouIncludeOnAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "senkouIncludeOnAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showCloud",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cloudOpacity",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "tenkanColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "kijunColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "chikouColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "senkouColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "senkouSecondaryColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "bullishCloudColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "bearishCloudColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "parabolic-sar",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "accelerationStep",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "accelerationMaximum",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "secondaryColorEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "secondaryColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "linear-regression",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "secondaryColorEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "secondaryColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "regression-channel",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "bars",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "standardDeviationValue",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "zigZagAbsoluteReversal",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "zigZagReversalValue",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "midLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "upperLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lowerLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "midColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "midUpColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "midDownColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upperColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upperUpColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upperDownColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowerColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowerUpColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowerDownColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "super-trend",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "multiplier",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "includeOnAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "valueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "nameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "nameBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "valueBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "chartColorForMarker",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "alertSoundEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "messagePopupEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "plotColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "secondaryColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "super-trend-difference",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "multiplier",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "includeOnAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "valueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "nameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "nameBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "valueBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "chartColorForMarker",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "plotColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "secondaryColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "keltner-channel",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "middleColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upperColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowerColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "atrLength",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "multiplier",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "bollinger-bands",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "middleColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "upperColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowerColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "multiplier",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "donchian-channel",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "upperColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "middleColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowerColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "tillson-t3",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "volumeFactor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "secondaryColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "zig-zag",
+    "category": "Trend",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "absoluteReversalPercent",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "tickReversalOrLookback",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "upColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "downColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "retracementBackgroundColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "retracementFontSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "retracementTextColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "retracementLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "retracementLineColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "showRetracement38",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showRetracement50",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showRetracement62",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showRetracement75",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "extendRight",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "relative-strength-index-rsi",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "rate-of-change-roc",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "macd-indicator",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "macdColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "signalColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "histogramColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "fastLength",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "slowLength",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalLength",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "momentum-indicator",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "commodity-channel-index-cci",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "know-sure-thing-kst",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "roc1",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "roc2",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "roc3",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "roc4",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "average1",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "average2",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "average3",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "average4",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalPeriod",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "usePercent",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "middleLevel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "middleLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showMiddle",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showKst",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showSignal",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kstLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kstNameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalNameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kstValueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalValueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kstNameBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalNameBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kstValueBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalValueBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kstChartMarker",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalChartMarker",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kstAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "signalAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "kstColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "kstSecondaryColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "signalColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "signalSecondaryColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "middleColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "inverse-cyber-cycle",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "smoothingAlpha",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleALength",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleBLength",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "middleLevel",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": false
+      },
+      {
+        "key": "lowLevel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "highLevel",
+        "status": "output changed on fixture",
+        "persisted": false
+      },
+      {
+        "key": "levelWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleALineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleBLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleANameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleAValueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleAIncludeOnAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleBNameLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleBValueLabel",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleBIncludeOnAutoCenter",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "cycleAColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "cycleASecondaryColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "cycleBColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "cycleBSecondaryColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "middleLevelColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "lowLevelColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "highLevelColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "aroon-up-down",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "upColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "downColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "aroon-oscillator",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "awesome-oscillator",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "fastLength",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "slowLength",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "stochastic-oscillator",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "kColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "dColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "smooth",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "williams-r",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "chaikin-accumulation-distribution",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "average-directional-index-adx",
+    "category": "Momentum",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "period",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showPlusDi",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showMinusDi",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "adxColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "plusDiColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "minusDiColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "vix-environment",
+    "category": "Volatility",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "standard-deviation",
+    "category": "Volatility",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "average-true-range-atr",
+    "category": "Volatility",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "length",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "expected-move",
+    "category": "Volatility",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "overlay-chart",
+    "category": "Overlays",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "overlay-symbol",
+    "category": "Overlays",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "overlay-timeframe-candlestick",
+    "category": "Overlays",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "overlay-timeframe-highlight",
+    "category": "Overlays",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "parameter1",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "colorBasedOnDelta",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "standardDeviation",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "enabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "borderWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "bodyOpacity",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "shadowOpacity",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showBackground",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "targetEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "targetLineWidth",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "extendLineLeft",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "showTargetText",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "textSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "summaryEnabled",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "volumeSummary",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "tradeSummary",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "summaryTextSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "summaryToView",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "upColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "downColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "highColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "lowColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "textColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "summaryTextColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "askColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "bidColor",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "text-on-chart",
+    "category": "Overlays",
+    "status": "calculation mutation pass completed",
+    "settings": [
+      {
+        "key": "fontSize",
+        "status": "output changed on fixture",
+        "persisted": true
+      },
+      {
+        "key": "textColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "backgroundColor",
+        "status": "no change on fixture; trace renderer/data-dependent path",
+        "persisted": true
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output changed on fixture",
+        "persisted": true
+      }
+    ]
+  },
+  {
+    "id": "source-code-indicator",
+    "category": "Overlays",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "kwant-stats",
+    "category": "KWANT Systems",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "hedge-levels",
+    "category": "KWANT Systems",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "deep-m-ivb",
+    "category": "KWANT Systems",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "deep-pattern-builder",
+    "category": "KWANT Systems",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  },
+  {
+    "id": "deep-m-effort-nq",
+    "category": "KWANT Systems",
+    "status": "dedicated runtime or additional data required",
+    "settings": []
+  }
+]

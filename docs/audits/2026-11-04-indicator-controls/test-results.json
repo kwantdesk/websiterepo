@@ -1,0 +1,1661 @@
+[
+  {
+    "name": "test:gex-interval-map",
+    "command": "node scripts/test-gex-interval-map.cjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 1336
+  },
+  {
+    "name": "test:gex-cal",
+    "command": "node --experimental-strip-types scripts/test-gex-calendar.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 448
+  },
+  {
+    "name": "test:gex-flow",
+    "command": "node --experimental-strip-types scripts/test-gex-flow.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 128
+  },
+  {
+    "name": "test:bounce-levels",
+    "command": "node scripts/test-bounce-levels.cjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 438
+  },
+  {
+    "name": "test:iv-rank",
+    "command": "node scripts/test-implied-volatility-rank.cjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 321
+  },
+  {
+    "name": "test:iv-rank-integration",
+    "command": "node scripts/test-implied-volatility-rank-integration.cjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 91
+  },
+  {
+    "name": "test:dark-pool-map",
+    "command": "node --experimental-strip-types scripts/test-dark-pool-map.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 143
+  },
+  {
+    "name": "test:dark-pool-gex",
+    "command": "node --experimental-strip-types scripts/test-dark-pool-gex.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 14508
+  },
+  {
+    "name": "test:pulling-stacking",
+    "command": "node --experimental-strip-types scripts/test-pulling-stacking.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 164
+  },
+  {
+    "name": "test:absorption-detector",
+    "command": "node --experimental-strip-types scripts/test-absorption-detector.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 196
+  },
+  {
+    "name": "test:stacked-imbalance-suite",
+    "command": "node --experimental-strip-types scripts/test-stacked-imbalance-suite.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 142
+  },
+  {
+    "name": "test:imbalance-tracker",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-imbalance-tracker.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 448
+  },
+  {
+    "name": "test:imbalance-rejector",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-imbalance-rejector.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 124
+  },
+  {
+    "name": "test:iceberg-refresh-detector",
+    "command": "node --experimental-strip-types scripts/test-iceberg-refresh-detector.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 156
+  },
+  {
+    "name": "test:liquidity-stop-sweep-detector",
+    "command": "node --experimental-strip-types scripts/test-liquidity-stop-sweep-detector.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 155
+  },
+  {
+    "name": "test:rithmic-liquidity-frame-budget",
+    "command": "node --experimental-strip-types scripts/test-rithmic-liquidity-frame-budget.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 133
+  },
+  {
+    "name": "test:rithmic-candle-integrity",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-rithmic-candle-integrity.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 272
+  },
+  {
+    "name": "test:live-candle-path",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-live-candle-path.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 142
+  },
+  {
+    "name": "test:poc-auction-suite",
+    "command": "node --experimental-strip-types scripts/test-poc-auction-suite.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 168
+  },
+  {
+    "name": "test:unfinished-auction",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-unfinished-auction.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 147
+  },
+  {
+    "name": "test:bar-poc-indicator",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-bar-poc-indicator.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 148
+  },
+  {
+    "name": "test:dynamic-poc",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-dynamic-poc.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 157
+  },
+  {
+    "name": "test:ratio-highlight",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-ratio-highlight.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 114
+  },
+  {
+    "name": "test:stop-spotter",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-stop-spotter.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 165
+  },
+  {
+    "name": "test:cumulative-iceberg-stop",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-cumulative-iceberg-stop.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 122
+  },
+  {
+    "name": "test:book-speed",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-book-speed.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 179
+  },
+  {
+    "name": "test:deep-delta",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-delta.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 136
+  },
+  {
+    "name": "test:deep-wall",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-wall.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 120
+  },
+  {
+    "name": "test:deep-v-tracker",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-v-tracker.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 176
+  },
+  {
+    "name": "test:deep-profile-swing",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-profile-swing.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 190
+  },
+  {
+    "name": "test:deep-profile-values",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-profile-values.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 483
+  },
+  {
+    "name": "test:market-statistics",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-market-statistics.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 449
+  },
+  {
+    "name": "test:confluence-identifier",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-confluence-identifier.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 148
+  },
+  {
+    "name": "test:custom-draw-volume-profile",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-custom-draw-volume-profile.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 125
+  },
+  {
+    "name": "test:tape-speed-order-flow-burst",
+    "command": "node --experimental-strip-types scripts/test-tape-speed-order-flow-burst.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 153
+  },
+  {
+    "name": "test:speed-of-tape-instant",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-speed-of-tape-instant.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 138
+  },
+  {
+    "name": "test:economic-calendar-forward",
+    "command": "node --experimental-strip-types scripts/test-economic-calendar-forward.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 113
+  },
+  {
+    "name": "test:initial-balance",
+    "command": "node --experimental-strip-types scripts/test-initial-balance.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 144
+  },
+  {
+    "name": "test:zero-gamma-line",
+    "command": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 149
+  },
+  {
+    "name": "test:options-delta",
+    "command": "node --experimental-strip-types scripts/test-options-delta.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 121
+  },
+  {
+    "name": "test:zero-gamma-bars",
+    "command": "node --experimental-strip-types scripts/test-zero-gamma-bars.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 119
+  },
+  {
+    "name": "test:gamma-heatmap",
+    "command": "node --test tests/gamma-heatmap.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 168
+  },
+  {
+    "name": "test:event-bar-block-prints",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-event-bar-block-prints.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 132
+  },
+  {
+    "name": "test:global-theme-chart-ownership",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-global-theme-chart-ownership.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 172
+  },
+  {
+    "name": "test:indicator-templates",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-templates.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 142
+  },
+  {
+    "name": "test:indicator-library-favorites",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-library-favorites.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 124
+  },
+  {
+    "name": "test:vwap-family",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/vwap-family.test.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 947
+  },
+  {
+    "name": "test:mini-dom",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-mini-dom.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 438
+  },
+  {
+    "name": "test:delta-ladder",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-delta-ladder.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 475
+  },
+  {
+    "name": "test:candle-visibility",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-candle-visibility.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 104
+  },
+  {
+    "name": "test:gex-map-defaults",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-gex-map-defaults.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 99
+  },
+  {
+    "name": "test:crosshair-link",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-crosshair-link.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 200
+  },
+  {
+    "name": "test:index-timeframes",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-index-timeframes.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 113
+  },
+  {
+    "name": "test:chart-frame-work",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-chart-frame-work.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 106
+  },
+  {
+    "name": "test:chart-interaction-budget",
+    "command": "node scripts/test-chart-interaction-budget.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 87
+  },
+  {
+    "name": "test:new-york-trading-day",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-new-york-trading-day.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 209
+  },
+  {
+    "name": "test:chart-time-formatters",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-chart-time-formatters.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 147
+  },
+  {
+    "name": "test:position-tool-resize",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-position-tool-resize.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 124
+  },
+  {
+    "name": "test:position-tool-migration",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-position-tool-migration.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 90
+  },
+  {
+    "name": "test:mini-dom-edge",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-mini-dom-edge.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 125
+  },
+  {
+    "name": "test:big-block-width",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-big-block-width.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 116
+  },
+  {
+    "name": "test:deep-contracts-effort",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-contracts-effort.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 480
+  },
+  {
+    "name": "test:deploy-cost",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-deploy-cost.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 659
+  },
+  {
+    "name": "test:interval-menu",
+    "command": "node scripts/test-interval-menu.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 91
+  },
+  {
+    "name": "test:quantdata-coalescing",
+    "command": "node scripts/test-quantdata-coalescing.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 86
+  },
+  {
+    "name": "test:live-status-broadcast",
+    "command": "node scripts/test-live-status-broadcast.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 84
+  },
+  {
+    "name": "test:provider-error-message",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-provider-error-message.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 129
+  },
+  {
+    "name": "test:draw-layer-anchoring",
+    "command": "node scripts/test-draw-layer-anchoring.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 88
+  },
+  {
+    "name": "test:chart-text-tools",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-text-tools.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 151
+  },
+  {
+    "name": "test:index-history-timeout",
+    "command": "node scripts/test-index-history-timeout.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 98
+  },
+  {
+    "name": "test:gex-flow-as-tool",
+    "command": "node scripts/test-gex-flow-as-tool.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 90
+  },
+  {
+    "name": "test:gex-cal-as-tool",
+    "command": "node scripts/test-gex-cal-as-tool.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 96
+  },
+  {
+    "name": "test:right-rail-drag",
+    "command": "node scripts/test-right-rail-drag.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 88
+  },
+  {
+    "name": "test:crosshair-link-no-rebuild",
+    "command": "node scripts/test-crosshair-link-no-rebuild.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 91
+  },
+  {
+    "name": "test:draw-handle-grab",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-draw-handle-grab.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 90
+  },
+  {
+    "name": "test:databento-available-end",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-databento-available-end.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 119
+  },
+  {
+    "name": "test:entry-exit-arrows",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-entry-exit-arrows.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 169
+  },
+  {
+    "name": "test:stats-palettes",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-stats-palettes.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 135
+  },
+  {
+    "name": "test:indicator-plot-colors",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-plot-colors.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 553
+  },
+  {
+    "name": "test:volume-indicator-parity",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-indicator-parity.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 309
+  },
+  {
+    "name": "test:trading-panel-orders",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-trading-panel-orders.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 126
+  },
+  {
+    "name": "test:big-trades-session-split",
+    "command": "node scripts/test-big-trades-session-split.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 1743
+  },
+  {
+    "name": "test:big-trades-marker-semantics",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-big-trades-marker-semantics.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 451
+  },
+  {
+    "name": "test:volume-profile-delta-bar",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-delta-bar.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 200
+  },
+  {
+    "name": "test:indicator-history-depth",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-history-depth.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 493
+  },
+  {
+    "name": "test:toolbar-single-source",
+    "command": "node --experimental-strip-types scripts/test-toolbar-single-source.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 150
+  },
+  {
+    "name": "test:drawing-toolbar-last-used",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-draw-toolbar-last-used.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 209
+  },
+  {
+    "name": "test:chart-emoji-zoom-scale",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-emoji-tool.test.mjs tests/chart-emoji-zoom-scale.test.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 226
+  },
+  {
+    "name": "test:drawing-horizontal-extension",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-drawing-horizontal-extension.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 218
+  },
+  {
+    "name": "test:fixed-range-volume-profile-levels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-fixed-range-volume-profile-levels.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 150
+  },
+  {
+    "name": "test:cvd-divergence",
+    "command": "node --import ./scripts/alias-hook.mjs --experimental-strip-types scripts/test-cvd-divergence.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 151
+  },
+  {
+    "name": "test:cvd-session-sampling",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/cvd-session-sampling.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 195
+  },
+  {
+    "name": "test:preference-hydration",
+    "command": "node --experimental-strip-types scripts/test-preference-hydration.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 138
+  },
+  {
+    "name": "test:gex-map-star",
+    "command": "node --experimental-strip-types scripts/test-gex-map-star.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 121
+  },
+  {
+    "name": "test:volume-profile-sessions",
+    "command": "node --experimental-strip-types scripts/test-volume-profile-sessions.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 147
+  },
+  {
+    "name": "test:tpo-single-prints",
+    "command": "node --import ./scripts/alias-hook.mjs --experimental-strip-types scripts/test-tpo-single-prints.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 158
+  },
+  {
+    "name": "test:volume-profile-data-settings",
+    "command": "node --experimental-strip-types scripts/test-volume-profile-data-settings.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 131
+  },
+  {
+    "name": "test:volume-profile-structure",
+    "command": "node --experimental-strip-types scripts/test-volume-profile-structure.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 123
+  },
+  {
+    "name": "test:volume-profile-data",
+    "command": "node --experimental-strip-types scripts/test-volume-profile-data-settings.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 135
+  },
+  {
+    "name": "test:composite-volume-profile",
+    "command": "node --experimental-strip-types scripts/test-composite-volume-profile.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 143
+  },
+  {
+    "name": "test:chart-magnet",
+    "command": "node --experimental-strip-types scripts/test-chart-magnet.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 137
+  },
+  {
+    "name": "test:spxw",
+    "command": "node --test --experimental-strip-types tests/gex-map-spxw-provider.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 218
+  },
+  {
+    "name": "test:themes",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/feminine-theme-presets.test.mjs tests/mono-default-theme.test.mjs tests/mr-quant-theme.test.mjs tests/theme-scrollbars.test.mjs tests/theme-action-contrast.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 867
+  },
+  {
+    "name": "test:theme-scrollbars",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/theme-scrollbars.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 222
+  },
+  {
+    "name": "test:big-trades-filter",
+    "command": "node scripts/test-big-trades-filter.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 1567
+  },
+  {
+    "name": "test:volume-profile-zoom",
+    "command": "node scripts/test-volume-profile-zoom.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 1680
+  },
+  {
+    "name": "test:cvd-flow-heal",
+    "command": "node scripts/test-cvd-flow-heal.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 1605
+  },
+  {
+    "name": "test:volume-profile-split",
+    "command": "node scripts/test-volume-profile-split.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 3684
+  },
+  {
+    "name": "test:volume-profile-grouping",
+    "command": "node scripts/test-volume-profile-grouping.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 88
+  },
+  {
+    "name": "test:volume-profile-chain",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-chain.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 187
+  },
+  {
+    "name": "test:volume-profile-gradients",
+    "command": "node scripts/test-volume-profile-gradients.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 1568
+  },
+  {
+    "name": "test:event-bar-first-paint",
+    "command": "node scripts/test-event-bar-first-paint.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 93
+  },
+  {
+    "name": "test:event-indicator-alignment",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-event-indicator-alignment.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 299
+  },
+  {
+    "name": "test:volume-profile-dock",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-dock.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 196
+  },
+  {
+    "name": "test:volume-profile-labels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-labels.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 190
+  },
+  {
+    "name": "test:big-trades-anchor",
+    "command": "node scripts/test-big-trades-anchor.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 1504
+  },
+  {
+    "name": "test:execution-tape",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-execution-tape-merge.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 171
+  },
+  {
+    "name": "test:position-calculator-labels",
+    "command": "node scripts/test-position-calculator-labels.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 90
+  },
+  {
+    "name": "test:overlay-refresh",
+    "command": "node scripts/test-overlay-refresh.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 87
+  },
+  {
+    "name": "test:position-calculator-primitive",
+    "command": "node scripts/test-position-calculator-primitive.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 89
+  },
+  {
+    "name": "test:overlay-clip",
+    "command": "node --experimental-strip-types scripts/test-chart-overlay-clip.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 90
+  },
+  {
+    "name": "test:precision-repaint",
+    "command": "node scripts/test-precision-repaint.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 91
+  },
+  {
+    "name": "test:session-key-cache",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-cme-session-key-cache.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 147
+  },
+  {
+    "name": "test:overlay-in-frame",
+    "command": "node scripts/test-overlay-in-frame.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 89
+  },
+  {
+    "name": "test:profile-fold",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-profile-fold.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 204
+  },
+  {
+    "name": "test:candle-ohlc-heal",
+    "command": "node scripts/test-candle-ohlc-heal.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 1538
+  },
+  {
+    "name": "test:magnet-snap",
+    "command": "node scripts/test-magnet-snap.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 95
+  },
+  {
+    "name": "test:volume-profile-chain-fallback",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-chain-fallback.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 204
+  },
+  {
+    "name": "test:cvd-divergence-segments",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-cvd-divergence-segments.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 1553
+  },
+  {
+    "name": "test:volume-profile-overhang",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-no-back-overhang.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 216
+  },
+  {
+    "name": "test:drawing-selection",
+    "command": "node scripts/test-drawing-selection.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 92
+  },
+  {
+    "name": "test:position-default-size",
+    "command": "node scripts/test-position-default-size.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 93
+  },
+  {
+    "name": "test:draw-tool-theme",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-draw-tool-theme.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 155
+  },
+  {
+    "name": "test:position-tool-behaviour",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-position-tool-behaviour.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 147
+  },
+  {
+    "name": "test:initial-balance-timeframe",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-initial-balance-timeframe.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 160
+  },
+  {
+    "name": "test:globex-initial-balance",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-globex-initial-balance.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 160
+  },
+  {
+    "name": "test:session-highs-lows",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-session-highs-lows.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 513
+  },
+  {
+    "name": "test:session-marker",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/session-marker.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 824
+  },
+  {
+    "name": "test:session-imbalance",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/session-imbalance.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 815
+  },
+  {
+    "name": "test:average-daily-range-target",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/average-daily-range-target.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 884
+  },
+  {
+    "name": "test:volume-delta-sprint",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/volume-delta-sprint.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 863
+  },
+  {
+    "name": "test:overlay-timeframe-highlight",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/overlay-timeframe-highlight.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 882
+  },
+  {
+    "name": "test:chart-viewport-reset",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-viewport-reset.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 118
+  },
+  {
+    "name": "test:chart-limit-placement",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-limit-placement.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 97
+  },
+  {
+    "name": "test:execution-stream-staleness",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-execution-stream-staleness.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 134
+  },
+  {
+    "name": "test:execution-worker-backpressure",
+    "command": "node --experimental-strip-types scripts/test-execution-worker-backpressure.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 446
+  },
+  {
+    "name": "test:big-trades-live-edge",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-big-trades-live-edge.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 375
+  },
+  {
+    "name": "test:gex-map-node-detail",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-node-detail.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 118
+  },
+  {
+    "name": "test:options-ticker-profiles",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-options-ticker-profiles.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 285
+  },
+  {
+    "name": "test:tpo-settings-wired",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-tpo-settings-wired.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 97
+  },
+  {
+    "name": "test:profile-indicator-parity",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-profile-indicator-parity.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 443
+  },
+  {
+    "name": "test:exchange-clock",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-exchange-clock.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 289
+  },
+  {
+    "name": "test:tpo-default-visuals",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-default-visuals.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 158
+  },
+  {
+    "name": "test:footprint-bar-window",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-footprint-bar-window.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 161
+  },
+  {
+    "name": "test:footprint-reconcile-budget",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-reconcile-budget.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 153
+  },
+  {
+    "name": "test:footprint-profile-rows",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-profile-rows.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 156
+  },
+  {
+    "name": "test:footprint-chart-types",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-chart-types.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 152
+  },
+  {
+    "name": "test:kwant-levels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-kwant-levels.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 154
+  },
+  {
+    "name": "test:chart-overlays",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-overlays.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 120
+  },
+  {
+    "name": "test:deep-m-ivb",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-m-ivb.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 133
+  },
+  {
+    "name": "test:deep-pattern-builder",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-pattern-builder.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 154
+  },
+  {
+    "name": "test:indicator-colour-override",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-override.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 438
+  },
+  {
+    "name": "test:vix-environment",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 122
+  },
+  {
+    "name": "test:live-chart-memory",
+    "command": "node --experimental-strip-types scripts/test-live-chart-memory-guard.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 2778
+  },
+  {
+    "name": "test:live-overlay-lifetimes",
+    "command": "node scripts/test-live-overlay-lifetimes.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 95
+  },
+  {
+    "name": "test:provider-message-boundary",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-provider-message-boundary.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 115
+  },
+  {
+    "name": "test:candle-gap-fill",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-candle-gap-fill.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 192
+  },
+  {
+    "name": "test:volume-profile-session-toggle",
+    "command": "node scripts/test-volume-profile-session-toggle.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 93
+  },
+  {
+    "name": "test:position-tool-colours",
+    "command": "node scripts/test-position-tool-colours.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 95
+  },
+  {
+    "name": "test:weekly-profile-window",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-weekly-profile-window.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 152
+  },
+  {
+    "name": "test:footprint-bar-width",
+    "command": "node scripts/test-footprint-bar-width.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 87
+  },
+  {
+    "name": "test:footprint-palette",
+    "command": "node scripts/test-footprint-palette.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 91
+  },
+  {
+    "name": "test:footprint-flow-coverage",
+    "command": "node scripts/test-footprint-flow-coverage.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 86
+  },
+  {
+    "name": "test:volume-profile-session-selection",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-session-selection.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 149
+  },
+  {
+    "name": "test:ib-durations",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-ib-durations.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 446
+  },
+  {
+    "name": "test:big-trade-levels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-big-trade-levels.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 432
+  },
+  {
+    "name": "test:rithmic-bar-source",
+    "command": "node scripts/test-rithmic-bar-source.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 93
+  },
+  {
+    "name": "test:event-bar-source",
+    "command": "node scripts/test-event-bar-source.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 99
+  },
+  {
+    "name": "test:chart-watermark",
+    "command": "node scripts/test-chart-watermark.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 122
+  },
+  {
+    "name": "test:gex-map-velocity",
+    "command": "node scripts/test-gex-map-velocity.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 81
+  },
+  {
+    "name": "test:zyon-durable-effects",
+    "command": "node --test --experimental-strip-types tests/zyon-durable-effects.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 199
+  },
+  {
+    "name": "test:gex-map-v2",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-v2.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 142
+  },
+  {
+    "name": "test:gex-map-v2-first-paint",
+    "command": "node scripts/test-gex-map-v2-first-paint.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 99
+  },
+  {
+    "name": "test:gex-map-v2-wiring",
+    "command": "node scripts/test-gex-map-v2-wiring.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 94
+  },
+  {
+    "name": "test:renderer-counters",
+    "command": "node scripts/test-renderer-resource-counters.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 130
+  },
+  {
+    "name": "test:liq-inside-market",
+    "command": "node scripts/test-liquidity-inside-market.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 97
+  },
+  {
+    "name": "test:liq-cache-busting",
+    "command": "node scripts/test-liquidity-map-cache-busting.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 136
+  },
+  {
+    "name": "test:footprint-hysteresis",
+    "command": "node scripts/test-footprint-detail-hysteresis.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 89
+  },
+  {
+    "name": "test:indicator-palettes",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-palettes.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 143
+  },
+  {
+    "name": "test:volume-profile-session-filter",
+    "command": "node scripts/test-volume-profile-session-filter.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 144
+  },
+  {
+    "name": "test:brand-wordmark",
+    "command": "node scripts/test-brand-wordmark.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 93
+  },
+  {
+    "name": "test:hollow-candle-themes",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-hollow-candle-themes.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 148
+  },
+  {
+    "name": "test:indicator-visibility",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-visibility.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 152
+  },
+  {
+    "name": "test:news-provider-surface",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-news-and-provider-surface.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 149
+  },
+  {
+    "name": "test:socials-visibility",
+    "command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-socials-visibility.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 124
+  },
+  {
+    "name": "test:socials-follow",
+    "command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-socials-follow.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 337
+  },
+  {
+    "name": "test:socials-reaction",
+    "command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-socials-reaction.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 192
+  },
+  {
+    "name": "test:socials-notifications",
+    "command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-socials-notifications.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 191
+  },
+  {
+    "name": "test:indicator-settings-save",
+    "command": "node --experimental-strip-types scripts/test-indicator-settings-save.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 115
+  },
+  {
+    "name": "test:indicator-numeric-sliders",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-numeric-sliders.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 454
+  },
+  {
+    "name": "test:candle-style",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-candle-style.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 174
+  },
+  {
+    "name": "test:candle-gaps",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-candle-gaps.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 193
+  },
+  {
+    "name": "test:chart-history-state",
+    "command": "node scripts/test-chart-history-state.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 104
+  },
+  {
+    "name": "test:chart-hydration-cover",
+    "command": "node --experimental-strip-types --test tests/chart-hydration-cover.test.mjs tests/chart-loading-states.test.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 287
+  },
+  {
+    "name": "test:origin-transfer",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-origin-transfer.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 174
+  },
+  {
+    "name": "test:weekly-profile-week",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-weekly-profile-week.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 151
+  },
+  {
+    "name": "test:order-drag",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-order-drag.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 184
+  },
+  {
+    "name": "test:candle-context-menu",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-candle-context-menu.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 147
+  },
+  {
+    "name": "test:quick-measure",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-quick-measure.test.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 222
+  },
+  {
+    "name": "test:trade-analytics",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-trade-analytics.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 186
+  },
+  {
+    "name": "test:money-precision",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-money-precision.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 173
+  },
+  {
+    "name": "test:indicator-opacity",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-opacity.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 468
+  },
+  {
+    "name": "test:indicator-colour-controls",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-controls.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 423
+  },
+  {
+    "name": "test:index-history-cache",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-index-history-cache.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 97
+  },
+  {
+    "name": "test:page-loaders",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-page-loaders.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 89
+  },
+  {
+    "name": "test:stall-watchdog",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-stall-watchdog.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 86
+  },
+  {
+    "name": "test:indicator-theme-follow",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-theme-follow.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 7729
+  },
+  {
+    "name": "test:cvd-candle-direction",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-cvd-candle-direction.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 301
+  },
+  {
+    "name": "test:cvd-settings-parity",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-cvd-settings-parity.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 498
+  },
+  {
+    "name": "test:indicator-both-sides",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-both-sides.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 530
+  },
+  {
+    "name": "test:brand-mark-theme",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-brand-mark-theme.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 176
+  },
+  {
+    "name": "test:daily-pnl-day",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-daily-pnl-day.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 164
+  },
+  {
+    "name": "test:desk-session-clock",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-desk-session-clock.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 141
+  },
+  {
+    "name": "test:value-area-rows",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-rows.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 118
+  },
+  {
+    "name": "test:volume-profile-settings-live",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-settings-live.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 4500
+  },
+  {
+    "name": "test:resting-order-reconcile",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-resting-order-reconcile.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 165
+  },
+  {
+    "name": "test:gex-map-text-contrast",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-gex-map-text-contrast.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 133
+  },
+  {
+    "name": "test:side-rail-tap",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-side-rail-tap.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 93
+  },
+  {
+    "name": "test:theme-account-sync",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-theme-account-sync.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 136
+  },
+  {
+    "name": "test:theme-first-click",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-theme-first-click.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 149
+  },
+  {
+    "name": "test:session-boundaries",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-session-boundaries.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 133
+  },
+  {
+    "name": "test:developing-value-area",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-developing-value-area.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 451
+  },
+  {
+    "name": "test:volume-profile-count",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-count.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 459
+  },
+  {
+    "name": "test:volume-profile-sessions-split",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-sessions-split.mjs",
+    "code": 0,
+    "timedOut": false,
+    "milliseconds": 183
+  },
+  {
+    "name": "test:indicator-side-colours",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-side-colours.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 433
+  },
+  {
+    "name": "test:value-area-percent",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-percent.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 184
+  },
+  {
+    "name": "test:chart-emoji-tool",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-emoji-tool.test.mjs",
+    "code": 1,
+    "timedOut": false,
+    "milliseconds": 231
+  }
+]

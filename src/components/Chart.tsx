@@ -26,6 +26,7 @@ import { OverlayTimeframeHighlightPrimitive } from "@/lib/overlayTimeframeHighli
 import { OnCandleStatsPrimitive } from "@/lib/onCandleStatsPrimitive";
 import { ShiftCandlePrimitive } from "@/lib/shiftCandlePrimitive";
 import { buildSpeedOfTapeFrame as buildSimpleSpeedOfTapeFrame, normalizeSpeedOfTapeSettings as normalizeSimpleSpeedOfTapeSettings, speedOfTapeSeries as simpleSpeedOfTapeSeries } from "@/lib/speedOfTape";
+import { useChartIndicatorAlertDelivery } from "@/components/useChartIndicatorAlertDelivery";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { useExactFootprintHistory } from "@/components/useExactFootprintHistory";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
@@ -1360,6 +1361,7 @@ type SessionWindowRenderData = {
   showBackground: boolean;
   showBorders: boolean;
   showOpenClose: boolean;
+  showMidline?: boolean;
   showLabel: boolean;
 };
 
@@ -1414,6 +1416,19 @@ class SessionWindowRenderer implements ISeriesPrimitivePaneRenderer {
                 : [],
           );
           context.strokeRect(left + 0.5, top + 0.5, Math.max(1, width - 1), Math.max(1, height - 1));
+        }
+        if (session.showMidline) {
+          const y = series.priceToCoordinate((session.high + session.low) / 2);
+          if (y !== null) {
+            context.globalAlpha = session.lineOpacity;
+            context.strokeStyle = session.color;
+            context.lineWidth = 1;
+            context.setLineDash([3, 4]);
+            context.beginPath();
+            context.moveTo(left, y);
+            context.lineTo(right, y);
+            context.stroke();
+          }
         }
         if (session.showOpenClose) {
           context.globalAlpha = session.lineOpacity * 0.72;
@@ -8205,6 +8220,7 @@ function Chart({
       : "CVD · LOADING EXECUTION HISTORY";
   }, [indicatorSignature, indicators, orderFlowHistoryReady, orderFlowSeriesReady]);
 
+  const indicatorAlertNotice = useChartIndicatorAlertDelivery(indicators, instrument, Number(replayTimestampMs ?? 0) > 0);
   const superTrendAlertNotice = useSuperTrendAlerts({ indicators, history: indicatorCandlesDeep, liveKey: liveCandleEventKey,
     instrument, timeframe, live: marketIsActive === true && !(replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0),
     onReset: instanceId => {
@@ -9408,6 +9424,7 @@ function Chart({
       const now = Date.now();
       if (now - (state.lastFired.get(eventKey) ?? 0) < cooldownMs) return;
       state.lastFired.set(eventKey, now);
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: { indicatorId: "gex-interval-map", instanceId: gexIntervalMapIndicator.instanceId, instrument, title, message } }));
       window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId: eventKey, message, price, condition: title } }));
       if (indicatorSettings.browserNotifications === true && typeof Notification !== "undefined" && Notification.permission === "granted") new Notification(title, { body: message });
     };
@@ -10197,6 +10214,7 @@ function Chart({
     const notify = (eventKey: string, title: string, message: string, eventPrice = price) => {
       if (Date.now() - (state.lastFired.get(eventKey) ?? 0) < cooldownMs) return;
       state.lastFired.set(eventKey, Date.now());
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: { indicatorId: "bounce-levels", instanceId: bounceLevelsIndicator.instanceId, instrument, title, message } }));
       window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId: `bounce:${eventKey}`, message, price: eventPrice, condition: title } }));
       if (bounceLevelsIndicator.settings?.browserNotifications === true && typeof Notification !== "undefined" && Notification.permission === "granted") new Notification(title, { body: message });
     };
@@ -10389,6 +10407,7 @@ function Chart({
       state.lastFired.set(eventKey, now);
       const detail = { indicatorId: "dark-pool-map", instanceId: darkPoolMapIndicator.instanceId, instrument: darkPoolMapPayload.displayInstrument, sourceTicker: darkPoolMapPayload.sourceTicker, title, message, checkedAtMs: darkPoolMapPayload.checkedAtMs };
       window.dispatchEvent(new CustomEvent("kwantdesk:dark-pool-alert", { detail }));
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: { ...detail, instrument } }));
       window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId: eventKey, message, price: drawingCandlesRef.current.at(-1)?.close ?? null, condition: title } }));
       if (indicatorSettings.browserNotifications === true && typeof Notification !== "undefined" && Notification.permission === "granted") new Notification(title, { body: message });
     };
@@ -10744,12 +10763,16 @@ function Chart({
         } : {}),
       };
       window.dispatchEvent(new CustomEvent("kwantdesk:dark-pool-gex-alert", { detail }));
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: { ...detail, instrument } }));
       window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId, message, price: event.price, condition: title } }));
     };
     for (const event of darkPoolGexFrame.rawEvents) {
       if (!seen.has(event.id)) {
         seen.add(event.id);
-        if (event.notional >= minimumNotional && event.combinedImportance >= threshold) {
+        if (darkPoolGexIndicator.settings?.alertNewPrint !== false && event.notional >= minimumNotional) {
+          emit(`${event.id}:print`, "Dark Pool print", `${darkPoolGexFrame.sourceTicker} off-exchange print at ${event.price.toFixed(priceFormat.precision)}.`, event);
+        }
+        if (darkPoolGexIndicator.settings?.alertGexConfluence !== false && event.primaryConfluence && event.notional >= minimumNotional && event.combinedImportance >= threshold) {
           emit(event.id, "Dark Pool (GEX) confluence", `${event.notional.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })} off-exchange print at ${event.price.toFixed(priceFormat.precision)}${event.primaryConfluence ? ` near ${event.primaryConfluence.role} GEX` : ""}.`, event);
         }
       }
@@ -11912,6 +11935,7 @@ function Chart({
   );
   const bigTradeLiveContextRef = useRef<BigTradeLiveContext | null>(null);
   const bigTradeLiveAccumulatorRef = useRef<BigTradeLiveAccumulator | null>(null);
+  const bigTradeAlertIdsRef = useRef(new Set<string>());
   const bigTradeLatestLiveTapeRef = useRef<{ scope: string; tape: InstitutionalTrade[]; candles?: Candle[] } | null>(null);
   const bigTradeFullScanIdentityRef = useRef("");
   const bigTradeReplayClockRef = useRef<number | null>(null);
@@ -12151,6 +12175,18 @@ function Chart({
         { ...bigTradesIndicator.settings, tickSize: priceFormat.minMove },
       );
       if (!fresh.length && !removedIds.size) return;
+      if (bigTradesIndicator.settings?.enableAlertSound === true) {
+        for (const print of fresh) {
+          const key = `${bigTradesIndicator.instanceId}:${instrument}:${print.id}`;
+          if (Date.now() - print.timestamp > 15000 || print.timestamp > Date.now() + 1000 || bigTradeAlertIdsRef.current.has(key)) continue;
+          bigTradeAlertIdsRef.current.add(key);
+          window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+            indicatorId: "big-trades", instanceId: bigTradesIndicator.instanceId, instrument,
+            title: `${instrument} · Big Contracts`, popup: false, sound: "default",
+          } }));
+        }
+        if (bigTradeAlertIdsRef.current.size > 2000) bigTradeAlertIdsRef.current = new Set([...bigTradeAlertIdsRef.current].slice(-1000));
+      }
       // Immediate prints use the same candle coordinates and display budget
       // as the sampled pass. Raw execution seconds are not 1m/3m bar times.
       const eventBars = timeframe && isEventBasedChartInterval(timeframe);
@@ -12173,7 +12209,7 @@ function Chart({
     };
     window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
     return () => window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
-  }, [bigTradesIndicator, liveCandleEventKey, timeframe, candleIntervalMs, priceFormat.minMove, observedCandleScope]);
+  }, [bigTradesIndicator, liveCandleEventKey, instrument, timeframe, candleIntervalMs, priceFormat.minMove, observedCandleScope]);
 
   const bigTradeEventChartTimes = useMemo(
     () => timeframe && isEventBasedChartInterval(timeframe)
@@ -12621,6 +12657,32 @@ function Chart({
     priceFormat.minMove,
     indicatorMarketTrades,
   ]);
+  const imbalanceAlertState = useRef<{ scope: string; ids: Set<string> }>({ scope: "", ids: new Set() });
+  useEffect(() => {
+    if (!imbalanceTracker) return;
+    const { instance, zones } = imbalanceTracker;
+    const scope = `${instance.instanceId}:${instrument}:${timeframe}`;
+    const state = imbalanceAlertState.current;
+    if (state.scope !== scope) {
+      imbalanceAlertState.current = { scope, ids: new Set(zones.map(zone => zone.id)) };
+      return;
+    }
+    for (const zone of zones) {
+      if (state.ids.has(zone.id)) continue;
+      state.ids.add(zone.id);
+      const latestTradeAt = indicatorMarketTrades.at(-1)?.timestamp ?? 0;
+      if (liveReplayActiveRef.current || zone.startTimestamp < (indicatorCandles.at(-1)?.timestamp ?? Infinity) || Date.now() - latestTradeAt > 15000 || latestTradeAt > Date.now() + 1000) continue;
+      const settings = instance.settings ?? {};
+      if (settings.enableAlertSound !== true && settings.enablePopup !== true) continue;
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+        indicatorId: instance.indicatorId, instanceId: instance.instanceId, instrument,
+        title: String(settings.alertName ?? "Imbalance detected"),
+        message: String(settings.popupMessage ?? "Imbalance tracker"),
+        popup: settings.enablePopup === true, sound: settings.enableAlertSound === true ? "default" : null,
+      } }));
+    }
+    if (state.ids.size > 10000) state.ids = new Set([...state.ids].slice(-5000));
+  }, [imbalanceTracker, indicatorMarketTrades, indicatorCandles, instrument, timeframe]);
   const imbalanceRejector = useMemo(() => {
     const instance = indicators.find((candidate) =>
       candidate.enabled && candidate.indicatorId === "imbalance-rejector");
@@ -13132,6 +13194,7 @@ function Chart({
         showBackground: sessionSettings.showBackground !== false,
         showBorders: sessionSettings.showBorders !== false,
         showOpenClose: sessionSettings.showOpenClose !== false,
+        showMidline: sessionSettings.showMidline === true,
         showLabel: sessionSettings.showLabels !== false,
       };
     });
@@ -18952,9 +19015,9 @@ function Chart({
         {unavailableReplayIndicators.length ? <div className="absolute left-2 top-2 z-50 rounded border border-border bg-panel px-2 py-1 text-[10px] text-muted" title={unavailableReplayIndicators.map(instance => CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.name ?? instance.indicatorId).join(", ")}>
           {unavailableReplayIndicators.length} studies unavailable in replay · no verified historical adapter
         </div> : null}
-        {superTrendAlertNotice ? <div role="status" aria-live="polite"
+        {(superTrendAlertNotice || indicatorAlertNotice) ? <div role="status" aria-live="polite"
           className="pointer-events-none absolute right-3 top-3 z-50 max-w-xs border border-primary bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
-          {superTrendAlertNotice}
+          {superTrendAlertNotice || indicatorAlertNotice}
         </div> : null}
       {/*
         * The Mini DOM's own left edge, as something the trader can take hold
@@ -19683,7 +19746,7 @@ function Chart({
           }}
         />
       ) : null}
-      {gammaHeatmapIndicator ? (
+      {gammaHeatmapIndicator && gammaHeatmapIndicator.settings?.showStatus !== false ? (
         <div
           className="pointer-events-none absolute left-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{

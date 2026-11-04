@@ -1,0 +1,620 @@
+[
+  {
+    "indicator": "DOM Pro",
+    "id": "depth-of-market",
+    "key": "showCumulative",
+    "value": false
+  },
+  {
+    "indicator": "DOM Pro",
+    "id": "depth-of-market",
+    "key": "showOrderCount",
+    "value": false
+  },
+  {
+    "indicator": "DOM Pro",
+    "id": "depth-of-market",
+    "key": "showPullStack",
+    "value": true
+  },
+  {
+    "indicator": "DOM Pro",
+    "id": "depth-of-market",
+    "key": "showRecentTrades",
+    "value": true
+  },
+  {
+    "indicator": "DOM Pro",
+    "id": "depth-of-market",
+    "key": "lastTradeColor",
+    "value": "#FDE047"
+  },
+  {
+    "indicator": "Daily Volume Profile",
+    "id": "kwant-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "Weekly Volume Profile",
+    "id": "weekly-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "Monthly Volume Profile",
+    "id": "monthly-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "Session Volume Profile",
+    "id": "session-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "Composite Volume Profile",
+    "id": "composite-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "Visible Range Volume Profile",
+    "id": "visible-range-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "Custom Draw-On Volume Profile",
+    "id": "custom-draw-on-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "Ask/Bid Volume Profile",
+    "id": "ask-bid-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "Delta Profile",
+    "id": "delta-profile",
+    "key": "sessionSelectionArmed",
+    "value": false
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band1",
+    "value": 1
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band2",
+    "value": 2
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band3",
+    "value": 3
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band4",
+    "value": 4
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band5",
+    "value": 5
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band1",
+    "value": 1
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band2",
+    "value": 2
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band3",
+    "value": 3
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band4",
+    "value": 4
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band5",
+    "value": 5
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band1",
+    "value": 1
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band2",
+    "value": 2
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band3",
+    "value": 3
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band4",
+    "value": 4
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band5",
+    "value": 5
+  },
+  {
+    "indicator": "Sessions",
+    "id": "sessions",
+    "key": "tokyoTimezone",
+    "value": "America/New_York"
+  },
+  {
+    "indicator": "Sessions",
+    "id": "sessions",
+    "key": "londonTimezone",
+    "value": "America/New_York"
+  },
+  {
+    "indicator": "Sessions",
+    "id": "sessions",
+    "key": "newYorkTimezone",
+    "value": "America/New_York"
+  },
+  {
+    "indicator": "Sessions",
+    "id": "sessions",
+    "key": "showMidline",
+    "value": false
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "globexLabel",
+    "value": "Globex"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "globexTimezone",
+    "value": "America/Chicago"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "tokyoTimezone",
+    "value": "America/Chicago"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "londonTimezone",
+    "value": "America/Chicago"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "newYorkTimezone",
+    "value": "America/Chicago"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "globexStart",
+    "value": "17:00"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "globexEnd",
+    "value": "16:00"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "ibDuration15",
+    "value": false
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "ibDuration30",
+    "value": false
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "ibDuration45",
+    "value": false
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "ibDuration60",
+    "value": false
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "globexLabel",
+    "value": "Globex"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "globexStart",
+    "value": "18:00"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "globexEnd",
+    "value": "17:00"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "globexColor",
+    "value": "#A461BB"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianHighColor",
+    "value": "#22C55E"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianLowColor",
+    "value": "#EF4444"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianImbalanceHighColor",
+    "value": "#4ADE80"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianImbalanceLowColor",
+    "value": "#F87171"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianOpenColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianCloseColor",
+    "value": "#94A3B8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianSessionRangeColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianImbalanceRangeColor",
+    "value": "#94A3B8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianMidColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianVwapColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeHighColor",
+    "value": "#22C55E"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeLowColor",
+    "value": "#EF4444"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeImbalanceHighColor",
+    "value": "#4ADE80"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeImbalanceLowColor",
+    "value": "#F87171"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeOpenColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeCloseColor",
+    "value": "#94A3B8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeSessionRangeColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeImbalanceRangeColor",
+    "value": "#94A3B8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeMidColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeVwapColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaHighColor",
+    "value": "#22C55E"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaLowColor",
+    "value": "#EF4444"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaImbalanceHighColor",
+    "value": "#4ADE80"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaImbalanceLowColor",
+    "value": "#F87171"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaOpenColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaCloseColor",
+    "value": "#94A3B8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaSessionRangeColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaImbalanceRangeColor",
+    "value": "#94A3B8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaMidColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaVwapColor",
+    "value": "#38BDF8"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "midUpColor",
+    "value": "#22C55E"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "midDownColor",
+    "value": "#EF4444"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "upperUpColor",
+    "value": "#22C55E"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "upperDownColor",
+    "value": "#EF4444"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "lowerUpColor",
+    "value": "#22C55E"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "lowerDownColor",
+    "value": "#EF4444"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1Enabled",
+    "value": true
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1ASource",
+    "value": "close"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1AOffset",
+    "value": 0
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1AValue",
+    "value": 0
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1BSource",
+    "value": "unused"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1BOffset",
+    "value": 0
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1BValue",
+    "value": 0
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1LeftMath",
+    "value": "+"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1Comparator",
+    "value": ">"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1CSource",
+    "value": "open"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1COffset",
+    "value": 0
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1CValue",
+    "value": 0
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1DSource",
+    "value": "unused"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1DOffset",
+    "value": 0
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1DValue",
+    "value": 0
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1RightMath",
+    "value": "+"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition2Enabled",
+    "value": false
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition3Enabled",
+    "value": false
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition4Enabled",
+    "value": false
+  }
+]

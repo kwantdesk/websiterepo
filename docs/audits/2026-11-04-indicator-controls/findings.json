@@ -1,0 +1,156 @@
+[
+  {
+    "id": "F001",
+    "indicator": "Gamma Heatmap",
+    "controls": [
+      "showStatus"
+    ],
+    "status": "fixed; source and regression checks",
+    "problem": "The setting was persisted but the status banner rendered unconditionally.",
+    "change": "The banner now obeys showStatus."
+  },
+  {
+    "id": "F002",
+    "indicator": "Dark Pool (GEX)",
+    "controls": [
+      "alertNewPrint"
+    ],
+    "status": "fixed; source traced",
+    "problem": "The switch was never read. Only combined confluence thresholds could produce a new-print alert.",
+    "change": "New-print alerts obey their switch and minimum print notional independently."
+  },
+  {
+    "id": "F003",
+    "indicator": "Dark Pool (GEX)",
+    "controls": [
+      "alertGexConfluence"
+    ],
+    "status": "fixed; source traced",
+    "problem": "The switch was never read.",
+    "change": "GEX confluence alerts now require this switch, actual confluence and the configured thresholds."
+  },
+  {
+    "id": "F004",
+    "indicator": "Shared indicator alert delivery",
+    "controls": [
+      "popup",
+      "sound",
+      "messagePopupEnabled",
+      "enablePopup",
+      "enableMessage",
+      "alertSoundEnabled",
+      "enableAlertSound",
+      "inAppSound",
+      "alertTone"
+    ],
+    "status": "fixed; behavioral hook tests",
+    "problem": "Many indicators dispatched browser events without a receiver that displayed or played them.",
+    "change": "A scoped receiver delivers events only to their enabled chart instance and instrument. Replay is muted. Explicit popup/sound choices are honored. Duplicate messages are suppressed. SuperTrend retains its existing delivery."
+  },
+  {
+    "id": "F005",
+    "indicator": "GEX Interval Map, Bounce Levels, Dark Pool Map, Dark Pool (GEX)",
+    "controls": [
+      "enableAlerts"
+    ],
+    "status": "fixed; source traced",
+    "problem": "Their alert events used channels without visible in-chart delivery.",
+    "change": "They now also dispatch to the common chart alert delivery path."
+  },
+  {
+    "id": "F006",
+    "indicator": "Imbalance Tracker",
+    "controls": [
+      "enableAlertSound",
+      "enablePopup",
+      "alertName",
+      "popupMessage"
+    ],
+    "status": "fixed; source traced; live trigger verification pending",
+    "problem": "The alert controls were persisted but no producer consumed them.",
+    "change": "New current-bar zones with recent executions can emit the selected sound/popup with the configured text. Existing zones are seeded without historical alerts."
+  },
+  {
+    "id": "F007",
+    "indicator": "Big Contracts",
+    "controls": [
+      "enableAlertSound"
+    ],
+    "status": "fixed; source traced; live trigger verification pending",
+    "problem": "The sound toggle was not consumed.",
+    "change": "Fresh qualifying live executions emit sound once per print identity. Archive prints and replay remain silent."
+  },
+  {
+    "id": "F008",
+    "indicator": "Generated settings controls",
+    "controls": [
+      "stableFootprintRows",
+      "sessionSelectionArmed"
+    ],
+    "status": "fixed; source traced",
+    "problem": "Internal migration/selection flags were eligible for generic visible checkboxes.",
+    "change": "These internal fields are excluded from generated user controls."
+  },
+  {
+    "id": "O001",
+    "indicator": "Big Blocks",
+    "controls": [
+      "enableAlertSound",
+      "enableMessage",
+      "alertMessage"
+    ],
+    "status": "open; implementation needed",
+    "problem": "No alert producer currently consumes these settings. The chart study itself has a separate live state machine.",
+    "next": "Add a deduplicated live directional-bias transition producer and verify bar-close, intrabar and replay behavior before enabling delivery."
+  },
+  {
+    "id": "O002",
+    "indicator": "Bounce Levels",
+    "controls": [
+      "chartMarkers"
+    ],
+    "status": "open; implementation needed",
+    "problem": "This toggle is saved and exposed but no renderer consumes it.",
+    "next": "Define and add alert-event markers in chart time/price coordinates. Existing exposure nodes are a separate renderer."
+  },
+  {
+    "id": "O003",
+    "indicator": "DOM Pro",
+    "controls": [
+      "showCumulative",
+      "showOrderCount",
+      "showPullStack",
+      "showRecentTrades",
+      "lastTradeColor"
+    ],
+    "status": "open; reconcile legacy controls with current DOM column settings",
+    "problem": "Literal runtime reads are absent; current DOM columns have a separate domColumns contract.",
+    "next": "Verify which generic legacy controls are exposed, then map to current columns or remove duplicate controls while preserving saved configurations."
+  },
+  {
+    "id": "O004",
+    "indicator": "All categories",
+    "controls": [],
+    "status": "open; end-to-end verification",
+    "problem": "Source references and calculation mutations cannot prove every visible control changes the intended live drawing.",
+    "next": "Complete per-indicator dialog interaction, output, persistence, and live/replay verification. The checklist intentionally remains unchecked for this requirement."
+  },
+  {
+    "id": "O005",
+    "indicator": "Test suite",
+    "controls": [],
+    "status": "open; failure triage",
+    "problem": "55 of 237 initial commands failed. Some are stale source assertions, some are loading/runner errors, and others need product triage.",
+    "next": "Track each initial failure separately. Do not mark an indicator broken merely because one legacy test fails, or healthy merely because a source-reference assertion passes."
+  },
+  {
+    "id": "F009",
+    "indicator": "Sessions",
+    "controls": [
+      "showMidline"
+    ],
+    "status": "fixed; source traced; visual verification pending",
+    "problem": "The generic checkbox was exposed and persisted, but the session renderer had no midpoint path.",
+    "change": "A midpoint line is now projected at (session high + session low) / 2 when enabled."
+  }
+]
