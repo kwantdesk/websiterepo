@@ -263,6 +263,13 @@ function quantile(sorted, fraction) {
   return sorted[lower] + (sorted[upper] - sorted[lower]) * mix;
 }
 
+function shapeBrightness(value, splitX, splitY) {
+  if (value <= splitX) return splitX === 0 ? value : value * splitY / splitX;
+  return splitX === 1
+    ? value
+    : splitY + (value - splitX) * (1 - splitY) / (1 - splitX);
+}
+
 export function enhanceHeatIntensity(current, previous, gain = 1) {
   return Math.round(clamp(current + (current - previous) * gain, 0, 255));
 }
@@ -271,14 +278,22 @@ export class AdaptiveContrast {
   constructor({
     blackPercentile = 0.15,
     whitePercentile = 0.96,
+    equalization = 0.50,
+    splitX = 0.60,
+    splitY = 0.70,
     colorMapSplit = 0.90,
   } = {}) {
     this.blackPercentile = blackPercentile;
     this.whitePercentile = whitePercentile;
+    this.equalization = equalization;
+    this.splitX = splitX;
+    this.splitY = splitY;
     this.colorMapSplit = colorMapSplit;
     this.black = 0;
     this.white = 1;
     this.maximum = 1;
+    this.cdf = new Float32Array(256);
+    for (let index = 0; index < this.cdf.length; index += 1) this.cdf[index] = index / 255;
     this.lastToken = -Infinity;
     this.version = 0;
   }
@@ -324,6 +339,29 @@ export class AdaptiveContrast {
     let white = quantile(values, this.whitePercentile);
     if (white <= black) white = Math.max(black + 1, maximum);
 
+    const histogram = new Uint32Array(256);
+    const span = Math.max(1e-9, white - black);
+    for (const value of values) {
+      // Cutoff populations should not crowd the first or last color band. The
+      // retained distribution alone controls equalization; clipped values are
+      // still handled explicitly by map().
+      if (!(value > black) || value > white) continue;
+      const normalized = clamp((value - black) / span, 0, 1);
+      histogram[Math.min(255, Math.floor(normalized * 255))] += 1;
+    }
+    const retainedPopulation = histogram.reduce((sum, count) => sum + count, 0);
+    let cumulative = 0;
+    for (let index = 0; index < histogram.length; index += 1) {
+      const count = histogram[index];
+      // Use the midpoint of each histogram mass. Inclusive CDF values make a
+      // common resting size jump too far up the palette and flatten the sizes
+      // above it into nearly identical colors.
+      this.cdf[index] = retainedPopulation > 0
+        ? (cumulative + count * 0.5) / retainedPopulation
+        : index / 255;
+      cumulative += count;
+    }
+
     this.black = black;
     this.white = white;
     this.maximum = Math.max(1, maximum);
@@ -332,11 +370,19 @@ export class AdaptiveContrast {
     return true;
   }
 
-  map(value, sensitivity = 0.1) {
-    if (!(value > 0)) return 0;
-    // Keep one scale across time with headroom for larger live orders.
-    const reference = Math.max(1, this.white) / Math.sqrt(clamp(sensitivity, 0.1, 4) / 0.1);
-    return Math.max(1, Math.round(255 * value / (value + reference)));
+  map(value, sensitivity = 1) {
+    if (!(value > this.black)) return 0;
+    if (value > this.white && this.maximum > this.white) {
+      const extension = clamp((value - this.white) / (this.maximum - this.white), 0, 1);
+      return Math.round((this.colorMapSplit + (1 - this.colorMapSplit) * extension) * 255);
+    }
+    const linear = clamp((value - this.black) / Math.max(1e-9, this.white - this.black), 0, 1);
+    const equalized = this.cdf[Math.min(255, Math.floor(linear * 255))];
+    const blended = linear * (1 - this.equalization) + equalized * this.equalization;
+    const curved = shapeBrightness(blended, this.splitX, this.splitY);
+    const sensitive = Math.pow(clamp(curved, 0, 1), 1 / clamp(sensitivity, 0.1, 4));
+    const paletteSpan = this.maximum > this.white ? this.colorMapSplit : 1;
+    return Math.round(sensitive * paletteSpan * 255);
   }
 
   describe() {
@@ -493,9 +539,7 @@ export class RollingDepthEngine {
       const addLevel = (tick, size) => {
         if (tick < geometry.bottomTick || tick > geometry.topTick || size <= 0) return;
         const row = Math.floor((geometry.topTick - tick) / geometry.rowTicks);
-        if (row >= 0 && row < rows) {
-          target[row] = geometry.cumulative ? target[row] + size : Math.max(target[row], size);
-        }
+        if (row >= 0 && row < rows) target[row] += size;
       };
       if (typeof book?.forEachLevel === 'function') {
         book.forEachLevel(addLevel);
@@ -509,7 +553,9 @@ export class RollingDepthEngine {
     addBook(frame.asks, askRows);
 
     let sigmaRows = 0;
-    if (geometry.filterType === 'gaussian') {
+    if (geometry.filterType === 'auto' && geometry.rowPixels < 15) {
+      sigmaRows = 5 / Math.max(0.01, geometry.rowPixels);
+    } else if (geometry.filterType === 'gaussian') {
       sigmaRows = geometry.gaussianSigma / Math.max(0.01, geometry.rowPixels);
     } else if (geometry.filterType === 'average') {
       bidRows = smoothSide(bidRows);
@@ -546,8 +592,8 @@ export class RollingDepthEngine {
     gaussianSigma = BOOKMAP_VISUAL_DEFAULTS.gaussianSigma,
     rowPixels = 16,
     cumulative = false,
-    sensitivity = 0.1,
-    temporalEnhancement = 0,
+    sensitivity = 1,
+    temporalEnhancement = 1,
     forceContrast = false,
   }) {
     if (!this.frames.length || end < start) {

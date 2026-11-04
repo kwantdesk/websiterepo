@@ -1,9 +1,9 @@
-import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=depth-size';
+import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=heat-render-recovery';
 import { cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
 import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=heat-gradient-contrast';
 import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
-import { writeHeatRgba } from './heat-raster.js?v=depth-size';
+import { writeHeatRgba } from './heat-raster.js?v=heat-render-recovery';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1
@@ -596,7 +596,7 @@ export class DepthRenderer {
   #writeHeatmapPixels(heatmap, palette, sourceX, width, rasterRows) {
     if (width <= 0 || heatmap.height <= 0) return;
     const image = this.heatContext.createImageData(width, rasterRows);
-    writeHeatRgba(heatmap, palette, sourceX, width, rasterRows, image.data, ['gaussian', 'average'].includes(settings.heatmapFilter));
+    writeHeatRgba(heatmap, palette, sourceX, width, rasterRows, image.data);
     this.heatContext.putImageData(image, sourceX, 0);
   }
 
