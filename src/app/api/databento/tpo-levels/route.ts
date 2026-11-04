@@ -30,7 +30,7 @@ const globalTpoCache = globalThis as typeof globalThis & {
 const memoryCache = globalTpoCache.__kwantdeskTpoLevels
   ?? (globalTpoCache.__kwantdeskTpoLevels = new Map<string, CachedPayload>());
 
-export async function buildTpoLevelsPayload(
+async function buildTpoLevelsPayload(
   now: number,
   requestedConfig: Partial<TpoEngineConfig> = {},
 ): Promise<TpoLevelsPayload> {

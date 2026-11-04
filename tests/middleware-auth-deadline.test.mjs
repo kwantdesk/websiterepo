@@ -4,17 +4,17 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {createServerClient} from '@supabase/ssr';
-import {createMiddlewareAuthBudget,isTemporaryMiddlewareAuthError} from '../src/lib/middlewareAuth.ts';
+import {createMiddlewareAuthBudget,isTemporaryMiddlewareAuthError,middlewareAuthRecoveryHtml} from '../src/lib/middlewareAuth.ts';
 
 const source=readFileSync(new URL('../middleware.ts',import.meta.url),'utf8');
 const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 function harness({claims={data:{claims:{sub:'verified-user',email:'verified@example.test'}},error:null}, user={data:{user:{email:'verified@example.test'}},error:null}, granted=true, authFactory, cookies}={}){
   let claimsCalls=0,userCalls=0,options;
   const exports={};
-  vm.runInNewContext(code,{exports,URL,process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://project.supabase.co',NEXT_PUBLIC_SUPABASE_ANON_KEY:'fixture-public'}},require(name){
+  vm.runInNewContext(code,{exports,URL,Response,process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://project.supabase.co',NEXT_PUBLIC_SUPABASE_ANON_KEY:'fixture-public'}},require(name){
     if(name==='next/server')return{NextResponse:{next:()=>({next:true}),json:(body,init)=>({body,...init}),redirect:url=>({redirect:String(url)})}};
     if(name==='@/lib/siteAccess')return{SITE_ACCESS_COOKIE:'gate',isSiteAccessConfigured:()=>true,isValidSiteAccessToken:async()=>granted};
-    if(name==='@/lib/middlewareAuth')return{createMiddlewareAuthBudget:()=>createMiddlewareAuthBudget(25),isTemporaryMiddlewareAuthError};
+    if(name==='@/lib/middlewareAuth')return{createMiddlewareAuthBudget:()=>createMiddlewareAuthBudget(25),isTemporaryMiddlewareAuthError,middlewareAuthRecoveryHtml};
     if(name==='@supabase/ssr')return{createServerClient:(url,key,init)=>{options=init;const real=authFactory?.(url,key,init);return real??{auth:{
       getClaims:()=>{claimsCalls++;return typeof claims==='function'?claims():Promise.resolve(claims);},
       getUser:()=>{userCalls++;return typeof user==='function'?user():Promise.resolve(user);},
@@ -52,8 +52,10 @@ test('missing claims, missing subject/email and invalid signatures cannot enter 
 test('hanging key lookup and user lookup fail closed within a bounded routing decision, without login redirect',async()=>{
   for(const [path,args]of [['/charts',{claims:()=>new Promise(()=>{})}],['/api/preferences',{user:()=>new Promise(()=>{})}]]){
     const h=harness(args),start=Date.now(),response=await h.run(path);
-    assert.equal(response.status,503);assert.equal(response.body.code,'AUTH_SERVICE_UNAVAILABLE');
-    assert.equal(response.redirect,undefined);assert.equal(response.headers['Retry-After'],'2');
+    assert.equal(response.status,503);
+    if(path.startsWith('/api/')){assert.equal(response.body.code,'AUTH_SERVICE_UNAVAILABLE');assert.equal(response.headers['Retry-After'],'2');}
+    else {assert.match(await response.text(),/Reconnecting your session/);assert.equal(response.headers.get('Retry-After'),'2');}
+    assert.equal(response.redirect,undefined);
     assert.ok(Date.now()-start<1000);
   }
 });
@@ -78,6 +80,15 @@ test('a shared deadline includes SDK lock waits and preserves caller cancellatio
   const second=createMiddlewareAuthBudget(100,async(_input,init)=>{seen=init.signal.aborted;throw new Error('caller cancelled');});
   await assert.rejects(second.run(()=>second.fetch('https://auth.test',{signal:caller.signal})),/caller cancelled/);
   assert.equal(seen,true);assert.equal(second.expired,false);
+});
+
+test('a transient public signing-key fetch retries once, without retrying refresh POSTs or rejected credentials',async()=>{
+ let calls=0;const budget=createMiddlewareAuthBudget(100,async()=>{calls++;if(calls===1)throw TypeError('temporary transport failure');return Response.json({keys:[]});});
+ assert.equal((await budget.run(()=>budget.fetch('https://auth.test/.well-known/jwks.json'))).status,200);assert.equal(calls,2);
+ for(const [url,init]of [['https://auth.test/token',{method:'POST'}],['https://auth.test/user',{}]]){
+  let count=0;const single=createMiddlewareAuthBudget(100,async()=>{count++;throw TypeError('transport failure')});await assert.rejects(single.run(()=>single.fetch(url,init)));assert.equal(count,1);
+ }
+ let refused=0;const deny=createMiddlewareAuthBudget(100,async()=>{refused++;return Response.json({error:'denied'},{status:401})});assert.equal((await deny.run(()=>deny.fetch('https://auth.test/.well-known/jwks.json'))).status,401);assert.equal(refused,1);
 });
 test('the actual SDK verifies ES256 signature/expiry and reuses public keys across navigation without user lookups',async()=>{
   const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);

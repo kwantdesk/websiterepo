@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
+import { createMiddlewareAuthBudget, isTemporaryMiddlewareAuthError } from "@/lib/middlewareAuth";
 
 export type RouteActor = {
   userId: string;
@@ -86,7 +87,7 @@ export async function getJournalRouteActor(request: NextRequest): Promise<RouteA
   return getRouteActor(request);
 }
 
-export async function getRouteActor(request?: NextRequest): Promise<RouteActor | null> {
+export async function getRouteActor(request?: NextRequest, options: { timeoutMs?: number } = {}): Promise<RouteActor | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -101,7 +102,9 @@ export async function getRouteActor(request?: NextRequest): Promise<RouteActor |
   }
 
   const cookieStore = await cookies();
+  const budget = options.timeoutMs === undefined ? null : createMiddlewareAuthBudget(options.timeoutMs);
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    ...(budget ? { global: { fetch: budget.fetch } } : {}),
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -112,21 +115,27 @@ export async function getRouteActor(request?: NextRequest): Promise<RouteActor |
     },
   });
 
-  const { data, error } = await supabase.auth.getUser();
-  let user = data.user;
+  const verify = async () => {
+    const { data, error } = await supabase.auth.getUser();
+    if (budget && isTemporaryMiddlewareAuthError(error)) throw Error("Session verification is temporarily unavailable.");
+    let user = data.user;
 
-  if ((!user || error) && request) {
-    const authorization = request.headers.get("authorization")?.trim() ?? "";
-    if (authorization.toLowerCase().startsWith("bearer ")) {
-      const accessToken = authorization.slice(7).trim();
-      if (accessToken) {
-        const tokenResult = await supabase.auth.getUser(accessToken);
-        if (!tokenResult.error && tokenResult.data.user) {
-          user = tokenResult.data.user;
+    if ((!user || error) && request) {
+      const authorization = request.headers.get("authorization")?.trim() ?? "";
+      if (authorization.toLowerCase().startsWith("bearer ")) {
+        const accessToken = authorization.slice(7).trim();
+        if (accessToken) {
+          const tokenResult = await supabase.auth.getUser(accessToken);
+          if (budget && isTemporaryMiddlewareAuthError(tokenResult.error)) throw Error("Session verification is temporarily unavailable.");
+          if (!tokenResult.error && tokenResult.data.user) {
+            user = tokenResult.data.user;
+          }
         }
       }
     }
-  }
+    return user;
+  };
+  const user = budget ? await budget.run(verify) : await verify();
 
   if (!user) return null;
 

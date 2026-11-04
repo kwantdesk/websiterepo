@@ -14,7 +14,9 @@ async function boundedText(body: ReadableStream<Uint8Array> | null, maximum: num
   return Buffer.concat(chunks).toString("utf8");
 }
 export async function POST(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  let actor;
+  try { actor = await getRouteActor(request, { timeoutMs: 5000 }); }
+  catch { return NextResponse.json({ error: "Session verification is temporarily unavailable.", code: "AUTH_SERVICE_UNAVAILABLE" }, { status: 503, headers: { "Cache-Control": "private, no-store", "Retry-After": "2" } }); }
   if (!actor || (process.env.VERCEL && actor.mode === "local-dev")) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   let input: Record<string, unknown>;
   try {

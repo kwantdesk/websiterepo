@@ -14,7 +14,9 @@ const cache = new Map<string, Entry>();
 const pending = new Map<string, Promise<Entry>>();
 
 export async function GET(request: NextRequest, context: Context) {
-  const actor = await getRouteActor(request);
+  let actor;
+  try { actor = await getRouteActor(request, { timeoutMs: 5000 }); }
+  catch { return NextResponse.json({ error: "Session verification is temporarily unavailable.", code: "AUTH_SERVICE_UNAVAILABLE" }, { status: 503, headers: { "Cache-Control": "private, no-store", "Retry-After": "2" } }); }
   if (!actor || (process.env.VERCEL && actor.mode === "local-dev")) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const { tool } = await context.params;
   if (tool !== "status") return NextResponse.json({ error: "Unsupported request." }, { status: 404 });
@@ -25,7 +27,9 @@ export async function GET(request: NextRequest, context: Context) {
 }
 
 export async function POST(request: NextRequest, context: Context) {
-  const actor = await getRouteActor(request);
+  let actor;
+  try { actor = await getRouteActor(request, { timeoutMs: 5000 }); }
+  catch { return NextResponse.json({ error: "Session verification is temporarily unavailable.", code: "AUTH_SERVICE_UNAVAILABLE" }, { status: 503, headers: { "Cache-Control": "private, no-store", "Retry-After": "2" } }); }
   if (!actor || (process.env.VERCEL && actor.mode === "local-dev")) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const { tool } = await context.params;
   let body: Record<string, unknown>;

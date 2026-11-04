@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { createMiddlewareAuthBudget, isTemporaryMiddlewareAuthError } from "@/lib/middlewareAuth";
+import { createMiddlewareAuthBudget, isTemporaryMiddlewareAuthError, middlewareAuthRecoveryHtml } from "@/lib/middlewareAuth";
 import {
   SITE_ACCESS_COOKIE,
   isSiteAccessConfigured,
@@ -143,6 +143,13 @@ export async function middleware(request: NextRequest) {
 
   if (pathname === "/login") return response;
 
+  // These POSTs are read-only tool queries. Their handlers still verify the
+  // account before any data call. Avoid a second remote lookup in middleware.
+  if (siteAccessConfigured && siteAccessGranted && (
+    request.method === "GET" && pathname === "/api/gex-data/status"
+    || request.method === "POST" && /^\/api\/gex-data\/[a-z-]+$/.test(pathname)
+  )) return response;
+
   // Support handlers verify the signed-in Supabase user themselves; avoid
   // adding a second network auth lookup to every message and inbox refresh.
   if (pathname.startsWith("/api/support/")) return response;
@@ -188,10 +195,13 @@ export async function middleware(request: NextRequest) {
   // operations retain their remote getUser check and handler authorization.
   const claimsRead = (request.method === "GET" || request.method === "HEAD")
     && (!apiRequest || pathname === "/api/options-flow" || pathname === "/api/options-flow/market-data");
-  const unavailable = () => NextResponse.json(
+  const unavailable = () => apiRequest ? NextResponse.json(
     { error: "Your session could not be checked right now. Please retry shortly.", code: "AUTH_SERVICE_UNAVAILABLE" },
     { status: 503, headers: { "Cache-Control": "private, no-store, max-age=0", "Retry-After": "2" } },
-  );
+  ) : new Response(middlewareAuthRecoveryHtml(), { status: 503, headers: {
+    "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store, max-age=0", "Retry-After": "2",
+    "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+  } });
   let email: string | null | undefined;
   try {
     if (claimsRead) {
@@ -231,5 +241,5 @@ export const config = {
   // browser then renders the map's raw HTML controls without its stylesheet.
   // Live data still comes from protected /api routes, so bypass only the
   // immutable presentation bundle here.
-  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|cookie-recovery.html|heatmap-app/|shared/indicator-gradients[.]js$|gex-data-app/|kwanty-app/|phone-workspace[.]css$|phone-workspace[.]js$|fonts/aleph/|images/|brand/).*)"],
+  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|cookie-recovery.html|heatmap-app/|shared/indicator-gradients[.]js$|gex-data-app/|kwanty-app/|phone-workspace[.]css$|phone-workspace[.]js$|workspace-loading[.]css$|workspace-loading[.]js$|fonts/aleph/|images/|brand/).*)"],
 };

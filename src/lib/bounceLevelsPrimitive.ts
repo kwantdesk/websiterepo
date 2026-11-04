@@ -49,6 +49,17 @@ type BounceRenderViewport = {
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
 export const BOUNCE_LEVELS_HEAT_THICKNESS_SCALE = 0.75;
 
+/** Keep the boundary observations of ribbons crossing a zoomed viewport.
+ * Their centres can both be off-screen while the interval between them is
+ * visible. Dropping both made genuine loaded levels disappear on zoom.
+ */
+export function visibleBounceSlices<T extends { x: number }>(slices: T[], width: number) {
+  const first = slices.findIndex((slice) => slice.x >= -80);
+  if (first < 0) return slices.slice(-1);
+  const after = slices.findIndex((slice, index) => index >= first && slice.x > width + 80);
+  return slices.slice(Math.max(0, first - 1), after < 0 ? slices.length : after + 1);
+}
+
 export function calculateBounceNodeHeight(minimum: number, maximum: number, visualStrength: number) {
   return (minimum + (maximum - minimum) * clamp(visualStrength, 0, 1)) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
 }
@@ -412,10 +423,11 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       const context = layer.context;
       const activePanelCount = this.primitive.activePanelCount();
       const coordinateCache = new Map<number, number | null>();
-      let slices = data.snapshot.exposureField
+      const projectedSlices = data.snapshot.exposureField
         .map((slice) => ({ ...slice, x: coordinateForTimestamp(chart, slice.timestamp, anchors, coordinateCache) }))
-        .filter((slice): slice is typeof slice & { x: number } => slice.x !== null && slice.x > -80 && slice.x < mediaSize.width + 80)
+        .filter((slice): slice is typeof slice & { x: number } => slice.x !== null && Number.isFinite(slice.x))
         .sort((left, right) => left.timestamp - right.timestamp);
+      let slices = visibleBounceSlices(projectedSlices, mediaSize.width);
       if (!slices.length) { this.primitive.setHits([]); return; }
 
       // Level-of-detail is based on available pixels, not an arbitrary history

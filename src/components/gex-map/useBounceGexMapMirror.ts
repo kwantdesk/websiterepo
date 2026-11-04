@@ -87,16 +87,21 @@ export function useBounceGexMapMirror(input: {
       if (document.visibilityState === "hidden") { timer = setTimeout(load, 5000); return; }
       if (!stateRef.current.payload || stateRef.current.key !== key) setLoading(true);
       try {
+        // Paint the actual current ladder before waiting for the large session
+        // interval map. Its history is restored independently by ensureHistory.
+        // Head results have a separate cache identity and are never published
+        // as a complete shared Map surface.
+        const headOnly = !sessionDate && model === "STRUCTURAL_OI" && (stateRef.current.key !== key || !stateRef.current.payload);
         const query = new URLSearchParams({ symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation,
-          ...(model === "DEALER_INVENTORY" ? { model } : {}), ...(sessionDate ? { sessionDate } : { compact: "1" }) });
-        const payload = await fetchWorkspaceData<GexMapPanelPayload>(key, "/api/gex-map?" + query, {
+          ...(model === "DEALER_INVENTORY" ? { model } : {}), ...(sessionDate ? { sessionDate } : { compact: "1" }), ...(headOnly ? { head: "1" } : {}) });
+        const payload = await fetchWorkspaceData<GexMapPanelPayload>(headOnly ? key + ":head" : key, "/api/gex-map?" + query, {
           maxAgeMs: sessionDate ? 6 * 60 * 60000 : 5000, timeoutMs: 45000,
           validate: (value) => {
             const p = value as GexMapPanelPayload;
             return isGexMapSurfaceFor(p, { symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate });
           }, invalidMessage: "The selected GEX Map surface is unavailable.",
         });
-        if (!cancelled) { accept(payload); publishGexMapSurface(key, payload); }
+        if (!cancelled) { accept(payload); if (!headOnly) publishGexMapSurface(key, payload); }
       } catch (e) { if (!cancelled) { setError(e instanceof Error ? e.message : "The selected GEX Map surface is unavailable."); setLoading(false); } }
       finally {
         if (!cancelled && !sessionDate) timer = setTimeout(load, Math.max(5000, Math.min(60000, stateRef.current.payload?.refreshAfterMs ?? 5000)));

@@ -2796,12 +2796,14 @@ async function buildGexMapPanel(
   requestedSessionDate?: string,
   expiryScope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
+  currentOnly = false,
 ): Promise<GexMapPanelPayload> {
   const symbol = symbolInput.trim().toUpperCase();
   const providerTicker = gexMapProviderTicker(symbol);
   const currentSession = getUsOptionsSession();
   const sessionDate = requestedSessionDate || currentSession.sessionDate;
   const historical = sessionDate !== currentSession.sessionDate;
+  const headOnly = currentOnly && !historical && currentSession.marketOpen;
   const endpointTtl = historical ? 300_000 : OPTIONS_SURFACE_REFRESH_MS;
   const opening = !historical && currentSession.marketOpen && optionsOpeningClock().opening;
   // A real current strike snapshot is usable before the first minute-history
@@ -2849,7 +2851,7 @@ async function buildGexMapPanel(
   const selectedExposure = expiryScope === "ALL_EXPIRIES"
     ? fullExposure
     : parseExposure(exposureResult.payload, providerTicker, greekModeInput, expiration, representation);
-  const intervalResult = await quantDataPost("/options/tool/interval-map", {
+  const intervalResult = headOnly && selectedExposure?.strikes.length ? { payload: null, remaining: null } : await quantDataPost("/options/tool/interval-map", {
     sessionDate,
     aggregationPeriod: "1m",
     greekMode: greekModeInput,
@@ -2870,7 +2872,7 @@ async function buildGexMapPanel(
     : null;
   const frameAsOf = Math.max(frames.at(-1)?.timestamp ?? 0, latestCandle?.timestamp ?? 0) || Date.now();
   const marketIsLive = !historical && currentSession.marketOpen;
-  const historyPending = opening && (!frames.length || !candles.length);
+  const historyPending = (opening || headOnly) && (!frames.length || !candles.length);
   const stale = marketIsLive && (historyPending || Date.now() - frameAsOf > 3 * 60_000);
   // After the close, the expired front-expiry key can remain present while
   // its exposure-by-strike rows are cleared. The interval map is still the
@@ -3085,6 +3087,7 @@ export async function getGexMapPanel(
   requestedSessionDate?: string,
   expiryScope: GexMapExpiryScope = "FRONT_EXPIRY",
   representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
+  currentOnly = false,
 ): Promise<GexMapPanelPayload> {
   const symbol = symbolInput.trim().toUpperCase();
   const currentSession = getUsOptionsSession();
@@ -3092,7 +3095,7 @@ export async function getGexMapPanel(
   const completedSession = sessionDate !== currentSession.sessionDate || !currentSession.marketOpen;
   // Keep fallbacks session-specific so a historical replay can never receive
   // a different day's surface merely because that panel was requested last.
-  const surfaceKey = `${symbol}:${greekModeInput}:${sessionDate}:${expiryScope}:${representation}`;
+  const surfaceKey = `${symbol}:${greekModeInput}:${sessionDate}:${expiryScope}:${representation}${currentOnly && !completedSession ? ":head" : ""}`;
   try {
     const payload = completedSession
       ? await unstable_cache(
@@ -3100,7 +3103,7 @@ export async function getGexMapPanel(
         ["completed-gex-map-panel-v6", symbol, greekModeInput, sessionDate, expiryScope, representation],
         { revalidate: 6 * 60 * 60 },
       )()
-      : await buildGexMapPanel(symbol, greekModeInput, sessionDate, expiryScope, representation);
+      : await buildGexMapPanel(symbol, greekModeInput, sessionDate, expiryScope, representation, currentOnly);
     lastGoodGexMapPanelBySurface.set(surfaceKey, payload);
     return payload;
   } catch (error) {

@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
         representation,
         Boolean(sessionDate) && sessionDate !== getUsOptionsSessionDate(),
       )
-      : await getGexMapPanel(symbol, greekMode, sessionDate, scope, representation);
+      : await getGexMapPanel(symbol, greekMode, sessionDate, scope, representation, compact && request.nextUrl.searchParams.get("head") === "1");
     /*
      * The ladder is large and every open panel polls it. The payload states
      * its own freshness in `refreshAfterMs`, so that is exactly how long the
