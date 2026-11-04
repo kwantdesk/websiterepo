@@ -732,7 +732,7 @@ import { queueDrawingSave } from "@/lib/drawingSaveQueue";
 import { precisionObjectStorageKey, savePrecisionDocument } from "@/chart/precision-tools/persistence";
 import { CLEAR_CHART_DRAWINGS_EVENT } from "@/chart/precision-tools/PrecisionToolsLayer";
 import PrecisionToolsBoundary from "@/chart/precision-tools/PrecisionToolsBoundary";
-import type { PrecisionChartAdapter, PrecisionTheme, PrecisionToolId } from "@/chart/precision-tools/types";
+import type { PrecisionChartAdapter, PrecisionObject, PrecisionTheme, PrecisionToolId } from "@/chart/precision-tools/types";
 import { claimChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
 import {
   calculateSmtDivergences,
@@ -3737,6 +3737,9 @@ function Chart({
   const chartingDrawingsRef = useRef<Drawing[]>(chartingDrawings);
   chartingDrawingsRef.current = chartingDrawings;
   const drawingUndo = useChartDrawingUndo(chartContainerRef, `${chartInstanceId}:${instrument}`, keyboardActive);
+  const recordPrecisionDrawingMove = useCallback((before: PrecisionObject[], after: PrecisionObject[], restore: (objects: PrecisionObject[]) => void) => {
+    drawingUndo.record("precision", before, after, restore);
+  }, [drawingUndo]);
   const legacyMoveBeforeRef = useRef<ChartDrawing[] | null>(null);
   const professionalDrawingsLoadGenerationRef = useRef(0);
   const professionalDrawingsRenderGeneration = professionalDrawingsLoadGenerationRef.current;
@@ -21032,7 +21035,7 @@ function Chart({
           <PrecisionToolsLayer
             workspaceId={workspaceId}
             chartId={`${chartInstanceId}:${normalizePaperSymbol(contractSymbol ?? instrument)}`}
-            onHistoryEdit={(before, after, restore) => drawingUndo.record("precision", before, after, restore)}
+            onHistoryEdit={recordPrecisionDrawingMove}
             adapter={precisionAdapter}
             theme={precisionTheme}
             externalActiveTool={precisionToolForDrawingTool(selectedTool)}
