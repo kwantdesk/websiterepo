@@ -1465,6 +1465,7 @@ export default function ChartIndicatorsControl({
 
   useEffect(() => {
     const reloadAccountTemplates = () => {
+      setFavourites(readFavourites());
       if (openSettingsIndicatorId === "deep-print-footprint") {
         setFootprintTemplates(loadFootprintTemplates());
       }

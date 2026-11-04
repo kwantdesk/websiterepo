@@ -183,6 +183,11 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
   });
   const hueColor = hsvToHex(hsv.h, 100, 100);
 
+  useEffect(() => {
+    setHsv(rgbToHsv(value));
+    setHex((normalizeHex(value) ?? "#00F5A0").replace("#", ""));
+  }, [value]);
+
   function applyColor(color: string) {
     const normalized = normalizeHex(color);
     if (!normalized) return;
@@ -317,6 +322,26 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
   });
 
   useEffect(() => {
+    const restore = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string; keys?: string[] }>).detail;
+      if (detail?.userId && detail.userId !== preferenceUserId) return;
+      const changed = (key: string) => !detail?.keys || detail.keys.includes(key);
+      if (changed("olisa-theme")) {
+        const next = readStoredTheme();
+        themeSettingsRef.current = next;
+        setThemeSettings(next);
+      }
+      if (changed("olisa-chart-settings")) {
+        const next = loadStoredChartSettings();
+        chartSettingsRef.current = next;
+        setChartSettings(next);
+      }
+    };
+    window.addEventListener("kwantdesk:preferences-hydrated", restore);
+    return () => window.removeEventListener("kwantdesk:preferences-hydrated", restore);
+  }, [preferenceUserId]);
+
+  useEffect(() => {
     const savedDefaults = localStorage.getItem("olisa-chart-defaults");
     if (savedDefaults) setChartDefaults(JSON.parse(savedDefaults));
   }, []);
@@ -354,7 +379,6 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
           "";
       if (!active) return;
       setPreferenceUserId(user.id);
-      setPreferencesReady(true);
       setProfileName(cachedIdentity?.displayName || authDisplayName);
       setProfileEmail(user.email ?? "");
       setProfileUsername(cachedIdentity?.handle || authHandle);
@@ -424,6 +448,7 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
         // Authentication and local preferences remain usable during a transient sync failure.
       }
       if (!active) return;
+      setPreferencesReady(true);
       const hasStoredChartSettings = hydrated
         ? Object.prototype.hasOwnProperty.call(
             hydrated.snapshot.values,

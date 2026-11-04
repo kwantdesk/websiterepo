@@ -15,6 +15,7 @@ const config = {
 };
 
 config.resolve.alias={"@/lib/supabase/client$":path.join(root,"scripts/audits/device-sync-fixture-client.ts"),"@/lib/supabase$":path.join(root,"scripts/audits/device-sync-fixture-client.ts"),...config.resolve.alias};
+if(process.env.DEVICE_SETTINGS_BASELINE){const {execFileSync}=require('node:child_process');fs.mkdirSync(output,{recursive:true});const before=path.join(output,'Settings-before.tsx');fs.writeFileSync(before,execFileSync('git',['show','8f456d7ce3d88ef029add1a242ee70672dbae6d8:src/components/KwantifySettingsWorkspace.tsx']));config.resolve.alias={'@/components/KwantifySettingsWorkspace$':before,...config.resolve.alias};}
 config.plugins.push(new webpack.DefinePlugin({"process.env":JSON.stringify({NODE_ENV:"development"})}));
 function candles(url) {
  const from=Number(url.searchParams.get("from"))||Date.now()-10*86400000,to=Number(url.searchParams.get("to"))||Date.now();
@@ -55,13 +56,36 @@ async function main(){
  const beforePhone=JSON.stringify(rows.get('device-fixture').preferences.values);await phone.goto(origin+'/?owner=device-fixture');await phone.locator('[data-chart-workspace-scope="charts"] canvas').first().waitFor({timeout:45000});await phone.waitForTimeout(800);
  assert.equal(await phone.locator('[data-workspace-pane-id]').count(),2);assert.equal(await phone.locator('[data-workspace-pane-id]:visible').count(),1);assert.ok((await phone.locator('[data-workspace-pane-id]:visible .kwant-chart-pane-content').boundingBox()).width>380);checks.push('A fresh phone restores both saved panes and a visible full-width chart');
  assert.equal(await phone.evaluate(()=>localStorage.getItem('olisa-chart-workspace-layout')),'split-vertical');
- const paneId=await desktop.locator('[data-workspace-pane-id]').first().getAttribute('data-workspace-pane-id');let start=Date.now();await desktop.evaluate(id=>window.deviceFixture.draw(id),paneId);await phone.waitForFunction(id=>JSON.parse(localStorage.getItem('kwantdesk:chart-drawtools:v1')||'{}')[id]?.length===1,paneId,{timeout:5000});const drawingMs=Date.now()-start;checks.push('Desktop drawing reaches the independently stored phone account');
+ const paneId=await desktop.locator('[data-workspace-pane-id]').first().getAttribute('data-workspace-pane-id');let start=Date.now();
+ const pane=desktop.locator('[data-workspace-pane-id]').first();
+ await pane.getByTitle('Trend Line',{exact:true}).click({force:true});
+ const plot=await pane.locator('.kwant-chart-pane-content').boundingBox();
+ await desktop.mouse.click(plot.x+180,plot.y+190);await desktop.mouse.click(plot.x+300,plot.y+230);
+ await phone.waitForFunction(id=>JSON.parse(localStorage.getItem('kwantdesk:chart-drawtools:v1')||'{}')[id]?.length===1,paneId,{timeout:5000});
+ assert.ok(await phone.locator('[data-painted-hit]').count()>0,'phone actually renders the received drawing');
+ const realDrawingMs=Date.now()-start;
+ checks.push('A real toolbar trend-line placement publishes immediately to the phone');
+ await desktop.evaluate(()=>window.deviceFixture.color('#19d9a5'));
+ await phone.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue('--candle-up').trim()==='#19d9a5',null,{timeout:5000});
+ await phone.waitForFunction(()=>[...document.querySelectorAll('.kwant-chart-pane-content canvas')].some(canvas=>{const context=canvas.getContext('2d');if(!context)return false;const data=context.getImageData(0,0,canvas.width,canvas.height).data;let hits=0;for(let i=0;i<data.length;i+=4)if(data[i]===25&&data[i+1]===217&&data[i+2]===165&&++hits>10)return true;return false;}),null,{timeout:5000});
+ checks.push('Account palette repaints actual phone chart canvas pixels without refresh');
+ start=Date.now();await desktop.evaluate(id=>window.deviceFixture.draw(id),paneId);await phone.waitForFunction(id=>JSON.parse(localStorage.getItem('kwantdesk:chart-drawtools:v1')||'{}')[id]?.length===2,paneId,{timeout:5000});const drawingMs=Date.now()-start;checks.push('Desktop drawing reaches the independently stored phone account');
  start=Date.now();await phone.evaluate(()=>window.deviceFixture.write('kwantdesk:favourite-intervals:v1',JSON.stringify(['1m','3m','15m'])));await desktop.waitForFunction(()=>localStorage.getItem('kwantdesk:favourite-intervals:v1')==='["1m","3m","15m"]',null,{timeout:5000});const reverseMs=Date.now()-start;checks.push('Phone preference edit reaches the laptop without refresh');
  start=Date.now();const accountId=await desktop.evaluate(()=>window.deviceFixture.openTrade());await phone.waitForFunction(id=>JSON.parse(localStorage.getItem('kwantify-paper-trading-ledger-v1')||'{}').accounts?.[id]?.positions?.[0]?.status==='open',accountId,{timeout:5000});const tradeMs=Date.now()-start;checks.push('An open demo trade and its account appear on the second device');
  await phone.evaluate(id=>window.deviceFixture.moveStop(id),accountId);await desktop.waitForFunction(id=>JSON.parse(localStorage.getItem('kwantify-paper-trading-ledger-v1')||'{}').accounts?.[id]?.positions?.[0]?.stopLoss===6495,accountId,{timeout:5000});checks.push('A phone stop edit reaches the laptop without reverting the position');
  await desktop.evaluate(id=>window.deviceFixture.closeTrade(id),accountId);await phone.waitForFunction(id=>JSON.parse(localStorage.getItem('kwantify-paper-trading-ledger-v1')||'{}').accounts?.[id]?.positions?.[0]?.status==='closed',accountId,{timeout:5000});checks.push('Desktop close propagates without leaving an open phone position');
  await desktop.evaluate(()=>{window.deviceFixture.write('kwantdesk:favourite-intervals:v1','["1m","5m"]');let i=0;const timer=setInterval(()=>{window.dispatchEvent(new CustomEvent('kwantdesk:preferences-changed'));if(++i>=40)clearInterval(timer);},40);});await phone.waitForFunction(()=>localStorage.getItem('kwantdesk:favourite-intervals:v1')==='["1m","5m"]',null,{timeout:1400});checks.push('Continuous live events cannot starve a genuine preference save');
- await phone.screenshot({path:'tmp/device-sync-phone.png'});assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,errors,drawingMs,reverseMs,tradeMs,writes,totalMs:Date.now()-opened},null,2));fs.writeFileSync('tmp/device-sync-browser-result.json',JSON.stringify({checks,errors,drawingMs,reverseMs,tradeMs,writes,method:'Two separate Chromium browser contexts, actual Workspace/React sync/hydration/merge/storage code; only database and realtime transport are isolated HTTP/SSE fixtures.'},null,2));
+ await phone.evaluate(()=>sessionStorage.setItem('kwantdesk-settings-active-tab','Theme & Colors'));
+ await phone.goto(origin+'/?owner=device-fixture&section=settings');
+ await phone.getByText('Chart Colors',{exact:true}).waitFor({timeout:15000});
+ await desktop.evaluate(()=>window.deviceFixture.color('#d86e27'));
+ const bodyUp=phone.getByText('Body Up',{exact:true}).locator('..');
+ await bodyUp.getByText('#d86e27',{exact:true}).waitFor({timeout:5000});
+ checks.push('An already-open phone Settings panel reflects remote chart colours');
+ await phone.evaluate(()=>window.deviceFixture.color('#51b5de'));
+ await desktop.waitForFunction(()=>JSON.parse(localStorage.getItem('olisa-chart-settings')||'{}').upColor==='#51b5de',null,{timeout:5000});
+ checks.push('Phone colour changes reach desktop chart settings without refresh');
+ await phone.screenshot({path:'tmp/device-sync-phone.png'});assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,errors,drawingMs,realDrawingMs,reverseMs,tradeMs,writes,totalMs:Date.now()-opened},null,2));fs.writeFileSync('tmp/device-sync-browser-result.json',JSON.stringify({checks,errors,drawingMs,reverseMs,tradeMs,writes,method:'Two separate Chromium browser contexts, actual Workspace/React sync/hydration/merge/storage code; only database and realtime transport are isolated HTTP/SSE fixtures.'},null,2));
  await desktopContext.close();await phoneContext.close();
  }finally{for(const peer of streams)peer.res.end();await browser.close();await new Promise(resolve=>server.close(resolve));}
 }

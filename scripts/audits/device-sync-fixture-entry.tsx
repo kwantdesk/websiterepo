@@ -1,12 +1,15 @@
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import Workspace from '@/components/KwantifyWorkspace';
+import Settings from '@/components/KwantifySettingsWorkspace';
+import {saveTheme,readStoredTheme} from '@/lib/theme';
 import {writeProtectedItem} from '@/lib/browserStorageQuota';
 import {createDrawing} from '@/lib/chartDrawTools';
 import {createPaperTradingAccount, savePaperTradingAccounts} from '@/lib/paperAccounts';
 import {emptyPaperTradingLedger, placePaperOrder, savePaperTradingLedger, loadPaperTradingLedger, updatePaperProtection, closePaperPosition} from '@/lib/paperTrading';
 
 Object.assign(window, { deviceFixture: {
+  color: (up: string) => saveTheme({...readStoredTheme(),candleUp:up,candleUpBorder:up}),
   write: (key: string, value: string) => writeProtectedItem(key,value),
   draw: (paneId: string) => {
     const key='kwantdesk:chart-drawtools:v1',store=JSON.parse(localStorage.getItem(key)||'{}');
@@ -23,4 +26,4 @@ Object.assign(window, { deviceFixture: {
   moveStop: (accountId: string) => {const ledger=loadPaperTradingLedger(),position=ledger.accounts[accountId].positions[0];savePaperTradingLedger(updatePaperProtection(ledger,accountId,position.id,{kind:'stop_loss',price:6495}).ledger);},
   closeTrade: (accountId: string) => {const ledger=loadPaperTradingLedger(),position=ledger.accounts[accountId].positions[0];savePaperTradingLedger(closePaperPosition(ledger,accountId,position.id,{last:6501,bid:6501,ask:6501,timestamp:Date.now()}).ledger);},
 } });
-createRoot(document.getElementById('root')!).render(<Workspace section="charts" embedded/>);
+createRoot(document.getElementById('root')!).render(new URLSearchParams(location.search).get('section')==='settings'?<Settings/>:<Workspace section="charts" embedded/>);

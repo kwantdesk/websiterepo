@@ -161,9 +161,11 @@ export default function ChartDrawToolbar({
     syncLastUsed();
     window.addEventListener("storage", syncLastUsed);
     window.addEventListener(DRAW_TOOL_LAST_USED_EVENT, syncLastUsed);
+    window.addEventListener("kwantdesk:preferences-hydrated", syncLastUsed);
     return () => {
       window.removeEventListener("storage", syncLastUsed);
       window.removeEventListener(DRAW_TOOL_LAST_USED_EVENT, syncLastUsed);
+      window.removeEventListener("kwantdesk:preferences-hydrated", syncLastUsed);
     };
   }, []);
 
@@ -173,6 +175,7 @@ export default function ChartDrawToolbar({
     try {
       window.localStorage.setItem(DRAW_TOOL_LAST_USED_STORAGE_KEY, JSON.stringify(next));
       window.dispatchEvent(new Event(DRAW_TOOL_LAST_USED_EVENT));
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     } catch {
       // The current chart still remembers in memory when storage is blocked.
     }

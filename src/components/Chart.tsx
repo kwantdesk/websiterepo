@@ -3844,9 +3844,11 @@ function Chart({
     };
     window.addEventListener("storage", syncQuickEmojis);
     window.addEventListener(CHART_QUICK_EMOJI_EVENT, syncQuickEmojis);
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, syncQuickEmojis);
     return () => {
       window.removeEventListener("storage", syncQuickEmojis);
       window.removeEventListener(CHART_QUICK_EMOJI_EVENT, syncQuickEmojis);
+      window.removeEventListener(PREFERENCES_HYDRATED_EVENT, syncQuickEmojis);
     };
   }, []);
   const selectDrawEmoji = useCallback((emoji: string) => {
@@ -13719,10 +13721,12 @@ function Chart({
     const loadGeneration = ++professionalDrawingsLoadGenerationRef.current;
     professionalDrawingsHydrationRef.current = { instrument, ready: false };
     let cached: ProfessionalDrawingRecord[] = [];
+    let hasScopedDrawingDocument = false;
     const migrationClaimKey = `kwantdesk:chart-drawings:migrated:v1:${instrument}`;
     let ownsLegacyMigration = false;
     try {
       const raw = window.localStorage.getItem(drawingsStorageKey(instrument, chartInstanceId));
+      hasScopedDrawingDocument = raw !== null;
       cached = normalizeProfessionalDrawings(raw ? JSON.parse(raw) : []);
       if (!chartInstanceId.startsWith("algo:") && raw === null && !drawingClearToken(`kwantify-chart-drawings:${instrument}`) && !drawingClearToken(drawingsStorageKey(instrument, chartInstanceId)) && !window.localStorage.getItem(migrationClaimKey)) {
         ownsLegacyMigration = true;
@@ -13784,6 +13788,10 @@ function Chart({
     replaceProfessionalManagerDrawings(cached);
 
     const loadPersistedDrawings = async () => {
+      // The account snapshot already restored this pane, including intentional
+      // empty documents. The older drawing endpoint is migration fallback only;
+      // it must not overwrite a synced document when a new device mounts.
+      if (hasScopedDrawingDocument) return [];
       const response = await fetch(`/api/chart-drawings?instrument=${encodeURIComponent(drawingPersistenceInstrument)}`, {
         cache: "no-store",
         credentials: "include",
@@ -13836,6 +13844,15 @@ function Chart({
       clearToken = nextToken;
       const professionalKey = drawingsStorageKey(instrument, chartInstanceId);
       const positionKey = positionDrawingsStorageKey(instrument, chartInstanceId);
+      if (!keys || keys.includes(toolbarPinnedStorageKey) || keys.includes(TOOLBAR_PINNED_STORAGE_KEY)) {
+        const pinned = window.localStorage.getItem(toolbarPinnedStorageKey) ?? window.localStorage.getItem(TOOLBAR_PINNED_STORAGE_KEY);
+        setToolbarPinned(pinned === "true");
+      }
+      if (!keys || keys.includes("kwantdesk:chart-magnet:v1")) setDrawMagnet(window.localStorage.getItem("kwantdesk:chart-magnet:v1") === "true");
+      if (!keys || keys.includes("kwantdesk:chart-magnet-strength:v1")) {
+        const strength = window.localStorage.getItem("kwantdesk:chart-magnet-strength:v1");
+        setDrawMagnetStrength(strength === "strong" ? "strong" : DEFAULT_MAGNET_STRENGTH);
+      }
       try {
         if (!keys || keys.includes(professionalKey) || (keys.includes(DRAWING_CLEAR_BARRIERS_KEY) && clearedHere)) {
           const records = normalizeProfessionalDrawings(JSON.parse(window.localStorage.getItem(professionalKey) ?? "[]"));
@@ -13858,7 +13875,7 @@ function Chart({
     if (typeof window === "undefined") return;
     if (!professionalDrawingsHydrationRef.current.ready || professionalDrawingsHydrationRef.current.instrument !== instrument) return;
     try {
-      window.localStorage.setItem(drawingsStorageKey(instrument, chartInstanceId), JSON.stringify(professionalDrawings));
+      writeProtectedItem(drawingsStorageKey(instrument, chartInstanceId), JSON.stringify(professionalDrawings));
     } catch {
       // Keep drawing responsive when browser storage is unavailable.
     }
@@ -13984,9 +14001,11 @@ function Chart({
     syncFavorites();
     window.addEventListener("storage", syncFavorites);
     window.addEventListener(DRAWING_TOOL_FAVORITES_EVENT, syncFavorites);
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, syncFavorites);
     return () => {
       window.removeEventListener("storage", syncFavorites);
       window.removeEventListener(DRAWING_TOOL_FAVORITES_EVENT, syncFavorites);
+      window.removeEventListener(PREFERENCES_HYDRATED_EVENT, syncFavorites);
     };
   }, []);
 
@@ -14062,7 +14081,7 @@ function Chart({
       : [...favoriteToolIds, toolId];
     setFavoriteToolIds(next);
     try {
-      window.localStorage.setItem(DRAWING_TOOL_FAVORITES_STORAGE_KEY, JSON.stringify(next));
+      writeProtectedItem(DRAWING_TOOL_FAVORITES_STORAGE_KEY, JSON.stringify(next));
       window.dispatchEvent(new Event(DRAWING_TOOL_FAVORITES_EVENT));
     } catch {
       // Keep the chart responsive if browser storage is unavailable.
