@@ -2,7 +2,7 @@ const packedPalettes = new WeakMap();
 
 // Pixel-identical vertical heat interpolation. Row geometry is independent of
 // the column, so calculate it once per output row, not once per canvas pixel.
-export function writeHeatRgba(heatmap, palette, sourceX, width, rasterRows, pixels) {
+export function writeHeatRgba(heatmap, palette, sourceX, width, rasterRows, pixels, interpolate = true) {
   let packed = packedPalettes.get(palette);
   if (!packed) {
     packed = new Uint32Array(256);
@@ -24,7 +24,7 @@ export function writeHeatRgba(heatmap, palette, sourceX, width, rasterRows, pixe
     const lowOffset = Math.max(0, Math.min(heatmap.height - 1, floor)) * heatmap.width + sourceX;
     const highOffset = Math.max(0, Math.min(heatmap.height - 1, floor + 1)) * heatmap.width + sourceX;
     const linear = Math.max(0, Math.min(1, sourceY - floor));
-    const mix = linear * linear * (3 - 2 * linear);
+    const mix = interpolate ? linear * linear * (3 - 2 * linear) : Math.round(linear);
     let target = row * width;
     for (let x = 0; x < width; x += 1) {
       const low = heatmap.intensities[lowOffset + x];

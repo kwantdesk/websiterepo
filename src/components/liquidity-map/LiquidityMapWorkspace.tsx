@@ -338,7 +338,7 @@ function LiquidityMapWorkspace({
       <iframe
         ref={iframeRef}
         className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
-        src="/heatmap-app/index.html?v=heat-gradient-contrast"
+        src="/heatmap-app/index.html?v=theme-overlay-restore"
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
           iframeRef.current?.contentDocument?.documentElement.setAttribute(

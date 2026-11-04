@@ -10758,6 +10758,10 @@ export default function KwantifyWorkspace({
   // mismatch: a refresh painted the server's default-open watchlist for the
   // seconds hydration took, then snapped it shut.
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
+  const [inlineTicketPaneId, setInlineTicketPaneId] = useState<string | null>(null);
+  const inlineTicketOpen = rightPanel === "order" && inlineTicketPaneId !== null;
+
+
   /*
    * The surface the order ticket sits on, so its Buy and Sell buttons can be
    * kept legible against it.
@@ -12327,6 +12331,19 @@ export default function KwantifyWorkspace({
     ),
     [chartPlacementSuspended, orderSide, orderType, pendingChartOrder, rightPanel, selectedOrderQuantity, tradingUnlocked],
   );
+  useEffect(() => {
+    if (!inlineTicketOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Element) {
+        if (event.target.closest("[data-inline-ticket], [data-chart-trade], [data-chart-order-confirmation]")) return;
+        if (armedOrder && event.target.closest("[data-inline-ticket-chart]")) return;
+      }
+      setInlineTicketPaneId(null);
+      setRightPanel(null);
+    };
+    document.addEventListener("pointerdown", dismiss, true);
+    return () => document.removeEventListener("pointerdown", dismiss, true);
+  }, [armedOrder, inlineTicketOpen]);
   const selectedPaperLeverage = selectedPaperTradingAccount
     ? parseLeverage(selectedPaperTradingAccount.leverage)
     : 1;
@@ -18128,6 +18145,7 @@ export default function KwantifyWorkspace({
   };
 
   const openPaperOrderTicket = () => {
+    setInlineTicketPaneId(null);
     const account = selectedPaperTradingAccount ?? paperTradingAccounts[0] ?? null;
     if (!account) {
       openPaperAccountLinker();
@@ -18998,6 +19016,344 @@ export default function KwantifyWorkspace({
       || pane.content === "tool-single-volume-profile";
   }
 
+  function closeOrderTicket() {
+    setInlineTicketPaneId(null);
+    setRightPanel(null);
+  }
+
+  function renderChartTradeButton(pane: WorkspacePane) {
+    const open = inlineTicketOpen && inlineTicketPaneId === pane.id;
+    return (
+      <button
+        type="button"
+        data-chart-trade
+        title="Trade from this chart"
+        aria-label={open ? "Close chart order ticket" : "Open chart order ticket"}
+        aria-expanded={open}
+        className={"flex h-7 w-7 shrink-0 items-center justify-center rounded-lg " + (open ? "bg-primary/15 text-primary" : "text-muted hover:bg-surface hover:text-primary")}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => {
+          if (open) {
+            closeOrderTicket();
+            return;
+          }
+          activateWorkspacePane(pane.id);
+          setInlineTicketPaneId(pane.id);
+          setRightPanel("order");
+        }}
+      >
+        <BarChart3 className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
+
+  function renderChartWithOrderTicket(paneId: string, chart: React.ReactNode) {
+    return (
+      <div className="flex h-full min-h-0 min-w-0">
+        <div data-inline-ticket-chart={inlineTicketOpen && inlineTicketPaneId === paneId ? "" : undefined} className="relative min-h-0 min-w-0 flex-1">{chart}</div>
+        {inlineTicketOpen && inlineTicketPaneId === paneId && (
+          <aside data-inline-ticket aria-label="Chart order ticket" className="flex min-h-0 w-[280px] max-w-[55%] shrink-0 flex-col border-l border-border bg-panel">
+            {renderOrderTicket()}
+          </aside>
+        )}
+      </div>
+    );
+  }
+
+  function renderOrderTicket() {
+    return (
+      <div className="flex-1 overflow-y-auto p-4" onKeyDown={handleOrderTicketKeyDown}>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-primary"><Zap className="h-3.5 w-3.5" /></div>
+            <div>
+              <div className="text-[13px] font-semibold text-foreground">{displayCmeSymbol(paperTradingInstrument)}</div>
+              <div className="text-[11px] text-muted">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel} order ticket</div>
+            </div>
+          </div>
+          <button onClick={closeOrderTicket} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+        </div>
+        <div className="relative mb-4 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => { setOrderSide("sell"); setChartPlacementSuspended(false); }}
+            className="rounded-xl border px-3 py-2 text-left transition-all"
+            style={{
+              borderColor: colorWithAlpha(
+                orderTicketSellColor,
+                orderSide === "sell" ? 0.9 : 0.45,
+              ),
+              backgroundColor: orderSide === "sell"
+                ? orderTicketSellColor
+                : colorWithAlpha(orderTicketSellColor, 0.08),
+              color: orderSide === "sell" ? readableTextOn(orderTicketSellColor) : orderTicketSellColor,
+            }}
+          ><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]">{orderPanelBidLabel}</div></button>
+          <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] text-muted">{orderPanelSpreadLabel}</div>
+          <button
+            onClick={() => { setOrderSide("buy"); setChartPlacementSuspended(false); }}
+            className="rounded-xl border px-3 py-2 text-right transition-all"
+            style={{
+              borderColor: colorWithAlpha(
+                orderTicketBuyColor,
+                orderSide === "buy" ? 0.9 : 0.45,
+              ),
+              backgroundColor: orderSide === "buy"
+                ? orderTicketBuyColor
+                : colorWithAlpha(orderTicketBuyColor, 0.08),
+              color: orderSide === "buy" ? readableTextOn(orderTicketBuyColor) : orderTicketBuyColor,
+            }}
+          ><div className="text-[12px] font-semibold">Buy</div><div className="font-mono text-[13px]">{orderPanelAskLabel}</div></button>
+        </div>
+        {!tradingUnlocked && (
+          <div className={`mb-4 rounded-xl border p-3 ${orderPanelLockTone.border} ${orderPanelLockTone.background}`}>
+            <div className="flex items-start gap-2">
+              <Lock className={`mt-0.5 h-4 w-4 ${orderPanelLockTone.icon}`} />
+              <div>
+                <div className={`text-[12px] font-semibold ${activeBrokerHealth.state === "broken" ? "text-danger" : "text-yellow-200"}`}>{orderPanelLockTone.title}</div>
+                <div className={`mt-1 text-[11px] leading-5 ${activeBrokerHealth.state === "broken" ? "text-danger/80" : "text-yellow-100/80"}`}>
+                  {orderPanelLockTone.body}
+                </div>
+                {activeBrokerFeedError && (
+                  <div className={`mt-2 text-[11px] leading-5 ${activeBrokerHealth.state === "broken" ? "text-danger/70" : "text-yellow-100/70"}`}>
+                    Feed status: {activeBrokerFeedError}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        <div className={`${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}>
+          <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => { setOrderType(type); setChartPlacementSuspended(false); }} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
+          {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input value={orderPrice} onChange={(event) => setOrderPrice(event.target.value)} placeholder={selectedMidPrice ? formatPrice(selectedMidPrice, paperTradingInstrument) : "Price"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" />
+            <button
+              type="button"
+              disabled={!tradingUnlocked}
+              onClick={() => setChartPlacementSuspended((value) => !value)}
+              className={`w-full rounded-lg border px-3 py-2 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                armedOrder ? "border-primary bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"
+              }`}
+              title="Pick the level on the chart instead of typing it"
+            >{armedOrder ? "Click the chart to place · Esc to stop" : "Chart placement off · tap to resume"}</button>
+          </div>}
+          <div className="mb-4 space-y-2">
+            <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">{selectedPaperContract.quantityLabel}</span>{!selectedPaperContract.isFutures && <KwantSelect value={unitsType} onChange={(e) => setUnitsType(e.target.value as typeof unitsType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="units">Units</option><option value="lots">Lots</option><option value="usd">USD</option><option value="pctBalance">% Balance</option></KwantSelect>}</div><div className="flex items-center gap-1 text-[12px] text-muted"><span className="font-mono text-foreground">{formatDollar(orderPanelMarginUsd)}</span><ChevronDown className="h-3 w-3" /></div></div>
+            <div className="flex items-center gap-2"><input value={orderUnits} onChange={(e) => setOrderUnits(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button></div>
+          </div>
+        </div>
+        <div className="mb-4 rounded-xl border border-border bg-background/30">
+          <button onClick={() => setShowExits((value) => !value)} className="flex w-full items-center justify-between px-3 py-2 text-[13px] font-medium">Exits{showExits ? <ChevronUp className="h-4 w-4 text-muted" /> : <ChevronDown className="h-4 w-4 text-muted" />}</button>
+          {showExits && <div className={`space-y-4 border-t border-border p-3 ${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><KwantSelect value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></KwantSelect></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewTakeProfitTicks ? `${orderPreviewTakeProfitTicks} ticks` : "--"}</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><KwantSelect value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></KwantSelect></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewStopLossTicks ? `${orderPreviewStopLossTicks} ticks` : "--"}</span></div></div></div>}
+        </div>
+        <div className="mb-4 rounded-xl border border-border bg-background/30 p-3 text-[13px]">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowBrokerAccount((value) => !value)}
+              aria-expanded={showBrokerAccount}
+              className="flex items-center gap-1.5 font-semibold text-primary"
+              title={showBrokerAccount ? "Hide broker account details" : "Show broker account details"}
+            >
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showBrokerAccount ? "" : "-rotate-90"}`} />
+              Broker account
+            </button>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                activeBrokerHealth.state === "connected"
+                  ? "bg-primary/15 text-primary"
+                  : activeBrokerHealth.state === "broken"
+                    ? "bg-danger/15 text-danger"
+                    : "bg-orange-400/15 text-orange-300"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${activeBrokerHealth.dotClassName}`} />
+              {activeBrokerHealth.label}
+            </span>
+          </div>
+          {showBrokerAccount && <div className="mt-3 space-y-2">
+            <div className="flex justify-between"><span className="text-muted">Broker</span><span className="font-mono text-right">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Mode</span><span className="font-mono text-right">{paperExecutionRequested ? "Sim" : formatTradingModeLabel(currentBrokerConnection.mode)}</span></div>
+            {paperTradingAccounts.length > 0 ? (
+              <div className="space-y-1.5">
+                <div className="flex justify-between"><span className="text-muted">Account</span><span className="text-[11px] text-muted">{activeBrokerHealth.detail}</span></div>
+                <KwantSelect
+                  value={String(selectedPaperTradingAccount?.id ?? paperTradingAccounts[0]?.id ?? "")}
+                  onChange={(event) => selectPaperTradingAccount(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12px] outline-none focus:border-primary/40"
+                >
+                  {paperTradingAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {`${account.name} - ${account.balance} - ${account.leverage}`}
+                    </option>
+                  ))}
+                </KwantSelect>
+              </div>
+            ) : activeBrokerAccounts.length > 0 ? (
+              <div className="space-y-1.5">
+                <div className="flex justify-between"><span className="text-muted">Account</span><span className="text-[11px] text-muted">{activeBrokerHealth.detail}</span></div>
+                <KwantSelect
+                  value={String(currentBrokerConnection.accountId ?? activeBrokerAccounts[0]?.accountId ?? "")}
+                  onChange={(event) => selectBrokerAccount(activeTradingBrokerLabel, Number(event.target.value))}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12px] outline-none focus:border-primary/40"
+                >
+                  {activeBrokerAccounts.map((account) => (
+                    <option key={account.accountId} value={account.accountId}>
+                      {formatCTraderAccountLabel(account)}
+                    </option>
+                  ))}
+                </KwantSelect>
+              </div>
+            ) : (
+              <div className="flex justify-between"><span className="text-muted">Connection</span><span className="font-mono text-right">{currentBrokerConnection.accountLabel ?? activeTradingBrokerLabel}</span></div>
+            )}
+            <div className="flex justify-between"><span className="text-muted">Balance</span><span className="font-mono">{orderPanelAccountSummary.balance}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Equity</span><span className="font-mono">{orderPanelAccountSummary.equity}</span></div>
+            <div className="flex items-center justify-between"><span className="text-muted">Unrealized</span><LivePaperOpenPnl positions={selectedPaperOpenPositions} /></div>
+            <div className="flex justify-between"><span className="text-muted">Realized</span><span className="font-mono">{orderPanelAccountSummary.realized}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Margin</span><span className="font-mono text-right">{orderPanelAccountSummary.margin}</span></div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-surface"><div className={`h-full rounded-full ${tradingUnlocked ? "w-[18%] bg-primary" : "w-[8%] bg-muted/40"}`} /></div>
+            <div className="flex justify-between"><span className="text-muted">Leverage</span><span className="font-mono">{tradingUnlocked ? paperExecutionRequested ? selectedPaperTradingAccount?.leverage ?? "--" : "50:1" : "--"}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Tick size</span><span className="font-mono">{selectedPaperContract.tickSize}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">{formatDollar(selectedPaperContract.tickValue * selectedOrderQuantity)}</span></div>
+            <div className="flex justify-between"><span className="text-muted">1-point value</span><span className="font-mono">{formatDollar(selectedPaperContract.pointValue * selectedOrderQuantity)}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">{formatDollar(orderPanelTradeValueUsd)}</span></div>
+          </div>}
+        </div>
+        {/*
+          * Working-order and position controls, and the order options a
+          * connector may or may not honour. Anything the venue cannot do
+          * is disabled with the reason on the control rather than hidden
+          * or quietly dropped — a toggle that flips and then does nothing
+          * makes a trader believe a protection is in force when it is not.
+          */}
+        <div className="mb-3 space-y-2 border-t border-border pt-3">
+          <div className="grid grid-cols-2 gap-1.5">
+            {([
+              ["Cancel Bids", () => handleCancelPaperScope("bids"), !paperWorkingBook.some((order) => order.direction === "buy")],
+              ["Cancel Asks", () => handleCancelPaperScope("asks"), !paperWorkingBook.some((order) => order.direction === "sell")],
+              ["Cancel All", () => handleCancelPaperScope("all"), paperWorkingBook.length === 0],
+              ["Reverse", handleReversePaperPosition, selectedPaperOpenPositions.length === 0],
+            ] as const).map(([label, action, disabled]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={action}
+                disabled={disabled || !tradingUnlocked}
+                className="flex h-8 items-center justify-center rounded-[3px] border border-border bg-surface/40 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleBreakevenPaperPositions}
+            disabled={selectedPaperOpenPositions.length === 0 || !tradingUnlocked}
+            title="Move the stop to the entry price, snapped away from the market so it cannot round into a loss"
+            className="flex h-8 w-full items-center justify-center rounded-[3px] border border-border bg-surface/40 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            Breakeven
+          </button>
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={orderOco}
+              onClick={() => setOrderOco((value) => !value)}
+              title={PAPER_TRADING_CAPABILITIES.serverOco
+                ? "The broker enforces the group"
+                : "No server-side OCO here, so the desk cancels the other leg on the first fill — including a partial one"}
+              className="flex items-center gap-2 text-[10px] text-muted"
+            >
+              <span className={`relative h-4 w-8 shrink-0 rounded-full transition-colors ${orderOco ? "bg-primary" : "bg-border"}`}>
+                <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-background transition-[left] ${orderOco ? "left-[18px]" : "left-0.5"}`} />
+              </span>
+              <span className={orderOco ? "text-foreground" : undefined}>OCO</span>
+            </button>
+            <KwantSelect
+              value={orderTimeInForce}
+              onChange={(event) => setOrderTimeInForce(event.target.value as TimeInForce)}
+              aria-label="Time in force"
+              className="h-7 rounded-[3px] border border-border bg-background px-2 text-[10px] uppercase text-foreground outline-none focus:border-primary/40"
+            >
+              {TIME_IN_FORCE_OPTIONS
+                .filter((option) => PAPER_TRADING_CAPABILITIES.timeInForce.includes(option.id))
+                .map((option) => (
+                  <option key={option.id} value={option.id} title={option.hint}>{option.label}</option>
+                ))}
+            </KwantSelect>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly}
+            onClick={() => setOrderReduceOnly((value) => !value)}
+            disabled={!PAPER_TRADING_CAPABILITIES.reduceOnly}
+            title={PAPER_TRADING_CAPABILITIES.reduceOnly
+              ? "Never let this order open a position the other way"
+              : "This connection does not support reduce-only, so the desk will not pretend it is on"}
+            className="flex items-center gap-2 text-[10px] text-muted disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span className={`relative h-4 w-8 shrink-0 rounded-full transition-colors ${orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "bg-primary" : "bg-border"}`}>
+              <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-background transition-[left] ${orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "left-[18px]" : "left-0.5"}`} />
+            </span>
+            <span className={orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "text-foreground" : undefined}>Reduce-Only</span>
+          </button>
+        </div>
+        <button
+          onClick={tradingUnlocked ? () => submitPaperOrder() : undefined}
+          disabled={!tradingUnlocked}
+          className={`w-full rounded-xl py-3 font-semibold ${tradingUnlocked ? "" : "cursor-not-allowed bg-muted/30 text-muted"}`}
+          style={tradingUnlocked ? {
+            backgroundColor: orderSide === "buy" ? orderTicketBuyColor : orderTicketSellColor,
+            color: readableTextOn(orderSide === "buy" ? orderTicketBuyColor : orderTicketSellColor),
+          } : undefined}
+        >{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : currentBrokerConnection.connectionState === "connected" ? "Order routing unavailable" : "Connect Your Broker To Trade"}</button>
+        {orderTicketMessage && <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${orderTicketMessage.tone === "success" ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>{orderTicketMessage.text}</div>}
+        {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div><button onClick={handleFlattenPaperAccount} className="rounded-md border border-danger/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-danger hover:bg-danger/10">Flatten all</button></div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><LivePaperPositionPnl position={position} /></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><LivePaperPositionMark position={position} /></div><div className="mt-1 flex justify-between font-mono text-[9px] text-muted"><span>{position.stopLoss == null ? "SL not set" : `SL ${formatPrice(position.stopLoss, position.symbol)}`}</span><span>{position.takeProfits.filter((target) => target.quantity > target.filledQuantity).length} active TP</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10"><X className="h-3 w-3" /> Close position</button></div></div>)}</div>}
+        {selectedPaperWorkingOrders.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Working orders</div>{selectedPaperWorkingOrders.map((order) => <div key={order.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-3"><div><div className="text-[11px] font-semibold">{order.side.toUpperCase()} {order.quantity} {order.symbol}</div><div className="font-mono text-[10px] text-muted">{order.type.toUpperCase()} {order.price ? formatPrice(order.price, order.symbol) : "MARKET"}</div></div><button onClick={() => handleCancelPaperOrder(order.accountId, order.id)} className="rounded-lg border border-border px-2 py-1 text-[10px] text-muted hover:text-danger">Cancel</button></div>)}</div>}
+        <div className="mt-4 overflow-hidden rounded-[2px] border border-border bg-background/40">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Open P&amp;L</div>
+              <div className="mt-0.5 text-[9px] text-muted">Live marked positions</div>
+            </div>
+            <LivePaperOpenPnl positions={selectedPaperOpenPositions} />
+          </div>
+          <div className="flex items-center justify-between gap-3 px-3 py-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Daily P&amp;L</div>
+              <div className="mt-0.5 text-[9px] text-muted">Closed this trading day · <LiveDeskSession /></div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperDailyPnl > 0 ? "text-primary" : selectedPaperDailyPnl < 0 ? "text-danger" : "text-foreground"}`}>
+                {selectedPaperDailyPnl > 0 ? "+" : selectedPaperDailyPnl < 0 ? "-" : ""}{formatDollar(selectedPaperDailyPnl)}
+              </span>
+              {/* Disabled rather than hidden, so the export does not
+                  appear and vanish as the first trade of the day closes. */}
+              <button
+                type="button"
+                onClick={downloadPaperDailyTrades}
+                disabled={!selectedPaperDailyTradeRows.length}
+                className="flex h-7 w-7 items-center justify-center rounded-[2px] border border-border text-muted transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-border disabled:hover:text-muted"
+                title={selectedPaperDailyTradeRows.length
+                  ? `Download today's ${selectedPaperDailyTradeRows.length} closed ${selectedPaperDailyTradeRows.length === 1 ? "trade" : "trades"} as CSV`
+                  : "No trades closed today"}
+                aria-label="Download today's closed trades"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+        {!tradingUnlocked && (
+          <button onClick={() => setShowBrokerModal(true)} className="mt-2 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted transition-colors hover:text-foreground">
+            Link Your Own Broker
+          </button>
+        )}
+      </div>
+    );
+  }
+
   function renderWorkspacePane(paneId: string, floating = false) {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId)
       ?? activeWorkspacePane;
@@ -19176,7 +19532,7 @@ export default function KwantifyWorkspace({
         onChartDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
       />
     );
-    if (floating) return chartPane;
+    if (floating) return renderChartWithOrderTicket(pane.id, chartPane);
     const chartOption = ALL_WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
     const ChartPanelIcon = chartOption?.icon ?? BarChart3;
     return (
@@ -19237,6 +19593,7 @@ export default function KwantifyWorkspace({
             />
           </div>
           <div className="flex items-center gap-1">
+            {isWorkspaceChartKind(pane.content) ? renderChartTradeButton(pane) : null}
             {isWorkspaceChartKind(pane.content) ? (
               <button
                 type="button"
@@ -19330,7 +19687,7 @@ export default function KwantifyWorkspace({
             </button>
           </div>
         </div>
-        <div className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden">{chartPane}</div>
+        <div className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden">{renderChartWithOrderTicket(pane.id, chartPane)}</div>
       </div>
     );
   }
@@ -19419,6 +19776,7 @@ export default function KwantifyWorkspace({
             >
               {floating.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
             </button>
+            {isWorkspaceChartKind(pane.content) ? renderChartTradeButton(pane) : null}
             {isWorkspaceChartKind(pane.content) ? (
               <button
                 type="button"
@@ -21458,25 +21816,9 @@ export default function KwantifyWorkspace({
         </div>
       </div>
 
-      {(bottomWorkspaceSection !== "backtesting" || rightPanel === "order") && rightPanel && (
-        <div style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">
-          <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
-          {(rightPanel === "friends" || rightPanel === "messages") && (
-            <FriendsPanel
-              mode={rightPanel === "messages" ? "messages" : "friends"}
-              onClose={() => setRightPanel(null)}
-              onUnreadCountChange={setFriendsUnreadCount}
-              onMessageUnreadCountChange={setFriendMessageUnreadCount}
-              initialFriendId={friendsInitialFriendId}
-              onInitialFriendConsumed={() => setFriendsInitialFriendId("")}
-              onViewProfile={(handle) => {
-                setRightPanel(null);
-                router.push(`/socials/${encodeURIComponent(handle)}`);
-              }}
-            />
-          )}
-          {pendingChartOrder && (
+          {rightPanel === "order" && pendingChartOrder && (
             <div
+              data-chart-order-confirmation
               className="fixed inset-0 z-[120] flex items-center justify-center bg-background/70 backdrop-blur-sm"
               onClick={() => setPendingChartOrder(null)}
             >
@@ -21533,297 +21875,24 @@ export default function KwantifyWorkspace({
               </section>
             </div>
           )}
-          {rightPanel === "order" && (
-            <div className="flex-1 overflow-y-auto p-4" onKeyDown={handleOrderTicketKeyDown}>
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-primary"><Zap className="h-3.5 w-3.5" /></div>
-                  <div>
-                    <div className="text-[13px] font-semibold text-foreground">{displayCmeSymbol(paperTradingInstrument)}</div>
-                    <div className="text-[11px] text-muted">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel} order ticket</div>
-                  </div>
-                </div>
-                <button onClick={() => setRightPanel(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
-              </div>
-              <div className="relative mb-4 grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => { setOrderSide("sell"); setChartPlacementSuspended(false); }}
-                  className="rounded-xl border px-3 py-2 text-left transition-all"
-                  style={{
-                    borderColor: colorWithAlpha(
-                      orderTicketSellColor,
-                      orderSide === "sell" ? 0.9 : 0.45,
-                    ),
-                    backgroundColor: orderSide === "sell"
-                      ? orderTicketSellColor
-                      : colorWithAlpha(orderTicketSellColor, 0.08),
-                    color: orderSide === "sell" ? readableTextOn(orderTicketSellColor) : orderTicketSellColor,
-                  }}
-                ><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]">{orderPanelBidLabel}</div></button>
-                <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] text-muted">{orderPanelSpreadLabel}</div>
-                <button
-                  onClick={() => { setOrderSide("buy"); setChartPlacementSuspended(false); }}
-                  className="rounded-xl border px-3 py-2 text-right transition-all"
-                  style={{
-                    borderColor: colorWithAlpha(
-                      orderTicketBuyColor,
-                      orderSide === "buy" ? 0.9 : 0.45,
-                    ),
-                    backgroundColor: orderSide === "buy"
-                      ? orderTicketBuyColor
-                      : colorWithAlpha(orderTicketBuyColor, 0.08),
-                    color: orderSide === "buy" ? readableTextOn(orderTicketBuyColor) : orderTicketBuyColor,
-                  }}
-                ><div className="text-[12px] font-semibold">Buy</div><div className="font-mono text-[13px]">{orderPanelAskLabel}</div></button>
-              </div>
-              {!tradingUnlocked && (
-                <div className={`mb-4 rounded-xl border p-3 ${orderPanelLockTone.border} ${orderPanelLockTone.background}`}>
-                  <div className="flex items-start gap-2">
-                    <Lock className={`mt-0.5 h-4 w-4 ${orderPanelLockTone.icon}`} />
-                    <div>
-                      <div className={`text-[12px] font-semibold ${activeBrokerHealth.state === "broken" ? "text-danger" : "text-yellow-200"}`}>{orderPanelLockTone.title}</div>
-                      <div className={`mt-1 text-[11px] leading-5 ${activeBrokerHealth.state === "broken" ? "text-danger/80" : "text-yellow-100/80"}`}>
-                        {orderPanelLockTone.body}
-                      </div>
-                      {activeBrokerFeedError && (
-                        <div className={`mt-2 text-[11px] leading-5 ${activeBrokerHealth.state === "broken" ? "text-danger/70" : "text-yellow-100/70"}`}>
-                          Feed status: {activeBrokerFeedError}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className={`${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}>
-                <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => { setOrderType(type); setChartPlacementSuspended(false); }} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
-                {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input value={orderPrice} onChange={(event) => setOrderPrice(event.target.value)} placeholder={selectedMidPrice ? formatPrice(selectedMidPrice, paperTradingInstrument) : "Price"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" />
-                  <button
-                    type="button"
-                    disabled={!tradingUnlocked}
-                    onClick={() => setChartPlacementSuspended((value) => !value)}
-                    className={`w-full rounded-lg border px-3 py-2 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                      armedOrder ? "border-primary bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"
-                    }`}
-                    title="Pick the level on the chart instead of typing it"
-                  >{armedOrder ? "Click the chart to place · Esc to stop" : "Chart placement off · tap to resume"}</button>
-                </div>}
-                <div className="mb-4 space-y-2">
-                  <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">{selectedPaperContract.quantityLabel}</span>{!selectedPaperContract.isFutures && <KwantSelect value={unitsType} onChange={(e) => setUnitsType(e.target.value as typeof unitsType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="units">Units</option><option value="lots">Lots</option><option value="usd">USD</option><option value="pctBalance">% Balance</option></KwantSelect>}</div><div className="flex items-center gap-1 text-[12px] text-muted"><span className="font-mono text-foreground">{formatDollar(orderPanelMarginUsd)}</span><ChevronDown className="h-3 w-3" /></div></div>
-                  <div className="flex items-center gap-2"><input value={orderUnits} onChange={(e) => setOrderUnits(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button></div>
-                </div>
-              </div>
-              <div className="mb-4 rounded-xl border border-border bg-background/30">
-                <button onClick={() => setShowExits((value) => !value)} className="flex w-full items-center justify-between px-3 py-2 text-[13px] font-medium">Exits{showExits ? <ChevronUp className="h-4 w-4 text-muted" /> : <ChevronDown className="h-4 w-4 text-muted" />}</button>
-                {showExits && <div className={`space-y-4 border-t border-border p-3 ${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><KwantSelect value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></KwantSelect></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewTakeProfitTicks ? `${orderPreviewTakeProfitTicks} ticks` : "--"}</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><KwantSelect value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></KwantSelect></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewStopLossTicks ? `${orderPreviewStopLossTicks} ticks` : "--"}</span></div></div></div>}
-              </div>
-              <div className="mb-4 rounded-xl border border-border bg-background/30 p-3 text-[13px]">
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setShowBrokerAccount((value) => !value)}
-                    aria-expanded={showBrokerAccount}
-                    className="flex items-center gap-1.5 font-semibold text-primary"
-                    title={showBrokerAccount ? "Hide broker account details" : "Show broker account details"}
-                  >
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showBrokerAccount ? "" : "-rotate-90"}`} />
-                    Broker account
-                  </button>
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      activeBrokerHealth.state === "connected"
-                        ? "bg-primary/15 text-primary"
-                        : activeBrokerHealth.state === "broken"
-                          ? "bg-danger/15 text-danger"
-                          : "bg-orange-400/15 text-orange-300"
-                    }`}
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full ${activeBrokerHealth.dotClassName}`} />
-                    {activeBrokerHealth.label}
-                  </span>
-                </div>
-                {showBrokerAccount && <div className="mt-3 space-y-2">
-                  <div className="flex justify-between"><span className="text-muted">Broker</span><span className="font-mono text-right">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Mode</span><span className="font-mono text-right">{paperExecutionRequested ? "Sim" : formatTradingModeLabel(currentBrokerConnection.mode)}</span></div>
-                  {paperTradingAccounts.length > 0 ? (
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between"><span className="text-muted">Account</span><span className="text-[11px] text-muted">{activeBrokerHealth.detail}</span></div>
-                      <KwantSelect
-                        value={String(selectedPaperTradingAccount?.id ?? paperTradingAccounts[0]?.id ?? "")}
-                        onChange={(event) => selectPaperTradingAccount(event.target.value)}
-                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12px] outline-none focus:border-primary/40"
-                      >
-                        {paperTradingAccounts.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {`${account.name} - ${account.balance} - ${account.leverage}`}
-                          </option>
-                        ))}
-                      </KwantSelect>
-                    </div>
-                  ) : activeBrokerAccounts.length > 0 ? (
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between"><span className="text-muted">Account</span><span className="text-[11px] text-muted">{activeBrokerHealth.detail}</span></div>
-                      <KwantSelect
-                        value={String(currentBrokerConnection.accountId ?? activeBrokerAccounts[0]?.accountId ?? "")}
-                        onChange={(event) => selectBrokerAccount(activeTradingBrokerLabel, Number(event.target.value))}
-                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12px] outline-none focus:border-primary/40"
-                      >
-                        {activeBrokerAccounts.map((account) => (
-                          <option key={account.accountId} value={account.accountId}>
-                            {formatCTraderAccountLabel(account)}
-                          </option>
-                        ))}
-                      </KwantSelect>
-                    </div>
-                  ) : (
-                    <div className="flex justify-between"><span className="text-muted">Connection</span><span className="font-mono text-right">{currentBrokerConnection.accountLabel ?? activeTradingBrokerLabel}</span></div>
-                  )}
-                  <div className="flex justify-between"><span className="text-muted">Balance</span><span className="font-mono">{orderPanelAccountSummary.balance}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Equity</span><span className="font-mono">{orderPanelAccountSummary.equity}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted">Unrealized</span><LivePaperOpenPnl positions={selectedPaperOpenPositions} /></div>
-                  <div className="flex justify-between"><span className="text-muted">Realized</span><span className="font-mono">{orderPanelAccountSummary.realized}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Margin</span><span className="font-mono text-right">{orderPanelAccountSummary.margin}</span></div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-surface"><div className={`h-full rounded-full ${tradingUnlocked ? "w-[18%] bg-primary" : "w-[8%] bg-muted/40"}`} /></div>
-                  <div className="flex justify-between"><span className="text-muted">Leverage</span><span className="font-mono">{tradingUnlocked ? paperExecutionRequested ? selectedPaperTradingAccount?.leverage ?? "--" : "50:1" : "--"}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Tick size</span><span className="font-mono">{selectedPaperContract.tickSize}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">{formatDollar(selectedPaperContract.tickValue * selectedOrderQuantity)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">1-point value</span><span className="font-mono">{formatDollar(selectedPaperContract.pointValue * selectedOrderQuantity)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">{formatDollar(orderPanelTradeValueUsd)}</span></div>
-                </div>}
-              </div>
-              {/*
-                * Working-order and position controls, and the order options a
-                * connector may or may not honour. Anything the venue cannot do
-                * is disabled with the reason on the control rather than hidden
-                * or quietly dropped — a toggle that flips and then does nothing
-                * makes a trader believe a protection is in force when it is not.
-                */}
-              <div className="mb-3 space-y-2 border-t border-border pt-3">
-                <div className="grid grid-cols-2 gap-1.5">
-                  {([
-                    ["Cancel Bids", () => handleCancelPaperScope("bids"), !paperWorkingBook.some((order) => order.direction === "buy")],
-                    ["Cancel Asks", () => handleCancelPaperScope("asks"), !paperWorkingBook.some((order) => order.direction === "sell")],
-                    ["Cancel All", () => handleCancelPaperScope("all"), paperWorkingBook.length === 0],
-                    ["Reverse", handleReversePaperPosition, selectedPaperOpenPositions.length === 0],
-                  ] as const).map(([label, action, disabled]) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={action}
-                      disabled={disabled || !tradingUnlocked}
-                      className="flex h-8 items-center justify-center rounded-[3px] border border-border bg-surface/40 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleBreakevenPaperPositions}
-                  disabled={selectedPaperOpenPositions.length === 0 || !tradingUnlocked}
-                  title="Move the stop to the entry price, snapped away from the market so it cannot round into a loss"
-                  className="flex h-8 w-full items-center justify-center rounded-[3px] border border-border bg-surface/40 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  Breakeven
-                </button>
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={orderOco}
-                    onClick={() => setOrderOco((value) => !value)}
-                    title={PAPER_TRADING_CAPABILITIES.serverOco
-                      ? "The broker enforces the group"
-                      : "No server-side OCO here, so the desk cancels the other leg on the first fill — including a partial one"}
-                    className="flex items-center gap-2 text-[10px] text-muted"
-                  >
-                    <span className={`relative h-4 w-8 shrink-0 rounded-full transition-colors ${orderOco ? "bg-primary" : "bg-border"}`}>
-                      <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-background transition-[left] ${orderOco ? "left-[18px]" : "left-0.5"}`} />
-                    </span>
-                    <span className={orderOco ? "text-foreground" : undefined}>OCO</span>
-                  </button>
-                  <KwantSelect
-                    value={orderTimeInForce}
-                    onChange={(event) => setOrderTimeInForce(event.target.value as TimeInForce)}
-                    aria-label="Time in force"
-                    className="h-7 rounded-[3px] border border-border bg-background px-2 text-[10px] uppercase text-foreground outline-none focus:border-primary/40"
-                  >
-                    {TIME_IN_FORCE_OPTIONS
-                      .filter((option) => PAPER_TRADING_CAPABILITIES.timeInForce.includes(option.id))
-                      .map((option) => (
-                        <option key={option.id} value={option.id} title={option.hint}>{option.label}</option>
-                      ))}
-                  </KwantSelect>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly}
-                  onClick={() => setOrderReduceOnly((value) => !value)}
-                  disabled={!PAPER_TRADING_CAPABILITIES.reduceOnly}
-                  title={PAPER_TRADING_CAPABILITIES.reduceOnly
-                    ? "Never let this order open a position the other way"
-                    : "This connection does not support reduce-only, so the desk will not pretend it is on"}
-                  className="flex items-center gap-2 text-[10px] text-muted disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <span className={`relative h-4 w-8 shrink-0 rounded-full transition-colors ${orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "bg-primary" : "bg-border"}`}>
-                    <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-background transition-[left] ${orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "left-[18px]" : "left-0.5"}`} />
-                  </span>
-                  <span className={orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "text-foreground" : undefined}>Reduce-Only</span>
-                </button>
-              </div>
-              <button
-                onClick={tradingUnlocked ? () => submitPaperOrder() : undefined}
-                disabled={!tradingUnlocked}
-                className={`w-full rounded-xl py-3 font-semibold ${tradingUnlocked ? "" : "cursor-not-allowed bg-muted/30 text-muted"}`}
-                style={tradingUnlocked ? {
-                  backgroundColor: orderSide === "buy" ? orderTicketBuyColor : orderTicketSellColor,
-                  color: readableTextOn(orderSide === "buy" ? orderTicketBuyColor : orderTicketSellColor),
-                } : undefined}
-              >{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : currentBrokerConnection.connectionState === "connected" ? "Order routing unavailable" : "Connect Your Broker To Trade"}</button>
-              {orderTicketMessage && <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${orderTicketMessage.tone === "success" ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>{orderTicketMessage.text}</div>}
-              {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div><button onClick={handleFlattenPaperAccount} className="rounded-md border border-danger/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-danger hover:bg-danger/10">Flatten all</button></div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><LivePaperPositionPnl position={position} /></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><LivePaperPositionMark position={position} /></div><div className="mt-1 flex justify-between font-mono text-[9px] text-muted"><span>{position.stopLoss == null ? "SL not set" : `SL ${formatPrice(position.stopLoss, position.symbol)}`}</span><span>{position.takeProfits.filter((target) => target.quantity > target.filledQuantity).length} active TP</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10"><X className="h-3 w-3" /> Close position</button></div></div>)}</div>}
-              {selectedPaperWorkingOrders.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Working orders</div>{selectedPaperWorkingOrders.map((order) => <div key={order.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-3"><div><div className="text-[11px] font-semibold">{order.side.toUpperCase()} {order.quantity} {order.symbol}</div><div className="font-mono text-[10px] text-muted">{order.type.toUpperCase()} {order.price ? formatPrice(order.price, order.symbol) : "MARKET"}</div></div><button onClick={() => handleCancelPaperOrder(order.accountId, order.id)} className="rounded-lg border border-border px-2 py-1 text-[10px] text-muted hover:text-danger">Cancel</button></div>)}</div>}
-              <div className="mt-4 overflow-hidden rounded-[2px] border border-border bg-background/40">
-                <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Open P&amp;L</div>
-                    <div className="mt-0.5 text-[9px] text-muted">Live marked positions</div>
-                  </div>
-                  <LivePaperOpenPnl positions={selectedPaperOpenPositions} />
-                </div>
-                <div className="flex items-center justify-between gap-3 px-3 py-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Daily P&amp;L</div>
-                    <div className="mt-0.5 text-[9px] text-muted">Closed this trading day · <LiveDeskSession /></div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperDailyPnl > 0 ? "text-primary" : selectedPaperDailyPnl < 0 ? "text-danger" : "text-foreground"}`}>
-                      {selectedPaperDailyPnl > 0 ? "+" : selectedPaperDailyPnl < 0 ? "-" : ""}{formatDollar(selectedPaperDailyPnl)}
-                    </span>
-                    {/* Disabled rather than hidden, so the export does not
-                        appear and vanish as the first trade of the day closes. */}
-                    <button
-                      type="button"
-                      onClick={downloadPaperDailyTrades}
-                      disabled={!selectedPaperDailyTradeRows.length}
-                      className="flex h-7 w-7 items-center justify-center rounded-[2px] border border-border text-muted transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-border disabled:hover:text-muted"
-                      title={selectedPaperDailyTradeRows.length
-                        ? `Download today's ${selectedPaperDailyTradeRows.length} closed ${selectedPaperDailyTradeRows.length === 1 ? "trade" : "trades"} as CSV`
-                        : "No trades closed today"}
-                      aria-label="Download today's closed trades"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {!tradingUnlocked && (
-                <button onClick={() => setShowBrokerModal(true)} className="mt-2 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted transition-colors hover:text-foreground">
-                  Link Your Own Broker
-                </button>
-              )}
-            </div>
+      {(bottomWorkspaceSection !== "backtesting" || rightPanel === "order") && rightPanel && !inlineTicketOpen && (
+        <div style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">
+          <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
+          {(rightPanel === "friends" || rightPanel === "messages") && (
+            <FriendsPanel
+              mode={rightPanel === "messages" ? "messages" : "friends"}
+              onClose={() => setRightPanel(null)}
+              onUnreadCountChange={setFriendsUnreadCount}
+              onMessageUnreadCountChange={setFriendMessageUnreadCount}
+              initialFriendId={friendsInitialFriendId}
+              onInitialFriendConsumed={() => setFriendsInitialFriendId("")}
+              onViewProfile={(handle) => {
+                setRightPanel(null);
+                router.push(`/socials/${encodeURIComponent(handle)}`);
+              }}
+            />
           )}
+          {rightPanel === "order" && renderOrderTicket()}
           {rightPanel === "watchlist" && (
             <div
               className="flex min-w-0 flex-1 flex-col overflow-hidden"
