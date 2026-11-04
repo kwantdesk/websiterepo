@@ -1,0 +1,174 @@
+{
+  "checks": [
+    {
+      "palette": "cyan-magenta",
+      "website": "#000",
+      "pixel": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0,
+        0
+      ],
+      "chrome": {
+        "axis": "#000000",
+        "axisAlt": "#000000",
+        "text": "#ffffff",
+        "muted": "#b3b3b3",
+        "grid": "41,41,41"
+      }
+    },
+    {
+      "palette": "white-cyan-magenta",
+      "website": "#000",
+      "pixel": [
+        255,
+        255,
+        255
+      ],
+      "expected": [
+        255,
+        255,
+        255
+      ],
+      "chrome": {
+        "axis": "#ffffff",
+        "axisAlt": "#ffffff",
+        "text": "#000000",
+        "muted": "#4d4d4d",
+        "grid": "214,214,214"
+      }
+    },
+    {
+      "palette": "pink-blue",
+      "website": "#000",
+      "pixel": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0,
+        0
+      ],
+      "chrome": {
+        "axis": "#000000",
+        "axisAlt": "#000000",
+        "text": "#ffffff",
+        "muted": "#b3b3b3",
+        "grid": "41,41,41"
+      }
+    },
+    {
+      "palette": "white-violet-amber",
+      "website": "#000",
+      "pixel": [
+        255,
+        255,
+        255
+      ],
+      "expected": [
+        255,
+        255,
+        255
+      ],
+      "chrome": {
+        "axis": "#ffffff",
+        "axisAlt": "#ffffff",
+        "text": "#000000",
+        "muted": "#4d4d4d",
+        "grid": "214,214,214"
+      }
+    },
+    {
+      "palette": "cyan-magenta",
+      "website": "#fff",
+      "pixel": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0,
+        0
+      ],
+      "chrome": {
+        "axis": "#000000",
+        "axisAlt": "#000000",
+        "text": "#ffffff",
+        "muted": "#b3b3b3",
+        "grid": "41,41,41"
+      }
+    },
+    {
+      "palette": "white-cyan-magenta",
+      "website": "#fff",
+      "pixel": [
+        255,
+        255,
+        255
+      ],
+      "expected": [
+        255,
+        255,
+        255
+      ],
+      "chrome": {
+        "axis": "#ffffff",
+        "axisAlt": "#ffffff",
+        "text": "#111111",
+        "muted": "#585858",
+        "grid": "217,217,217"
+      }
+    },
+    {
+      "palette": "pink-blue",
+      "website": "#fff",
+      "pixel": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0,
+        0
+      ],
+      "chrome": {
+        "axis": "#000000",
+        "axisAlt": "#000000",
+        "text": "#ffffff",
+        "muted": "#b3b3b3",
+        "grid": "41,41,41"
+      }
+    },
+    {
+      "palette": "white-violet-amber",
+      "website": "#fff",
+      "pixel": [
+        255,
+        255,
+        255
+      ],
+      "expected": [
+        255,
+        255,
+        255
+      ],
+      "chrome": {
+        "axis": "#ffffff",
+        "axisAlt": "#ffffff",
+        "text": "#111111",
+        "muted": "#585858",
+        "grid": "217,217,217"
+      }
+    }
+  ],
+  "errors": [],
+  "externalNetworkBlocked": true
+}

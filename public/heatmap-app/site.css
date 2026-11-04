@@ -183,3 +183,9 @@ html[data-embed="true"] .cvd-panel header { background: var(--ui-bg); }
   html[data-embed="true"] .header-panel-shortcuts button { width: 28px; padding: 0; }
   html[data-embed="true"] .header-panel-shortcuts button > span { display: none; }
 }
+
+/* The DOM inspector follows the same map preset as the canvas price ladder. */
+#depthPanel { background:var(--depth-background,var(--ui-panel));color:var(--depth-text,var(--ui-text)); }
+#depthPanel .depth-row .depth-price { color:var(--depth-text,var(--ui-text)); }
+#depthPanel .depth-row.bid { color:var(--depth-buy,var(--ui-accent)); }
+#depthPanel .depth-row.ask { color:var(--depth-sell,var(--ui-text)); }

@@ -1,4 +1,4 @@
-import { websiteThemeColors } from './ui-themes.js?v=20261017-aleph-font';
+import { websiteThemeColors, canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
 
 import { INDICATOR_GRADIENT_SCHEMES } from '../../shared/indicator-gradients.js';
 export const HEAT_GRADIENT_PRESETS = Object.freeze([
@@ -276,12 +276,23 @@ export function heatOverlayAccents(name) {
     : { bid: [69, 224, 255], ask: [255, 153, 80] };
 }
 
+/** Keep the DOM and price rail on the selected map preset's surface. */
+export function paletteCanvasTheme(name) {
+  const chrome = canvasUiTheme();
+  if (name === 'auto') return chrome;
+  const background = [...paletteLut(name).subarray(0, 3)];
+  const foreground = colorContrast(background, [0, 0, 0]) >= colorContrast(background, [255, 255, 255])
+    ? [0, 0, 0] : [255, 255, 255];
+  const text = legibleMarketAccent(rgb(websiteThemeColors().foreground, foreground), foreground, [background]);
+  const muted = legibleMarketAccent(mix(text, background, .30), text, [background]);
+  const hex = parts => '#' + parts.map(value => Math.round(value).toString(16).padStart(2, '0')).join('');
+  return { ...chrome, axis: hex(background), axisAlt: hex(background), text: hex(text), muted: hex(muted), grid: mix(background, text, .16).join(',') };
+}
+
 export function paletteAccents(name) {
   const site = websiteThemeColors();
-  const backgrounds = [
-    rgb(site.chartBackground || site.background, [10, 10, 11]),
-    rgb(site.panel, [12, 12, 14]),
-  ];
+  const surface = paletteCanvasTheme(name);
+  const backgrounds = [rgb(surface.axis), rgb(surface.axisAlt)];
   if (name === 'auto' || Object.hasOwn(gradientStops, name)) {
     const bid = rgb(site.candleUp || site.primary, [0, 245, 160]);
     const ask = rgb(site.candleDown || site.danger, [239, 68, 68]);

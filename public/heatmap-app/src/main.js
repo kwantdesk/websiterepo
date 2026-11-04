@@ -20,7 +20,7 @@ import {
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from './live-market.js?v=20261030-bubble-source-time';
-import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient } from './palettes.js?v=heat-gradient-contrast';
+import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient, paletteCanvasTheme, paletteAccents } from './palettes.js?v=heat-gradient-contrast';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
@@ -1117,6 +1117,12 @@ class DepthForgeApp {
       button.classList.toggle('active-toggle', selected);
     }
     $('heatPalettePreview').style.background = paletteCssGradient(this.settings.palette);
+    const surface = paletteCanvasTheme(this.settings.palette), accents = paletteAccents(this.settings.palette);
+    const depth = $('depthPanel');
+    depth.style.setProperty('--depth-background', surface.axisAlt);
+    depth.style.setProperty('--depth-text', surface.text);
+    depth.style.setProperty('--depth-buy', 'rgb(' + accents.bid.join(',') + ')');
+    depth.style.setProperty('--depth-sell', 'rgb(' + accents.ask.join(',') + ')');
   }
 
   #syncHeatmapControls() {

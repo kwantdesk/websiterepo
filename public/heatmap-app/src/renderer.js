@@ -1,8 +1,7 @@
 import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=heat-render-recovery';
 import { cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
-import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=heat-gradient-contrast';
-import { canvasUiTheme } from './ui-themes.js?v=20261017-aleph-font';
+import { paletteAccents, paletteCanvasTheme, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=heat-gradient-contrast';
 import { writeHeatRgba } from './heat-raster.js?v=heat-render-recovery';
 
 function colorCss([red, green, blue], alpha = 1) {
@@ -315,7 +314,7 @@ export class DepthRenderer {
     const end = Math.min(history.length - 1, endIndex);
     const current = history[end];
     const accents = paletteAccents(settings.palette);
-    this.chrome = canvasUiTheme(settings.uiTheme);
+    this.chrome = paletteCanvasTheme(settings.palette);
     // Reading computed styles in every market frame forces a synchronous style
     // calculation for the entire embedded terminal. Fonts change only when a
     // website theme changes, so sample them occasionally instead of taxing the

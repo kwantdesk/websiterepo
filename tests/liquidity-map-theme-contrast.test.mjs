@@ -12,6 +12,9 @@ const palettesUrl = new URL(`../public/heatmap-app/src/palettes.js?${revision}`,
 const { setWebsiteThemeColors } = await import(themesUrl);
 const {
   DEFAULT_PALETTE,
+  HEAT_GRADIENT_PRESETS,
+  paletteCanvasTheme,
+  paletteLut,
   colorContrast,
   paletteAccents,
   readableAccentText,
@@ -27,7 +30,8 @@ test("every website theme keeps both Liquidity Map sides readable", () => {
   for (const preset of themePresets) {
     setWebsiteThemeColors(preset.colors);
     const accents = paletteAccents(DEFAULT_PALETTE);
-    const surfaces = [rgb(preset.colors.chartBackground), rgb(preset.colors.panel)];
+    const chrome = paletteCanvasTheme(DEFAULT_PALETTE);
+    const surfaces = [rgb(chrome.axis), rgb(chrome.axisAlt)];
     for (const [side, accent] of Object.entries(accents)) {
       for (const surface of surfaces) {
         assert.ok(
@@ -55,3 +59,6 @@ test("a saved legacy hollow palette replaces black sell ink with distinct light 
   assert.notDeepEqual(ask, bid);
   assert.ok(colorContrast(ask, [0, 0, 0]) >= 4.5);
 });
+
+ test('all dark/white map presets keep DOM and price rail on their own palette surface',()=>{for(const theme of themePresets){setWebsiteThemeColors(theme.colors);for(const preset of HEAT_GRADIENT_PRESETS){const chrome=paletteCanvasTheme(preset.id),background=[...paletteLut(preset.id).subarray(0,3)];assert.deepEqual(rgb(chrome.axis),background);assert.deepEqual(rgb(chrome.axisAlt),background);assert.ok(colorContrast(rgb(chrome.text),background)>=4.5,theme.name+' / '+preset.id);for(const accent of Object.values(paletteAccents(preset.id)))assert.ok(colorContrast(accent,background)>=4.5);}}});
+ test('switching map presets and website themes uses fresh colours without a reload',()=>{setWebsiteThemeColors({foreground:'#ffffff',background:'#000000',panel:'#080808',chartBackground:'#000000'});assert.equal(paletteCanvasTheme('cyan-magenta').axisAlt,'#000000');assert.equal(paletteCanvasTheme('white-cyan-magenta').axisAlt,'#ffffff');assert.equal(paletteCanvasTheme('cyan-magenta').axisAlt,'#000000');setWebsiteThemeColors({foreground:'#111111',background:'#fafafa',panel:'#f1f1f1',chartBackground:'#fafafa'});assert.equal(paletteCanvasTheme('auto').axisAlt,'#f1f1f1');assert.ok(colorContrast(rgb(paletteCanvasTheme('white-cyan-magenta').text),[255,255,255])>=4.5);});
