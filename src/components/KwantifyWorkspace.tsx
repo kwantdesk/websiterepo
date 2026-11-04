@@ -19464,7 +19464,7 @@ export default function KwantifyWorkspace({
         paperPositions={gexVueReplay.active ? [] : selectedPaperAccountLedger?.positions ?? []}
         paperFills={(gexVueReplay.active ? [] : selectedPaperAccountLedger?.fills ?? []).filter((fill) =>
           !selectedHiddenPaperFillIds.has(fill.id))}
-        armedOrder={gexVueReplay.active ? null : armedOrder}
+        armedOrder={!gexVueReplay.active && pane.id === activePaneId && (!inlineTicketOpen || pane.id === inlineTicketPaneId) ? armedOrder : null}
         paperWorkingOrders={gexVueReplay.active ? [] : selectedPaperWorkingOrders}
         onArmedOrderPick={(price) => {
           const armed = armedOrder;
@@ -21853,11 +21853,6 @@ export default function KwantifyWorkspace({
                     onClick={() => {
                       const order = pendingChartOrder;
                       setPendingChartOrder(null);
-                      // Placing ends the arming session. Re-arming here would
-                      // leave the line following the cursor immediately after
-                      // the order was placed, which reads as the click having
-                      // done nothing.
-                      setChartPlacementSuspended(true);
                       submitPaperOrder({
                         side: order.side,
                         type: order.type,
