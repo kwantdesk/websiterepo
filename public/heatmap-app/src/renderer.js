@@ -355,10 +355,10 @@ export class DepthRenderer {
     const profileColumnWidth = width < 700 ? 36 : width < 900 ? 46 : 56;
     const volumeRatioWidth = ratioColumnCount * profileColumnWidth;
     const profileWidth = svpVisible ? profileColumnWidth * 2 : 0;
-    const timeAxisHeight = 28;
-    const rightHeaderHeight = 32;
+    const timeAxisHeight = Math.min(28, Math.floor(height * .25));
     const plotWidth = Math.max(120, width - priceAxisWidth - volumeRatioWidth - profileWidth);
-    const plotHeight = Math.max(80, height - timeAxisHeight);
+    const plotHeight = Math.max(1, height - timeAxisHeight);
+    const rightHeaderHeight = Math.min(32, plotHeight * .25);
     const rowTicks = Math.max(1, view.aggregation || 1);
     const baseRows = priceScaleRows(view.visibleRows, config);
     const visibleTickSpan = baseRows * rowTicks;
@@ -373,16 +373,9 @@ export class DepthRenderer {
     const targetCenterTick = view.centerTick ?? (Number.isFinite(liveTick) && liveTick > 0
       ? liveTick
       : current.midTick);
-    const autoCenterLocked = settings.autoCenter
-      && view.centerTick == null
-      && this.interaction == null;
-    // Follow the live price with a damped camera. Snapping the complete price
-    // plane to every traded tick made the fixed view visibly jump. The marker
-    // remains centred by Main while the heavier depth canvas quietly catches
-    // up, giving the map a dolly movement instead of a staircase.
-    const centerTick = autoCenterLocked
-      ? this.#smoothCameraCenter(targetCenterTick, true)
-      : this.#smoothCameraCenter(targetCenterTick, false);
+    // Auto-centre is an exact price anchor, including during resize. A damped
+    // centre put the actual market at a different Y from its centred label.
+    const centerTick = this.#smoothCameraCenter(targetCenterTick, false);
     const bottomTick = centerTick - visibleTickSpan / 2;
     const topTick = centerTick + visibleTickSpan / 2;
     // Screen chrome must not inherit the user's drag transform. The heatmap,
@@ -1512,7 +1505,8 @@ export class DepthRenderer {
 
   currentPriceY(tick) {
     if (!this.layout) return 0;
-    return Math.max(10, Math.min(this.layout.plotHeight - 10, this.layout.yForTick(tick)));
+    const inset = Math.min(10, this.layout.plotHeight / 2);
+    return Math.max(inset, Math.min(this.layout.plotHeight - inset, this.layout.yForTick(tick)));
   }
 
   measurementSummary(start, end) {

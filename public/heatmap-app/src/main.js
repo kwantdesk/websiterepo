@@ -362,7 +362,6 @@ class DepthForgeApp {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'kwantdesk:liquidity-map-trading') {
         if (event.source !== window.parent) return;
-        if (this.tradingIntent?.symbol !== event.data.symbol || !event.data.hasOrderLevels) this.orderScaleCenter = null;
         this.tradingIntent = event.data;
         this.requestRender();
         $('mapTradeButton').style.display = event.data.ticketAvailable === true ? '' : 'none';
@@ -1666,13 +1665,9 @@ class DepthForgeApp {
           const previousEndFrame = this.renderer.layout?.history?.[this.renderer.layout?.end];
           const previousPixelsPerTick = Number(this.renderer.layout?.plotHeight)
             / Math.max(1, Number(this.renderer.layout?.visibleTickSpan));
-          const keepOrderScale = this.tradingIntent?.symbol === this.symbol && this.tradingIntent?.hasOrderLevels && !this.replay.active;
-          if (!keepOrderScale) this.orderScaleCenter = null;
-          else this.orderScaleCenter ??= this.renderer.layout?.config.key === this.symbol
-            ? this.renderer.layout.centerTick : current.midTick;
-          const renderView = keepOrderScale && this.settings.autoCenter
-            ? { ...this.view, centerTick: this.orderScaleCenter } : this.view;
-          this.renderer.render(this.history, this.viewEnd, renderView, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
+          // Orders retain fixed price anchors; they must not pin an enabled
+          // auto-centre camera to the price seen when the order was opened.
+          this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
           this.#publishTradingPlot();
           const nextCenterTick = Number(this.renderer.layout?.centerTick);
           const previousEndIndex = previousEndFrame ? this.history.indexOf(previousEndFrame) : -1;
@@ -1930,7 +1925,7 @@ class DepthForgeApp {
     const lockedCenterY = this.settings.autoCenter && this.atLive
       ? Number(this.renderer.layout?.plotHeight || 0) / 2
       : this.renderer.currentPriceY(snapshot.lastTick);
-    tag.style.top = `${Math.max(10, lockedCenterY)}px`;
+    tag.style.top = `${Math.max(0, lockedCenterY)}px`;
     const chartWidth = $('chartArea').clientWidth;
     const rightOffset = Math.max(0, chartWidth - (this.renderer.layout?.width || chartWidth));
     tag.style.right = `${rightOffset}px`;

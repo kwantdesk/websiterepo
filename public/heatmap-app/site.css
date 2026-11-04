@@ -189,3 +189,10 @@ html[data-embed="true"] .cvd-panel header { background: var(--ui-bg); }
 #depthPanel .depth-row .depth-price { color:var(--depth-text,var(--ui-text)); }
 #depthPanel .depth-row.bid { color:var(--depth-buy,var(--ui-accent)); }
 #depthPanel .depth-row.ask { color:var(--depth-sell,var(--ui-text)); }
+
+/* Preserve a visible price pane when the workspace is compressed vertically. */
+.chart-module.cvd-open {
+  --cvd-panel-height:min(118px,35%);
+  grid-template-rows:minmax(0,1fr) var(--cvd-panel-height);
+}
+.chart-module.cvd-open::after { height:var(--cvd-panel-height); }
