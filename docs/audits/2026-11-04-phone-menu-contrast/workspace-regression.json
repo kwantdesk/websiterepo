@@ -1,0 +1,58 @@
+{
+  "checks": [
+    "390px phone gets full-width chart and no permanent desktop bars",
+    "Full navigation is reachable from the pull-out side menu",
+    "Actual chart controls open in a drawer without shrinking the chart",
+    "Watchlist overlays the phone chart without taking its width",
+    "Drawing tools are available on demand",
+    "Escape closes the drawer and restores focus",
+    "Responsive geometry at 320px",
+    "Responsive geometry at 430px",
+    "Responsive geometry at 740px",
+    "Responsive geometry at 768px",
+    "Responsive geometry at 1440px",
+    "Two desktop panes become one full-width selected phone chart",
+    "Returning to desktop restores both panes with byte-identical saved layout",
+    "Landscape touch phone retains the phone layout",
+    "Mobile menu uses the active light theme",
+    "News: mobile route navigation and full-width shell",
+    "Journal: mobile route navigation and full-width shell",
+    "Backtesting: mobile route navigation and full-width shell"
+  ],
+  "errors": [],
+  "geometry": {
+    "screen": 390,
+    "pane": {
+      "x": 1,
+      "y": 37,
+      "width": 388,
+      "height": 806
+    },
+    "canvas": {
+      "x": 1,
+      "y": 37,
+      "width": 388,
+      "height": 806
+    },
+    "topbar": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "toolbar": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "right": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "overflow": false
+  },
+  "externalRequests": 0
+}

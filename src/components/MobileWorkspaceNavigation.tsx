@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type ComponentType, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
+import { legibleOn, readableTextOn } from "@/lib/readableContrast";
 
 export type MobileWorkspaceAction = { label: string; onClick: () => void; active?: boolean };
 type Item = { key: string; href: string; label: string; icon: ComponentType<{ className?: string }> };
@@ -17,8 +18,28 @@ export default function MobileWorkspaceNavigation({ items, activeItem, onNavigat
   actions?: MobileWorkspaceAction[];
 }) {
   const [open, setOpen] = useState(false);
+  const [menuColors, setMenuColors] = useState<CSSProperties>({});
   const drawer = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const syncColors = () => {
+      const theme = getComputedStyle(document.documentElement);
+      const panel = theme.getPropertyValue("--panel").trim() || "#080808";
+      const ink = legibleOn(theme.getPropertyValue("--foreground").trim() || "#FFFFFF", panel, 4.5);
+      const accent = legibleOn(theme.getPropertyValue("--primary").trim() || ink, panel, 4.5);
+      setMenuColors({
+        "--phone-menu-panel": panel,
+        "--phone-menu-ink": ink,
+        "--phone-menu-accent": accent,
+        "--phone-menu-on-accent": readableTextOn(accent),
+        "--phone-menu-muted": legibleOn(theme.getPropertyValue("--muted").trim() || ink, panel, 4.5),
+        "--phone-menu-border": legibleOn(theme.getPropertyValue("--border").trim() || ink, panel, 3),
+      } as CSSProperties);
+    };
+    syncColors();
+    window.addEventListener("kwantdesk:theme-change", syncColors);
+    return () => window.removeEventListener("kwantdesk:theme-change", syncColors);
+  }, []);
   useEffect(() => { setOpen(false); }, [activeItem]);
   useEffect(() => {
     if (!open) return;
@@ -44,9 +65,9 @@ export default function MobileWorkspaceNavigation({ items, activeItem, onNavigat
     };
   }, [open]);
   return <>
-    <button ref={trigger} type="button" className="kwant-phone-menu-trigger" aria-label="Open workspace menu" aria-expanded={open} onClick={() => setOpen(true)}><Menu size={20} /></button>
+    <button ref={trigger} style={menuColors} type="button" className="kwant-phone-menu-trigger" aria-label="Open workspace menu" aria-expanded={open} onClick={() => setOpen(true)}><Menu size={20} /></button>
     {open && typeof document !== "undefined" ? createPortal(
-      <div className="kwant-phone-menu-layer">
+      <div className="kwant-phone-menu-layer" style={menuColors}>
         <button className="kwant-phone-scrim" type="button" aria-label="Close workspace menu" tabIndex={-1} onClick={() => setOpen(false)} />
         <div ref={drawer} role="dialog" aria-modal="true" aria-label="Workspace menu" className="kwant-phone-navigation">
           <div className="kwant-phone-drawer-heading"><strong>kwant desk</strong><button type="button" aria-label="Close workspace menu" onClick={() => setOpen(false)}><X size={20} /></button></div>
