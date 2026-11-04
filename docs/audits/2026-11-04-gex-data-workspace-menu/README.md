@@ -1,0 +1,11 @@
+# GEX Data saved workspace menu
+
+Owner requested the same workspace dropdown design and actions as normal Charts.
+
+Replaced the old generic popup/actions with Charts' 340px compact panel layout: saved-workspaces heading, status, Quick Save / Save As, active saved rows with tool counts/dates, hover/focus export/delete icons, inline name field, Export Current / Export All and dashed JSON import/drop target. Trigger uses the normal Save line icon, compact typography, selected styling and expanded-state semantics. Scoped theme variables control fills/text and both light/dark menus were visually inspected. Normal Charts and other pages were not modified.
+
+Added active-preset identity and Quick Save updates, separate saved/all JSON export, import merging by identity, drag/drop, deletion confirmation and actual load/restore behavior. Existing name/values saved records gain stable identities when read; old version-one single-workspace exports remain accepted. Version-two GEX Data backups carry one or several presets. GEX Data files remain separate from normal Charts' different layout schema.
+
+Account-scoped host storage remains authoritative. Captures include the actual current board even before a first layout write, plus tool settings, filters and existing page preferences. Saved collections and active identity are excluded from snapshots to prevent recursive backup growth. Imports validate all entries, storage keys, tools, tree structure, identities and bounds before saving/restoring. The host retains the saved collection across restore. The isolated QA host was corrected to follow that existing production contract. No live data, account order, recording or feed behavior was changed.
+
+830 GEX Data/reference tests pass, including eight new saved-workspace/model/layout tests. Isolated Chrome exercises Save As, Quick Save, collection preservation, individual and all JSON downloads, malformed-file rejection without state change, cancellation, deletion, full bundle drag/drop restore, legacy-file restore and trigger toggling; no browser errors, missing assets or external provider calls. Full production build passed (TypeScript and page generation). Actual source screenshots were not used to claim data parity; the attached images use empty data fixtures only to verify menu presentation. No owner tabs or gateways were restarted.

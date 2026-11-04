@@ -22,8 +22,8 @@
     read: key => values.get(key) ?? null,
     write: (key,value) => { if (!validKey(key) || value !== null && typeof value !== 'string') throw Error('Invalid local QA preference.'); const next = new Map(values); if (value === null) next.delete(key); else next.set(key,value); check(next); values.clear(); for (const entry of next) values.set(...entry); },
     theme: () => palette,
-    snapshot: () => Object.fromEntries(values),
-    restore: input => { if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid QA workspace.'); const entries = Object.entries(input); if (entries.some(([key,value]) => !validKey(key) || typeof value !== 'string')) throw Error('Invalid QA preferences.'); const next = new Map(entries); check(next); values.clear(); for (const entry of next) values.set(...entry); },
+    snapshot: () => Object.fromEntries([...values].filter(([key])=>key!=='gex-data:saved-workspaces:v1')),
+    restore: input => { if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid QA workspace.'); const entries = Object.entries(input); if (entries.some(([key,value]) => !validKey(key) || key==='gex-data:saved-workspaces:v1' || typeof value !== 'string')) throw Error('Invalid QA preferences.'); const next = new Map(entries),presets=values.get('gex-data:saved-workspaces:v1');if(presets!==undefined)next.set('gex-data:saved-workspaces:v1',presets);check(next); values.clear(); for (const entry of next) values.set(...entry); },
     request: (url,options={}) => { if (!/^\/api\/gex-data\/[a-z-]+$/.test(url)) throw Error('Unsupported local QA request.'); return fetch(url,{...options,credentials:'omit'}); }
   };
 })();

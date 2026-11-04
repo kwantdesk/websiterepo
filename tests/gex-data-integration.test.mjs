@@ -106,7 +106,8 @@ test('theme colours and font replace the prototype skin in both CSS and canvas',
 });
 test('latest overview, saved templates and real import/export replace fixed snapshot defaults',()=>{
   const source=read('../public/gex-data-app/workspace-ui.js');assert.match(source,/mode:'latest',date:'',expiry:''/);assert.doesNotMatch(source,/2026-10-08/);
-  for(const label of ['Save workspace as…','Export workspace','Import workspace…','kwantdesk-gex-data'])assert.ok(source.includes(label));
-  assert.match(source,/input\.type='file'/);assert.match(source,/URL\.createObjectURL/);assert.match(source,/gexStorage\.restore/);
+  const menu=read('../public/gex-data-app/saved-workspaces-menu.js'),model=read('../public/gex-data-app/saved-workspaces-model.js');assert.match(source,/createSavedWorkspaceMenu/);
+  for(const label of ['Quick Save','Save As','Export Current','Export All','Import workspace JSON'])assert.ok(menu.includes(label));assert.ok(model.includes('kwantdesk-gex-data'));
+  assert.match(menu,/file\.type='file'/);assert.match(menu,/URL\.createObjectURL/);assert.match(source,/gexStorage\.restore/);
   const app=read('../public/gex-data-app/app.js');assert.match(app,/if\(pollTimer!==null\)return/);assert.match(app,/remembered\.length<=items\.length/);assert.match(app,/closingReconcileAt/);assert.match(app,/gatewayFetchedAt/);assert.match(app,/clearInterval\(statusTimer\)/);assert.match(app,/get\('snapshot'\)/);
 });
