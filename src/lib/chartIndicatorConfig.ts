@@ -2861,7 +2861,8 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     type: "ask-bid",
     mode: "profile",
     inputType: "volume",
-    groupingMode: "automatic",
+    groupingMode: "manual",
+    stableFootprintRows: true,
     groupMode: "fixed",
     outsideBarStyle: "bar",
     markerAlignment: "center",
@@ -3977,9 +3978,28 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings: {
         ...defaultIndicatorSettings("deep-print-footprint"),
         ...(normalizedInstance.settings ?? {}),
+        stableFootprintRows: normalizedInstance.settings?.stableFootprintRows ?? false,
         footprintSettingsVersion: FOOTPRINT_SETTINGS_SCHEMA_VERSION,
       },
     };
+  }
+  if (normalizedInstance.indicatorId === "deep-print-footprint") {
+    const settings = normalizedInstance.settings ?? {};
+    if (settings.stableFootprintRows !== true) {
+      // The old stock grouping sampled the chart scale during startup.
+      const legacyDefault = settings.groupingMode === "automatic"
+        && (settings.groupMode ?? "fixed") === "fixed"
+        && Number(settings.autoGroupFactor ?? 1) === 1
+        && Number(settings.manualTicks ?? 1) === 1;
+      normalizedInstance = {
+        ...normalizedInstance,
+        settings: {
+          ...settings,
+          groupingMode: legacyDefault ? "manual" : settings.groupingMode ?? "manual",
+          stableFootprintRows: true,
+        },
+      };
+    }
   }
   if (
     ["kwant-profile", "weekly-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
