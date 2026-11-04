@@ -17,3 +17,31 @@ test('source-opening corrections invalidate cached projection geometry on identi
 test('QQQ directly on QQQ retains the actual source strikes',()=>{const f=projectionFixture();const a=selectBounceGexMirror(prepare(f,'QQQ'),f.start+30000);assert.ok(a.levels.every(n=>n.mappedPrice===n.sourceStrike))});
 
 test('compact head opening corrections survive archive merge even if its close is unchanged',()=>{const f=projectionFixture(),last=f.payload.candles.at(-1);const merged=mergeBounceGexMapHistory(f.payload,{...f.payload,candles:[{...last,open:last.open+1}]});assert.equal(merged.candles.at(-1).open,last.open+1);assert.equal(merged.candles.at(-1).close,last.close);});
+
+for (const [source, display] of [['QQQ', 'NQ'], ['SPX', 'ES']]) {
+ test(source + ' live edge retains the verified frame while the display minute is missing', () => {
+  const f = projectionFixture(source), last = f.payload.candles.at(-1).timestamp;
+  const result = selectBounceGexMirror(prepare(f, display, {
+   liveDisplayPrice: 99999,
+   displayPriceAt: timestamp => timestamp >= last ? null : f.displayPriceAt(timestamp),
+  }), null);
+  assert.ok(result);
+  assert.equal(result.snapshotTimeMs, last - f.minute);
+  assert.equal(result.exposureField.at(-1).timestamp, last - f.minute);
+  for (const node of result.exposureField.flatMap(slice => slice.nodes)) {
+   assert.ok(Math.abs(node.mappedPrice - (source === 'SPX' ? node.sourceStrike + 20 : node.sourceStrike * 40)) < 1e-8);
+  }
+  const resumed = selectBounceGexMirror(prepare(f, display), null);
+  assert.equal(resumed.snapshotTimeMs, Date.parse(f.payload.asOf));
+  assert.ok(resumed.levels.every(node => Math.abs(node.mappedPrice - (source === 'SPX' ? node.sourceStrike + 20 : node.sourceStrike * 40)) < 1e-8));
+ });
+ test(source + ' live edge uses the matching compact minute before archive catches up', () => {
+  const f = projectionFixture(source), liveReference = f.payload;
+  const archived = {...f, payload: {...f.payload, candles: f.payload.candles.slice(0, -1)}};
+  const result = selectBounceGexMirror(prepare(archived, display, {liveReference}), null);
+  assert.equal(result.snapshotTimeMs, Date.parse(liveReference.asOf));
+  assert.equal(result.mapping.sourceSpotPrice, liveReference.candles.at(-1).open);
+  assert.equal(result.mapping.displayMidPrice, f.displayPriceAt(liveReference.candles.at(-1).timestamp));
+  assert.ok(result.levels.every(node => Math.abs(node.mappedPrice - (source === 'SPX' ? node.sourceStrike + 20 : node.sourceStrike * 40)) < 1e-8));
+ });
+}

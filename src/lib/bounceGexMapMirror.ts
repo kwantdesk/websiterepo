@@ -25,10 +25,10 @@ export function prepareBounceGexMirror(input: {
   // displayPriceAt supplies the containing minute's OPEN. Pair it with the
   // source OPEN, not that minute's final close (which creates a return-sized
   // sawtooth in every projected strike and leaks future prices into replay).
-  const pairedPricesAt = (timestamp: number) => {
-    let low = 0, high = payload.candles.length;
-    while (low < high) { const mid = (low + high) >>> 1; if (payload.candles[mid].timestamp <= timestamp) low = mid + 1; else high = mid; }
-    const candle = payload.candles[low - 1];
+  const pairedPricesAt = (timestamp: number, reference = payload) => {
+    let low = 0, high = reference.candles.length;
+    while (low < high) { const mid = (low + high) >>> 1; if (reference.candles[mid].timestamp <= timestamp) low = mid + 1; else high = mid; }
+    const candle = reference.candles[low - 1];
     if (!candle || timestamp >= candle.timestamp + 60_000) return null;
     const sourcePrice = candle.open, displayPrice = input.displayPriceAt(candle.timestamp);
     return sourcePrice > 0 && displayPrice && displayPrice > 0 ? { sourcePrice, displayPrice } : null;
@@ -36,8 +36,11 @@ export function prepareBounceGexMirror(input: {
   const frame = (timestamp: number, current: ReadonlyMap<number, ExposureStrike>, previous: ReadonlyMap<number, ExposureStrike>, spot: number | null, live = false): MirrorFrame | null => {
     const rows = gexMapSurfaceRows(current);
     const exposureRange = gexMapExposureRange(rows.map((row) => row.net));
-    const pair = direct ? null : pairedPricesAt(timestamp);
-    const displayPrice = direct ? spot ?? (live ? input.liveDisplayPrice : input.displayPriceAt(timestamp)) : pair?.displayPrice ?? (live ? input.liveDisplayPrice : null);
+    // Compact live candles can lead the session archive. Both sides must still
+    // come from the same minute OPEN; a current futures close paired with an
+    // older options spot creates a false ramp at the ribbon's live edge.
+    const pair = direct ? null : (live && input.liveReference ? pairedPricesAt(timestamp, input.liveReference) : null) ?? pairedPricesAt(timestamp);
+    const displayPrice = direct ? spot ?? (live ? input.liveDisplayPrice : input.displayPriceAt(timestamp)) : pair?.displayPrice;
     if (!(displayPrice && displayPrice > 0) || (!direct && !(spot && spot > 0))) return null;
     const sourcePrice = spot ?? displayPrice;
     const mappingSourcePrice = pair?.sourcePrice ?? sourcePrice;
@@ -130,7 +133,11 @@ export function prepareBounceGexMirror(input: {
   // that in replay: its latest ladder can be later than the selected clock.
   const livePayload = input.liveReference ?? payload;
   const head = buildGexMapSnapshots(livePayload, null, settings.stepMinutes);
-  const live = frame(Math.max(Date.parse(livePayload.asOf) || 0, livePayload.frames.at(-1)?.timestamp ?? 0), head.current, head.previous, livePayload.stockPrice, true);
+  const liveTimestamp = Math.max(Date.parse(livePayload.asOf) || 0, livePayload.frames.at(-1)?.timestamp ?? 0);
+  // Retain the last verified frame while the paired minute is arriving. Never
+  // relabel old exposure as fresh or append an uncalibrated live point.
+  const live = frame(liveTimestamp, head.current, head.previous, livePayload.stockPrice, true)
+    ?? [...frames].reverse().find((candidate) => candidate.timestamp <= liveTimestamp) ?? null;
   const indexAt = (timestamp: number) => {
     let low = 0, high = rawHistory.length;
     while (low < high) { const mid = (low + high) >>> 1; if (rawHistory[mid].timestamp <= timestamp) low = mid + 1; else high = mid; }
