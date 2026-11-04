@@ -15327,6 +15327,8 @@ function Chart({
 
     chartRef.current = chart;
     const syncNativePriceScaleWidth = () => {
+      // A queued resize frame may outlive navigation or chart replacement.
+      if (chartRef.current !== chart) return;
       const nextWidth = Math.max(
         STABLE_RIGHT_PRICE_SCALE_WIDTH,
         Math.ceil(chart.priceScale("right").width() || STABLE_RIGHT_PRICE_SCALE_WIDTH),

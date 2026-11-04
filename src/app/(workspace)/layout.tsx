@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { WORKSPACE_NAVIGATION_EVENT } from "@/lib/workspaceNavigationIntent";
 import { usePathname, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { activeWorkspaceSection, isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
@@ -56,7 +57,7 @@ function WorkspaceNavigationShell() {
   const pathname = usePathname();
   const location = workspaceLocation(pathname);
   return <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
-    <AppSidebar activeItem={location.section} orientation="horizontal" />
+    <AppSidebar activeItem={location.section} orientation="horizontal" navigationMode="persistent" />
     <main className="min-h-0 flex-1 bg-background" aria-label={`${location.section} workspace`} aria-busy="true" />
   </div>;
 }
@@ -68,26 +69,54 @@ const KwantifyWorkspace = dynamic(() => import("@/components/KwantifyWorkspace")
   loading: WorkspaceNavigationShell,
 });
 
+const KwantifySettingsWorkspace = dynamic(() => import("@/components/KwantifySettingsWorkspace"), {
+  ssr: false,
+  loading: () => <div className="flex h-screen flex-col bg-background text-foreground">
+    <AppSidebar activeItem="settings" orientation="horizontal" navigationMode="persistent" />
+    <main className="min-h-0 flex-1 bg-background" aria-label="Settings" aria-busy="true" />
+  </div>,
+});
+
 export default function PersistentWorkspaceLayout({
   children: _children,
 }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
   const router = useRouter();
+  const [requestedPath, setRequestedPath] = useState<string | null>(null);
+  const activePath = requestedPath ?? pathname;
   useEffect(() => {
-    if (isWorkspaceFeatureArchived(SECTION_BY_PATH[pathname])) router.replace("/charts");
-  }, [pathname, router]);
-  const location = useMemo(() => workspaceLocation(pathname), [pathname]);
+    const request = (event: Event) => {
+      const href = (event as CustomEvent<{ href?: string }>).detail?.href;
+      if (typeof href === "string" && href.startsWith("/") && !href.startsWith("//")) {
+        setRequestedPath(new URL(href, window.location.href).pathname);
+      }
+    };
+    const restore = () => setRequestedPath(window.location.pathname);
+    window.addEventListener(WORKSPACE_NAVIGATION_EVENT, request);
+    window.addEventListener("popstate", restore);
+    return () => {
+      window.removeEventListener(WORKSPACE_NAVIGATION_EVENT, request);
+      window.removeEventListener("popstate", restore);
+    };
+  }, []);
+  useEffect(() => {
+    if (requestedPath === pathname) setRequestedPath(null);
+  }, [pathname, requestedPath]);
+  useEffect(() => {
+    if (isWorkspaceFeatureArchived(SECTION_BY_PATH[activePath])) router.replace("/charts");
+  }, [activePath, router]);
+  const location = useMemo(() => workspaceLocation(activePath), [activePath]);
 
   return (
     <WorkspaceFailureBoundary
       variant="shell"
-      resetKey={pathname}
-      label={location.section.toUpperCase()}
+      resetKey={activePath}
+      label={activePath === "/settings" ? "Settings" : location.section.toUpperCase()}
     >
-      <KwantifyWorkspace
+      {activePath === "/settings" ? <KwantifySettingsWorkspace navigationMode="persistent" /> : <KwantifyWorkspace
         section={location.section}
         socialProfileHandle={location.socialProfileHandle}
-      />
+      />}
     </WorkspaceFailureBoundary>
   );
 }

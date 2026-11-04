@@ -2,6 +2,7 @@ const prepared = new Map<string, number>();
 const RETRY_AFTER_MS = 30_000;
 
 const workspaceCode: Record<string, () => Promise<unknown>> = {
+  "/settings": () => import("@/components/KwantifySettingsWorkspace"),
   "/charts": () => import("@/components/Chart"),
   "/gamvue": () => import("@/components/Chart"),
   "/gex-data": () => import("@/components/gex-data/GexDataWorkspace"),
@@ -27,9 +28,8 @@ export function warmWorkspaceNavigation(href: string, prefetch: (href: string) =
   try { prefetch(href); } catch { /* Normal navigation remains available. */ }
   const load = workspaceCode[href];
   if (!load) return;
-  void Promise.all([
-    import("@/components/KwantifyWorkspace"),
-    load(),
+  void Promise.all(href === "/settings" ? [load()] : [
+    import("@/components/KwantifyWorkspace"), load(),
   ]).catch(() => {
     // Retry on a later intent after a failed/churned deployment chunk request.
     prepared.delete(href);

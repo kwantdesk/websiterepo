@@ -223,7 +223,7 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
   );
 }
 
-export default function SettingsPage() {
+export default function SettingsPage({ navigationMode = "native" }: { navigationMode?: "native" | "persistent" } = {}) {
   const supabase = useMemo(() => createClient(), []);
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
     if (typeof window === "undefined") return "Identity";
@@ -737,7 +737,7 @@ export default function SettingsPage() {
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-background font-sans text-foreground">
-      <AppSidebar activeItem="settings" orientation="horizontal" />
+      <AppSidebar activeItem="settings" orientation="horizontal" navigationMode={navigationMode} />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside className="w-[220px] shrink-0 overflow-y-auto border-r border-border bg-panel p-4">
         {navSections.map((section) => (

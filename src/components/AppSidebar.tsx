@@ -3,6 +3,7 @@
 import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 import { acquireCockpitTypography } from "@/lib/cockpitTypography";
 import { warmWorkspaceNavigation } from "@/lib/workspaceNavigationWarmup";
+import { commitWorkspaceNavigation } from "@/lib/workspaceNavigationIntent";
 
 import Link from "next/link";
 import MobileWorkspaceNavigation, { type MobileWorkspaceAction } from "@/components/MobileWorkspaceNavigation";
@@ -122,6 +123,7 @@ const navItems: Array<{
 ];
 
 const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
+  "settings",
   "charts",
   "gamvue",
   "gexdata",
@@ -168,7 +170,8 @@ function AppSidebar({
     // Intent only: never poll/preload every route from a trading tab.
     if (activeItem === "settings" || Date.now() - settingsWarmedAt.current < 30_000) return;
     settingsWarmedAt.current = Date.now();
-    router.prefetch("/settings");
+    if (navigationMode === "persistent") warmWorkspaceNavigation("/settings", () => {});
+    else router.prefetch("/settings");
   };
   useLayoutEffect(() => acquireCockpitTypography(document.body), []);
   useEffect(() => {
@@ -190,11 +193,12 @@ function AppSidebar({
   };
 
   const warmNavigation = (key: SidebarKey) => {
+    if (key === "settings") { warmSettings(); return; }
     if (navigationMode === "persistent" && PERSISTENT_WORKSPACE_KEYS.has(key)) {
       onNavigateIntent?.(key);
       return;
     }
-    const href = key === "settings" ? "/settings" : navItems.find(item => item.key === key)?.href;
+    const href = navItems.find(item => item.key === key)?.href;
     if (href) warmWorkspaceNavigation(href, route => router.prefetch(route));
   };
 
@@ -205,9 +209,16 @@ function AppSidebar({
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     warmNavigation(key);
     // Stop chart/feed work on pointer-down, before the browser waits for the
-    // subsequent click. The click still owns the URL update and keyboard users
-    // retain the same path through navigate().
+    // subsequent click. Settings commits its local destination here as well:
+    // leaving chart chrome can move the link before the later click arrives.
+    // Keyboard activation retains the same path through navigate().
     beginNavigation(key);
+
+    if (navigationMode === "persistent" && key === "settings" && event.pointerType !== "touch") {
+      event.preventDefault();
+      commitWorkspaceNavigation("/settings");
+      return;
+    }
 
     // Home lives outside the persistent market workspace. Leave that shell on
     // pointer-down so a busy chart/render loop cannot swallow or indefinitely
@@ -245,8 +256,7 @@ function AppSidebar({
     // usePathname still updates while the already-mounted shell switches
     // sections immediately and remains usable during feed or deploy churn.
     event.preventDefault();
-    const current = `${window.location.pathname}${window.location.search}`;
-    if (current !== href) window.history.pushState(null, "", href);
+    commitWorkspaceNavigation(href);
   };
 
   const phoneNavigation = <MobileWorkspaceNavigation
