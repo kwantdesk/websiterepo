@@ -1,11 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tableValue, compareTableValues, filterTableValue, formatTableValue, tableRowStyle } from '../../public/gex-data-app/table-view.js';
+import { tableValue, compareTableValues, filterTableValue, formatTableValue,formatTablePercentageHint, tableRowStyle } from '../../public/gex-data-app/table-view.js';
 
 test('option-print clocks retain reference millisecond precision without changing equity clocks',()=>{
  const epoch=Date.parse('2026-10-16T20:03:19.257Z'),zone={timeZone:'Australia/Brisbane'};
  assert.equal(formatTableValue(epoch,{type:'time',fractionalSecondDigits:3},{},zone),'6:03:19.257 AM');
  assert.equal(formatTableValue(epoch,{type:'time'},{},zone),'6:03:19 AM');
+});
+
+test('actual nonzero OI-change percentages are percentage points while other table shares remain fractions',()=>{
+  assert.equal(formatTablePercentageHint(212269.51219512193,{percentUnit:'percentagePoints'}),'212,269.51%');
+  assert.equal(formatTablePercentageHint(0,{percentUnit:'percentagePoints'}),'0.00%');
+  assert.equal(formatTablePercentageHint(.0011),'0.11%');assert.equal(formatTablePercentageHint(null),null);
+  assert.throws(()=>formatTablePercentageHint(1,{percentUnit:'automatic'}),/explicit/);
+  assert.match(formatTableValue(null,{type:'contract'},{ticker:'MPT',expirationDate:'2026-12-18',strikePrice:1.5,contractType:'CALL'}),/\$1\.50/);
 });
 
 test('table sort handles numeric zero, negative values and nested Greeks', () => {
@@ -24,6 +32,11 @@ test('table composition uses licensed contract, price and moneyness fields witho
 });
 test('table date and time formatting uses Brisbane user timezone, independently keyed columns', () => {
   const instant = Date.parse('2026-10-16T20:00:00Z'); assert.equal(formatTableValue(instant, { type: 'date' }), 'Oct 17, 2026'); assert.equal(formatTableValue(instant, { type: 'time' }), '6:00:00 AM');
+});
+
+test('open-interest session dates stay on their exchange calendar day in every display zone',()=>{
+  for(const timeZone of ['America/New_York','Australia/Brisbane','Pacific/Honolulu','Asia/Tokyo'])assert.equal(formatTableValue('2026-11-02',{type:'calendarDate'},{},{timeZone}),'Nov 2, 2026');
+  for(const value of [null,'','2026-02-30','2026-99-01','not-a-date'])assert.equal(formatTableValue(value,{type:'calendarDate'}),'—');
 });
 
 test('equity execution prices preserve two cents digits even for whole dollars',()=>{

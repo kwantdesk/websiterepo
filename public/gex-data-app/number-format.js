@@ -3,7 +3,11 @@ import {gexStorage} from './site-runtime.js?v=1';
 // market-data module 886167: public REST values are dollars, not internal cents.
 export function abbreviate(value, decimalPlaces=2) {
   if(value==null||value===''||!Number.isFinite(Number(value)))return '—';
-  const number=Number(value),absolute=Math.abs(number),entry=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']].find(([divisor])=>absolute>=divisor),divisor=entry?.[0]||1;
+  const number=Number(value);
+  // Source886167 formats the positive magnitude first: JS Math.round on a
+  // negative half would otherwise round toward zero instead of matching it.
+  if(number<0)return '-'+abbreviate(-number,decimalPlaces);
+  const absolute=Math.abs(number),entry=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']].find(([divisor])=>absolute>=divisor),divisor=entry?.[0]||1;
   const scaled=number/divisor,factor=10**decimalPlaces,rounded=Math.round((scaled+Number.EPSILON)*factor)/factor;
   return (Number.isInteger(rounded)?String(rounded):rounded.toFixed(decimalPlaces))+(entry?' '+entry[1]:'');
 }
@@ -19,4 +23,12 @@ export function currencyAuto(value) {
 // Axes omit insignificant zeroes; headline/table precision stays unchanged.
 export function abbreviatedTick(value) {
   return abbreviate(value,2).replace(/(\.\d*?[1-9])0+(?= |$)/,'$1').replace(/\.0+(?= |$)/,'');
+}
+
+// Source AUTO percentage precision: round first, then keep two fractional
+// places only when the rounded result is not an integer. Input is points.
+export function percentagePointsAuto(value) {
+  if(typeof value!=='number'||!Number.isFinite(value))return '—';
+  const rounded=Math.round((value+Number.EPSILON)*100)/100;
+  return rounded.toLocaleString('en-US',{minimumFractionDigits:Number.isInteger(rounded)?0:2,maximumFractionDigits:2})+'%';
 }

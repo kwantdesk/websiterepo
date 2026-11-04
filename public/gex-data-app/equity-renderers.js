@@ -79,19 +79,21 @@ export function drawDarkFlowArea(ctx, points, {top,bottom,primaryColor=CHART_COL
 // Explicit source schemas: never derive visible columns from API key order.
 // Historical source tables show Date; latest-session tables omit it.
 export const EQUITY_PRINT_COLUMNS = Object.freeze([
-  {key:'date',label:'Date',width:120,historicalOnly:true,timeField:'tradeTime'},
-  {key:'tradeTime',label:'Time',width:110}, {key:'ticker',label:'Ticker',width:110},
-  {key:'size',label:'Quantity',width:110}, {key:'price',label:'Price',width:110},
-  {key:'notionalValue',label:'Notional',width:120}, {key:'bidAsk',label:'Bid-Ask',width:150}
-]);
+  // Native Equity headers: one field toggles DESC/ASC directly; Ticker opens
+  // separate Ticker/Type radio groups. These flags do not affect other tools.
+  {key:'date',label:'Date',width:120,historicalOnly:true,timeField:'tradeTime',directSort:true,previewSort:true,sharedSortIndicator:true},
+  {key:'tradeTime',label:'Time',width:110,directSort:true,previewSort:true,sharedSortIndicator:true}, {key:'ticker',label:'Ticker',width:110,sortMenuRadios:true},
+  {key:'size',label:'Quantity',width:110,directSort:true,previewSort:true}, {key:'price',label:'Price',width:110,directSort:true,previewSort:true,splitPriceSide:true},
+  {key:'notionalValue',label:'Notional',width:120,directSort:true,previewSort:true}, {key:'bidAsk',label:'Bid-Ask',width:150}
+].map(column=>({...column,autoApplyFilter:true,lockWhenSorted:true})));
 export const EXCHANGE_NOTIFICATION_COLUMNS = Object.freeze([
-  {key:'date',label:'Date',width:120,historicalOnly:true,timeField:'createdTime'},
-  {key:'createdTime',label:'Time',width:100}, {key:'ticker',label:'Ticker',width:110}, {key:'type',label:'Type',width:110}
-]);
+  {key:'date',label:'Date',width:120,historicalOnly:true,timeField:'createdTime',sharedSortIndicator:true},
+  {key:'createdTime',label:'Time',width:100,sharedSortIndicator:true}, {key:'ticker',label:'Ticker',width:110}, {key:'type',label:'Type',width:110}
+].map(column=>({...column,directSort:true,previewSort:true,autoApplyFilter:true,lockWhenSorted:true,menuReorder:true})));
 export const DARK_POOL_LEVEL_COLUMNS = Object.freeze([
   {key:'rank',label:'Rank',width:70}, {key:'price',label:'Price',width:100},
   {key:'notionalValue',label:'Notional Value',width:150}, {key:'tradeCount',label:'Trade Count',width:140}, {key:'volume',label:'Volume',width:140}
-]);
+].map(column=>({...column,lockWhenSorted:true})));
 
 // Source 1318800: choose Top N by notional BEFORE applying table sorting;
 // notional progress is relative to maximum, trade/volume percentages to sum.

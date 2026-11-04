@@ -1,8 +1,13 @@
-export const GEX_DATA_TOOLS: Record<string, { surface: "options" | "equities"; path?: string }> = Object.fromEntries([
+import { validateAdditionalToolRequest } from '../../public/gex-data-app/additional-tool-requests.js';
+import { validateNewsFeedRequest } from '../../public/gex-data-app/news-feed-model.js';
+
+export const GEX_DATA_TOOLS: Record<string, { surface: "options" | "equities" | "news"; path?: string }> = Object.fromEntries([
   ...["contract-statistics", "contract-trade-side-statistics", "exposure-by-expiration", "exposure-by-strike", "gainers-losers", "heat-map", "interval-map", "iv-rank", "market-share", "max-pain", "max-pain-over-time", "net-drift", "option-price-over-time"].map(id => [id, { surface: "options" }]),
   ["order-flow-consolidated", { surface: "options", path: "order-flow/consolidated" }],
   ["order-flow-unconsolidated", { surface: "options", path: "order-flow/unconsolidated" }],
+  ...["net-flow", "volatility-skew", "volatility-drift", "term-structure", "open-interest-by-strike", "open-interest-by-expiration", "open-interest-over-time", "open-interest-change"].map(id => [id, { surface: "options" }]),
   ...["dark-flow", "dark-pool-levels", "equity-prints", "exchange-notifications", "market-map", "stock-price-over-time"].map(id => [id, { surface: "equities" }]),
+  ["news-articles", { surface: "news" }],
 ]);
 
 // Published NYSE calendar, verified 2026-10-18: https://www.nyse.com/trade/hours-calendars
@@ -89,5 +94,7 @@ export function validateGexDataRequest(tool: string, input: unknown) {
   const tickers = [filter?.ticker, ...(Array.isArray(filter?.tickers) ? filter.tickers : [])].filter(Boolean);
   if (tickers.length > 50 || tickers.some(ticker => !/^[A-Z0-9./^_-]{1,16}$/i.test(String(ticker)))) throw new Error("Invalid ticker filter.");
   if (tool === "iv-rank" && (body.sessionDate || body.snapshotTime)) throw new Error("IV Rank supports its rolling series, not a historical session snapshot.");
+  validateAdditionalToolRequest(tool, body);
+  if (tool === "news-articles") validateNewsFeedRequest(body);
   return body;
 }

@@ -125,7 +125,8 @@ export function drawExposureBars(ctx,width,height,points,options={}) {
   ctx.save();ctx.font=`bold ${axisFont}px ${font}`;ctx.fillStyle=themePaint("#FFFFFF");ctx.textBaseline='middle';
   const exposureWidth=Math.max(...domain.ticks.map(value=>ctx.measureText(valueFormatter(value)).width));
   const categoryWidth=Math.max(24,...visible.map(point=>ctx.measureText(categoryFormatter(point)).width));
-  const left=Math.ceil(vertical?categoryWidth:exposureWidth)+8+22+8,right=width-16,top=8,bottom=height-(20+(vertical?22:0));
+  const valueTitleBand=hideAxisTitles?0:22,categoryTitleBand=!hideAxisTitles&&categoryName?22:0;
+  const left=Math.ceil(vertical?categoryWidth:exposureWidth)+8+(vertical?categoryTitleBand:valueTitleBand)+8,right=width-16,top=8,bottom=height-(20+(vertical?valueTitleBand:0));
   if(right<=left||bottom<=top){ctx.restore();return null;}
   let categoryMin,categoryMax;
   const categoryValue=(point,index)=>byExpiration?index:Number(point.strike??point.label);

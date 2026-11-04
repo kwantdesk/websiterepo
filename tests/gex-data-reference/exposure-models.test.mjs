@@ -60,3 +60,22 @@ test('exposure canvas uses numeric strike geometry, excludes zeros and centers s
   assert.ok(frame.categoryPixel(points[2],2)-frame.categoryPixel(points[1],1)>8*(frame.categoryPixel(points[1],1)-frame.categoryPixel(points[0],0)));
   assert.ok(frame.domain.min<=-30&&frame.domain.max>=30);
 });
+
+test('hiding exposure axis titles releases their actual canvas bands in each orientation without changing values',()=>{
+  const points=Object.freeze([Object.freeze({strike:100,call:12,put:-8}),Object.freeze({strike:105,call:30,put:-20})]);
+  const render=(orientation,hideAxisTitles)=>{
+    const labels=[],rectangles=[],ctx=new Proxy({measureText:text=>({width:String(text).length*7}),fillText:text=>labels.push(text),fillRect:(...rectangle)=>rectangles.push(rectangle)},{get:(target,key)=>key in target?target[key]:(()=>{})});
+    const bounds=drawExposureBars(ctx,700,500,points,{orientation,hideAxisTitles,axisName:'Gamma Exposure',categoryName:'Strike Price',display:'SPLIT'});
+    return {bounds,labels,rectangles};
+  };
+  for(const orientation of ['HORIZONTAL','VERTICAL']){
+    const shown=render(orientation,false),hidden=render(orientation,true);
+    assert.equal(shown.bounds.left-hidden.bounds.left,22);
+    assert.equal(hidden.bounds.bottom-shown.bounds.bottom,orientation==='VERTICAL'?22:0);
+    assert.deepEqual(hidden.bounds.domain,shown.bounds.domain);
+    assert.equal(hidden.rectangles.length,shown.rectangles.length);
+    assert.ok(shown.labels.includes('Gamma Exposure'));
+    assert.ok(!hidden.labels.includes('Gamma Exposure'));
+    assert.ok(!hidden.labels.includes('Strike Price'));
+  }
+});

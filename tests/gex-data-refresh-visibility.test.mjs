@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {mergeOptionTapeRows,optionTapeCursor} from '../public/gex-data-app/option-tape-interaction-model.js';
+import {dataRequestIdentity} from '../public/gex-data-app/live-chart-model.js';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const source = read('../public/gex-data-app/app.js');
@@ -9,9 +11,12 @@ const loadCode = source.slice(source.indexOf('  async function loadActiveTool(')
 
 function harness() {
   const requests = [], renders = [], attrs = new Map();
-  const nodes = {'#toolError': {hidden: true}, '#toolUpdated': {textContent: 'Previous source time'}};
+  const nodes = {'#toolError': {hidden: true}, '#toolUpdated': {textContent: 'Previous source time'},'#loadMore':{disabled:false}};
   const context = {
     activeTool: {id: 'interval-map'}, toolRequestId: 0, toolCursor: null,
+    masterReplay:null,toolRequestInFlight:false,lastToolSuccessAt:0,dataRequestIdentity,mergeOptionTapeRows,optionTapeCursor,
+    buildRequest:()=>({sessionDate:'2026-11-02',filter:{ticker:'QQQ'}}),
+    toolPayloadQuery:dataRequestIdentity('interval-map',{sessionDate:'2026-11-02',filter:{ticker:'QQQ'}}),resetStage(){},
     toolPayload: {data: 'previous verified data'}, tableRows: [], pollTimer: 1,
     activeController: null, frameVisible: true, window: {}, AbortController,
     toolView: {setAttribute: (key, value) => attrs.set(key, value)},
@@ -55,6 +60,23 @@ test('a real refresh failure preserves the previous data and exposes the error',
   assert.equal(h.attrs.get('aria-busy'), 'false');
 });
 
+test('OI server-sort retains the current page, disables pagination and replaces it with the newly ranked first page',async()=>{
+  const h=harness(),before={sessionDate:'2026-11-02',sort:{field:'changeInOpenInterest',direction:'DESCENDING'}},after={...before,sort:{field:'changeInOpenInterest',direction:'ASCENDING'}};
+  h.context.activeTool={id:'open-interest-change',view:'oiChange'};h.context.buildRequest=()=>after;h.context.toolPayloadQuery=dataRequestIdentity(h.context.activeTool.id,before);h.context.toolCursor=['old-cursor'];
+  const previous=h.context.toolPayload,pending=h.context.load({retainSortPage:true});assert.equal(h.context.toolPayload,previous);assert.equal(h.context.toolCursor,null);assert.equal(h.nodes['#loadMore'].disabled,true);assert.equal(h.context.initialLoading,false);
+  h.requests[0].resolve({data:[{id:'new-first-page'}],nextSearchAfter:['new-cursor']});await pending;
+  assert.equal(h.context.toolPayload.data[0].id,'new-first-page');assert.equal(h.context.toolCursor[0],'new-cursor');assert.equal(h.nodes['#loadMore'].disabled,false);
+});
+
+test('OI sorting cannot retain rows from a different session or ticker',async()=>{
+  for(const change of [{sessionDate:'2026-10-30'},{filter:{ticker:'SPY'}}]){
+    const h=harness(),before={sessionDate:'2026-11-02',filter:{ticker:'QQQ'},sort:{field:'changeInOpenInterest',direction:'DESCENDING'}};
+    h.context.activeTool={id:'open-interest-change',view:'oiChange'};h.context.buildRequest=()=>({...before,...change,sort:{field:'changeInOpenInterest',direction:'ASCENDING'}});h.context.toolPayloadQuery=dataRequestIdentity(h.context.activeTool.id,before);
+    const pending=h.context.load({retainSortPage:true});assert.equal(h.context.toolPayload,null);assert.equal(h.context.initialLoading,true);
+    h.requests[0].resolve({data:[]});await pending;
+  }
+});
+
 test('superseded requests cannot repaint data or clear the current request busy state', async () => {
   const h = harness();
   const first = h.context.load(), firstController = h.context.activeController;
@@ -96,7 +118,9 @@ test('pagination retains first-page aggregate statistics rather than removing th
   assert.deepEqual(Array.from(h.context.toolPayload.data,row=>row.id),[1,2]);
   const replacement={CALL:{ASK:{premium:999}}},next=h.context.load({append:true});
   h.requests[1].resolve({data:[{id:3}],statistics:replacement});await next;
-  assert.equal(h.context.toolPayload.statistics,replacement);
+  assert.equal(h.context.toolPayload.statistics,statistics,'cursor pages retain the first-page session baseline even if they contain an unsolicited aggregate');
+  const refreshed=h.context.load();h.requests[2].resolve({data:[{id:4}],statistics:replacement});await refreshed;
+  assert.equal(h.context.toolPayload.statistics,replacement,'a new first-page refresh owns the new session aggregate');
 });
 
 test('initial loading uses standard presentation without reintroducing legacy licensed-data refresh covers', () => {

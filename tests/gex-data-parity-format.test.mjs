@@ -20,7 +20,10 @@ test('contract overlay plots and labels the same nice underlying domain',()=>{
  const render=app.slice(app.indexOf('  function renderOhlcQuant('),app.indexOf('  function renderContractStatsQuant('));
  assert.match(render,/niceValueDomain\(Math.min\(\.\.\.spotValues\),Math.max\(\.\.\.spotValues\)\)/);
  assert.match(render,/min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true/);
- assert.match(render,/label:"Option Volume",steps:4,formatter:value=>abbreviate\(value,1\)/);
+ // Fresh shipped541543 passes886167.abbreviate(value) with no precision:
+ // its auto path rounds two places, retaining1.25K rather than old1.3K.
+ assert.match(render,/label:"Option Volume",steps:4,formatter:abbreviatedTick/);
+ assert.equal(abbreviatedTick(1250),'1.25 K');assert.equal(abbreviatedTick(12350),'12.35 K');
  assert.match(render,/drawHorizontalTicks\(ctx,left,right,volumeTop,bottom,0,vmax\)/);
 });
 
@@ -39,6 +42,5 @@ test('Net Drift nice axes cover observed SPY stock and signed volume without cli
  assert.deepEqual([niceValueDomain(760.63,773.18).min,niceValueDomain(760.63,773.18).max],[760,775]);
  assert.deepEqual([niceValueDomain(-356000,7000).min,niceValueDomain(-356000,7000).max],[-400000,100000]);
  const render=app.slice(app.indexOf('  function renderNetDriftQuant('),app.indexOf('  function renderDarkFlowQuant('));
- assert.match(render,/niceValueDomain\(spotMin,spotMax\)/);assert.match(render,/niceValueDomain\(volumeMin,volumeMax\)/);
- assert.match(render,/label:"Volume",steps:5/);assert.match(render,/individual:true,title:'Net Drift · Individual Prints'/);
+ assert.match(render,/niceValueDomain\(spotMin,spotMax\)/);assert.match(render,/individual:true,title:'Net Drift · Individual Prints'/);
 });

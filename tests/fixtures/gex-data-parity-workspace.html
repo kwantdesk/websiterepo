@@ -28,15 +28,15 @@
   };
 })();
 </script>
-<iframe title="Isolated GEX DATA parity workspace" src="/gex-data-app/index.html?hostTimezone=0"></iframe>
+<iframe title="Isolated GEX DATA parity workspace"></iframe>
 <script>
 // A single-tool view avoids acquiring unrelated overview panes during an audit.
 // Values still pass the normal licensed request policy on the loopback server.
 const qaParams=new URLSearchParams(location.search),qaTool=qaParams.get('tool');
-if(['dark-flow','dark-pool-levels','equity-prints','exchange-notifications','market-map','stock-price-over-time','order-flow-consolidated','option-price-over-time','contract-trade-side-statistics','contract-statistics','gainers-losers','market-share','market-share-table','exposure-by-expiration','exposure-by-strike','exposure-forecast','heat-map','iv-rank','interval-map','max-pain','max-pain-over-time','net-drift'].includes(qaTool)){
+if(['dark-flow','dark-pool-levels','equity-prints','exchange-notifications','market-map','stock-price-over-time','order-flow-consolidated','option-price-over-time','contract-trade-side-statistics','contract-statistics','gainers-losers','market-share','market-share-table','exposure-by-expiration','exposure-by-strike','exposure-forecast','heat-map','iv-rank','interval-map','max-pain','max-pain-over-time','net-drift','net-flow','order-flow-unconsolidated','volatility-drift','volatility-skew','term-structure','open-interest-by-strike','open-interest-by-expiration','open-interest-over-time','open-interest-change','news-articles'].includes(qaTool)){
  const child=new URL('/gex-data-app/index.html',location.origin);child.searchParams.set('embed','1');child.searchParams.set('instance','qa-'+qaTool);
  for(const [key,value]of qaParams)if(/^c_[A-Za-z]+$/.test(key))child.searchParams.set(key,value);
  child.hash='tool='+qaTool;document.querySelector('iframe').src=child.href;
-}
+}else document.querySelector('iframe').src='/gex-data-app/index.html?hostTimezone=0';
 </script>
 </body></html>

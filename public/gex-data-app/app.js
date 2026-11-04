@@ -1,22 +1,50 @@
-import {themePaint} from './site-theme.js?v=1';
+import {marketShareTooltipRows,marketShareFormatValue} from './market-share-interaction-model.js?v=20261104';
+import {createIntervalMapTooltipSelection,intervalMapTooltipRows} from './interval-map-interaction-model.js?v=20261104';
+import {gainersIndustryChoices} from './gainers-industry-controls.js?v=20261104';
+import {themePaint,actionForeground} from './site-theme.js?v=1';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {gexStorage,gexTimeZone,gexFetch as fetch,gexWorkspaceReplay} from './site-runtime.js?v=1';
-import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, precedingIntervalSpot, intervalTimeline, averagedIvRank, marketMapColor, squarifyTreemap, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=2";
+import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, precedingIntervalSpot, averagedIvRank, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=2";
 import { PRICE_CHART_TYPES, parsePriceRows, priceChartPresentation, priceChartBounds, drawPriceCandles, drawOptionVolume, drawDarkFlowArea, prepareDarkPoolLevels, DARK_POOL_LEVEL_COLUMNS, EQUITY_PRINT_COLUMNS, EXCHANGE_NOTIFICATION_COLUMNS, NOTIFICATION_TYPES, equitySideColorToken, equityPrintColorToken, notificationColorToken } from "./equity-renderers.js?v=3";
 import { MARKET_SHARE_MODES, marketShareModel, drawMarketSharePie, drawMarketShareBars, drawProportionChart, contractStatisticsRows, contractSideStatisticsRows, GAINERS_COLUMNS, MARKET_SHARE_COLUMNS, CONSOLIDATED_COLUMNS, gainersModel, marketShareTableModel, netDriftRows, flowStatisticsModel, exchangeColor, exchangeLabel, EXCHANGE_GROUP_COLORS } from "./options-models.js?v=2";
-import { HEAT_METRICS, heatMetricFor, heatCellValue, heatCellColor, niceValueDomain, exposureStrikeWindow, drawExposureBars, MAX_PAIN_STYLES, heatMapInitialWindow } from "./exposure-models.js?v=1";
+import { HEAT_METRICS, heatMetricFor, heatCellColor, niceValueDomain, exposureStrikeWindow, drawExposureBars, MAX_PAIN_STYLES, heatMapInitialWindow } from "./exposure-models.js?v=1";
 import { createTableView } from "./table-view.js?v=3";
 import { selectedSnapshotSpot, completedMinuteSnapshot, sessionMinuteTimestamp, snapshotControlTimeline, equityOptionSnapshotSchedule } from "./snapshot-model.js?v=2";
 import { timeDomain, timeX, timeTicks, nearestTimeIndex,timeAtIndex } from "./time-axis.js?v=1";
-import { abbreviate, currencyAbbreviated, currencyAuto, abbreviatedTick } from "./number-format.js?v=2";
+import { abbreviate, currencyAbbreviated, currencyAuto, abbreviatedTick, percentagePointsAuto } from "./number-format.js?v=2";
 import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=5';
 import {instrumentChoices,setChoiceValue,snapshotTimeOptions,multiChoiceDropdown} from './choice-controls.js?v=2';
 import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} from './preferences-model.js?v=1';
 import {normalizeWheelDelta,wheelZoomWindow,panZoomWindow,heatMapPlainWheel,cursorTooltipPlacement,sliderBarWindow,sliderHandleWindow,sliderTrackClick,lerpZoomStep} from './chart-interaction-model.js?v=1';
 import {bindZoomNavigator,navigatorPreviewDomain} from './navigator-ui.js?v=3';
 import {liveChartWindow,compatibleLiveTimeline,dataRequestIdentity} from './live-chart-model.js?v=2';
-import {OPTION_TRADE_DETAIL_ENDPOINT,UNCONSOLIDATED_COLUMNS,optionTradeDetailRequest,unconsolidatedTradeRows} from './option-trade-detail-model.js?v=1';
+import {OPTION_TRADE_DETAIL_ENDPOINT,UNCONSOLIDATED_COLUMNS,optionTradeDetailRequest,optionTradeDetailTableSort,unconsolidatedTradeRows} from './option-trade-detail-model.js?v=1';
+import {additionalToolRequest} from './additional-tool-requests.js?v=20261103';
+import {renderAdditionalChart,skewVisibilityState,setSkewVisibility,heatMapCellPoint,heatMapTooltipRows} from './additional-tool-renderers.js?v=20261103';
+import {NEWS_TOPIC_CHOICES,NEWS_SENTIMENTS,newsFeedRequest,newsArticleRequest} from './news-feed-model.js?v=20261103';
+import {createNewsFeedStream} from './news-feed-stream.js?v=20261103';
+import {toolSeriesOptions,toolSeriesVisibility,setToolSeriesVisibility} from './series-visibility-model.js?v=20261103';
+import {heatCellSelection,heatCellTradeRequest} from './heat-cell-history-model.js?v=20261103';
+import {mountHeatCellDetailView} from './heat-cell-detail-view.js?v=20261103';
+import {darkFlowInitialWindow} from './equity-window-model.js?v=20261103';
+import {darkFlowRows,darkFlowTotals,darkFlowTooltipRows} from './dark-flow-interaction-model.js?v=20261103';
+import {priceChartRows,priceContractSelection,priceChartTooltipRows} from './ohlc-interaction-model.js?v=20261103';
+import {contractStatisticsValue,contractStatisticsPercentage,contractStatisticsTooltipRows} from './contract-statistics-interaction-model.js?v=20261103';
+import {termSelectionState} from './term-selection-model.js?v=20261103';
+import {restoreSurfaceSelections,persistSurfaceSelections} from './surface-selection-storage.js?v=20261103';
+import {netFlowMinuteDetailRequest} from './net-flow-interaction-model.js?v=20261103';
+import {buildOptionExpirationChoicesRequest,parseOpenInterestExpirationChoices,buildOptionStrikeChoicesRequest,mergeOptionContractChoices,parseOpenInterestStrikeChoices} from './option-contract-choices.js?v=20261103';
+import {mountNetDriftContractControls,mountObservedStrikeControl,mountObservedExpiryControl} from './net-drift-contract-controls.js?v=20261103';
+import {optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows} from './option-tape-interaction-model.js?v=20261103';
+import {toolControlDefault} from './tool-control-defaults.js?v=20261103';
+import {equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor} from './equity-print-interaction-model.js?v=20261103';
+import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor} from './exchange-notification-interaction-model.js?v=20261104';
+import {mountDarkPoolLevelLimit} from './dark-pool-level-controls.js?v=20261103';
+import {mountOptionTapeSessionControls} from './option-tape-session-controls.js?v=20261103';
+import {mountSessionDateControls} from './session-date-controls.js?v=20261103';
+import {netDriftTooltipRows,netDriftInitialRthIndex,netDriftVolumeDomain,netDriftUnderlyingScope} from './net-drift-interaction-model.js?v=20261103';
 import {MARKET_MAP_SLIDER_MAX,MARKET_MAP_CAMERA_IDENTITY,marketMapMaxZoom,clampMarketMapCamera,wheelMarketMapCamera,panMarketMapCamera,marketMapCameraWindows,applyMarketMapWindow,marketMapWorldPoint} from './market-map-interaction-model.js?v=1';
+import {observeMarketMapIndustries,marketMapIndustryChoices,marketMapTooltipRows,marketMapHeaderTooltipRows,drawMarketMapFrame} from './market-map-presentation.js?v=20261103';
 const VIEW_PARAMETERS=new URLSearchParams(location.search),EMBEDDED=VIEW_PARAMETERS.get('embed')==='1';
 document.documentElement.classList.toggle('embedded',EMBEDDED);
 document.documentElement.classList.toggle('host-timezone-control',VIEW_PARAMETERS.get('hostTimezone')==='1');
@@ -150,9 +178,9 @@ function aggregateExposure(response, ticker) {
   return { points, spot: Number(root.stockPrice), total: points.reduce((sum, d) => sum + d.value, 0) };
 }
 
-function parseNetDrift(response) {
+function parseNetDrift(response,{underlyingRequired}={}) {
   const data=unwrapArchive(response)?.data||unwrapArchive(response)||{};
-  return netDriftRows(data,{underlyingRequired:Object.values(data).some(row=>Number(row?.stockPrice)>0)});
+  return netDriftRows(data,{underlyingRequired:underlyingRequired??Object.values(data).some(row=>Number(row?.stockPrice)>0)});
 }
 
 
@@ -488,20 +516,20 @@ await boot();
 // ---------------------------------------------------------------------------
 {
   const TOOL_DEFINITIONS = [
-    { id: "dark-flow", title: "Dark Flow", group: "Equities", icon: "◒", endpoint: "dark-flow", view: "darkFlow", controls: ["mode", "date", "ticker", "period"], liveMs: 15000, description: "Dark-pool notional flow through the session with an underlying price overlay." },
+    { id: "dark-flow", title: "Dark Flow", group: "Equities", icon: "◒", endpoint: "dark-flow", view: "darkFlow", controls: ["mode", "date", "ticker", "darkUnderlying"], liveMs: 15000, description: "Dark-pool notional flow through the session with an underlying price overlay." },
     { id: "dark-pool-levels", title: "Dark Pool Levels", group: "Equities", icon: "≋", endpoint: "dark-pool-levels", view: "darkLevels", controls: ["ticker", "rangeStart", "rangeEnd", "topLevels", "levelMetric"], liveMs: 30000, description: "Active off-exchange price levels ranked by notional value, trade count, or volume." },
-    { id: "equity-prints", title: "Equity Prints", group: "Equities", icon: "▤", endpoint: "equity-prints", view: "table", controls: ["mode", "date", "ticker", "printType"], liveMs: 8000, description: "Real-time equity tape with quantity, price, notional, venue type, and bid/ask context." },
-    { id: "exchange-notifications", title: "Exchange Notifications", group: "Equities", icon: "!", endpoint: "exchange-notifications", view: "table", controls: ["mode", "date", "tickerOptional", "notificationType"], liveMs: 15000, description: "REG SHO, LUDP, IPO, halt, and other regulatory events across the market." },
+    { id: "equity-prints", title: "Equity Prints", group: "Equities", icon: "▤", endpoint: "equity-prints", view: "table", controls: ["mode", "date", "ticker", "printType","tapeSortField","tapeSortDirection","tapeSortColumn","tapeFilters","tapeSessionStart","tapeSessionEnd"], liveMs: 8000, description: "Real-time equity tape with quantity, price, notional, venue type, and bid/ask context." },
+    { id: "exchange-notifications", title: "Exchange Notifications", group: "Equities", icon: "!", endpoint: "exchange-notifications", view: "table", controls: ["mode", "date", "tickerOptional", "notificationType","tapeSortField","tapeSortDirection","tapeSortColumn","tapeFilters","tapeSessionStart","tapeSessionEnd"], liveMs: 15000, description: "REG SHO, LUDP, IPO, halt, and other regulatory events across the market." },
     { id: "market-map", title: "Market Map", group: "Equities", icon: "▦", endpoint: "market-map", view: "marketMap", controls: ["mode", "date", "sector", "industry", "mapGroup"], liveMs: 30000, description: "Live equity heat map grouped by sector and weighted by market capitalization." },
     { id: "stock-price-over-time", title: "Stock Price / Time", group: "Equities", icon: "⌁", endpoint: "stock-price-over-time", view: "ohlc", controls: ["mode", "date", "ticker", "period", "chartType"], liveMs: 10000, description: "Intraday underlying OHLC movement with flexible intervals and chart styles." },
 
-    { id: "order-flow-consolidated", title: "Consolidated Order Flow", group: "Order Flow", icon: "⇶", endpoint: "order-flow-consolidated", view: "table", controls: ["mode", "date", "ticker", "moneyType", "tradeType"], liveMs: 6000, description: "Unified blocks, splits, and sweeps with contract, premium, Greeks, side, and sentiment." },
-    { id: "option-price-over-time", title: "Contract Price / Time", group: "Order Flow", icon: "⌇", endpoint: "option-price-over-time", view: "optionOhlc", controls: ["mode", "date", "ticker", "osi", "expiry", "strike", "contractType", "period", "chartType"], liveMs: 10000, description: "Intraday option OHLC and volume for one contract, with automatic recent-contract discovery." },
+    { id: "order-flow-consolidated", title: "Consolidated Order Flow", group: "Order Flow", icon: "⇶", endpoint: "order-flow-consolidated", view: "table", controls: ["mode", "date", "ticker", "moneyType", "tradeType","tapeSortField","tapeSortDirection","tapeSortColumn","tapeFilters","tapeSessionStart","tapeSessionEnd"], liveMs: 6000, description: "Unified blocks, splits, and sweeps with contract, premium, Greeks, side, and sentiment." },
+    { id: "option-price-over-time", title: "Contract Price / Time", group: "Order Flow", icon: "⌇", endpoint: "option-price-over-time", view: "optionOhlc", controls: ["mode", "date", "ticker", "osi", "expiry", "strike", "contractType", "period", "chartType"], liveMs: 10000, description: "Intraday option OHLC and volume for one explicitly selected contract or exact OSI." },
     { id: "contract-trade-side-statistics", title: "Contract Side Statistics", group: "Order Flow", icon: "◐", endpoint: "contract-trade-side-statistics", view: "sideStats", controls: ["mode", "date", "tickerOptional", "moneyType", "sideMetric", "expiry", "strike"], liveMs: 15000, description: "Call and put activity split across above-ask, ask, mid, bid, and below-bid trade sides." },
     { id: "contract-statistics", title: "Contract Statistics", group: "Order Flow", icon: "◑", endpoint: "contract-statistics", view: "contractStats", controls: ["mode", "date", "tickerOptional", "moneyType", "tradeSide", "expiry", "strike"], liveMs: 15000, description: "Call-vs-put premium, volume, and trade-count totals for the selected flow slice." },
-    { id: "gainers-losers", title: "Gainers / Losers", group: "Order Flow", icon: "↕", endpoint: "gainers-losers", view: "gainers", controls: ["mode", "date", "tickerOptional", "sector", "industry", "rankMetric"], liveMs: 20000, description: "Rank symbols by bullish or bearish option premium, volume, and activity." },
-    { id: "market-share", title: "Market Share", group: "Order Flow", icon: "◔", endpoint: "market-share", view: "marketShare", controls: ["mode", "date", "tickerOptional", "shareMode", "shareView", "shareChart"], liveMs: 20000, description: "Exchange share in premium, trade count, or volume using an interactive chart." },
-    { id: "market-share-table", title: "Market Share Table", group: "Order Flow", icon: "▥", endpoint: "market-share", view: "marketShareTable", controls: ["mode", "date", "tickerOptional"], liveMs: 20000, description: "Detailed per-exchange equity-call, equity-put, and index activity." },
+    { id: "gainers-losers", title: "Gainers / Losers", group: "Order Flow", icon: "↕", endpoint: "gainers-losers", view: "gainers", controls: ["mode", "date", "tickerOptional", "sector", "industry", "rankMetric","tapeSessionStart","tapeSessionEnd"], liveMs: 20000, description: "Rank symbols by bullish or bearish option premium, volume, and activity." },
+    { id: "market-share", title: "Market Share", group: "Order Flow", icon: "◔", endpoint: "market-share", view: "marketShare", controls: ["mode", "date", "tickerOptional", "shareMode", "shareView", "shareChart","tapeSessionStart","tapeSessionEnd"], liveMs: 20000, description: "Exchange share in premium, trade count, or volume using an interactive chart." },
+    { id: "market-share-table", title: "Market Share Table", group: "Order Flow", icon: "▥", endpoint: "market-share", view: "marketShareTable", controls: ["mode", "date", "tickerOptional","tapeSessionStart","tapeSessionEnd"], liveMs: 20000, description: "Detailed per-exchange equity-call, equity-put, and index activity." },
 
     { id: "exposure-by-expiration", title: "Exposure by Expiration", group: "Exposure", icon: "⊞", endpoint: "exposure-by-expiration", view: "exposureExpiration", controls: ["mode", "date", "ticker", "greek", "representation", "exposureDisplay", "strike"], liveMs: 20000, description: "GEX, DEX, VEX, and CHEX aggregated across expirations with flexible exposure units." },
     { id: "exposure-by-strike", title: "Exposure by Strike", group: "Exposure", icon: "⊟", endpoint: "exposure-by-strike", view: "exposureStrike", controls: ["mode", "date", "ticker", "greek", "representation", "exposureDisplay", "expiry"], liveMs: 20000, description: "Net Greek exposure across strikes with expiration filtering and an underlying-price marker." },
@@ -509,26 +537,43 @@ await boot();
     { id: "heat-map", title: "Heat Map", group: "Exposure", icon: "▦", endpoint: "heat-map", view: "heatMap", controls: ["mode", "date", "ticker", "heatMetric", "heatAxes"], liveMs: 20000, description: "Expiration × strike map of exposure, open interest, premium, volume, and Greek metrics." },
     { id: "iv-rank", title: "Implied Volatility Rank", group: "Exposure", icon: "≈", endpoint: "iv-rank", view: "ivRank", controls: ["ticker", "lookback", "maturity", "contractTypeOptional"], liveMs: 60000, description: "Call and put IV rank over a customizable historical lookback and maturity window." },
     { id: "interval-map", title: "Interval Map", group: "Exposure", icon: "⁙", endpoint: "interval-map", view: "intervalMap", controls: ["mode", "date", "ticker", "period", "greek", "intervalValueMode", "strikePadding", "expiry", "minStrike", "maxStrike"], liveMs: 20000, description: "Time-bucketed option exposure with net coloring and an underlying-price overlay." },
-    { id: "max-pain", title: "Max Pain", group: "Exposure", icon: "◇", endpoint: "max-pain", view: "maxPain", controls: ["mode", "date", "ticker", "expiry"], liveMs: 30000, description: "Call and put intrinsic value by strike with max-pain and underlying-price markers." },
+    { id: "max-pain", title: "Max Pain", group: "Exposure", icon: "◇", endpoint: "max-pain", view: "maxPain", controls: ["mode", "date", "ticker", "expiry", "painCalls", "painPuts"], liveMs: 30000, description: "Call and put intrinsic value by strike with max-pain and underlying-price markers." },
     { id: "max-pain-over-time", title: "Max Pain / Time", group: "Exposure", icon: "⌁", endpoint: "max-pain-over-time", view: "maxPainTime", controls: ["mode", "date", "ticker"], liveMs: 30000, description: "Max-pain levels across upcoming expirations for the selected session." },
-    { id: "net-drift", title: "Net Drift", group: "Exposure", icon: "⌁", endpoint: "net-drift", view: "netDrift", controls: ["mode", "date", "ticker", "expiry", "period", "moneyType", "strike", "driftNet", "driftBands", "driftUnderlying"], liveMs: 12000, description: "Bullish vs bearish premium flow with underlying price and net-volume sentiment." }
+    { id: "net-drift", title: "Net Drift", group: "Exposure", icon: "⌁", endpoint: "net-drift", view: "netDrift", controls: ["mode", "date", "ticker", "expiry", "moneyType", "strike", "driftCalls", "driftPuts", "driftNet", "driftBands", "driftUnderlying"], liveMs: 12000, description: "Bullish vs bearish premium flow with underlying price and net-volume sentiment." },
+    {id:'order-flow-unconsolidated',title:'Unconsolidated Order Flow',group:'Order Flow',icon:'⇶',endpoint:'order-flow-unconsolidated',view:'table',controls:['mode','date','ticker','moneyType','expiry','strike','tapeSortField','tapeSortDirection','tapeSortColumn','tapeFilters','tapeSessionStart','tapeSessionEnd'],liveMs:6000,description:'Individual options executions with original contract, side, premium, Greeks and cursor pagination.'},
+    {id:'net-flow',title:'Net Flow',group:'Order Flow',icon:'⌁',endpoint:'net-flow',view:'netFlow',controls:['mode','date','ticker','flowMetric','expiry','strike','moneyType','tradeSide'],liveMs:12000,description:'Call and put activity per minute in premium or contracts, with the underlying price.'},
+    {id:'volatility-drift',title:'Volatility Drift',group:'Exposure',icon:'≈',endpoint:'volatility-drift',view:'volatilityDrift',controls:['mode','date','ticker','expiry'],liveMs:20000,description:'Intraday implied volatility and adjusted realized volatility alongside the underlying price.'},
+    {id:'volatility-skew',title:'Volatility Skew',group:'Exposure',icon:'∪',endpoint:'volatility-skew',view:'volatilitySkew',controls:['mode','date','ticker'],liveMs:20000,description:'Implied volatility across strikes and expirations, with independent expiry, call, put and combined curve selection.'},
+    {id:'term-structure',title:'Term Structure',group:'Exposure',icon:'⌁',endpoint:'term-structure',view:'termStructure',controls:['mode','date','ticker','deltaMin','deltaMax','moneyType'],liveMs:30000,description:'Implied volatility across maturities with independent expiration, strike, delta and moneyness selection.'},
+    {id:'open-interest-by-strike',title:'Open Interest by Strike',group:'Exposure',icon:'▥',endpoint:'open-interest-by-strike',view:'oiStrike',controls:['mode','date','ticker','expiry','exposureDisplay'],liveMs:60000,description:'Recorded call and put open interest grouped by strike.'},
+    {id:'open-interest-by-expiration',title:'Open Interest by Expiration',group:'Exposure',icon:'▥',endpoint:'open-interest-by-expiration',view:'oiExpiration',controls:['mode','date','ticker','strike','exposureDisplay'],liveMs:60000,description:'Recorded call and put open interest across expirations.'},
+    {id:'open-interest-over-time',title:'Open Interest / Time',group:'Exposure',icon:'⌁',endpoint:'open-interest-over-time',view:'oiTime',controls:['ticker','expiry','strike','oiChart','oiLegs'],liveMs:60000,description:'Call and put open interest across recorded sessions, shown as lines or bars.'},
+    {id:'open-interest-change',title:'Open Interest Change',group:'Exposure',icon:'▤',endpoint:'open-interest-change',view:'oiChange',controls:['mode','date','ticker','expiry','strike','contractTypeOptional','oiSortField','oiSortDirection'],liveMs:60000,description:'Per-contract previous and current open interest and its daily change.'},
+    {id:'news-articles',title:'News Feed',group:'News',icon:'▤',endpoint:'news-articles',view:'newsFeed',controls:['mode','date','tickerOptional','newsTopic','newsSentiment','newsBody'],liveMs:30000,description:'Licensed market news with ticker, topic, sentiment and historical filters.'}
   ];
-  const FILTER_GROUP_TOOLS=new Set(['equity-prints','exchange-notifications','order-flow-consolidated','contract-statistics','contract-trade-side-statistics','exposure-by-strike','exposure-by-expiration','gainers-losers','heat-map','market-share','market-share-table','net-drift']);
+  const FILTER_GROUP_TOOLS=new Set(['equity-prints','exchange-notifications','order-flow-consolidated','order-flow-unconsolidated','net-flow','contract-statistics','contract-trade-side-statistics','exposure-by-strike','exposure-by-expiration','gainers-losers','heat-map','market-share','market-share-table','net-drift']);
 
   const CONTROL_OPTIONS = {
+    darkUnderlying:[['SHOW','Shown'],['HIDE','Hidden']],driftCalls:[['SHOW','Shown'],['HIDE','Hidden']],driftPuts:[['SHOW','Shown'],['HIDE','Hidden']],painCalls:[['SHOW','Shown'],['HIDE','Hidden']],painPuts:[['SHOW','Shown'],['HIDE','Hidden']],
+    newsTopic:[['','All topics'],...NEWS_TOPIC_CHOICES.map(({value,label})=>[value,label])],
+    newsSentiment:[['','All sentiments'],...NEWS_SENTIMENTS.map(sentiment=>[sentiment,sentiment.replaceAll('_',' ')])],
+    newsBody:[['HIDE','Headlines'],['SHOW','Article body']],
+    flowMetric:[['NET_PREMIUM','Premium'],['NET_VOLUME','Volume']],
+    oiChart:[['line','Line'],['bar','Bars']],
+    oiLegs:[['SPLIT','Calls + puts'],['CALL','Calls'],['PUT','Puts']],
     period: PERIOD_OPTIONS,
     greek: [["CHARM", "Charm (CHEX)"], ["DELTA", "Delta (DEX)"], ["GAMMA", "Gamma (GEX)"], ["VANNA", "Vanna (VEX)"]],
     representation: [["PER_ONE_DOLLAR_MOVE", "Per $1 Move"], ["RAW", "Per 1 Unit"], ["PER_ONE_PERCENT_MOVE", "Per 1% Move"]],
-    moneyType: [["", "All moneyness"], ["OTM", "OTM"], ["ATM", "ATM"], ["ITM", "ITM"]],
+    moneyType: [["", "All moneyness"], ["ATM", "At the Money"], ["ITM", "In the Money"], ["OTM", "Out of the Money"]],
     tradeType: [["", "All trade types"], ["BLOCK", "Blocks"], ["SWEEP", "Sweeps"], ["SPLIT", "Splits"]],
     tradeSide: [["", "All sides"], ["ABOVE_ASK", "Above Ask"], ["ASK", "Ask"], ["MID_MARKET", "Mid-market"], ["BID", "Bid"], ["BELOW_BID", "Below Bid"]],
     printType: [["", "Lit + dark"], ["DARK_POOL", "Dark pool"], ["LIT_POOL", "Lit pool"]],
-    notificationType: [["", "All events"],...NOTIFICATION_TYPES.map(type=>[type,type.replaceAll("_"," ")])],
+    notificationType: [["", "Type"],...NOTIFICATION_TYPES.map(type=>[type,type]).sort(([a],[b])=>a.localeCompare(b))],
     sector: [["", "All sectors"], ["TECHNOLOGY", "Technology"], ["FINANCIAL_SERVICES", "Financial services"], ["HEALTHCARE", "Healthcare"], ["ENERGY", "Energy"], ["CONSUMER_CYCLICAL", "Consumer cyclical"], ["CONSUMER_DEFENSIVE","Consumer defensive"], ["COMMUNICATION_SERVICES","Communication services"], ["BASIC_MATERIALS","Basic materials"], ["INDUSTRIALS", "Industrials"], ["REAL_ESTATE", "Real estate"], ["UTILITIES", "Utilities"], ["NOT_APPLICABLE","Not applicable"]],
     mapGroup: [["SECTOR","Sector"],["INDUSTRY","Industry"],["NONE","Ungrouped"]],
     chartType: PRICE_CHART_TYPES,
     levelMetric: [["price", "Price"], ["notionalValue", "Notional"], ["size", "Share volume"], ["tradeCount", "Trade count"]],
-    sideMetric: [["PREMIUM", "Premium"], ["VOLUME", "Volume"], ["TRADE_COUNT", "Trade count"]],
+    sideMetric: [["PREMIUM", "Premium"], ["VOLUME", "Volume"], ["TRADE_COUNT", "Trade Count"]],
     rankMetric: [["bullishPremium", "Bullish premium"], ["bearishPremium", "Bearish premium"], ["premium", "Total premium"], ["volume", "Volume"]],
     shareMetric: [["Premium", "Premium"], ["Volume", "Volume"], ["TradeCount", "Trade count"]],
     shareBucket: [["total", "Total"], ["equityCall", "Equity calls"], ["equityPut", "Equity puts"], ["index", "Index"]],
@@ -538,7 +583,7 @@ await boot();
     exposureDisplay: [["NET", "Net exposure"], ["SPLIT", "Calls + puts"], ["CALL", "Calls"], ["PUT", "Puts"]],
     exposureOrientation: [["HORIZONTAL", "Strikes / expirations on X"], ["VERTICAL", "Strikes / expirations on Y"]],
     intervalValueMode: [["VALUE", "Value"], ["DIFFERENCE", "Difference"]],
-    heatMetric: HEAT_METRICS.map(metric=>[metric.apiName,metric.label]),
+    heatMetric: ['Call','Put','Net'].flatMap(group=>HEAT_METRICS.filter(metric=>metric.group===group).sort((a,b)=>a.label.localeCompare(b.label,'en')).map(metric=>[metric.apiName,metric.label,{group,menuLabel:metric.label.replace(/ \((?:Calls|Puts)\)$/,'')}])),
     heatAxes: [["NORMAL","Expirations on X"],["INVERTED","Strikes on X"]],
     driftNet: [["HIDE","Hidden"],["SHOW","Shown"]], driftBands: [["HIDE","Hidden"],["SHOW","Shown"]], driftUnderlying: [["SHOW","Shown"],["HIDE","Hidden"]],
     contractType: [["CALL", "Call"], ["PUT", "Put"]],
@@ -546,11 +591,20 @@ await boot();
   };
 
   const CONTROL_META = {
+    darkUnderlying:['Underlying','select'],driftCalls:['Calls','select'],driftPuts:['Puts','select'],painCalls:['Calls','select'],painPuts:['Puts','select'],
+    newsTopic:['Topic','select'],newsSentiment:['Sentiment','select'],newsBody:['Display','select'],
+    flowMetric:['Metric','select'],oiChart:['Chart','select'],oiLegs:['Contract type','select'],
+    oiSortField:['Ranking field','hidden',null,'changeInOpenInterest'],oiSortDirection:['Ranking direction','hidden',null,'DESCENDING'],
+    tapeSortField:['Tape sort field','hidden',null,'TRADE_TIME'],tapeSortDirection:['Tape sort direction','hidden',null,'DESCENDING'],tapeFilters:['Tape column filters','hidden',null,'[]'],
+    tapeSortColumn:['Tape sorted column','hidden',null,'time'],
+    tapeSessionStart:['Tape first session','hidden',null,''],tapeSessionEnd:['Tape last session','hidden',null,''],
+    deltaMin:['Minimum absolute delta','number',null,'0'],deltaMax:['Maximum absolute delta','number',null,'1'],
+    expiryStart:['First expiration','date'],expiryEnd:['Last expiration','date'],
     mode: ["Session", "select", [["latest", "Latest / live"], ["historical", "Historical snapshot"]]],
     date: ["Session date", "date"], ticker: ["Instrument", "select", instrumentChoices(), "QQQ"], tickerOptional: ["Instrument", "select", [["", "All instruments"], ...instrumentChoices()], ""],
     period: ["Interval", "select"], greek: ["Exposure", "select"], representation: ["Units", "select"],
     moneyType: ["Moneyness", "select"], tradeType: ["Trade type", "select"], printType: ["Venue", "select"],
-    notificationType: ["Event type", "select"], tradeSide:["Side","select"], sector: ["Sector", "select"], industry:["Industry","text",null,""], chartType: ["Chart", "select"],
+    notificationType: ["Type", "select"], tradeSide:["Side","select"], sector: ["Sector", "select"], industry:["Industry","text",null,""], chartType: ["Chart", "select"],
     levelMetric: ["Sort selected levels by", "select"], sideMetric: ["Metric", "select"], rankMetric: ["Rank by", "select"],
     shareMetric: ["Metric", "select"], shareBucket: ["Bucket", "select"], shareChart: ["Chart", "select"], heatMetric: ["Data mode", "select"],
     shareMode: ["Data mode", "select"], shareView: ["View", "select"],
@@ -572,10 +626,15 @@ await boot();
   const library = q("#toolLibrary");
   const scrim = q("#libraryScrim");
   let activeTool = null;
+  let netDriftContractControls=null;
+  let commonSessionDateControls=null;
+  const contractChoiceCache=new Map();
   let toolPayload = null;
   let toolPayloadQuery = null;
+  let equityPageGeneration = 0;
   let tableRows = [];
   let tableColumns = null;
+  let tableColumnHost = null;
   let tableRuntime = null;
   let tableSort = { key: null, direction: 1 };
   let toolCursor = null;
@@ -585,9 +644,15 @@ await boot();
   let activeChartReset = null;
   let activeChartDispose = null;
   let activeChartUpdate = null;
+  let activeChartInstance = null;
+  let refreshingCanvas = null;
+  let toolRequestInFlight = false;
+  let lastToolSuccessAt = 0;
+  let lastToolAttemptAt = 0;
   let storedWindows=[];try{storedWindows=JSON.parse(gexStorage.getItem(`gex-data-chart-windows:${VIEW_PARAMETERS.get('instance')||'standalone'}`)||'[]');}catch{}
   const chartWindows = new Map(Array.isArray(storedWindows)?storedWindows:[]);
   const snapshotSelections = new Map();
+  let marketMapIndustryInventory=new Map(),marketMapIndustrySession=null;
   let masterReplay=gexWorkspaceReplay(),masterSnapshotKey=null;
   const snapshotKey=tool=>`${tool.id}|${getControl("mode")}|${getControl("date")}|${getControl("ticker")}`;
   const instanceKey=VIEW_PARAMETERS.get('instance')||'standalone';
@@ -619,6 +684,7 @@ await boot();
   }
 
   function renderToolNav(filter = "") {
+    const count=q('[data-tool-count]');if(count)count.textContent=TOOL_DEFINITIONS.length+' tools';
     const nav = q("#toolNav");
     nav.replaceChildren();
     const normalized = filter.trim().toLowerCase();
@@ -629,7 +695,7 @@ await boot();
     board.append(element("span", "nav-icon", "▦"), element("span", "", "Overview"), element("small", "", "6 panels"));
     board.addEventListener("click", showBoard);
     boardGroup.append(board); nav.append(boardGroup);
-    for (const groupName of ["Equities", "Order Flow", "Exposure"]) {
+    for (const groupName of ["Equities", "Order Flow", "Exposure", "News"]) {
       const tools = TOOL_DEFINITIONS.filter((tool) => tool.group === groupName && (!normalized || `${tool.title} ${tool.description}`.toLowerCase().includes(normalized)));
       if (!tools.length) continue;
       const group = element("div", "tool-nav-group");
@@ -647,31 +713,52 @@ await boot();
 
   function makeControl(id) {
     const [label, type, inlineOptions, defaultValue] = CONTROL_META[id];
-    const optionalTicker=id==='ticker'&&['equity-prints','order-flow-consolidated'].includes(activeTool?.id);
+    const optionalTicker=id==='ticker'&&['equity-prints','order-flow-consolidated','order-flow-unconsolidated','open-interest-change','contract-statistics','contract-trade-side-statistics'].includes(activeTool?.id);
     const wrap = element("div", "control");
     const labelNode = element("label", "", label); labelNode.htmlFor = `control-${id}`;
     let input;
-    if(type==='select'&&['moneyType','tradeSide','notificationType','tradeType','sector'].includes(id)){
-      const options=[...(inlineOptions||CONTROL_OPTIONS[id]||[]),...(id==='sector'?[['UNKNOWN','Unknown']]:[])];
-      input=multiChoiceDropdown({choices:options.filter(([value])=>value),label,emptyLabel:options.find(([value])=>!value)?.[1]||'All'});
+    if(id==='tickerOptional'&&activeTool?.id==='exchange-notifications'){
+      input=multiChoiceDropdown({choices:instrumentChoices(),label:'Instrument',emptyLabel:'All instruments',searchable:true,allowCustomSymbol:true,document});
+      input.title='Search available instruments or enter a symbol.';
+    }else if(id==='industry'&&activeTool?.id==='gainers-losers'){
+      input=multiChoiceDropdown({choices:gainersIndustryChoices(getControl('sector')),label:'Industry',emptyLabel:'All industries',searchable:true,document});
+      input.title='Industries and sectors from the verified source display catalogue; saved selections are retained.';
+    }else if(id==='industry'&&activeTool?.id==='market-map'){
+      input=multiChoiceDropdown({choices:marketMapIndustryChoices(marketMapIndustryInventory,getControl('sector')),label:'Industry',emptyLabel:'All industries',searchable:true,document});
+      input.title='Industries observed in fetched Market Map data; saved selections are retained.';
+    }else if(type==='select'&&(['moneyType','tradeSide','notificationType','tradeType','sector','newsTopic','newsSentiment'].includes(id)||id==='contractTypeOptional'&&activeTool?.id==='iv-rank')){
+      const ivRankContracts=id==='contractTypeOptional'&&activeTool?.id==='iv-rank',options=ivRankContracts?[['CALL','Call'],['PUT','Put']]:[...(inlineOptions||CONTROL_OPTIONS[id]||[]),...(id==='sector'?[['UNKNOWN','Unknown']]:[])];
+      input=multiChoiceDropdown({choices:options.filter(([value])=>value),label:ivRankContracts?'Contract Type':label,emptyLabel:ivRankContracts?'Contract Type':options.find(([value])=>!value)?.[1]||'All',searchable:id==='moneyType'||id==='tradeSide'||id==='newsTopic',compactSummary:id==='moneyType',summaryLabels:id==='tradeSide'?{ABOVE_ASK:'AA',ASK:'A',MID_MARKET:'M',BID:'B',BELOW_BID:'BB'}:{}});
     }else if (type === "select") {
       input = document.createElement("select");
-      const options = inlineOptions || CONTROL_OPTIONS[id] || [];
+      const available = inlineOptions || CONTROL_OPTIONS[id] || [];
+      const options = id==='exposureDisplay'&&activeTool?.id.startsWith('open-interest-by-')?available.filter(([value])=>value!=='NET'):available;
       if(optionalTicker)input.add(new Option('All instruments',''));
-      for (const [value, optionLabel] of options) input.add(new Option(optionLabel, value));
+      if(activeTool?.id==='option-price-over-time'&&['ticker','contractType'].includes(id)||activeTool?.id==='max-pain'&&id==='ticker')input.add(new Option(id==='ticker'?'Select instrument':'Select contract type',''));
+      if(id==='heatMetric'){
+        const groups=new Map();for(const [value,optionLabel,metadata]of options){let group=groups.get(metadata.group);if(!group){group=document.createElement('optgroup');group.label=metadata.group;groups.set(metadata.group,group);input.append(group);}const option=new Option(optionLabel,value);option.dataset.menuLabel=metadata.menuLabel;group.append(option);}
+      }else for (const [value, optionLabel] of options) input.add(new Option(optionLabel, value));
+    } else if(id==='strike'&&['net-drift','exposure-by-expiration','contract-statistics','contract-trade-side-statistics'].includes(activeTool?.id)){
+      input=document.createElement("input");input.type="hidden";
     } else {
       input = document.createElement("input"); input.type = type;
       if (type === "number") input.step = "any";
+      if(id==='lookback'||id==='maturity'){input.step='1';input.min='1';input.max='365';if(id==='maturity')input.title='Supported maturity: 1–365 days';}
       if (type === "text") input.autocomplete = "off";
     }
-    if (defaultValue != null) input.value = defaultValue;
+    if (defaultValue != null) input.value = toolControlDefault(activeTool?.id,id,defaultValue);
+    if(id==='tapeSortField'&&activeTool?.id==='exchange-notifications')input.value='CREATED_TIME';
+    if(id==='tapeSortColumn'&&activeTool?.id==='exchange-notifications')input.value='createdTime';
     if (id === "period" && activeTool?.id === "interval-map") input.value = "5m";
+    if(id==='moneyType'&&activeTool?.id==='term-structure')input.value='ATM';
+    if(id==='exposureDisplay'&&activeTool?.id.startsWith('open-interest-by-'))input.value='SPLIT';
     if(optionalTicker)input.value='';
+    if(activeTool?.id==='option-price-over-time'&&['ticker','contractType'].includes(id))input.value='';
     input.id = `control-${id}`; input.dataset.control = id;
     if (id === "ticker" || id === "tickerOptional") input.placeholder = id === "ticker" ? "QQQ" : "All tickers";
-    if (id === "osi") input.placeholder = "Auto-discover recent contract";
-    if (id === "rangeStart") input.value = todayOffset(-7);
-    if (id === "rangeEnd") input.value = todayOffset(0);
+    if (id === "osi") input.placeholder = "Exact contract OSI (optional)";
+    if (id === "rangeStart") input.value = activeTool?.id==='dark-pool-levels'?'':todayOffset(-7);
+    if (id === "rangeEnd") input.value = activeTool?.id==='dark-pool-levels'?'':todayOffset(0);
     if (id === "date") input.value = todayOffset(0);
     if (id === "greek") input.value = "GAMMA";
     if (id === "representation") input.value = "PER_ONE_PERCENT_MOVE";
@@ -683,22 +770,36 @@ await boot();
 
   function getControl(id) {
     if(activeTool?.id==='iv-rank'&&['mode','date'].includes(id))return id==='mode'?'latest':'';
-    const control=q(`[data-control="${id}"]`,q('#toolControls')),own=control?.dataset.overrideOwn??control?.value??'';
+    const control=q(`[data-control="${id}"]`,q('#toolControls'));if(!control)return '';const own=control.dataset.overrideOwn??control.value??'';
     if(!['ticker','tickerOptional','expiry','mode','date'].includes(id))return own;
     const {page,global}=getFilterOverrides(),key=id==='ticker'||id==='tickerOptional'?'tickers':id==='expiry'?'expirationDate':'sessionDate',result=resolveFilterOverride({toolValue:null,pageValue:page[key],globalValue:global[key],isTicker:key==='tickers'});
     if(result.type==='NONE')return own;if(key==='tickers')return result.value[0];if(id==='mode')return 'historical';return result.value;
   }
-  function setControl(id, value) { const control = q(`[data-control="${id}"]`, q("#toolControls")); if (control) {if('overrideOwn' in control.dataset)control.dataset.overrideOwn=String(value);else if(id==='ticker'||id==='tickerOptional')setChoiceValue(control,value);else control.value=value;} }
+  function setControl(id, value) {
+    if(id==='maturity'&&String(value).trim()!==''&&Number(value)===0)value='1';
+    const control=q(`[data-control="${id}"]`,q('#toolControls'));
+    if(!control)return;
+    // Ticker restoration deliberately supports symbols outside the current
+    // catalogue through setChoiceValue. Fixed enum selects must retain their
+    // visible selection when a saved/copied value is no longer an option.
+    if(id!=='ticker'&&id!=='tickerOptional'&&control.tagName==='SELECT'&&![...control.options].some(option=>option.value===String(value)))return;
+    if('overrideOwn' in control.dataset)control.dataset.overrideOwn=String(value);
+    else if(id==='ticker'||id==='tickerOptional')setChoiceValue(control,value);
+    else control.value=value;
+  }
 
   function reflectFilterOverrides(){
     const {page,global}=getFilterOverrides();for(const control of qa('[data-control]',q('#toolControls'))){const id=control.dataset.control;if(!['ticker','tickerOptional','expiry','mode','date'].includes(id))continue;const key=id==='ticker'||id==='tickerOptional'?'tickers':id==='expiry'?'expirationDate':'sessionDate',result=resolveFilterOverride({toolValue:null,pageValue:page[key],globalValue:global[key],isTicker:key==='tickers'});
       if(result.type==='NONE'){if('overrideOwn' in control.dataset){if(key==='tickers')setChoiceValue(control,control.dataset.overrideOwn);else control.value=control.dataset.overrideOwn;delete control.dataset.overrideOwn;control.disabled=false;control.title='';control.closest('.control').classList.remove('filter-overridden');}}else{if(!('overrideOwn' in control.dataset))control.dataset.overrideOwn=control.value;if(key==='tickers')setChoiceValue(control,result.value[0]);else control.value=id==='mode'?'historical':result.value;control.disabled=true;control.title=`Controlled by ${result.type.toLowerCase()} tool filters`;control.closest('.control').classList.add('filter-overridden');}}
+    if(activeTool?.id==='gainers-losers'){const ticker=q('[data-control="tickerOptional"]',q('#toolControls')),wrap=ticker?.closest('.control');if(wrap){wrap.hidden=!getControl('tickerOptional');const label=q('label',wrap);if(label)label.textContent='Active instrument filter';}q('[data-control="industry"]',q('#toolControls'))?.setChoices?.(gainersIndustryChoices(getControl('sector')));}
+    commonSessionDateControls?.sync();
   }
 
   function syncDateControl() {
     const mode = getControl("mode");
     const date = q('[data-control="date"]', q("#toolControls"));
-    if (date) date.closest(".control").hidden = mode !== "historical";
+    if (date) date.closest(".control").hidden = !commonSessionDateControls&&(mode !== "historical"||['order-flow-consolidated','order-flow-unconsolidated'].includes(activeTool?.id));
+    commonSessionDateControls?.sync();
     updateLiveState();
   }
 
@@ -714,29 +815,248 @@ await boot();
   }
 
   function renderControls(tool) {
+    commonSessionDateControls?.destroy();commonSessionDateControls=null;
+    netDriftContractControls?.destroy();netDriftContractControls=null;
     const holder = q("#toolControls"); holder.replaceChildren();
-    for (const id of tool.controls) { holder.append(makeControl(id)); if(id==="exposureDisplay")holder.append(makeControl("exposureOrientation")); }
+    for (const id of tool.controls) { const control=makeControl(id);if(CONTROL_META[id][1]==='hidden'||tool.view==='termStructure'&&['deltaMin','deltaMax'].includes(id))control.hidden=true;holder.append(control); if(id==="exposureDisplay")holder.append(makeControl("exposureOrientation")); }
     for(const input of qa("[data-control]",holder)){const value=savedToolControls[tool.id]?.[input.dataset.control];if(value!=null)setControl(input.dataset.control,value);}
-    if(VIEW_PARAMETERS.get('instance')&&!savedToolControls[tool.id])for(const [key,value] of VIEW_PARAMETERS)if(key.startsWith('c_'))setControl(key.slice(2),value);
+    const copiedControls=VIEW_PARAMETERS.get('instance')&&!savedToolControls[tool.id];
+    if(copiedControls){const fields=new Set(qa('[data-control]',holder).map(input=>input.dataset.control));for(const [key,value] of VIEW_PARAMETERS)if(key.startsWith('c_')&&fields.has(key.slice(2)))setControl(key.slice(2),value);}
+    const surfaceSelections=restoreSurfaceSelections(tool.id,{saved:savedToolControls[tool.id],parameters:copiedControls?VIEW_PARAMETERS:null});
+    if(Object.keys(surfaceSelections).length)savedToolControls[tool.id]={...savedToolControls[tool.id],...surfaceSelections};
     if(EMBEDDED){const order=tool.id==='net-drift'?['ticker','tickerOptional','date','strike','expiry','moneyType','period']:tool.id==='interval-map'?['ticker','date','expiry','period','strikePadding','greek']:['ticker','tickerOptional','date','expiry','greek','representation'];for(const control of qa('.control',holder).sort((a,b)=>{const aId=q('[data-control]',a)?.dataset.control,bId=q('[data-control]',b)?.dataset.control;return (order.includes(aId)?order.indexOf(aId):100)-(order.includes(bId)?order.indexOf(bId):100);}))holder.append(control);}
     reflectFilterOverrides();syncDateControl();
+    if(tool.id==='dark-pool-levels'){
+      for(const id of ['rangeStart','rangeEnd','topLevels','levelMetric'])q('[data-control="'+id+'"]',holder).closest('.control').hidden=true;
+      const limit=element('div');limit.style.display='contents';holder.append(limit);
+      netDriftContractControls=mountDarkPoolLevelLimit({host:limit,popup,getScope:()=>({limit:getControl('topLevels'),available:matchesCurrentPayload()?Object.keys(toolPayload.data||{}).filter(price=>Number.isFinite(Number(price))).length:0}),onChange:value=>{setControl('topLevels',String(value));onControlsChanged({target:q('[data-control="topLevels"]',holder)});}});
+      const sessions=element('div');sessions.style.display='contents';holder.append(sessions);
+      commonSessionDateControls=mountOptionTapeSessionControls({host:sessions,popup,monthsVisible:2,commitOnSelect:true,clearLabel:'Clear',emptyHint:'Leave blank for current session',businessDayEndpoints:true,getScope:()=>{
+        const override=getFilterOverrides(),date=resolveFilterOverride({toolValue:null,pageValue:override.page.sessionDate,globalValue:override.global.sessionDate});
+        return {startDate:date.type==='NONE'?getControl('rangeStart'):date.value,endDate:date.type==='NONE'?getControl('rangeEnd'):date.value,currentDate:apiStatus.market?.sessionDate||todayOffset(0),disabled:date.type!=='NONE'||!!masterReplay};
+      },validateSelection:optionTapeSessionRange,onChange:selection=>{setControl('rangeStart',selection.startDate);setControl('rangeEnd',selection.endDate);onControlsChanged({target:q('[data-control="rangeStart"]',holder)});}});
+      const columns=element('span');columns.id='darkPoolColumnControls';holder.append(columns);
+    }
+    if(tool.id!=='iv-rank'&&!['order-flow-consolidated','order-flow-unconsolidated','gainers-losers','equity-prints','exchange-notifications','market-share','market-share-table'].includes(tool.id)&&tool.controls.includes('mode')&&tool.controls.includes('date')){
+      const date=q('[data-control="date"]',holder),mode=q('[data-control="mode"]',holder),wrap=date.closest('.control');
+      // Retain the original controls as the sole saved/copied/request state.
+      // Only their presentation is replaced; range and expiration inputs stay intact.
+      mode.closest('.control').hidden=true;date.hidden=true;for(const label of qa('label',wrap))label.hidden=true;
+      const calendar=element('div');calendar.style.display='contents';wrap.append(calendar);
+      commonSessionDateControls=mountSessionDateControls({host:calendar,popup,getScope:()=>({date:getControl('mode')==='historical'?getControl('date'):'',currentDate:apiStatus.market?.optionsSessionDate,disabled:!!date.disabled||!!mode.disabled}),onChange:value=>{
+        setControl('mode',value?'historical':'latest');setControl('date',value);onControlsChanged({target:date});
+      }});syncDateControl();
+    }
+    if(['order-flow-consolidated','order-flow-unconsolidated','gainers-losers','equity-prints','exchange-notifications','market-share','market-share-table'].includes(tool.id)){
+      const saved=savedToolControls[tool.id]||{},explicit=Object.hasOwn(saved,'tapeSessionStart')||Object.hasOwn(saved,'tapeSessionEnd')||copiedControls&&(VIEW_PARAMETERS.has('c_tapeSessionStart')||VIEW_PARAMETERS.has('c_tapeSessionEnd'));
+      const ownMode=q('[data-control="mode"]',holder),ownDate=q('[data-control="date"]',holder);
+      if(!explicit&&(ownMode?.dataset.overrideOwn??ownMode?.value)==='historical')for(const id of ['tapeSessionStart','tapeSessionEnd'])setControl(id,ownDate?.dataset.overrideOwn??ownDate?.value??'');
+      const selectedDate=getControl('tapeSessionStart')||getControl('tapeSessionEnd');setControl('mode',selectedDate?'historical':'latest');if(selectedDate)setControl('date',selectedDate);
+      for(const id of ['mode','date'])q('[data-control="'+id+'"]',holder).closest('.control').hidden=true;
+      const sessions=element('div');sessions.style.display='contents';holder.insertBefore(sessions,q('[data-control="ticker"]',holder)?.closest('.control')||q('[data-control="tickerOptional"]',holder)?.closest('.control')||null);
+      netDriftContractControls=mountOptionTapeSessionControls({host:sessions,popup,...(['equity-prints','exchange-notifications','market-share','market-share-table'].includes(tool.id)?{monthsVisible:2,commitOnSelect:true,toggleSameDay:true,singleLineTrigger:true,continueSingleDayRange:true,closeCompletedRange:true,businessDayEndpoints:true,clearLabel:'Clear',emptyHint:'Leave blank for current session'}:{}),getScope:()=>({...optionTapeSessionScope(),...(['equity-prints','exchange-notifications','market-share','market-share-table'].includes(tool.id)?{currentDate:apiStatus.market?.sessionDate||todayOffset(0)}:{})}),validateSelection:optionTapeSessionRange,onChange:selection=>{
+        setControl('tapeSessionStart',selection.startDate);setControl('tapeSessionEnd',selection.endDate);setControl('mode',selection.startDate||selection.endDate?'historical':'latest');setControl('date',selection.startDate||selection.endDate||apiStatus.market?.optionsSessionDate||todayOffset(0));onControlsChanged({target:q('[data-control="tapeSessionStart"]',holder)});
+      }});
+    }
+    if(tool.id==='equity-prints'){for(const id of ['ticker','printType'])q('[data-control="'+id+'"]',holder).closest('.control').hidden=true;const columns=element('span');columns.id='equityPrintColumnControls';holder.append(columns);}
+    if(tool.id==='market-share-table'){const columns=element('span','qtable-compact-column-controls');columns.id='marketShareColumnControls';holder.append(columns);}
+    if(tool.id==='gainers-losers'){const columns=element('span','qtable-compact-column-controls');columns.id='gainersColumnControls';holder.append(columns);}
+    if(tool.id==='exchange-notifications'){const columns=element('span','qtable-compact-column-controls');columns.id='notificationColumnControls';holder.append(columns);}
+    if(tool.view==='volatilitySkew')for(const [kind,label] of [['expiry','Expiration'],['contractType','Contract type']]){
+      const wrap=element('div','control'),button=element('button','kwant-choice-trigger',label+' ⌄');button.type='button';button.dataset.skewSelection=kind;button.disabled=!toolPayload;button.setAttribute('aria-label',label);button.setAttribute('aria-haspopup','dialog');button.addEventListener('click',()=>showSkewSelection(button,kind));wrap.append(button);holder.append(wrap);
+    }
+    if(tool.view==='termStructure'){
+      for(const [kind,label] of [['expiration','Expiration'],['strike','Strike Price'],['delta',`Delta (${getControl('deltaMin')||0} to ${getControl('deltaMax')||1})`]]){const wrap=element('div','control'),button=element('button','kwant-choice-trigger',label+' ⌄');button.type='button';button.dataset.termSelection=kind;button.setAttribute('aria-label',kind==='delta'?'Delta range':label);button.disabled=kind!=='delta'&&!toolPayload;button.addEventListener('click',()=>showTermSelection(button,kind));wrap.append(button);holder.append(wrap);}
+      for(const wrap of [q('[data-control="ticker"]',holder)?.closest('.control'),...qa('[data-term-selection]',holder).map(button=>button.closest('.control')),q('[data-control="date"]',holder)?.closest('.control'),q('[data-control="moneyType"]',holder)?.closest('.control')].filter(Boolean))holder.append(wrap);
+    }
+    if(tool.id==='max-pain'){
+      const expiry=q('[data-control="expiry"]',holder),ticker=q('[data-control="ticker"]',holder);
+      for(const id of ['painCalls','painPuts']){const control=q('[data-control="'+id+'"]',holder);if(control)control.closest('.control').hidden=true;}
+      expiry.closest('.control').hidden=true;ticker.dataset.maxPainTicker=getControl('ticker');
+      const contracts=element('div','net-drift-contract-host');contracts.style.display='contents';holder.insertBefore(contracts,expiry.closest('.control'));
+      netDriftContractControls=mountObservedExpiryControl({host:contracts,popup,clearable:false,getScope:()=>({ticker:getControl('ticker'),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,expiry:getControl('expiry'),expiryDisabled:expiry.disabled}),loadChoices:scope=>loadNetDriftContractChoices({...scope,expiry:''}),onExpiryChange:value=>{setControl('expiry',value);onControlsChanged({target:expiry});}});
+    }
+    if(tool.id==='net-drift'){
+      for(const id of ['expiry','strike','driftCalls','driftPuts','driftNet','driftBands','driftUnderlying'])q('[data-control="'+id+'"]',holder).closest('.control').hidden=true;
+      const contracts=element('div','net-drift-contract-host');contracts.style.display='contents';holder.insertBefore(contracts,q('[data-control="date"]',holder)?.closest('.control')||null);
+      netDriftContractControls=mountNetDriftContractControls({host:contracts,popup,getScope:()=>({ticker:getControl('ticker'),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,expiry:getControl('expiry'),strikes:String(getControl('strike')).split(/[,\s]+/).filter(Boolean),disabled:q('[data-control="expiry"]',holder)?.disabled}),loadChoices:loadNetDriftContractChoices,onExpiryChange:value=>{setControl('expiry',value);onControlsChanged({target:q('[data-control="expiry"]',holder)});},onStrikesChange:values=>{setControl('strike',values.join(','));onControlsChanged({target:q('[data-control="strike"]',holder)});}});
+    }
+    if(tool.id==='option-price-over-time'){
+      for(const id of ['expiry','strike'])q('[data-control="'+id+'"]',holder).closest('.control').hidden=true;
+      const contracts=element('div','net-drift-contract-host');contracts.style.display='contents';holder.insertBefore(contracts,q('[data-control="date"]',holder)?.closest('.control')||null);
+      netDriftContractControls=mountNetDriftContractControls({host:contracts,popup,singleStrike:true,clearable:false,getScope:()=>({ticker:getControl('ticker'),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,expiry:getControl('expiry'),strikes:getControl('strike')?[Number(getControl('strike'))]:[],disabled:!!getControl('osi'),expiryDisabled:q('[data-control="expiry"]',holder)?.disabled}),loadChoices:loadNetDriftContractChoices,onExpiryChange:value=>{setControl('expiry',value);onControlsChanged({target:q('[data-control="expiry"]',holder)});},onStrikesChange:values=>{setControl('strike',values[0]??'');onControlsChanged({target:q('[data-control="strike"]',holder)});}});
+      const type=q('[data-control="contractType"]',holder),strike=Number(getControl('strike'));if(type)type.disabled=!getControl('ticker')||!getControl('expiry')||!Number.isFinite(strike)||strike<=0;
+    }
+    if(['contract-statistics','contract-trade-side-statistics'].includes(tool.id)){
+      const expiry=q('[data-control="expiry"]',holder),strike=q('[data-control="strike"]',holder),contracts=element('div','net-drift-contract-host');contracts.style.display='contents';holder.insertBefore(contracts,q('[data-control="date"]',holder)?.closest('.control')||null);
+      netDriftContractControls=mountNetDriftContractControls({host:contracts,popup,currencyStrikes:true,countSummary:true,clearSearchOnSelect:true,getScope:()=>{
+        const scope=statisticsContractScope();
+        // Public OI inventories require one ticker. Keep an honest manual
+        // filter route for all-market/multi-ticker scopes instead of inventing
+        // calendar/strike availability or dropping previously valid filters.
+        contracts.hidden=!scope.ticker;expiry.closest('.control').hidden=!!scope.ticker;strike.closest('.control').hidden=!!scope.ticker;strike.type=scope.ticker?'hidden':'text';strike.placeholder='Strike prices, comma separated';
+        return scope;
+      },loadChoices:loadNetDriftContractChoices,onExpiryChange:value=>{setControl('expiry',value);onControlsChanged({target:expiry});},onStrikesChange:values=>{setControl('strike',values.join(','));onControlsChanged({target:strike});}});
+    }
+    if(tool.id==='exposure-by-expiration'){
+      q('[data-control="strike"]',holder).closest('.control').hidden=true;const strikes=element('div','observed-strike-host');strikes.style.display='contents';holder.insertBefore(strikes,q('[data-control="date"]',holder)?.closest('.control')||null);
+      netDriftContractControls=mountObservedStrikeControl({host:strikes,popup,getScope:()=>({ticker:getControl('ticker'),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,strikes:String(getControl('strike')).split(/[,\s]+/).filter(Boolean)}),loadChoices:loadExposureStrikeChoices,onStrikesChange:values=>{setControl('strike',values.join(','));onControlsChanged({target:q('[data-control="strike"]',holder)});}});
+    }
     holder.onchange = onControlsChanged;
     holder.oninput = onControlsChanged;
     const actions=element('div','embedded-actions');
     for(const [label,text,action] of [['Refresh','↻',()=>loadActiveTool()],['Reset Zoom','⟲',()=>activeChartReset?.()],['Filter Groups','▽',event=>showFilterGroups(event.currentTarget,{toolId:tool.id,activeIds:toolGroupIds[tool.id]||[],onChange:ids=>{toolGroupIds[tool.id]=ids;gexStorage.setItem(groupsStorageKey,JSON.stringify(toolGroupIds));loadActiveTool();}})],['Tool Settings','⋮',event=>popup(event.currentTarget,'Tool Settings',el=>{for(const [name,fn] of [['Tool Configuration',()=>showToolConfiguration(event.currentTarget)],['Reset Zoom',()=>activeChartReset?.()],['Export CSV',exportCsv],['Reset to Default Settings',click=>confirmLocalAction('Reset to Default Settings','Reset this tool and detach its Filter Groups?',()=>{delete savedToolControls[tool.id];delete toolGroupIds[tool.id];gexStorage.setItem(controlsStorageKey,JSON.stringify(savedToolControls));gexStorage.setItem(groupsStorageKey,JSON.stringify(toolGroupIds));tableRuntime?.reset();chartWindows.delete(tool.id);gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));if(tool.id==='market-map')gexStorage.removeItem(`gex-data-market-map-camera:${instanceKey}`);snapshotSelections.delete(snapshotKey(tool));if(EMBEDDED)parent.postMessage({type:'gex-data-minute',minute:null},location.origin);renderControls(tool);saveToolControls();loadActiveTool();},click)]]){const b=element('button','',name);b.type='button';b.addEventListener('click',event=>{el.remove();fn(event);});el.append(b);}})]]){const b=element('button','',text);b.type='button';b.title=label;b.setAttribute('aria-label',label);b.addEventListener('click',action);actions.append(b);}holder.append(actions);
+    if(tool.id==='net-drift'){
+      for(const [id,label,icon] of [['driftBands','Confidence Bands','◉'],['driftNet','Net Premium','⇄'],['driftUnderlying','Underlying Price','↕']].reverse()){const button=element('button','',icon);button.type='button';button.dataset.driftDisplay=id;button.dataset.displayLabel=label;button.addEventListener('click',()=>{setControl(id,getControl(id)==='SHOW'?'HIDE':'SHOW');onControlsChanged({target:q('[data-control="'+id+'"]',holder)});});actions.prepend(button);}syncNetDriftDisplayButtons();
+    }
     if(!FILTER_GROUP_TOOLS.has(tool.id))actions.querySelector('[aria-label="Filter Groups"]')?.remove();
   }
 
   function saveToolControls(){
-    if(activeTool){savedToolControls[activeTool.id]=Object.fromEntries(qa("[data-control]",q("#toolControls")).map(input=>[input.dataset.control,input.dataset.overrideOwn??input.value]));try{gexStorage.setItem(controlsStorageKey,JSON.stringify(savedToolControls));}catch{}if(EMBEDDED)parent.postMessage({type:'gex-data-tool-state',controls:savedToolControls[activeTool.id]},location.origin);}
+    if(activeTool){const values=Object.fromEntries(qa("[data-control]",q("#toolControls")).map(input=>[input.dataset.control,input.dataset.overrideOwn??input.value]));savedToolControls[activeTool.id]=['volatility-skew','term-structure'].includes(activeTool.id)?persistSurfaceSelections(activeTool.id,savedToolControls[activeTool.id],values):values;try{gexStorage.setItem(controlsStorageKey,JSON.stringify(savedToolControls));}catch{}if(EMBEDDED)parent.postMessage({type:'gex-data-tool-state',controls:savedToolControls[activeTool.id]},location.origin);}
+  }
+  function loadContractChoicePayload(endpoint,request){
+    const key=endpoint+JSON.stringify(request),cached=contractChoiceCache.get(key);if(cached&&cached.expires>Date.now())return cached.promise;
+    const promise=toolFetch(endpoint,request,AbortSignal.timeout(10000)).catch(error=>{if(contractChoiceCache.get(key)?.promise===promise)contractChoiceCache.delete(key);throw error;});contractChoiceCache.set(key,{promise,expires:Date.now()+60000});if(contractChoiceCache.size>16)contractChoiceCache.delete(contractChoiceCache.keys().next().value);return promise;
+  }
+  function statisticsContractScope(){
+    const {page,global}=getFilterOverrides(),override=resolveFilterOverride({toolValue:null,pageValue:page.tickers,globalValue:global.tickers,isTicker:true});
+    const ticker=override.type==='NONE'?getControl('tickerOptional'):override.value.length===1?override.value[0]:'';
+    return {ticker,sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,expiry:getControl('expiry'),strikes:String(getControl('strike')).split(/[,\s]+/).filter(Boolean),disabled:!ticker,expiryDisabled:q('[data-control="expiry"]',q('#toolControls'))?.disabled};
+  }
+  function optionTapeSessionScope(){
+    const {page,global}=getFilterOverrides(),override=resolveFilterOverride({toolValue:null,pageValue:page.sessionDate,globalValue:global.sessionDate});
+    return {startDate:override.type==='NONE'?getControl('tapeSessionStart'):override.value,endDate:override.type==='NONE'?getControl('tapeSessionEnd'):override.value,currentDate:apiStatus.market?.optionsSessionDate||todayOffset(0),disabled:override.type!=='NONE'||!!masterReplay};
+  }
+  function optionTapeTableConfiguration(tool){
+    const readFilters=()=>optionTapeHeaderFilters(tool);
+    const sort=optionTapeSort({field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},tool.id);
+    return {headerMenu:true,sortKey:sort.field,sortId:getControl('tapeSortColumn')||'time',sortDirection:sort.direction==='ASCENDING'?1:-1,headerFilters:readFilters(),onSortChange:selection=>{
+      if(activeTool!==tool)return;const next=optionTapeSort(selection.direction===null?null:selection,tool.id),field=optionTapeField(next.field).field;
+      const current=optionTapeSort({field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},tool.id),column=selection.direction===null?'time':selection.id||getControl('tapeSortColumn')||'time';
+      const columnChanged=column!==getControl('tapeSortColumn');if(columnChanged)setControl('tapeSortColumn',column);if(current.field===field&&current.direction===next.direction){if(columnChanged)saveToolControls();return;}
+      setControl('tapeSortField',field);setControl('tapeSortDirection',next.direction);toolCursor=null;saveToolControls();loadActiveTool({retainSortPage:true});
+    },onFilterChange:selection=>{
+      if(activeTool!==tool)return;const field=optionTapeField(selection.field??selection.key)?.field;if(!field)throw Error('Unsupported tape column filter.');
+      const previous=readFilters(),next=previous.filter(item=>optionTapeField(item.field??item.key??item.id)?.field!==field);
+      if(selection.operator!==null)next.push({...selection,field});optionTapeFilterExpression(next,tool.id);
+      if(JSON.stringify(previous)===JSON.stringify(next))return;
+      setControl('tapeFilters',JSON.stringify(next));toolCursor=null;saveToolControls();loadActiveTool();
+    }};
+  }
+  function optionTapeHeaderFilters(tool){
+    let filters;try{filters=JSON.parse(getControl('tapeFilters')||'[]');}catch{throw Error('Invalid tape column filters.');}optionTapeFilterExpression(filters,tool.id);return filters;
+  }
+  function equityPrintHeaderFilters(){let filters;try{filters=JSON.parse(getControl('tapeFilters')||'[]');}catch{throw Error('Invalid equity column filters.');}equityPrintFilterExpression(filters);return filters;}
+  function equityPrintTableConfiguration(tool){
+    const sort=equityPrintSort({field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'});
+    return {headerMenu:true,inlineFilters:false,sortKey:sort.field,sortId:getControl('tapeSortColumn')||'time',sortDirection:sort.direction==='ASCENDING'?1:-1,headerFilters:equityPrintHeaderFilters(),onSortChange:selection=>{
+      if(activeTool!==tool)return;const next=equityPrintSort(selection.direction===null?null:selection);
+      const current=equityPrintSort({field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'});
+      const column=selection.direction===null?'time':selection.id||'time',same=next.field===current.field&&next.direction===current.direction;
+      setControl('tapeSortColumn',column);if(same){saveToolControls();return;}
+      setControl('tapeSortField',next.field);setControl('tapeSortDirection',next.direction);toolCursor=null;saveToolControls();loadActiveTool();
+    },onFilterChange:selection=>{
+      if(activeTool!==tool)return;const field=equityPrintField(selection.field??selection.key)?.field;if(!field)throw Error('Unsupported equity column filter.');
+      const previous=equityPrintHeaderFilters(),next=previous.filter(item=>equityPrintField(item.field??item.key)?.field!==field);
+      if(selection.operator!==null)next.push({...selection,field});equityPrintFilterExpression(next);if(JSON.stringify(previous)===JSON.stringify(next))return;
+      setControl('tapeFilters',JSON.stringify(next));toolCursor=null;saveToolControls();loadActiveTool({retainEquityEditor:true});
+    }};
+  }
+  function notificationHeaderFilters(){
+    let filters;try{filters=JSON.parse(getControl('tapeFilters')||'[]');}catch{throw Error('Invalid notification column filters.');}
+    notificationFilterExpression(filters);
+    const {page,global}=getFilterOverrides(),override=resolveFilterOverride({toolValue:null,pageValue:page.tickers,globalValue:global.tickers,isTicker:true});
+    for(const [control,field]of [['notificationType','TYPE'],['tickerOptional','TICKER']]){if(field==='TICKER'&&override.type!=='NONE')continue;const values=String(getControl(control)||'').split(/[,\s]+/).filter(Boolean);if(values.length&&!filters.some(item=>notificationField(item.field??item.key)?.field===field))filters.push({field,operator:'EQUALS',value:values});}
+    return filters;
+  }
+  function notificationTableConfiguration(tool){
+    const sort=notificationSort({field:getControl('tapeSortField')||'CREATED_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'});
+    return {headerMenu:true,inlineFilters:false,fillLastColumn:true,sortKey:sort.field,sortId:getControl('tapeSortColumn')||'createdTime',sortDirection:sort.direction==='ASCENDING'?1:-1,headerFilters:notificationHeaderFilters(),onSortChange:selection=>{
+      if(activeTool!==tool)return;const next=notificationSort(selection.direction===null?null:selection),current=notificationSort({field:getControl('tapeSortField')||'CREATED_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'});
+      setControl('tapeSortColumn',selection.direction===null?'createdTime':selection.id||'createdTime');
+      if(next.field===current.field&&next.direction===current.direction){saveToolControls();return;}
+      setControl('tapeSortField',next.field);setControl('tapeSortDirection',next.direction);toolCursor=null;saveToolControls();loadActiveTool({retainSortPage:true});
+    },onFilterChange:selection=>{
+      if(activeTool!==tool)return;const field=notificationField(selection.field??selection.key)?.field;if(!field)throw Error('Unsupported notification column filter.');
+      const previous=notificationHeaderFilters(),next=previous.filter(item=>notificationField(item.field??item.key)?.field!==field);
+      if(selection.operator!==null)next.push({...selection,field});notificationFilterExpression(next);if(JSON.stringify(previous)===JSON.stringify(next))return;
+      const control=field==='TYPE'?'notificationType':'tickerOptional';setControl(control,selection.operator===null?'':(Array.isArray(selection.value)?selection.value:[selection.value]).join(', '));
+      setControl('tapeFilters',JSON.stringify(next));toolCursor=null;saveToolControls();loadActiveTool({retainEquityEditor:true});
+    }};
+  }
+  async function loadNetDriftContractChoices(scope){
+    const expirationRequest=buildOptionExpirationChoicesRequest(scope),strikeRequest=scope.expiry?buildOptionStrikeChoicesRequest({...scope,expirationDate:scope.expiry}):null;
+    const expiration=loadContractChoicePayload('open-interest-by-expiration',expirationRequest);
+    if(!strikeRequest)return parseOpenInterestExpirationChoices(await expiration);
+    const strike=loadContractChoicePayload('open-interest-by-strike',strikeRequest);
+    const [expirationPayload,strikePayload]=await Promise.all([expiration,strike]);return mergeOptionContractChoices(parseOpenInterestExpirationChoices(expirationPayload),scope.expiry,strikePayload);
+  }
+  async function loadExposureStrikeChoices(scope){return parseOpenInterestStrikeChoices(await loadContractChoicePayload('open-interest-by-strike',buildOptionStrikeChoicesRequest(scope)));}
+  function syncNetDriftDisplayButtons(){
+    if(activeTool?.id!=='net-drift')return;
+    for(const button of qa('[data-drift-display]',q('#toolControls'))){const visible=getControl(button.dataset.driftDisplay)==='SHOW';button.setAttribute('aria-pressed',String(visible));button.title=(visible?'Hide ':'Show ')+button.dataset.displayLabel;button.setAttribute('aria-label',button.title);}
+  }
+  function matchesCurrentPayload(){try{return !!activeTool&&!!toolPayload&&toolPayloadQuery===dataRequestIdentity(activeTool.id,buildRequest(activeTool),snapshotSelections.get(snapshotKey(activeTool))??null);}catch{return false;}}
+  function showTermSelection(anchor,kind){
+    if(activeTool?.view!=='termStructure'||kind!=='delta'&&!matchesCurrentPayload())return;
+    popup(anchor,kind==='expiration'?'Expiration':kind==='strike'?'Strike Price':'Delta range',panel=>{
+      panel.classList.add('surface-selection-menu');
+      if(kind==='delta'){
+        for(const [id,label] of [['deltaMin','Minimum delta'],['deltaMax','Maximum delta']]){const row=element('label','control',label),number=document.createElement('input'),range=document.createElement('input');number.type='number';range.type='range';for(const input of [number,range]){input.min='0';input.max='1';input.step='.01';input.value=getControl(id);input.setAttribute('aria-label',label+(input===range?' slider':''));input.addEventListener('input',()=>{const value=Math.max(0,Math.min(1,Number(input.value))),other=Number(getControl(id==='deltaMin'?'deltaMax':'deltaMin')),bounded=id==='deltaMin'?Math.min(value,other):Math.max(value,other);number.value=range.value=String(bounded);setControl(id,String(bounded));anchor.textContent=`Delta (${getControl('deltaMin')} to ${getControl('deltaMax')}) ⌄`;onControlsChanged({target:q(`[data-control="${id}"]`,q('#toolControls'))});});}row.append(number,range);panel.append(row);}return;
+      }
+      let search='';
+      const draw=()=>{panel.replaceChildren();const state=termSelectionState(toolPayload,savedToolControls[activeTool.id]||{}),items=kind==='expiration'?state.expirations:state.strikes,key=kind==='expiration'?'termExpirations':'termStrikes',chosen=kind==='expiration'?state.selectedExpirations:state.selectedStrikes;
+        const apply=values=>{savedToolControls[activeTool.id]={...savedToolControls[activeTool.id],[key]:values};saveToolControls();renderToolPayload(activeTool,toolPayload);renderSnapshotControl(toolPayload);draw();};
+        const reset=element('button','',kind==='expiration'?'All expirations':'All strikes');reset.type='button';reset.addEventListener('click',()=>apply([]));panel.append(reset);
+        const searchInput=document.createElement('input');searchInput.className='surface-selection-search';searchInput.type='search';searchInput.placeholder=kind==='expiration'?'Search expirations':'Search strike prices';searchInput.setAttribute('aria-label',searchInput.placeholder);searchInput.value=search;searchInput.addEventListener('input',()=>{search=searchInput.value;draw();q('input[type="search"]',panel)?.focus();});panel.append(searchInput);
+        for(const value of items){const label=kind==='expiration'?new Date(value+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',year:'numeric',month:'short',day:'numeric'}):chartStrikeLabel(value);if(search&&!`${value} ${label}`.toLowerCase().includes(search.toLowerCase()))continue;const row=element('label','multi-choice-option'),input=document.createElement('input');input.type='checkbox';input.checked=chosen.includes(value);input.addEventListener('change',()=>apply(input.checked?[...new Set([...chosen,value])]:chosen.filter(item=>item!==value)));row.append(input,document.createTextNode(label));panel.append(row);}
+      };draw();
+    });
+  }
+  function showSkewSelection(anchor,kind){
+    if(activeTool?.view!=='volatilitySkew'||!matchesCurrentPayload())return;
+    popup(anchor,kind==='expiry'?'Expiration':'Contract type',panel=>{
+      panel.classList.add('surface-selection-menu');
+      const draw=()=>{
+        panel.replaceChildren();const controls=savedToolControls[activeTool.id]||{},state=skewVisibilityState(toolPayload,controls),allowed=kind==='expiry'?state.expiries:state.contractTypes,selected=kind==='expiry'?state.visibleExpiry:state.visibleContractType;
+        const apply=change=>{savedToolControls[activeTool.id]=setSkewVisibility(toolPayload,savedToolControls[activeTool.id]||{},change);saveToolControls();renderToolPayload(activeTool,toolPayload);renderSnapshotControl(toolPayload);draw();};
+        const choice=(value,label,checked)=>{const row=element('label','multi-choice-option'),input=document.createElement('input');input.type='checkbox';input.checked=checked;input.addEventListener('change',()=>apply({kind,value,checked:input.checked}));row.append(input,document.createTextNode(label));panel.append(row);};
+        choice('ALL','Select all',allowed.length>0&&selected.length===allowed.length);
+        for(const value of allowed)choice(value,kind==='expiry'?new Date(value+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',year:'numeric',month:'short',day:'numeric'}):value==='BOTH'?'Combined':value==='CALL'?'Calls':'Puts',selected.includes(value));
+        const reset=element('button','','Reset to defaults');reset.type='button';reset.addEventListener('click',()=>apply({reset:true}));panel.append(reset);
+      };draw();
+    });
   }
   window.addEventListener('pagehide',()=>{saveToolControls();try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}});
   function onControlsChanged(event) {
-    if(event?.target?.dataset.control==='sector')setControl('industry','');
+    if(['equity-prints','exchange-notifications'].includes(activeTool?.id)){toolCursor=null;q('#loadMore').hidden=true;}
+    if(activeTool?.id==='exchange-notifications'&&['notificationType','tickerOptional'].includes(event?.target?.dataset.control)){const field=event.target.dataset.control==='notificationType'?'TYPE':'TICKER';setControl('tapeFilters',JSON.stringify(notificationHeaderFilters().filter(item=>notificationField(item.field??item.key)?.field!==field)));}
+    if(activeTool?.id==='max-pain'&&event?.target?.dataset.control==='ticker'){
+      const ticker=event.target,value=getControl('ticker');
+      if(ticker.dataset.maxPainTicker!==undefined&&ticker.dataset.maxPainTicker!==value)setControl('expiry','');
+      ticker.dataset.maxPainTicker=value;
+    }
+    if(['order-flow-consolidated','order-flow-unconsolidated'].includes(activeTool?.id)){toolCursor=null;q('#loadMore').hidden=true;}
+    if(event?.target?.dataset.control==='sector'){setControl('industry','');if(activeTool?.id==='gainers-losers')q('[data-control="industry"]',q('#toolControls'))?.setChoices?.(gainersIndustryChoices(getControl('sector')));if(activeTool?.id==='market-map')q('[data-control="industry"]',q('#toolControls'))?.setChoices?.(marketMapIndustryChoices(marketMapIndustryInventory,getControl('sector')));}
+    if(activeTool?.id==='exposure-by-expiration'&&event?.target?.dataset.control==='ticker'){setControl('strike','');snapshotSelections.delete(snapshotKey(activeTool));}
+    if(activeTool?.id==='net-drift'){const key=event?.target?.dataset.control;if(key==='ticker'){setControl('expiry','');setControl('strike','');}else if(key==='expiry')setControl('strike','');}
+    if(['contract-statistics','contract-trade-side-statistics'].includes(activeTool?.id)&&event?.target?.dataset.control==='expiry')setControl('strike','');
+    if(activeTool?.id==='option-price-over-time'){
+      const key=event?.target?.dataset.control;
+      if(['ticker','expiry','strike','contractType'].includes(key))setControl('osi','');
+      if(key==='ticker'){setControl('expiry','');setControl('strike','');}else if(key==='expiry')setControl('strike','');
+      const type=q('[data-control="contractType"]',q('#toolControls')),strike=Number(getControl('strike'));if(type)type.disabled=!getControl('ticker')||!getControl('expiry')||!Number.isFinite(strike)||strike<=0;
+    }
     if(EMBEDDED&&event?.target?.dataset.control==='date'){setControl('mode',event.target.value?'historical':'latest');syncDateControl();}
+    const seriesOption=toolSeriesOptions(activeTool?.id).find(option=>option.control===event?.target?.dataset.control);
+    if(seriesOption){const controls={...savedToolControls[activeTool.id],...(activeTool.id==='net-drift'&&!currentNetDriftScope().eligible?{driftUnderlying:'HIDE'}:{})},next=setToolSeriesVisibility(activeTool.id,controls,seriesOption.id,event.target.value==='SHOW');setControl(seriesOption.control,next[seriesOption.control]??seriesOption.defaultValue);}
+    if(activeTool?.id==='gainers-losers')reflectFilterOverrides();
     saveToolControls();
+    commonSessionDateControls?.sync();netDriftContractControls?.sync();syncNetDriftDisplayButtons();
     if (event?.target?.dataset.control === "mode") syncDateControl();
     clearTimeout(onControlsChanged.timer);
+    if(toolPayload){let sameSelection=false;try{const request=buildRequest(activeTool);if(['order-flow-consolidated','order-flow-unconsolidated'].includes(activeTool.id))delete request.includeStatistics;sameSelection=toolPayloadQuery===dataRequestIdentity(activeTool.id,request,snapshotSelections.get(snapshotKey(activeTool))??null);}catch{/* Incomplete filters follow normal validation below. */}if(sameSelection){renderToolPayload(activeTool,toolPayload,{refresh:activeTool.view==='netDrift'});renderSnapshotControl(toolPayload);return;}}
     onControlsChanged.timer = setTimeout(() => loadActiveTool(), 180);
   }
 
@@ -756,7 +1076,7 @@ await boot();
     dashboard.hidden = true; toolView.hidden = false; openLibrary(false); location.hash = `tool=${tool.id}`;
     q("#toolGroup").textContent = tool.group.toUpperCase(); q("#toolTitle").textContent = tool.title; q("#toolDescription").textContent = tool.description;
     renderControls(tool); renderToolNav(q("#toolSearch").value);
-    const snapshot=Number(VIEW_PARAMETERS.get('snapshot'));if(VIEW_PARAMETERS.has('snapshot')&&Number.isFinite(snapshot)&&snapshot>946684800000&&snapshot<=Date.now()&&['heat-map','exposure-by-strike','exposure-by-expiration','market-map'].includes(tool.id)&&!snapshotSelections.has(snapshotKey(tool)))snapshotSelections.set(snapshotKey(tool),snapshot);
+    const snapshot=Number(VIEW_PARAMETERS.get('snapshot'));if(VIEW_PARAMETERS.has('snapshot')&&Number.isFinite(snapshot)&&snapshot>946684800000&&snapshot<=Date.now()&&['heat-map','exposure-by-strike','exposure-by-expiration','market-map','volatility-skew','term-structure'].includes(tool.id)&&!snapshotSelections.has(snapshotKey(tool)))snapshotSelections.set(snapshotKey(tool),snapshot);
     await loadActiveTool();
   }
 
@@ -778,6 +1098,7 @@ await boot();
     const ticker = String(getControl("ticker") || getControl("tickerOptional") || "").trim().toUpperCase();
     if (ticker) maybeFilter(body, tool.id === "market-share" || tool.id === "market-share-table" || tool.id === "gainers-losers" || tool.id === "exchange-notifications" ? "tickers" : "ticker", ticker, ["market-share", "market-share-table", "gainers-losers", "exchange-notifications"].includes(tool.id));
     const period = getControl("period"); if (period) body.aggregationPeriod = period;
+    if(tool.id==='dark-flow')body.aggregationPeriod='1m';
     const selections=id=>String(getControl(id)||'').split(/[,\s]+/).filter(Boolean);
     if (getControl("moneyType")) maybeFilter(body, "moneyTypes", selections('moneyType').map(value=>({ATM:'AT_THE_MONEY',ITM:'IN_THE_MONEY',OTM:'OUT_OF_THE_MONEY'}[value]||value)));
     if (getControl("tradeType")) maybeFilter(body, "tradeConsolidationTypes", selections('tradeType'));
@@ -787,32 +1108,62 @@ await boot();
     if (getControl("sector")) maybeFilter(body, "sectors", selections('sector'));
     if (getControl('industry')) maybeFilter(body,'industries',getControl('industry').split(',').map(value=>value.trim().toUpperCase().replaceAll(' ','_')).filter(Boolean));
     if (getControl("expiry")) maybeFilter(body, tool.id === "interval-map" || tool.id === "max-pain" || tool.id === "option-price-over-time" ? "expirationDate" : "expirationDates", getControl("expiry"), tool.id !== "interval-map" && tool.id !== "max-pain" && tool.id !== "option-price-over-time");
-    if (getControl("strike")) maybeFilter(body, tool.id === "option-price-over-time" ? "strikePrice" : "strikePrices", Number(getControl("strike")), tool.id !== "option-price-over-time");
+    if(getControl('strike')){
+      if(['net-drift','exposure-by-expiration','contract-statistics','contract-trade-side-statistics'].includes(tool.id)){const strikes=selections('strike').map(Number);if(!strikes.length||strikes.some(value=>!Number.isFinite(value)||value<=0))throw Error('Select valid strike prices.');maybeFilter(body,'strikePrices',[...new Set(strikes)],false);}
+      else maybeFilter(body,tool.id==='option-price-over-time'?'strikePrice':'strikePrices',Number(getControl('strike')),tool.id!=='option-price-over-time');
+    }
     if (getControl("minStrike")) maybeFilter(body, "minStrikePrice", Number(getControl("minStrike")));
     if (getControl("maxStrike")) maybeFilter(body, "maxStrikePrice", Number(getControl("maxStrike")));
-    if (tool.id === "dark-pool-levels") {delete body.sessionDate;body.sessionDateRange = { startDate: getControl("rangeStart"), endDate: getControl("rangeEnd") };}
+    if (tool.id === "dark-pool-levels") {const start=getControl('rangeStart')||getControl('rangeEnd')||body.sessionDate||apiStatus.market?.sessionDate||todayOffset(0),end=getControl('rangeEnd')||getControl('rangeStart')||start;delete body.sessionDate;body.sessionDateRange = { startDate:start, endDate:end };}
     if (tool.id.startsWith("exposure-by-")) { body.greekMode = getControl("greek"); body.representationMode = getControl("representation"); }
     if (tool.id === "interval-map") body.greekMode = getControl("greek");
     if (tool.id === "heat-map") body.dataMode = getControl("heatMetric");
     if (tool.id === "contract-trade-side-statistics") body.dataMode = getControl("sideMetric");
     if (tool.id === "iv-rank") {
       delete body.sessionDate; body.lookBackPeriod = Number(getControl("lookback")); body.maturity = Number(getControl("maturity"));
-      if (getControl("contractTypeOptional")) maybeFilter(body, "contractTypes", getControl("contractTypeOptional"), true);
+      if (getControl("contractTypeOptional")) maybeFilter(body, "contractTypes", selections('contractTypeOptional'));
     }
-    if (["equity-prints", "exchange-notifications", "order-flow-consolidated"].includes(tool.id)) body.size = 100;
+    if(tool.id==='open-interest-change'&&getControl('contractTypeOptional'))maybeFilter(body,'contractTypes',getControl('contractTypeOptional'),true);
+    if (["equity-prints", "exchange-notifications", "order-flow-consolidated","order-flow-unconsolidated"].includes(tool.id)) body.size = 100;
     if (tool.id === "order-flow-consolidated") { body.includeStatistics = true; body.includeComprisingTrades = true; }
     if (tool.id === "option-price-over-time") {
       const osi = getControl("osi").trim().toUpperCase();
+      if(!osi){
+        if(!ticker)throw Error('Please select a ticker.');
+        const expiry=getControl('expiry');if(!/^\d{4}-\d{2}-\d{2}$/.test(expiry)||!Number.isFinite(Date.parse(expiry+'T12:00:00Z'))||new Date(expiry+'T12:00:00Z').toISOString().slice(0,10)!==expiry)throw Error('Please select an expiration date.');
+        if(!getControl('strike')||!Number.isFinite(Number(getControl('strike')))||Number(getControl('strike'))<=0)throw Error('Please select a strike price.');
+        if(!['CALL','PUT'].includes(getControl('contractType')))throw Error('Please select a contract type.');
+      }
       body.filter = osi ? { osi } : { ticker, expirationDate: getControl("expiry"), strikePrice: Number(getControl("strike")), contractType: getControl("contractType") };
     }
     if (toolCursor) body.searchAfter = toolCursor;
     const override=getFilterOverrides(),tickerOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.tickers,globalValue:override.global.tickers,isTicker:true}),expiryOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.expirationDate,globalValue:override.global.expirationDate}),dateOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.sessionDate,globalValue:override.global.sessionDate});
-    if(tickerOverride.type!=='NONE'&&tool.id!=='market-map'){body.filter||={};delete body.filter.ticker;delete body.filter.tickers;const multiple=['market-share','market-share-table','gainers-losers','exchange-notifications','contract-statistics','contract-trade-side-statistics','net-drift','order-flow-consolidated','equity-prints'].includes(tool.id);body.filter[multiple?'tickers':'ticker']=multiple?tickerOverride.value:tickerOverride.value[0];}
-    if(expiryOverride.type!=='NONE'&&!['dark-flow','dark-pool-levels','equity-prints','exchange-notifications','stock-price-over-time','market-map','iv-rank','max-pain-over-time','exposure-forecast'].includes(tool.id)){body.filter||={};delete body.filter.expirationDate;delete body.filter.expirationDates;Object.assign(body.filter,expirationFilterForTool(tool.id,expiryOverride.value));}
+    if(tickerOverride.type!=='NONE'&&tool.id!=='market-map'){body.filter||={};delete body.filter.ticker;delete body.filter.tickers;const multiple=['market-share','market-share-table','gainers-losers','exchange-notifications','contract-statistics','contract-trade-side-statistics','net-drift','order-flow-consolidated','order-flow-unconsolidated','equity-prints','news-articles'].includes(tool.id);body.filter[multiple?'tickers':'ticker']=multiple?tickerOverride.value:tickerOverride.value[0];}
+    if(expiryOverride.type!=='NONE'&&!['dark-flow','dark-pool-levels','equity-prints','exchange-notifications','stock-price-over-time','market-map','iv-rank','max-pain-over-time','exposure-forecast','news-articles'].includes(tool.id)){body.filter||={};delete body.filter.expirationDate;delete body.filter.expirationDates;Object.assign(body.filter,expirationFilterForTool(tool.id,expiryOverride.value));}
     if(dateOverride.type!=='NONE'&&tool.id!=='iv-rank'){if(tool.id==='dark-pool-levels')body.sessionDateRange={startDate:dateOverride.value,endDate:dateOverride.value};else body.sessionDate=dateOverride.value;}
     const attached=FILTER_GROUP_TOOLS.has(tool.id)?getFilterGroups().filter(group=>(toolGroupIds[tool.id]||[]).includes(group.id)&&(group.type||'OPTION_TRADES_UNCONSOLIDATED')===filterGroupTypeForTool(tool.id)):[];if(attached.length)body.filterExpression=normalizeAPIExpression({conjunction:'AND',filters:attached.map(group=>group.expression)});
     if(tool.id==='option-price-over-time'&&body.filter?.osi){if(tickerOverride.type!=='NONE'||expiryOverride.type!=='NONE')throw Error('Clear page/global ticker and expiration overrides when selecting an exact OSI contract.');body.filter={osi:body.filter.osi};}
-    return body;
+    if(tool.id==='max-pain'){
+      if(!body.filter?.ticker)throw Error('Select an instrument and expiration to view Max Pain.');
+      if(!body.filter?.expirationDate)throw Error('Select an expiration to view Max Pain.');
+    }
+    const controls=Object.fromEntries(tool.controls.map(id=>[id,getControl(id)]));
+    if(['gainers-losers','equity-prints','exchange-notifications','market-share','market-share-table'].includes(tool.id)&&!masterReplay&&dateOverride.type==='NONE'&&(getControl('tapeSessionStart')||getControl('tapeSessionEnd'))){
+      delete body.sessionDate;delete body.timeRange;
+      Object.assign(body,optionTapeSessionRange({startDate:getControl('tapeSessionStart'),endDate:getControl('tapeSessionEnd')}));
+    }
+    if(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)){
+      if(!masterReplay&&dateOverride.type==='NONE'&&(getControl('tapeSessionStart')||getControl('tapeSessionEnd'))){delete body.sessionDate;delete body.timeRange;Object.assign(body,optionTapeSessionRange({startDate:getControl('tapeSessionStart'),endDate:getControl('tapeSessionEnd')}));}
+      return additionalToolRequest(tool.id,controls,optionTapeRequest(tool.id,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:optionTapeHeaderFilters(tool)},body));
+    }
+    if(tool.id==='equity-prints')return equityPrintRequest(body,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:equityPrintHeaderFilters()});
+    if(tool.id==='exchange-notifications')return notificationRequest(body,{sort:{field:getControl('tapeSortField')||'CREATED_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:notificationHeaderFilters(),preserveTickerFilter:tickerOverride.type!=='NONE'});
+    if(tool.id==='news-articles')return newsFeedRequest({...controls,...(dateOverride.type!=='NONE'?{mode:'historical'}:{})},body,{timeZone:gexTimeZone()});
+    // Keep the complete chain for the reference's local, reversible expiry,
+    // strike, moneyness and signed-delta selections. Never hide valid choices
+    // by asking for only the currently selected moneyness upstream.
+    if(tool.id==='term-structure')return additionalToolRequest(tool.id,{...controls,moneyType:''},body);
+    return additionalToolRequest(tool.id,controls,body);
   }
 
   async function toolFetch(endpoint, body, signal = activeController?.signal) {
@@ -822,52 +1173,32 @@ await boot();
     return payload;
   }
 
-  function openTradeDetail({title,preview,filter,timeRange,individual=false}){
+  function openTradeDetail({title,preview,filter,timeRange,individual=false,requestOverride,heatCell}){
     const current=activeTool,base=buildRequest(current);let request={...requestBase(),filter:{...base.filter,...filter},...(base.filterExpression?{filterExpression:base.filterExpression}:{}),sort:{field:'PREMIUM',direction:'DESCENDING'},size:100,includeComprisingTrades:true};
     if(timeRange){delete request.sessionDate;request.timeRange=timeRange;}
-    if(individual)request=optionTradeDetailRequest({base,filter,timeRange});
+    if(individual&&!requestOverride)request=optionTradeDetailRequest({base,filter,timeRange});
+    if(requestOverride)request=structuredClone(requestOverride);
     showDataDialog(title,dialog=>{
+      if(heatCell){
+        dialog.classList.add('trade-detail-dialog');dialog.append(element('p','',preview));
+        const chartHost=element('div'),status=element('div','workspace-note'),wrap=element('div','trade-detail-scroll table-scroll'),table=document.createElement('table'),more=element('button','','Load next 100');more.type='button';more.hidden=true;wrap.style.maxHeight='35vh';wrap.append(table);dialog.append(chartHost,element('h4','','Cell Trades'),status,wrap,more);
+        const controller=new AbortController(),view=createTableView({table,maxRows:1000,inlineFilters:false});let closed=false,busy=false,rows=[],cursor;
+        const chart=mountHeatCellDetailView({host:chartHost,selection:heatCell,fetchPage:(body,signal)=>toolFetch('heat-map-history',body,signal),formatTime:displayChartTime,formatValue:heatCell.formatValue||compact,themePaint,...(heatCell.request.snapshotTime?{throughMs:Date.parse(heatCell.request.snapshotTime)}:{})});
+        const load=async()=>{if(closed||busy)return;busy=true;more.disabled=true;status.textContent=rows.length?`${rows.length} option trades`:'Loading trades…';try{const response=await toolFetch(OPTION_TRADE_DETAIL_ENDPOINT,{...request,...(cursor?{searchAfter:cursor}:{})},controller.signal);if(closed)return;rows=mergeOptionTapeRows(rows,unconsolidatedTradeRows(response));cursor=optionTapeCursor(response);view.setRows(rows,{columns:UNCONSOLIDATED_COLUMNS,toolId:'detail',...optionTradeDetailTableSort(request)});status.textContent=`${rows.length} option trades`;more.hidden=!cursor;}catch(error){if(!closed)status.textContent=error.message;}finally{busy=false;if(!closed)more.disabled=false;}};
+        more.addEventListener('click',load);dialog.addEventListener('close',()=>{if(closed)return;closed=true;controller.abort();chart.destroy();view.destroy();more.removeEventListener('click',load);});void load();return;
+      }
       dialog.classList.add('trade-detail-dialog');dialog.append(element('p','',preview));const status=element('div','workspace-note'),wrap=element('div','trade-detail-scroll'),table=document.createElement('table'),more=element('button','','Load next 100');showWorkspaceLoading(status,'Loading trades');more.type='button';more.hidden=true;wrap.append(table);dialog.append(status,wrap,more);let rows=[],cursor;
       const view=createTableView({table,maxRows:1000});
-      const load=async()=>{more.disabled=true;try{const response=await toolFetch(individual?OPTION_TRADE_DETAIL_ENDPOINT:'order-flow-consolidated',{...request,...(cursor?{searchAfter:cursor}:{})});rows.push(...(individual?unconsolidatedTradeRows(response):response.data||[]));cursor=response.nextSearchAfter;view.setRows(rows,{columns:individual?UNCONSOLIDATED_COLUMNS:CONSOLIDATED_COLUMNS,toolId:'detail',sortKey:'premium'});status.textContent=`${rows.length} actual ${individual?'individual prints':'trades'} · largest premium first · values are not inferred from chart buckets`;more.hidden=!cursor;}catch(error){status.textContent=error.message;}finally{more.disabled=false;}};more.addEventListener('click',load);dialog.addEventListener('close',()=>view.destroy());load();
+      const load=async()=>{more.disabled=true;try{const response=await toolFetch(individual?OPTION_TRADE_DETAIL_ENDPOINT:'order-flow-consolidated',{...request,...(cursor?{searchAfter:cursor}:{})});rows.push(...(individual?unconsolidatedTradeRows(response):response.data||[]));cursor=response.nextSearchAfter;view.setRows(rows,{columns:individual?UNCONSOLIDATED_COLUMNS:CONSOLIDATED_COLUMNS,toolId:'detail',...optionTradeDetailTableSort(request)});status.textContent=`${rows.length} ${individual?'option trades':'trades'}`;more.hidden=!cursor;}catch(error){status.textContent=error.message;}finally{more.disabled=false;}};more.addEventListener('click',load);dialog.addEventListener('close',()=>view.destroy());load();
     });
   }
-
-  async function discoverContract(body) {
-    const ticker = String(body.filter?.ticker || getControl("ticker") || "QQQ").toUpperCase();
-    const contractFilter={ticker,...(getControl('expiry')?{expirationDates:[getControl('expiry')]}:{}),...(getControl('strike')?{strikePrices:[Number(getControl('strike'))]}:{}),...(getControl('contractType')?{contractTypes:[getControl('contractType')]}:{})};
-    const discovery = await toolFetch("order-flow-consolidated", { ...requestBase(), filter: contractFilter, size: 1 });
-    const row = discovery.data?.[0];
-    if (!row) throw new Error(`No recent ${ticker} option contract is available. Enter an OSI or contract fields.`);
-    if(row.contractType)setControl("contractType",row.contractType);
-    if(row.expirationDate)setControl("expiry",row.expirationDate);
-    if(row.strikePrice!=null)setControl("strike",row.strikePrice);
-    const osi = row.osi || row.optionSymbol || row.contractSymbol;
-    if (osi) { setControl("osi", osi); return { ...body, filter: { osi } }; }
-    const filter = { ticker, expirationDate: row.expirationDate, strikePrice: row.strikePrice, contractType: row.contractType };
-    if (!filter.expirationDate || !Number.isFinite(Number(filter.strikePrice)) || !filter.contractType) throw new Error("The latest flow row did not include a complete contract identifier.");
-    setControl("expiry", filter.expirationDate); setControl("strike", filter.strikePrice); setControl("contractType", filter.contractType);
-    return { ...body, filter };
-  }
-
-  async function discoverExpiration(body) {
-    const ticker = String(getControl("ticker") || "QQQ").toUpperCase();
-    const response = await toolFetch("exposure-by-strike", { ...requestBase(), greekMode: "GAMMA", representationMode: "RAW", filter: { ticker } });
-    const map = response.data?.[ticker]?.exposureMap || response.data?.exposureMap || {};
-    const expirationDate = Object.keys(map).sort()[0];
-    if (!expirationDate) throw new Error(`No expiration is available for ${ticker} in this session.`);
-    setControl("expiry", expirationDate); return { ...body, filter: { ...(body.filter || {}), ticker, expirationDate } };
-  }
-
 
   async function loadToolPayload(tool) {
     if (tool.view === "forecast") return {unavailable:true};
     let body = buildRequest(tool);
     const effectiveSessionDate=body.sessionDate||apiStatus.market?.optionsSessionDate;
-    const snapshotTools=["heat-map","exposure-by-strike","exposure-by-expiration","market-map"],snapshotTime=snapshotTools.includes(tool.id)?snapshotSelections.get(snapshotKey(tool)):null;
+    const snapshotTools=["heat-map","exposure-by-strike","exposure-by-expiration","market-map","volatility-skew","term-structure"],snapshotTime=snapshotTools.includes(tool.id)?snapshotSelections.get(snapshotKey(tool)):null;
     if(snapshotTime){delete body.sessionDate;body.snapshotTime=new Date(completedMinuteSnapshot(snapshotTime)).toISOString();}
-    if (tool.id === "option-price-over-time" && !getControl("osi") && (!getControl("expiry") || !getControl("strike"))) body = await discoverContract(body);
-    if (tool.id === "max-pain" && !getControl("expiry")) body = await discoverExpiration(body);
     if(snapshotTools.includes(tool.id)){
       // A missing auxiliary price history must not discard genuine primary
       // exposure/map data. Do not invent a spot or replay timeline in its place.
@@ -893,10 +1224,10 @@ await boot();
   }
 
   function updateInitialToolLoading(busy){const target=q('#initialToolLoading');target.hidden=!busy;if(busy)showWorkspaceLoading(target,'Loading '+(activeTool?.title||'GEX DATA'));}
-  async function loadActiveTool({append=false}={}) {
+  async function loadActiveTool({append=false,retainSortPage=false,retainEquityEditor=false}={}) {
     if(!activeTool||window.__gexDataActive===false||!frameVisible)return;
     if(masterReplay){
-      if(!['heat-map','exposure-by-strike','exposure-by-expiration','market-map'].includes(activeTool.id))return;
+      if(!['heat-map','exposure-by-strike','exposure-by-expiration','market-map','volatility-skew','term-structure'].includes(activeTool.id))return;
       // Provider marks a minute snapshot at its END, never request the minute
       // containing the clock (which would expose the following 60 seconds).
       snapshotSelections.set(snapshotKey(activeTool),Math.floor(masterReplay.timestampMs/60000)*60000-60000);
@@ -904,37 +1235,56 @@ await boot();
     const tool=activeTool,requestId=++toolRequestId;
     if(!append)toolCursor=null;
     clearTimeout(pollTimer);pollTimer=null;activeController?.abort();activeController=new AbortController();
+    toolRequestInFlight=true;
+    q('#loadMore').disabled=true;
+    lastToolAttemptAt=Date.now();
     // Keep the existing chart/table usable during both automatic and manual
     // refreshes. Network activity must not cover it with a loading screen.
     toolView.setAttribute("aria-busy","true");q("#toolError").hidden=true;
     updateInitialToolLoading(!toolPayload&&!append);
+    let requestPrepared=false;
     try{
-      const query=dataRequestIdentity(tool.id,buildRequest(tool),snapshotSelections.get(snapshotKey(tool))??null);
+      const request=buildRequest(tool),snapshot=snapshotSelections.get(snapshotKey(tool))??null,identityRequest={...request};
+      if(['equity-prints','exchange-notifications'].includes(tool.id))delete identityRequest.searchAfter;
+      // Statistics inclusion changes response metadata, never the tape selection.
+      if(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id))delete identityRequest.includeStatistics;
+      const query=dataRequestIdentity(tool.id,identityRequest,snapshot);
+      requestPrepared=true;
+      // Retain a table only for a sort-only request of the SAME data selection.
+      // A ticker, filter, session or snapshot change must clear the old view.
+      let sortOnlyRefresh=false;
+      if(retainSortPage&&(tool.view==='oiChange'||['order-flow-consolidated','order-flow-unconsolidated','exchange-notifications'].includes(tool.id))&&toolPayloadQuery){try{const [id,previous,pin]=JSON.parse(toolPayloadQuery),next={...request};delete previous.sort;delete next.sort;if(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)){delete previous.includeStatistics;delete next.includeStatistics;}sortOnlyRefresh=id===tool.id&&dataRequestIdentity(id,previous,pin)===dataRequestIdentity(tool.id,next,snapshot);}catch{}}
       // Refreshes keep the SAME instrument/session visible. A failed new
       // selection must never leave another ticker's chart beneath its controls.
-      if(!append&&toolPayloadQuery!==query){toolPayload=null;resetStage();q('#toolUpdated').textContent='';updateInitialToolLoading(true);}
+      if(!append&&toolPayloadQuery!==query&&!sortOnlyRefresh&&!(retainEquityEditor&&['equity-prints','exchange-notifications'].includes(tool.id))){toolPayload=null;toolPayloadQuery=null;resetStage();q('#toolUpdated').textContent='';updateInitialToolLoading(true);}
       const payload=await loadToolPayload(tool);
       if(requestId!==toolRequestId||activeTool!==tool)return;
       if(append&&Array.isArray(payload.data)){
-        payload.data=[...tableRows,...payload.data];
+        payload.data=['order-flow-consolidated','order-flow-unconsolidated','equity-prints','exchange-notifications'].includes(tool.id)?mergeOptionTapeRows(tableRows,payload.data):[...tableRows,...payload.data];
         // The licensed flow endpoint only includes aggregate statistics on page1.
         // Pagination must retain that session/filter aggregate, not infer totals
         // from the currently loaded subset or remove its header.
-        if(payload.statistics==null&&toolPayload?.statistics!=null)payload.statistics=toolPayload.statistics;
+        if(toolPayload?.statistics!=null&&(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)||payload.statistics==null))payload.statistics=toolPayload.statistics;
       }
-      toolPayload=payload;toolPayloadQuery=query;toolCursor=payload.nextSearchAfter||null;renderToolPayload(tool,payload,{refresh:true});renderSnapshotControl(payload);
+      const nextCursor=tool.id==='equity-prints'?equityPrintCursor(payload):tool.id==='exchange-notifications'?notificationCursor(payload):['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)?optionTapeCursor(payload):payload.nextSearchAfter||null;
+      if(['equity-prints','exchange-notifications'].includes(tool.id)&&!append)equityPageGeneration++;
+      toolPayload=payload;toolPayloadQuery=query;toolCursor=nextCursor;renderToolPayload(tool,payload,{refresh:true,append});renderSnapshotControl(payload);
+      lastToolSuccessAt=Date.now();
       updateToolTimestamp(tool,payload);
       saveToolControls();updateLiveState();
     }catch(error){
-      if(requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){q("#toolError").textContent=error.message;q("#toolError").hidden=false;updateLiveState();if(EMBEDDED)parent.postMessage({type:'gex-data-status',failed:true,message:error.message},location.origin);}
+      if(!requestPrepared&&requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){
+        toolPayload=null;toolPayloadQuery=null;toolCursor=null;resetStage();q('#toolUpdated').textContent='';
+      }
+      if(requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){q("#toolError").textContent=error.message;q("#toolError").hidden=false;if(append&&['equity-prints','exchange-notifications'].includes(tool.id)&&toolCursor)q('#loadMore').hidden=false;updateLiveState();if(EMBEDDED)parent.postMessage({type:'gex-data-status',failed:true,message:error.message},location.origin);}
     }finally{
-      if(requestId===toolRequestId&&activeTool===tool){updateInitialToolLoading(false);toolView.setAttribute("aria-busy","false");schedulePoll();}
+      if(requestId===toolRequestId&&activeTool===tool){toolRequestInFlight=false;q('#loadMore').disabled=false;updateInitialToolLoading(false);toolView.setAttribute("aria-busy","false");schedulePoll();}
     }
   }
 
   function updateToolTimestamp(tool,payload) {
     const pinned=snapshotSelections.get(snapshotKey(tool));
-    const stateLabel=pinned?`completed-minute snapshot ${new Date(completedMinuteSnapshot(pinned)).toLocaleString('en-US',{timeZone:gexTimeZone()})}`:getControl("mode")==="historical"?"snapshot "+getControl("date"):apiStatus.market?.open?"live session":"latest EOD";
+    const stateLabel=pinned?`completed-minute snapshot ${new Date(completedMinuteSnapshot(pinned)).toLocaleString('en-US',{timeZone:gexTimeZone()})}`:getControl("mode")==="historical"?"snapshot "+getControl("date"):tool.group==='News'?'Latest news':apiStatus.market?.open?"live session":"latest EOD";
     const fetched=payload._gexData?.gatewayFetchedAt;
     q("#toolUpdated").textContent=`${fetched?'Retrieved '+new Date(fetched).toLocaleTimeString('en-US',{timeZone:gexTimeZone()}):'Source time unavailable'} · ${tool.id==='iv-rank'?'Rolling series':payload._gexData?.requestedSessionDate||stateLabel}`;
   }
@@ -947,15 +1297,27 @@ await boot();
 
   function schedulePoll() {
     if(masterReplay){clearTimeout(pollTimer);pollTimer=null;return;}
-    let requestedDate;try{const request=activeTool?buildRequest(activeTool):{};requestedDate=request.sessionDate??request.sessionDateRange?.endDate??request.sessionDateRange?.startDate;}catch{clearTimeout(pollTimer);pollTimer=null;return;}
+    let requestedDate;try{const request=activeTool?buildRequest(activeTool):{};if(activeTool?.group==='News'&&request.timeRange){clearTimeout(pollTimer);pollTimer=null;return;}requestedDate=request.sessionDate??request.sessionDateRange?.endDate??request.sessionDateRange?.startDate;}catch{clearTimeout(pollTimer);pollTimer=null;return;}
     const currentDate=activeTool?.group==='Equities'?apiStatus.market?.sessionDate:(apiStatus.market?.optionsSessionDate||apiStatus.market?.sessionDate);
     if (!activeTool || !frameVisible || window.__gexDataActive===false || document.hidden || getControl("mode") === "historical" || (requestedDate&&currentDate&&requestedDate<currentDate) || snapshotSelections.has(snapshotKey(activeTool)) || !toolMarketOpen()) {clearTimeout(pollTimer);pollTimer=null;return;}
+    if(toolRequestInFlight&&!activeController?.signal.aborted)return;
     if(pollTimer!==null)return;
     pollTimer = setTimeout(() => {pollTimer=null;loadActiveTool();}, Math.max(30000,activeTool.liveMs));
   }
-  function toolMarketOpen(){return Boolean(activeTool?.group==='Equities'?apiStatus.market?.equitiesOpen:apiStatus.market?.optionsOpen??apiStatus.market?.open);}
+  function refreshResumedTool() {
+    if(!activeTool||!frameVisible||window.__gexDataActive===false||document.hidden)return;
+    if(toolRequestInFlight&&!activeController?.signal.aborted)return;
+    if(!toolPayload){loadActiveTool();return;}
+    let requestedDate;try{const request=buildRequest(activeTool);if(activeTool.group==='News'&&request.timeRange){schedulePoll();return;}requestedDate=request.sessionDate??request.sessionDateRange?.endDate??request.sessionDateRange?.startDate;}catch{return;}
+    const currentDate=activeTool.group==='Equities'?apiStatus.market?.sessionDate:(apiStatus.market?.optionsSessionDate||apiStatus.market?.sessionDate);
+    const interval=Math.max(30000,activeTool.liveMs),stale=Date.now()-lastToolSuccessAt>=interval,retryReady=activeController?.signal.aborted||Date.now()-lastToolAttemptAt>=interval;
+    if(!masterReplay&&getControl('mode')!=='historical'&&!(requestedDate&&currentDate&&requestedDate<currentDate)&&!snapshotSelections.has(snapshotKey(activeTool))&&toolMarketOpen()&&stale&&retryReady)loadActiveTool();
+    else schedulePoll();
+  }
+  function toolMarketOpen(){return activeTool?.group==='News'||Boolean(activeTool?.group==='Equities'?apiStatus.market?.equitiesOpen:apiStatus.market?.optionsOpen??apiStatus.market?.open);}
 
   function renderSnapshotControl(payload){
+    q('.snapshot-control',q('#toolVisual'))?.remove();
     const timeline=payload._timeline;if(!timeline?.length)return;
     const holder=element("div","snapshot-control"),label=element("b","","Time"),range=document.createElement("input"),output=element("output"),timeSelect=document.createElement('select');timeSelect.className='snapshot-time-select';timeSelect.setAttribute('aria-label','Snapshot time');for(const [value,text]of snapshotTimeOptions(timeline,displayChartTime))timeSelect.add(new Option(text,value));range.type="range";range.min="0";range.max=String(timeline.length-1);range.step="1";range.setAttribute("aria-label","One-minute exposure snapshot");
     range.setAttribute('aria-label','One-minute session snapshot');let selected=timeline.findIndex(time=>time===payload._snapshotTime);if(selected<0)selected=timeline.length-1;range.value=timeSelect.value=String(selected);output.textContent=displayChartTime(timeline[selected]);
@@ -965,7 +1327,9 @@ await boot();
   }
 
   function resetStage() {
+    tableRuntime?.closeAutoFilter?.();
     activeChartUpdate=null;
+    activeChartInstance=null;refreshingCanvas=null;
     activeChartDispose?.();activeChartDispose=null;
     tableColumns=null;
     q(".flow-statistics")?.remove();
@@ -1096,13 +1460,31 @@ await boot();
   function quantLegend(items) {
     const legend = element("div", "quant-legend");
     for (const item of items) {
-      const entry = element("span");
+      const entry = element(item.onClick?"button":"span");
+      if(item.onClick){entry.type='button';entry.className='quant-legend-toggle';entry.setAttribute('aria-pressed',String(item.visible!==false));entry.addEventListener('click',item.onClick);}
       const dot = element("i"); dot.style.background = item.color;
       entry.append(dot, document.createTextNode(item.label));
       if (item.value != null) entry.append(element("b", "", `(${item.value})`));
       legend.append(entry);
     }
     return legend;
+  }
+
+  function chartTooltipRow(row,index) {
+    if(row?.separator===true)return element('hr','chart-tooltip-divider');
+    if(row&&Array.isArray(row.columns)){
+      const grid=element('div','chart-tooltip-ohlc-grid');grid.style.gridTemplateColumns=`repeat(${row.columns.length}, max-content)`;
+      for(const [index,rows] of row.columns.entries()){const column=element('div','chart-tooltip-ohlc-column');if(row.columnAlignments?.[index]==='right')column.style.textAlign='right';for(const item of rows)column.append(chartTooltipRow(item,1));grid.append(column);}
+      return grid;
+    }
+    const structured=row&&typeof row==='object'&&Array.isArray(row.parts),node=element(index?'div':'b','',structured?'':row);
+    if(structured)for(const part of row.parts){
+      const span=element('span','',String(part.text??''));
+      if(part.tone==='bullish')span.style.color=CHART_COLORS.call;
+      else if(part.tone==='bearish')span.style.color=CHART_COLORS.put;
+      node.append(span);
+    }
+    return node;
   }
 
   function quantGrid(ctx, left, top, right, bottom, columns = 6, rows = 6) {
@@ -1130,7 +1512,8 @@ await boot();
     const pad = (max - min) * padding; return [min - pad, max + pad];
   }
 
-  function quantCanvas({title,legend=[],items=[],draw,tooltipRows,navigatorValues=[],zoom=true,height=540,plotLeft=78,plotRight=78,timeScale=false,timePadding=false,twoDimensional=false,initialWindow=null,verticalValues=[],onClick=null,zoomAxis='x'}) {
+  function quantCanvas({title,legend=[],items=[],draw,tooltipRows,navigatorValues=[],zoom=true,height=540,plotLeft=78,plotRight=78,timeScale=false,timePadding=false,twoDimensional=false,initialWindow=null,verticalValues=[],onClick=null,zoomAxis='x',navigationDomains=null}) {
+    if(refreshingCanvas){const previous=refreshingCanvas;refreshingCanvas=null;if(previous.replace(arguments[0])){q('#chartToolbar').hidden=true;return previous;}resetStage();}
     showVisual();const holder=q("#toolVisual");holder.replaceChildren();q("#chartToolbar").hidden=true;
     const shell=element("div","quant-chart-shell"),head=element("div","quant-chart-head"),heading=element("h2","",title);
     head.append(heading,quantLegend(legend));const plot=element("div","quant-chart-plot"),canvas=element("canvas","tool-chart quant-detail-chart");
@@ -1138,19 +1521,51 @@ await boot();
     const tooltip=element("div","chart-tooltip");tooltip.hidden=true;plot.append(canvas,tooltip);shell.append(head,plot);
     const nav=element("div","quant-navigator"),mini=element("canvas"),startRange=document.createElement("input"),endRange=document.createElement("input");
     const state={start:0,end:Math.max(0,items.length-1),hover:null,pointerY:0,dragX:null,dragY:null,dragStart:null,yWindow:[0,1],panning:false};
+    // Opt-in sizing runs only after the actual canvas has a positive layout.
+    // Static windows used by every other chart retain their existing contract.
+    let initialWindowResolver=typeof initialWindow==='function'?initialWindow:null,initialWindowPending=!!initialWindowResolver,preserveRememberedWindow=false,initialActivationPending=!!initialWindowResolver;
+    if(initialWindowResolver)initialWindow=null;
     if(initialWindow){state.start=initialWindow.start??state.start;state.end=initialWindow.end??state.end;state.yWindow=initialWindow.yWindow??state.yWindow;}
     const windowQuery=JSON.stringify(buildRequest(activeTool)),remembered=chartWindows.get(activeTool?.id);
-    if(remembered?.query===windowQuery&&remembered.length<=items.length&&(!timeScale||remembered.times?.every((time,index)=>time===items[index]?.time))){
-      Object.assign(state,liveChartWindow(remembered,remembered.length,items.length));state.yWindow=[...remembered.yWindow];
+    // Heat Map axes can swap or acquire a different metric inventory. Restore
+    // observed expiry/strike values, never another axis's ordinal/fraction.
+    // Legacy untagged windows are deliberately not guessed for this opt-in.
+    const restoredDomain=navigationDomains?restoreNavigationWindow(remembered?.navigation):null;
+    if(restoredDomain){Object.assign(state,restoredDomain);preserveRememberedWindow=true;}
+    else if(!navigationDomains&&remembered?.query===windowQuery&&remembered.length<=items.length&&(!timeScale||remembered.times?.every((time,index)=>time===items[index]?.time))){
+      Object.assign(state,liveChartWindow(remembered,remembered.length,items.length));state.yWindow=[...remembered.yWindow];preserveRememberedWindow=true;
+    }
+    function captureNavigationWindow(){
+      if(!navigationDomains)return null;
+      const capture=(axis,start,end)=>{if(!axis?.id||!axis.values?.length)return null;const last=axis.values.length-1,index=value=>Math.max(0,Math.min(last,Math.round(value)));return {id:axis.id,startValue:axis.values[index(start)],endValue:axis.values[index(end)]};};
+      const horizontal=capture(navigationDomains.horizontal,state.start,state.end),last=Math.max(1,(navigationDomains.vertical?.values.length??0)-1),vertical=capture(navigationDomains.vertical,state.yWindow[0]*last,state.yWindow[1]*last);
+      return horizontal&&vertical?{scope:navigationDomains.scope,axes:[horizontal,vertical]}:null;
+    }
+    function restoreNavigationWindow(saved,domains=navigationDomains){
+      if(!saved||!domains||saved.scope!==domains.scope||!Array.isArray(saved.axes))return null;
+      const coordinate=value=>typeof value==='number'?value:typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)?Date.parse(value+'T12:00:00Z'):NaN;
+      const nearest=(values,value)=>{const exact=values.indexOf(value);if(exact>=0)return exact;const target=coordinate(value);if(!Number.isFinite(target))return -1;let index=-1,distance=Infinity;for(let i=0;i<values.length;i++){const candidate=Math.abs(coordinate(values[i])-target);if(candidate<distance){index=i;distance=candidate;}}return index;};
+      const restore=axis=>{const previous=saved.axes.find(value=>value?.id===axis?.id);if(!previous||!axis?.values?.length)return null;const first=nearest(axis.values,previous.startValue),last=nearest(axis.values,previous.endValue);return first<0||last<0?null:[Math.min(first,last),Math.max(first,last)];};
+      const horizontal=restore(domains.horizontal),vertical=restore(domains.vertical),last=Math.max(1,(domains.vertical?.values.length??0)-1);
+      return horizontal&&vertical?{start:horizontal[0],end:horizontal[1],yWindow:vertical.map(index=>index/last)}:null;
+    }
+    function sameNavigationAxes(previous,next){
+      if(!previous||!next)return previous===next;
+      return previous.scope===next.scope&&['horizontal','vertical'].every(key=>previous[key]?.id===next[key]?.id&&previous[key]?.values?.length===next[key]?.values?.length&&previous[key].values.every((value,index)=>value===next[key].values[index]));
     }
     for(const [input,label] of [[startRange,"Chart window start"],[endRange,"Chart window end"]]){input.type="range";input.min="0";input.max=String(Math.max(0,items.length-1));input.step="1";input.setAttribute("aria-label",label);}
     startRange.className="navigator-start";endRange.className="navigator-end";
     if(zoom&&items.length>1){nav.append(mini,startRange,endRange);shell.append(nav);if(zoomAxis==='y'){nav.classList.add('category-vertical-navigator');shell.classList.add('category-vertical-chart');}}
     const vertical=element("div","quant-vertical-navigator"),verticalMini=element("canvas"),lowRange=document.createElement("input"),highRange=document.createElement("input");
     if(twoDimensional){shell.classList.add("two-dimensional-chart");for(const [input,label] of [[lowRange,"Chart vertical window start"],[highRange,"Chart vertical window end"]]){input.type="range";input.min="0";input.max="1000";input.step="1";input.setAttribute("aria-label",label);}vertical.append(verticalMini,lowRange,highRange);plot.append(vertical);}
-    holder.append(shell);let disposed=false,horizontalNavigation,verticalNavigation,windowSaveTimer,resetAnimation;
+    holder.append(shell);let disposed=false,horizontalNavigation,verticalNavigation,windowSaveTimer,resetAnimation,initialActivationFrame,initialDomainRemembered=false;
     const syncRanges=()=>{startRange.value=String(state.start);endRange.value=String(state.end);lowRange.value=String(Math.round(state.yWindow[0]*1000));highRange.value=String(Math.round(state.yWindow[1]*1000));horizontalNavigation?.sync();verticalNavigation?.sync();};
-    function remember(){if(activeTool)chartWindows.set(activeTool.id,{query:windowQuery,times:timeScale?items.map(row=>row.time):undefined,start:state.start,end:state.end,yWindow:[...state.yWindow],length:items.length});clearTimeout(windowSaveTimer);windowSaveTimer=setTimeout(()=>{try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}},300);syncRanges();}
+    function resolveInitialViewport(width,height,apply=false){
+      if(!initialWindowResolver||width<=0||height<=0)return;
+      initialWindow=initialWindowResolver({width,height})??null;initialWindowPending=false;
+      if(apply&&!preserveRememberedWindow&&initialWindow){state.start=initialWindow.start??state.start;state.end=initialWindow.end??state.end;state.yWindow=initialWindow.yWindow??state.yWindow;syncRanges();}
+    }
+    function remember(){if(initialActivationPending||initialWindowResolver&&initialWindowPending)return;if(activeTool)chartWindows.set(activeTool.id,{query:windowQuery,times:timeScale?items.map(row=>row.time):undefined,start:state.start,end:state.end,yWindow:[...state.yWindow],length:items.length,...(navigationDomains?{navigation:captureNavigationWindow()}:{})});clearTimeout(windowSaveTimer);windowSaveTimer=setTimeout(()=>{try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}},300);syncRanges();}
     function drawNavigator(){
       if(!mini.isConnected)return;
       const {ctx,width:w,height:h}=canvasContext(mini);ctx.clearRect(0,0,w,h);
@@ -1163,12 +1578,20 @@ await boot();
       ctx.fillStyle=themePaint("#FFFFFF");ctx.fillRect(Math.max(0,startX-2),0,4,h);ctx.fillRect(Math.min(w-4,endX-2),0,4,h);
     }
     function drawVertical(){if(!verticalMini.isConnected)return;const {ctx,width:w,height:h}=canvasContext(verticalMini);ctx.clearRect(0,0,w,h);const valueOf=item=>typeof item==="number"?item:item.value,maximum=Math.max(1,...verticalValues.map(item=>Math.abs(valueOf(item))));ctx.beginPath();verticalValues.forEach((item,index)=>{const x=Math.abs(valueOf(item))/maximum*w,y=h-(typeof item==="number"?index/Math.max(1,verticalValues.length-1):item.position)*h;index?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.strokeStyle=CHART_COLORS.primary;ctx.lineWidth=1;ctx.stroke();const top=(1-state.yWindow[1])*h,bottom=(1-state.yWindow[0])*h;ctx.fillStyle=themePaint("rgba(112,15,236,.15)");ctx.fillRect(0,top,w,bottom-top);ctx.strokeStyle=themePaint("#E2D7F1");ctx.strokeRect(.5,top,w-1,bottom-top);ctx.fillStyle=themePaint("#fff");ctx.fillRect(0,top,w,4);ctx.fillRect(0,bottom-4,w,4);}
-    function redraw(){if(disposed||!canvas.isConnected)return;const {ctx,width:w,height:h}=canvasContext(canvas);if(w<=0||h<=0)return;ctx.clearRect(0,0,w,h);ctx.font="700 13px Aleph, sans-serif";ctx.fillStyle=themePaint("#fff");draw(ctx,w,h,{...state,start:Math.floor(state.start),end:Math.min(items.length-1,Math.ceil(state.end)),rawStart:state.start,rawEnd:state.end});drawNavigator();drawVertical();}
+    function clearChartHover(){state.hover=null;state.hoverRatio=null;tooltip.hidden=true;}
+    function redraw(){if(disposed||initialActivationPending||!canvas.isConnected)return;const {ctx,width:w,height:h}=canvasContext(canvas);if(w<=0||h<=0)return;if(initialWindowPending)resolveInitialViewport(w,h,true);if(navigationDomains&&!initialDomainRemembered){initialDomainRemembered=true;remember();}ctx.clearRect(0,0,w,h);ctx.font="700 13px Aleph, sans-serif";ctx.fillStyle=themePaint("#fff");draw(ctx,w,h,{...state,start:Math.floor(state.start),end:Math.min(items.length-1,Math.ceil(state.end)),rawStart:state.start,rawEnd:state.end});drawNavigator();drawVertical();}
     function hoverIndex(event){
       if(!items.length)return null;
       const rect=canvas.getBoundingClientRect(),ratio=Math.max(0,Math.min(1,(event.clientX-rect.left-plotLeft)/Math.max(1,rect.width-plotRight-plotLeft)));
       if(timeScale){const domain=timeDomain(items,state.start,state.end,{padBars:timePadding});if(domain){const index=nearestTimeIndex(items,domain.min+ratio*(domain.max-domain.min),Math.floor(state.start),Math.ceil(state.end));state.hoverRatio=(items[index].time-domain.min)/(domain.max-domain.min);return index;}}
       state.hoverRatio=null;return Math.min(items.length-1,Math.ceil(state.end),Math.round(state.start+ratio*Math.max(1,state.end-state.start)));
+    }
+    function updateHoverTooltip(){
+      if(!tooltipRows||state.hover==null)return;
+      const rect=canvas.getBoundingClientRect(),hoverState={...state,start:Math.floor(state.start),end:Math.min(items.length-1,Math.ceil(state.end))},rows=tooltipRows(items[state.hover],state.hover,hoverState)||[];
+      state.hover=hoverState.hover;state.hoverRatio=hoverState.hoverRatio;
+      tooltip.replaceChildren(...rows.map(chartTooltipRow));tooltip.hidden=toolConfiguration.hideTooltips||!rows.length;
+      const size=tooltip.getBoundingClientRect(),position=cursorTooltipPlacement(state.pointerX,state.pointerY,rect.width,rect.height,size.width,size.height);tooltip.style.left=`${position.left}px`;tooltip.style.top=`${position.top}px`;
     }
     canvas.addEventListener("pointermove",event=>{
       const rect=canvas.getBoundingClientRect();state.pointerY=event.clientY-rect.top;state.pointerX=event.clientX-rect.left;
@@ -1177,35 +1600,56 @@ await boot();
         if(!state.panning){if(Math.abs(event.clientX-state.dragX)+Math.abs(event.clientY-state.dragY)<=3)return;state.panning=true;state.dragX=event.clientX;state.dragY=event.clientY;canvas.style.cursor='grabbing';return;}
         const shift=zoomAxis==='y'?-(event.clientY-state.dragY)/Math.max(1,rect.height-44):(event.clientX-state.dragX)/Math.max(1,rect.width-plotLeft-plotRight),window=panZoomWindow({start:state.dragStart[0],end:state.dragStart[1]},shift,items.length-1);state.start=window.start;state.end=window.end;
         if(twoDimensional){const span=state.dragStart[3]-state.dragStart[2],dy=(event.clientY-state.dragY)/Math.max(1,rect.height-44)*span,lo=Math.max(0,Math.min(1-span,state.dragStart[2]+dy));state.yWindow=[lo,lo+span];}
-        remember();redraw();return;
+        clearChartHover();remember();redraw();return;
       }
       state.hover=hoverIndex(event);
-      if(tooltipRows&&state.hover!=null){const hoverState={...state,start:Math.floor(state.start),end:Math.min(items.length-1,Math.ceil(state.end))},rows=tooltipRows(items[state.hover],state.hover,hoverState)||[];state.hover=hoverState.hover;tooltip.replaceChildren(...rows.map((row,index)=>index?element("div","",row):element("b","",row)));tooltip.hidden=toolConfiguration.hideTooltips||!rows.length;const size=tooltip.getBoundingClientRect(),position=cursorTooltipPlacement(event.clientX-rect.left,event.clientY-rect.top,rect.width,rect.height,size.width,size.height);tooltip.style.left=`${position.left}px`;tooltip.style.top=`${position.top}px`;}
+      updateHoverTooltip();
       redraw();
     });
     canvas.addEventListener("pointerleave",()=>{state.dragX=null;state.panning=false;state.hover=null;tooltip.hidden=true;canvas.style.cursor='crosshair';redraw();});
     canvas.addEventListener("pointerdown",event=>{if(!zoom&&!onClick)return;cancelAnimationFrame(resetAnimation);state.dragX=event.clientX;state.dragY=event.clientY;state.dragStart=[state.start,state.end,...state.yWindow];state.panning=false;tooltip.hidden=true;canvas.setPointerCapture(event.pointerId);});
-    const stopDrag=event=>{if(event.type!=='pointercancel'&&onClick&&!state.panning&&state.dragX!=null&&Math.abs(event.clientX-state.dragX)+Math.abs(event.clientY-state.dragY)<=5)onClick(items[state.hover],state.hover,state);state.dragX=null;state.panning=false;canvas.style.cursor="crosshair";if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
+    const stopDrag=event=>{const clicked=event.type!=='pointercancel'&&!state.panning&&state.dragX!=null&&Math.abs(event.clientX-state.dragX)+Math.abs(event.clientY-state.dragY)<=5,unchangedWindow=state.dragX!=null&&state.dragStart&&state.start===state.dragStart[0]&&state.end===state.dragStart[1]&&state.yWindow[0]===state.dragStart[2]&&state.yWindow[1]===state.dragStart[3];if(clicked&&onClick)onClick(items[state.hover],state.hover,state);state.dragX=null;state.panning=false;canvas.style.cursor="crosshair";if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);if(event.type!=='pointercancel'&&((clicked&&!onClick)||(!clicked&&unchangedWindow))){state.hover=hoverIndex(event);updateHoverTooltip();redraw();}};
     canvas.addEventListener("pointerup",stopDrag);canvas.addEventListener("pointercancel",stopDrag);
     canvas.addEventListener("wheel",event=>{
       if(!zoom||(!twoDimensional&&items.length<2))return;
       cancelAnimationFrame(resetAnimation);
       const rect=canvas.getBoundingClientRect(),verticalFraction=Math.max(0,Math.min(1,1-(event.clientY-rect.top-10)/Math.max(1,rect.height-44))),anchor=zoomAxis==='y'?verticalFraction:Math.max(0,Math.min(1,(event.clientX-rect.left-plotLeft)/Math.max(1,rect.width-plotLeft-plotRight)));
-      if(activeTool?.id==='heat-map'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();const maxIndex=Math.max(1,verticalValues.length-1),next=heatMapPlainWheel({start:state.yWindow[0]*maxIndex,end:state.yWindow[1]*maxIndex},event.deltaY,maxIndex);state.yWindow=[next.start/maxIndex,next.end/maxIndex];remember();redraw();return;}
+      if(activeTool?.id==='heat-map'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();const maxIndex=Math.max(1,verticalValues.length-1),next=heatMapPlainWheel({start:state.yWindow[0]*maxIndex,end:state.yWindow[1]*maxIndex},event.deltaY,maxIndex);state.yWindow=[next.start/maxIndex,next.end/maxIndex];clearChartHover();remember();redraw();return;}
       const result=wheelZoomWindow({start:state.start,end:state.end},items.length-1,normalizeWheelDelta(event),anchor);
       const verticalResult=twoDimensional?wheelZoomWindow({start:state.yWindow[0]*1000,end:state.yWindow[1]*1000},1000,normalizeWheelDelta(event),verticalFraction):null;
       if(!result.handled&&!verticalResult?.handled)return;event.preventDefault();state.start=result.window.start;state.end=result.window.end;
       if(verticalResult)state.yWindow=[verticalResult.window.start/1000,verticalResult.window.end/1000];
-      tooltip.hidden=true;remember();redraw();
+      tooltip.hidden=true;clearChartHover();remember();redraw();
     },{passive:false});
-    startRange.addEventListener("input",()=>{state.start=Math.min(Number(startRange.value),Math.max(0,state.end-2));remember();redraw();});
-    endRange.addEventListener("input",()=>{state.end=Math.max(Number(endRange.value),Math.min(items.length-1,state.start+2));remember();redraw();});
-    lowRange.addEventListener("input",()=>{state.yWindow[0]=Math.min(Number(lowRange.value)/1000,state.yWindow[1]-.002);remember();redraw();});
-    highRange.addEventListener("input",()=>{state.yWindow[1]=Math.max(Number(highRange.value)/1000,state.yWindow[0]+.002);remember();redraw();});
-    activeChartReset=()=>{cancelAnimationFrame(resetAnimation);const max=Math.max(1,items.length-1),target={start:(initialWindow?.start??0)/max*100,end:(initialWindow?.end??max)/max*100},targetY=initialWindow?.yWindow?[...initialWindow.yWindow]:[0,1];state.hover=null;tooltip.hidden=true;const tick=()=>{if(disposed)return;const x=lerpZoomStep({start:state.start/max*100,end:state.end/max*100},target),y=lerpZoomStep({start:state.yWindow[0]*100,end:state.yWindow[1]*100},{start:targetY[0]*100,end:targetY[1]*100});state.start=x.next.start/100*max;state.end=x.next.end/100*max;state.yWindow=[y.next.start/100,y.next.end/100];remember();redraw();if(!x.converged||!y.converged)resetAnimation=requestAnimationFrame(tick);};tick();};
-    if(zoom&&items.length>1){startRange.hidden=endRange.hidden=true;horizontalNavigation=bindZoomNavigator({host:nav,length:items.length,getWindow:()=>({start:state.start,end:state.end}),setWindow:window=>{state.start=window.start;state.end=window.end;remember();redraw();},vertical:zoomAxis==='y',minSpan:['interval-map','heat-map'].includes(activeTool?.id)?0:undefined});}
-    if(twoDimensional){lowRange.hidden=highRange.hidden=true;const count=Math.max(2,verticalValues.length);verticalNavigation=bindZoomNavigator({host:vertical,length:count,vertical:true,minSpan:0,getWindow:()=>({start:state.yWindow[0]*(count-1),end:state.yWindow[1]*(count-1)}),setWindow:window=>{state.yWindow=[window.start/(count-1),window.end/(count-1)];remember();redraw();},label:'Chart vertical window'});}
-    const observer=new ResizeObserver(redraw);observer.observe(shell);activeChartDispose=()=>{disposed=true;clearTimeout(windowSaveTimer);cancelAnimationFrame(resetAnimation);observer.disconnect();};syncRanges();redraw();return{shell,canvas,redraw,state,
+    startRange.addEventListener("input",()=>{state.start=Math.min(Number(startRange.value),Math.max(0,state.end-2));clearChartHover();remember();redraw();});
+    endRange.addEventListener("input",()=>{state.end=Math.max(Number(endRange.value),Math.min(items.length-1,state.start+2));clearChartHover();remember();redraw();});
+    lowRange.addEventListener("input",()=>{state.yWindow[0]=Math.min(Number(lowRange.value)/1000,state.yWindow[1]-.002);clearChartHover();remember();redraw();});
+    highRange.addEventListener("input",()=>{state.yWindow[1]=Math.max(Number(highRange.value)/1000,state.yWindow[0]+.002);clearChartHover();remember();redraw();});
+    activeChartReset=()=>{if(initialActivationPending)return;cancelAnimationFrame(resetAnimation);if(initialWindowResolver){const measured=canvasContext(canvas);preserveRememberedWindow=false;if(measured.width>0&&measured.height>0)resolveInitialViewport(measured.width,measured.height);else{initialWindow=null;initialWindowPending=true;}}const max=Math.max(1,items.length-1),target={start:(initialWindow?.start??0)/max*100,end:(initialWindow?.end??max)/max*100},targetY=initialWindow?.yWindow?[...initialWindow.yWindow]:[0,1];state.hover=null;tooltip.hidden=true;const tick=()=>{if(disposed)return;const x=lerpZoomStep({start:state.start/max*100,end:state.end/max*100},target),y=lerpZoomStep({start:state.yWindow[0]*100,end:state.yWindow[1]*100},{start:targetY[0]*100,end:targetY[1]*100});state.start=x.next.start/100*max;state.end=x.next.end/100*max;state.yWindow=[y.next.start/100,y.next.end/100];clearChartHover();remember();redraw();if(!x.converged||!y.converged)resetAnimation=requestAnimationFrame(tick);};tick();};
+    if(zoom&&items.length>1){startRange.hidden=endRange.hidden=true;horizontalNavigation=bindZoomNavigator({host:nav,length:items.length,getWindow:()=>({start:state.start,end:state.end}),setWindow:window=>{state.start=window.start;state.end=window.end;clearChartHover();remember();redraw();},vertical:zoomAxis==='y',minSpan:['interval-map','heat-map'].includes(activeTool?.id)?0:undefined});}
+    if(twoDimensional){lowRange.hidden=highRange.hidden=true;const count=Math.max(2,verticalValues.length);verticalNavigation=bindZoomNavigator({host:vertical,length:count,vertical:true,minSpan:0,getWindow:()=>({start:state.yWindow[0]*(count-1),end:state.yWindow[1]*(count-1)}),setWindow:window=>{state.yWindow=[window.start/(count-1),window.end/(count-1)];clearChartHover();remember();redraw();},label:'Chart vertical window'});}
+    const geometry=JSON.stringify([title,zoom,height,plotLeft,plotRight,timeScale,timePadding,twoDimensional,zoomAxis]);
+    const categoryKey=row=>typeof row==='object'&&row!==null?JSON.stringify([row.time,row.date,row.strike,row.label,row.name,row.id]):JSON.stringify(row);
+    const observer=new ResizeObserver(redraw);observer.observe(shell);activeChartDispose=()=>{disposed=true;clearTimeout(windowSaveTimer);cancelAnimationFrame(resetAnimation);cancelAnimationFrame(initialActivationFrame);observer.disconnect();};syncRanges();
+    // The snapshot footer is appended immediately after this factory returns.
+    // Measure opt-in defaults once that synchronous render has completed; early
+    // ResizeObserver notifications must not commit the pre-footer geometry.
+    if(initialActivationPending)initialActivationFrame=requestAnimationFrame(()=>{initialActivationFrame=undefined;if(disposed)return;initialActivationPending=false;redraw();});else redraw();const chart={shell,canvas,redraw,state,
+      replace(next){
+        const nextItems=next.items||[],nextGeometry=JSON.stringify([next.title,next.zoom??true,next.height??540,next.plotLeft??78,next.plotRight??78,next.timeScale??false,next.timePadding??false,next.twoDimensional??false,next.zoomAxis??'x']);
+        const nextDomains=next.navigationDomains??null,axesChanged=!sameNavigationAxes(navigationDomains,nextDomains),mappedWindow=axesChanged?restoreNavigationWindow(captureNavigationWindow(),nextDomains):null;
+        // Reuse only a compatible source selection/category lattice. A changed
+        // axis structure or inserted/removed bucket gets a deliberate rebuild.
+        if(disposed||!canvas.isConnected||geometry!==nextGeometry||windowQuery!==JSON.stringify(buildRequest(activeTool))||!items.length||nextItems.length<items.length||(items.length>1)!==(nextItems.length>1)||!items.every((row,index)=>categoryKey(row)===categoryKey(nextItems[index]))||twoDimensional&&verticalValues.length!==(next.verticalValues||[]).length||axesChanged&&(navigationDomains||nextDomains)&&!mappedWindow)return false;
+        draw=next.draw;tooltipRows=next.tooltipRows;onClick=next.onClick??null;if(typeof next.initialWindow==='function')initialWindowResolver=next.initialWindow;else{initialWindowResolver=null;initialWindowPending=false;initialWindow=next.initialWindow??null;}verticalValues=next.verticalValues||[];
+        // The new draw callbacks close over their new model, not the old array.
+        // Keep navigation/pointer state while replacing the complete observation.
+        const nextWindow=mappedWindow??liveChartWindow(state,items.length,nextItems.length),shift=nextWindow.start-state.start;navigationDomains=nextDomains;if(mappedWindow)state.yWindow=mappedWindow.yWindow;
+        items=nextItems;navigatorValues=next.navigatorValues||[];state.start=nextWindow.start;state.end=nextWindow.end;
+        if(state.dragStart){state.dragStart[0]+=shift;state.dragStart[1]+=shift;}
+        startRange.max=endRange.max=String(Math.max(0,items.length-1));horizontalNavigation?.setLength(items.length);
+        head.replaceChild(quantLegend(next.legend||[]),head.lastChild);tooltip.hidden=true;remember();redraw();return true;
+      },
       update(nextItems,nextLegend,nextNavigatorValues){
         if(disposed||!compatibleLiveTimeline(items,nextItems))return false;
         const nextWindow=liveChartWindow(state,items.length,nextItems.length),shift=nextWindow.start-state.start;
@@ -1216,7 +1660,7 @@ await boot();
         if(state.dragStart){state.dragStart[0]+=shift;state.dragStart[1]+=shift;}
         startRange.max=endRange.max=String(Math.max(0,items.length-1));horizontalNavigation?.setLength(items.length);
         head.replaceChild(quantLegend(nextLegend),head.lastChild);remember();redraw();return true;
-      }};
+      }};activeChartInstance=chart;return chart;
   }
 
   function drawAxisLabels(ctx,{left,top,right,bottom,min,max,money=false,rightSide=false,steps=5,label="",formatter=null}){
@@ -1252,22 +1696,22 @@ await boot();
     }).slice(1):rawRows;
     const padding=Math.max(0,Math.round(Number(getControl("strikePadding"))||0));
     const minStrike=getControl("minStrike")===""?undefined:Number(getControl("minStrike")),maxStrike=getControl("maxStrike")===""?undefined:Number(getControl("maxStrike"));
-    const plotRows=intervalTimeline(rows,prices),latestSpot=prices.at(-1)?.spot;
+    const plotRows=rows,selectTooltip=createIntervalMapTooltipSelection(rows),latestSpot=prices.at(-1)?.spot;
     const autoBounds=intervalStrikeWindow(rows,padding,prices),baseMin=minStrike??autoBounds[0],baseMax=maxStrike??autoBounds[1],profile=(rows.at(-1)?.strikes||[]).filter(point=>point.strike>=baseMin&&point.strike<=baseMax).map(point=>({position:(point.strike-baseMin)/Math.max(1e-9,baseMax-baseMin),value:Math.abs(point.value)}));
     let plotBounds=null;
     const chart=quantCanvas({
       title:`Interval Map (${code}) - ${ticker}`,
       legend:[{label:ticker,color:CHART_COLORS.primary,value:formatPrice(latestSpot)}],
-      items:plotRows,navigatorValues:intervalPreview(plotRows),verticalValues:profile,height:560,plotLeft:98,plotRight:48,twoDimensional:true,timeScale:true,
-      tooltipRows:(row,index,state)=>{
-        if(!row||!plotBounds)return [];
-        const strike=plotBounds.maxY-(state.pointerY-plotBounds.top)/Math.max(1,plotBounds.bottom-plotBounds.top)*(plotBounds.maxY-plotBounds.minY);
-        const point=row.strikes.reduce((best,point)=>!best||Math.abs(point.strike-strike)<Math.abs(best.strike-strike)?point:best,null);
-        if(!point)return [displayChartTime(row.time),`${ticker}: ${formatPrice(precedingIntervalSpot(prices,row.time))}`];
-        return [displayChartTime(row.time),`${ticker} · ${formatPrice(point.strike)}`,...(difference?[]:[`Call ${code}: ${compact(point.call)}`,`Put ${code}: ${compact(point.put)}`]),`${difference?"Difference of net":"Net"} ${code}: ${compact(point.value)}`,`${ticker}: ${formatPrice(row.spot)}`];
+      items:plotRows,navigatorValues:intervalPreview(plotRows),verticalValues:profile,height:560,plotLeft:98,plotRight:16,twoDimensional:true,timeScale:true,
+      tooltipRows:(_row,_index,state)=>{
+        if(!plotBounds)return [];
+        const strike=plotBounds.maxY-(state.pointerY-plotBounds.top)/Math.max(1,plotBounds.bottom-plotBounds.top)*(plotBounds.maxY-plotBounds.minY),time=plotBounds.minX+(state.pointerX-plotBounds.left)/Math.max(1,plotBounds.right-plotBounds.left)*(plotBounds.maxX-plotBounds.minX),selection=selectTooltip(time,strike);
+        if(!selection)return [];
+        state.hover=rows.findIndex(row=>row.time===selection.row.time);
+        return intervalMapTooltipRows(selection.row,selection.point,{ticker,greek,mode:difference?'DIFFERENCE':'VALUE',timeZone:gexTimeZone()});
       },
       draw:(ctx,w,h,state)=>{
-        plotBounds=drawIntervalPlot(ctx,w,h,plotRows,{prices,start:state.rawStart??state.start,end:state.rawEnd??state.end,padding,minStrike,maxStrike,right:w-48,yWindow:state.yWindow,hover:toolConfiguration.hideCrosshairs?null:state.hover,hideAxisTitles:toolConfiguration.hideAxisTitles,formatTime:displayChartTime,formatStrike:chartStrikeLabel});
+        plotBounds=drawIntervalPlot(ctx,w,h,plotRows,{prices,start:state.rawStart??state.start,end:state.rawEnd??state.end,padding,minStrike,maxStrike,yWindow:state.yWindow,hover:toolConfiguration.hideCrosshairs?null:state.hover,hideAxisTitles:toolConfiguration.hideAxisTitles,formatTime:displayChartTime,formatStrike:chartStrikeLabel});
       }
     });
     chart.shell.classList.add("interval-chart-shell");
@@ -1277,58 +1721,61 @@ await boot();
 
   function renderExposureProfileQuant(payload,byExpiration=false) {
     const ticker=String(getControl("ticker")||"QQQ").toUpperCase(),greek=getControl("greek")||"GAMMA",code={GAMMA:"GEX",DELTA:"DEX",CHARM:"CHEX",VANNA:"VEX"}[greek],display=getControl("exposureDisplay")||"NET",orientation=getControl("exposureOrientation")||"HORIZONTAL";
-    const model=aggregateExposureTool(payload),root=payload.data?.[ticker]||payload.data||{},spot=Number(root.stockPrice);
+    const model=aggregateExposureTool(payload),root=payload.data?.[ticker]||payload.data||{},spot=typeof root.stockPrice==='number'&&Number.isFinite(root.stockPrice)&&root.stockPrice>0?root.stockPrice:null;
     const points=byExpiration?Object.entries(root.exposureMap||{}).map(([label,strikes])=>({label,call:Object.values(strikes||{}).reduce((sum,leg)=>sum+number(leg.callExposure),0),put:Object.values(strikes||{}).reduce((sum,leg)=>sum+number(leg.putExposure),0)})).sort((a,b)=>a.label.localeCompare(b.label)):model.points.map(point=>({...point,label:point.strike}));
     const total=points.reduce((sum,point)=>sum+point.call+point.put,0),range=byExpiration?[0,points.length-1]:exposureStrikeWindow(points.map(point=>point.strike),spot),units=q('[data-control="representation"]')?.selectedOptions[0]?.text||"";
-    const legend=display==="NET"?[{label:"Net "+code,color:total>=0?CHART_COLORS.call:CHART_COLORS.put,value:compact(total)}]:[{label:"Call Exposure",color:CHART_COLORS.call},{label:"Put Exposure",color:CHART_COLORS.put}].filter(item=>display==="SPLIT"||item.label===(display==="CALL"?"Call Exposure":"Put Exposure"));if(!byExpiration)legend.push({label:ticker,color:CHART_COLORS.primary,value:formatPrice(spot)});
+    const legend=display==="NET"?[{label:"Net "+code,color:total>=0?CHART_COLORS.call:CHART_COLORS.put,value:abbreviatedTick(total)}]:[{label:"Call Exposure",color:CHART_COLORS.call},{label:"Put Exposure",color:CHART_COLORS.put}].filter(item=>display==="SPLIT"||item.label===(display==="CALL"?"Call Exposure":"Put Exposure"));if(!byExpiration)legend.push({label:ticker,color:CHART_COLORS.primary,value:currencyAuto(spot)});
     let bounds;
     quantCanvas({title:`${display==="NET"?"Net ":""}${greek[0]+greek.slice(1).toLowerCase()} Exposure By ${byExpiration?"Expiration":"Strike"} - ${ticker}`,legend,items:points,navigatorValues:points.map(point=>byExpiration&&display==='NET'?point.call+point.put:Math.abs(point.call)+Math.abs(point.put)),height:540,zoomAxis:orientation==='VERTICAL'?'y':'x',initialWindow:{start:range[0],end:range[1]},
-      tooltipRows:(point,index,state)=>{if(orientation==="VERTICAL"&&bounds){let nearest=state.start;for(let i=state.start;i<=state.end;i++)if(Math.abs(bounds.categoryPixel(points[i],i)-state.pointerY)<Math.abs(bounds.categoryPixel(points[nearest],nearest)-state.pointerY))nearest=i;point=points[nearest];state.hover=nearest;}return point?[byExpiration?point.label:chartStrikeLabel(point.strike),`Calls ${compact(point.call)}`,`Puts ${compact(point.put)}`,`Net ${code} ${compact(point.call+point.put)}`]:[];},
+      tooltipRows:(point,index,state)=>{const pointer=orientation==='VERTICAL'?state?.pointerY:state?.pointerX;if(bounds&&Number.isFinite(pointer)){const first=Math.max(0,Math.floor(state.start)),last=Math.min(points.length-1,Math.ceil(state.end));let nearest=first;for(let i=first+1;i<=last;i++)if(Math.abs(bounds.categoryPixel(points[i],i)-pointer)<Math.abs(bounds.categoryPixel(points[nearest],nearest)-pointer))nearest=i;point=points[nearest];state.hover=nearest;}return point?[ticker+' · '+(byExpiration?new Date(point.label+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',year:'numeric',month:'short',day:'numeric'}):chartStrikeLabel(point.strike)),`Call ${code}: ${compact(point.call)}`,`Put ${code}: ${compact(point.put)}`,`Net ${code}: ${compact(point.call+point.put)}`]:[];},
       draw:(ctx,w,h,state)=>{bounds=drawExposureBars(ctx,w,h,points,{orientation,display,byExpiration,spot,start:state.start,end:state.end,axisName:`${greek[0]+greek.slice(1).toLowerCase()} Exposure (${units})`,categoryFormatter:point=>byExpiration?new Date(point.label+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',year:'numeric',month:'short',day:'numeric'}):chartStrikeLabel(point.strike),valueFormatter:abbreviatedTick,hover:toolConfiguration.hideCrosshairs?null:state.hover,hideAxisTitles:toolConfiguration.hideAxisTitles,pointerX:state.pointerX,pointerY:state.pointerY});}
     });
     setSummary([["Exposure",compact(total),total>=0?"positive":"negative"],[byExpiration?"Expirations":"Strikes",points.length],["Underlying",formatPrice(spot)],["Units",units]]);
   }
 
 
+  function currentNetDriftScope(){return netDriftUnderlyingScope(buildRequest(activeTool),getFilterOverrides().global?.tickers||[]);}
+
   function renderNetDriftQuant(payload) {
-    const rows=parseNetDrift(payload),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),last=rows.at(-1)||{},showNet=getControl("driftNet")==="SHOW",showBands=getControl("driftBands")==="SHOW",showUnderlying=getControl("driftUnderlying")!=="HIDE"&&rows.some(row=>Number.isFinite(row.spot));
-    const presentationKey=JSON.stringify([buildRequest(activeTool),ticker,showNet,showBands,showUnderlying,gexTimeZone()]);
-    const legendFor=row=>[{label:"Calls",color:CHART_COLORS.call,value:compact(row.call,true)},{label:"Puts",color:CHART_COLORS.put,value:compact(row.put,true)},...(showNet?[{label:"Net Premium",color:CHART_COLORS.netPremium,value:compact(row.net,true)}]:[]),...(showUnderlying?[{label:ticker,color:CHART_COLORS.price,value:formatPrice(row.spot)}]:[])];
+    const scope=currentNetDriftScope(),rows=parseNetDrift(payload,{underlyingRequired:scope.eligible}),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),last=rows.at(-1)||{},showCalls=getControl('driftCalls')!=='HIDE',showPuts=getControl('driftPuts')!=='HIDE',showNet=getControl("driftNet")==="SHOW",showBands=getControl("driftBands")==="SHOW",showUnderlying=scope.eligible&&getControl("driftUnderlying")!=="HIDE"&&rows.some(row=>Number.isFinite(row.spot));
+    const presentationKey=JSON.stringify([buildRequest(activeTool),ticker,showCalls,showPuts,showNet,showBands,showUnderlying,gexTimeZone()]);
+    const toggle=(control,visible)=>{setControl(control,visible?'HIDE':'SHOW');onControlsChanged({target:{dataset:{control},value:getControl(control)}});};
+    const legendFor=row=>[{label:'Calls',color:CHART_COLORS.call,value:compact(row.call,true),visible:showCalls,onClick:()=>toggle('driftCalls',showCalls)},{label:'Puts',color:CHART_COLORS.put,value:compact(row.put,true),visible:showPuts,onClick:()=>toggle('driftPuts',showPuts)},...(showNet?[{label:'Net',color:CHART_COLORS.netPremium,value:compact(row.net,true),visible:true,onClick:()=>toggle('driftNet',showNet)}]:[]),...(scope.eligible?[{label:ticker,color:CHART_COLORS.price,value:currencyAuto(row.spot),visible:showUnderlying,onClick:()=>toggle('driftUnderlying',showUnderlying)}]:[])];
     const summarize=row=>setSummary([["Net calls",compact(row.call,true),"positive"],["Net puts",compact(row.put,true),"negative"],["Underlying",formatPrice(row.spot)],["Intervals",rows.length]]);
     const chart=quantCanvas({
       title:`Net Drift (Premium) - ${ticker}`,
       legend:legendFor(last),
-      items:rows,navigatorValues:rows.map(row=>row.call),height:540,timeScale:true,
+      items:rows,navigatorValues:rows.map(row=>row.call),height:540,timeScale:true,initialWindow:netDriftInitialRthIndex(rows)==null?null:{start:netDriftInitialRthIndex(rows),end:rows.length-1},
       // Missing source buckets do not extend the selected interval's trade window.
       onClick:row=>{if(!row)return;const period=getControl('period')||'1m',duration=Number.parseInt(period,10)*(period.endsWith('h')?3600000:60000),end=row.time+duration;openTradeDetail({individual:true,title:'Net Drift · Individual Prints',preview:`${ticker} · ${displayChartTime(row.time)} · actual prints in this interval`,timeRange:{startTime:new Date(row.time).toISOString(),endTime:new Date(end).toISOString()}});},
-      tooltipRows:row=>row?[displayChartTime(row.time),`Calls ${compact(row.call,true)}`,`Puts ${compact(row.put,true)}`,`Volume ${compact(row.callVolume-row.putVolume)}`,`${ticker} ${formatPrice(row.spot)}`]:[],
+      tooltipRows:row=>netDriftTooltipRows(row,rows,{showBands,timeZone:gexTimeZone()}),
       draw:(ctx,w,h,state)=>{
         const left=78,right=w-78,top=10,bottom=h-32,paneHeight=Math.min(100,h*.15),gap=Math.min(20,h*.1),volumeTop=bottom-paneHeight,mainBottom=volumeTop-gap;
         const visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1);
-        const [rawMin,rawMax]=safeBounds(visible.flatMap(row=>[row.call,row.put,...(showNet?[row.net]:[]),...(showBands?[row.call-Math.abs(row.callBand),row.call+Math.abs(row.callBand),row.put-Math.abs(row.putBand),row.put+Math.abs(row.putBand)]:[])]),false,0),{min:pmin,max:pmax}=niceValueDomain(rawMin,rawMax),[spotMin,spotMax]=safeBounds(visible.map(row=>row.spot),false,0),{min:smin,max:smax}=niceValueDomain(spotMin,spotMax);
-        const volumes=visible.map(row=>row.callVolume-row.putVolume),[volumeMin,volumeMax]=safeBounds(volumes,true,.02),{min:vmin,max:vmax}=niceValueDomain(volumeMin,volumeMax);
+        const [rawMin,rawMax]=safeBounds(visible.flatMap(row=>[...(showCalls?[row.call,...(showBands?[row.call-Math.abs(row.callBand),row.call+Math.abs(row.callBand)]:[])]:[]),...(showPuts?[row.put,...(showBands?[row.put-Math.abs(row.putBand),row.put+Math.abs(row.putBand)]:[])]:[]),...(showNet?[row.net]:[])]),false,0),{min:pmin,max:pmax}=niceValueDomain(rawMin,rawMax),[spotMin,spotMax]=safeBounds(visible.map(row=>row.spot),false,0),{min:smin,max:smax}=niceValueDomain(spotMin,spotMax);
+        const volumes=visible.map(row=>row.netVolume),{min:vmin,max:vmax}=netDriftVolumeDomain(visible);
         const domain=timeDomain(rows,state.rawStart??state.start,state.rawEnd??state.end),x=index=>timeX(visible[index]?.time,domain,left,right),py=value=>mainBottom-(value-pmin)/(pmax-pmin)*(mainBottom-top),sy=value=>mainBottom-(value-smin)/(smax-smin)*(mainBottom-top),vy=value=>bottom-(value-vmin)/(vmax-vmin)*(bottom-volumeTop);
-        drawHorizontalTicks(ctx,left,right,top,mainBottom,pmin,pmax,value=>compact(value,true));
+        drawHorizontalTicks(ctx,left,right,top,mainBottom,pmin,pmax,currencyAbbreviated);
         ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,mainBottom-top);ctx.clip();
-        if(showBands){for(const [valueKey,bandKey,color] of [["call","callBand",CHART_COLORS.call],["put","putBand",CHART_COLORS.put]]){ctx.save();ctx.beginPath();visible.forEach((row,index)=>index?ctx.lineTo(x(index),py(row[valueKey]+Math.abs(row[bandKey]))):ctx.moveTo(x(index),py(row[valueKey]+Math.abs(row[bandKey]))));for(let index=visible.length-1;index>=0;index--)ctx.lineTo(x(index),py(visible[index][valueKey]-Math.abs(visible[index][bandKey])));ctx.closePath();ctx.fillStyle=color;ctx.globalAlpha=.2;ctx.fill();ctx.restore();}}
-        quantLine(ctx,visible.map((row,index)=>[x(index),py(row.call)]),CHART_COLORS.call,2);
-        quantLine(ctx,visible.map((row,index)=>[x(index),py(row.put)]),CHART_COLORS.put,2);
+        if(showBands){for(const [valueKey,bandKey,color] of [["call","callBand",CHART_COLORS.call],["put","putBand",CHART_COLORS.put]].filter(([key])=>key==='call'?showCalls:showPuts)){ctx.save();ctx.beginPath();visible.forEach((row,index)=>index?ctx.lineTo(x(index),py(row[valueKey]+Math.abs(row[bandKey]))):ctx.moveTo(x(index),py(row[valueKey]+Math.abs(row[bandKey]))));for(let index=visible.length-1;index>=0;index--)ctx.lineTo(x(index),py(visible[index][valueKey]-Math.abs(visible[index][bandKey])));ctx.closePath();ctx.fillStyle=color;ctx.globalAlpha=.2;ctx.fill();ctx.restore();}}
+        if(showCalls)quantLine(ctx,visible.map((row,index)=>[x(index),py(row.call)]),CHART_COLORS.call,2);
+        if(showPuts)quantLine(ctx,visible.map((row,index)=>[x(index),py(row.put)]),CHART_COLORS.put,2);
         if(showNet)quantLine(ctx,visible.map((row,index)=>[x(index),py(row.net)]),CHART_COLORS.netPremium,2);
         if(showUnderlying)quantLine(ctx,visible.map((row,index)=>[x(index),sy(row.spot)]).filter(point=>Number.isFinite(point[1])),CHART_COLORS.price,2);
         ctx.restore();
         ctx.save();ctx.beginPath();ctx.rect(left,volumeTop,right-left,bottom-volumeTop);ctx.clip();
         drawSignedVolume(ctx,volumes.map((value,index)=>[x(index),vy(value)]),vy(0),volumeTop,bottom);
         ctx.restore();
-        drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:pmin,max:pmax,money:true,label:"Premium ($)"});
+        drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:pmin,max:pmax,formatter:currencyAbbreviated,label:"Premium ($)"});
         if(showUnderlying)drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
-        drawAxisLabels(ctx,{left,top:volumeTop,right,bottom,min:vmin,max:vmax,label:"Volume",steps:5});
+        drawAxisLabels(ctx,{left,top:volumeTop,right,bottom,min:vmin,max:vmax,label:"Volume",steps:4});
         drawTimeLabels(ctx,rows,state.rawStart??state.start,state.rawEnd??state.end,left,right,bottom);
         drawChartCrosshair(ctx,state,left,right,top,bottom);
       }
     });
     activeChartUpdate=nextPayload=>{
-      const nextRows=parseNetDrift(nextPayload),nextLast=nextRows.at(-1)||{};
-      if(JSON.stringify([buildRequest(activeTool),String(getControl('ticker')||'QQQ').toUpperCase(),getControl('driftNet')==='SHOW',getControl('driftBands')==='SHOW',getControl('driftUnderlying')!=='HIDE'&&nextRows.some(row=>Number.isFinite(row.spot)),gexTimeZone()])!==presentationKey)return false;
+      const nextScope=currentNetDriftScope(),nextRows=parseNetDrift(nextPayload,{underlyingRequired:nextScope.eligible}),nextLast=nextRows.at(-1)||{};
+      if(JSON.stringify([buildRequest(activeTool),String(getControl('ticker')||'QQQ').toUpperCase(),getControl('driftCalls')!=='HIDE',getControl('driftPuts')!=='HIDE',getControl('driftNet')==='SHOW',getControl('driftBands')==='SHOW',nextScope.eligible&&getControl('driftUnderlying')!=='HIDE'&&nextRows.some(row=>Number.isFinite(row.spot)),gexTimeZone()])!==presentationKey)return false;
       if(!chart.update(nextRows,legendFor(nextLast),nextRows.map(row=>row.call)))return false;
       summarize(nextLast);return true;
     };
@@ -1336,46 +1783,60 @@ await boot();
   }
 
   function renderDarkFlowQuant(payload) {
-    const rows=numericEntries(payload.data||{}).map(([time,row])=>({time:Number(time),notional:number(row.notionalValue),spot:Number(row.stockPrice),tradeCount:number(row.tradeCount),size:number(row.size)}));
-    const ticker=String(getControl("ticker")||"QQQ").toUpperCase();
-    quantCanvas({
+    const rows=darkFlowRows(payload.data||{});
+    const ticker=String(getControl("ticker")||"QQQ").toUpperCase(),showUnderlying=getControl('darkUnderlying')!=='HIDE';
+    const presentationKey=JSON.stringify([buildRequest(activeTool),ticker,showUnderlying,gexTimeZone()]);
+    const legendFor=items=>[{label:'Notional Value',get color(){return themePaint('#C687FF');},value:currencyAbbreviated(darkFlowTotals(items).notional,2)},...(showUnderlying?[{label:ticker,color:CHART_COLORS.primary,value:currencyAuto(items.at(-1)?.spot)}]:[])];
+    const summarize=()=>{const total=darkFlowTotals(rows);setSummary([["Notional",compact(total.notional,true)],["Trades",compact(total.tradeCount)],["Shares",compact(total.size)],["Last price",currencyAuto(rows.at(-1)?.spot)]]);};
+    const chart=quantCanvas({
       title:`Dark Flow - ${ticker}`,
-      legend:[{label:"Notional Value",get color(){return themePaint("#C687FF");},value:compact(rows.reduce((sum,row)=>sum+row.notional,0),true)},{label:ticker,color:CHART_COLORS.primary,value:formatPrice(rows.at(-1)?.spot)}],
-      items:rows,navigatorValues:rows.map(row=>row.notional),height:540,timeScale:true,plotLeft:88,
-      tooltipRows:row=>row?[displayChartTime(row.time),`Notional ${compact(row.notional,true)}`,`Trades ${compact(row.tradeCount)}`,`Shares ${compact(row.size)}`,`${ticker} ${formatPrice(row.spot)}`]:[],
+      legend:legendFor(rows),
+      items:rows,navigatorValues:rows.map(row=>row.notional),height:540,timeScale:true,plotLeft:88,initialWindow:darkFlowInitialWindow(rows),
+      tooltipRows:row=>darkFlowTooltipRows(rows,row,{timeZone:gexTimeZone()}),
       draw:(ctx,w,h,state)=>{
-        const left=88,right=w-78,top=12,bottom=h-34,visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1);
-        const {min:nmin,max:nmax}=niceValueDomain(0,Math.max(0,...visible.map(row=>row.notional))),prices=visible.map(row=>row.spot).filter(Number.isFinite),{min:smin,max:smax}=niceValueDomain(Math.min(...prices),Math.max(...prices));
+        const left=88,right=w-78,top=12,bottom=h-34,visible=rows.slice(state.start,state.end+1),notionals=visible.map(row=>row.notional).filter(Number.isFinite);
+        const {min:nmin,max:nmax}=niceValueDomain(notionals.length?Math.min(...notionals):0,notionals.length?Math.max(...notionals):1),prices=visible.map(row=>row.spot).filter(Number.isFinite),{min:smin,max:smax}=niceValueDomain(prices.length?Math.min(...prices):0,prices.length?Math.max(...prices):1);
         const domain=timeDomain(rows,state.rawStart??state.start,state.rawEnd??state.end),x=index=>timeX(visible[index]?.time,domain,left,right),ny=value=>bottom-(value-nmin)/(nmax-nmin)*(bottom-top),sy=value=>bottom-(value-smin)/(smax-smin)*(bottom-top);
         drawHorizontalTicks(ctx,left,right,top,bottom,nmin,nmax,value=>compact(value,true));
-        const points=visible.map((row,index)=>[x(index),ny(row.notional)]);
+        ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
+        const points=visible.map((row,index)=>Number.isFinite(row.notional)?[x(index),ny(row.notional)]:null).filter(Boolean);
         drawDarkFlowArea(ctx,points,{top,bottom});
-        quantLine(ctx,visible.map((row,index)=>[x(index),sy(row.spot)]).filter(point=>Number.isFinite(point[1])),CHART_COLORS.price,2);
+        if(showUnderlying)quantLine(ctx,visible.map((row,index)=>[x(index),sy(row.spot)]).filter(point=>Number.isFinite(point[1])),CHART_COLORS.price,2);
+        ctx.restore();
         drawAxisLabels(ctx,{left,top,right,bottom,min:nmin,max:nmax,money:true,formatter:value=>currencyAbbreviated(value),label:"Notional Value"});
-        drawAxisLabels(ctx,{left,top,right,bottom,min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
+        if(showUnderlying)drawAxisLabels(ctx,{left,top,right,bottom,min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
         drawTimeLabels(ctx,rows,state.rawStart??state.start,state.rawEnd??state.end,left,right,bottom);drawChartCrosshair(ctx,state,left,right,top,bottom);
       }
     });
-    setSummary([["Notional",compact(rows.reduce((sum,row)=>sum+row.notional,0),true)],["Trades",compact(rows.reduce((sum,row)=>sum+row.tradeCount,0))],["Shares",compact(rows.reduce((sum,row)=>sum+row.size,0))],["Last price",formatPrice(rows.at(-1)?.spot)]]);
+    activeChartUpdate=nextPayload=>{
+      if(JSON.stringify([buildRequest(activeTool),String(getControl('ticker')||'QQQ').toUpperCase(),getControl('darkUnderlying')!=='HIDE',gexTimeZone()])!==presentationKey)return false;
+      const nextRows=darkFlowRows(nextPayload.data||{});
+      if(!chart.update(nextRows,legendFor(nextRows),nextRows.map(row=>row.notional)))return false;
+      summarize();return true;
+    };
+    summarize();
   }
 
   function renderDarkLevelsQuant(payload) {
-    const metric=getControl("levelMetric")||"price",limit=Math.max(1,Math.min(1000,Number(getControl("topLevels"))||50));
+    const limit=Math.max(1,Math.floor(Number(getControl("topLevels"))||50));
     const all=Object.entries(payload.data||{}).map(([price,row])=>({price:Number(price),notionalValue:number(row.notionalValue),tradeCount:number(row.tradeCount),volume:number(row.size)})).filter(row=>Number.isFinite(row.price)).sort((a,b)=>b.notionalValue-a.notionalValue);
-    const rows=all.slice(0,limit).map((row,index)=>({rank:index+1,...row}));const sortKey=metric==="size"?"volume":metric;
-    rows.sort((a,b)=>b[sortKey]-a[sortKey]);showTable(prepareDarkPoolLevels(payload,{limit,sortKey}),DARK_POOL_LEVEL_COLUMNS.map(column=>({...column,type:column.key==="price"||column.key==="notionalValue"?"money":column.key==="rank"?"integer":"abbreviated",...(column.key==="notionalValue"?{bar:"primary",fractionField:"notionalFraction"}:column.key==="tradeCount"?{percentField:"tradeFraction"}:column.key==="volume"?{percentField:"volumeFraction"}:{})})),null,{sortKey});
+    const rows=all.slice(0,limit).map((row,index)=>({rank:index+1,...row}));const sortKey='price';
+    rows.sort((a,b)=>b[sortKey]-a[sortKey]);showTable(prepareDarkPoolLevels(payload,{limit,sortKey}),DARK_POOL_LEVEL_COLUMNS.map(column=>({...column,menuReorder:column.key!=='rank',type:column.key==="price"||column.key==="notionalValue"?"money":column.key==="rank"?"text":"abbreviated",...(column.key==="rank"?{sortable:false,canHide:false,columnMenu:false,resizable:false,reorderable:false}:{}),...(column.key==="price"?{autoCurrency:true}:{}),...(column.key==="notionalValue"?{bar:"primary",fractionField:"notionalFraction"}:column.key==="tradeCount"?{percentField:"tradeFraction"}:column.key==="volume"?{percentField:"volumeFraction"}:{})})),null,{sortKey,inlineFilters:false});
     setSummary([["Top levels",rows.length],["Available levels",all.length.toLocaleString()],["Leading price",formatPrice(all[0]?.price)],["Underlying",formatPrice(payload.latestStockPrice)]]);
+    netDriftContractControls?.sync();
   }
 
   function renderOhlcQuant(payload,tool) {
-    const rows=parsePriceRows(payload,{data:payload.stock||{}});
-    const ticker=String(getControl("ticker")||"QQQ").toUpperCase(),chartType=getControl("chartType")||"candles";
-    const option=tool.view==="optionOhlc",osi=getControl("osi"),contractType=/[CP]\d{8}$/.test(osi)?osi.match(/([CP])\d{8}$/)[1]==="C"?"CALL":"PUT":getControl("contractType"),presentation=priceChartPresentation({option,contractType,chartType,rows}),hasVolume=presentation.showVolume,hasUnderlying=presentation.showUnderlying;
-    const legend=[{label:option?(osi||`${ticker} ${getControl("expiry")} ${getControl("strike")} ${contractType}`):ticker,color:option?presentation.lineColor:CHART_COLORS.primary,value:formatPrice(rows.at(-1)?.close)}];
-    if(hasUnderlying)legend.push({label:ticker,color:CHART_COLORS.primary,value:formatPrice(rows.at(-1)?.spot)});
+    const option=tool.view==="optionOhlc",prepared=priceChartRows(payload,{option}),rows=prepared.rows;
+    const selected=priceContractSelection({ticker:String(getControl('ticker')||'QQQ').toUpperCase(),osi:getControl('osi'),expirationDate:getControl('expiry'),strikePrice:getControl('strike')===''?null:Number(getControl('strike')),contractType:getControl('contractType')}),ticker=selected.ticker,contractType=selected.contractType,chartType=getControl("chartType")||"candles";
+    const presentation=priceChartPresentation({option,contractType,chartType,rows}),hasVolume=presentation.showVolume,hasUnderlying=presentation.showUnderlying;
+    // Stock source header uses the untrimmed processed history, while its plot
+    // uses the 09:30–16:15 exchange-local display slice.
+    const legend=[{label:option?'Contract':ticker,color:option?presentation.lineColor:CHART_COLORS.primary,value:currencyAuto(prepared.processedRows.at(-1)?.close)}];
+    if(hasUnderlying)legend.push({label:ticker,color:CHART_COLORS.primary,value:currencyAuto(prepared.processedRows.at(-1)?.spot)});
     quantCanvas({
       title:`${tool.title} - ${ticker}`,legend,items:rows,navigatorValues:rows.map(row=>row.close),height:540,timeScale:true,timePadding:chartType==="candles"||hasVolume,plotRight:hasUnderlying?78:30,
-      tooltipRows:row=>row?[displayChartTime(row.time),`O ${formatPrice(row.open)} · H ${formatPrice(row.high)}`,`L ${formatPrice(row.low)} · C ${formatPrice(row.close)}`,...(hasVolume?[`Option Volume ${compact(row.volume)}`]:[]),...(hasUnderlying?[`${ticker} ${formatPrice(row.spot)}`]:[])]:[],
+      tooltipRows:row=>priceChartTooltipRows(row,{option,...selected}),
       draw:(ctx,w,h,state)=>{
         const left=78,right=w-(hasUnderlying?78:30),top=12,bottom=h-34,visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1);
         const paneHeight=hasVolume?Math.min(100,h*.15):0,volumeTop=bottom-paneHeight,mainBottom=hasVolume?volumeTop-Math.min(20,h*.1):bottom;
@@ -1391,66 +1852,73 @@ await boot();
         if(hasVolume){
           drawOptionVolume(ctx,visible,x,value=>bottom-value/vmax*(bottom-volumeTop),slot,contractType);
           drawHorizontalTicks(ctx,left,right,volumeTop,bottom,0,vmax);
-          drawAxisLabels(ctx,{left,top:volumeTop,right,bottom,min:0,max:vmax,label:"Option Volume",steps:4,formatter:value=>abbreviate(value,1)});
+          drawAxisLabels(ctx,{left,top:volumeTop,right,bottom,min:0,max:vmax,label:"Option Volume",steps:4,formatter:abbreviatedTick});
         }
         drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:pmin,max:pmax,formatter:chartStrikeLabel,label:presentation.leftAxisName});
         if(hasUnderlying)drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
-        drawTimeLabels(ctx,rows,state.start,state.end,left,right,bottom,domain);drawChartCrosshair(ctx,state,left,right,top,bottom);
+        drawTimeLabels(ctx,rows,state.rawStart??state.start,state.rawEnd??state.end,left,right,bottom,domain);drawChartCrosshair(ctx,state,left,right,top,bottom);
+        // Source502083 exposes the hovered clock on the axis, outside the OHLC
+        // tooltip. Keep that exact minute readable when the tooltip omits time.
+        if(state.hover!=null&&!toolConfiguration.hideCrosshairs&&rows[state.hover]&&Number.isFinite(state.pointerX)&&Number.isFinite(state.pointerY)&&state.pointerX>=left&&state.pointerX<=right&&state.pointerY>=top&&state.pointerY<=bottom){
+          const label=displayChartTime(rows[state.hover].time),width=ctx.measureText(label).width+12,cx=Math.max(left+width/2,Math.min(right-width/2,timeX(rows[state.hover].time,domain,left,right)));
+          ctx.save();ctx.fillStyle=CHART_COLORS.primary;ctx.fillRect(cx-width/2,bottom+4,width,23);ctx.fillStyle=actionForeground(CHART_COLORS.primary);ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,cx,bottom+15.5);ctx.restore();
+        }
       }
     });
     const first=rows[0],last=rows.at(-1);
-    setSummary([["Open",formatPrice(first?.open)],["High",formatPrice(Math.max(...rows.map(row=>row.high)))],["Low",formatPrice(Math.min(...rows.map(row=>row.low)))],["Change",first?.close?`${((last.close/first.close-1)*100).toFixed(2)}%`:"—",last?.close>=first?.close?"positive":"negative"]]);
+    const highs=rows.map(row=>row.high).filter(Number.isFinite),lows=rows.map(row=>row.low).filter(Number.isFinite);
+    setSummary([["Open",currencyAuto(first?.open)],["High",currencyAuto(highs.length?Math.max(...highs):null)],["Low",currencyAuto(lows.length?Math.min(...lows):null)],["Change",Number.isFinite(first?.close)&&first.close!==0&&Number.isFinite(last?.close)?`${((last.close/first.close-1)*100).toFixed(2)}%`:"—",last?.close>=first?.close?"positive":"negative"]]);
   }
 
   function renderContractStatsQuant(payload) {
     const data=payload.data||{},call=data.CALL||{},put=data.PUT||{};
-    renderProportionBars("Contract Statistics",contractStatisticsRows(data));
+    const ticker=getControl('tickerOptional')||getControl('ticker');
+    renderProportionBars('Contract Statistics'+(ticker?' - '+ticker:''),contractStatisticsRows(data));
     setSummary([["Call premium",compact(call.premium,true),"positive"],["Put premium",compact(put.premium,true),"negative"],["Call volume",compact(call.volume)],["Put volume",compact(put.volume)]]);
   }
 
-  function renderProportionBars(title,rows,legend=[{label:"Calls",color:CHART_COLORS.call},{label:"Puts",color:CHART_COLORS.put}]) {
+  function renderProportionBars(title,rows,legend=[{label:"Calls",color:CHART_COLORS.call},{label:"Puts",color:CHART_COLORS.put}],sideMode) {
     let hits=[];
     quantCanvas({title,legend,items:rows,zoom:false,height:480,
-      tooltipRows:(_,index,state)=>{const hit=hits.find(hit=>state.pointerY>=hit.y&&state.pointerY<=hit.y+hit.height),row=rows[hit?.index];return row?[row.label,`Puts ${compact(row.put,row.money)}`,`Calls ${compact(row.call,row.money)}`]:[];},
-      draw:(ctx,w,h)=>{hits=drawProportionChart(ctx,w,h,rows,{formatValue:(value,row)=>title.includes('(Trade Count)')?abbreviate(value,0):compact(value,row.money),formatPercent:value=>(value*100).toFixed(2)+"%",primary:CHART_COLORS.primary,grid:CHART_COLORS.grid});}
+      tooltipRows:(_,index,state)=>{const hit=hits.find(hit=>state.pointerY>=hit.y&&state.pointerY<=hit.y+hit.height),row=rows[hit?.index];return contractStatisticsTooltipRows(row,{sideMode});},
+      draw:(ctx,w,h)=>{hits=drawProportionChart(ctx,w,h,rows,{formatValue:(value,row)=>contractStatisticsValue(value,{money:row.money,sideMode}),formatPercent:contractStatisticsPercentage,primary:CHART_COLORS.primary,grid:CHART_COLORS.grid});}
     });
   }
 
   function renderSideStatsQuant(payload) {
-    const data=payload.data||{},metric=getControl("sideMetric")==="VOLUME"?"volume":getControl("sideMetric")==="TRADE_COUNT"?"tradeCount":"premium";
-    const sides=[["Above Ask","ABOVE_ASK"],["Ask","ASK"],["Mid Market","MID_MARKET"],["Bid","BID"],["Below Bid","BELOW_BID"]];
-    const rows=sides.map(([label,key])=>({label,call:number(data.CALL?.[key]?.[metric]??(key==="MID_MARKET"?data.CALL?.MID?.[metric]:0)),put:number(data.PUT?.[key]?.[metric]??(key==="MID_MARKET"?data.PUT?.MID?.[metric]:0)),money:metric==="premium"}));
-    const formatTotal=value=>metric==='tradeCount'?abbreviate(value,0):compact(value,metric==='premium');
-    renderProportionBars(`Contract Side Statistics (${metric==="premium"?"Premium":metric==="volume"?"Volume":"Trade Count"})`,contractSideStatisticsRows(data,getControl("sideMetric")),[{label:"Calls",color:CHART_COLORS.call,value:formatTotal(rows.reduce((sum,row)=>sum+row.call,0))},{label:"Puts",color:CHART_COLORS.put,value:formatTotal(rows.reduce((sum,row)=>sum+row.put,0))}]);
-    setSummary([["Metric",getControl("sideMetric")],["Calls",compact(rows.reduce((sum,row)=>sum+row.call,0),metric==="premium"),"positive"],["Puts",compact(rows.reduce((sum,row)=>sum+row.put,0),metric==="premium"),"negative"],["Trade sides",rows.length]]);
+    const data=payload.data||{},mode=getControl('sideMetric')||'PREMIUM',rows=contractSideStatisticsRows(data,mode),ticker=getControl('tickerOptional')||getControl('ticker');
+    const formatTotal=value=>contractStatisticsValue(value,{money:mode==='PREMIUM',sideMode:mode});
+    renderProportionBars(`Contract Side Statistics (${mode==='PREMIUM'?'Premium':mode==='VOLUME'?'Volume':'Trade Count'})`+(ticker?' - '+ticker:''),rows,[{label:"Calls",color:CHART_COLORS.call,value:formatTotal(rows.reduce((sum,row)=>sum+row.call,0))},{label:"Puts",color:CHART_COLORS.put,value:formatTotal(rows.reduce((sum,row)=>sum+row.put,0))}],mode);
+    setSummary([["Metric",mode],["Calls",formatTotal(rows.reduce((sum,row)=>sum+row.call,0)),"positive"],["Puts",formatTotal(rows.reduce((sum,row)=>sum+row.put,0)),"negative"],["Trade sides",rows.length]]);
   }
 
   function renderMarketShareQuant(payload){
     const mode=getControl("shareMode")||"EQUITY_VOLUME",view=getControl("shareView")||"EXCHANGE",model=marketShareModel(payload.data||{},{mode,view}),money=mode.endsWith("PREMIUM"),bar=getControl("shareChart")==="bar";
     let pie=null,hits=[];
     quantCanvas({title:`Market Share (${MARKET_SHARE_MODES.find(entry=>entry[0]===mode)?.[1]||mode})`,items:model.entries,zoom:false,height:540,legend:[],
-      tooltipRows:(_,index,state)=>{let entry;if(bar){const hit=hits.find(hit=>state.pointerY>=hit.y&&state.pointerY<=hit.y+hit.height);entry=model.barRows[hit?.index];}else if(pie){const dx=state.pointerX-pie.centerX,dy=state.pointerY-pie.centerY;if(Math.hypot(dx,dy)<=pie.radius){const fraction=((Math.atan2(dy,dx)+Math.PI/2+2*Math.PI)%(2*Math.PI))/(2*Math.PI);entry=model.entries[pie.cumulativeAngles.findIndex(end=>fraction<=end)];}}return entry?[entry.name,compact(entry.value,money),(entry.fraction*100).toFixed(2)+"%"]:[];},
-      draw:(ctx,w,h)=>{if(bar)hits=drawMarketShareBars(ctx,w,h,model,{formatValue:value=>compact(value,money),formatPercent:value=>(value*100).toFixed(2)+"%",ticks:niceTicks(0,model.xMax,5),primary:CHART_COLORS.primary,grid:CHART_COLORS.grid});else pie=drawMarketSharePie(ctx,w,h,model.entries,{formatPercent:value=>(value*100).toFixed(2)+"%"});}
+      tooltipRows:(_,index,state)=>{let entry;if(bar){const hit=hits.find(hit=>state.pointerY>=hit.y&&state.pointerY<=hit.y+hit.height);entry=model.barRows[hit?.index];}else if(pie){const dx=state.pointerX-pie.centerX,dy=state.pointerY-pie.centerY;if(Math.hypot(dx,dy)<=pie.radius){const fraction=((Math.atan2(dy,dx)+Math.PI/2+2*Math.PI)%(2*Math.PI))/(2*Math.PI);entry=model.entries[pie.cumulativeAngles.findIndex(end=>fraction<=end)];}}return marketShareTooltipRows(entry,model);},
+      draw:(ctx,w,h)=>{if(bar)hits=drawMarketShareBars(ctx,w,h,model,{formatValue:value=>marketShareFormatValue(value,mode),formatPercent:value=>(value*100).toFixed(2)+"%",ticks:niceTicks(0,model.xMax,5),primary:CHART_COLORS.primary,grid:CHART_COLORS.grid});else pie=drawMarketSharePie(ctx,w,h,model.entries,{formatPercent:value=>(value*100).toFixed(2)+"%"});}
     });
     setSummary([[view==="EXCHANGE_GROUP"?"Exchange groups":"Exchanges",model.entries.length],["Total",compact(model.total,money)],["Data mode",MARKET_SHARE_MODES.find(entry=>entry[0]===mode)?.[1]],["View",view==="EXCHANGE_GROUP"?"Exchange group":"Exchange"]]);
   }
 
 
   function renderIvRankQuant(payload) {
-    const rows=Object.entries(payload.data||{}).sort(([a],[b])=>a.localeCompare(b)).map(([date,row])=>({date,time:Date.parse(date),rank:averagedIvRank(row.contractTypeToIVData),spot:row.stockPrice==null?NaN:Number(row.stockPrice)})),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),last=rows.at(-1)||{};
+    const rows=Object.entries(payload.data||{}).sort(([a],[b])=>a.localeCompare(b)).map(([date,row])=>({date,time:Date.parse(date+'T00:00:00Z'),rank:averagedIvRank(row?.contractTypeToIVData),spot:Number.isFinite(row?.stockPrice)?row.stockPrice:null})).filter(row=>/^\d{4}-\d{2}-\d{2}$/.test(row.date)&&Number.isFinite(row.time)&&new Date(row.time).toISOString().slice(0,10)===row.date&&(Number.isFinite(row.rank)||Number.isFinite(row.spot))),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),last={rank:rows.findLast(row=>Number.isFinite(row.rank))?.rank,spot:rows.findLast(row=>Number.isFinite(row.spot))?.spot};
+    const dateLabel=date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',month:'short',day:'numeric',year:'numeric'});let bounds=null;
     quantCanvas({
-      title:`Implied Volatility Rank - ${ticker}`,legend:[{label:"IV Rank",get color(){return themePaint("#FFFF00");},value:last.rank==null?"—":last.rank.toFixed(2)+"%"},{label:ticker,color:CHART_COLORS.primary,value:formatPrice(last.spot)}],items:rows,navigatorValues:rows.map(row=>row.rank),height:540,
-      tooltipRows:row=>row?[row.date,`IV Rank ${row.rank==null?"—":row.rank.toFixed(2)+"%"}`,`${ticker} ${formatPrice(row.spot)}`]:[],
+      title:`Implied Volatility Rank - ${ticker}`,legend:[{label:"IV Rank",get color(){return themePaint("#FFFF00");},value:last.rank==null?"—":last.rank.toFixed(2)+"%"},{label:ticker,color:CHART_COLORS.primary,value:currencyAuto(last.spot)}],items:rows,navigatorValues:rows.map(row=>row.rank),height:540,
+      tooltipRows:(row,_index,state)=>{if(bounds&&Number.isFinite(state?.pointerX)){const position=bounds.start+Math.max(0,Math.min(1,(state.pointerX-bounds.left)/(bounds.right-bounds.left)))*(bounds.end-bounds.start),index=Math.max(0,Math.min(rows.length-1,Math.ceil(position-.5)));row=rows[index];state.hover=index;state.hoverRatio=bounds.start===bounds.end?.5:(index-bounds.start)/(bounds.end-bounds.start);}return row?[dateLabel(row.date),...(Number.isFinite(row.rank)?['IV Rank: '+percentagePointsAuto(row.rank)]:[]),...(Number.isFinite(row.spot)?['Underlying Price: '+currencyAuto(row.spot)]:[])]:[];},
       draw:(ctx,w,h,state)=>{
-        const left=78,right=w-78,top=8,bottom=h-20,visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1),ranks=visible.map(row=>row.rank).filter(value=>value!=null&&Number.isFinite(value)),prices=visible.map(row=>row.spot).filter(Number.isFinite),rankDomain=niceValueDomain(Math.min(...ranks),Math.max(...ranks)),spotDomain=niceValueDomain(Math.min(...prices),Math.max(...prices)),{min:rmin,max:rmax}=rankDomain,{min:smin,max:smax}=spotDomain,x=index=>left+(right-left)*index/span,ry=value=>bottom-(value-rmin)/(rmax-rmin)*(bottom-top),sy=value=>bottom-(value-smin)/(smax-smin)*(bottom-top);
+        const left=78,right=w-78,top=8,bottom=h-20,visible=rows.slice(state.start,state.end+1),start=state.rawStart??state.start,end=state.rawEnd??state.end,ranks=visible.map(row=>row.rank).filter(Number.isFinite),prices=visible.map(row=>row.spot).filter(Number.isFinite),rankDomain=niceValueDomain(ranks.length?Math.min(...ranks):0,ranks.length?Math.max(...ranks):1),spotDomain=niceValueDomain(prices.length?Math.min(...prices):0,prices.length?Math.max(...prices):1),{min:rmin,max:rmax}=rankDomain,{min:smin,max:smax}=spotDomain,x=index=>start===end?(left+right)/2:left+(right-left)*(state.start+index-start)/(end-start),ry=value=>bottom-(value-rmin)/(rmax-rmin)*(bottom-top),sy=value=>bottom-(value-smin)/(smax-smin)*(bottom-top);bounds={left,right,start,end};
         ctx.font="bold 13px Aleph, sans-serif";ctx.fillStyle=themePaint("#FFFFFF");ctx.textBaseline="middle";ctx.textAlign="right";
-        for(const value of rankDomain.ticks){const y=ry(value);ctx.strokeStyle=CHART_COLORS.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();ctx.fillText(Number(value.toFixed(2))+"%",left-8,y);}
+        for(const value of rankDomain.ticks){const y=ry(value);ctx.strokeStyle=CHART_COLORS.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();ctx.fillText(percentagePointsAuto(value),left-8,y);}
         ctx.textAlign="left";for(const value of spotDomain.ticks)ctx.fillText(chartStrikeLabel(value),right+8,sy(value));
-        quantLine(ctx,visible.map((row,index)=>[x(index),row.rank==null?NaN:ry(row.rank)]).filter(point=>Number.isFinite(point[1])),themePaint("#FFFF00"),2);
-        quantLine(ctx,visible.map((row,index)=>[x(index),sy(row.spot)]).filter(point=>Number.isFinite(point[1])),CHART_COLORS.price,2);
+        ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
+        for(const [key,scale,color]of [['rank',ry,themePaint('#FFFF00')],['spot',sy,CHART_COLORS.price]]){let points=[];const flush=()=>{if(points.length)quantLine(ctx,points,color,2);points=[];};visible.forEach((row,index)=>{if(Number.isFinite(row[key]))points.push([x(index),scale(row[key])]);else flush();});flush();}ctx.restore();
         if(!toolConfiguration.hideAxisTitles){ctx.save();ctx.textAlign="center";ctx.translate(12,(top+bottom)/2);ctx.rotate(-Math.PI/2);ctx.fillText("Implied Volatility Rank",0,0);ctx.restore();ctx.save();ctx.translate(w-12,(top+bottom)/2);ctx.rotate(Math.PI/2);ctx.textAlign="center";ctx.fillText("Underlying ($)",0,0);ctx.restore();}
         ctx.strokeStyle=CHART_COLORS.primary;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(left,bottom);ctx.lineTo(right,bottom);ctx.stroke();
-        ctx.fillStyle=themePaint("#FFFFFF");ctx.textAlign="center";ctx.textBaseline="top";for(let index=0;index<=4;index++){const row=rows[Math.min(state.end,Math.round(state.start+(state.end-state.start)*index/4))];if(row)ctx.fillText(new Date(row.date+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),left+(right-left)*index/4,bottom+6);}drawChartCrosshair(ctx,state,left,right,top,bottom);
+        ctx.fillStyle=themePaint("#FFFFFF");ctx.textAlign="center";ctx.textBaseline="top";const labelWidth=Math.max(0,...visible.map(row=>ctx.measureText(dateLabel(row.date)).width)),stride=Math.max(1,Math.ceil((labelWidth+12)/((right-left)/Math.max(1,visible.length))));for(let index=0;index<visible.length;index+=stride){const pixel=x(index);if(pixel>=left&&pixel<=right)ctx.fillText(dateLabel(visible[index].date),pixel,bottom+6);}drawChartCrosshair(ctx,state,left,right,top,bottom);
       }
     });
     setSummary([["Lookback",getControl("lookback")+" days"],["Maturity",getControl("maturity")+" days"],["IV Rank",last.rank==null?"—":last.rank.toFixed(1)+"%"],["Underlying",formatPrice(last.spot)]]);
@@ -1458,32 +1926,38 @@ await boot();
 
   function renderMaxPainQuant(payload) {
     const rows=Object.entries(payload.data||{}).map(([strike,row])=>({strike:Number(strike),call:number(row.callIntrinsicValue),put:number(row.putIntrinsicValue)})).filter(row=>Number.isFinite(row.strike)).sort((a,b)=>a.strike-b.strike),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),pain=Number(payload.maxPainStrikePrice),spot=Number(payload.stockPrice);
+    const visibility=toolSeriesVisibility('max-pain',Object.fromEntries(['painCalls','painPuts'].map(id=>[id,getControl(id)||'SHOW']))),display=visibility.call&&visibility.put?'SPLIT':visibility.call?'CALL':'PUT';
+    const toggle=(control,visible)=>{
+      if(visible&&Object.values(visibility).filter(Boolean).length<=1)return;
+      setControl(control,visible?'HIDE':'SHOW');onControlsChanged({target:{dataset:{control},value:getControl(control)}});
+    };
     let bounds=null;
     quantCanvas({
-      title:`Max Pain - ${ticker}`,legend:[{label:"Calls",color:CHART_COLORS.call},{label:"Puts",color:CHART_COLORS.put},{label:ticker,color:CHART_COLORS.primary,value:formatPrice(spot)}],items:rows,navigatorValues:rows.map(row=>row.call+row.put),height:540,
-      tooltipRows:(row,index,state)=>{if(bounds){let nearest=state.start;for(let i=state.start;i<=state.end;i++)if(Math.abs(bounds.categoryPixel(rows[i],i)-state.pointerX)<Math.abs(bounds.categoryPixel(rows[nearest],nearest)-state.pointerX))nearest=i;row=rows[nearest];state.hover=nearest;}return row?[chartStrikeLabel(row.strike),`Call Intrinsic Value: ${compact(row.call,true)}`,`Put Intrinsic Value: ${compact(row.put,true)}`]:[];},
+      title:`Max Pain - ${ticker}`,legend:[{label:"Calls",color:CHART_COLORS.call,visible:visibility.call,onClick:()=>toggle('painCalls',visibility.call)},{label:"Puts",color:CHART_COLORS.put,visible:visibility.put,onClick:()=>toggle('painPuts',visibility.put)},{label:ticker,color:CHART_COLORS.primary,value:currencyAuto(spot)}],items:rows,navigatorValues:rows.map(row=>row.call+row.put),height:540,
+      tooltipRows:(row,index,state)=>{if(bounds){let nearest=state.start;for(let i=state.start;i<=state.end;i++)if(Math.abs(bounds.categoryPixel(rows[i],i)-state.pointerX)<Math.abs(bounds.categoryPixel(rows[nearest],nearest)-state.pointerX))nearest=i;row=rows[nearest];state.hover=nearest;}return row?[chartStrikeLabel(row.strike),{columns:[[(visibility.call?'Calls:':null),(visibility.put?'Puts:':null)].filter(Boolean),[...(visibility.call?[{parts:[{text:compact(row.call,true),tone:'bullish'}]}]:[]),...(visibility.put?[{parts:[{text:compact(row.put,true),tone:'bearish'}]}]:[])]],columnAlignments:['left','right']}]:[];},
       draw:(ctx,w,h,state)=>{
-        bounds=drawExposureBars(ctx,w,h,rows,{display:"SPLIT",fromZero:true,grouped:true,start:state.start,end:state.end,axisName:"Intrinsic Value ($)",categoryFormatter:point=>chartStrikeLabel(point.strike),valueFormatter:value=>compact(value,true),markers:[{value:pain,color:MAX_PAIN_STYLES.maxPainMarker,width:2,label:"Max Pain: "+formatPrice(pain),labelPosition:"middle"},{value:spot,color:CHART_COLORS.primary,width:2,label:"Last Price: "+formatPrice(spot),labelPosition:"end"}],hover:toolConfiguration.hideCrosshairs?null:state.hover,hideAxisTitles:toolConfiguration.hideAxisTitles,pointerX:state.pointerX,pointerY:state.pointerY});
+        bounds=drawExposureBars(ctx,w,h,rows,{display,fromZero:true,grouped:true,start:state.start,end:state.end,axisName:"Intrinsic Value ($)",categoryFormatter:point=>chartStrikeLabel(point.strike),valueFormatter:value=>compact(value,true),markers:[{value:pain,color:MAX_PAIN_STYLES.maxPainMarker,width:2,label:"Max Pain: "+currencyAuto(pain),labelPosition:"middle"},{value:spot,color:CHART_COLORS.primary,width:2,label:"Last Price: "+currencyAuto(spot),labelPosition:"end"}],hover:toolConfiguration.hideCrosshairs?null:state.hover,hideAxisTitles:toolConfiguration.hideAxisTitles,pointerX:state.pointerX,pointerY:state.pointerY});
       }
     });
-    setSummary([["Max pain",formatPrice(pain)],["Underlying",formatPrice(spot)],["Expiration",getControl("expiry")],["Strikes",rows.length]]);
+    setSummary([["Max pain",currencyAuto(pain)],["Underlying",currencyAuto(spot)],["Expiration",getControl("expiry")],["Strikes",rows.length]]);
   }
 
   function renderMaxPainTimeQuant(payload) {
-    const rows=Object.entries(payload.data||{}).map(([date,value])=>({date,time:Date.parse(date),value:Number(value)})).filter(row=>Number.isFinite(row.value)).sort((a,b)=>a.time-b.time),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),spot=parsePrices({data:payload.stock||{}}).at(-1)?.spot;
+    const rows=Object.entries(payload.data||{}).map(([date,value])=>({date,time:Date.parse(date+'T00:00:00Z'),value})).filter(row=>/^\d{4}-\d{2}-\d{2}$/.test(row.date)&&Number.isFinite(row.time)&&new Date(row.time).toISOString().slice(0,10)===row.date&&Number.isFinite(row.value)),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),spot=parsePrices({data:payload.stock||{}}).at(-1)?.spot;
+    const dateLabel=date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',month:'short',day:'numeric',year:'numeric'});let bounds=null;
     quantCanvas({
-      title:`Max Pain / Time - ${ticker}`,legend:[{label:"Max Pain Strike Prices",color:CHART_COLORS.primary},...(Number.isFinite(spot)?[{label:ticker,get color(){return themePaint("#FFFFFF");},value:formatPrice(spot)}]:[])],items:rows,navigatorValues:rows.map(row=>row.value),height:540,
-      tooltipRows:row=>row?[row.date,"Max Pain "+formatPrice(row.value)]:[],
+      title:`Max Pain / Time - ${ticker}`,legend:[{label:"Max Pain Strike Prices",color:CHART_COLORS.primary},...(Number.isFinite(spot)?[{label:ticker,get color(){return themePaint("#FFFFFF");},value:currencyAuto(spot)}]:[])],items:rows,navigatorValues:rows.map(row=>row.value),height:540,plotLeft:94,plotRight:28,
+      tooltipRows:(row,_index,state)=>{if(bounds&&Number.isFinite(state?.pointerX)){const position=bounds.start+Math.max(0,Math.min(1,(state.pointerX-bounds.left)/(bounds.right-bounds.left)))*(bounds.end-bounds.start),index=Math.max(0,Math.min(rows.length-1,Math.ceil(position-.5)));row=rows[index];state.hover=index;state.hoverRatio=bounds.start===bounds.end?.5:(index-bounds.start)/(bounds.end-bounds.start);}return row?[dateLabel(row.date),'Max Pain Strike Price: '+currencyAuto(row.value)]:[];},
       draw:(ctx,w,h,state)=>{
-        const left=94,right=w-28,top=8,bottom=h-20,visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1),values=[...visible.map(row=>row.value),...(Number.isFinite(spot)?[spot]:[])],{min,max,ticks}=niceValueDomain(Math.min(...values),Math.max(...values)),x=index=>left+(right-left)*index/span,y=value=>bottom-(value-min)/(max-min)*(bottom-top);
+        const left=94,right=w-28,top=8,bottom=h-20,visible=rows.slice(state.start,state.end+1),start=state.rawStart??state.start,end=state.rawEnd??state.end,values=[...visible.map(row=>row.value),...(Number.isFinite(spot)?[spot]:[])],{min,max,ticks}=niceValueDomain(values.length?Math.min(...values):0,values.length?Math.max(...values):1),x=index=>start===end?(left+right)/2:left+(right-left)*(state.start+index-start)/(end-start),y=value=>bottom-(value-min)/(max-min)*(bottom-top);bounds={left,right,start,end};
         ctx.font="bold 13px Aleph, sans-serif";ctx.fillStyle=themePaint("#FFFFFF");ctx.textBaseline="middle";ctx.textAlign="right";for(const value of ticks){const py=y(value);ctx.strokeStyle=CHART_COLORS.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,py);ctx.lineTo(right,py);ctx.stroke();ctx.fillText(chartStrikeLabel(value),left-8,py);}
-        quantLine(ctx,visible.map((row,index)=>[x(index),y(row.value)]),CHART_COLORS.price,2);
+        ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();quantLine(ctx,visible.map((row,index)=>[x(index),y(row.value)]),CHART_COLORS.price,2);
         ctx.fillStyle=themePaint("#FFFFFF");ctx.textAlign="center";ctx.textBaseline="bottom";
-        for(let index=0;index<visible.length;index++){const row=visible[index];ctx.fillText(currencyAuto(row.value),x(index),Math.max(top+14,y(row.value)-5));}
+        for(let index=0;index<visible.length;index++){const row=visible[index];ctx.fillText(currencyAuto(row.value),x(index),Math.max(top+14,y(row.value)-5));}ctx.restore();
         if(!toolConfiguration.hideAxisTitles){ctx.save();ctx.textAlign="center";ctx.translate(12,(top+bottom)/2);ctx.rotate(-Math.PI/2);ctx.fillText("Strike Price ($)",0,0);ctx.restore();}
-        if(Number.isFinite(spot)){ctx.strokeStyle=MAX_PAIN_STYLES.timeSpotMarker;ctx.lineWidth=2;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(left,y(spot));ctx.lineTo(right,y(spot));ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=MAX_PAIN_STYLES.timeSpotMarker;ctx.textAlign="right";ctx.fillText("Last Price: "+formatPrice(spot),right-6,y(spot)-8);}
+        if(Number.isFinite(spot)){ctx.strokeStyle=MAX_PAIN_STYLES.timeSpotMarker;ctx.lineWidth=2;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(left,y(spot));ctx.lineTo(right,y(spot));ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=MAX_PAIN_STYLES.timeSpotMarker;ctx.textAlign="right";ctx.fillText("Last Price: "+currencyAuto(spot),right-6,y(spot)-8);}
         ctx.strokeStyle=CHART_COLORS.primary;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(left,bottom);ctx.lineTo(right,bottom);ctx.stroke();
-        ctx.fillStyle=themePaint("#FFFFFF");ctx.textAlign="center";ctx.textBaseline="top";for(let index=0;index<=4;index++){const row=rows[Math.min(state.end,Math.round(state.start+(state.end-state.start)*index/4))];if(row)ctx.fillText(new Date(row.date+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),left+(right-left)*index/4,bottom+6);}drawChartCrosshair(ctx,state,left,right,top,bottom);
+        ctx.fillStyle=themePaint("#FFFFFF");ctx.textAlign="center";ctx.textBaseline="top";const labelWidth=Math.max(0,...visible.map(row=>ctx.measureText(dateLabel(row.date)).width)),stride=Math.max(1,Math.ceil((labelWidth+12)/((right-left)/Math.max(1,visible.length))));for(let index=0;index<visible.length;index+=stride){const pixel=x(index);if(pixel>=left&&pixel<=right)ctx.fillText(dateLabel(visible[index].date),pixel,bottom+6);}drawChartCrosshair(ctx,state,left,right,top,bottom);
       }
     });
     setSummary([["Expirations",rows.length],["Front expiration",rows[0]?.date||"—"],["Front max pain",formatPrice(rows[0]?.value)],["Underlying",formatPrice(spot)]]);
@@ -1501,15 +1975,21 @@ await boot();
   function showTable(rows,columns=null,totalRow=null,configuration={}) {
     tableColumns=columns;
     q("#toolVisual").hidden = true; q("#chartToolbar").hidden = true; q("#toolTableWrap").hidden = false;
+    const darkLevels=activeTool.id==='dark-pool-levels',equityPrints=activeTool.id==='equity-prints',notifications=activeTool.id==='exchange-notifications',gainers=activeTool.id==='gainers-losers',shareTable=activeTool.id==='market-share-table',pagedEquity=equityPrints||notifications,compactTools=darkLevels||pagedEquity||gainers||shareTable,columnHost=darkLevels?q('#darkPoolColumnControls'):equityPrints?q('#equityPrintColumnControls'):notifications?q('#notificationColumnControls'):gainers?q('#gainersColumnControls'):shareTable?q('#marketShareColumnControls'):q('#tableColumnControls');
+    q('#toolTableWrap').classList.toggle('dark-pool-level-table',darkLevels);q('#toolTableWrap').classList.toggle('equity-print-table',equityPrints);q('#toolTableWrap').classList.toggle('exchange-notification-table',notifications);q('#toolTableWrap').classList.toggle('gainers-table',gainers);q('#toolTableWrap').classList.toggle('market-share-table',shareTable);
+    // Dedicated top-bar host: the ordinary table host is never moved into
+    // disposable controls. Replace the runtime when its host changes or remounts.
+    if(tableRuntime&&tableColumnHost!==columnHost){tableRuntime.destroy();tableRuntime=null;}
+    tableColumnHost=columnHost;
     tableRows = rows;
-    if(!tableRuntime)tableRuntime=createTableView({table:q("#toolTable"),search:q("#tableSearch"),count:q("#tableCount"),columnHost:q("#tableColumnControls"),storage:{getItem:key=>gexStorage.getItem('gex-data:'+instanceKey+':'+key),setItem:(key,value)=>gexStorage.setItem('gex-data:'+instanceKey+':'+key,value)},onRowClick:(row,event)=>{
+    if(!tableRuntime)tableRuntime=createTableView({table:q("#toolTable"),search:compactTools?null:q("#tableSearch"),count:compactTools?null:q("#tableCount"),columnHost,storage:{getItem:key=>gexStorage.getItem('gex-data:'+instanceKey+':'+key),setItem:(key,value)=>gexStorage.setItem('gex-data:'+instanceKey+':'+key,value)},onRowClick:(row,event)=>{
       const tr=event.target.closest("tr");if(!tr)return;const next=tr.nextElementSibling;if(next?.classList.contains("detail-row")){next.remove();return;}const detail=element("tr","detail-row"),cell=element("td","row-detail"),actions=element("div","row-detail-actions");cell.colSpan=tableRuntime.getColumns().filter(column=>column.visible).length;
       if(row.ticker){const button=element("button","",row.osi||row.expirationDate?"View contract chart":"View stock chart");button.type="button";button.addEventListener("click",()=>{const id=row.osi||row.expirationDate?"option-price-over-time":"stock-price-over-time";savedToolControls[id]={...savedToolControls[id],mode:getControl("mode"),date:getControl("date"),ticker:row.ticker,osi:row.osi||"",expiry:row.expirationDate||"",strike:row.strikePrice??"",contractType:row.contractType||"CALL"};showTool(id);});actions.append(button);}
       cell.append(actions,element("pre","",JSON.stringify(row,null,2)));detail.append(cell);tr.after(detail);
     }});
     const schema=columns||[...new Set(rows.flatMap(row=>Object.keys(row)))].map(key=>({key,label:key,type:typeof rows.find(row=>row[key]!=null)?.[key]==="number"?"decimal":"text"}));
-    tableRuntime.setRows(rows,{columns:schema,totalRow,toolId:activeTool.id,sortKey:configuration.sortKey,sortDirection:configuration.sortDirection});
-    q("#loadMore").hidden = !toolCursor;
+    tableRuntime.setRows(rows,{columns:schema,totalRow,toolId:activeTool.id,sortKey:configuration.sortKey,sortId:configuration.sortId,sortDirection:configuration.sortDirection,onSortChange:configuration.onSortChange??null,onFilterChange:configuration.onFilterChange??null,headerMenu:configuration.headerMenu??false,headerFilters:configuration.headerFilters??[],inlineFilters:configuration.inlineFilters??true,fillLastColumn:configuration.fillLastColumn??false,localHeaderFilters:configuration.localHeaderFilters??false,autoPaging:pagedEquity?{getState:()=>({enabled:['equity-prints','exchange-notifications'].includes(activeTool?.id)&&frameVisible,scope:toolPayloadQuery,pageGeneration:equityPageGeneration,cursor:toolCursor,busy:toolRequestInFlight}),onNext:()=>loadActiveTool({append:true})}:null});
+    q("#loadMore").hidden = pagedEquity||!toolCursor;
   }
 
   function renderFlowStatistics(statistics){
@@ -1524,49 +2004,70 @@ await boot();
   function renderHeatMap(payload) {
     showVisual();
     const data=payload.data||{},mode=getControl("heatMetric")||"NET_GAMMA_EXPOSURE",metric=heatMetricFor(mode),ticker=String(getControl("ticker")||"QQQ").toUpperCase(),invert=getControl("heatAxes")==="INVERTED",expiries=Object.keys(data).sort(),cells=[],matrix=new Map();
-    for(const expiry of expiries){const row=new Map();for(const [strikeKey,raw] of Object.entries(data[expiry]||{})){const strike=Number(strikeKey);if(!Number.isFinite(strike))continue;const cell={expiry,strike,value:heatCellValue(raw,mode)};cells.push(cell);row.set(strike,cell);}matrix.set(expiry,row);}
-    const strikes=[...new Set(cells.map(cell=>cell.strike))].sort((a,b)=>a-b),mvc=metric?.supportsMVC?cells.reduce((best,cell)=>!best||Math.abs(cell.value)>Math.abs(best.value)?cell:best,null):null,scaleValues=cells.filter(cell=>cell!==mvc).map(cell=>cell.value),positiveMax=Math.max(0,...scaleValues),negativeMin=Math.min(0,...scaleValues),spot=Number(payload._spot);
-    const initial=heatMapInitialWindow(q("#toolVisual").clientWidth,540,expiries,strikes,spot,invert),horizontal=invert?strikes:expiries,vertical=invert?expiries:strikes;
-    const initialWindow=initial?{start:initial.horizontal[0],end:initial.horizontal[1],yWindow:initial.vertical.map(index=>index/Math.max(1,vertical.length-1))}:null;
+    for(const expiry of expiries){const row=new Map();for(const [strikeKey,raw] of Object.entries(data[expiry]||{})){const strike=Number(strikeKey);if(!Number.isFinite(strike))continue;const cell=heatMapCellPoint(raw,{expiry,strike,mode});cells.push(cell);row.set(strike,cell);}matrix.set(expiry,row);}
+    // Native48594 only emits truthy derived values into its sparse grid. Raw
+    // zero legs remain in a nonzero point, but a zero/null net is not a hit.
+    const observedCell=cell=>Number.isFinite(cell?.value)&&cell.value!==0;
+    const observed=cells.filter(observedCell),strikes=[...new Set(cells.map(cell=>cell.strike))].sort((a,b)=>a-b),mvc=metric?.supportsMVC?observed.reduce((best,cell)=>!best||Math.abs(cell.value)>Math.abs(best.value)?cell:best,null):null,scaleValues=observed.filter(cell=>cell!==mvc).map(cell=>cell.value),positiveMax=Math.max(0,...scaleValues),negativeMin=Math.min(0,...scaleValues),spot=Number(payload._spot);
+    const horizontal=invert?strikes:expiries,vertical=invert?expiries:strikes;
+    // Metric changes retain the same market scope; ticker/session/filter changes
+    // do not inherit a different scope's saved strike or expiry window.
+    const navigationRequest={...buildRequest(activeTool)};delete navigationRequest.dataMode;delete navigationRequest.searchAfter;
+    const navigationDomains={scope:JSON.stringify(navigationRequest),horizontal:{id:invert?'strike':'expiry',values:horizontal},vertical:{id:invert?'expiry':'strike',values:vertical}};
+    const initialWindow=({width,height})=>{const initial=heatMapInitialWindow(width,height,expiries,strikes,spot,invert);return initial?{start:initial.horizontal[0],end:initial.horizontal[1],yWindow:initial.vertical.map(index=>index/Math.max(1,vertical.length-1))}:null;};
     // Licensed heat IV, like consolidated IV, is already percentage points.
     const formatValue=value=>metric?.format==="currency"?compact(value,true):metric?.format==="percent"?value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+"%":metric?.format==="decimal"?value.toFixed(5):compact(value);
     const formatExpiry=value=>new Date(value+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    const legend=[...(mvc?[{label:`MVC (${chartStrikeLabel(mvc.strike)} ${formatExpiry(mvc.expiry)})`,get color(){return themePaint("#7D1AD6");}}]:[]),...(Number.isFinite(spot)?[{label:ticker,color:CHART_COLORS.primary,value:formatPrice(spot)}]:[])];let bounds=null;
-    const preview=horizontal.map(item=>cells.filter(cell=>invert?cell.strike===item:cell.expiry===item).reduce((max,cell)=>Math.max(max,Math.abs(cell.value)),0));
-    const verticalPreview=vertical.map(item=>cells.filter(cell=>invert?cell.expiry===item:cell.strike===item).reduce((max,cell)=>Math.max(max,Math.abs(cell.value)),0));
-    quantCanvas({title:`${metric?.label||mode} Heat Map - ${ticker}`,legend,items:horizontal,navigatorValues:preview,verticalValues:verticalPreview,twoDimensional:true,initialWindow,height:540,plotLeft:invert?128:88,plotRight:50,
-      onClick:(_,index,state)=>{if(!bounds)return;const xi=Math.floor(bounds.xmin+(state.pointerX-bounds.left)/(bounds.right-bounds.left)*(bounds.xmax-bounds.xmin)),yi=Math.floor(bounds.ymax-(state.pointerY-bounds.top)/(bounds.bottom-bounds.top)*(bounds.ymax-bounds.ymin)),expiry=invert?vertical[yi]:horizontal[xi],strike=invert?horizontal[xi]:vertical[yi],cell=matrix.get(expiry)?.get(strike);if(!cell)return;openTradeDetail({title:'Heat Map Cell Data',preview:`${ticker} · ${formatExpiry(expiry)} · ${chartStrikeLabel(strike)} · ${metric?.label}: ${formatValue(cell.value)}`,filter:{ticker,expirationDates:[expiry],strikePrices:[strike]}});},
-      tooltipRows:(_,index,state)=>{if(!bounds||state.pointerX<bounds.left||state.pointerX>bounds.right||state.pointerY<bounds.top||state.pointerY>bounds.bottom)return[];const xi=Math.floor(bounds.xmin+(state.pointerX-bounds.left)/(bounds.right-bounds.left)*(bounds.xmax-bounds.xmin)),yi=Math.floor(bounds.ymax-(state.pointerY-bounds.top)/(bounds.bottom-bounds.top)*(bounds.ymax-bounds.ymin)),expiry=invert?vertical[yi]:horizontal[xi],strike=invert?horizontal[xi]:vertical[yi],cell=matrix.get(expiry)?.get(strike);return expiry&&strike!=null?[`${ticker} · ${formatExpiry(expiry)}`,chartStrikeLabel(strike),`${metric?.label}: ${cell?formatValue(cell.value):"No data"}`]:[];},
+    // Native238089 puts the leg suffix after Heat Map;266127 shows actual
+    // nonzero scalar extrema (the leg minimum dot has hexadecimal alpha1a).
+    const metricLabel=metric?.label||mode,suffix=metricLabel.match(/\s+(\((?:Calls|Puts)\))$/)?.[1],baseName=suffix?metricLabel.slice(0,-suffix.length).trimEnd():metricLabel;
+    const scalarLegend=!metric?.supportsMVC&&observed.length?[{label:'Min Value',color:metric?.group==='Net'?metric.minColor:metric?.minColor+'1a',value:formatValue(Math.min(...observed.map(cell=>cell.value)))},{label:'Max Value',color:metric?.maxColor,value:formatValue(Math.max(...observed.map(cell=>cell.value)))}]:[];
+    const legend=[...(mvc?[{label:`MVC (${chartStrikeLabel(mvc.strike)} ${formatExpiry(mvc.expiry)})`,get color(){return themePaint("#7D1AD6");}}]:scalarLegend),...(Number.isFinite(spot)?[{label:ticker,color:CHART_COLORS.primary,value:formatPrice(spot)}]:[])];let bounds=null;
+    const preview=horizontal.map(item=>observed.filter(cell=>invert?cell.strike===item:cell.expiry===item).reduce((max,cell)=>Math.max(max,Math.abs(cell.value)),0));
+    const verticalPreview=vertical.map(item=>observed.filter(cell=>invert?cell.expiry===item:cell.strike===item).reduce((max,cell)=>Math.max(max,Math.abs(cell.value)),0));
+    quantCanvas({title:`${baseName} Heat Map${suffix?' '+suffix:''} - ${ticker}`,legend,items:horizontal,navigatorValues:preview,verticalValues:verticalPreview,twoDimensional:true,initialWindow,navigationDomains,height:540,plotLeft:invert?128:88,plotRight:50,
+      onClick:(_,index,state)=>{if(!bounds||state.pointerX<bounds.left||state.pointerX>bounds.right||state.pointerY<bounds.top||state.pointerY>bounds.bottom)return;const xi=Math.floor(bounds.xmin+(state.pointerX-bounds.left)/(bounds.right-bounds.left)*(bounds.xmax-bounds.xmin)),yi=Math.floor(bounds.ymax-(state.pointerY-bounds.top)/(bounds.bottom-bounds.top)*(bounds.ymax-bounds.ymin)),expiry=invert?vertical[yi]:horizontal[xi],strike=invert?horizontal[xi]:vertical[yi],cell=matrix.get(expiry)?.get(strike);if(!observedCell(cell))return;const request=buildRequest(activeTool),sessionDate=request.sessionDate||payload._gexData?.requestedSessionDate;if(payload._snapshotTime!=null){delete request.sessionDate;request.snapshotTime=new Date(payload._snapshotTime).toISOString();}const selection=heatCellSelection({request,sessionDate,expirationDate:expiry,strikePrice:strike});openTradeDetail({individual:true,title:'Heat Map Details',heatCell:{...selection,formatValue},preview:`${ticker} · ${formatExpiry(expiry)} · ${chartStrikeLabel(strike)} · ${metric?.label}: ${formatValue(cell.value)}`,requestOverride:heatCellTradeRequest(selection)});},
+      tooltipRows:(_,index,state)=>{if(!bounds||state.pointerX<bounds.left||state.pointerX>bounds.right||state.pointerY<bounds.top||state.pointerY>bounds.bottom)return[];const xi=Math.floor(bounds.xmin+(state.pointerX-bounds.left)/(bounds.right-bounds.left)*(bounds.xmax-bounds.xmin)),yi=Math.floor(bounds.ymax-(state.pointerY-bounds.top)/(bounds.bottom-bounds.top)*(bounds.ymax-bounds.ymin)),expiry=invert?vertical[yi]:horizontal[xi],strike=invert?horizontal[xi]:vertical[yi],cell=matrix.get(expiry)?.get(strike);return observedCell(cell)?heatMapTooltipRows(cell,{ticker,mode,formatExpiry,formatStrike:chartStrikeLabel}):[];},
       draw:(ctx,w,h,state)=>{
         const left=invert?128:88,right=w-50,top=10,bottom=h-34,xmin=state.start,xmax=state.end+1,ymin=state.yWindow[0]*Math.max(1,vertical.length-1),ymax=state.yWindow[1]*Math.max(1,vertical.length-1)+1,cw=(right-left)/Math.max(1,xmax-xmin),ch=(bottom-top)/Math.max(1,ymax-ymin),x=index=>left+(index-xmin)*cw,y=index=>bottom-(index-ymin)*ch;bounds={left,right,top,bottom,xmin,xmax,ymin,ymax};
-        ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();ctx.font="700 11px Aleph, sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
-        for(let xi=state.start;xi<=state.end;xi++)for(let yi=Math.floor(ymin);yi<=Math.min(vertical.length-1,Math.ceil(ymax));yi++){const expiry=invert?vertical[yi]:horizontal[xi],strike=invert?horizontal[xi]:vertical[yi],cell=matrix.get(expiry)?.get(strike);if(!cell||!cell.value)continue;ctx.fillStyle=heatCellColor(cell.value,mode,positiveMax,negativeMin,cell===mvc);ctx.fillRect(x(xi),y(yi+1),cw,ch);const text=formatValue(cell.value);if(ch>=14&&ctx.measureText(text).width<cw-4){ctx.fillStyle=themePaint("#fff");ctx.fillText(text,x(xi)+cw/2,y(yi+.5));}}
+        // Native690327 chooses an11–22px base;782984 fits each complete label
+        // into the cell minus4px and keeps the6px minimum readable font.
+        const columns=Math.max(1,xmax-xmin),rows=Math.max(1,ymax-ymin),configuredSize=Math.max(11,Math.min(22,Math.round(.3*Math.min(w/columns,h/rows)))),baseSize=Math.floor(Math.min(configuredSize,ch-4)),showCellLabels=columns*rows<3000&&baseSize>=6,baseFont=`700 ${baseSize}px Aleph, sans-serif`;
+        ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();ctx.textAlign="center";ctx.textBaseline="middle";
+        for(let xi=state.start;xi<=state.end;xi++)for(let yi=Math.floor(ymin);yi<=Math.min(vertical.length-1,Math.ceil(ymax));yi++){const expiry=invert?vertical[yi]:horizontal[xi],strike=invert?horizontal[xi]:vertical[yi],cell=matrix.get(expiry)?.get(strike);if(!observedCell(cell))continue;ctx.fillStyle=heatCellColor(cell.value,mode,positiveMax,negativeMin,cell===mvc);ctx.fillRect(x(xi),y(yi+1),cw,ch);if(showCellLabels){const text=formatValue(cell.value);ctx.font=baseFont;const width=ctx.measureText(text).width,size=width>cw-4?Math.floor(baseSize*(cw-4)/width):baseSize;if(size>=6){ctx.font=`700 ${size}px Aleph, sans-serif`;ctx.fillStyle=themePaint("#fff");ctx.fillText(text,x(xi)+cw/2,y(yi+.5));}}}
         ctx.restore();ctx.fillStyle=themePaint("#fff");ctx.font="700 13px Aleph, sans-serif";ctx.textBaseline="middle";ctx.textAlign="right";const everyY=Math.max(1,Math.ceil(23/ch));for(let yi=Math.ceil(ymin);yi<=Math.min(vertical.length-1,Math.floor(ymax));yi+=everyY)ctx.fillText(invert?formatExpiry(vertical[yi]):chartStrikeLabel(vertical[yi]),left-8,y(yi+.5));
-        ctx.textAlign="center";const everyX=Math.max(1,Math.ceil((invert?65:110)/cw));for(let xi=state.start;xi<=state.end;xi+=everyX)ctx.fillText(invert?chartStrikeLabel(horizontal[xi]):formatExpiry(horizontal[xi]),x(xi)+cw/2,bottom+19);
+        ctx.textAlign="center";const horizontalLabel=index=>invert?chartStrikeLabel(horizontal[index]):formatExpiry(horizontal[index]);let maxLabelWidth=24;
+        // Native Heat Map782984 measures visible labels (minimum24px) and
+        // adds the12px spacing exported by183706 before choosing its stride.
+        for(let xi=state.start;xi<=state.end;xi++)maxLabelWidth=Math.max(maxLabelWidth,ctx.measureText(horizontalLabel(xi)).width);
+        const everyX=Math.max(1,Math.ceil((maxLabelWidth+12)/cw));for(let xi=state.start;xi<=state.end;xi+=everyX)ctx.fillText(horizontalLabel(xi),x(xi)+cw/2,bottom+19);
+        if(!toolConfiguration.hideAxisTitles){ctx.save();ctx.translate(18,(top+bottom)/2);ctx.rotate(-Math.PI/2);ctx.textAlign="center";ctx.fillText(invert?'Expiration':'Strike Price',0,0);ctx.restore();}
         ctx.strokeStyle=CHART_COLORS.primary;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(left,bottom);ctx.lineTo(right,bottom);ctx.stroke();
       }
     });
-    setSummary([["Mode",metric?.label||mode],["Expirations",expiries.length],["Strikes",strikes.length],["Active cells",cells.filter(cell=>cell.value!==0).length.toLocaleString()]]);
+    setSummary([["Mode",metric?.label||mode],["Expirations",expiries.length],["Strikes",strikes.length],["Active cells",observed.filter(cell=>cell.value!==0).length.toLocaleString()]]);
   }
 
 
   function renderMarketMap(payload) {
+    const industrySession=getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate||todayOffset(0);
+    if(industrySession!==marketMapIndustrySession){marketMapIndustryInventory=new Map();marketMapIndustrySession=industrySession;}
+    marketMapIndustryInventory=observeMarketMapIndustries(marketMapIndustryInventory,payload.data);
+    q('[data-control="industry"]',q('#toolControls'))?.setChoices?.(marketMapIndustryChoices(marketMapIndustryInventory,getControl('sector')));
     const entries=Object.entries(payload.data||{}).map(([ticker,row])=>({ticker,...row,weight:number(row.size),change:number(row.previousValue)?(number(row.currentValue)/number(row.previousValue)-1)*100:0})).filter(row=>row.weight>0);
     const grouping=getControl("mapGroup")||"SECTOR",groups=new Map();for(const row of entries){const sector=grouping==="NONE"?"Market":grouping==="INDUSTRY"?row.industry||"Other":row.sector||"Other";if(!groups.has(sector))groups.set(sector,[]);groups.get(sector).push(row);}
-    const sectors=[...groups.entries()].map(([name,rows])=>({name,rows,weight:rows.reduce((sum,row)=>sum+row.weight,0)}));let hits=[],headers=[],mapDrag=null,camera={...MARKET_MAP_CAMERA_IDENTITY},mapWidth=1,mapHeight=1,maxZoom=50,horizontalNavigation,verticalNavigation;
+    const sectors=[...groups.entries()].map(([name,rows])=>({name,rows,weight:rows.reduce((sum,row)=>sum+row.weight,0)}));let hits=[],headers=[],mapDrag=null,measuredSize=null,camera={...MARKET_MAP_CAMERA_IDENTITY},mapWidth=1,mapHeight=1,maxZoom=50,horizontalNavigation,verticalNavigation;
     try{const saved=JSON.parse(gexStorage.getItem(`gex-data-market-map-camera:${instanceKey}`));if(saved&&['zoomX','zoomY','offsetX','offsetY'].every(key=>Number.isFinite(saved[key])))camera=saved;}catch{}
     const saveCamera=()=>{try{gexStorage.setItem(`gex-data-market-map-camera:${instanceKey}`,JSON.stringify(camera));}catch{}};
     const chart=quantCanvas({
       title:"Market Map",items:entries,zoom:false,height:620,legend:[],
-      tooltipRows:(_,index,state)=>{const {x:px,y:py}=marketMapWorldPoint(camera,state.pointerX,state.pointerY),hit=hits.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);return hit?[`${hit.item.ticker} · ${hit.item.companyName||""}`,`${formatPrice(hit.item.currentValue)} · ${hit.item.change>=0?"+":""}${hit.item.change.toFixed(2)}%`,`Market cap ${compact(hit.item.weight,true)}`,`${hit.item.sector||""} · ${hit.item.industry||""}`]:[];},
+      tooltipRows:(_,index,state)=>{if(mapDrag?.panning)return [];const {x:px,y:py}=marketMapWorldPoint(camera,state.pointerX,state.pointerY),header=headers.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);if(header)return marketMapHeaderTooltipRows(header.item.name,grouping);const hit=hits.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);return marketMapTooltipRows(hit?.item,{formatMarketCap:value=>compact(value,true)});},
       draw:(ctx,w,h)=>{
-        mapWidth=w;mapHeight=h;camera=clampMarketMapCamera(camera,w,h,maxZoom);hits=[];headers=[];ctx.save();ctx.beginPath();ctx.rect(0,0,w,h);ctx.clip();ctx.translate(camera.offsetX,camera.offsetY);ctx.scale(camera.zoomX,camera.zoomY);const groupRects=squarifyTreemap(sectors,{x:0,y:0,width:w,height:h});
-        for(const group of groupRects){
-          const band=grouping==="NONE"?0:Math.min(16,group.height*.25);if(band){ctx.fillStyle=themePaint("#281047");ctx.fillRect(group.x,group.y,group.width,band);ctx.fillStyle=themePaint("#FFFFFF");ctx.font="700 10px Aleph, sans-serif";ctx.textAlign="left";ctx.save();ctx.beginPath();ctx.rect(group.x,group.y,group.width,band);ctx.clip();ctx.fillText(group.item.name.replaceAll("_"," "),group.x+4,group.y+band-4);ctx.restore();headers.push({...group,height:band});}
-          const tiles=squarifyTreemap(group.item.rows,{x:group.x,y:group.y+band,width:group.width,height:Math.max(0,group.height-band)});
-          for(const tile of tiles){ctx.fillStyle=marketMapColor(tile.item.change);ctx.fillRect(tile.x,tile.y,tile.width,tile.height);ctx.strokeStyle=themePaint("#0C0216");ctx.lineWidth=.5;ctx.strokeRect(tile.x,tile.y,tile.width,tile.height);hits.push(tile);if(tile.width<32||tile.height<32)continue;ctx.save();ctx.beginPath();ctx.rect(tile.x+2,tile.y+2,tile.width-4,tile.height-4);ctx.clip();ctx.fillStyle=themePaint("#FFFFFF");ctx.textAlign="center";const font=Math.min(26,Math.max(10,Math.min(tile.width/4,tile.height/4)));ctx.font=`750 ${font}px Aleph, sans-serif`;ctx.fillText(tile.item.ticker,tile.x+tile.width/2,tile.y+tile.height/2-2);ctx.font=`700 ${Math.min(14,font*.7)}px Aleph, sans-serif`;ctx.fillText(`${tile.item.change>=0?"+":""}${tile.item.change.toFixed(2)}%`,tile.x+tile.width/2,tile.y+tile.height/2+font*.8);ctx.restore();}
-        }
-        ctx.restore();maxZoom=marketMapMaxZoom(hits);horizontalNavigation?.sync();verticalNavigation?.sync();
+        if(w<=0||h<=0)return;
+        if(measuredSize&&(measuredSize.width!==w||measuredSize.height!==h)){camera={...MARKET_MAP_CAMERA_IDENTITY};saveCamera();}
+        measuredSize={width:w,height:h};mapWidth=w;mapHeight=h;camera=clampMarketMapCamera(camera,w,h,maxZoom);
+        ({hits,headers}=drawMarketMapFrame(ctx,{groups:sectors,grouping,width:w,height:h,camera,paint:themePaint}));
+        maxZoom=marketMapMaxZoom(hits);horizontalNavigation?.sync();verticalNavigation?.sync();
       }
     });
     chart.shell.classList.add('market-map-chart','two-dimensional-chart');
@@ -1577,7 +2078,7 @@ await boot();
     activeChartReset=()=>{camera={...MARKET_MAP_CAMERA_IDENTITY};saveCamera();chart.redraw();};
     chart.canvas.addEventListener('wheel',event=>{const rect=chart.canvas.getBoundingClientRect(),result=wheelMarketMapCamera(camera,{x:event.clientX-rect.left,y:event.clientY-rect.top,deltaY:event.deltaY,width:mapWidth,height:mapHeight,maxZoom});if(!result.handled)return;event.preventDefault();camera=result.camera;saveCamera();chart.redraw();},{passive:false});
     chart.canvas.addEventListener('pointerdown',event=>{if(event.button!==0)return;mapDrag={x:event.clientX,y:event.clientY,camera:{...camera},panning:false};chart.canvas.setPointerCapture(event.pointerId);});
-    chart.canvas.addEventListener('pointermove',event=>{if(!mapDrag)return;if(!mapDrag.panning){if(Math.abs(event.clientX-mapDrag.x)+Math.abs(event.clientY-mapDrag.y)<=3)return;mapDrag.panning=true;mapDrag.x=event.clientX;mapDrag.y=event.clientY;return;}camera=panMarketMapCamera(mapDrag.camera,event.clientX-mapDrag.x,event.clientY-mapDrag.y,mapWidth,mapHeight,maxZoom);saveCamera();chart.redraw();});
+    chart.canvas.addEventListener('pointermove',event=>{if(!mapDrag)return;if(!mapDrag.panning){if(Math.abs(event.clientX-mapDrag.x)+Math.abs(event.clientY-mapDrag.y)<=3||camera.zoomX<=1&&camera.zoomY<=1)return;mapDrag.panning=true;mapDrag.x=event.clientX;mapDrag.y=event.clientY;chart.shell.querySelector?.('.chart-tooltip')?.setAttribute('hidden','');chart.canvas.style.cursor='grabbing';return;}camera=panMarketMapCamera(mapDrag.camera,event.clientX-mapDrag.x,event.clientY-mapDrag.y,mapWidth,mapHeight,maxZoom);saveCamera();chart.shell.querySelector?.('.chart-tooltip')?.setAttribute('hidden','');chart.redraw();});
     chart.canvas.addEventListener('pointerup',event=>{if(mapDrag&&!mapDrag.panning&&grouping!=='NONE'){const rect=chart.canvas.getBoundingClientRect(),{x:px,y:py}=marketMapWorldPoint(camera,event.clientX-rect.left,event.clientY-rect.top),hit=headers.find(header=>px>=header.x&&px<=header.x+header.width&&py>=header.y&&py<=header.y+header.height);if(hit){setControl(grouping==='SECTOR'?'sector':'industry',hit.item.name.toUpperCase().replaceAll(' ','_'));if(grouping==='SECTOR')setControl('industry','');onControlsChanged();}}mapDrag=null;});
     chart.canvas.addEventListener('pointercancel',()=>{mapDrag=null;});chart.canvas.addEventListener('pointerleave',()=>{mapDrag=null;});chart.redraw();
     const up=entries.filter(row=>row.change>0).length;setSummary([["Symbols",entries.length.toLocaleString()],["Advancing",up.toLocaleString(),"positive"],["Declining",(entries.length-up).toLocaleString(),"negative"],["Sectors",sectors.length]]);
@@ -1598,16 +2099,41 @@ await boot();
     q("#toolVisual").replaceChildren(message);setSummary([]);
   }
 
-  function renderToolPayload(tool, payload, {refresh=false}={}) {
+  function renderToolPayload(tool, payload, {refresh=false,append=false}={}) {
+    if(refresh&&tool.view==='newsFeed'&&activeChartUpdate?.(payload,{refresh:!append,append}))return;
     if(refresh&&tool.view==='netDrift'&&activeChartUpdate?.(payload))return;
-    resetStage(); const data = payload.data || {};
+    const reusable=refresh&&activeChartInstance&&['netDrift','darkFlow','ohlc','optionOhlc','ivRank','maxPainTime','contractStats','sideStats','marketShare','exposureStrike','exposureExpiration','maxPain','heatMap','intervalMap','netFlow','volatilityDrift','volatilitySkew','termStructure','oiStrike','oiExpiration','oiTime'].includes(tool.view);
+    const reusableEquityTable=refresh&&['equity-prints','exchange-notifications'].includes(tool.id)&&tool.view==='table'&&tableRuntime&&tableColumnHost===q(tool.id==='equity-prints'?'#equityPrintColumnControls':'#notificationColumnControls');
+    if(!reusable&&!reusableEquityTable)resetStage();else if(reusable)refreshingCanvas=activeChartInstance;
+    try{const data = payload.data || {};
+    if(tool.view==='newsFeed'){
+      showVisual();q('#chartToolbar').hidden=true;q('#loadMore').hidden=true;
+      const view=createNewsFeedStream({host:q('#toolVisual'),searchHost:q('#toolControls'),payload,timeZone:gexTimeZone(),search:savedToolControls[tool.id]?.newsSearch||'',showDataDialog,
+        loadArticle:row=>toolFetch('news-articles',newsArticleRequest(row,buildRequest(tool))),
+        onLoadMore:cursor=>{toolCursor=cursor;return loadActiveTool({append:true});},onCursorChange:cursor=>{toolCursor=cursor;},onRows:rows=>{tableRows=rows;},onSearch:()=>saveToolControls()});
+      activeChartUpdate=(next,options={})=>{view.update(next,{timeZone:gexTimeZone(),search:getControl('newsSearch'),...options});return true;};activeChartDispose=()=>view.destroy();setSummary([]);return;
+    }
     if (tool.view === "table") {
       const rows=Array.isArray(data)?data:Object.entries(data).map(([key,row])=>({key,...(row||{})})),historical=getControl("mode")==="historical";
-      let schema=tool.id==="order-flow-consolidated"?CONSOLIDATED_COLUMNS.filter(column=>column.id!=="date"||historical):tool.id==="equity-prints"?EQUITY_PRINT_COLUMNS:EXCHANGE_NOTIFICATION_COLUMNS;
-      if(tool.id!=="order-flow-consolidated")schema=schema.filter(column=>!column.historicalOnly||historical).map(column=>({...column,id:column.key,key:column.timeField||column.key,type:column.key==="date"?"date":/Time$/.test(column.key)?"time":column.key==="bidAsk"?"bidAsk":column.key==="notionalValue"||column.key==="price"?"money":column.key==="size"?"integer":"text",...(column.key==="notionalValue"?{dot:row=>`var(${equitySideColorToken(row)||"--qd-dot-sentimentNeutralColor"},#AAAAAA)`}:column.key==="ticker"&&tool.id==="equity-prints"?{dot:row=>`var(${equityPrintColorToken(row)||"--qd-dot-equityLitPoolColor"},#AAAAAA)`}:column.key==="type"?{dot:row=>`var(${notificationColorToken(row.type)||"--qd-dot-exchangeNotificationNeutralColor"},#AAAAAA)`}:{})}));
-      if(tool.id==="equity-prints")schema=schema.map(column=>column.key==="price"?{...column,type:"priceSide",sideField:"tradeSide",sideSeparator:" ",sidePrintType:"LIT_POOL"}:column);
-      showTable(rows,schema);if(tool.id==="order-flow-consolidated")renderFlowStatistics(payload.statistics);setSummary([["Loaded rows",rows.length.toLocaleString()],["Session",historical?getControl("date"):"Latest"],["Ticker",getControl("ticker")||getControl("tickerOptional")||"All"],["More pages",payload.nextSearchAfter?"Available":"No"]]);return;
+      const optionTape=['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id);
+      let schema=optionTape?(tool.id==='order-flow-unconsolidated'?UNCONSOLIDATED_COLUMNS:CONSOLIDATED_COLUMNS).filter(column=>column.id!=="date"||historical):tool.id==="equity-prints"?EQUITY_PRINT_COLUMNS:EXCHANGE_NOTIFICATION_COLUMNS;
+      if(optionTape)schema=schema.map(column=>{const fields=optionTapeColumnFields(column.key||column.id).filter(field=>tool.id==='order-flow-consolidated'?!field.unconsolidatedOnly:!field.consolidatedOnly);return {...column,...(fields.length?{sortField:fields[0].field,filterFields:['date','time'].includes(column.id)?[]:fields}:{} )};});
+      if(!optionTape)schema=schema.filter(column=>!column.historicalOnly||historical).map(column=>({...column,id:column.key,key:column.timeField||column.key,type:column.key==="date"?"date":/Time$/.test(column.key)?"time":column.key==="bidAsk"?"bidAsk":column.key==="notionalValue"||column.key==="price"?"money":column.key==="size"?"integer":"text",...(column.key==="notionalValue"?{dot:row=>`var(${equitySideColorToken(row)||"--qd-dot-sentimentNeutralColor"},#AAAAAA)`}:column.key==="ticker"&&tool.id==="equity-prints"?{dot:row=>`var(${equityPrintColorToken(row)||"--qd-dot-equityLitPoolColor"},#AAAAAA)`}:column.key==="type"?{dot:row=>`var(${notificationColorToken(row.type)||"--qd-dot-exchangeNotificationNeutralColor"},#AAAAAA)`}:{})}));
+      if(tool.id==="equity-prints")schema=schema.map(column=>{
+        const fields=equityPrintColumnFields(column.id),sortable=column.id!=='bidAsk';
+        return {...column,menuReorder:true,sortable,sortField:fields[0]?.sortField,sortKeys:sortable?(column.id==='ticker'?fields:fields.slice(0,1)).map(field=>({key:field.key,field:field.sortField,label:field.label})):[],filterFields:['date','tradeTime'].includes(column.id)?[]:fields,...(column.id==='bidAsk'?{bidAskSeparator:' x '}:{}),...(column.id==='price'?{type:'priceSide',sideField:'tradeSide',sideSeparator:' ',sidePrintType:'LIT_POOL'}:{})};
+      });
+      if(tool.id==='exchange-notifications')schema=schema.map(column=>{const fields=notificationColumnFields(column.id);return {...column,sortField:fields[0]?.sortField,sortKeys:fields.slice(0,1),filterFields:['date','createdTime'].includes(column.id)?[]:fields};});
+      showTable(rows,schema,null,optionTape?optionTapeTableConfiguration(tool):tool.id==='equity-prints'?equityPrintTableConfiguration(tool):tool.id==='exchange-notifications'?notificationTableConfiguration(tool):{});if(optionTape)renderFlowStatistics(payload.statistics);setSummary([["Loaded rows",rows.length.toLocaleString()],["Session",historical?getControl("tapeSessionStart")||getControl("date"):"Latest"],["Ticker",getControl("ticker")||getControl("tickerOptional")||"All"],["More pages",payload.nextSearchAfter?"Available":"No"]]);return;
     }
+    if(tool.view==='oiChange'){
+      const schema=[['sessionDate','Date','calendarDate'],['contract','Contract','contract'],['previousOpenInterest','Previous OI','integer'],['currentOpenInterest','Current OI','integer'],['changeInOpenInterest','OI Change','integer']].map(([key,label,type])=>({key,id:key,label,type,...(key==='contract'?{sortField:'TICKER'}:key==='sessionDate'?{sortField:'SESSION_DATE'}:{}),...(key==='changeInOpenInterest'?{percentField:'percentChangeInOpenInterest',percentUnit:'percentagePoints'}:{})}));
+      const rows=Array.isArray(data)?data:[];showTable(rows,schema,null,{sortKey:getControl('oiSortField')||'changeInOpenInterest',sortDirection:getControl('oiSortDirection')==='ASCENDING'?1:-1,onSortChange:sort=>{setControl('oiSortField',sort.field);setControl('oiSortDirection',sort.direction===1?'ASCENDING':'DESCENDING');saveToolControls();loadActiveTool({retainSortPage:true});}});setSummary([['Loaded contracts',rows.length.toLocaleString()],['More pages',payload.nextSearchAfter?'Available':'No']]);return;
+    }
+    if(tool.view==='volatilitySkew')for(const button of qa('[data-skew-selection]',q('#toolControls')))button.disabled=false;
+    if(tool.view==='termStructure')for(const button of qa('[data-term-selection]',q('#toolControls')))button.disabled=false;
+    if(['netFlow','volatilityDrift','volatilitySkew','termStructure','oiStrike','oiExpiration','oiTime'].includes(tool.view)&&renderAdditionalChart({tool,payload,controls:{...(['volatilitySkew','termStructure'].includes(tool.view)?savedToolControls[tool.id]:{}),...Object.fromEntries(tool.controls.map(id=>[id,getControl(id)])),exposureOrientation:getControl('exposureOrientation')||'HORIZONTAL'},ticker:String(getControl('ticker')||'QQQ').toUpperCase(),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate},
+      {quantCanvas,setSummary,CHART_COLORS,themePaint,quantLine,niceValueDomain,drawAxisLabels,drawHorizontalTicks,drawTimeLabels,drawChartCrosshair,timeDomain,timeX,niceTicks,drawExposureBars,exposureStrikeWindow,formatPrice,compact,chartStrikeLabel,displayChartTime,gexTimeZone,onMinuteDetail:row=>openTradeDetail({individual:true,title:'Net Flow Details',preview:`${getControl('ticker')||'QQQ'} · ${displayChartTime(row.time)} · Individual prints in this minute`,requestOverride:netFlowMinuteDetailRequest({base:buildRequest(tool),row})})}))return;
     if (tool.view === "marketMap") return renderMarketMap(payload);
     if (tool.view === "heatMap") return renderHeatMap(payload);
     if (tool.view === "intervalMap") return renderIntervalMap(payload);
@@ -1629,10 +2155,10 @@ await boot();
       renderSideStatsQuant(payload); return;
     }
     if (tool.view === "gainers") {
-      const model=gainersModel(data,getControl("rankMetric")||"bullishPremium"),rows=model.rows;showTable(rows,GAINERS_COLUMNS,null,{sortKey:getControl("rankMetric")||"bullishPremium"});const top=rows[0];setSummary([["Symbols",rows.length.toLocaleString()],["Leader",top?.ticker||"—"],["Bullish premium",compact(rows.reduce((s,r)=>s+number(r.bullishPremium),0),true),"positive"],["Bearish premium",compact(rows.reduce((s,r)=>s+number(r.bearishPremium),0),true),"negative"]]);return;
+      const model=gainersModel(data,getControl("rankMetric")||"bullishPremium"),rows=model.rows;showTable(rows,GAINERS_COLUMNS,null,{sortKey:getControl("rankMetric")||"bullishPremium",inlineFilters:false,localHeaderFilters:true,fillLastColumn:true});const top=rows[0];setSummary([["Symbols",rows.length.toLocaleString()],["Leader",top?.ticker||"—"],["Bullish premium",compact(rows.reduce((s,r)=>s+number(r.bullishPremium),0),true),"positive"],["Bearish premium",compact(rows.reduce((s,r)=>s+number(r.bearishPremium),0),true),"negative"]]);return;
     }
     if (tool.view === "marketShare" || tool.view === "marketShareTable") {
-      if(tool.view==="marketShareTable"){const model=marketShareTableModel(data),rows=model.rows;showTable(rows,MARKET_SHARE_COLUMNS,model.totalRow,{sortKey:"equityTotalVolume"});setSummary([["Exchanges",rows.length],["Total premium",compact(model.totals.totalPremium,true)],["Equity calls",compact(rows.reduce((s,r)=>s+number(r.equityCallPremium),0),true),"positive"],["Equity puts",compact(rows.reduce((s,r)=>s+number(r.equityPutPremium),0),true),"negative"]]);}else renderMarketShareQuant(payload);return;
+      if(tool.view==="marketShareTable"){const model=marketShareTableModel(data),rows=model.rows;showTable(rows,MARKET_SHARE_COLUMNS,model.totalRow,{sortKey:"equityTotalVolume",inlineFilters:false,fillLastColumn:true});setSummary([["Exchanges",rows.length],["Total premium",compact(model.totals.totalPremium,true)],["Equity calls",compact(rows.reduce((s,r)=>s+number(r.equityCallPremium),0),true),"positive"],["Equity puts",compact(rows.reduce((s,r)=>s+number(r.equityPutPremium),0),true),"negative"]]);}else renderMarketShareQuant(payload);return;
     }
     if (tool.view === "exposureStrike") {
       renderExposureProfileQuant(payload,false); return;
@@ -1652,6 +2178,7 @@ await boot();
     if (tool.view === "netDrift") {
       renderNetDriftQuant(payload); return;
     }
+    }finally{refreshingCanvas=null;}
   }
 
   function exportCsv() {
@@ -1676,7 +2203,7 @@ await boot();
       schedulePoll(); } catch { /* Keep errors until a real data request succeeds. */ }
   }
   const statusTimer=setInterval(refreshMarketStatus, 60000); renderToolNav();
-  const activityChanged=()=>{if(window.__gexDataActive===false||document.hidden){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}else{refreshMarketStatus();if(activeTool&&!toolPayload)loadActiveTool();schedulePoll();}};
+  const activityChanged=()=>{if(window.__gexDataActive===false||document.hidden){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}else{refreshMarketStatus();refreshResumedTool();}};
   window.addEventListener('gex-data-activity',activityChanged);document.addEventListener('visibilitychange',activityChanged);
   window.addEventListener('pagehide',()=>{clearInterval(statusTimer);clearTimeout(pollTimer);activeController?.abort();activeChartDispose?.();tableRuntime?.destroy();});
   window.addEventListener('gex-data-timezone',refreshTimeZonePresentation);
@@ -1688,7 +2215,7 @@ await boot();
     toolConfiguration=applyDocumentPreferences();
     const signature=preferenceFilterSignature(),presentation=preferencePresentationSignature(),presentationChanged=presentation!==lastPresentationSignature;
     lastPresentationSignature=presentation;
-    if(signature!==lastFilterSignature){lastFilterSignature=signature;reflectFilterOverrides();syncDateControl();if(activeTool)loadActiveTool();}
+    if(signature!==lastFilterSignature){lastFilterSignature=signature;reflectFilterOverrides();syncDateControl();netDriftContractControls?.sync();if(activeTool)loadActiveTool();}
     else if(presentationChanged&&activeTool&&toolPayload){renderToolPayload(activeTool,toolPayload);renderSnapshotControl(toolPayload);}
   };
   window.addEventListener('storage',preferencesChanged);window.addEventListener('gex-data-preferences',preferencesChanged);
@@ -1703,7 +2230,7 @@ await boot();
     if(activeTool){snapshotSelections.delete(snapshotKey(activeTool));toolPayload=null;resetStage();masterReplayTimer=setTimeout(()=>loadActiveTool(),100);}
   });
   window.addEventListener('pagehide',()=>clearTimeout(masterReplayTimer));
-  window.addEventListener('message',event=>{if(!EMBEDDED||event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='gex-data-preferences')preferencesChanged();if(event.data?.type==='gex-data-refresh')loadActiveTool();if(event.data?.type==='gex-data-save-state')saveToolControls();if(event.data?.type==='gex-data-visibility'){frameVisible=event.data.visible===true;if(frameVisible){if(activeTool&&!toolPayload)loadActiveTool();schedulePoll();}else{clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}}});
+  window.addEventListener('message',event=>{if(!EMBEDDED||event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='gex-data-preferences')preferencesChanged();if(event.data?.type==='gex-data-refresh')loadActiveTool();if(event.data?.type==='gex-data-save-state')saveToolControls();if(event.data?.type==='gex-data-visibility'){const wasVisible=frameVisible;frameVisible=event.data.visible===true;if(frameVisible&&!wasVisible)refreshResumedTool();else if(!frameVisible){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}}});
   window.addEventListener("hashchange", () => {
     const id = location.hash.startsWith("#tool=") ? location.hash.slice(6) : null;
     if (id && toolMap.has(id) && activeTool?.id !== id) showTool(id);

@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import {additionalToolRequest,validateAdditionalToolRequest} from '../public/gex-data-app/additional-tool-requests.js';
+import {newsFeedRequest,validateNewsFeedRequest} from '../public/gex-data-app/news-feed-model.js';
 import ts from 'typescript';
 import {createRequire} from 'node:module';
 import {themeRole} from '../public/gex-data-app/site-theme.js';
 const require=createRequire(import.meta.url),read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
 const compile=s=>ts.transpileModule(s,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-const policy={};vm.runInNewContext(compile(read('../src/lib/gexDataPolicy.ts')),{exports:policy,Intl,Date,structuredClone,Set,Number,Error,Object,Array});
+const policy={};vm.runInNewContext(compile(read('../src/lib/gexDataPolicy.ts')),{exports:policy,require:name=>{if(name.endsWith('news-feed-model.js'))return {validateNewsFeedRequest};assert.match(name,/additional-tool-requests\.js$/);return {validateAdditionalToolRequest};},Intl,Date,structuredClone,Set,Number,Error,Object,Array});
 
 test('calendar uses real NY dates, holidays, early close and distinct equity/options windows',()=>{
   const {gexDataClock:clock}=policy;
@@ -21,8 +23,8 @@ test('calendar uses real NY dates, holidays, early close and distinct equity/opt
   assert.equal(clock(new Date('2028-12-29T17:00:00Z')).open,true);
   assert.equal(clock(new Date('2029-01-02T17:00:00Z')).calendarVerified,false);
 });
-test('20 catalogue endpoints plus individual-print detail preserve native units and filters',()=>{
-  assert.equal(Object.keys(policy.GEX_DATA_TOOLS).length,21);
+test('30 distinct licensed catalogue endpoints preserve native units and filters',()=>{
+  assert.equal(Object.keys(policy.GEX_DATA_TOOLS).length,30);
   assert.equal(policy.GEX_DATA_TOOLS['order-flow-unconsolidated'].path,'order-flow/unconsolidated');
   const input={sessionDate:'2026-10-16',aggregationPeriod:'5m',filter:{ticker:'QQQ',strikePrices:[100.25]},filterExpression:{conjunction:'AND',filters:[]}};
   const output=policy.validateGexDataRequest('exposure-by-strike',input);assert.equal(JSON.stringify(output),JSON.stringify(input));assert.notEqual(output,input);
@@ -71,11 +73,34 @@ test('navigation, account preferences and host lifecycle are integrated with GEX
   const host=read('../src/components/gex-data/GexDataWorkspace.tsx');
   for(const rule of [/saved\?\.accountKey === accountKey/,/pending\.size >= 32/,/running >= 4/,/cache\.size > 48/,/24_000_000/,/controllers\.forEach/,/observer\.disconnect/,/!activeRef\.current/])assert.match(host,rule);
 });
+test('all nine additional tools use their distinct authenticated licensed gateway route',async()=>{
+  const h=server();
+  for(const id of ['order-flow-unconsolidated','net-flow','volatility-skew','volatility-drift','term-structure','open-interest-by-strike','open-interest-by-expiration','open-interest-over-time','open-interest-change']){
+    const request=additionalToolRequest(id,{}, {sessionDate:'2026-11-02',filter:{ticker:'SPY'}});
+    const response=await h.post(id,request);assert.equal(response.status,200,id);
+    assert.equal(h.calls.at(-1).provider,'quantdata');
+    assert.equal(h.calls.at(-1).path,`/v1/options/tool/${id==='order-flow-unconsolidated'?'order-flow/unconsolidated':id}`);
+    assert.deepEqual(h.calls.at(-1).body,request);
+  }
+  assert.equal(new Set(h.calls.map(call=>call.path)).size,9);
+});
+
+test('News Feed uses the authenticated news surface with exact time window, body opt-in and cursor',async()=>{
+  const h=server(),body=newsFeedRequest({mode:'historical',date:'2026-11-01',newsBody:'SHOW'}, {filter:{tickers:['SPY']},searchAfter:['123','456']}, {timeZone:'America/New_York'});
+  assert.equal((await h.post('news-articles',body)).status,200);
+  assert.equal(h.calls[0].path,'/v1/news/tool/news-articles');assert.deepEqual(h.calls[0].body,body);
+  assert.equal((await server({signedIn:false}).post('news-articles',body)).status,401);
+  for(const bad of [{sessionDate:'2026-11-01'},{sort:{field:'PUBLISHED_TIME'}},{includes:['BODY']}])assert.equal((await h.post('news-articles',bad)).status,400);
+  assert.equal(h.calls.length,1);
+});
+
 test('theme colours and font replace the prototype skin in both CSS and canvas',()=>{
   assert.equal(themeRole('#00FF00'),'bullish');assert.equal(themeRole('#FF0000'),'bearish');assert.equal(themeRole('#FFFFFF'),'foreground');
   assert.equal(themeRole('#07000f'),'background');
   const app=read('../public/gex-data-app/app.js');assert.doesNotMatch(app,/Inter,|\/api\/quantdata\//);assert.match(app,/themePaint\(/);
-  assert.match(read('../public/gex-data-app/site.css'),/Aleph-Regular\.ttf/);
+  assert.match(read('../public/gex-data-app/site.css'),/font-family:Aleph/);
+  assert.match(read('../public/gex-data-app/index.html'),/href="\/fonts\/aleph\/aleph\.css/);
+  assert.match(read('../public/fonts/aleph/aleph.css'),/Aleph-Regular\.ttf/);
   assert.match(read('../public/gex-data-app/site-theme.js'),/installTheme/);
   for(const name of readdirSync(new URL('../public/gex-data-app/',import.meta.url)))assert.doesNotMatch(name,/woff|provider\.env|server\.mjs/);
 });

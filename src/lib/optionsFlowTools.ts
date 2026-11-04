@@ -12,6 +12,11 @@ const dataTools = [
   ["exposure-by-expiration", "Exposure by Expiration"], ["exposure-by-strike", "Exposure by Strike"],
   ["exposure-forecast", "Exposure Forecast"], ["heat-map", "Heat Map"], ["iv-rank", "Implied Volatility Rank"],
   ["interval-map", "Interval Map"], ["max-pain", "Max Pain"], ["max-pain-over-time", "Max Pain / Time"], ["net-drift", "Net Drift"],
+  ["order-flow-unconsolidated","Unconsolidated Order Flow"],["net-flow","Net Flow"],
+  ["volatility-drift","Volatility Drift"],["volatility-skew","Volatility Skew"],["term-structure","Term Structure"],
+  ["open-interest-by-strike","Open Interest by Strike"],["open-interest-by-expiration","Open Interest by Expiration"],
+  ["open-interest-over-time","Open Interest / Time"],["open-interest-change","Open Interest Change"],
+  ["news-articles","News Feed"],
 ];
 const boxTools = [
   ["consolidated-flow", "Consolidated Order Flow"], ["contract-side-statistics", "Contract Side Statistics"],

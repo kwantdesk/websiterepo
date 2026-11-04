@@ -73,3 +73,5 @@ html,body,.app-shell,.dashboard,.dock-body,.dock-tool-frame,
 /* Palette roles affect data chrome only; page and plot backgrounds remain themed. */
 html[data-chart-palette="custom"] thead th{color:var(--site-chartHeader,var(--site-foreground))!important}
 html[data-chart-palette="custom"] td[data-column-id="strikePrice"],html[data-chart-palette="custom"] td[data-column-id="strike"]{color:var(--site-chartStrike,var(--site-foreground))!important}
+
+.embedded-actions button[data-drift-display][aria-pressed="true"]{background:var(--site-primary)!important;color:var(--site-on-primary)!important;border-color:var(--site-primary)!important}

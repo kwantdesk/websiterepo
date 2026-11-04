@@ -13,11 +13,14 @@ test("empty docks and populated tool surfaces use the exact live host background
   assert.doesNotMatch(flatRule[1],/\*|\.stat-ring(?:,|\s)|canvas/);
 });
 
-test("flat host overrides load after reference gradients, with a fresh stylesheet URL",()=>{
+test("versioned flat host overrides load after every reference gradient stylesheet",()=>{
   const html=read("public/gex-data-app/index.html");
-  const site=html.indexOf('/gex-data-app/site.css?v=8');
-  assert.ok(site>html.indexOf('/gex-data-app/styles.css'));
-  assert.ok(site>html.indexOf('/gex-data-app/workspace.css'));
+  const styles=[...html.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)].map(match=>({url:new URL(match[1],'https://fixture.invalid'),index:match.index}));
+  const site=styles.find(item=>item.url.pathname==='/gex-data-app/site.css');assert.ok(site,'host theme stylesheet is required');
+  assert.ok(site.url.searchParams.get('v'),'host CSS must have a cache-busting revision, without pinning its literal value');
+  for(const path of ['/gex-data-app/styles.css','/gex-data-app/workspace.css']){
+    const reference=styles.find(item=>item.url.pathname===path);assert.ok(reference,path);assert.ok(site.index>reference.index,`${path} must load before the host overrides`);
+  }
   const theme=read("public/gex-data-app/site-theme.js");
   assert.match(theme,/for\(const\[key,value\]of Object.entries\(palette\)\)document.documentElement.style.setProperty\('--site-'\+key,value\)/);
   // Financial series/rings still encode real data; they are not page decoration.

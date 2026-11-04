@@ -1,9 +1,13 @@
 // Isolated local QA only. Never deploy this server or expose it beyond loopback.
 import { createServer } from 'node:http';
 import { readFile, realpath } from 'node:fs/promises';
-import { resolve, relative, extname, sep } from 'node:path';
+import { resolve, relative, extname, sep, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
+import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { HeatCellArchiveReader } from '../services/rithmic_gateway/src/heat-cell-archive.mjs';
+import { validateHeatCellArchiveQuery } from '../services/rithmic_gateway/src/heat-cell-archive-policy.mjs';
 import { GEX_DATA_TOOLS, gexDataClock, validateGexDataRequest } from '../src/lib/gexDataPolicy.ts';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -27,9 +31,17 @@ function json(response, status, value) {
   response.end(JSON.stringify(value));
 }
 
-export async function createParityServer({ fetchImpl = fetch, token: testToken } = {}) {
+export async function createParityServer({ fetchImpl = fetch, token: testToken, gatewayOrigin = 'http://127.0.0.1:8793', archiveRoot = process.env.GEX_PARITY_ARCHIVE_ROOT } = {}) {
+  if(!['http://127.0.0.1:8793','https://feed.kwantdesk.com'].includes(gatewayOrigin))throw new Error('Unsupported audit gateway origin.');
   const token = testToken ?? parseEnv(await readFile(resolve(ROOT, 'services/rithmic_gateway/operator.env'), 'utf8')).KWANTIFY_MARKET_DATA_GATEWAY_TOKEN?.trim();
   if (!token) throw new Error('Existing local gateway authentication is unavailable. No service was started.');
+  let archiveReader = null;
+  if (archiveRoot) {
+    if (typeof archiveRoot !== 'string' || !isAbsolute(archiveRoot) || /^[/\\]{2}/.test(archiveRoot)) throw new Error('QA archives require an absolute local temporary path.');
+    const temp = await realpath(tmpdir()), actual = await realpath(resolve(archiveRoot)), inside = relative(temp, actual);
+    if (!inside || inside.startsWith(`..${sep}`) || inside === '..' || resolve(temp, inside) !== actual) throw new Error('QA archives must be inside a dedicated local temporary directory.');
+    archiveReader = new HeatCellArchiveReader({ dir: actual, key: randomBytes(32).toString('hex') });
+  }
   const cache = new Map(), pending = new Map(); let cacheBytes = 0;
   const server = createServer(async (request, response) => {
     const origin = `http://127.0.0.1:${server.address().port}`;
@@ -48,13 +60,31 @@ export async function createParityServer({ fetchImpl = fetch, token: testToken }
         if (tool === 'status' && request.method === 'GET') {
           let connected = false;
           try {
-            const health = await fetchImpl('http://127.0.0.1:8793/health', { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5_000) });
+            const health = await fetchImpl(`${gatewayOrigin}/health`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5_000) });
             if (health.ok) { const state = JSON.parse((await boundedBody(health.body, MAX_RESPONSE)).toString()); connected = state.connected === true; }
           } catch { /* Truthful disconnected status; no vendor request. */ }
           return json(response, 200, { connected, mode: 'gateway', market: gexDataClock() });
         }
         if (request.method !== 'POST') return json(response, 405, { error: 'POST required.' });
         if (request.headers.origin !== origin) return json(response, 403, { error: 'Same-origin browser request required.' });
+        if (tool === 'heat-map-history') {
+          if (url.search) return json(response, 400, { error: 'Unsupported history parameter.' });
+          if (!/^application\/json(?:;|$)/i.test(request.headers['content-type'] || '')) return json(response, 415, { error: 'JSON required.' });
+          let input, selection;
+          try {
+            input = JSON.parse((await boundedBody(request, Math.min(MAX_REQUEST, 65536))).toString('utf8'));
+            input.request = validateGexDataRequest('heat-map', input.request);
+            selection = validateHeatCellArchiveQuery(input);
+          } catch (error) { return json(response, error.status === 413 ? 413 : 400, { error: 'Invalid or oversized recorded-cell request.' }); }
+          if (!archiveReader) return json(response, 200, { rows: [], nextCursor: null,
+            selection: { ticker: selection.ticker, sessionDate: selection.sessionDate, expirationDate: selection.expirationDate, strikePrice: selection.strikePrice, dataMode: selection.dataMode, throughMs: selection.throughMs },
+            coverage: { kind: 'observations-only', scanComplete: true, partial: true, scanPartial: false, reason: 'not-recorded' } });
+          const controller = new AbortController(), cancel = () => { if (!response.writableEnded) controller.abort(); };
+          response.once('close', cancel);
+          try { return json(response, 200, await archiveReader.read(input, { signal: controller.signal })); }
+          catch (error) { return json(response, error.status || 502, { error: 'Local recorded-cell history is unavailable.', code: error.code || 'heat_cell_archive_unreadable' }); }
+          finally { response.off('close', cancel); }
+        }
         if (!GEX_DATA_TOOLS[tool]) return json(response, 404, { error: 'Unsupported QA data tool.' });
         let body;
         try { body = validateGexDataRequest(tool, JSON.parse((await boundedBody(request, MAX_REQUEST)).toString('utf8'))); }
@@ -67,7 +97,7 @@ export async function createParityServer({ fetchImpl = fetch, token: testToken }
             if (pending.size >= 16) return json(response, 503, { error: 'Local QA request queue is full.' });
             const spec = GEX_DATA_TOOLS[tool];
             job = (async () => {
-              const upstream = await fetchImpl(`http://127.0.0.1:8793/v1/vendors/quantdata/v1/${spec.surface}/tool/${spec.path ?? tool}`, {
+              const upstream = await fetchImpl(`${gatewayOrigin}/v1/vendors/quantdata/v1/${spec.surface}/tool/${spec.path ?? tool}`, {
                 method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: serialized, signal: AbortSignal.timeout(35_000), redirect: 'error',
               });
               const bytes = await boundedBody(upstream.body, MAX_RESPONSE);
@@ -114,7 +144,7 @@ export async function createParityServer({ fetchImpl = fetch, token: testToken }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const server = await createParityServer();
+    const server = await createParityServer({gatewayOrigin:process.env.GEX_PARITY_GATEWAY_ORIGIN||'http://127.0.0.1:8793'});
     server.on('error', () => { process.stderr.write('Local parity QA could not bind its loopback port.\n'); process.exitCode = 1; });
     server.listen(4329, '127.0.0.1', () => process.stdout.write('LOCAL PARITY QA — http://127.0.0.1:4329/ — existing licensed source; not production.\n'));
   } catch { process.stderr.write('Local parity QA could not initialize; verify existing gateway environment privately.\n'); process.exitCode = 1; }

@@ -2,7 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { OPTION_TRADE_DETAIL_ENDPOINT, UNCONSOLIDATED_COLUMNS, optionTradeDetailRequest, unconsolidatedTradeRows } from '../../public/gex-data-app/option-trade-detail-model.js';
+import {currencyAuto} from '../../public/gex-data-app/number-format.js';
+import { OPTION_TRADE_DETAIL_ENDPOINT, UNCONSOLIDATED_COLUMNS, optionTradeDetailRequest, optionTradeDetailTableSort, unconsolidatedTradeRows } from '../../public/gex-data-app/option-trade-detail-model.js';
+
+test('minute detail retains the source time order while premium-ranked details stay premium-ranked',()=>{
+  assert.deepEqual(optionTradeDetailTableSort({sort:{field:'TRADE_TIME',direction:'DESCENDING'}}),{sortKey:'time',sortDirection:-1});
+  assert.deepEqual(optionTradeDetailTableSort({sort:{field:'TRADE_TIME',direction:'ASCENDING'}}),{sortKey:'time',sortDirection:1});
+  assert.deepEqual(optionTradeDetailTableSort({sort:{field:'PREMIUM',direction:'DESCENDING'}}),{sortKey:'premium',sortDirection:-1});
+});
+
+test('detail ranking accepts only explicit public fields and maps the visible column without changing caller defaults',()=>{
+  assert.deepEqual(optionTradeDetailRequest().sort,{field:'PREMIUM',direction:'DESCENDING'});
+  assert.deepEqual(optionTradeDetailRequest({base:{sort:{field:'TRADE_TIME',direction:'ASCENDING'}}}).sort,{field:'PREMIUM',direction:'DESCENDING'},'existing callers keep their explicit helper default');
+  for(const [field,key]of [['IMPLIED_VOLATILITY','impliedVolatility'],['SIZE','size'],['DELTA','greeks.delta'],['OPTION_PRICE','optionPrice'],['OPEN_INTEREST','openInterest']]){
+    const request=optionTradeDetailRequest({sort:{field,direction:'ASCENDING'}});assert.deepEqual(request.sort,{field,direction:'ASCENDING'});assert.deepEqual(optionTradeDetailTableSort(request),{sortKey:key,sortDirection:1});
+  }
+  assert.deepEqual(optionTradeDetailTableSort({sort:{field:'UNSUPPORTED',direction:'DESCENDING'}}),{sortKey:null,sortDirection:-1});
+  assert.throws(()=>optionTradeDetailRequest({sort:{field:'UNSUPPORTED',direction:'DESCENDING'}}),/Unsupported/);
+  assert.throws(()=>optionTradeDetailRequest({sort:{field:'IS_GOLDEN_SWEEP',direction:'DESCENDING'}}),/Unsupported/);
+  assert.throws(()=>optionTradeDetailRequest({sort:{field:'IMPLIED_VOLATILITY',direction:'SIDEWAYS'}}),/ascending/);
+});
 
 const app = readFileSync(new URL('../../public/gex-data-app/app.js', import.meta.url), 'utf8');
 const netDriftRenderer = app.slice(app.indexOf('  function renderNetDriftQuant('), app.indexOf('  function renderDarkFlowQuant('));
@@ -12,6 +31,7 @@ function clickNetDriftBucket(times, period, index = 0) {
   let chart, detail;
   const context = {
     parseNetDrift: () => rows,
+    currentNetDriftScope:()=>({eligible:true,ticker:'SPY'}),netDriftInitialRthIndex:()=>0,currencyAuto,
     getControl: key => ({ ticker: 'SPY', period, driftUnderlying: 'SHOW' }[key] || 'HIDE'),
     buildRequest: () => ({}), activeTool: { id: 'net-drift' },
     gexTimeZone: () => 'UTC', CHART_COLORS: {}, compact: String, formatPrice: String,

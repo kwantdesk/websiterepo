@@ -1,11 +1,13 @@
-import {themePaint} from './site-theme.js?v=1';
+import {themePaint,semanticDataColor} from './site-theme.js?v=1';
 import {gexStorage} from './site-runtime.js?v=1';
 // Source-backed presentation models, adapted to the licensed public REST schema.
 // See OPTIONS-AUDIT.md for shipped source offsets and remaining parity limits.
 const numeric = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 export const OPTION_COLORS = Object.freeze({ get call(){return themePaint("#00FF00");}, get put(){return themePaint("#FF0000");}, get callBar(){return themePaint("#00FF00AA");}, get putBar(){return themePaint("#FF0000AA");}, get emptyBar(){return themePaint("#AAAAAAAA");} });
-export const EXCHANGE_GROUP_COLORS = Object.freeze({ get BOX(){return themePaint("#9d2c2c");}, get CBOE(){return themePaint("#139853");}, get MEMX(){return themePaint("#b4ac18");}, get MIAX(){return themePaint("#b46b18");}, get NASDAQ(){return themePaint("#125ea4");}, get NYSE(){return themePaint("#711ac9");}, UNKNOWN: 'gray' });
+export const EXCHANGE_GROUP_COLORS = Object.freeze({ get BOX(){return semanticDataColor("#9d2c2c");}, get CBOE(){return semanticDataColor("#139853");}, get MEMX(){return semanticDataColor("#b4ac18");}, get MIAX(){return semanticDataColor("#b46b18");}, get NASDAQ(){return semanticDataColor("#125ea4");}, get NYSE(){return semanticDataColor("#711ac9");}, UNKNOWN: 'gray' });
 export const EXCHANGE_GROUPS = Object.freeze({ AMEX: 'NYSE', BATS: 'CBOE', BOST: 'BOX', C2: 'CBOE', CBOE: 'CBOE', EDGX: 'CBOE', EMLD: 'MIAX', GEMI: 'NASDAQ', ISEX: 'NASDAQ', MEMX: 'MEMX', MIAX: 'MIAX', MRCY: 'NASDAQ', MX2: 'MEMX', NQBX: 'NASDAQ', NQEX: 'NASDAQ', PACF: 'NYSE', PERL: 'MIAX', PHIL: 'NASDAQ', SPHR: 'MIAX', UNKNOWN: 'UNKNOWN' });
+// Fresh source858368.h: tooltip venue order is declarative, not payload order.
+export const EXCHANGE_GROUP_MEMBERS=Object.freeze(Object.fromEntries(Object.entries({BOX:['BOST'],CBOE:['BATS','C2','CBOE','EDGX'],MEMX:['MEMX','MX2'],MIAX:['EMLD','MIAX','PERL','SPHR'],NASDAQ:['GEMI','ISEX','PHIL','MRCY','NQBX','NQEX'],NYSE:['AMEX','PACF'],UNKNOWN:[]}).map(([group,venues])=>[group,Object.freeze(venues)])));
 const exchangeAlpha = { BOST: 'FF', BATS: 'FF', C2: 'EE', CBOE: 'DD', EDGX: 'CC', MEMX: 'FF', MX2: 'EE', EMLD: 'FF', MIAX: 'EE', PERL: 'DD', SPHR: 'CC', AMEX: 'FF', PACF: 'EE', GEMI: 'FF', ISEX: 'EE', MRCY: 'DD', NQBX: 'CC', NQEX: 'BB', PHIL: 'AA' };
 export const EXCHANGE_LABELS = Object.freeze({ CBOE: 'CBOE', AMEX: 'AMEX', EDGX: 'EDGX', MIAX: 'MIAX', GEMI: 'GEMX', PACF: 'ARCA', BOST: 'BOX', ISEX: 'ISE', BATS: 'BZX', EMLD: 'EMLD', NQEX: 'NOM', PHIL: 'PHLX', NQBX: 'BX', PERL: 'PEARL', C2: 'C2', MRCY: 'MRX', MEMX: 'MEMX', SPHR: 'SPHR' });
 export const exchangeGroup = exchange => EXCHANGE_GROUPS[exchange] || 'UNKNOWN';
@@ -33,10 +35,10 @@ export function marketShareModel(data = {}, { mode = 'EQUITY_VOLUME', view = 'EX
       if (!groups.has(entry.group)) groups.set(entry.group, { exchange: entry.group, name: entry.group, group: entry.group, color: EXCHANGE_GROUP_COLORS[entry.group], value: 0, members: [] });
       const group = groups.get(entry.group); group.value += entry.value; group.members.push(entry);
     }
-    // Public REST object insertion order differs from the website's private
-    // store. Preserve the observed website group order, not transport order.
-    const groupOrder=['CBOE','NASDAQ','NYSE','UNKNOWN','MIAX','BOX','MEMX'];
-    entries = [...groups.values()].sort((a,b)=>groupOrder.indexOf(a.group)-groupOrder.indexOf(b.group));
+    // Reference selector 386545 reduces exchanges into groups in first-observed
+    // order without sorting the groups. Public/private transport insertion may
+    // differ; a hardcoded captured order cannot reproduce that algorithm.
+    entries = [...groups.values()];
   } else entries.sort((a, b) => b.group.localeCompare(a.group) || b.exchange.localeCompare(a.exchange));
   const total = entries.reduce((sum, entry) => sum + entry.value, 0);
   for (const entry of entries) entry.fraction = total === 0 ? 0 : entry.value / total;
@@ -101,39 +103,48 @@ export function flowStatisticsModel(statistics = {}) {
 
 const column = (key, label, type = 'text', width = 120, extras = {}) => ({ key, label, type, width, ...extras });
 export const GAINERS_COLUMNS = Object.freeze([
-  column('rank', 'Rank', 'integer', 70, { sortable: false }), column('ticker', 'Ticker', 'text', 90),
+  column('rank', 'Rank', 'integer', 70, { sortable:false,canHide:false,columnMenu:false,reorderable:false,resizable:false }), column('ticker', 'Ticker', 'text', 90),
   column('bearishPremium', 'Bearish Premium', 'money', 150, { bar: 'negative', maxField: 'maxBearishPremium' }),
   column('bullishPremium', 'Bullish Premium', 'money', 150, { bar: 'positive', maxField: 'maxBullishPremium' }),
-  column('premiumRatio', 'Premium Ratio', 'decimal', 130), column('volume', 'Volume', 'abbreviated', 140, { percentField: 'volumePercentage' }),
+  column('premiumRatio', 'Premium Ratio', 'abbreviated', 130, {compareRows:compareGainersPremiumRatio}), column('volume', 'Volume', 'abbreviated', 140, { percentField: 'volumePercentage' }),
   column('tradeCount', 'Trade Count', 'abbreviated', 140, { percentField: 'tradeCountPercentage' }), column('premium', 'Premium', 'money', 140, { percentField: 'premiumPercentage' })
-]);
+].map(column=>({...column,lockWhenSorted:true})));
 export const MARKET_SHARE_COLUMNS = Object.freeze([
-  column('group', 'Group','text',120,{blankUnknown:true}), column('exchange', 'Exchange'),
+  column('group', 'Group','text',120), column('exchange', 'Exchange'),
   ...['Volume', 'TradeCount', 'Premium'].flatMap(metric => {
     const label = metric === 'TradeCount' ? 'Trade Count' : metric;
-    const type = metric === 'Premium' ? 'money' : 'integer';
-    return [column(`equityCall${metric}`, `Call ${label}`, type,120,{rawMoney:metric==='Premium'}), column(`equityPut${metric}`, `Put ${label}`, type,120,{rawMoney:metric==='Premium'}),
-      ...['equity', 'index', 'total'].map(bucket => column(bucket === 'total' ? `total${metric}` : `${bucket}Total${metric}`, `${bucket[0].toUpperCase() + bucket.slice(1)} ${label}`, type, 160, { rawMoney:metric==='Premium',percentField: `${bucket}${metric}Percentage` }))];
+    const type = metric === 'Premium' ? 'money' : 'integer',callWidth=metric==='Premium'?130:metric==='TradeCount'?150:120,putWidth=metric==='TradeCount'?140:120,totalWidth=metric==='Premium'?180:metric==='Volume'?150:160;
+    return [column(`equityCall${metric}`, `Call ${label}`, type,callWidth,{rawMoney:metric==='Premium'}), column(`equityPut${metric}`, `Put ${label}`, type,putWidth,{rawMoney:metric==='Premium'}),
+      ...['equity', 'index', 'total'].map(bucket => column(bucket === 'total' ? `total${metric}` : `${bucket}Total${metric}`, `${bucket[0].toUpperCase() + bucket.slice(1)} ${label}`, type,totalWidth,{rawMoney:metric==='Premium',percentField: `${bucket}${metric}Percentage` }))];
   })
-]);
+].map(column=>({...column,lockWhenSorted:true,filterable:false})));
 export const CONSOLIDATED_COLUMNS = Object.freeze([
-  column('tradeTime', 'Date', 'date', 120, { id: 'date' }), column('tradeTime', 'Time', 'time', 140, { id: 'time', canHide: false, fractionalSecondDigits: 3 }),
-  column('contract', 'Contract', 'contract', 280, { sortKeys: ['ticker', 'expirationDate', 'strikePrice', 'contractType'] }),
-  column('stockPrice', 'Spot', 'money', 100), column('size', 'Quantity', 'integer', 110),
-  column('optionPrice', 'Price', 'priceSide', 120), column('bidAskSpread', 'Bid-Ask', 'bidAsk', 160), column('premium', 'Premium', 'money', 130),
+  column('tradeTime', 'Date', 'date', 120, { id: 'date' }), column('tradeTime', 'Time', 'time', 110, { id: 'time', canHide: false }),
+  column('contract', 'Contract', 'contract', 280, { sortKeys: [{key:'ticker',field:'TICKER',label:'Ticker',type:'text'},{key:'expirationDate',field:'EXPIRATION_DATE',label:'Expiration',type:'date'},{key:'strikePrice',field:'STRIKE_PRICE',label:'Strike Price',type:'number'},{key:'contractType',field:'CONTRACT_TYPE',label:'Contract Type',type:'enum'}] }),
+  column('stockPrice', 'Spot', 'money', 100, { fixedCents: true }), column('size', 'Quantity', 'integer', 110),
+  column('optionPrice', 'Price', 'priceSide', 120, { sideSeparator: ' ' }), column('bidAskSpread', 'Bid-Ask', 'bidAsk', 160, { bidAskSeparator: ' x ' }), column('premium', 'Premium', 'money', 130),
   column('sentimentType', 'Sentiment', 'sentiment', 130), column('exchange', 'Exchange', 'text', 130, {rawExchange:true}), column('tradeType', 'Type', 'text', 190),
-  column('tradeConsolidationType', 'Consolidation', 'text', 150), column('moneyness', 'Moneyness', 'moneyness', 220),
+  column('tradeConsolidationType', 'Consolidation', 'text', 150), column('moneyness', 'Moneyness', 'moneyness', 220, { plainMoneynessPercent: true }),
   column('volume', 'Volume', 'integer', 120), column('openInterest', 'OI', 'integer', 90), column('impliedVolatility', 'IV', 'percentagePoints', 90),
   column('dte', 'DTE', 'decimal', 100), column('sector', 'Sector', 'enum', 160), column('industry', 'Industry', 'enum', 180),
   ...['delta', 'vega', 'theta', 'rho', 'omega', 'charm', 'gamma', 'vanna', 'veta', 'vomma', 'color', 'speed', 'ultima', 'zomma'].map(greek => column(`greeks.${greek}`, greek[0].toUpperCase() + greek.slice(1), 'greek', ['omega', 'gamma', 'vomma', 'zomma'].includes(greek) ? 120 : ['rho', 'veta'].includes(greek) ? 100 : 110))
 ]);
+
+// Reference comparator 750561 distinguishes an undefined ratio (zero bullish
+// premium) from a genuine zero. Cell renderer 86489 still displays both as 0.
+export function compareGainersPremiumRatio(a,b){
+  const ratio=row=>numeric(row.bullishPremium)===0?null:numeric(row.bearishPremium)/numeric(row.bullishPremium),left=ratio(a),right=ratio(b);
+  // Equal missing values retain stable input order instead of reproducing the
+  // reference's non-antisymmetric Number.MIN_SAFE_INTEGER tie sentinel.
+  return left===null?right===null?0:-1:right===null?1:left-right;
+}
 
 export function gainersModel(data = {}, sortKey = 'bullishPremium', direction = -1) {
   const rows = Object.entries(data).map(([ticker, row]) => ({ ticker, ...row, premiumRatio: numeric(row.bullishPremium) === 0 ? 0 : numeric(row.bearishPremium) / numeric(row.bullishPremium) }));
   const totals = { premium: 0, tradeCount: 0, volume: 0 };
   for (const row of rows) for (const key of Object.keys(totals)) totals[key] += numeric(row[key]);
   const maxBullishPremium = Math.max(0, ...rows.map(row => numeric(row.bullishPremium))), maxBearishPremium = Math.max(0, ...rows.map(row => numeric(row.bearishPremium)));
-  rows.sort((a, b) => (typeof a[sortKey] === 'number' && typeof b[sortKey] === 'number' ? a[sortKey] - b[sortKey] : String(a[sortKey] ?? '').localeCompare(String(b[sortKey] ?? ''))) * direction);
+  rows.sort((a, b) => (sortKey==='premiumRatio'?compareGainersPremiumRatio(a,b):typeof a[sortKey] === 'number' && typeof b[sortKey] === 'number' ? a[sortKey] - b[sortKey] : String(a[sortKey] ?? '').localeCompare(String(b[sortKey] ?? ''))) * direction);
   rows.forEach((row, index) => { row.rank = index + 1; row.maxBullishPremium = maxBullishPremium; row.maxBearishPremium = maxBearishPremium; for (const key of Object.keys(totals)) row[`${key}Percentage`] = totals[key] === 0 ? 0 : numeric(row[key]) / totals[key]; });
   return { rows, totals, maxBullishPremium, maxBearishPremium };
 }
@@ -141,7 +152,9 @@ export function gainersModel(data = {}, sortKey = 'bullishPremium', direction = 
 export function marketShareTableModel(data = {}) {
   const totals = Object.fromEntries(['Volume', 'TradeCount', 'Premium'].flatMap(metric => ['equity', 'index', 'total'].map(bucket => [`${bucket}${metric}`, 0])));
   const rows = Object.entries(data).filter(([exchange]) => exchange !== 'ALL').map(([exchange, row]) => {
-    const result = { exchange, exchangeLabel: exchangeLabel(exchange), group: exchangeGroup(exchange), color: exchangeColor(exchange), ...row };
+    // The reference table reads the group dictionary directly. An unmapped
+    // venue has a blank cell; only the chart reducer buckets it as UNKNOWN.
+    const result = { exchange, exchangeLabel: exchangeLabel(exchange), group: EXCHANGE_GROUPS[exchange] ?? '', color: exchangeColor(exchange), ...row };
     for (const metric of ['Volume', 'TradeCount', 'Premium']) {
       result[`equityTotal${metric}`] = numeric(row[`equityCall${metric}`]) + numeric(row[`equityPut${metric}`]);
       result[`indexTotal${metric}`] = numeric(row[`index${metric}`]);
@@ -185,42 +198,22 @@ export function drawProportionChart(ctx, width, height, rows, { formatValue = (v
   return hits;
 }
 
-export function layoutMarketSharePieLabels(labels, width, height, preferredRadius, { padding = 4, gap = 2 } = {}) {
-  const centerX = width / 2, centerY = height / 2;
-  const halfHeight = Math.max(0, ...labels.map(label => label.halfHeight));
-  const capacity = Math.max(1, Math.floor((height - 2 * padding + gap) / Math.max(1, 2 * halfHeight + gap)));
-  const sides = { left: [], right: [] };
-  for (const label of labels) sides[Math.cos(label.midAngle) >= 0 ? 'right' : 'left'].push({ ...label });
-  // Small adjacent sectors can all land on one side of the vertical tangent.
-  // Move only overflowing labels nearest that tangent; their leaders continue
-  // to originate at the true slice angle. Slice geometry is never redistributed.
-  for (const side of ['left', 'right']) {
-    const other = side === 'left' ? 'right' : 'left';
-    while (sides[side].length > capacity && sides[other].length < capacity) {
-      let nearest = 0;
-      for (let index = 1; index < sides[side].length; index++) if (Math.abs(Math.cos(sides[side][index].midAngle)) < Math.abs(Math.cos(sides[side][nearest].midAngle))) nearest = index;
-      sides[other].push(sides[side].splice(nearest, 1)[0]);
-    }
-  }
-  const maximumWidth = Math.max(0, ...labels.map(label => label.textWidth));
-  const radius = Math.max(1, Math.min(preferredRadius, width / 2 - maximumWidth - padding - 20));
-  const result = [];
-  for (const [side, list] of Object.entries(sides)) {
-    const direction = side === 'right' ? 1 : -1;
-    list.sort((a, b) => Math.sin(a.midAngle) - Math.sin(b.midAngle) || a.midAngle - b.midAngle);
-    for (let index = 0; index < list.length; index++) {
-      const label = list[index], ideal = centerY + Math.sin(label.midAngle) * (radius + 10);
-      const previous = list[index - 1];
-      label.y = Math.max(padding + label.halfHeight, ideal, previous ? previous.y + previous.halfHeight + label.halfHeight + gap : -Infinity);
-    }
-    for (let index = list.length - 1; index >= 0; index--) {
-      const label = list[index], next = list[index + 1];
-      label.y = Math.min(height - padding - label.halfHeight, label.y, next ? next.y - next.halfHeight - label.halfHeight - gap : Infinity);
-      const textX = direction > 0 ? Math.min(width - padding - label.textWidth, centerX + radius + 20) : Math.max(padding + label.textWidth, centerX - radius - 20);
-      result.push({ ...label, direction, textX, bounds: { left: direction > 0 ? textX : textX - label.textWidth, right: direction > 0 ? textX + label.textWidth : textX, top: label.y - label.halfHeight, bottom: label.y + label.halfHeight } });
-    }
-  }
-  return { radius, labels: result };
+export function layoutMarketSharePieLabels(labels,width,height,radius){
+ const centerX=width/2,centerY=height/2,distance=radius+10;
+ const box=label=>{const x=centerX+Math.cos(label.angle)*distance,y=centerY+Math.sin(label.angle)*distance,end=x+(Math.cos(label.angle)>=0?1:-1)*(16+label.textWidth);return {left:Math.min(x,end),right:Math.max(x,end),top:y-label.halfHeight-2,bottom:y+label.halfHeight+2};};
+ const result=labels.map(label=>({...label,angle:label.midAngle})).sort((a,b)=>a.angle-b.angle);
+ // Source pie preserves slice radius and resolves label collisions by adjusting
+ // leader angles only. The bounded relaxation cannot reorder actual slices.
+ for(let pass=0;pass<240&&result.length>1;pass++){
+  let moved=false;for(let index=0;index<result.length;index++){
+   const first=result[index],next=result[(index+1)%result.length],a=box(first),b=box(next);
+   if(!(a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom))continue;
+   const overlapX=Math.min(a.right,b.right)-Math.max(a.left,b.left),overlapY=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top),mid=(first.angle+next.angle)/2;
+   const shift=Math.min(Math.max(Math.min((overlapX+1)/Math.max(Math.abs(Math.sin(mid)),.05),(overlapY+1)/Math.max(Math.abs(Math.cos(mid)),.05))/distance,.004),.1);
+   first.angle-=shift/2;next.angle+=shift/2;moved=true;
+  }if(!moved)break;
+ }
+ return {radius,labels:result.map(label=>{const direction=Math.cos(label.angle)>=0?1:-1,elbowX=centerX+Math.cos(label.angle)*distance,y=centerY+Math.sin(label.angle)*distance,textX=elbowX+16*direction;return {...label,direction,elbowX,y,textX,bounds:box(label)};})};
 }
 
 export function drawMarketSharePie(ctx, width, height, entries, { fontSize = 13, formatPercent = value => `${(value * 100).toFixed(1)}%` } = {}) {
@@ -242,7 +235,7 @@ export function drawMarketSharePie(ctx, width, height, entries, { fontSize = 13,
   }
   for (const label of layout.labels) {
     const { y, direction, textX } = label, elbowX = textX - 4 * direction;
-    ctx.strokeStyle = label.color; ctx.beginPath(); ctx.moveTo(centerX + Math.cos(label.midAngle) * radius, centerY + Math.sin(label.midAngle) * radius); ctx.lineTo(elbowX - 8 * direction, y); ctx.lineTo(elbowX, y); ctx.stroke(); ctx.fillStyle = label.color; ctx.textAlign = direction === 1 ? 'left' : 'right'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = label.color; ctx.beginPath(); ctx.moveTo(centerX + Math.cos(label.midAngle) * radius, centerY + Math.sin(label.midAngle) * radius); ctx.lineTo(label.elbowX, y); ctx.lineTo(elbowX, y); ctx.stroke(); ctx.fillStyle = label.color; ctx.textAlign = direction === 1 ? 'left' : 'right'; ctx.textBaseline = 'middle';
     label.lines.forEach((line, index) => ctx.fillText(line, textX, y + (index - .5) * lineHeight));
   }
   return { centerX, centerY, radius, cumulativeAngles, labels: layout.labels };

@@ -1,9 +1,18 @@
 import { CONSOLIDATED_COLUMNS } from './options-models.js?v=2';
+import {optionTapeField,optionTapeSort} from './option-tape-interaction-model.js';
 
 // Public REST raw prints, not the reference dashboard's private cliff endpoint.
 // https://quantdata.us/api/docs/endpoints/order-flow-unconsolidated
 export const OPTION_TRADE_DETAIL_ENDPOINT = 'order-flow-unconsolidated';
-export const UNCONSOLIDATED_COLUMNS = Object.freeze(CONSOLIDATED_COLUMNS.filter(column => column.key !== 'tradeConsolidationType'));
+export const UNCONSOLIDATED_COLUMNS = Object.freeze(CONSOLIDATED_COLUMNS.filter(column => column.key !== 'tradeConsolidationType').map(column => column.id === 'time' ? {...column,width:140,fractionalSecondDigits:3} : column));
+
+export function optionTradeDetailTableSort(request={}) {
+  const field=optionTapeField(request.sort?.field??'PREMIUM');
+  const column=field?.field==='TRADE_TIME'?UNCONSOLIDATED_COLUMNS.find(column=>column.id==='time'):UNCONSOLIDATED_COLUMNS.find(column=>column.key===field?.key);
+  // Ask, Bid and Sigma can rank the response but have no matching individual
+  // visible table sort column. Keep server order and do not claim Premium sort.
+  return {sortKey:column?.id??column?.key??null,sortDirection:request.sort?.direction==='ASCENDING'?1:-1};
+}
 
 function rejectConsolidatedFields(value) {
   if (!value || typeof value !== 'object') return;
@@ -15,7 +24,7 @@ function rejectConsolidatedFields(value) {
   }
 }
 
-export function optionTradeDetailRequest({ base = {}, filter = {}, timeRange, cursor, size = 100 } = {}) {
+export function optionTradeDetailRequest({ base = {}, filter = {}, timeRange, cursor, size = 100, sort } = {}) {
   if (!Number.isInteger(size) || size < 1 || size > 100) throw Error('Choose between 1 and 100 individual prints per page.');
   const combinedFilter = { ...(base.filter || {}), ...filter };
   rejectConsolidatedFields(combinedFilter);
@@ -24,7 +33,7 @@ export function optionTradeDetailRequest({ base = {}, filter = {}, timeRange, cu
     ...(base.sessionDate ? { sessionDate: base.sessionDate } : {}),
     ...(Object.keys(combinedFilter).length ? { filter: structuredClone(combinedFilter) } : {}),
     ...(base.filterExpression ? { filterExpression: structuredClone(base.filterExpression) } : {}),
-    sort: { field: 'PREMIUM', direction: 'DESCENDING' }, size,
+    sort: sort==null?{ field: 'PREMIUM', direction: 'DESCENDING' }:optionTapeSort(sort,OPTION_TRADE_DETAIL_ENDPOINT), size,
   };
   const range = timeRange ?? base.timeRange;
   if (range) {

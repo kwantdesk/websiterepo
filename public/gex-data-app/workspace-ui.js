@@ -3,6 +3,7 @@ import {gexStorage,openWorkspacePalette} from './site-runtime.js?v=1';
 import {createBoardWorkspace,createWorkspace,workspaceAction,workspaceTabsets,workspaceOrientation,workspaceDockLocation,workspaceDockRect,serializeWorkspace,validateTabName} from './workspace-model.js?v=1';
 import {TOOL_CONFIGURATION_OPTIONS,sanitizeToolConfiguration,setConfigurationVisibility} from './preferences-model.js?v=1';
 import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=2';
+import {claimMenu,releaseMenu} from './menu-coordination.js';
 
 const KEYS={layout:'gex-data:workspace:v1',configuration:'gex-data:configuration:v1',page:'gex-data:page-filters:v1',global:'gex-data:global-filters:v1',groups:'gex-data:filter-groups:v1'};
 const read=(key,fallback)=>{try{return JSON.parse(gexStorage.getItem(key))??fallback;}catch{return fallback;}};
@@ -21,12 +22,14 @@ export function applyDocumentPreferences(){
 
 let currentPopup;
 function portalWindow(){try{return parent!==window&&parent.location.origin===location.origin&&parent.document.documentElement.classList.contains('has-dock-workspace')?parent:window;}catch{return window;}}
-function closePopup(){currentPopup?.remove();currentPopup=null;portalWindow().document.querySelectorAll('.workspace-popup').forEach(el=>el.remove());}
+function closePopup(){if(currentPopup){releaseMenu(document,currentPopup);releaseMenu(portalWindow().document,currentPopup);}currentPopup?.remove();currentPopup=null;portalWindow().document.querySelectorAll('.workspace-popup').forEach(el=>el.remove());}
 document.addEventListener('pointerdown',event=>{const visible=currentPopup?.isConnected?currentPopup:document.querySelector('.workspace-popup');if(visible&&!visible.contains(event.target)&&!event.target.closest('.top-action,.dock-tab-menu,.dock-add,.dock-overflow'))closePopup();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closePopup();});
 export function popup(anchor,title,build){
   closePopup();const el=node('section','workspace-popup');el.setAttribute('role','dialog');el.setAttribute('aria-label',title);el.append(node('h3','',title));
-  const owner=portalWindow();el.append(button('×',closePopup,'popup-close'));build(el);owner.document.body.append(el);currentPopup=el;
+  const owner=portalWindow();el.append(button('×',closePopup,'popup-close'));build(el);
+  const dismiss=()=>{if(currentPopup===el)closePopup();};claimMenu(document,el,dismiss);if(owner.document!==document)claimMenu(owner.document,el,dismiss);
+  owner.document.body.append(el);currentPopup=el;
   const r=anchor?.getBoundingClientRect?.()??{left:innerWidth/2,top:70,bottom:70},offset=owner!==window?window.frameElement.getBoundingClientRect():{left:0,top:0},bounds=el.getBoundingClientRect();
   el.style.left=`${Math.max(8,Math.min(owner.innerWidth-bounds.width-8,r.left+offset.left))}px`;const below=r.bottom+offset.top+6,above=r.top+offset.top-bounds.height-6;
   el.style.top=`${Math.max(8,Math.min(owner.innerHeight-bounds.height-8,below+bounds.height>owner.innerHeight-8&&above>=8?above:below))}px`;

@@ -11,11 +11,11 @@ test('picker catalogue contains every source tool exactly once, under separate s
   const data=read('public/gex-data-app/app.js').split('const TOOL_DEFINITIONS = [')[1].split('\n  ];')[0];
   const box=read('src/components/gexbot/GexBoxDashboard.tsx').split('const TOOLS: Tool[] = [')[1].split('\n];')[0];
   for(const [source,code] of [['gex-data',data],['gex-box',box]]){
-    const expected=[...code.matchAll(/\{ id: "([a-z-]+)"/g)].map(m=>m[1]).sort();
+    const expected=[...code.matchAll(/\{\s*id:\s*[\x22\x27]([a-z-]+)[\x22\x27]/g)].map(m=>m[1]).sort();
     assert.deepEqual(OPTIONS_FLOW_TOOLS.filter(t=>t.source===source).map(t=>t.toolId).sort(),expected);
   }
-  assert.equal(OPTIONS_FLOW_TOOLS.length,51);
-  assert.equal(new Set(OPTIONS_FLOW_TOOLS.map(t=>t.id)).size,51);
+  assert.equal(OPTIONS_FLOW_TOOLS.length,61);
+  assert.equal(new Set(OPTIONS_FLOW_TOOLS.map(t=>t.id)).size,61);
   assert.ok(optionsFlowTool('options-flow:kwanty:classic'));
   assert.ok(optionsFlowTool('options-flow:kwanty:state'));
   assert.ok(optionsFlowTool('options-flow:kwanty:orderflow'));

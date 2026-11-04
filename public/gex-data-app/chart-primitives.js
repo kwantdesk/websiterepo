@@ -1,6 +1,7 @@
 import {themePaint} from './site-theme.js?v=1';
 import {gexStorage} from './site-runtime.js?v=1';
-import {timeDomain} from './time-axis.js?v=1';
+import {timeTicks} from './time-axis.js?v=1';
+import {intervalMapTimeDomain,intervalMapPlotInsets} from './interval-map-interaction-model.js?v=20261104';
 // Rendering rules checked against market-data's shipped browser charts, 2026-10-18.
 // Keep data preparation separate so visual fixes cannot fabricate market values.
 export const CHART_COLORS = Object.freeze({
@@ -58,8 +59,21 @@ export function averagedIvRank(contractTypes) {
   return max===min?0:(last-min)/(max-min)*100;
 }
 
-export function marketMapColor(change) {
-  const background=[12,2,22],extreme=change<0?[204,0,0]:[28,204,38],fraction=Math.min(1,Math.abs(change)/3);
+let marketMapBackgroundKey,marketMapBackgroundChannels;
+export function marketMapColor(change, backgroundColor = themePaint('#000000')) {
+  // Reference 775433 interpolates through the active background at zero,
+  // retaining the signed +/-3% scale and its red/green endpoint colours.
+  const color=String(backgroundColor).trim(),hex=/^#([\da-f]{3}|[\da-f]{6})$/i.exec(color);
+  let background=color===marketMapBackgroundKey?marketMapBackgroundChannels:null;
+  if(!background&&hex){const expanded=hex[1].length===3?[...hex[1]].map(c=>c+c).join(''):hex[1];background=[0,2,4].map(index=>parseInt(expanded.slice(index,index+2),16));}
+  else if(!background&&/^rgba?\(/i.test(color))background=color.match(/[\d.]+/g)?.slice(0,3).map(Number);
+  else if(!background&&/^hsla?\(/i.test(color)){
+    const [h,s,l]=(color.match(/[-\d.]+/g)||[]).map(Number),hue=((h%360)+360)%360/360,saturation=s/100,light=l/100,a=saturation*Math.min(light,1-light);
+    background=[0,8,4].map(n=>{const k=(n+hue*12)%12;return 255*(light-a*Math.max(-1,Math.min(k-3,9-k,1)));});
+  }
+  if(!background||background.length!==3||!background.every(Number.isFinite))background=[0,0,0];
+  marketMapBackgroundKey=color;marketMapBackgroundChannels=background;
+  const extreme=change<0?[204,0,0]:[28,204,38],fraction=Math.min(1,Math.abs(change)/3);
   return `rgb(${background.map((value,index)=>Math.round(value+(extreme[index]-value)*fraction)).join(',')})`;
 }
 
@@ -116,40 +130,41 @@ export function drawSignedVolume(ctx, points, zeroY, top, bottom) {
     if (clipBottom <= clipTop) continue;
     ctx.save(); ctx.beginPath(); ctx.rect(points[0][0],clipTop,Math.max(1,points.at(-1)[0]-points[0][0]),clipBottom-clipTop);ctx.clip();
     ctx.beginPath();ctx.moveTo(points[0][0],zeroY);points.forEach(point=>ctx.lineTo(point[0],point[1]));ctx.lineTo(points.at(-1)[0],zeroY);ctx.closePath();
-    ctx.fillStyle=color;ctx.globalAlpha=.3;ctx.fill();ctx.globalAlpha=1;ctx.beginPath();points.forEach((point,index)=>index?ctx.lineTo(point[0],point[1]):ctx.moveTo(point[0],point[1]));ctx.strokeStyle=color;ctx.lineWidth=2;ctx.lineJoin="round";ctx.stroke();ctx.restore();
+    ctx.fillStyle=color;ctx.globalAlpha=.3;ctx.fill();ctx.globalAlpha=1;ctx.beginPath();points.forEach((point,index)=>index?ctx.lineTo(point[0],point[1]):ctx.moveTo(point[0],point[1]));ctx.lineWidth=2;ctx.lineJoin="round";ctx.save();const transform=ctx.getTransform?.(),scale=transform?Math.hypot(transform.a,transform.b):1,ratio=Number.isFinite(scale)&&scale>0?scale:1;ctx.strokeStyle="rgba(0,0,0,.55)";ctx.shadowColor="rgba(0,0,0,.55)";ctx.shadowBlur=5*ratio;ctx.shadowOffsetY=2*ratio;ctx.stroke();ctx.restore();ctx.strokeStyle=color;ctx.stroke();ctx.restore();
   }
 }
 
 export function drawIntervalPlot(ctx,width,height,rows,options={}) {
-  const {start=0,end=rows.length-1,padding=5,minStrike,maxStrike,hover=null,formatTime,formatStrike,axisFont=13,left=98,right=width-18,top=10,bottom=height-34}=options;
+  const {start=0,end=rows.length-1,padding=5,minStrike,maxStrike,hover=null,formatTime,formatStrike,axisFont=13}=options;
   const visible=rows.slice(Math.floor(start),Math.ceil(end)+1);
-  if(!visible.length || right<=left || bottom<=top) return null;
+  if(!visible.length) return null;
   const prices=options.prices??rows;
   const [autoMin,autoMax]=intervalStrikeWindow(rows,padding,prices),baseMin=Number.isFinite(minStrike)?minStrike:autoMin,baseMax=Number.isFinite(maxStrike)?maxStrike:autoMax;
   const yWindow=options.yWindow||[0,1],minY=baseMin+(baseMax-baseMin)*yWindow[0],maxY=baseMin+(baseMax-baseMin)*yWindow[1];
-  const domain=timeDomain(rows,start,end),from=domain.firstTime,to=domain.lastTime,minX=domain.min,maxX=domain.max;
-  const xFor=time=>left+(time-minX)/Math.max(1,maxX-minX)*(right-left),yFor=strike=>bottom-(strike-minY)/Math.max(1e-9,maxY-minY)*(bottom-top);
   const strikeFormat=formatStrike||String,timeFormat=formatTime||String;
+  ctx.font=`700 ${axisFont}px Aleph, sans-serif`;
+  const strikeTicks=niceTicks(minY,maxY,5),insets=intervalMapPlotInsets(width,height,strikeTicks.map(strikeFormat),{axisFont,hideAxisTitles:options.hideAxisTitles,measureText:label=>ctx.measureText(label).width});
+  const {left=insets.left,right=insets.right,top=insets.top,bottom=insets.bottom}=options;if(right<=left||bottom<=top)return null;
+  const domain=intervalMapTimeDomain(rows,start,end),from=domain.firstTime,to=domain.lastTime,minX=domain.min,maxX=domain.max;
+  const xFor=time=>left+(time-minX)/Math.max(1,maxX-minX)*(right-left),yFor=strike=>bottom-(strike-minY)/Math.max(1e-9,maxY-minY)*(bottom-top);
   ctx.font=`700 ${axisFont}px Aleph, sans-serif`;ctx.fillStyle=CHART_COLORS.text;ctx.textBaseline="middle";ctx.textAlign="right";
-  for(const strike of niceTicks(minY,maxY,5)){const y=yFor(strike);ctx.strokeStyle=CHART_COLORS.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();ctx.fillText(strikeFormat(strike),left-8,y);}
+  for(const strike of strikeTicks){const y=yFor(strike);ctx.strokeStyle=CHART_COLORS.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();ctx.fillText(strikeFormat(strike),left-8,y);}
   if(!options.hideAxisTitles){ctx.save();ctx.translate(15,(top+bottom)/2);ctx.rotate(-Math.PI/2);ctx.textAlign="center";ctx.fillText("Strike Price ($)",0,0);ctx.restore();}
   ctx.strokeStyle=CHART_COLORS.primary;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(left,bottom);ctx.lineTo(right,bottom);ctx.stroke();ctx.fillStyle=CHART_COLORS.text;ctx.textAlign="center";ctx.textBaseline="top";
-  const duration=to-from,desired=Math.max(2,Math.floor((right-left)/125));
-  const steps=[60000,300000,600000,900000,1800000,3600000,7200000,14400000,86400000];
-  const step=steps.find(step=>duration/step<=desired)||steps.at(-1);
   let prior=-Infinity;
-  for(let time=Math.ceil(from/step)*step;time<=to;time+=step){const x=xFor(time),label=timeFormat(time),textWidth=ctx.measureText(label).width;if(x-textWidth/2<prior+8)continue;ctx.fillText(label,x,bottom+7);prior=x+textWidth/2;}
-  const maxAbs=visible.reduce((maximum,row)=>row.strikes.reduce((m,point)=>point.strike>=minY&&point.strike<=maxY?Math.max(m,Math.abs(point.value)):m,maximum),0);
+  for(const time of timeTicks(minX,maxX,right-left,axisFont)){const x=xFor(time),label=timeFormat(time),textWidth=ctx.measureText(label).width;if(x-textWidth/2<prior+8)continue;ctx.fillText(label,x,bottom+6);prior=x+textWidth/2;}
+  const exposed=visible.filter(row=>row.time>=from&&row.time<=to);
+  const maxAbs=exposed.reduce((maximum,row)=>row.strikes.reduce((m,point)=>point.strike>=minY&&point.strike<=maxY?Math.max(m,Math.abs(point.value)):m,maximum),0);
   ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
   const cells=new Map();
-  for(const row of visible){const x=xFor(row.time),bin=Math.round(x/1.5);for(const point of row.strikes){if(!Number.isFinite(point.value)||point.value===0||point.strike<minY||point.strike>maxY)continue;const key=`${point.strike}:${bin}`,previous=cells.get(key);if(!previous||Math.abs(point.value)>Math.abs(previous.point.value))cells.set(key,{point,x});}}
+  for(const row of exposed){const x=xFor(row.time),bin=Math.round(x/1.5);for(const point of row.strikes){if(!Number.isFinite(point.value)||point.value===0||point.strike<minY||point.strike>maxY)continue;const key=`${point.strike}:${bin}`,previous=cells.get(key);if(!previous||Math.abs(point.value)>Math.abs(previous.point.value))cells.set(key,{point,x});}}
   // Opaque area is encoded by circle diameter, never by alpha or glow.
   for(const {point,x} of cells.values()){const diameter=bubbleDiameter(point.value,maxAbs),y=yFor(point.strike);ctx.fillStyle=point.value>0?CHART_COLORS.call:CHART_COLORS.put;ctx.beginPath();if(diameter<2){ctx.fillRect(x-.6,y-.6,1.2,1.2);continue;}ctx.arc(x,y,diameter/2,0,Math.PI*2);ctx.fill();if(diameter>=4){ctx.lineWidth=.5;ctx.strokeStyle=themePaint("#000000");ctx.stroke();}}
   ctx.strokeStyle=CHART_COLORS.price;ctx.lineWidth=2;ctx.lineJoin="round";ctx.beginPath();let started=false;
-  for(const row of prices){if(!Number.isFinite(row.spot)){started=false;continue;}const x=xFor(row.time),y=yFor(row.spot);if(started)ctx.lineTo(x,y);else{ctx.moveTo(x,y);started=true;}}ctx.stroke();
-  // Draw session markers only at the actual New York equity open in the window.
-  const openRow=rows.find(row=>new Date(row.time).toLocaleTimeString("en-GB",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit"})==="09:30");
-  if(openRow&&openRow.time>=from&&openRow.time<=to){const x=xFor(openRow.time);ctx.strokeStyle=themePaint("#FFFFFF");ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bottom);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=themePaint("#FFFFFF");ctx.font=`700 ${axisFont-2}px Aleph, sans-serif`;ctx.textAlign="left";ctx.textBaseline="top";ctx.fillText("Market Open",x+4,top+4);}
+  for(const row of prices){if(row.time<minX||row.time>maxX)continue;if(!Number.isFinite(row.spot)){started=false;continue;}const x=xFor(row.time),y=yFor(row.spot);if(started)ctx.lineTo(x,y);else{ctx.moveTo(x,y);started=true;}}ctx.stroke();
+  // Source markers are schedule-dependent caller data, not an unconditional
+  // inferred 09:30 annotation on every equity Interval Map.
+  for(const marker of options.markers||[]){if(!Number.isFinite(marker.time)||marker.time<minX||marker.time>maxX)continue;const x=xFor(marker.time);ctx.strokeStyle=themePaint("#FFFFFF");ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bottom);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=themePaint("#FFFFFF");ctx.font=`700 ${axisFont-2}px Aleph, sans-serif`;ctx.textAlign="left";ctx.textBaseline="top";ctx.fillText(marker.label,x+4,top+4);}
   if(hover!=null&&rows[hover]){const x=xFor(rows[hover].time);ctx.strokeStyle=themePaint("rgba(255,255,255,.45)");ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bottom);ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();ctx.textBaseline="alphabetic";
   return {left,right,top,bottom,minX,maxX,minY,maxY,maxAbs,xFor,yFor,cells:cells.size};

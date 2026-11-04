@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exchangeColor, exchangeGroup, exchangeLabel, marketShareModel, marketShareValue, marketShareTableModel, gainersModel, contractStatisticsRows, contractSideStatisticsRows, netDriftRows, flowStatisticsModel, MARKET_SHARE_COLUMNS, CONSOLIDATED_COLUMNS, OPTION_COLORS } from '../../public/gex-data-app/options-models.js';
+import { exchangeColor, exchangeGroup, exchangeLabel, marketShareModel, marketShareValue, marketShareTableModel, gainersModel, contractStatisticsRows, contractSideStatisticsRows, netDriftRows, flowStatisticsModel, GAINERS_COLUMNS, MARKET_SHARE_COLUMNS, CONSOLIDATED_COLUMNS, OPTION_COLORS } from '../../public/gex-data-app/options-models.js';
 
 test('exchange colors, grouping, aliases and source ordering do not depend on values', () => {
   assert.equal(exchangeGroup('NQEX'), 'NASDAQ'); assert.equal(exchangeColor('NQEX'), '#125ea4BB'); assert.equal(exchangeLabel('NQEX'), 'NOM');
@@ -22,11 +22,15 @@ test('market share modes use equity call+put, index, or total and table has real
   assert.equal(MARKET_SHARE_COLUMNS.length, 17); assert.equal(MARKET_SHARE_COLUMNS[2].key, 'equityCallVolume');
 });
 
-test('exchange group layout is stable across public REST insertion orders',()=>{
- const data={MEMX:{equityCallVolume:1},ISEX:{equityCallVolume:2},PACF:{equityCallVolume:3},BOST:{equityCallVolume:4},MIAX:{equityCallVolume:5},UNKNOWN:{equityCallVolume:6},CBOE:{equityCallVolume:7}};
- const model=marketShareModel(data,{view:'EXCHANGE_GROUP'});
- assert.deepEqual(model.barRows.map(row=>row.group),['MEMX','BOX','MIAX','UNKNOWN','NYSE','NASDAQ','CBOE']);
- assert.equal(model.total,28);
+test('exchange groups follow first-observed source insertion, with identical totals and independent exchange sorting',()=>{
+ const data={MEMX:{equityCallVolume:1},ISEX:{equityCallVolume:2},PACF:{equityCallVolume:3},BOST:{equityCallVolume:4},MIAX:{equityCallVolume:5},UNKNOWN:{equityCallVolume:6},CBOE:{equityCallVolume:7},C2:{equityCallVolume:8}},before=structuredClone(data),reversed=Object.fromEntries(Object.entries(data).reverse());
+ const model=marketShareModel(data,{view:'EXCHANGE_GROUP'}),other=marketShareModel(reversed,{view:'EXCHANGE_GROUP'});
+ assert.deepEqual(model.entries.map(row=>row.group),['MEMX','NASDAQ','NYSE','BOX','MIAX','UNKNOWN','CBOE']);
+ assert.deepEqual(other.entries.map(row=>row.group),['CBOE','UNKNOWN','MIAX','BOX','NYSE','NASDAQ','MEMX']);
+ assert.deepEqual(model.barRows.map(row=>row.group),model.entries.map(row=>row.group).reverse());
+ const values=chart=>chart.entries.map(row=>[row.group,row.value,row.fraction,row.color]).sort(([a],[b])=>a.localeCompare(b));assert.deepEqual(values(model),values(other));
+ assert.equal(model.entries.find(row=>row.group==='CBOE').value,15);assert.equal(model.total,36);assert.equal(other.total,36);assert.equal(model.xMax,22.5);assert.equal(other.xMax,22.5);
+ assert.deepEqual(marketShareModel(data).entries.map(row=>row.exchange),marketShareModel(reversed).entries.map(row=>row.exchange));assert.deepEqual(data,before);
 });
 
 test('proportions preserve empty gray halves and use actual per-side metric', () => {
@@ -42,6 +46,13 @@ test('gainers rank and progress metadata use actual totals and zero-safe premium
   assert.equal(model.rows[0].rank, 1); assert.equal(model.rows[0].premiumRatio, .5); assert.equal(model.rows[1].premiumRatio, 0); assert.equal(model.rows[0].volumePercentage, .75); assert.equal(model.maxBearishPremium, 10);
   assert.ok(CONSOLIDATED_COLUMNS.some(column => column.key === 'optionPrice'));
   assert.deepEqual(CONSOLIDATED_COLUMNS.slice(-14).map(column => column.key), ['delta', 'vega', 'theta', 'rho', 'omega', 'charm', 'gamma', 'vanna', 'veta', 'vomma', 'color', 'speed', 'ultima', 'zomma'].map(greek => `greeks.${greek}`));
+});
+
+test('gainers premium-ratio ranking separates missing denominator from real zero while preserving displayed values',()=>{
+  const data={MISSING:{bullishPremium:0,bearishPremium:5},ZERO:{bullishPremium:10,bearishPremium:0},HIGH:{bullishPremium:10,bearishPremium:5},ALSO_MISSING:{bullishPremium:0,bearishPremium:0}},before=structuredClone(data);
+  const descending=gainersModel(data,'premiumRatio'),ascending=gainersModel(data,'premiumRatio',1),column=GAINERS_COLUMNS.find(column=>column.key==='premiumRatio');
+  assert.deepEqual(descending.rows.map(row=>row.ticker),['HIGH','ZERO','MISSING','ALSO_MISSING']);assert.deepEqual(ascending.rows.map(row=>row.ticker),['MISSING','ALSO_MISSING','ZERO','HIGH']);
+  assert.equal(descending.rows[1].premiumRatio,0);assert.equal(descending.rows[2].premiumRatio,0);assert.ok(column.compareRows(descending.rows[1],descending.rows[2])>0);assert.equal(column.compareRows(descending.rows[2],descending.rows[3]),0);assert.deepEqual(data,before);
 });
 
 test('net drift accumulates real premiums, signed volume and mid-market confidence widths', () => {

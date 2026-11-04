@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import {validateAdditionalToolRequest} from '../public/gex-data-app/additional-tool-requests.js';
+import {validateNewsFeedRequest} from '../public/gex-data-app/news-feed-model.js';
 import ts from 'typescript';
 import {equityOptionSnapshotSchedule,snapshotControlTimeline,sessionMinuteTimestamp} from '../public/gex-data-app/snapshot-model.js';
 
 const source=readFileSync(new URL('../src/lib/gexDataPolicy.ts',import.meta.url),'utf8'),policy={};
-vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:policy,Intl,Date,structuredClone,Set,Number,Error,Object,Array});
+vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:policy,require:name=>{if(name.endsWith('news-feed-model.js'))return {validateNewsFeedRequest};assert.match(name,/additional-tool-requests\.js$/);return {validateAdditionalToolRequest};},Intl,Date,structuredClone,Set,Number,Error,Object,Array});
 const calendar=()=>JSON.parse(JSON.stringify(policy.gexDataCalendar()));
 const server=(ticker,date)=>JSON.parse(JSON.stringify(policy.gexDataEquityOptionSchedule(ticker,date)));
 

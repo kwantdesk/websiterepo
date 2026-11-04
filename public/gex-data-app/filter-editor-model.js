@@ -52,7 +52,7 @@ const EQUITIES = [
   field('IS_DELAYED_PRINT','Phantom Prints','boolean'),
 ];
 const NOTIFICATIONS = [field('TICKER','Ticker','ticker'),field('TYPE','Type')];
-const OPTION_TOOLS = new Set(['contract-statistics','contract-trade-side-statistics','exposure-by-expiration','exposure-by-strike','gainers-losers','heat-map','iv-rank','market-share','market-share-table','net-drift','OPTION_TRADES_UNCONSOLIDATED']);
+const OPTION_TOOLS = new Set(['contract-statistics','contract-trade-side-statistics','exposure-by-expiration','exposure-by-strike','gainers-losers','heat-map','iv-rank','market-share','market-share-table','net-drift','net-flow','order-flow-unconsolidated','OPTION_TRADES_UNCONSOLIDATED']);
 export function filterFieldsForTool(toolId) {
   if (!toolId || OPTION_TOOLS.has(toolId)) return [...OPTIONS];
   if (['order-flow-consolidated','OPTION_TRADES_CONSOLIDATED'].includes(toolId)) return [...CONSOLIDATED];

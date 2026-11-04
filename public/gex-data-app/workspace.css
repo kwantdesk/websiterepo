@@ -16,3 +16,12 @@
 /* A selected switch thumb must contrast against its actual theme fill. */
 .configuration-row input:checked{background:var(--site-primary)}
 .configuration-row input:checked:after{background:var(--site-on-primary)}
+
+/* Surface selections share the site's menu spacing and theme colors. */
+.workspace-popup.surface-selection-menu{max-height:min(480px,calc(100vh - 90px));overscroll-behavior:contain}
+.surface-selection-menu .multi-choice-option{display:flex;align-items:center;gap:8px;min-height:32px;padding:5px 8px;margin:0;border-radius:4px;color:var(--site-foreground);font-size:12px;line-height:1.4;cursor:pointer}
+.surface-selection-menu .multi-choice-option:hover{background:var(--site-surface)}
+.surface-selection-menu .multi-choice-option>input[type=checkbox]{appearance:none;display:grid;place-content:center;flex:0 0 14px;width:14px;height:14px;min-width:14px;margin:0;padding:0;border:1px solid var(--site-border);border-radius:3px;background:var(--site-background);color:var(--site-on-primary);box-shadow:none;outline:none}
+.surface-selection-menu .multi-choice-option>input[type=checkbox]:checked{background:var(--site-primary);border-color:var(--site-primary)}
+.surface-selection-menu .multi-choice-option>input[type=checkbox]:checked:after{content:'✓';font-size:11px;line-height:1}
+.surface-selection-menu .surface-selection-search,.surface-selection-menu .surface-selection-search:focus{display:block;width:100%;margin:4px 0 7px;padding:7px 8px;border:1px solid var(--site-border);border-radius:4px;background:var(--site-background);color:var(--site-foreground);font:inherit;outline:none;box-shadow:none}

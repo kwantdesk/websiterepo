@@ -29,6 +29,7 @@ test('failed ticker selection removes stale chart; failed same-query refresh ret
   let ticker='SPY',fail=false,resets=0;
   const nodes=new Map(),q=key=>{if(!nodes.has(key))nodes.set(key,{hidden:true,textContent:''});return nodes.get(key);};
   const context={activeTool:{id:'heat-map'},window:{},EMBEDDED:false,frameVisible:true,toolRequestId:0,toolCursor:null,pollTimer:null,activeController:null,AbortController,
+    masterReplay:null,toolRequestInFlight:false,lastToolSuccessAt:0,
     toolView:{setAttribute(){}},q,clearTimeout(){},updateInitialToolLoading(){},toolPayload:{data:{ticker:'SPY'}},toolPayloadQuery:null,
     dataRequestIdentity,buildRequest:()=>({sessionDate:'2026-10-16',filter:{ticker}}),snapshotSelections:new Map(),snapshotKey:()=> 'heat',resetStage(){resets++;},
     loadToolPayload:async()=>{if(fail)throw Error('Unavailable');return {data:{ticker}};},renderToolPayload(){},renderSnapshotControl(){},updateToolTimestamp(){},saveToolControls(){},updateLiveState(){},schedulePoll(){}};
@@ -46,7 +47,7 @@ test('revised net drift buckets recalculate totals rather than accumulating twic
   assert.equal(before.at(-1).call,15);assert.ok(compatibleLiveTimeline(before,after));
 });
 test('refresh updates Net Drift before reset; filter/timezone changes can rebuild safely',()=>{
-  const renders=[],context={activeChartUpdate:()=>true,resetStage:()=>{throw Error('Canvas was reset');}};
+  const renders=[],context={activeChartUpdate:()=>true,activeChartInstance:null,refreshingCanvas:null,resetStage:()=>{throw Error('Canvas was reset');}};
   const code=source.slice(source.indexOf('  function renderToolPayload('),source.indexOf('  function exportCsv()'));
   vm.runInNewContext(code+'\nthis.render=renderToolPayload;',context);
   context.render({view:'netDrift'},{data:{}},{refresh:true});
@@ -60,7 +61,7 @@ test('refresh updates Net Drift before reset; filter/timezone changes can rebuil
 test('historical page/global date overrides do not continue polling as live',()=>{
   const code=source.slice(source.indexOf('  function schedulePoll()'),source.indexOf('  function renderSnapshotControl('));
   let scheduled=0;
-  const context={activeTool:{id:'net-drift',group:'Exposure',liveMs:12000},frameVisible:true,window:{},document:{hidden:false},getControl:()=> 'latest',snapshotSelections:new Map(),snapshotKey:()=> 'key',apiStatus:{market:{sessionDate:'2026-10-19',optionsSessionDate:'2026-10-19',optionsOpen:true}},buildRequest:()=>({sessionDate:'2026-10-16'}),pollTimer:null,clearTimeout(){},setTimeout(){scheduled++;return 1;}};
+  const context={masterReplay:null,toolRequestInFlight:false,activeController:null,activeTool:{id:'net-drift',group:'Exposure',liveMs:12000},frameVisible:true,window:{},document:{hidden:false},getControl:()=> 'latest',snapshotSelections:new Map(),snapshotKey:()=> 'key',apiStatus:{market:{sessionDate:'2026-10-19',optionsSessionDate:'2026-10-19',optionsOpen:true}},buildRequest:()=>({sessionDate:'2026-10-16'}),pollTimer:null,clearTimeout(){},setTimeout(){scheduled++;return 1;}};
   vm.runInNewContext(code+'\nthis.schedule=schedulePoll;',context);
   context.schedule();assert.equal(scheduled,0);
   context.buildRequest=()=>({sessionDate:'2026-10-19'});context.schedule();assert.equal(scheduled,1);
@@ -78,6 +79,7 @@ test('real canvas updater retains nodes, revised rows, drag state and growing na
   }
   const nodes=new Map(),lengths=[],renders=[],context={
     showVisual(){},q:key=>{if(!nodes.has(key))nodes.set(key,new Node());return nodes.get(key);},element:()=>new Node(),document:{createElement:()=>new Node()},
+    refreshingCanvas:null,activeChartInstance:null,
     quantLegend:items=>Object.assign(new Node(),{items}),chartWindows:new Map(),activeTool:{id:'net-drift'},buildRequest:()=>({sessionDate:'2026-10-20',filter:{tickers:['SPY']}}),
     clearTimeout(){},setTimeout(){return 1;},cancelAnimationFrame(){},requestAnimationFrame(){},
     ResizeObserver:class{observe(){}disconnect(){}},
@@ -110,7 +112,7 @@ test('real canvas updater retains nodes, revised rows, drag state and growing na
 });
 test('chart/save storage echoes do not repaint; real theme/configuration and filter changes still apply',()=>{
   let configuration={},style='theme-one',filters={},renders=0,loads=0,reflects=0;
-  const context={toolConfiguration:configuration,document:{documentElement:{getAttribute:()=>style,className:'embedded'}},getFilterOverrides:()=>filters,getFilterGroups:()=>[],applyDocumentPreferences:()=>configuration,activeTool:{id:'net-drift'},toolPayload:{data:{}},renderToolPayload(){renders++;},renderSnapshotControl(){},reflectFilterOverrides(){reflects++;},syncDateControl(){},loadActiveTool(){loads++;}};
+  const context={toolConfiguration:configuration,netDriftContractControls:null,document:{documentElement:{getAttribute:()=>style,className:'embedded'}},getFilterOverrides:()=>filters,getFilterGroups:()=>[],applyDocumentPreferences:()=>configuration,activeTool:{id:'net-drift'},toolPayload:{data:{}},renderToolPayload(){renders++;},renderSnapshotControl(){},reflectFilterOverrides(){reflects++;},syncDateControl(){},loadActiveTool(){loads++;}};
   vm.runInNewContext(source.slice(source.indexOf('  const preferenceFilterSignature='),source.indexOf("  window.addEventListener('storage',preferencesChanged)"))+'\nthis.changed=preferencesChanged;',context);
   context.changed();context.changed();assert.equal(renders,0);assert.equal(loads,0);assert.equal(reflects,0);
   configuration={hideTooltips:true};context.changed();assert.equal(renders,1);assert.equal(loads,0);

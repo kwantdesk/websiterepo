@@ -25,6 +25,8 @@ export function themePaint(color){
   const role=themeRole(color),mapped=(role==='primary'?palette.chartPrimary:null)||palette[role]||palette.primary,alpha=channels(color)?.[3]??1;
   if(alpha>=1)return mapped;const rgb=channels(mapped);return rgb?`rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`:mapped;
 }
+// Venue identity colors remain distinct unless the page has an explicit chart palette.
+export const semanticDataColor=color=>palette.chartPrimary?themePaint(color):color;
 export async function installTheme(next){
   const previous=palette;palette={...defaults,...next};if(typeof document==='undefined')return;
   for(const key of Object.keys(previous))if(!(key in palette))document.documentElement.style.removeProperty('--site-'+key);

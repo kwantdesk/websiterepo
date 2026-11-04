@@ -59,3 +59,9 @@ test('Refresh uses the website surface and foreground instead of a mapped solid-
   assert.match(refresh, /border-color:\s*var\(--site-border\)/);
   assert.doesNotMatch(refresh, /gradient|--gex-/);
 });
+
+test('detail tables share clean cell geometry and transparent headers override dialog action styling',()=>{
+  const cells=rule('.trade-detail-dialog .qtable td'),headers=rule('.trade-detail-dialog .qtable thead th'),button=rule('.workspace-dialog .qtable .qtable-sort');
+  assert.match(cells,/padding:\s*5px 10px/);assert.match(cells,/white-space:\s*nowrap/);assert.match(headers,/position:\s*sticky/);
+  assert.match(button,/background:\s*transparent/);assert.match(button,/color:\s*inherit/);assert.match(button,/padding:\s*0/);assert.match(button,/margin:\s*0/);
+});

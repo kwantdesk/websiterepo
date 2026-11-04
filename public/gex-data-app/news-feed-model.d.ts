@@ -1,0 +1,14 @@
+export const NEWS_SENTIMENTS: readonly string[];
+export const NEWS_TOPICS: readonly string[];
+export const NEWS_TOPIC_CHOICES: readonly {value:string;label:string}[];
+export function newsTopicLabel(value: unknown): string;
+export const NEWS_FEED_COLUMNS: readonly Record<string, unknown>[];
+export function newsDayRange(date: string, timeZone?: string): {startTime: string; endTime: string};
+export function newsFeedRequest(controls?: Record<string, unknown>, baseBody?: Record<string, unknown>, options?: {timeZone?: string}): Record<string, unknown>;
+export function validateNewsFeedRequest(body: unknown): void;
+export function newsFeedRows(payload: unknown): Record<string, unknown>[];
+export function newsArticleRequest(article: Record<string, unknown>, baseBody?: Record<string, unknown>): Record<string, unknown>;
+export function newsHeadlineMatches(article: Record<string, unknown>, search?: string): boolean;
+export function newsDisplayText(value: unknown): string;
+export function newsArticlePresentation(article: Record<string, unknown>, options?: {timeZone?: string}): {title: string;time: string;topics: string[];moreTopics: number;tickers: string[];moreTickers: number;sentiment: string|null};
+export function renderNewsFeed(payload: unknown, adapters: {showTable: (...args: unknown[]) => void; setSummary: (...args: unknown[]) => void}, controls?: Record<string, unknown>): Record<string, unknown>[];

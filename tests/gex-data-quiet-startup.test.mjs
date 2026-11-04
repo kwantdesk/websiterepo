@@ -35,7 +35,7 @@ test('every catalogue tool opens and loads with the retired banner absent; board
     renderToolNav:()=>calls.push('navigation'),loadActiveTool:async()=>calls.push('load'),
   };
   vm.runInNewContext(catalogue+'const toolMap=new Map(TOOL_DEFINITIONS.map(tool=>[tool.id,tool]));'+functions+';globalThis.tools=TOOL_DEFINITIONS;globalThis.open=showTool;globalThis.board=showBoard;',context);
-  assert.equal(context.tools.length,22);
+  assert.equal(context.tools.length,32);
   for(const tool of context.tools){
     calls.length=0;
     await context.open(tool.id);
@@ -52,9 +52,24 @@ test('every catalogue tool opens and loads with the retired banner absent; board
   }
 });
 
-test('iframe paints the current host theme before styles, modules or network requests',()=>{
+test('blocking bootstrap seeds the current host theme before prototype palette CSS, modules and body paint',()=>{
   const html=read('public/gex-data-app/index.html');
-  assert.ok(html.indexOf('site-bootstrap.js')<html.indexOf('rel="stylesheet"'));
+  const script=html.match(/<script\b[^>]*src="[^"]*site-bootstrap\.js[^\"]*"[^>]*>/);
+  assert.ok(script);assert.doesNotMatch(script[0],/\b(?:async|defer)\b|type="module"/);
+  const at=script.index;assert.ok(at<html.search(/<body\b[^>]*>/));
+  for(const sheet of ['styles.css','workspace.css','site.css']){
+    const index=html.indexOf('/gex-data-app/'+sheet);assert.ok(index>at,`${sheet} cannot paint the prototype before the theme seed`);
+  }
+  for(const moduleScript of html.matchAll(/<script\b[^>]*type="module"[^>]*>/g))assert.ok(moduleScript.index>at);
+  // Shared font-face and transparent range-input resets may precede the seed;
+  // neither paints a page palette. Reject any other preceding stylesheet.
+  const before=html.slice(0,at),earlyStyles=[...before.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)].map(match=>new URL(match[1],'https://fixture.invalid').pathname);
+  for(const path of earlyStyles){
+    assert.ok(['/fonts/aleph/aleph.css','/gex-data-app/range-input.css'].includes(path),path);
+    const css=read('public'+path);
+    if(path.endsWith('/aleph.css'))assert.equal(css.replace(/@font-face\s*\{[^}]*\}/g,'').trim(),'','early font CSS must contain no page styling');
+    else{assert.doesNotMatch(css,/\b(?:html|body)\s*[,\{]/);for(const match of css.matchAll(/(?:background(?:-color)?|(?<![-\w])color)\s*:\s*([^;}]+)/g))assert.match(match[1],/^(?:transparent|var\(|currentColor)/);}
+  }
   for(const background of ['#ffffff','#10051f','#001b20']){
     for(const kind of ['direct','nested','tool','popout']){
       const properties={},root={style:{setProperty:(key,value)=>properties[key]=value}};
@@ -72,8 +87,12 @@ test('iframe paints the current host theme before styles, modules or network req
 });
 
 test('bootstrap stops safely at cross-origin boundaries',()=>{
-  const window={get __kwantGexDataHost(){throw Error('Cross origin');}};
-  assert.doesNotThrow(()=>vm.runInNewContext(bootstrap,{document:{documentElement:{style:{}}},location:{search:''},window,URLSearchParams}));
+  let parentReads=0,hostReads=0;const properties={},root={style:{setProperty:(key,value)=>properties[key]=value}};
+  const window={get parent(){parentReads++;throw Error('Cross origin');},get __kwantGexDataHost(){hostReads++;throw Error('Cross origin');},get opener(){assert.fail('a rejected origin must not be traversed');}};
+  assert.doesNotThrow(()=>vm.runInNewContext(bootstrap,{document:{documentElement:root},location:{search:''},window,URLSearchParams}));
+  assert.equal(parentReads,1);assert.equal(hostReads,1);
+  assert.ok(properties['--site-background']);assert.equal(root.style.backgroundColor,properties['--site-background']);assert.equal(root.style.color,properties['--site-foreground']);
+  assert.match(properties['--site-on-primary'],/^#(?:000000|FFFFFF)$/);
 });
 
 test('theme surface changes synchronously while one shared colour download is pending',async()=>{

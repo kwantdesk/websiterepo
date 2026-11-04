@@ -1,0 +1,32 @@
+# Merge only this service into the actual /opt/kwantdesk/compose.yml.
+# Use the existing gateway image; start this service with --no-deps.
+services:
+  heat-cell-history:
+    image: __EXISTING_GATEWAY_IMAGE__
+    command: [node, /history/heat-cell-history-server.mjs]
+    restart: unless-stopped
+    env_file: /etc/kwantdesk/heat-cell-history.env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=192
+      RITHMIC_RECORD_DIR: /recordings
+      HEAT_CELL_HISTORY_PORT: 8798
+    volumes:
+      - ./heat-cell-history:/history:ro
+      - /srv/kwantdesk-recordings:/recordings:ro
+    expose: ['8798']
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.25
+    pids_limit: 48
+    init: true
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 10s
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8798/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 2m, max-file: '2'}
