@@ -77,7 +77,13 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
       }
       schedule(true);
     };
-    const reconnect = () => { retryAfter = 0; schedule(); };
+    const reconnect = () => {
+      retryAfter = 0;
+      // A foreground/online return must replace a pending offline backoff,
+      // while ordinary live events retain their original bounded deadline.
+      if (timer !== undefined) { window.clearTimeout(timer); timer = undefined; }
+      schedule();
+    };
     const onVisible = () => { if (document.visibilityState === 'visible') reconnect(); };
     const onHidden = () => { if (document.visibilityState === 'hidden') void synchronize(); };
     channel.on('broadcast', { event: 'changed' }, () => schedule())

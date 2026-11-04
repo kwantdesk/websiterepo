@@ -13,16 +13,15 @@ The existing authenticated per-owner CAS storage, merge rules, drawing clear bar
 
 ## Verification
 
-- 30 focused controller, account merge, request deadline, frame isolation, storage notification and replay-drawing tests pass.
+- 31 focused controller, account merge, request deadline, frame isolation, storage notification and replay-drawing tests pass.
 - Additional drawing-race suite: 6/7 pass. The remaining pre-existing source-extraction harness fails because Chart's `onUpdate` references `updateSvgDrawing`, which the harness does not declare. Chart.tsx is unchanged in this task. This is not reported as a passing suite.
 - Scoped ESLint passes; TypeScript check passes. Full Next.js production build passes.
 - `scripts/audits/device-sync-browser.cjs` runs the actual React Workspace, chart, account hydration, sync controller, storage writer, drawing store and paper engine in two independent Chromium contexts. Desktop is 1440x980; phone is 390x844 with touch/mobile behavior. Only authenticated database CAS and realtime hints are replaced by isolated HTTP/SSE transport; external requests are blocked.
 - Eight browser checks pass with zero page errors: automatic layout upload; fresh-phone two-pane restore with one full-width visible chart; desktop drawing transfer; reverse phone edit; demo account/open position transfer; phone stop edit retained on laptop; desktop close transferred to phone; no save starvation during 40 ms event bursts.
-- Captured fixture latency: drawing 755 ms, reverse preference edit 689 ms, account/open trade 984 ms. These are local integration measurements, not guaranteed production network latency. See result.json and phone.png.
+- Captured fixture latency: drawing 740 ms, reverse preference edit 669 ms, account/open trade 800 ms. These are local integration measurements, not guaranteed production network latency. See result.json and phone.png.
 
 ## Scope and limits
 
 No VPS/feed/terminal restart, subscription reset, production test trade, account deletion or live trading-tab refresh. This is account-state synchronization, not pixel streaming: both devices render their own charts using shared account settings. Suspended/offline phones cannot receive updates continuously; existing focus/online recovery catches up when active. Physical-phone and real Supabase multi-device delivery were not impersonated as tested; existing production RLS/realtime availability and device connectivity still apply.
 
 Release: one scoped main push through the existing production Git integration; verify the exact production commit after deployment.
-

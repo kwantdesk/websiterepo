@@ -10,9 +10,9 @@
     "Continuous live events cannot starve a genuine preference save"
   ],
   "errors": [],
-  "drawingMs": 755,
-  "reverseMs": 689,
-  "tradeMs": 984,
-  "writes": 11,
+  "drawingMs": 740,
+  "reverseMs": 669,
+  "tradeMs": 800,
+  "writes": 10,
   "method": "Two separate Chromium browser contexts, actual Workspace/React sync/hydration/merge/storage code; only database and realtime transport are isolated HTTP/SSE fixtures."
 }
