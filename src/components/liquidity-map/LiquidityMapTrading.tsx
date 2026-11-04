@@ -40,9 +40,10 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
     return () => { window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, update); window.removeEventListener("kwantdesk:theme-change", update); };
   }, []);
   const levels = useMemo(() => liquidityMapTradeLevels(symbol, trading.accountId, trading.positions, trading.orders), [symbol, trading.accountId, trading.positions, trading.orders]);
+  const hasOrderLevels = levels.length > 0;
   const current = useRef({ trading, levels, scope, symbol, active, replay, plot, onActivate });
   useLayoutEffect(() => { current.current = { trading, levels, scope, symbol, active, replay, plot, onActivate }; });
-  const drag = useRef<{ id: string; ownerId: string; scope: string; price: number; pointerId: number; release: () => void } | null>(null);
+  const drag = useRef<{ id: string; ownerId: string; scope: string; price: number; startY: number; startPrice: number; pricePerPixel: number; kind: MapTradeLevel["kind"]; pointerId: number; release: () => void } | null>(null);
   const cancelDrag = () => {
     const previous = drag.current;
     drag.current = null;
@@ -70,7 +71,7 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
   }, []);
   useEffect(() => {
     const post = () => iframeRef.current?.contentWindow?.postMessage({ type: "kwantdesk:liquidity-map-trading", symbol,
-      scope, ticketAvailable: true, armed: active && !replay && trading.enabled ? trading.armedOrder : null }, window.location.origin);
+      scope, ticketAvailable: true, hasOrderLevels, armed: active && !replay && trading.enabled ? trading.armedOrder : null }, window.location.origin);
     const receive = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || event.source !== iframeRef.current?.contentWindow) return;
       const state = current.current;
@@ -104,29 +105,28 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
     post();
     const iframe = iframeRef.current;
     return () => { window.removeEventListener("message", receive); iframe?.removeEventListener("load", post); };
-  }, [iframeRef, symbol, scope, active, replay, trading.enabled, trading.armedOrder]);
+  }, [iframeRef, symbol, scope, active, replay, hasOrderLevels, trading.enabled, trading.armedOrder]);
 
-  const startDrag = (event: ReactPointerEvent<HTMLButtonElement>, level: MapTradeLevel) => {
-    if (event.button !== 0 || !trading.enabled || replay || !level.draggable || !plot) return;
+  const startDrag = (event: ReactPointerEvent<HTMLButtonElement>, level: MapTradeLevel, kind = level.kind) => {
+    if (event.button !== 0 || !trading.enabled || replay || (kind === level.kind && !level.draggable) || !plot) return;
     if (drag.current && drag.current.pointerId !== event.pointerId) return;
     event.preventDefault(); event.stopPropagation(); onActivate?.(); cancelDrag();
     const ownerId = level.ownerId;
     trading.onDrag(ownerId, true);
-    drag.current = { id: level.id, ownerId, scope, price: level.price, pointerId: event.pointerId, release: () => trading.onDrag(ownerId, false) };
+    const frame = iframeRef.current;
+    const scale = frame?.clientHeight ? frame.getBoundingClientRect().height / frame.clientHeight : 1;
+    drag.current = { id: level.id, ownerId, scope, kind, price: level.price, startPrice: level.price,
+      startY: event.clientY, pricePerPixel: (plot.topPrice - plot.bottomPrice) / (plot.height * scale), pointerId: event.pointerId, release: () => trading.onDrag(ownerId, false) };
     // Capture on the stable plot, not a moving label that can leave the visible
     // range and unmount while the map recentres. Never hand the gesture to iframe pan.
     layer.current?.setPointerCapture(event.pointerId);
     setPreview({ id: level.id, price: level.price });
   };
   const moveDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const d = drag.current, p = current.current.plot;
-    const iframe = iframeRef.current;
-    if (!d || d.pointerId !== event.pointerId || !p || !iframe) return;
+    const d = drag.current;
+    if (!d || d.pointerId !== event.pointerId) return;
     event.preventDefault(); event.stopPropagation();
-    const rect = iframe.getBoundingClientRect();
-    const scale = iframe.clientHeight > 0 ? rect.height / iframe.clientHeight : 1;
-    const y = (event.clientY - rect.top) / scale - p.top;
-    const price = liquidityMapPickedPrice(symbol, p.topPrice - y / p.height * (p.topPrice - p.bottomPrice));
+    const price = liquidityMapPickedPrice(symbol, d.startPrice - (event.clientY - d.startY) * d.pricePerPixel);
     if (price !== null) { d.price = price; setPreview({ id: d.id, price }); }
   };
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -136,9 +136,16 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
     const level = state.levels.find(l => l.id === d?.id);
     try {
       if (d && level && d.scope === state.scope && state.trading.enabled && state.active && !state.replay) {
-        if (level.kind === "entry") state.trading.onOrderPrice(level.accountId, level.ownerId, d.price);
-        else if (level.kind === "stop_loss") state.trading.onProtection(level.accountId, level.ownerId, { kind: "stop_loss", price: d.price });
-        else state.trading.onProtection(level.accountId, level.ownerId, { kind: "take_profit", targetId: level.targetId, price: d.price });
+        const addingProtection = d.kind !== level.kind;
+        if (d.price === d.startPrice && !addingProtection) return;
+        const direction = (level.side === "buy" ? 1 : -1) * (d.kind === "stop_loss" ? -1 : 1);
+        const price = addingProtection && Math.abs(event.clientY - d.startY) < 3
+          ? liquidityMapPickedPrice(state.symbol, level.price + direction * paperTickSize(state.symbol) * 8)
+          : d.price;
+        if (price === null) return;
+        if (d.kind === "entry") state.trading.onOrderPrice(level.accountId, level.ownerId, price);
+        else if (d.kind === "stop_loss") state.trading.onProtection(level.accountId, level.ownerId, { kind: "stop_loss", price });
+        else state.trading.onProtection(level.accountId, level.ownerId, { kind: "take_profit", targetId: level.targetId, price });
       }
     } finally { cancelDrag(); }
   };
@@ -147,16 +154,22 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
     {plot && <div ref={layer} className="pointer-events-none absolute z-20 overflow-hidden" onPointerMove={moveDrag} onPointerUp={endDrag}
       onPointerCancel={cancelDrag} onLostPointerCapture={cancelDrag}
       style={{ left: plot.left, top: plot.top, width: plot.width, height: plot.height }}>
+      {preview && drag.current && levels.some(level => level.id === preview.id && level.kind !== drag.current?.kind) && (
+        <div className="absolute inset-x-0 border-t border-dashed text-right text-xs text-foreground"
+          style={{ top: (plot.topPrice - preview.price) / (plot.topPrice - plot.bottomPrice) * plot.height,
+            borderColor: drag.current.kind === "stop_loss" ? appearance.downColor : appearance.upColor }}>
+          {drag.current.kind === "stop_loss" ? "SL" : "TP"} {preview.price}
+        </div>
+      )}
       {levels.map(level => {
-        const price = preview?.id === level.id ? preview.price : level.price;
+        const price = preview?.id === level.id && drag.current?.kind === level.kind ? preview.price : level.price;
         const y = (plot.topPrice - price) / (plot.topPrice - plot.bottomPrice) * plot.height;
         if (y < 0 || y > plot.height) return null;
         const color = legibleOn(level.kind === "stop_loss" || level.kind === "entry" && level.side === "sell" ? appearance.downColor : appearance.upColor, appearance.backgroundColor);
         const label = liquidityMapLevelLabel(level, symbol, price);
-        const owner = level.resting ? trading.orders.find(o => o.id === level.ownerId) : trading.positions.find(p => p.id === level.ownerId);
         return <div key={level.id} className="absolute left-0 right-0 border-t" style={{ top: y, borderColor: color, borderStyle: level.kind === "entry" ? "solid" : "dashed" }}>
           <div className={`${level.kind === "entry" ? "paper-position-overlay-label" : "paper-protection-overlay-label"} pointer-events-auto absolute right-1 flex -translate-y-1/2 items-stretch overflow-hidden border font-mono font-bold`}
-            style={{ borderColor: color, color: appearance.backgroundColor, backgroundColor: readableTextOn(appearance.backgroundColor), fontSize: PAPER_LABEL_FONT_PX, height: PAPER_LABEL_HEIGHT, width: paperLabelWidthPx(label, level.kind === "entry" ? 2 : 0, true), maxWidth: "calc(100% - 8px)" }}>
+            style={{ borderColor: color, color: appearance.backgroundColor, backgroundColor: readableTextOn(appearance.backgroundColor), fontSize: PAPER_LABEL_FONT_PX, height: PAPER_LABEL_HEIGHT, width: paperLabelWidthPx(label, level.kind === "entry" ? 2 : 0, true), minWidth: level.kind === "entry" ? 150 : undefined, maxWidth: "calc(100% - 8px)" }}>
             <button type="button" aria-label={`${level.label} ${symbol} at ${price}`} disabled={replay || !trading.enabled}
               className="min-w-0 flex-1 touch-none truncate text-left active:cursor-grabbing" style={{ cursor: level.draggable ? "ns-resize" : "default", paddingInline: PAPER_LABEL_PAD_X }}
               title={level.draggable ? "Drag to adjust protection" : "Filled entry price"} onPointerDown={e => startDrag(e, level)}>
@@ -166,8 +179,8 @@ export default function LiquidityMapTrading({ iframeRef, instrument, active, rep
               style={{ borderColor: color, width: PAPER_LABEL_CLOSE_WIDTH }} aria-label={`Remove ${level.kind === "stop_loss" ? "stop loss" : "take profit"} from ${symbol} position`}
               onClick={() => trading.onProtection(level.accountId, level.ownerId, { kind: level.kind as "stop_loss" | "take_profit", targetId: level.targetId, price: null })}><X style={{ width: PAPER_LABEL_ICON_PX, height: PAPER_LABEL_ICON_PX }} /></button>}
             {level.kind === "entry" && active && !replay && trading.enabled && <>
-              {owner?.stopLoss == null && <button type="button" className="border border-border px-1" title="Add stop loss" onClick={() => trading.onProtection(level.accountId, level.ownerId, { kind: "stop_loss", price: level.price + (owner?.side === "buy" ? -1 : 1) * paperTickSize(symbol) * 8 })}>+SL</button>}
-              {!levels.some(l => l.ownerId === level.ownerId && l.kind === "take_profit") && <button type="button" className="border border-border px-1" title="Add take profit" onClick={() => trading.onProtection(level.accountId, level.ownerId, { kind: "take_profit", price: level.price + (owner?.side === "buy" ? 1 : -1) * paperTickSize(symbol) * 8 })}>+TP</button>}
+              {!levels.some(l => l.ownerId === level.ownerId && l.kind === "stop_loss") && <button type="button" className="shrink-0 touch-none border border-border px-1" title="Drag to set stop loss" onPointerDown={e => startDrag(e, level, "stop_loss")} onClick={event => { if (event.detail === 0) trading.onProtection(level.accountId, level.ownerId, { kind: "stop_loss", price: level.price + (level.side === "buy" ? -1 : 1) * paperTickSize(symbol) * 8 }); }}>+SL</button>}
+              {!levels.some(l => l.ownerId === level.ownerId && l.kind === "take_profit") && <button type="button" className="shrink-0 touch-none border border-border px-1" title="Drag to set take profit" onPointerDown={e => startDrag(e, level, "take_profit")} onClick={event => { if (event.detail === 0) trading.onProtection(level.accountId, level.ownerId, { kind: "take_profit", price: level.price + (level.side === "buy" ? 1 : -1) * paperTickSize(symbol) * 8 }); }}>+TP</button>}
               <button type="button" className="border border-border px-1" title={level.resting ? "Cancel working order" : "Close position"} onClick={() => level.resting ? trading.onCancelOrder(level.accountId, level.ownerId) : trading.onClose(level.accountId, level.ownerId)}>×</button>
             </>}
           </div>

@@ -28,7 +28,7 @@ import {
   computeVolumeImbalance,
   mergeLiveCvdHistory,
 } from './order-flow-indicators.js?v=20261017-aleph-font';
-import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20261017-aleph-font';
+import { panHistoryEnd, wheelColumnShift } from './history-navigation.js?v=20261017-aleph-font';
 import {
   DEFAULT_UI_THEME,
   WEBSITE_THEME_STORAGE_KEY,
@@ -362,7 +362,9 @@ class DepthForgeApp {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'kwantdesk:liquidity-map-trading') {
         if (event.source !== window.parent) return;
+        if (this.tradingIntent?.symbol !== event.data.symbol || !event.data.hasOrderLevels) this.orderScaleCenter = null;
         this.tradingIntent = event.data;
+        this.requestRender();
         $('mapTradeButton').style.display = event.data.ticketAvailable === true ? '' : 'none';
         this.tradingPlotKey = null;
         this.#publishTradingPlot();
@@ -1658,7 +1660,13 @@ class DepthForgeApp {
           const previousEndFrame = this.renderer.layout?.history?.[this.renderer.layout?.end];
           const previousPixelsPerTick = Number(this.renderer.layout?.plotHeight)
             / Math.max(1, Number(this.renderer.layout?.visibleTickSpan));
-          this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
+          const keepOrderScale = this.tradingIntent?.symbol === this.symbol && this.tradingIntent?.hasOrderLevels && !this.replay.active;
+          if (!keepOrderScale) this.orderScaleCenter = null;
+          else this.orderScaleCenter ??= this.renderer.layout?.config.key === this.symbol
+            ? this.renderer.layout.centerTick : current.midTick;
+          const renderView = keepOrderScale && this.settings.autoCenter
+            ? { ...this.view, centerTick: this.orderScaleCenter } : this.view;
+          this.renderer.render(this.history, this.viewEnd, renderView, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
           this.#publishTradingPlot();
           const nextCenterTick = Number(this.renderer.layout?.centerTick);
           const previousEndIndex = previousEndFrame ? this.history.indexOf(previousEndFrame) : -1;
@@ -2022,7 +2030,7 @@ class DepthForgeApp {
         ? 'ew-resize'
       : this.#isPriceRailPoint(point)
         ? 'ns-resize'
-        : this.#defaultChartCursor();
+        : this.#isTimeAxisPoint(point) ? 'ew-resize' : this.#defaultChartCursor();
     $('heatmapCanvas').style.cursor = cursor;
     $('chartArea').style.cursor = cursor;
   }
@@ -2037,25 +2045,13 @@ class DepthForgeApp {
       this.requestRender();
       return;
     }
-    if (this.drag?.mode === 'price-pan') {
+    if (this.drag?.mode === 'price-scale' || this.drag?.mode === 'time-scale') {
       event.preventDefault();
-      const layout = this.renderer.layout;
-      if (layout) {
-        if (this.settings.autoCenter) {
-          this.view.centerTick = null;
-        } else {
-          const currentCenter = this.view.centerTick ?? this.history[this.viewEnd].midTick;
-          this.view.centerTick = panPriceCenter({
-            centerTick: currentCenter,
-            deltaY: point.y - this.drag.lastY,
-            plotHeight: layout.plotHeight,
-            visibleTickSpan: layout.visibleTickSpan,
-          });
-        }
-      }
-      this.drag.lastY = point.y;
-      this.#setChartCursor(point, true);
-      this.requestRender();
+      const price = this.drag.mode === 'price-scale';
+      const coordinate = price ? point.y : point.x;
+      const factor = Math.exp(Math.max(-100, Math.min(100, coordinate - this.drag.lastCoordinate)) / 100);
+      this.drag.lastCoordinate = coordinate;
+      this.#zoom(factor, this.drag.anchor, { price, time: !price });
       return;
     }
     if (this.drag?.mode === 'pan') {
@@ -2149,10 +2145,11 @@ class DepthForgeApp {
     if (event.button !== 0) return;
     const point = this.#canvasPoint(event);
     const domResize = this.#isDomResizePoint(point);
-    const pricePan = this.#isPriceRailPoint(point);
+    const priceScale = this.#isPriceRailPoint(point);
+    const timeScale = this.#isTimeAxisPoint(point);
     const chartPan = this.tool === 'pan' || event.altKey;
     const measurement = this.tool === 'measure';
-    if (!domResize && !pricePan && !chartPan && !measurement) return;
+    if (!domResize && !priceScale && !timeScale && !chartPan && !measurement) return;
     event.preventDefault();
     $('heatmapCanvas').setPointerCapture(event.pointerId);
     if (domResize) {
@@ -2167,9 +2164,13 @@ class DepthForgeApp {
       this.renderer.setHover(null);
       $('chartTooltip').classList.add('hidden');
       this.#setChartCursor(point, true);
-    } else if (pricePan) {
-      this.drag = { mode: 'price-pan', lastY: point.y };
-      this.renderer.beginInteraction('price-pan');
+    } else if (priceScale || timeScale) {
+      const layout = this.renderer.layout;
+      this.drag = {
+        mode: priceScale ? 'price-scale' : 'time-scale',
+        lastCoordinate: priceScale ? point.y : point.x,
+        anchor: { x: Math.min(layout.dataWidth, point.x), y: layout.plotHeight / 2 },
+      };
       this.renderer.setHover(null);
       $('chartTooltip').classList.add('hidden');
       this.#setChartCursor(point, true);
@@ -2190,7 +2191,7 @@ class DepthForgeApp {
     try { $('heatmapCanvas').releasePointerCapture(event.pointerId); } catch { /* pointer already released */ }
     this.drag = null;
     this.renderer.endInteraction();
-    if (this.settings.autoCenter) this.goLive();
+    if (this.settings.autoCenter && completedDrag.mode === 'pan') this.goLive();
     if (completedDrag.mode === 'dom-resize' && window.parent !== window) {
       window.parent.postMessage({
         type: 'kwantify:heatmap-dom-width',
