@@ -22,18 +22,31 @@ export function prepareBounceGexMirror(input: {
   const { payload, settings, colorScale } = input;
   const display = /^(M2K|RTY)/.exec(input.displayInstrument.toUpperCase())?.[1] ?? normalizeGammaHeatmapInstrument(input.displayInstrument), source = gexMapProviderTicker(payload.symbol);
   const direct = gexMapProviderTicker(display) === source;
+  // displayPriceAt supplies the containing minute's OPEN. Pair it with the
+  // source OPEN, not that minute's final close (which creates a return-sized
+  // sawtooth in every projected strike and leaks future prices into replay).
+  const pairedPricesAt = (timestamp: number) => {
+    let low = 0, high = payload.candles.length;
+    while (low < high) { const mid = (low + high) >>> 1; if (payload.candles[mid].timestamp <= timestamp) low = mid + 1; else high = mid; }
+    const candle = payload.candles[low - 1];
+    if (!candle || timestamp >= candle.timestamp + 60_000) return null;
+    const sourcePrice = candle.open, displayPrice = input.displayPriceAt(candle.timestamp);
+    return sourcePrice > 0 && displayPrice && displayPrice > 0 ? { sourcePrice, displayPrice } : null;
+  };
   const frame = (timestamp: number, current: ReadonlyMap<number, ExposureStrike>, previous: ReadonlyMap<number, ExposureStrike>, spot: number | null, live = false): MirrorFrame | null => {
     const rows = gexMapSurfaceRows(current);
     const exposureRange = gexMapExposureRange(rows.map((row) => row.net));
-    const displayPrice = direct ? spot ?? (live ? input.liveDisplayPrice : input.displayPriceAt(timestamp)) : live ? input.liveDisplayPrice ?? input.displayPriceAt(timestamp) : input.displayPriceAt(timestamp);
+    const pair = direct ? null : pairedPricesAt(timestamp);
+    const displayPrice = direct ? spot ?? (live ? input.liveDisplayPrice : input.displayPriceAt(timestamp)) : pair?.displayPrice ?? (live ? input.liveDisplayPrice : null);
     if (!(displayPrice && displayPrice > 0) || (!direct && !(spot && spot > 0))) return null;
     const sourcePrice = spot ?? displayPrice;
+    const mappingSourcePrice = pair?.sourcePrice ?? sourcePrice;
     const mapped = buildGammaHeatmapMapping({ sourceInstrument: source, displayInstrument: direct ? source : display,
-      sourcePrice, displayPrice, asOf: new Date(timestamp).toISOString() });
+      sourcePrice: mappingSourcePrice, displayPrice, asOf: new Date(timestamp).toISOString() });
     const mapping: StrikeMappingSnapshot = {
       method: mapped.method === "direct" ? "same-underlying-direct" : mapped.method === "live-basis" ? "spot-futures-basis" : "live-ratio",
       sourceTicker: source, displayInstrument: display, alpha: mapped.basis, beta: mapped.scale,
-      sourceSpotPrice: sourcePrice, displayMidPrice: displayPrice, mappedSourceSpotPrice: mapGammaHeatmapStrike(sourcePrice, mapped),
+      sourceSpotPrice: mappingSourcePrice, displayMidPrice: displayPrice, mappedSourceSpotPrice: mapGammaHeatmapStrike(mappingSourcePrice, mapped),
       mappingConfidence: mapped.confidence * 100, calculatedAtMs: timestamp, dataAgeMs: 0,
     };
     const model = deriveGexMapStarModel({ rows, previous, spot, settings: settings.starSettings });
@@ -90,7 +103,8 @@ export function prepareBounceGexMirror(input: {
   };
   const independentHistory = direct && payload.candles.length > 0 && payload.candles[0].timestamp <= (payload.frames[0]?.timestamp ?? Infinity);
   const cacheKey = JSON.stringify([payload.symbol, payload.greekMode, payload.model, payload.scope, payload.representation, payload.sessionDate,
-    settings.viewMode, settings.stepMinutes, settings.starSettings, display, colorScale, independentHistory ? "" : input.historyKey]);
+    settings.viewMode, settings.stepMinutes, settings.starSettings, display, colorScale, independentHistory ? "" : input.historyKey,
+    direct ? "" : payload.candles.map((c) => `${c.timestamp}:${c.open}`).join("|")]);
   const cached = historyCache.get(payload.frames);
   const through = independentHistory ? Infinity : input.mappingThrough ?? Infinity;
   const reused = cached?.key === cacheKey && cached.mappingThrough === through;

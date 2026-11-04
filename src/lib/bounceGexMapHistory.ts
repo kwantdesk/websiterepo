@@ -27,7 +27,7 @@ export function mergeBounceGexMapHistory(history: GexMapPanelPayload, head: GexM
   let mergedCandles: Map<number, GexMapPanelPayload["candles"][number]> | null = null;
   for (const c of head.candles) {
     const old = candles.find((v) => v.timestamp === c.timestamp);
-    if (old?.close === c.close) continue;
+    if (old?.open === c.open && old?.close === c.close) continue;
     if (!mergedCandles) mergedCandles = new Map(candles.map((v) => [v.timestamp, v]));
     mergedCandles.set(c.timestamp, c);
     const index = frames.findIndex((f) => f.timestamp >= c.timestamp);
