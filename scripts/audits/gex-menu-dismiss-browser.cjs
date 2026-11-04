@@ -1,0 +1,21 @@
+const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');const {chromium}=require(process.env.KWANTDESK_PLAYWRIGHT_MODULE||'playwright');
+(async()=>{const publicRoot=path.resolve('public'),errors=[],missing=[];const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://localhost');if(u.pathname.startsWith('/api/')){res.setHeader('content-type','application/json');return res.end(JSON.stringify(u.pathname.endsWith('/status')?{connected:false,mode:'gateway',market:{state:'closed'}}:{type:'single',data:[]}))}let file=u.pathname==='/'?path.resolve('tests/fixtures/gex-data-parity-workspace.html'):path.resolve(publicRoot,'.'+decodeURIComponent(u.pathname));if(u.pathname!=='/'&&!file.startsWith(publicRoot+path.sep)){res.statusCode=403;return res.end()}if(!fs.existsSync(file)){missing.push(u.pathname);res.statusCode=404;return res.end()}res.setHeader('content-type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.ttf')?'font/ttf':'text/html');res.end(fs.readFileSync(file))});await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;const browser=await chromium.launch({headless:true,executablePath:process.env.KWANTDESK_CHROME_EXECUTABLE});try{const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',r=>r.request().url().startsWith(origin)?r.continue():r.abort());await page.goto(origin);const app=page.frameLocator('iframe');
+const add=app.getByRole('button',{name:'Add tool',exact:true}).first();
+await add.click();let modal=app.getByRole('dialog',{name:'Add Tool',exact:true});await modal.waitFor();
+await modal.getByRole('searchbox').fill('drift');assert.ok(await modal.isVisible());
+const box=await modal.boundingBox();const outside={x:box.x-8,y:box.y+20};
+await page.mouse.move(box.x+100,box.y+20);await page.mouse.down();await page.mouse.move(outside.x,outside.y);await page.mouse.up();assert.ok(await modal.isVisible(),'dragging out of dialog keeps it open');
+await page.mouse.click(outside.x,outside.y);await modal.waitFor({state:'detached'});
+const frame=app.locator('.dock-tool-frame').first();await frame.waitFor();
+for(const [button,title] of [['Page Tool Filters','Page Tool Filters'],['Global Tool Filters','Global Tool Filters'],['Tool Configuration','Tool Configuration'],['Settings','Tool Configuration'],['GEX DATA workspaces','Saved workspaces']]){
+ await app.getByRole('button',{name:button,exact:true}).click();const popup=app.getByRole('dialog',{name:title,exact:true});await popup.waitFor();
+ await popup.locator('h2,h3,.saved-workspace-heading').first().click();assert.ok(await popup.isVisible());
+ await popup.evaluate(el=>el.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:100})));assert.ok(await popup.isVisible());
+ if(title==='Page Tool Filters'){
+  const picker=popup.locator('details').first();if(await picker.count()){await picker.locator('summary').click();assert.ok(await popup.isVisible());assert.equal(await picker.getAttribute('open'),'');await popup.locator('h2,h3,.saved-workspace-heading').first().click();assert.ok(await popup.isVisible());}
+ }
+ const child=await(await frame.elementHandle()).contentFrame();await child.locator('body').click({position:{x:15,y:150},force:true});await popup.waitFor({state:'detached'});
+}
+await add.click();modal=app.getByRole('dialog',{name:'Add Tool',exact:true});await modal.waitFor();await page.keyboard.press('Escape');await modal.waitFor({state:'detached'});
+await page.evaluate(()=>document.documentElement.classList.add('has-dock-workspace'));await app.getByRole('button',{name:'Page Tool Filters',exact:true}).click();const portaled=page.getByRole('dialog',{name:'Page Tool Filters',exact:true});await portaled.waitFor();await page.locator('header b').click();await portaled.waitFor({state:'detached'});assert.deepEqual(errors,[]);assert.deepEqual(missing,[]);console.log(JSON.stringify({backdropDismissal:true,dragSafety:true,chartFrameOutsideClicks:true,insideClicksAndScrollPreserved:true,nestedPickers:true,escape:true,providerRequests:0}));
+}finally{await browser.close();await new Promise(r=>server.close(r))}})().catch(e=>{console.error(e);process.exitCode=1});

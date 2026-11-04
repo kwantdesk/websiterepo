@@ -5,7 +5,7 @@ import {gexStorage,openWorkspacePalette} from './site-runtime.js?v=1';
 import {createBoardWorkspace,createWorkspace,workspaceAction,workspaceTabsets,workspaceOrientation,workspaceDockLocation,workspaceDockRect,serializeWorkspace,validateTabName} from './workspace-model.js?v=1';
 import {TOOL_CONFIGURATION_OPTIONS,sanitizeToolConfiguration,setConfigurationVisibility} from './preferences-model.js?v=1';
 import {instrumentChoices,multiChoiceDropdown} from './choice-controls.js?v=2';
-import {claimMenu,releaseMenu} from './menu-coordination.js';
+import {claimMenu,releaseMenu,dismissDialogOnBackdrop} from './menu-coordination.js';
 
 const KEYS={layout:'gex-data:workspace:v1',configuration:'gex-data:configuration:v1',page:'gex-data:page-filters:v1',global:'gex-data:global-filters:v1',groups:'gex-data:filter-groups:v1'};
 const read=(key,fallback)=>{try{return JSON.parse(gexStorage.getItem(key))??fallback;}catch{return fallback;}};
@@ -25,8 +25,8 @@ export function applyDocumentPreferences(){
 let currentPopup;
 function portalWindow(){try{return parent!==window&&parent.location.origin===location.origin&&parent.document.documentElement.classList.contains('has-dock-workspace')?parent:window;}catch{return window;}}
 function closePopup(){currentPopup?.workspaceAnchor?.setAttribute('aria-expanded','false');if(currentPopup){releaseMenu(document,currentPopup);releaseMenu(portalWindow().document,currentPopup);}currentPopup?.remove();currentPopup=null;portalWindow().document.querySelectorAll('.workspace-popup').forEach(el=>el.remove());}
-document.addEventListener('pointerdown',event=>{const visible=currentPopup?.isConnected?currentPopup:document.querySelector('.workspace-popup');if(visible&&!visible.contains(event.target)&&!event.target.closest('.top-action,.dock-tab-menu,.dock-add,.dock-overflow'))closePopup();});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')closePopup();});
+
+
 export function popup(anchor,title,build){
   closePopup();const el=node('section','workspace-popup');el.setAttribute('role','dialog');el.setAttribute('aria-label',title);el.append(node('h3','',title));
   const owner=portalWindow();el.append(button('×',closePopup,'popup-close'));build(el);
@@ -39,7 +39,7 @@ export function popup(anchor,title,build){
 }
 
 function dialog(title,build){
-  const el=node('dialog','workspace-dialog');el.setAttribute('aria-label',title);const header=node('header');header.append(node('h2','',title),button('×',()=>el.close()));el.append(header);build(el);portalWindow().document.body.append(el);el.addEventListener('close',()=>el.remove());el.showModal();return el;
+  const el=node('dialog','workspace-dialog');el.setAttribute('aria-label',title);const header=node('header');header.append(node('h2','',title),button('×',()=>el.close()));el.append(header);build(el);portalWindow().document.body.append(el);el.addEventListener('close',()=>el.remove());dismissDialogOnBackdrop(el);el.showModal();return el;
 }
 export const showDataDialog=dialog;
 export function confirmLocalAction(title,message,action,event){if(event?.shiftKey){action();return;}dialog(title,el=>el.append(node('p','',message),button('Cancel',()=>el.close()),button('Confirm',()=>{action();el.close();})));}
