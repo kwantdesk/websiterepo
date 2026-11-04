@@ -84,3 +84,59 @@ header>nav{grid-column:2;grid-row:1;justify-self:center}
 .panel-drag-handle{cursor:grab;touch-action:none}.chart-panel[data-drag-over=true]{outline:2px solid var(--site-primary);outline-offset:-2px}
 @media(max-width:1200px){header{height:72px;min-height:72px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-rows:34px 34px;gap:0 6px}header>nav{grid-column:2;grid-row:1}.workspace-header-actions{grid-column:3;grid-row:1}.chart-top-controls{grid-column:1/-1;grid-row:2;justify-content:flex-start;overflow-x:auto}main{height:calc(100vh - 72px)}}
 @media(max-width:600px){header{grid-template-columns:auto minmax(0,1fr)}header>nav{grid-column:1;justify-self:start}.workspace-header-actions{grid-column:2}.workspace-header-actions .bot-template-actions{display:none}.chart-top-controls{grid-column:1/-1}.timeframe-buttons{display:flex!important}#chartPanels[data-layout=grid]{grid-template-columns:minmax(240px,1fr)}}
+
+/* Match the Charts command deck: 44px rows, 28px controls and themed panels.
+   Phone controls keep their dedicated drawer in phone-workspace.css. */
+@media (min-width:768px) {
+  body { --kwanty-command-row:44px; --kwanty-command-height:45px; }
+  body > header {
+    display:grid;grid-template-columns:minmax(0,1fr) max-content minmax(0,1fr);
+    grid-template-rows:var(--kwanty-command-row);gap:0;padding:0;
+    height:var(--kwanty-command-height);min-height:var(--kwanty-command-height);
+    box-sizing:border-box;border-bottom:1px solid var(--site-border);
+    background:var(--site-panel)!important;
+  }
+  body > main { height:calc(100dvh - var(--kwanty-command-height)); }
+  body > header > :is(.chart-top-controls,nav,.workspace-header-actions) {
+    min-width:0;height:var(--kwanty-command-row);min-height:var(--kwanty-command-row);
+    box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 12px;
+  }
+  body > header > .chart-top-controls {
+    grid-column:1;grid-row:1;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;
+    scrollbar-width:thin;
+  }
+  body > header > nav { grid-column:2;grid-row:1;justify-self:center;gap:4px; }
+  body > header > .workspace-header-actions {
+    grid-column:3;grid-row:1;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
+  }
+  body > header > .workspace-header-actions > :first-child { margin-left:auto; }
+  body > header :is(button,select,.kwant-choice-trigger) {
+    flex-shrink:0;box-sizing:border-box;height:28px;min-height:28px;max-height:28px;
+    padding:0 10px;font-size:10px;font-weight:600;letter-spacing:.075em;line-height:1;
+    border-radius:3px!important;white-space:nowrap;
+  }
+  body > header :is(nav,.workspace-header-actions) button,
+  body > header .timeframe-buttons button,body > header .ticker-favourites button {
+    border:1px solid transparent!important;background:transparent!important;color:var(--site-muted)!important;
+  }
+  body > header :is(button:hover,button.selected,button[aria-pressed=true],button[aria-expanded=true]) {
+    color:var(--site-foreground)!important;background:var(--site-surface)!important;
+  }
+  body > header :is(button.selected,button[aria-pressed=true]) { border-color:var(--site-border)!important; }
+  body > header :is(.timeframe-buttons,.ticker-favourites) { gap:2px;flex-shrink:0; }
+  body > header .ticker-favourites { max-width:none;overflow:visible; }
+  body > header .timeframe-buttons { padding-right:8px;border-right:1px solid var(--site-border); }
+  body > header .kwant-choice-trigger { width:auto;min-width:58px;max-width:160px; }
+  body > header #workspaceInstrument + .kwant-choice-trigger { min-width:76px; }
+  body > header #workspaceLayout + .kwant-choice-trigger { min-width:108px; }
+  body > header .bot-template-actions { flex-shrink:0;gap:8px;overflow:visible; }
+  body > header .template-overflow-menu { position:fixed;top:var(--kwanty-command-height);right:12px; }
+  body > header .template-overflow summary { padding:0 10px;height:28px;display:flex;align-items:center;font-size:10px; }
+}
+@media (min-width:768px) and (max-width:1279px) {
+  body { --kwanty-command-height:89px; }
+  body > header { grid-template-columns:minmax(0,1fr) max-content;grid-template-rows:repeat(2,var(--kwanty-command-row)); }
+  body > header > .chart-top-controls { grid-column:1 / -1;grid-row:1; }
+  body > header > nav { grid-column:1;grid-row:2;justify-self:center; }
+  body > header > .workspace-header-actions { grid-column:2;grid-row:2; }
+}
