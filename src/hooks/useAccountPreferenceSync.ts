@@ -48,6 +48,7 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
       } catch {
         failures++;
         retryAfter = Date.now() + Math.min(60000, 2000 * 2 ** Math.min(failures - 1, 5));
+        queued = true;
         window.dispatchEvent(new CustomEvent('kwantdesk:account-sync-status', { detail: { state: 'offline', userId } }));
       } finally {
         busy = false;
@@ -56,14 +57,16 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
     };
     const schedule = (localOnly = false) => {
       if (!localOnly) refreshScheduled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
+      // Bounded leading-edge coalescing: continuous trade/drawing events must
+      // never postpone a saved workspace indefinitely.
+      if (timer !== undefined) return;
       timer = window.setTimeout(() => {
         timer = undefined;
         const refresh = refreshScheduled;
         refreshScheduled = false;
         if (!refresh && accountPreferenceFingerprint(captureBrowserPreferences()) === accountPreferenceFingerprint(base)) return;
         void synchronize();
-      }, 300);
+      }, Math.max(300, retryAfter - Date.now()));
     };
     const onLocalChange = (event?: Event) => {
       // Cache/telemetry writes from another trading tab are not account edits.

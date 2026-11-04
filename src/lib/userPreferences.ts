@@ -1,3 +1,5 @@
+import { isTrackedStorageKey } from "./accountPreferenceKeys.ts";
+export { isTrackedStorageKey } from "./accountPreferenceKeys.ts";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { applyTheme } from "./theme.ts";
 import { retainLocalChartAppearance } from "./chartSettings.ts";
@@ -36,106 +38,6 @@ const ACCOUNT_TEMPLATE_STORAGE_KEYS = [
   "kwantify-hidden-paper-fill-markers-v1",
 ] as const;
 
-const TRACKED_STORAGE_KEYS = new Set([
-  "kwantdesk:custom-themes:v1",
-  "olisa-theme",
-  "olisa-chart-settings",
-  "kwantdesk:chart-workspace-settings:v1",
-  "olisa-chart-defaults",
-  "olisa-recent-colors",
-  "olisa-chart-templates",
-  "olisa-chart-workspace-layout",
-  "olisa-chart-workspace-locked",
-  "olisa-chart-workspace-split-ratio",
-  "olisa-chart-workspace-quad-split",
-  "olisa-chart-workspace-panes",
-  "olisa-chart-workspace-tree",
-  "olisa-chart-workspace-floating-windows",
-  "olisa-chart-workspace-active-pane",
-  "olisa-chart-workspace-linked-panes",
-  "kwantdesk:favourite-intervals:v1",
-  "kwantdesk:favourite-instruments:v1",
-  "olisa-chart-favourite-intervals",
-  "olisa-watchlist-favorites",
-  "olisa-watchlist-flags",
-  "olisa-watchlist-sections",
-  "olisa-right-panel-width",
-  "olisa-bottom-panel-height",
-  "kwantdesk-chart-workspace-presets",
-  "kwantdesk:levelz-workspaces:v1",
-  "kwantdesk:gex-data:workspace:v1",
-  "kwantdesk:kwanty:workspace:v1",
-  "kwantdesk:options-expiration-calendar:v1",
-  "kwantdesk-chart-workspace-active-preset",
-  "kwantdesk-chart-indicators",
-  "kwantdesk-chart-indicator-favourites",
-  "kwantdesk-source-code-indicators:v1",
-  "kwantdesk:chart-gamma-levels-enabled:v1",
-  "kwantdesk:chart-value-area-levels-enabled:v1",
-  "kwantdesk:chart-pane-level-visibility:v1",
-  "kwantdesk:volume-profile-templates:v1",
-  "kwantdesk:indicator-templates:v1",
-  "kwantdesk:footprint:templates:v1",
-  "kwantdesk:tpo-user-presets:v1",
-  "kwantdesk:gex-interval-map-presets:v1",
-  "kwantdesk:gex-map-palette:v1",
-  "kwantdesk:gex-map-zoom:v1",
-  "kwantdesk:gex-map-future:v1",
-  "kwantdesk:gex-map-future-zoom:v1",
-  "kwantdesk:gex-map-time-horizon:v1",
-  "kwantdesk:gex-map-price-lock:v1",
-  "kwantdesk:gex-map:star-preferences:v1",
-  "kwantdesk:gex-map-linked-settings:v1",
-  "kwantdesk:chart-crosshair-style:v1",
-  "kwantdesk:chart-toolbar-pinned:v1",
-  "kwantdesk:chart-drawtools:v1",
-  "kwantdesk:chart-drawtool-templates:v1",
-  "kwantdesk:chart-magnet:v1",
-  "kwantdesk:gameplan-chart-overlays:v1",
-  "kwantdesk-right-panel-state",
-  "kwantdesk-bottom-panel-minimized",
-  "kwantdesk-settings-toggles",
-  "kwantdesk-settings-font-size",
-  "kwantdesk:economic-calendar-timezone:v1",
-  "kwantdesk:liquidity-map-settings:v1",
-  "kwantdesk:liquidity-map-tabs:v1",
-  "kwantdesk:liquidity-map-instrument:v1",
-  "kwantdesk-kwantbot-messages",
-  "kwantdesk:zyon:model",
-  "kwantdesk:zyon:root",
-  "kwantify-chart-alerts",
-  "kwantify-chart-tool-favorites",
-  "kwantify-chart-toolbar-dock",
-  "kwantify-chart-toolbar-collapsed",
-  "kwantify:options-flow:chart-timeframe",
-  /*
-   * Paper trading belongs to the trader, not to the browser.
-   *
-   * These two were never synced, so an account and everything traded in it
-   * lived in one browser's localStorage: a different machine, a cleared cache
-   * or a private window and the accounts were simply gone, which is why they
-   * had to be recreated on almost every sign-in.
-   *
-   * They are a record of decisions someone made, not a cache that can be
-   * fetched again, so they belong with the workspaces and drawings.
-   */
-  "kwantify-paper-trading-accounts",
-  "kwantify-paper-trading-ledger-v1",
-  "kwantify-selected-paper-account",
-  "kwantify-hidden-paper-fill-markers-v1",
-]);
-
-const TRACKED_STORAGE_PREFIXES = [
-  "kwantdesk:algo-charting:",
-  "kwantdesk:gamma-charting:",
-  "kwantify-chart-drawings:",
-  "kwantdesk:chart-drawings:v1:",
-  "kwantdesk:position-drawings:v1:",
-  "kwantdesk:chart-toolbar-pinned:v1:",
-  "kwantdesk:precision-tools:v1:",
-  "kwantdesk:precision-tool-configs:v1:",
-  "kwantdesk:precision-toolbar:v1:",
-];
 
 export type UserPreferenceSnapshot = {
   version: 1;
@@ -144,10 +46,6 @@ export type UserPreferenceSnapshot = {
   values: Record<string, string>;
 };
 
-export function isTrackedStorageKey(key: string) {
-  return TRACKED_STORAGE_KEYS.has(key)
-    || TRACKED_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
-}
 
 export function normalizeSnapshot(value: unknown, fallbackUpdatedAt?: string): UserPreferenceSnapshot | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;

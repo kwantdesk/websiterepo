@@ -1,3 +1,19 @@
+import { isTrackedStorageKey } from "./accountPreferenceKeys.ts";
+
+const pendingPreferenceKeys = new Set<string>();
+let preferenceNotificationQueued = false;
+function announcePreferenceWrite(key: string, store: Storage) {
+  if (typeof window === "undefined" || store !== window.localStorage || !isTrackedStorageKey(key)) return;
+  pendingPreferenceKeys.add(key);
+  if (preferenceNotificationQueued) return;
+  preferenceNotificationQueued = true;
+  queueMicrotask(() => {
+    preferenceNotificationQueued = false;
+    const keys = [...pendingPreferenceKeys]; pendingPreferenceKeys.clear();
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed", { detail: { keys } }));
+  });
+}
+
 /**
  * Making room in browser storage for the trader's own work.
  *
@@ -79,6 +95,7 @@ export function writeProtectedItem(
   if (!store) return { ok: false, reclaimedBytes: 0, evicted: 0 };
   try {
     store.setItem(key, value);
+    announcePreferenceWrite(key, store);
     return { ok: true, reclaimedBytes: 0, evicted: 0 };
   } catch {
     // Fall through and make room.
@@ -98,6 +115,7 @@ export function writeProtectedItem(
     evicted += 1;
     try {
       store.setItem(key, value);
+      announcePreferenceWrite(key, store);
       return { ok: true, reclaimedBytes, evicted };
     } catch {
       // Still short; keep going.

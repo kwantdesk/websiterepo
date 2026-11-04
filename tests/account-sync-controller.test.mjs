@@ -25,7 +25,7 @@ function controller(){
  };
  vm.runInNewContext(code,{exports,require,window,document,CustomEvent:class {constructor(type,options){this.type=type;this.detail=options?.detail}},Date,console});
  exports.useAccountPreferenceSync({supabase:client,userId:'owner',enabled:true});const cleanup=effect();
- return {get captures(){return captures},get state(){return state},get calls(){return calls},get writes(){return writes},get applied(){return applied},get removed(){return removed},get timers(){return timeouts.size+intervals.size},
+ return {get captures(){return captures},get state(){return state},get calls(){return calls},get writes(){return writes},get applied(){return applied},get removed(){return removed},get timers(){return timeouts.size+intervals.size},get scheduled(){return [...timeouts.keys()]},
   setState(next){state=next},setCloud(next){cloud=next},emit:(type,key)=>window.dispatchEvent({type,key}),notify:()=>notifications.broadcast(),cleanup,
   async flush(){const queued=[...timeouts.values()];timeouts.clear();for(const fn of queued)fn();await new Promise(resolve=>setImmediate(resolve));},
  };
@@ -50,3 +50,5 @@ test('focus catches up after a missed realtime notification',async()=>{
 });
 
 test('cache storage storms cause no preference scans and local bursts debounce before scanning',async()=>{const c=controller();await c.flush();const before=c.captures;for(let i=0;i<1000;i++)c.emit('storage','kwantdesk:renderer-health:active:v1');assert.equal(c.captures,before);for(let i=0;i<1000;i++)c.emit('kwantdesk:preferences-changed');assert.equal(c.captures,before);await c.flush();assert.equal(c.captures,before+1);assert.equal(c.writes,0);c.cleanup()});
+
+test('continuous trading events retain the first bounded save deadline',async()=>{const c=controller();await c.flush();c.setState(snapshot({'olisa-theme':'edited while trading'}));c.emit('kwantdesk:preferences-changed');const scheduled=c.scheduled[0];for(let i=0;i<100;i++)c.emit('kwantdesk:preferences-changed');assert.equal(c.scheduled[0],scheduled);await c.flush();assert.equal(c.writes,1);assert.equal(c.state.values['olisa-theme'],'edited while trading');c.cleanup();});

@@ -1,0 +1,18 @@
+{
+  "checks": [
+    "Layout writes publish automatically without manually saving a workspace",
+    "A fresh phone restores both saved panes and a visible full-width chart",
+    "Desktop drawing reaches the independently stored phone account",
+    "Phone preference edit reaches the laptop without refresh",
+    "An open demo trade and its account appear on the second device",
+    "A phone stop edit reaches the laptop without reverting the position",
+    "Desktop close propagates without leaving an open phone position",
+    "Continuous live events cannot starve a genuine preference save"
+  ],
+  "errors": [],
+  "drawingMs": 755,
+  "reverseMs": 689,
+  "tradeMs": 984,
+  "writes": 11,
+  "method": "Two separate Chromium browser contexts, actual Workspace/React sync/hydration/merge/storage code; only database and realtime transport are isolated HTTP/SSE fixtures."
+}

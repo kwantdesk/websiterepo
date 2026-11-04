@@ -13545,66 +13545,66 @@ export default function KwantifyWorkspace({
   }, [brokerConnections]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-layout"), workspaceLayout);
-  }, [workspaceLayout]);
+  }, [preferencesReady, workspaceLayout]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_LAYOUT_LOCK_STORAGE_KEY), String(workspaceLocked));
-  }, [workspaceLocked]);
+  }, [preferencesReady, workspaceLocked]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-split-ratio"), String(workspaceSplitRatio));
-  }, [workspaceSplitRatio]);
+  }, [preferencesReady, workspaceSplitRatio]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-quad-split"), JSON.stringify(workspaceQuadSplit));
-  }, [workspaceQuadSplit]);
+  }, [preferencesReady, workspaceQuadSplit]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-panes"), JSON.stringify(workspacePanes));
-  }, [workspacePanes]);
+  }, [preferencesReady, workspacePanes]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-tree"), JSON.stringify(workspaceTree));
-  }, [workspaceTree]);
+  }, [preferencesReady, workspaceTree]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-linked-panes"),
       JSON.stringify([...linkedViewportPaneIds]),
     );
-  }, [linkedViewportPaneIds]);
+  }, [preferencesReady, linkedViewportPaneIds]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-crosshair-panes"),
       JSON.stringify([...linkedCrosshairPaneIds]),
     );
-  }, [linkedCrosshairPaneIds]);
+  }, [preferencesReady, linkedCrosshairPaneIds]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-hidden-candles"),
       JSON.stringify([...candlesHiddenPaneIds]),
     );
-  }, [candlesHiddenPaneIds]);
+  }, [preferencesReady, candlesHiddenPaneIds]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-candle-settings"),
       JSON.stringify(candleSettingsByPane),
     );
-  }, [candleSettingsByPane]);
+  }, [preferencesReady, candleSettingsByPane]);
 
   useEffect(() => {
     if (!preferencesReady || workspaceScopeHydratingRef.current) return;
@@ -13619,19 +13619,19 @@ export default function KwantifyWorkspace({
   }, [preferencesReady, workspaceFloatingWindows]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
       JSON.stringify(workspacePresets),
     );
-  }, [workspacePresets]);
+  }, [preferencesReady, workspacePresets]);
 
   useEffect(() => {
     if (
       activeWorkspacePresetId
       && workspacePresets.some((preset) => preset.id === activeWorkspacePresetId)
     ) {
-      if (!workspaceScopeHydratingRef.current) {
+      if (preferencesReady && !workspaceScopeHydratingRef.current) {
         writeProtectedItem(
           workspaceScopeStorageKey(chartWorkspaceScopeRef.current, ACTIVE_WORKSPACE_PRESET_STORAGE_KEY),
           activeWorkspacePresetId,
@@ -13639,16 +13639,16 @@ export default function KwantifyWorkspace({
       }
       return;
     }
-    if (!workspaceScopeHydratingRef.current) {
+    if (preferencesReady && !workspaceScopeHydratingRef.current) {
       window.localStorage.removeItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, ACTIVE_WORKSPACE_PRESET_STORAGE_KEY));
     }
     if (activeWorkspacePresetId) setActiveWorkspacePresetId(null);
-  }, [activeWorkspacePresetId, workspacePresets]);
+  }, [preferencesReady, activeWorkspacePresetId, workspacePresets]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-active-pane"), activePaneId);
-  }, [activePaneId]);
+  }, [preferencesReady, activePaneId]);
 
   useEffect(() => {
     if (
@@ -13659,7 +13659,7 @@ export default function KwantifyWorkspace({
       visibleWorkspacePaneIds[0]
       ?? defaultWorkspacePanes(chartWorkspaceScopeRef.current)[0].id,
     );
-  }, [activePaneId, visibleWorkspacePaneIds, workspaceFloatingWindows]);
+  }, [preferencesReady, activePaneId, visibleWorkspacePaneIds, workspaceFloatingWindows]);
 
   useEffect(() => {
     const nextPane = activeWorkspacePane;
@@ -13669,28 +13669,31 @@ export default function KwantifyWorkspace({
     if (selectedPeriod !== nextPane.period) setSelectedPeriod(nextPane.period);
     if (connectedBroker !== nextPane.broker) setConnectedBroker(nextPane.broker);
     if (selectedWatchlistKey !== nextPane.watchlistKey) setSelectedWatchlistKey(nextPane.watchlistKey);
-  }, [activeWorkspacePane, connectedBroker, selectedInstrument, selectedPeriod, selectedTimeframe, selectedWatchlistKey]);
+  }, [preferencesReady, activeWorkspacePane, connectedBroker, selectedInstrument, selectedPeriod, selectedTimeframe, selectedWatchlistKey]);
 
   useEffect(() => {
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem("olisa-watchlist-favorites", JSON.stringify(watchlistFavorites));
-  }, [watchlistFavorites]);
+  }, [preferencesReady, watchlistFavorites]);
 
   useEffect(() => {
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem("olisa-watchlist-flags", JSON.stringify(watchlistFlags));
-  }, [watchlistFlags]);
+  }, [preferencesReady, watchlistFlags]);
 
   useEffect(() => {
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem("olisa-watchlist-sections", JSON.stringify(watchlistSections));
-  }, [watchlistSections]);
+  }, [preferencesReady, watchlistSections]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, PANE_LEVEL_VISIBILITY_STORAGE_KEY),
       JSON.stringify(clonePaneLevelVisibility(paneLevelVisibility)),
     );
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
-  }, [paneLevelVisibility]);
+  }, [preferencesReady, paneLevelVisibility]);
 
   useEffect(() => {
     const syncOverlays = () => setGameplanChartOverlays(loadGameplanChartOverlays());
@@ -15315,6 +15318,21 @@ export default function KwantifyWorkspace({
       const read = <T,>(key: string, fallback: T): T => {
         try { return JSON.parse(window.localStorage.getItem(key) ?? "null") ?? fallback; } catch { return fallback; }
       };
+      const hiddenKey = workspaceScopeStorageKey(scope, "olisa-chart-workspace-hidden-candles");
+      const candleKey = workspaceScopeStorageKey(scope, "olisa-chart-workspace-candle-settings");
+      const crosshairKey = workspaceScopeStorageKey(scope, "olisa-chart-workspace-crosshair-panes");
+      if (changed(hiddenKey)) {
+        const hidden = read<unknown>(hiddenKey, []);
+        setCandlesHiddenPaneIds(new Set(Array.isArray(hidden) ? hidden.map(String) : []));
+      }
+      if (changed(candleKey)) {
+        const styles = read<unknown>(candleKey, {});
+        setCandleSettingsByPane(styles && typeof styles === "object" && !Array.isArray(styles) ? styles as Record<string, Record<string, unknown>> : {});
+      }
+      if (changed(crosshairKey)) {
+        const linked = read<unknown>(crosshairKey, []);
+        setLinkedCrosshairPaneIds(new Set(Array.isArray(linked) ? linked.map(String) : []));
+      }
       if (changed(chartingDrawingsStorageKey) || changed(DRAWING_CLEAR_BARRIERS_KEY)) {
         const stored = read<Record<string, unknown>>(chartingDrawingsStorageKey, {});
         const next = readChartDrawingStore(JSON.stringify(stored));
@@ -15359,9 +15377,9 @@ export default function KwantifyWorkspace({
   }, []);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     saveScopedChartSettings(chartWorkspaceScopeRef.current, chartSettings);
-  }, [chartSettings]);
+  }, [preferencesReady, chartSettings]);
 
   useEffect(() => {
     if (!authChecked || typeof window === "undefined") return;
