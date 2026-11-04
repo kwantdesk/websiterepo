@@ -5,6 +5,7 @@ import { acquireCockpitTypography } from "@/lib/cockpitTypography";
 import { warmWorkspaceNavigation } from "@/lib/workspaceNavigationWarmup";
 
 import Link from "next/link";
+import MobileWorkspaceNavigation, { type MobileWorkspaceAction } from "@/components/MobileWorkspaceNavigation";
 import { useRouter } from "next/navigation";
 import { memo, useEffect, useLayoutEffect, useRef, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
@@ -77,6 +78,7 @@ type AppSidebarProps = {
   onNavigateStart?: (item: SidebarKey) => void;
   orientation?: "vertical" | "horizontal";
   tradesActive?: boolean;
+  mobileActions?: MobileWorkspaceAction[];
 };
 
 const horizontalItemBase =
@@ -158,6 +160,7 @@ function AppSidebar({
   onNavigateStart,
   orientation = "vertical",
   tradesActive = false,
+  mobileActions = [],
 }: AppSidebarProps) {
   const router = useRouter();
   const settingsWarmedAt = useRef(0);
@@ -246,9 +249,20 @@ function AppSidebar({
     if (current !== href) window.history.pushState(null, "", href);
   };
 
+  const phoneNavigation = <MobileWorkspaceNavigation
+    items={[...navItems.filter(item => !isWorkspaceFeatureArchived(item.key)), { key: "settings", href: "/settings", label: "Settings", icon: Settings }]}
+    activeItem={activeItem}
+    onNavigate={(event, key, href) => navigate(event, key as SidebarKey, href)}
+    onPointerNavigate={(event, key) => beginPointerNavigation(event, key as SidebarKey)}
+    actions={[...mobileActions,
+      ...(onTradesClick ? [{ label: "Trade / accounts", onClick: onTradesClick, active: tradesActive }] : []),
+      ...(onAccountClick ? [{ label: accountLabel, onClick: onAccountClick }] : []),
+    ]}
+  />;
+
   if (orientation === "vertical") {
     return (
-      <div className="relative z-[70] w-[52px] shrink-0 self-stretch">
+      <>{phoneNavigation}<div className="kwant-desktop-navigation relative z-[70] w-[52px] shrink-0 self-stretch">
         <aside className="kwant-command-rail group sticky top-0 z-[70] flex h-screen w-[52px] flex-col items-center gap-1 overflow-visible border-r border-border bg-panel py-3 transition-all duration-300 hover:w-[200px]">
           <button
             type="button"
@@ -295,12 +309,12 @@ function AppSidebar({
             <span className={verticalItemLabel}>Settings</span>
           </Link>
         </aside>
-      </div>
+      </div></>
     );
   }
 
   return (
-    <header className="kwant-command-rail relative z-[70] flex w-full shrink-0 items-center border-b border-border bg-panel px-2">
+    <>{phoneNavigation}<header className="kwant-desktop-navigation kwant-command-rail relative z-[70] flex w-full shrink-0 items-center border-b border-border bg-panel px-2">
       <Link
         href="/"
         prefetch={false}
@@ -381,7 +395,7 @@ function AppSidebar({
           {activeItem === "settings" ? <ActiveUnderline /> : null}
         </Link>
       </div>
-    </header>
+    </header></>
   );
 }
 

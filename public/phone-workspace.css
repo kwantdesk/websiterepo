@@ -1,0 +1,37 @@
+.kwant-embed-phone-toggle, .kwant-embed-phone-bar, .kwant-embed-phone-panels,
+.kwant-embed-phone-drawer, .kwant-embed-phone-shade { display: none; }
+.kwant-embed-phone-panels + .kwant-choice-trigger { display: none; }
+@media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
+  body[data-phone-workspace] { min-width: 0 !important; width: 100%; height: 100dvh; overflow: hidden; }
+  .kwant-embed-phone-toggle, .kwant-embed-phone-panels:not([hidden]) { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: 36px; min-height: 36px; padding: 0 10px; border: 1px solid var(--site-border, var(--ui-line, #555)); background: var(--site-panel, var(--ui-bg, #111)); color: var(--site-foreground, var(--ui-text, #eee)); border-radius: 6px; font: inherit; font-size: 12px; }
+  .kwant-embed-phone-panels:not([hidden]) { min-width: 0; max-width: 45vw; flex-shrink: 1; }
+  .kwant-embed-phone-panels:not([hidden]) + .kwant-choice-trigger { display: inline-flex; min-width: 0; max-width: 45vw; min-height: 36px; flex-shrink: 1; }
+  .kwant-embed-phone-bar { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 40px; min-height: 40px; padding: 2px 8px; }
+  .kwant-embed-phone-drawer:not([hidden]) { display: flex; flex-direction: column; gap: 14px; position: fixed; z-index: 160; right: 0; top: 0; bottom: 0; width: min(360px, 100vw); max-width: 100vw; height: 100dvh; overflow: auto; overscroll-behavior: contain; padding: 0 12px 20px; box-sizing: border-box; background: var(--site-panel, var(--ui-bg, #111)); color: var(--site-foreground, var(--ui-text, #eee)); border-left: 1px solid var(--site-border, var(--ui-line, #555)); }
+  .kwant-embed-phone-shade:not([hidden]) { display: block; position: fixed; z-index: 159; inset: 0; width: 100%; height: 100%; background: #0007; border: 0; }
+  .kwant-embed-phone-heading { display: flex; align-items: center; justify-content: space-between; min-height: 48px; border-bottom: 1px solid var(--site-border, var(--ui-line, #555)); }
+  .kwant-embed-phone-heading button { width: 44px; height: 44px; flex-shrink: 0; background: transparent; color: inherit; border: 0; font-size: 24px; }
+  .kwant-embed-phone-drawer > :is(.topbar, .chart-top-controls, .workspace-header-actions, #topDeck, .app-actions, #toolControls) { display: flex !important; position: static !important; flex-wrap: wrap; flex-direction: row; align-items: flex-start; width: 100% !important; min-width: 0 !important; height: auto !important; min-height: 0 !important; max-height: none !important; padding: 0 !important; overflow: visible !important; gap: 8px; transform: none; }
+  .kwant-embed-phone-drawer :is(.top-actions, .bot-template-actions, .tool-rail, .timeframe-buttons, .toolbar-panel-shortcuts) { display: flex !important; flex-wrap: wrap; gap: 6px; width: 100%; min-width: 0; height: auto !important; overflow: visible; }
+  .kwant-embed-phone-drawer :is(button,select,.kwant-choice-trigger) { min-height: 36px; max-width: 100%; }
+  .kwant-embed-phone-drawer #sidebar { display: block !important; position: static !important; width: 100%; height: auto; max-height: none; border: 0; padding: 0; }
+  .kwant-embed-phone-drawer #toggleSidebar, .kwant-embed-phone-drawer .brand { display: none !important; }
+  body[data-phone-workspace=kwanty] > header { display: flex; justify-content: space-between; gap: 4px; height: 40px; min-height: 40px; max-height: 40px; padding: 0 6px; }
+  body[data-phone-workspace=kwanty] > header > nav { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  body[data-phone-workspace=kwanty] > header > nav button { height: 36px; padding: 0 6px; font-size: 11px; }
+  body[data-phone-workspace=kwanty] > main { display: block; width: 100%; height: calc(100dvh - 40px); }
+  body[data-phone-workspace=kwanty] #charts { width: 100%; height: 100%; min-width: 0; }
+  body[data-phone-workspace=kwanty] #chartPanels { display: flex !important; height: 100%; flex-direction: column; }
+  body[data-phone-workspace=kwanty] #chartPanels > .chart-panel { display: none; }
+  body[data-phone-workspace=kwanty] #chartPanels > .kwant-phone-selected-panel { display: flex; width: 100% !important; height: 100% !important; min-height: 0; flex: 1 !important; }
+  body[data-phone-workspace=kwanty] #chartPanels > .panel-divider { display: none; }
+  body[data-phone-workspace=gex-data] .app-shell { height: 100dvh; min-height: 0; }
+  body[data-phone-workspace=gex-data] #dashboard.dock-workspace { height: calc(100dvh - 40px); min-height: 0; padding: 2px; }
+  body[data-phone-workspace=gex-data] .dock-layout .dock-tabset:not(.kwant-phone-selected-panel), body[data-phone-workspace=gex-data] .dock-layout .dock-splitter, body[data-phone-workspace=gex-data] .dock-row:not(:has(.kwant-phone-selected-panel)) { display: none; }
+  body[data-phone-workspace=gex-data] .dock-row:has(.kwant-phone-selected-panel), body[data-phone-workspace=gex-data] .dock-tabset.kwant-phone-selected-panel { flex: 1 1 100% !important; width: 100% !important; height: 100% !important; min-width: 0; min-height: 0; }
+  body[data-phone-workspace=gex-data] #toolView { min-width: 0; height: calc(100dvh - 40px); }
+  html[data-embed=true] body[data-phone-workspace=heatmap] .terminal-shell { grid-template-rows: 40px minmax(0,1fr); }
+  html[data-embed=true] body[data-phone-workspace=heatmap] .app-bar { height: 40px; min-height: 40px; grid-template-columns: minmax(0,1fr) auto; padding: 0 6px; }
+  html[data-embed=true] body[data-phone-workspace=heatmap] .workspace { grid-row: 2; min-width: 0; }
+  body[data-phone-workspace=heatmap] .instrument-tabs { min-width: 0 !important; }
+}

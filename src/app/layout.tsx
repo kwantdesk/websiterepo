@@ -7,6 +7,7 @@ import SupportAssistantWidget from "@/components/SupportAssistantWidget";
 import { themeBootstrapScript } from "@/lib/theme";
 import "../../public/fonts/aleph/aleph.css";
 import "./globals.css";
+import "./phone-layout.css";
 
 export const metadata: Metadata = {
   title: "Kwant Desk",

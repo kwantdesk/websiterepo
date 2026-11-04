@@ -1,0 +1,20 @@
+{
+  "checks": [
+    "kwanty: controls fit inside the phone drawer",
+    "kwanty: original interval input and settings retain their real event handlers",
+    "kwanty: one full-width phone panel",
+    "kwanty: desktop restores the original control DOM positions",
+    "kwanty: 320px phone controls fit",
+    "gex-data: controls fit inside the phone drawer",
+    "gex-data: original tool/layout/workspace controls remain reachable",
+    "gex-data: one full-width tool at a time, other saved panels selectable",
+    "gex-data: desktop restores the original control DOM positions",
+    "gex-data: 320px phone controls fit",
+    "heatmap: controls fit inside the phone drawer",
+    "heatmap: existing heatmap/depth/bubble controls remain reachable",
+    "heatmap: desktop restores the original control DOM positions",
+    "heatmap: 320px phone controls fit"
+  ],
+  "errors": [],
+  "method": "Actual deployed HEAD public modules and styles, isolated data/host responses; mobile layout and control wiring only."
+}

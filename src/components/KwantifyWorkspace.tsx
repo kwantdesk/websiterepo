@@ -10637,6 +10637,9 @@ export default function KwantifyWorkspace({
   }, [workspacePanes]);
   const workspaceDragGhostRef = useRef<HTMLDivElement>(null);
   const workspaceHeaderDragConsumedRef = useRef(false);
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+  const [mobileDrawingsOpen, setMobileDrawingsOpen] = useState(false);
+  const [mobileSidePanelOpen, setMobileSidePanelOpen] = useState(false);
   const [activePaneId, setActivePaneId] = useState<string>(initialChartWorkspaceRuntime.activePaneId);
   const [workspacePanelPickerPaneId, setWorkspacePanelPickerPaneId] = useState<string | null>(null);
   const [optionsFlowPickerOpen, setOptionsFlowPickerOpen] = useState(false);
@@ -11139,6 +11142,16 @@ export default function KwantifyWorkspace({
   const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
   const [bottomMinimized, setBottomMinimized] = useState(true);
   const bottomWorkspaceSection = optimisticWorkspaceSection;
+  useEffect(() => {
+    setMobileControlsOpen(false);
+    setMobileSidePanelOpen(false);
+  }, [bottomWorkspaceSection]);
+  useEffect(() => {
+    if (!mobileControlsOpen) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented) setMobileControlsOpen(false); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [mobileControlsOpen]);
   const handleBacktestingExecutionQuote = useCallback((incoming: {
     symbol: string;
     bid: number;
@@ -19052,7 +19065,7 @@ export default function KwantifyWorkspace({
       <div className="flex h-full min-h-0 min-w-0">
         <div data-inline-ticket-chart={inlineTicketOpen && inlineTicketPaneId === paneId ? "" : undefined} className="relative min-h-0 min-w-0 flex-1">{chart}</div>
         {inlineTicketOpen && inlineTicketPaneId === paneId && (
-          <aside data-inline-ticket aria-label="Chart order ticket" className="flex min-h-0 w-[280px] max-w-[55%] shrink-0 flex-col border-l border-border bg-panel">
+          <aside data-inline-ticket aria-label="Chart order ticket" className="kwant-inline-order-ticket flex min-h-0 w-[280px] max-w-[55%] shrink-0 flex-col border-l border-border bg-panel">
             {renderOrderTicket()}
           </aside>
         )}
@@ -19706,6 +19719,7 @@ export default function KwantifyWorkspace({
       <div
         key={floating.paneId}
         data-floating-workspace-pane-id={floating.paneId}
+        data-mobile-active={floating.paneId === activePaneId}
         onPointerDown={() => activateFloatingWorkspacePane(floating.paneId)}
         className={`absolute overflow-hidden border bg-panel shadow-[0_18px_70px_rgba(0,0,0,0.68)] ${
           activePaneId === floating.paneId ? "border-primary/70" : "border-border"
@@ -19913,6 +19927,7 @@ export default function KwantifyWorkspace({
         return (
           <div
             key={node.paneId}
+            data-mobile-active={node.paneId === (visibleWorkspacePaneIds.includes(activePaneId) ? activePaneId : visibleWorkspacePaneIds[0])}
             data-workspace-pane-id={node.paneId}
             className="flex h-full min-h-0 min-w-0 items-center justify-center border border-dashed border-border bg-background/35"
           >
@@ -19931,6 +19946,7 @@ export default function KwantifyWorkspace({
       return (
         <div
           key={node.paneId}
+          data-mobile-active={node.paneId === (visibleWorkspacePaneIds.includes(activePaneId) ? activePaneId : visibleWorkspacePaneIds[0])}
           data-workspace-pane-id={node.paneId}
           onPointerDownCapture={() => {
             if (activePaneId !== node.paneId) activateWorkspacePane(node.paneId);
@@ -20157,7 +20173,7 @@ export default function KwantifyWorkspace({
           ) : null);
 
   return (
-    <div className={"flex " + (embedded ? "h-full min-h-0 " : "h-screen ") + "select-none overflow-hidden bg-background text-foreground"}>
+    <div data-workspace-embedded={embedded} data-mobile-drawings={mobileDrawingsOpen} className={"kwant-phone-workspace flex " + (embedded ? "h-full min-h-0 " : "h-screen ") + "select-none overflow-hidden bg-background text-foreground"}>
       {showAI && (
         <div style={{ width: aiWidth }} className="relative flex shrink-0 flex-col border-r border-border bg-panel">
           <div className="flex h-12 items-center justify-between border-b border-border px-4"><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><span className="text-[13px] font-semibold">Strategy Builder</span></div><button onClick={() => setShowAI(false)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button></div>
@@ -20190,6 +20206,14 @@ export default function KwantifyWorkspace({
           onNavigateStart={target => { if (algo && target === "algo") return; handleWorkspaceNavigationStart(target); }}
           orientation="horizontal"
           tradesActive={showTradesMenu || rightPanel === "order"}
+          mobileActions={[
+            ...(["charts", "gamvue"].includes(bottomWorkspaceSection) ? [
+              { label: "Chart controls / indicators / replay", onClick: () => setMobileControlsOpen(true) },
+              { label: mobileDrawingsOpen ? "Hide drawing tools" : "Show drawing tools", onClick: () => setMobileDrawingsOpen(value => !value), active: mobileDrawingsOpen },
+              ...[...new Set([...visibleWorkspacePaneIds, ...workspaceFloatingWindows.map(item => item.paneId)])].map((id, index) => { const pane = workspacePanes.find(item => item.id === id); return { label: `Chart ${index + 1}: ${pane ? displayCmeSymbol(pane.symbol) : id}`, active: id === activePaneId, onClick: () => activateWorkspacePane(id) }; }),
+            ] : []),
+            ...(["watchlist", "order", "gex", "friends", "messages"] as const).map(id => ({ label: railPanelLabel(id), active: mobileSidePanelOpen && rightPanel === id, onClick: () => { setRightPanel(id); setMobileSidePanelOpen(true); } })),
+          ]}
         />
 
         {/* Portaled to <body>: this menu used to render inside the main
@@ -20207,7 +20231,7 @@ export default function KwantifyWorkspace({
               }}
               className="fixed inset-0 z-[190] cursor-default bg-transparent"
             />
-            <section className="fixed right-2 top-[35px] z-[191] w-[330px] overflow-hidden rounded-[5px] border border-border bg-panel shadow-[0_18px_55px_rgba(0,0,0,0.62)]">
+            <section className="kwant-trades-menu fixed right-2 top-[35px] z-[191] w-[330px] overflow-hidden rounded-[5px] border border-border bg-panel shadow-[0_18px_55px_rgba(0,0,0,0.62)]">
               <header className="flex h-9 items-center justify-between border-b border-border px-3">
                 <div className="flex items-center gap-2">
                   {tradesMenuView === "paper" && (
@@ -20352,7 +20376,9 @@ export default function KwantifyWorkspace({
         ) : null}
 
         {chartSurfaceActive && (
-        <div className="kwant-chart-toolbar-shell shrink-0">
+        <div data-mobile-open={mobileControlsOpen} className="kwant-chart-toolbar-shell shrink-0">
+          {mobileControlsOpen ? <button type="button" className="kwant-phone-controls-scrim" aria-label="Close chart controls" onClick={() => setMobileControlsOpen(false)} /> : null}
+          <div className="kwant-phone-controls-heading"><strong>Chart controls</strong><button type="button" aria-label="Close chart controls" onClick={() => setMobileControlsOpen(false)}><X size={20} /></button></div>
         <header className="@container kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center overflow-hidden border-b border-border bg-panel">
           <div
             aria-disabled={!activePaneIsChart}
@@ -21871,7 +21897,8 @@ export default function KwantifyWorkspace({
             </div>
           )}
       {(bottomWorkspaceSection !== "backtesting" || rightPanel === "order") && rightPanel && !inlineTicketOpen && (
-        <div style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">
+        <div data-mobile-side-panel data-mobile-open={mobileSidePanelOpen} style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">
+          <button type="button" className="kwant-phone-panel-close" aria-label="Close side panel" onClick={() => setMobileSidePanelOpen(false)}><X size={20} /></button>
           <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
           {(rightPanel === "friends" || rightPanel === "messages") && (
             <FriendsPanel
@@ -22371,7 +22398,7 @@ export default function KwantifyWorkspace({
         </div>
       )}
       <div
-        className={`relative z-40 w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3 ${bottomWorkspaceSection === "backtesting" ? "hidden" : "flex"}`}
+        className={`kwant-desktop-side-rail relative z-40 w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3 ${bottomWorkspaceSection === "backtesting" ? "hidden" : "flex"}`}
         style={{
           // While dragging, follow the finger. Otherwise rest at one end or the
           // other. The margin is what stops a hidden rail leaving a 44px gutter
