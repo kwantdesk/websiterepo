@@ -10108,6 +10108,7 @@ function Chart({
       minimumOpacity: Number(indicatorSettings.minimumNodeOpacity ?? 8) / 100,
       glowStrength: Number(indicatorSettings.glowStrength ?? 5),
       microOrbTexture: indicatorSettings.microOrbTexture !== false,
+      extendRight: indicatorSettings.extendRight === true,
       showHeader: indicatorSettings.showHeader === true,
       // Bounce's side text is a local presentation choice, off in the stock
       // settings. Linked map labels/full-view values must not turn it back on.

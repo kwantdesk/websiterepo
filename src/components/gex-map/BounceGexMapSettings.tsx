@@ -92,6 +92,13 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
           onChange={(event) => onChange({ showLabels: event.target.checked })} />
         Show side labels
       </label>
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+        <input type="checkbox" className="h-3.5 w-3.5 accent-primary"
+          checked={settings.extendRight === true}
+          onChange={(event) => onChange({ extendRight: event.target.checked })} />
+        Extend right
+      </label>
+      <p className="text-[11px] leading-5 text-muted">Carry the final available levels to the chart’s right edge, keeping their ending price, thickness and colour.</p>
       <p className="text-[11px] leading-5 text-muted">
         {linked ? "Shared settings update GEX Map and every linked Bounce Levels chart. All map nodes remain available; the chosen view controls their emphasis."
           : "This chart uses its own map settings. Import & Link reconnects it to GEX Map."}

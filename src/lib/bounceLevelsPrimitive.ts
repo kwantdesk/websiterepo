@@ -22,6 +22,7 @@ export type BounceLevelsPrimitiveData = {
   minimumOpacity: number;
   glowStrength: number;
   microOrbTexture: boolean;
+  extendRight?: boolean;
   showHeader: boolean;
   showLabels: boolean;
   showValues: boolean;
@@ -241,12 +242,19 @@ const deterministicUnit = (value: string) => {
   return ((hash >>> 0) % 10000) / 10000;
 };
 
+/** A visual continuation of the last recorded slice, never a new observation. */
+export function bounceRibbonExtensionRight(enabled: boolean, timestamp: number, finalTimestamp: number, right: number, viewportWidth: number) {
+  return enabled && timestamp === finalTimestamp && Number.isFinite(right) && Number.isFinite(viewportWidth) && viewportWidth > right
+    ? viewportWidth : undefined;
+}
+
 function traceRibbon(
   context: CanvasRenderingContext2D,
   points: PreparedNode[],
   heightScale: number,
   minimumHalfHeight: number,
   heightForPoint?: (point: PreparedNode) => number,
+  extendToX?: number,
 ) {
   const first = points[0];
   const last = points[points.length - 1];
@@ -256,15 +264,15 @@ function traceRibbon(
   );
   const finalHalfHeight = halfHeight(last);
   const nominalWidth = Math.max(3, last.right - last.left);
-  const edgeExtension = last.momentum === "building"
+  const edgeExtension = extendToX !== undefined ? 0 : last.momentum === "building"
     ? clamp(nominalWidth * 0.5, 3, 18)
     : last.momentum === "weakening"
       ? clamp(nominalWidth * 0.35, 2, 12)
       : last.momentum === "dumped"
         ? clamp(nominalWidth * 0.24, 2, 8)
         : 0;
-  const edgeX = last.right + edgeExtension;
-  const edgeHalfHeight = last.momentum === "building"
+  const edgeX = extendToX ?? last.right + edgeExtension;
+  const edgeHalfHeight = extendToX !== undefined ? finalHalfHeight : last.momentum === "building"
     ? finalHalfHeight * 1.14
     : last.momentum === "weakening"
       ? Math.max(0.5, finalHalfHeight * 0.22)
@@ -279,6 +287,7 @@ function traceRibbon(
   context.beginPath();
   context.moveTo(entryX, first.y - entryHalfHeight);
   for (const point of points) context.lineTo(point.right, point.y - halfHeight(point));
+  if (extendToX !== undefined) context.lineTo(edgeX, last.y - finalHalfHeight);
   if (edgeExtension > 0) {
     const controlX = last.right + edgeExtension * (last.momentum === "dumped" ? 0.18 : 0.55);
     context.quadraticCurveTo(controlX, last.y - finalHalfHeight, edgeX, last.y - edgeHalfHeight);
@@ -304,6 +313,7 @@ function ribbonGradient(
   opacityScale: number,
   maximumStops = 48,
   taperEnds = true,
+  extendToX?: number,
 ) {
   const first = points[0];
   const last = points[points.length - 1];
@@ -329,7 +339,7 @@ function ribbonGradient(
       : last.momentum === "weakening"
         ? 0.38
         : 0.08;
-  add(1, last, taperEnds ? edgeMultiplier : 1);
+  add(1, last, taperEnds && extendToX === undefined ? edgeMultiplier : 1);
   return gradient;
 }
 
@@ -392,7 +402,9 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         paintAlertMarkers();
         return;
       }
-      const transformedLayer = this.primitive.transformedLayer(viewport);
+      // A projected endpoint is anchored to the viewport, not to time. A
+      // translated bitmap would briefly leave a gap at the chart's edge.
+      const transformedLayer = data.extendRight ? null : this.primitive.transformedLayer(viewport);
       if (transformedLayer) {
         targetContext.save();
         targetContext.beginPath();
@@ -533,6 +545,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       });
 
       const grouped = new Map<string, PreparedNode[]>();
+      const finalTimestamp = data.snapshot.exposureField.at(-1)!.timestamp;
       for (const point of prepared) {
         // A strike owns one immutable temporal geometry even if its sign changes.
         const key = point.node.nodeKey;
@@ -565,12 +578,15 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             maximumOpacity = Math.max(maximumOpacity, point.opacity);
           }
           const last = points.at(-1)!;
+          const extendToX = bounceRibbonExtensionRight(data.extendRight === true,
+            slices[last.sliceIndex].timestamp, finalTimestamp, last.right, mediaSize.width);
 
           const halo = traceRibbon(
             context,
             points,
             1.72,
             (1.25 + data.glowStrength * 0.18) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE,
+            undefined, extendToX,
           );
           const detailedRendering = activePanelCount <= 2 && prepared.length <= 2_200;
           const maximumGradientStops = activePanelCount >= 4 ? 20 : activePanelCount >= 2 ? 32 : 48;
@@ -579,16 +595,16 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             context.shadowColor = rgba(last.color, maximumOpacity * 0.52);
             context.shadowBlur = (data.glowStrength + maximumStrength * 11) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
           }
-          context.fillStyle = ribbonGradient(context, points, halo.edgeX, 0.2 + maximumStrength * 0.16, maximumGradientStops);
+          context.fillStyle = ribbonGradient(context, points, halo.edgeX, 0.2 + maximumStrength * 0.16, maximumGradientStops, true, extendToX);
           context.fill();
           context.restore();
 
-          const body = traceRibbon(context, points, 1, 0.9 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE);
-          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.72 + maximumStrength * 0.24, maximumGradientStops);
+          const body = traceRibbon(context, points, 1, 0.9 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE, undefined, extendToX);
+          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.72 + maximumStrength * 0.24, maximumGradientStops, true, extendToX);
           context.fill();
 
-          traceRibbon(context, points, 0.62, 0.7 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE);
-          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.36 + maximumStrength * 0.28, maximumGradientStops);
+          traceRibbon(context, points, 0.62, 0.7 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE, undefined, extendToX);
+          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.36 + maximumStrength * 0.28, maximumGradientStops, true, extendToX);
           context.fill();
 
           // Local cells are high-detail texture. At compact zoom the continuous
@@ -630,7 +646,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           // A uniform stroke based on the run's historical maximum made
           // every weak observation look like a permanent grid line. Give the
           // core the same local thickness/colour/opacity as its own snapshot.
-          traceRibbon(context, points, 1, 0, (point) => (0.9 + point.strength * 1.8) * point.heightScale);
+          traceRibbon(context, points, 1, 0, (point) => (0.9 + point.strength * 1.8) * point.heightScale, extendToX);
           context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.76 + maximumStrength * 0.34, maximumGradientStops, false);
           context.shadowColor = rgba(last.color, maximumOpacity * 0.8);
           context.shadowBlur = (1.5 + data.glowStrength * 0.4) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
