@@ -1,0 +1,14 @@
+{
+  "before": {
+    "GexMapWorkspace": 9,
+    "ExposurePanel": 33
+  },
+  "after": {
+    "GexMapWorkspace": 39,
+    "ExposurePanel": 123
+  },
+  "hostTicks": 30,
+  "elapsedMs": 3346,
+  "errors": [],
+  "rows": 720
+}

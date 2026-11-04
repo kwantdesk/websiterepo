@@ -1,0 +1,16 @@
+{
+  "before": {
+    "GexMapWorkspace": 5,
+    "ExposurePanel": 18
+  },
+  "after": {
+    "GexMapWorkspace": 5,
+    "ExposurePanel": 18
+  },
+  "hostTicks": 30,
+  "elapsedMs": 2936,
+  "errors": [],
+  "rows": 720,
+  "settingsSaved": true,
+  "newProviderDataVisible": true
+}

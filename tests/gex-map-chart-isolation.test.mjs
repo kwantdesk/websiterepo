@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+
+function pane() {
+  const slots=[];let cursor=0;
+  const memoValue=(fn,deps)=>{const i=cursor++,prior=slots[i];if(prior&&deps.every((d,j)=>Object.is(d,prior.deps[j])))return prior.value;const value=fn();slots[i]={value,deps};return value;};
+  const exports={};const code=ts.transpileModule(fs.readFileSync('src/components/gex-map/WorkspaceGexMapPane.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+  vm.runInNewContext(code,{exports,require:name=>name==='react'?{memo:fn=>fn,useMemo:memoValue,useCallback:(fn,deps)=>memoValue(()=>fn,deps)}:{jsx:(type,props)=>({type,props})}});
+  return props=>{cursor=0;return exports.default(props).props;};
+}
+const props=()=>({Surface:()=>null,paneId:'pane-map',timeZone:'Australia/Brisbane',market:'NQ',persistedState:null,onStateChange:()=>{},replayActive:false,replaySessionDate:'',replayTimestampMs:0});
+test('unrelated host updates preserve every live surface prop identity',()=>{const render=pane(),input=props(),first=render(input);for(let i=0;i<100;i++){const next=render({...input});for(const key of Object.keys(first))assert.equal(next[key],first[key],key);}});
+test('replay clock, timezone and saved settings still reach the map',()=>{const render=pane(),input=props();assert.equal(render(input).externalReplay,null);const first=render({...input,replayActive:true,replaySessionDate:'2026-11-03',replayTimestampMs:1000});const second=render({...input,replayActive:true,replaySessionDate:'2026-11-03',replayTimestampMs:2000,timeZone:'America/New_York',persistedState:{stepMinutes:2}});assert.equal(first.externalReplay.timestampMs,1000);assert.equal(second.externalReplay.timestampMs,2000);assert.equal(second.timeZone,'America/New_York');assert.equal(second.persistedState.stepMinutes,2);assert.equal(render(input).externalReplay,null);});
+test('configuration changes call the latest host handler for the correct pane',()=>{const render=pane(),input=props(),calls=[];let surface=render({...input,onStateChange:(...args)=>calls.push(['old',...args])});surface.onStateChange({stepMinutes:2});surface=render({...input,paneId:'new-pane',onStateChange:(...args)=>calls.push(['new',...args])});surface.onStateChange({stepMinutes:5});assert.deepEqual(calls,[['old','pane-map',{stepMinutes:2}],['new','new-pane',{stepMinutes:5}]]);});
+test('actual workspace configuration acknowledgment avoids no-op parent renders',()=>{const source=ts.createSourceFile('Workspace.tsx',fs.readFileSync('src/components/KwantifyWorkspace.tsx','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let callback;function visit(node){if(ts.isVariableDeclaration(node)&&node.name.getText(source)==='handleEmbeddedGexMapStateChange')callback=node.initializer.arguments[0];ts.forEachChild(node,visit);}visit(source);assert.ok(callback);const original=[{id:'chart',gexMapState:null},{id:'map',gexMapState:{stepMinutes:1}}];let state=original;const context=vm.createContext({setWorkspacePanes:fn=>{state=fn(state);}});vm.runInContext(ts.transpileModule(`var change=${callback.getText(source)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);context.change('map',{stepMinutes:1});assert.equal(state,original);context.change('missing',{stepMinutes:1});assert.equal(state,original);context.change('map',{stepMinutes:2});assert.notEqual(state,original);assert.equal(state[0],original[0]);assert.equal(state[1].gexMapState.stepMinutes,2);});

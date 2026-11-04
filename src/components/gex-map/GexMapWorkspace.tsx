@@ -123,7 +123,7 @@ export type GexMapEmbedState = {
   exposureModel?: "STRUCTURAL_OI" | "DEALER_INVENTORY";
 };
 
-type GexMapWorkspaceProps = {
+export type GexMapWorkspaceProps = {
   /** The host's top-right chart timezone; display only, never a session key. */
   timeZone?: string;
   market?: GexMapMarket | null;

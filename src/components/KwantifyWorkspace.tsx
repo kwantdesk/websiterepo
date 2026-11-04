@@ -1,6 +1,7 @@
 "use client";
 
 import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+import WorkspaceGexMapPane from "@/components/gex-map/WorkspaceGexMapPane";
 import { createChartWarmHistory } from "@/lib/chartWarmHistory";
 import { createChartDuplicateSeeds } from "@/lib/chartDuplicateSeed";
 
@@ -15944,6 +15945,14 @@ export default function KwantifyWorkspace({
     }));
   }, []);
 
+  const handleEmbeddedGexMapStateChange = useCallback((paneId: string, state: GexMapEmbedState) => {
+    setWorkspacePanes(current => {
+      const source = current.find(candidate => candidate.id === paneId);
+      if (!source || JSON.stringify(source.gexMapState) === JSON.stringify(state)) return current;
+      return current.map(candidate => candidate.id === paneId ? { ...candidate, gexMapState: state } : candidate);
+    });
+  }, []);
+
   const togglePaneLevelVisibility = useCallback((
     paneId: string,
     key: keyof PaneLevelVisibility,
@@ -18935,17 +18944,12 @@ export default function KwantifyWorkspace({
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Options"><GammaWorkspace /></WorkspaceFailureBoundary>;
       case "gexmap": {
         const gexMarket = ["ES", "MES"].includes(normalizePaperSymbol(pane.symbol)) ? "ES" : "NQ";
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace timeZone={chartSettings.timezone} key={`${pane.id}-${gexMarket}`} market={gexMarket} enableDealerModel persistedState={pane.gexMapState ?? null} onStateChange={(state) => {
-          setWorkspacePanes((current) => current.map((candidate) => {
-            if (candidate.id !== pane.id) return candidate;
-            if (JSON.stringify(candidate.gexMapState) === JSON.stringify(state)) return candidate;
-            return { ...candidate, gexMapState: state };
-          }));
-        }} externalReplay={gexVueReplay.active ? {
-          active: true,
-          sessionDate: gexVueReplay.sessionDate,
-          timestampMs: gexVueReplay.timestampMs,
-        } : null} /></WorkspaceFailureBoundary>;
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><WorkspaceGexMapPane
+          Surface={GexMapWorkspace} timeZone={chartSettings.timezone} key={`${pane.id}-${gexMarket}`} market={gexMarket}
+          paneId={pane.id} persistedState={pane.gexMapState ?? null} onStateChange={handleEmbeddedGexMapStateChange}
+          replayActive={gexVueReplay.active} replaySessionDate={gexVueReplay.active ? gexVueReplay.sessionDate : ""}
+          replayTimestampMs={gexVueReplay.active ? gexVueReplay.timestampMs : 0}
+        /></WorkspaceFailureBoundary>;
       }
       case "liqmap":
         return (
