@@ -1,0 +1,16 @@
+{
+  "method": "Actual Workspace/Chart, isolated Chromium, synthetic candles and 25000 execution rows, browser clock advanced 60 seconds before duplicate",
+  "enabledStudies": 23,
+  "checks": [
+    "Two live chart canvases without reload",
+    "Source canvas remains connected",
+    "Every copied indicator and setting equals source; instance IDs independent",
+    "UI heartbeat continues",
+    "No browser errors"
+  ],
+  "newHistoryRequests": [
+    "?symbol=ES.v.0&timeframe=1m&days=10&orderFlow=1&from=1793688660000&to=1793775059999"
+  ],
+  "heartbeatTicks": 34,
+  "errors": []
+}

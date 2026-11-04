@@ -1,6 +1,8 @@
 "use client";
 
 import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
+import { createChartWarmHistory } from "@/lib/chartWarmHistory";
+import { createChartDuplicateSeeds } from "@/lib/chartDuplicateSeed";
 
 import type { AlgoChartIntegration, AlgoChartFocus } from "@/lib/algoChartIntegration";
 import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from "@/lib/drawingClearBarriers";
@@ -3440,6 +3442,11 @@ const GLOBAL_FAVOURITE_INTERVALS_KEY = "kwantdesk:favourite-intervals:v1";
 const GLOBAL_FAVOURITE_INSTRUMENTS_KEY = "kwantdesk:favourite-instruments:v1";
 
 const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
+type WorkspaceDuplicateSeed = {
+  requestKey: string; contractSymbol: string | null; candles: Candle[];
+  records: InstitutionalTrade[]; flowCandles: Candle[]; orderFlowReady: boolean;
+};
+const workspaceDuplicateSeeds = createChartDuplicateSeeds<WorkspaceDuplicateSeed>();
 // Immutable replay windows can be revisited without another download. Keep
 // this separate from live IndexedDB restore and bounded by total candle count.
 const workspaceReplayCandles = new Map<string, { candles: Candle[]; until: number }>();
@@ -3474,6 +3481,10 @@ function workspaceExecutionIdentity(record: InstitutionalTrade | undefined) {
 }
 const MAX_WORKSPACE_EXECUTION_TAPES = 8;
 const workspaceOrderFlowRequests = new Map<string, Promise<InstitutionalOrderFlowResult | null>>();
+const workspaceWarmOrderFlow = createChartWarmHistory<InstitutionalOrderFlowResult>(value =>
+  value.candles.length + value.records.length + value.trades.length);
+const workspaceWarmExecutions = createChartWarmHistory<{ candles: Candle[]; records: InstitutionalTrade[] }>(value =>
+  value.candles.length + value.records.length);
 const workspaceHistoricalExecutionRequests = new Map<string, Promise<{
   candles: Candle[];
   records: InstitutionalTrade[];
@@ -3673,6 +3684,8 @@ function fetchWorkspaceOrderFlow(
   contractSymbol: string,
 ) {
   const key = `${symbol}::${contractSymbol}::${timeframe}`;
+  const warm = workspaceWarmOrderFlow.get(key);
+  if (warm) return Promise.resolve(warm);
   const pending = workspaceOrderFlowRequests.get(key);
   if (pending) return pending;
   // Anchor to the CME session open, not a rolling 6-hour window. A rolling
@@ -3707,6 +3720,9 @@ function fetchWorkspaceOrderFlow(
     // A full session of executions is a much larger payload than six hours;
     // 25s was tuned for the smaller window and would abort the backfill.
     timeoutMs: 120_000,
+  }).then(result => {
+    if (result && (result.candles.length || result.records.length)) workspaceWarmOrderFlow.put(key, result);
+    return result;
   }).finally(() => {
     if (workspaceOrderFlowRequests.get(key) === request) {
       workspaceOrderFlowRequests.delete(key);
@@ -3746,6 +3762,8 @@ function fetchWorkspaceHistoricalExecutions(
   );
   const rangeScope = historicalRange?.key ?? `${requestedDays}d`;
   const key = `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::historical-executions::${rangeScope}`;
+  const warm = workspaceWarmExecutions.get(key);
+  if (warm) return Promise.resolve(warm);
   const pending = workspaceHistoricalExecutionRequests.get(key);
   if (pending) return pending;
 
@@ -3757,10 +3775,12 @@ function fetchWorkspaceHistoricalExecutions(
     if (!response.ok) {
       throw new Error(payload.error ?? `CME execution history is unavailable for ${displayCmeSymbol(symbol)}.`);
     }
-    return {
+    const result = {
       candles: sanitizeCandles((payload.candles ?? []) as Candle[], symbol),
       records: compactIndicatorExecutionHistory(decodeExecutionTape(payload.executions)),
     };
+    if (result.candles.length || result.records.length) workspaceWarmExecutions.put(key, result);
+    return result;
   })().finally(() => {
     if (workspaceHistoricalExecutionRequests.get(key) === request) {
       workspaceHistoricalExecutionRequests.delete(key);
@@ -5439,6 +5459,8 @@ function WorkspaceChartPaneComponent({
   onReplayTimeline?: (paneId: string, times: number[] | null) => void;
 }) {
   const gammaInstrument = displayCmeSymbol(pane.symbol);
+  const duplicateSeedRef = useRef(workspaceDuplicateSeeds.peek(chartInstanceId));
+  const skipInheritedFlowRef = useRef(false);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [chartOverlaySeries, setChartOverlaySeries] = useState<ChartOverlaySeries[]>([]);
   // Real futures flow projected onto options-family cash bars: Volume, TPO,
@@ -6135,6 +6157,15 @@ function WorkspaceChartPaneComponent({
     error,
     candleCount: candles.length,
   });
+  useEffect(() => workspaceDuplicateSeeds.register(chartInstanceId, () => {
+    if (chartIsLoading || replayActive || error || !historyHydratedRef.current || !latestCandlesRef.current.length) return null;
+    return {
+      requestKey: requestedChartHydrationKey, contractSymbol: resolvedContractSymbol,
+      candles: latestCandlesRef.current.map(candle => ({ ...candle })),
+      records: [...latestMarketTradesRef.current], flowCandles: latestOrderFlowCandlesRef.current,
+      orderFlowReady: orderFlowHistoryReady,
+    };
+  }), [chartInstanceId, chartIsLoading, error, orderFlowHistoryReady, replayActive, requestedChartHydrationKey, resolvedContractSymbol]);
   const beginContinuityRecovery = useCallback(() => {
     // Initial hydration is covered until it is verified, but a continuity
     // check on an already-live chart must repair in place. Reapplying the
@@ -6744,6 +6775,12 @@ function WorkspaceChartPaneComponent({
   useEffect(() => {
     let cancelled = false;
     let visibleHistoryReady = false;
+    const duplicateSeed = duplicateSeedRef.current;
+    duplicateSeedRef.current = null;
+    const inherited = !replayHistoryRange && duplicateSeed?.requestKey === requestedChartHydrationKey
+      && duplicateSeed.contractSymbol === resolvedContractSymbol ? duplicateSeed : null;
+    skipInheritedFlowRef.current = Boolean(inherited?.orderFlowReady);
+    workspaceDuplicateSeeds.discard(chartInstanceId);
     const requestController = new AbortController();
     let reconciliationTimer: number | null = null;
     const repairGate = new ChartHistoryRepairGate();
@@ -6842,37 +6879,46 @@ function WorkspaceChartPaneComponent({
     const observedTail = pane.broker === "Databento"
       ? readDatabentoLiveTail(pane.symbol)
       : [];
-    const immediateHistory = trimDisconnectedActiveTail(
+    const immediateHistory = inherited?.candles ?? trimDisconnectedActiveTail(
       trimCandlesAfterActiveBucket(
         sanitizeCandles(immediateCache?.candles ?? [], pane.symbol, pane.timeframe),
         pane.timeframe,
       ),
       pane.timeframe,
     );
-    const immediateHistoryForPeriod = trimChartHistoryForPeriod(
+    const immediateHistoryForPeriod = inherited?.candles ?? trimChartHistoryForPeriod(
       immediateHistory,
       period,
       requestedFrom,
     );
-    const immediateCandles = pane.broker === "Databento"
+    const immediateCandles = inherited ? mergeHistoricalWithLiveTail(
+      pane.broker === "Databento"
+        ? mergeObservedDatabentoTail(inherited.candles, observedTail, pane.timeframe)
+        : inherited.candles,
+      latestCandlesRef.current, pane.timeframe, liveTailStartTimestampRef.current,
+    ) : (pane.broker === "Databento"
       ? mergeObservedDatabentoTail(immediateHistoryForPeriod, observedTail, pane.timeframe)
-      : immediateHistoryForPeriod;
+      : immediateHistoryForPeriod);
     // A lone event candle is the forming bar created by the live execution
     // stream, not historical hydration. Do not present it as a loaded 40R or
     // 200V chart while the five-session archive is still opening.
-    const hasImmediateHistory = immediateHistoryForPeriod.length > (
+    const hasImmediateHistory = Boolean(inherited) || immediateHistoryForPeriod.length > (
       isEventBasedChartInterval(pane.timeframe) ? 1 : 0
     );
     const memoryTape = needsOrderFlowHistory
       ? peekExecutionTapeCache(pane.symbol, pane.timeframe)?.records ?? []
       : [];
-    const immediateMarketTrades = needsOrderFlowHistory
+    const immediateMarketTrades = inherited
+      ? latestMarketTradesRef.current.length
+        ? mergeInstitutionalTradeTape(inherited.records, latestMarketTradesRef.current)
+        : inherited.records
+      : (needsOrderFlowHistory
       ? mergeInstitutionalTradeTape(
           memoryTape,
           workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? [],
         )
-      : [];
-    if (immediateMarketTrades.length) {
+      : []);
+    if (!inherited && immediateMarketTrades.length) {
       storeWorkspaceExecutionTape(
         workspaceOrderFlowKey(pane.symbol, pane.timeframe),
         immediateMarketTrades,
@@ -6883,24 +6929,24 @@ function WorkspaceChartPaneComponent({
     // OHLC candles first and waited for the HTTP order-flow request to perform
     // this exact merge; CVD consequently rendered a live-only straight line
     // for seconds or minutes after every refresh.
-    const immediateHydratedCandles = needsOrderFlowHistory
+    const immediateHydratedCandles = inherited ? immediateCandles : (needsOrderFlowHistory
       ? applyAvailableOrderFlowHistory(
           immediateCandles,
           pane.timeframe,
           [],
           immediateMarketTrades,
         )
-      : immediateCandles;
-    const immediateOrderFlowHistoryReady = !needsOrderFlowHistory
-      || hasUsableOrderFlowHistory(immediateHydratedCandles);
+      : immediateCandles);
+    const immediateOrderFlowHistoryReady = inherited?.orderFlowReady ?? (!needsOrderFlowHistory
+      || hasUsableOrderFlowHistory(immediateHydratedCandles));
     const immediateTailNeedsReconciliation = pane.broker === "Databento"
       && cmeChartTailNeedsReconciliation(immediateHydratedCandles, pane.timeframe);
-    const immediateHistoryIsHydrated = hasImmediateHistory
+    const immediateHistoryIsHydrated = Boolean(inherited) || hasImmediateHistory
       && Boolean(immediateCache?.updatedAt && Date.now() - immediateCache.updatedAt <= 20_000)
       && hasFiveDayHistory(immediateHistory, pane.timeframe)
       && !immediateTailNeedsReconciliation
       && immediateOrderFlowHistoryReady;
-    const liveSeamRequest = pane.broker === "Databento" && resolvedContractSymbol
+    const liveSeamRequest = !inherited && pane.broker === "Databento" && resolvedContractSymbol
       ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
       : Promise.resolve([] as Candle[]);
     // Start authoritative OHLC before IndexedDB/tape hydration. Previously a
@@ -6943,14 +6989,15 @@ function WorkspaceChartPaneComponent({
     // first paint until their freshness, requested depth and live seam have
     // been verified below. Revealing a short/stale cache is what produced a
     // field of one-price dots before the authoritative bars replaced it.
-    setLoading(true);
+    setLoading(!inherited);
+    if (inherited) { visibleHistoryReady = true; setSettledChartRequestKey(requestedChartHydrationKey); }
     setError(null);
     setCandles(hasImmediateHistory ? immediateHydratedCandles : []);
     setMarketTrades(immediateMarketTrades);
     setOrderFlowHistoryReady(immediateOrderFlowHistoryReady);
     latestCandlesRef.current = hasImmediateHistory ? immediateHydratedCandles : [];
     latestMarketTradesRef.current = immediateMarketTrades;
-    latestOrderFlowCandlesRef.current = [];
+    latestOrderFlowCandlesRef.current = inherited?.flowCandles ?? [];
     historyHydratedRef.current = hasImmediateHistory && !immediateTailNeedsReconciliation;
     liveTailStartTimestampRef.current = observedTail[0]?.timestamp ?? null;
     pendingLiveTicksRef.current = [];
@@ -6964,7 +7011,7 @@ function WorkspaceChartPaneComponent({
     // a newly selected 1m/5m chart empty. Exact event bars can still paint as
     // soon as the bridge answers while their longer CME backfill runs below.
     if (
-      pane.broker === "Databento"
+      !inherited && pane.broker === "Databento"
       && needsOrderFlowHistory
       && resolvedContractSymbol
     ) {
@@ -7021,6 +7068,7 @@ function WorkspaceChartPaneComponent({
     }
 
     const loadHistory = async () => {
+      if (inherited) return;
       const [cached, storedTape] = await Promise.all([
         /*
          * Cash-index panes read the candle cache too.
@@ -7501,6 +7549,7 @@ function WorkspaceChartPaneComponent({
   // execution archive silently. The request is shared/deduplicated across
   // panes by fetchWorkspaceOrderFlow.
   useEffect(() => {
+    if (skipInheritedFlowRef.current) { skipInheritedFlowRef.current = false; return; }
     if (
       replayHistoryRange
       ||
@@ -16388,6 +16437,7 @@ export default function KwantifyWorkspace({
     // regardless of the source pane's aspect ratio.
     const splitAxis: "x" | "y" = "x";
     const nextPaneId = `${chartWorkspaceScopeRef.current}-pane-${crypto.randomUUID()}`;
+    workspaceDuplicateSeeds.copy(workspaceChartInstanceId(chartWorkspaceScopeRef.current, paneId), workspaceChartInstanceId(chartWorkspaceScopeRef.current, nextPaneId));
     const nextPane: WorkspacePane = {
       ...sourcePane,
       id: nextPaneId,
@@ -16427,6 +16477,7 @@ export default function KwantifyWorkspace({
     if (!sourcePane || !sourceWindow) return;
 
     const nextPaneId = `${chartWorkspaceScopeRef.current}-pane-${crypto.randomUUID()}`;
+    workspaceDuplicateSeeds.copy(workspaceChartInstanceId(chartWorkspaceScopeRef.current, paneId), workspaceChartInstanceId(chartWorkspaceScopeRef.current, nextPaneId));
     const nextPane: WorkspacePane = {
       ...sourcePane,
       id: nextPaneId,
