@@ -3719,6 +3719,18 @@ function Chart({
   // rather than to whatever was current when the effect was created.
   const chartingDrawingsRef = useRef<Drawing[]>(chartingDrawings);
   chartingDrawingsRef.current = chartingDrawings;
+  const svgUndo = useRef<{ id: string; before: Drawing; after: Drawing }[]>([]);
+  const svgRedo = useRef<typeof svgUndo.current>([]);
+  const svgGesture = useRef<string | null>(null);
+  useEffect(() => {
+    svgUndo.current = [];
+    svgRedo.current = [];
+    svgGesture.current = null;
+    const resetGesture = () => { svgGesture.current = null; };
+    window.addEventListener("pointerdown", resetGesture, true);
+    return () => window.removeEventListener("pointerdown", resetGesture, true);
+  }, [instrument, chartInstanceId]);
+
   const professionalDrawingsLoadGenerationRef = useRef(0);
   const professionalDrawingsRenderGeneration = professionalDrawingsLoadGenerationRef.current;
   const professionalDrawingManagerRef = useRef<DrawingManager | null>(null);
@@ -4001,6 +4013,34 @@ function Chart({
     chartingDrawingsRef.current = normalized;
     onChartingDrawingsChange?.(normalized, { clearAll });
   }, [onChartingDrawingsChange]);
+  function updateSvgDrawing(drawing: Drawing) {
+    const previous = chartingDrawingsRef.current.find(({ id }) => id === drawing.id);
+    if (!previous || JSON.stringify(previous) === JSON.stringify(drawing)) return;
+    const entry = svgUndo.current.at(-1);
+    if (svgGesture.current === drawing.id && entry?.id === drawing.id) {
+      entry.after = drawing;
+    } else {
+      svgUndo.current.push({ id: drawing.id, before: previous, after: drawing });
+      if (svgUndo.current.length > 100) svgUndo.current.shift();
+      svgGesture.current = drawing.id;
+    }
+    svgRedo.current = [];
+    commitDrawings(chartingDrawingsRef.current.map((item) => item.id === drawing.id ? drawing : item));
+  }
+
+  function restoreSvgDrawingEdit(redo: boolean) {
+    const source = redo ? svgRedo.current : svgUndo.current;
+    const destination = redo ? svgUndo.current : svgRedo.current;
+    const entry = source.at(-1);
+    if (!entry || !chartingDrawingsRef.current.some(({ id }) => id === entry.id)) return false;
+    source.pop();
+    destination.push(entry);
+    svgGesture.current = null;
+    commitDrawings(chartingDrawingsRef.current.map((item) =>
+      item.id === entry.id ? (redo ? entry.after : entry.before) : item));
+    return true;
+  }
+
   // Backspace / Delete removes the selected charting drawing (only on the
   // focused pane, and never while typing into a field).
   useEffect(() => {
@@ -17991,15 +18031,18 @@ function Chart({
       // Legacy drawing handlers must not paste into every mounted panel.
       if (commandKey && ["c", "v", "d"].includes(event.key.toLowerCase())
         && (activeChartKeyboardTargetId !== chartInstanceId || event.defaultPrevented)) return;
-      if (!isTypingContext && commandKey && event.key.toLowerCase() === "z") {
+      if (commandKey && ["z", "y"].includes(event.key.toLowerCase())) {
+        if (isTypingContext || event.defaultPrevented || activeChartKeyboardTargetId !== chartInstanceId) return;
+        const redo = event.shiftKey || event.key.toLowerCase() === "y";
+        const professionalHistory = redo ? professionalRedoStackRef.current : professionalUndoStackRef.current;
+        if ((drawSelectedId || professionalHistory.length === 0) && restoreSvgDrawingEdit(redo)) {
+          event.preventDefault();
+          return;
+        }
+        if (professionalHistory.length === 0) return;
         event.preventDefault();
-        if (event.shiftKey) redoProfessionalDrawing();
+        if (redo) redoProfessionalDrawing();
         else undoProfessionalDrawing();
-        return;
-      }
-      if (!isTypingContext && commandKey && event.key.toLowerCase() === "y") {
-        event.preventDefault();
-        redoProfessionalDrawing();
         return;
       }
       if (!isTypingContext && commandKey && event.key.toLowerCase() === "c") {
@@ -18068,7 +18111,7 @@ function Chart({
     return () => {
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [chartInstanceId, drawingHistoryRevision, drawings.length, keyboardActive, returnToLiveViewport, selectedDrawingId, showObjectsPanel]);
+  }, [chartInstanceId, drawSelectedId, drawingHistoryRevision, drawings.length, keyboardActive, returnToLiveViewport, selectedDrawingId, showObjectsPanel]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -18993,7 +19036,7 @@ function Chart({
             projectionRevision={() => drawingTimelineRevisionRef.current}
             onOpenSettings={(id) => { setDrawSelectedId(id); setDrawTool("cursor"); setDrawSettingsOpen(true); }}
             onCommit={(drawing) => { commitDrawings([...chartingDrawingsRef.current, drawing]); setDrawSelectedId(drawing.id); }}
-            onUpdate={(drawing) => commitDrawings(chartingDrawingsRef.current.map((d) => d.id === drawing.id ? drawing : d))}
+            onUpdate={updateSvgDrawing}
             onSelect={setDrawSelectedId}
             onDelete={(id) => { commitDrawings(chartingDrawingsRef.current.filter((drawing) => drawing.id !== id)); if (drawSelectedId === id) setDrawSelectedId(null); }}
             onToolConsumed={() => setDrawTool("cursor")}
