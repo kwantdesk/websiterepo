@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
+import { chartTimeBucketStartMs } from "../src/lib/chartTimeBucket.ts";
 
 function loadFunction(path, name, globals) {
   const text = readFileSync(new URL(path, import.meta.url), "utf8");
@@ -59,6 +60,7 @@ test("underlying history uses one bounded archive request and rejects wrong symb
     fetchInstitutionalMarketData: async path => { requests.push(path); return { ok: true, json: async () => payload }; },
     isRecord: value => value && typeof value === "object" && !Array.isArray(value),
     QuantDataError: Error,
+    chartTimeBucketStartMs,
   });
   const input = { symbol: "SPXW", timeframe: "1m", from: 0, to: 2000 };
   assert.equal((await load(input)).length, 1);
@@ -76,6 +78,29 @@ test("underlying history uses one bounded archive request and rejects wrong symb
   assert.equal(partial.historyCoverage.availableFrom, 1000);
   payload = { symbol: "SPX", candles: [{ timestamp: 1000, open: 100, high: 99, low: 98, close: 101, volume: 20 }] };
   await assert.rejects(load(input), /geometry/);
+});
+
+test("cash history accepts its containing start bucket without altering OHLC", async () => {
+  const from = Date.parse('2026-11-03T14:32:21.663Z'), to = from + 60_000;
+  let payload;
+  const load = loadFunction('../src/lib/quantData.server.ts', 'getOptionsUnderlyingHistory', {
+    chartTimeBucketStartMs, underlyingHistoryPlan: () => ({aggregationPeriod:'1m',sessionScoped:true}),
+    isInstitutionalMarketDataConfigured: () => true,
+    fetchInstitutionalMarketData: async () => ({ok:true,json:async()=>payload}),
+    isRecord: value => value && typeof value === 'object' && !Array.isArray(value), QuantDataError: Error,
+  });
+  for (const symbol of ['SPY','QQQ','SPX','NDX']) for (const timeframe of ['1m','5m','15m','1h','1D','1W','1M']) {
+    const timestamp = chartTimeBucketStartMs(from,timeframe);
+    const candle = {timestamp,open:759.03,high:759.09,low:758.69,close:758.75,volume:0};
+    payload = {symbol,candles:[candle]};
+    const result = await load({symbol,timeframe,from,to});
+    assert.equal(JSON.stringify(result[0]),JSON.stringify(candle));
+    assert.equal(result.historyCoverage.requestedFrom,from);
+    payload = {symbol,candles:[{...candle,timestamp:timestamp-1}]};
+    await assert.rejects(load({symbol,timeframe,from,to}),/geometry/);
+    payload = {symbol,candles:[{...candle,high:700}]};
+    await assert.rejects(load({symbol,timeframe,from,to}),/geometry/);
+  }
 });
 
 test("contract resolution rerender cannot abort a shared futures history request", async () => {

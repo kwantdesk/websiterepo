@@ -10141,7 +10141,7 @@ function Chart({
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
     };
   }, [bounceMirrorEnabled, bounceMirror.profile, bounceGexStrikeColors, bounceLevelsDataSignature, bounceLevelsIndicator, bounceLevelsSnapshot, bounceLevelsSnapshotScope, bounceReplayCheckpoint, instrument, overlayTimelineMs, replayTimestampMs, settings.borderUpColor, settings.gridColor, settings.downColor, settings.upColor]);
-  useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);
+  useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData, chartReadyRevision]);
   useEffect(() => { setBounceAlertMarkers([]); }, [instrument, timeframe, bounceLevelsIndicator?.instanceId]);
   useEffect(() => {
     bounceLevelsPrimitiveRef.current?.setAlertMarkers(

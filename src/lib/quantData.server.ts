@@ -1,5 +1,6 @@
 import "server-only";
 import { optionsOpeningClock } from "./optionsOpeningRefresh.ts";
+import { chartTimeBucketStartMs } from "./chartTimeBucket.ts";
 import type { UnderlyingHistoryCoverage } from "@/lib/underlyingHistoryCoverage";
 import { unstable_cache } from "next/cache";
 import { fetchInstitutionalMarketData, isInstitutionalMarketDataConfigured } from "@/lib/institutionalMarketData.server";
@@ -1100,6 +1101,10 @@ export async function getOptionsUnderlyingHistory(input: {
   const { aggregationPeriod, sessionScoped } = plan;
   const from = Math.min(input.from, input.to);
   const to = Math.max(input.from, input.to);
+  // The recorder includes the bucket containing `from`, so a request made
+  // seconds into a minute legitimately returns that minute's earlier OPEN.
+  // Use the exact recorder bucket boundary, not a relaxed OHLC validation.
+  const firstBucket = chartTimeBucketStartMs(from, input.timeframe);
   // The backend already owns the multi-session archive and resampling. One
   // bounded request avoids a separate relay/health/cache round trip per day.
   if (!isInstitutionalMarketDataConfigured()) {
@@ -1117,7 +1122,7 @@ export async function getOptionsUnderlyingHistory(input: {
     const candles = payload.candles.map((row): OptionsCandle => {
       if (!isRecord(row)) throw new QuantDataError("Invalid underlying candle.", 502, null);
       const candle = { timestamp: Number(row.timestamp), open: Number(row.open), high: Number(row.high), low: Number(row.low), close: Number(row.close), volume: Number(row.volume ?? 0) };
-      if (!Object.values(candle).every(Number.isFinite) || candle.timestamp < from || candle.timestamp > to
+      if (!Object.values(candle).every(Number.isFinite) || candle.timestamp < firstBucket || candle.timestamp > to
         || candle.high < Math.max(candle.open, candle.close) || candle.low > Math.min(candle.open, candle.close)
         || candle.low <= 0 || candle.volume < 0) {
         throw new QuantDataError("Invalid underlying candle geometry.", 502, null);
