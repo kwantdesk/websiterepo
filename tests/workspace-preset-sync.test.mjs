@@ -72,7 +72,7 @@ test('initial hydration retains a surviving same-account save, without copying a
     }
   } finally { Object.assign(globalThis, savedGlobals); }
 });
-test('actual workspace save retains peer additions and failed Delete rolls back its removal record', () => {
+test('actual workspace save retains peer additions and failed Delete rolls back its removal record', async () => {
   const source = ts.createSourceFile('workspace.tsx', fs.readFileSync('src/components/KwantifyWorkspace.tsx', 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let text;
   function visit(node) {
@@ -84,6 +84,7 @@ test('actual workspace save retains peer additions and failed Delete rolls back 
   let failLibrary = false;
   const context = {
     window: { localStorage: { getItem: key => data.get(key) ?? null, removeItem: key => data.delete(key) }, dispatchEvent() {} },
+    workspacePresetSaveBusyRef: { current: false }, setWorkspacePresetSaving() {}, readWorkspacePreferenceValue: name => data.get(name) ?? null, recordConfirmedWorkspacePreference() {}, supabase: null, preferenceUserId: "owner",
     CustomEvent: class {}, chartWorkspaceScopeRef: { current: 'charts' }, WORKSPACE_PRESETS_STORAGE_KEY: key,
     WORKSPACE_PRESET_DELETIONS_KEY: DELETIONS, workspacePresets: [preset('a')],
     workspaceScopeStorageKey: (_scope, key) => key, markWorkspacePresetDeleted, mergeWorkspacePresetPreferences,
@@ -94,14 +95,30 @@ test('actual workspace save retains peer additions and failed Delete rolls back 
     },
   };
   const save = vm.runInNewContext(ts.transpileModule(`const fn = ${text}; fn;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
-  save([{ ...preset('a'), name: 'Explicit save' }]);
+  await save([{ ...preset('a'), name: 'Explicit save' }]);
   assert.deepEqual(JSON.parse(data.get(key)).map(item => item.id), ['a', 'peer']);
   assert.equal(JSON.parse(data.get(key))[0].name, 'Explicit save');
   const previous = data.get(key), stateCount = states.length;
   failLibrary = true;
-  assert.equal(save([], 'a'), null);
+  assert.equal(await save([], 'a'), null);
   assert.equal(data.get(key), previous);
   assert.equal(data.has(DELETIONS), false);
   assert.equal(states.length, stateCount);
   assert.equal(messages.at(-1)[0], 'error');
+  let acknowledge;
+  context.supabase = {};
+  context.saveWorkspacePreferencePatch = async (_client, userId, patch) => {
+    assert.equal(userId, 'owner');
+    await new Promise(resolve => { acknowledge = resolve; });
+    return { values: patch };
+  };
+  const pending = save([{ ...preset('a'), name: 'Account-confirmed save', updatedAt: '2026-11-05T00:00:01Z' }]);
+  assert.equal(states.length, stateCount, 'no successful UI state before account acknowledgement');
+  assert.equal(context.workspacePresetSaveBusyRef.current, true);
+  assert.equal(await save([preset('double click')]), null, 'duplicate click cannot fork a second save');
+  acknowledge();
+  const confirmed = await pending;
+  assert.equal(confirmed.find(item => item.id === 'a').name, 'Account-confirmed save');
+  assert.equal(states.length, stateCount + 1);
+  assert.equal(context.workspacePresetSaveBusyRef.current, false);
 });

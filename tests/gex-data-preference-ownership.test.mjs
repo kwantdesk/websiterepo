@@ -19,5 +19,5 @@ test('invalid, oversized and unscoped GEX snapshots cannot cross the hydration b
 test('actual hydrator applies the scoped in-flight decision before writing cloud preferences locally',()=>{
   const source=readFileSync(new URL('../src/lib/userPreferences.ts',import.meta.url),'utf8');
   assert.match(source,/inFlightGexWorkspace\(current.values\[gexKey\], latest.values\[gexKey\], user.id\)/);
-  assert.ok(source.indexOf('const gexWorkspace =')<source.indexOf('applyBrowserPreferences(selected)'));
+  assert.ok(source.indexOf('const gexWorkspace =')<source.indexOf('applyBrowserPreferences(selected, user.id)'));
 });

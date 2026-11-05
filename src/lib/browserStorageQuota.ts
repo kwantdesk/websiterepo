@@ -1,3 +1,4 @@
+import { compactScopedPreferenceCaches } from "./preferenceCachePacking.ts";
 import { isTrackedStorageKey } from "./accountPreferenceKeys.ts";
 
 const pendingPreferenceKeys = new Set<string>();
@@ -101,8 +102,14 @@ export function writeProtectedItem(
     // Fall through and make room.
   }
 
-  let reclaimedBytes = 0;
+  let reclaimedBytes = compactScopedPreferenceCaches(store);
   let evicted = 0;
+  if (reclaimedBytes > 0) {
+    try {
+      store.setItem(key, value); announcePreferenceWrite(key, store);
+      return { ok: true, reclaimedBytes, evicted };
+    } catch { /* Continue with disposable provider caches only. */ }
+  }
   for (const entry of disposableEntries(store)) {
     // Never evict the very thing being written, however it is prefixed.
     if (entry.key === key) continue;

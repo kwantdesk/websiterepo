@@ -1,3 +1,5 @@
+import { packPreferenceCache, unpackPreferenceCache } from "./preferenceCachePacking";
+import { confirmedWorkspacePreferences, recordConfirmedWorkspacePreference, clearConfirmedWorkspacePreferences } from "./workspacePreferenceFallback";
 import { isTrackedStorageKey } from "./accountPreferenceKeys.ts";
 export { isTrackedStorageKey } from "./accountPreferenceKeys.ts";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -5,7 +7,7 @@ import { applyTheme } from "./theme.ts";
 import { retainLocalChartAppearance } from "./chartSettings.ts";
 import { writeProtectedItem } from "./browserStorageQuota.ts";
 import { inFlightGexWorkspace } from "./gexDataPreferenceOwnership.ts";
-import { accountPreferenceFingerprint } from "./accountPreferenceMerge";
+import { accountPreferenceFingerprint, mergeAccountPreferenceChanges } from "./accountPreferenceMerge";
 import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from "./chartDrawingPreferences";
 import { accountPreferenceReadUnavailable, isMissingPreferenceStore } from "./accountPreferenceErrors";
 
@@ -76,7 +78,7 @@ function scopedPreferenceKey(userId: string) {
 export function readScopedPreferences(userId: string) {
   if (typeof window === "undefined") return null;
   try {
-    return normalizeSnapshot(JSON.parse(window.localStorage.getItem(scopedPreferenceKey(userId)) ?? "null"));
+    return normalizeSnapshot(JSON.parse(unpackPreferenceCache(window.localStorage.getItem(scopedPreferenceKey(userId)) ?? "null")));
   } catch {
     return null;
   }
@@ -85,7 +87,7 @@ export function readScopedPreferences(userId: string) {
 export function saveScopedPreferences(userId: string, snapshot: UserPreferenceSnapshot) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(scopedPreferenceKey(userId), JSON.stringify(snapshot));
+    window.localStorage.setItem(scopedPreferenceKey(userId), packPreferenceCache(JSON.stringify(snapshot)));
   } catch {
     // Cloud persistence remains authoritative when browser storage is full.
   }
@@ -103,6 +105,8 @@ export function captureBrowserPreferences(): UserPreferenceSnapshot {
       if (value !== null) values[key] = value;
     }
   }
+  const owner = typeof window === "undefined" ? null : window.localStorage.getItem(ACTIVE_PREFERENCES_OWNER_KEY);
+  if (owner) Object.assign(values, confirmedWorkspacePreferences(owner));
   return {
     version: 1,
     complete: true,
@@ -127,7 +131,7 @@ export function preferenceSnapshotFingerprint(snapshot: UserPreferenceSnapshot) 
  */
 export const PREFERENCES_HYDRATED_EVENT = "kwantdesk:preferences-hydrated";
 
-function applyBrowserPreferences(snapshot: UserPreferenceSnapshot) {
+function applyBrowserPreferences(snapshot: UserPreferenceSnapshot, userId: string) {
   if (typeof window === "undefined") return;
   if (snapshot.complete) {
     const keysToRemove = Array.from({ length: window.localStorage.length }, (_, index) =>
@@ -138,10 +142,12 @@ function applyBrowserPreferences(snapshot: UserPreferenceSnapshot) {
         && !(key in snapshot.values));
     for (const key of keysToRemove) window.localStorage.removeItem(key);
   }
+  clearConfirmedWorkspacePreferences(userId);
   for (const [key, value] of Object.entries(snapshot.values)) {
     // Preferences are the trader's own state — layouts, panes, drawings. A
     // full quota gives up cache before it gives up any of this.
-    writeProtectedItem(key, value);
+    const written = writeProtectedItem(key, value);
+    recordConfirmedWorkspacePreference(userId, key, value, written.ok);
   }
   window.dispatchEvent(new CustomEvent(PREFERENCES_HYDRATED_EVENT));
 }
@@ -212,8 +218,13 @@ export function receiveAccountPreferences(userId: string, snapshot: UserPreferen
   // Write first, then notify every mounted consumer about the same revision.
   for (const key of keys) {
     const value = snapshot.values[key];
-    if (value === undefined) window.localStorage.removeItem(key);
-    else writeProtectedItem(key, value);
+    if (value === undefined) {
+      window.localStorage.removeItem(key);
+      recordConfirmedWorkspacePreference(userId, key, undefined, true);
+    } else {
+      const written = writeProtectedItem(key, value);
+      recordConfirmedWorkspacePreference(userId, key, value, written.ok);
+    }
   }
   saveScopedPreferences(userId, acknowledged);
   if (keys.includes("olisa-theme")) applyTheme();
@@ -403,9 +414,26 @@ export async function hydrateUserPreferences(
     values: mergeWorkspacePresetPreferences(current.values, latest.values, selected.values,
       mergeDrawingClearBarriers(latest.values, selected.values, selected.values)) };
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
-  applyBrowserPreferences(selected);
+  applyBrowserPreferences(selected, user.id);
   applyTheme();
   writeProtectedItem(ACTIVE_PREFERENCES_OWNER_KEY, user.id);
   saveScopedPreferences(user.id, acknowledged);
   return { changed, snapshot: selected };
+}
+
+/** Explicit workspace action: local quota cannot veto an acknowledged account save.
+ * Only publish a fallback after the authenticated compare-and-swap succeeds. */
+export async function saveWorkspacePreferencePatch(client: SupabaseClient, userId: string, patch: Record<string, string>) {
+  if (!userId || typeof window === "undefined" || window.localStorage.getItem(ACTIVE_PREFERENCES_OWNER_KEY) !== userId) throw Error("Sign in before saving this workspace.");
+  const sent = { ...captureBrowserPreferences(), updatedAt: new Date().toISOString() };
+  sent.values = { ...sent.values, ...patch };
+  const saved = await saveUserPreferences(client, userId, sent);
+  if (window.localStorage.getItem(ACTIVE_PREFERENCES_OWNER_KEY) !== userId) throw Error("Your account changed while saving. The workspace was saved to its original account.");
+  const latest = captureBrowserPreferences();
+  // The refused local write is not a new user edit that reverses this save.
+  for (const key of Object.keys(patch)) latest.values[key] = sent.values[key];
+  const applied = mergeAccountPreferenceChanges(sent, latest, saved);
+  receiveAccountPreferences(userId, applied, saved);
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  return applied;
 }

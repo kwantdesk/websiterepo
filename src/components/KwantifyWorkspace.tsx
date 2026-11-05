@@ -1,4 +1,5 @@
 "use client";
+import { readWorkspacePreferenceValue, recordConfirmedWorkspacePreference } from "@/lib/workspacePreferenceFallback";
 
 import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
 import WorkspaceGexMapPane from "@/components/gex-map/WorkspaceGexMapPane";
@@ -171,7 +172,7 @@ import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache, subscribeProfileIdentity } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
-import { PREFERENCES_HYDRATED_EVENT, canDisplayOwnedWorkspace, compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
+import { PREFERENCES_HYDRATED_EVENT, canDisplayOwnedWorkspace, compactLegacyAuthPreferenceMetadata, hydrateUserPreferences, saveWorkspacePreferencePatch } from "@/lib/userPreferences";
 import {
   loadJournalAccountDeletions,
   loadJournalState,
@@ -2427,7 +2428,7 @@ function loadLocalWorkspacePresets(scope: ChartWorkspaceScope = "charts"): Works
   if (typeof window === "undefined") return [];
   try {
     return normalizeWorkspacePresets(
-      JSON.parse(window.localStorage.getItem(workspaceScopeStorageKey(scope, WORKSPACE_PRESETS_STORAGE_KEY)) ?? "[]"),
+      JSON.parse(readWorkspacePreferenceValue(workspaceScopeStorageKey(scope, WORKSPACE_PRESETS_STORAGE_KEY)) ?? "[]"),
       scope,
     );
   } catch {
@@ -10661,6 +10662,8 @@ export default function KwantifyWorkspace({
   const [showWorkspacePresetMenu, setShowWorkspacePresetMenu] = useState(false);
   const [showSaveWorkspacePreset, setShowSaveWorkspacePreset] = useState(false);
   const [workspacePresetName, setWorkspacePresetName] = useState("");
+  const workspacePresetSaveBusyRef = useRef(false);
+  const [workspacePresetSaving, setWorkspacePresetSaving] = useState(false);
   const [workspacePresetMenuPosition, setWorkspacePresetMenuPosition] = useState({ top: 48, left: 12 });
   const workspacePresetButtonRef = useRef<HTMLButtonElement>(null);
   const workspacePresetMenuRef = useRef<HTMLDivElement>(null);
@@ -16936,47 +16939,53 @@ export default function KwantifyWorkspace({
     window.addEventListener("pointercancel", finishResize);
   };
 
-  const persistWorkspacePresets = (nextPresets: WorkspacePreset[], deletedPresetId?: string) => {
+  const persistWorkspacePresets = async (nextPresets: WorkspacePreset[], deletedPresetId?: string) => {
+    if (workspacePresetSaveBusyRef.current) return null;
+    workspacePresetSaveBusyRef.current = true;
+    setWorkspacePresetSaving(true);
     const scope = chartWorkspaceScopeRef.current;
     const key = workspaceScopeStorageKey(scope, WORKSPACE_PRESETS_STORAGE_KEY);
-    const previousDeletions = window.localStorage.getItem(WORKSPACE_PRESET_DELETIONS_KEY);
-    if (deletedPresetId && !writeProtectedItem(WORKSPACE_PRESET_DELETIONS_KEY,
-      markWorkspacePresetDeleted(previousDeletions ?? undefined, key, deletedPresetId)).ok) {
-      showReportToast("error", "This workspace could not be deleted because browser storage is full.", 6000);
-      return null;
-    }
-    const protectedValues = mergeWorkspacePresetPreferences({ [key]: JSON.stringify(workspacePresets) }, { [key]: JSON.stringify(nextPresets) }, {
-      [key]: window.localStorage.getItem(key) ?? "[]",
-      [WORKSPACE_PRESET_DELETIONS_KEY]: window.localStorage.getItem(WORKSPACE_PRESET_DELETIONS_KEY) ?? "{}",
-    }, {});
-    const normalizedPresets = normalizeWorkspacePresets(JSON.parse(protectedValues[key]), scope);
-    // The write can fail: browser storage is a few megabytes and a workspace
-    // carries every pane, indicator and drawing in it. writeProtectedItem
-    // evicts re-fetchable cache and retries, but it can still come up short,
-    // and it REPORTS that. Ignoring the result is how a save that did not
-    // happen came to show "Workspace updated".
-    const written = writeProtectedItem(
-      key,
-      JSON.stringify(normalizedPresets),
-    );
-    if (!written.ok) {
-      if (deletedPresetId) {
-        if (previousDeletions === null) window.localStorage.removeItem(WORKSPACE_PRESET_DELETIONS_KEY);
-        else writeProtectedItem(WORKSPACE_PRESET_DELETIONS_KEY, previousDeletions);
+    const previousDeletions = readWorkspacePreferenceValue(WORKSPACE_PRESET_DELETIONS_KEY);
+    const nextDeletions = deletedPresetId
+      ? markWorkspacePresetDeleted(previousDeletions ?? undefined, key, deletedPresetId)
+      : previousDeletions ?? "{}";
+    try {
+      const protectedValues = mergeWorkspacePresetPreferences({ [key]: JSON.stringify(workspacePresets) }, { [key]: JSON.stringify(nextPresets) }, {
+        [key]: readWorkspacePreferenceValue(key) ?? "[]",
+        [WORKSPACE_PRESET_DELETIONS_KEY]: nextDeletions,
+      }, {});
+      let normalizedPresets = normalizeWorkspacePresets(JSON.parse(protectedValues[key]), scope);
+      const patch: Record<string, string> = { [key]: JSON.stringify(normalizedPresets) };
+      if (deletedPresetId) patch[WORKSPACE_PRESET_DELETIONS_KEY] = nextDeletions;
+      const deletionWritten = !deletedPresetId || writeProtectedItem(WORKSPACE_PRESET_DELETIONS_KEY, nextDeletions).ok;
+      const written = deletionWritten && writeProtectedItem(key, patch[key]).ok;
+      if (!written) {
+        if (deletedPresetId && deletionWritten) {
+          if (previousDeletions === null) window.localStorage.removeItem(WORKSPACE_PRESET_DELETIONS_KEY);
+          else writeProtectedItem(WORKSPACE_PRESET_DELETIONS_KEY, previousDeletions);
+        }
+        if (!supabase || !preferenceUserId) throw Error("Sign in to save this workspace to your account.");
+        // A full local quota cannot veto a durable, acknowledged account save.
+        // The cloud merge preserves peer workspaces and explicit deletions.
+        const saved = await saveWorkspacePreferencePatch(supabase, preferenceUserId, patch);
+        normalizedPresets = normalizeWorkspacePresets(JSON.parse(saved.values[key]), scope);
+      } else {
+        for (const [name, value] of Object.entries(patch)) recordConfirmedWorkspacePreference(preferenceUserId, name, value, true);
       }
-      showReportToast(
-        "error",
-        "Browser storage is full, so this workspace was not saved. Close some tabs of this app and try again.",
-        6000,
-      );
+      if (chartWorkspaceScopeRef.current !== scope) {
+        showReportToast("success", "Workspace saved in its original workspace section", 2400);
+        return null;
+      }
+      setWorkspacePresets(normalizedPresets);
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+      return normalizedPresets;
+    } catch (error) {
+      showReportToast("error", error instanceof Error ? error.message + " Your current layout is still open." : "Workspace could not be saved. Your current layout is still open.", 6000);
       return null;
+    } finally {
+      workspacePresetSaveBusyRef.current = false;
+      setWorkspacePresetSaving(false);
     }
-    setWorkspacePresets(normalizedPresets);
-    // A saved workspace is an explicit user action. Push it to the account
-    // store immediately instead of waiting for the next interval sync, so
-    // closing the app right after Quick Save cannot lose the workspace.
-    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
-    return normalizedPresets;
   };
 
   /**
@@ -17055,7 +17064,7 @@ export default function KwantifyWorkspace({
     updatedAt: new Date().toISOString(),
   });
 
-  const saveCurrentWorkspacePreset = () => {
+  const saveCurrentWorkspacePreset = async () => {
     const name = workspacePresetName.trim();
     if (!name) return;
     const duplicate = workspacePresets.find(
@@ -17066,7 +17075,7 @@ export default function KwantifyWorkspace({
       return;
     }
     const nextPreset = createCurrentWorkspaceSnapshot(name);
-    if (!persistWorkspacePresets([...workspacePresets, nextPreset])) return;
+    if (!await persistWorkspacePresets([...workspacePresets, nextPreset])) return;
     setSavedWorkspaceSignature(workspaceStateSignature);
     setActiveWorkspacePresetId(nextPreset.id);
     setWorkspacePresetName("");
@@ -17075,7 +17084,7 @@ export default function KwantifyWorkspace({
     showReportToast("success", `Workspace "${name}" saved`, 2200);
   };
 
-  const quickSaveWorkspacePreset = () => {
+  const quickSaveWorkspacePreset = async () => {
     const activePreset = workspacePresets.find(
       (preset) => preset.id === activeWorkspacePresetId,
     );
@@ -17085,7 +17094,7 @@ export default function KwantifyWorkspace({
       return;
     }
     const nextPreset = createCurrentWorkspaceSnapshot(activePreset.name, activePreset.id);
-    const written = persistWorkspacePresets(
+    const written = await persistWorkspacePresets(
       workspacePresets.map((preset) => preset.id === nextPreset.id ? nextPreset : preset),
     );
     // Only mark the workspace clean once it is actually stored. Marking it
@@ -17153,9 +17162,9 @@ export default function KwantifyWorkspace({
     setShowWorkspacePresetMenu(false);
   };
 
-  const deleteWorkspacePreset = (presetId: string) => {
+  const deleteWorkspacePreset = async (presetId: string) => {
     const preset = workspacePresets.find((candidate) => candidate.id === presetId);
-    if (!persistWorkspacePresets(workspacePresets.filter((candidate) => candidate.id !== presetId), presetId)) return;
+    if (!await persistWorkspacePresets(workspacePresets.filter((candidate) => candidate.id !== presetId), presetId)) return;
     if (activeWorkspacePresetId === presetId) setActiveWorkspacePresetId(null);
     setWorkspaceDeleteCandidate(null);
     showReportToast("success", `Workspace "${preset?.name ?? "preset"}" deleted`, 1800);
@@ -17226,7 +17235,7 @@ export default function KwantifyWorkspace({
         throw new Error("This is not a valid Kwant Desk workspace backup.");
       }
       const libraryKey = workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY);
-      const removed = window.localStorage.getItem(WORKSPACE_PRESET_DELETIONS_KEY) ?? undefined;
+      const removed = readWorkspacePreferenceValue(WORKSPACE_PRESET_DELETIONS_KEY) ?? undefined;
       // Explicitly restoring a deleted backup creates a new identity; an old
       // phone carrying the deleted identity still cannot resurrect that copy.
       const importedPresets = normalizeWorkspacePresets(parsed.presets, chartWorkspaceScopeRef.current).map(preset => ({
@@ -17239,7 +17248,7 @@ export default function KwantifyWorkspace({
       }
       const merged = new Map(workspacePresets.map((preset) => [preset.id, preset]));
       importedPresets.forEach((preset) => merged.set(preset.id, preset));
-      if (!persistWorkspacePresets([...merged.values()])) return;
+      if (!await persistWorkspacePresets([...merged.values()])) return;
       const importedWorkspace = importedPresets[0];
       if (importedWorkspace) applyWorkspacePreset(importedWorkspace);
       showReportToast(
@@ -20888,6 +20897,7 @@ export default function KwantifyWorkspace({
                     <button
                       type="button"
                       onClick={quickSaveWorkspacePreset}
+                      disabled={workspacePresetSaving}
                       className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary text-[10px] font-semibold text-on-primary transition-opacity hover:opacity-90"
                     >
                       <Save className="h-3.5 w-3.5" />
@@ -20971,10 +20981,10 @@ export default function KwantifyWorkspace({
                         <button
                           type="button"
                           onClick={saveCurrentWorkspacePreset}
-                          disabled={!workspacePresetName.trim()}
+                          disabled={workspacePresetSaving || !workspacePresetName.trim()}
                           className="h-8 rounded-lg bg-primary px-3 text-[10px] font-semibold text-on-primary disabled:opacity-40"
                         >
-                          Save As
+                          {workspacePresetSaving ? "Saving…" : "Save As"}
                         </button>
                       </div>
                     )}
