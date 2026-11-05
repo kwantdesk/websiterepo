@@ -474,6 +474,7 @@ export class RollingDepthEngine {
     this.contrast = new AdaptiveContrast(options.contrast);
     this.columnCache = new WeakMap();
     this.lastHeatmap = null;
+    this.contrastRowTicks = null;
   }
 
   reset() {
@@ -483,6 +484,7 @@ export class RollingDepthEngine {
     this.timelineRevision = 0;
     this.columnCache = new WeakMap();
     this.lastHeatmap = null;
+    this.contrastRowTicks = null;
     this.contrast.reset();
   }
 
@@ -621,6 +623,11 @@ export class RollingDepthEngine {
     }
 
     const token = this.frames[safeEnd].id ?? this.revision;
+    // Zoom changes the quantity represented by one raster row: eight price
+    // levels must not reuse the colour scale calibrated for one level. Reset
+    // only at a grouping boundary, never for a pan or every incoming frame.
+    if (this.contrastRowTicks !== null && this.contrastRowTicks !== rowTicks) this.contrast.reset();
+    this.contrastRowTicks = rowTicks;
     const contrastChanged = this.contrast.update(rawColumns, token, forceContrast);
     const width = rawColumns.length;
     const height = rawColumns[0]?.length || 0;

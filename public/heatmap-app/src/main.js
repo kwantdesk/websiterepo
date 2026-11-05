@@ -4,8 +4,8 @@ import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261029-de
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=heat-render-recovery';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=heat-render-recovery';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=grouped-depth-scale';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=grouped-depth-scale';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,

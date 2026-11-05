@@ -1,4 +1,4 @@
-import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=heat-render-recovery';
+import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=grouped-depth-scale';
 import { cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
 import { paletteAccents, paletteCanvasTheme, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=heat-gradient-contrast';
