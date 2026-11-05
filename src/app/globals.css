@@ -1564,6 +1564,16 @@ header.kwant-command-rail .kwant-primary-nav-control {
   flex-shrink: 0;
 }
 
+.kwant-workspace-pane-header > .kwant-chart-close-control {
+  position: sticky;
+  right: 0;
+  z-index: 30;
+  min-width: 28px;
+  margin-left: auto;
+  background: var(--panel);
+  box-shadow: -6px 0 0 var(--panel);
+}
+
 .kwant-chart-pane-scrollport > .kwant-workspace-pane-header::-webkit-scrollbar {
   height: 8px;
 }

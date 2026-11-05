@@ -19798,17 +19798,17 @@ export default function KwantifyWorkspace({
             >
               <PictureInPicture2 className="h-3.5 w-3.5" />
             </button>
+          </div>
             <button
               type="button"
               onClick={() => closeWorkspacePane(pane.id)}
               disabled={workspaceLocked || workspacePanes.length <= 1}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-danger disabled:opacity-30"
+              className="kwant-chart-close-control flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-danger disabled:opacity-30"
               title={workspacePanes.length <= 1 ? "A workspace must keep one panel" : "Close chart"}
               aria-label="Close chart"
             >
               <X className="h-3.5 w-3.5" />
             </button>
-          </div>
         </div>
         <div className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden">{renderChartWithOrderTicket(pane.id, chartPane)}</div>
       </div>
@@ -19984,18 +19984,18 @@ export default function KwantifyWorkspace({
             >
               <PictureInPicture2 className="h-3 w-3" />
             </button>
+          </div>
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={() => closeWorkspacePane(floating.paneId)}
               disabled={workspacePanes.length <= 1}
-              className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-30"
+              className="kwant-chart-close-control flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-30"
               title="Close floating panel"
               aria-label="Close floating panel"
             >
               <X className="h-3 w-3" />
             </button>
-          </div>
         </div>
         <div
           className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden"
