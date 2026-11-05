@@ -1,6 +1,8 @@
 "use client";
 
 import { indicatorHistogramWidth } from "@/lib/indicatorHistogramWidth";
+import { useLiveDeltaPanes } from "@/components/useLiveDeltaPanes";
+import type { LiveDeltaInputs } from "@/lib/liveDeltaPanes";
 import { useSuperTrendLivePanes } from "@/components/useSuperTrendLivePanes";
 import SuperTrendPaneLabels from "@/components/SuperTrendPaneLabels";
 import { SuperTrendPaneScale } from "@/lib/superTrendPaneScale";
@@ -1363,6 +1365,7 @@ function ChartVerticalIndicatorPaneSurface({
 
 function ChartIndicatorPanes({
   groups: baseGroups,
+  liveDeltaInputs,
   liveChartKey,
   coordinateScope,
   width,
@@ -1385,6 +1388,7 @@ function ChartIndicatorPanes({
 }: {
   groups: IndicatorPaneGroup[];
   liveChartKey?: string;
+  liveDeltaInputs?: LiveDeltaInputs;
   coordinateScope: string;
   width: number;
   leftInset?: number;
@@ -1445,7 +1449,8 @@ function ChartIndicatorPanes({
     if (group.series.length) cvdSeriesCacheRef.current.series.set(group.key, { identity, series: group.series });
     return group;
   });
-  const groups = useSuperTrendLivePanes(continuityGroups, liveChartKey);
+  const deltaGroups = useLiveDeltaPanes(continuityGroups, coordinateScope, liveChartKey, liveDeltaInputs);
+  const groups = useSuperTrendLivePanes(deltaGroups, liveChartKey);
   const superTrendScale = useRef(new SuperTrendPaneScale());
   superTrendScale.current.retain(liveChartKey, groups.filter(g => g.indicatorId === "super-trend" || g.indicatorId === "super-trend-difference").map(g => g.key));
   const rootRef = useRef<HTMLDivElement>(null);

@@ -302,42 +302,6 @@ export default function ChartDrawLayer({
       toY,
     });
 
-  const emojiScaleAtAnchor = (drawing: Drawing) => {
-    const anchor = drawing.points[0];
-    if (!anchor) return null;
-    const anchorX = toX(anchor.time);
-    const anchorY = toY(anchor.price);
-    if (anchorX == null || anchorY == null) return null;
-    const referenceSize = Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36)));
-    const half = referenceSize / 2;
-    const edgeTime = timeAtX(anchorX + half);
-    const edgePrice = priceAtY(anchorY + half);
-    const timeRadius = edgeTime == null ? null : Math.abs(edgeTime - anchor.time);
-    const priceRadius = edgePrice == null ? null : Math.abs(edgePrice - anchor.price);
-    if (!(Number(timeRadius) > 0) && !(Number(priceRadius) > 0)) return null;
-    return {
-      ...(Number(timeRadius) > 0 ? { emojiTimeRadius: timeRadius as number } : {}),
-      ...(Number(priceRadius) > 0 ? { emojiPriceRadius: priceRadius as number } : {}),
-      emojiScaleReferenceSize: referenceSize,
-    };
-  };
-
-  // Drawings saved before chart-relative emoji sizing had only a pixel font
-  // size. Capture their current on-screen footprint once, then every viewport
-  // change uses those chart-unit radii. This is a compatibility migration,
-  // not a repeated save on each zoom.
-  useEffect(() => {
-    const legacy = drawings.find((drawing) => drawing.tool === "emoji"
-      && !(Number(drawing.style.emojiTimeRadius) > 0)
-      && !(Number(drawing.style.emojiPriceRadius) > 0));
-    if (!legacy) return;
-    const scale = emojiScaleAtAnchor(legacy);
-    if (!scale) return;
-    onUpdate({ ...legacy, style: { ...legacy.style, ...scale } });
-  // `emojiScaleAtAnchor` intentionally reads the current chart transforms;
-  // the explicit viewport tokens below are the stable invalidation contract.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartReady, drawings, onUpdate, viewportVersion]);
   // Unique per layer: two charts on screen must not share one clip.
   const plotClipId = useId().replace(/:/g, "");
   const freehandCleanupRef = useRef<(() => void) | null>(null);
@@ -442,8 +406,7 @@ export default function ChartDrawLayer({
       }
     }
     const created = createDrawing(tool, committed, tool === "emoji" ? emoji : undefined);
-    const scale = tool === "emoji" ? emojiScaleAtAnchor(created) : null;
-    onCommit(scale ? { ...created, style: { ...created.style, ...scale } } : created);
+    onCommit(created);
     setPending(null);
     // Drawing is repetitive by nature: finishing one stroke should leave the
     // pencil in hand rather than dropping back to the cursor every time.
@@ -882,7 +845,7 @@ export default function ChartDrawLayer({
     eventWindow().addEventListener("pointercancel", cleanup);
   };
 
-  /** Resize the emoji's chart-relative nominal size without moving its anchor. */
+  /** Resize the emoji in screen pixels without moving its chart anchor. */
   const beginEmojiResize = (drawing: Drawing, event: ReactPointerEvent) => {
     event.stopPropagation();
     onSelect(drawing.id);

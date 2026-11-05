@@ -66,7 +66,7 @@ test('missing trade counts are unavailable, not a fake flat aggregate-trade CVD'
 
 function paneReconciler(){
   const source=readFileSync(new URL('../src/components/ChartIndicatorPanes.tsx',import.meta.url),'utf8');
-  const code=source.slice(source.indexOf('  const cvdSeriesCacheRef ='),source.indexOf('  const groups = useSuperTrendLivePanes'));
+  const code=source.slice(source.indexOf('  const cvdSeriesCacheRef ='),source.indexOf('  const deltaGroups = useLiveDeltaPanes'));
   assert.ok(code.length>0);
   let ref;
   const run=new Function('useRef','coordinateScope','baseGroups','isCvdIndicator','cvdSeriesRegressed',

@@ -21021,6 +21021,13 @@ function Chart({
 
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
+        liveDeltaInputs={{ candles: indicatorCandles, instrument, tickSize: priceFormat.minMove,
+          theme: visibleIndicatorTheme(settings),
+          mapTime: eventChartIndicatorTimeMap ? (sourceTime) =>
+            eventChartTimeBySourceTimeRef.current.get(Math.round(sourceTime * 1000))
+              ?? eventChartIndicatorTimeMap.exact.get(Math.round(sourceTime * 1000))
+              ?? eventChartIndicatorTimeMap.uniqueSecond.get(Math.floor(sourceTime)) : undefined,
+        }}
         coordinateScope={`${chartFrameWorkKey}:${instrument}:${timeframe ?? ""}:${contractSymbol ?? ""}:${replayTimestampMs ?? "live"}`}
         liveChartKey={replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0 ? undefined : liveCandleEventKey ?? undefined}
         width={overlaySize.width}

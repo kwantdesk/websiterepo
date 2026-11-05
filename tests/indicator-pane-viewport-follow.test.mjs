@@ -27,6 +27,7 @@ function harness() {
   const jsx=(type,props,key)=>({type,key,props:props??{}});
   const mocks={'react':react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'lucide-react':new Proxy({},{get:()=>()=>null}),
     '@/components/useSuperTrendLivePanes':{useSuperTrendLivePanes:groups=>groups},
+    '@/components/useLiveDeltaPanes':{useLiveDeltaPanes:groups=>groups},
     '@/components/SuperTrendPaneLabels':{default:()=>null},'@/components/KstPanePlot':{default:()=>null},
     '@/lib/superTrendPaneScale':{SuperTrendPaneScale:class {retain(){}resolve(_key,series,domain){return domain(series);}}},
     '@/lib/chartIndicatorPaneSampling':sampling,'@/lib/chartBarWidth':barWidth,'@/lib/indicatorHistogramWidth':histogramWidth,'@/lib/paneCoordinateContinuity':coordinates,
