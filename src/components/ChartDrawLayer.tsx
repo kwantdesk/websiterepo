@@ -42,6 +42,7 @@ import { chartAnchoredEmojiScreenSize } from "@/lib/chartEmojiScale";
 // per-tool rendering, selection handles and dragging. The chart supplies the
 // coordinate system — the only thing shared with the chart.
 type Props = {
+  readOnly?: boolean;
   width: number;
   /**
    * The price scale's width. The overlay spans the whole chart element, so
@@ -110,12 +111,19 @@ const dashFor = (style: DrawLineStyle, width: number) =>
 const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "priceLabel", "flagMark"];
 
 export default function ChartDrawLayer({
+  readOnly = false,
   width, height, priceScaleWidth = 0, activeTool, emoji, keepDrawing, drawings, selectedId,
   toX, toY, fromXY, candles, volumeProfiles = {}, requireExactVolumeProfiles = false, requireExactFixedVolumeProfiles = false, volumeProfileMessages = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, projectionRevision,
-  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor, profileTheme, currentPrice,
+  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate: onUpdateDrawing, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor, profileTheme, currentPrice,
 }: Props) {
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+  // Window-level touch/drag callbacks may outlive the render that started them.
+  const onUpdate = useCallback((drawing: Drawing) => {
+    if (!readOnlyRef.current) onUpdateDrawing(drawing);
+  }, [onUpdateDrawing]);
   const svgRef = useRef<SVGSVGElement>(null);
-  const clipboardMenu = useChartDrawingClipboard({ svgRef, drawings, selectedId, toX, toY, fromXY, onCommit, onSelect });
+  const clipboardMenu = useChartDrawingClipboard({ readOnly, svgRef, drawings, selectedId: readOnly ? null : selectedId, toX, toY, fromXY, onCommit: readOnly ? undefined : onCommit, onSelect });
   const eventWindowRef = useRef<Window | null>(null);
   // Cache ownership while mounted so cleanup still targets the iframe window
   // after React has cleared the SVG ref during unmount.
@@ -142,7 +150,7 @@ export default function ChartDrawLayer({
     | null
   >(null);
 
-  const active = activeTool !== "cursor" && activeTool !== "eraser";
+  const active = !readOnly && activeTool !== "cursor" && activeTool !== "eraser";
   const spec = DRAW_TOOL_SPECS[activeTool];
   // Magnet. Snaps in PIXEL space to the nearest OHLC value of the bar under
   // the cursor, and only when that value is within reach — the old version
@@ -489,6 +497,15 @@ export default function ChartDrawLayer({
   }, [onSelect, selectedId]);
 
   const dragCleanupRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    if (!readOnly) return;
+    dragCleanupRef.current?.();
+    freehandCleanupRef.current?.();
+    dragRef.current = null;
+    freehandRef.current = false;
+    setPending(null);
+    setCursor(null);
+  }, [readOnly]);
   useEffect(() => () => { dragCleanupRef.current?.(); }, []);
   // Align the overlay inside the chart's OWN paint pass. Relying on the chart's
   // throttled ~15fps React signal made drawings lag and wobble behind the
@@ -988,6 +1005,7 @@ export default function ChartDrawLayer({
     const cleanup = () => {
       eventWindow().removeEventListener("pointermove", onMove);
       eventWindow().removeEventListener("pointerup", onUp);
+      eventWindow().removeEventListener("pointercancel", cleanup);
       dragCleanupRef.current = null;
     };
     const onUp = () => { settle(); cleanup(); };
@@ -996,9 +1014,11 @@ export default function ChartDrawLayer({
     dragCleanupRef.current = cleanup;
     eventWindow().addEventListener("pointermove", onMove);
     eventWindow().addEventListener("pointerup", onUp);
+    eventWindow().addEventListener("pointercancel", cleanup);
   };
 
   const handlePointerDown = (event: ReactPointerEvent) => {
+    if (readOnly) return;
     if (event.button !== 0) return;
     const point = localPoint(event);
     if (!point) return;
@@ -1712,7 +1732,7 @@ export default function ChartDrawLayer({
     })();
 
     if (!body) return null;
-    const interactive = !preview && !active && activeTool !== "eraser";
+    const interactive = !readOnly && !preview && !active && activeTool !== "eraser";
     // Volume profiles anchor to the exact wicks the trader clicked. A body
     // drag silently shifting both anchors was how profiles "wandered"; the
     // body now only selects, and repositioning happens through the two
@@ -1749,7 +1769,7 @@ export default function ChartDrawLayer({
       </g>
     );
 
-    const handles = !selected
+    const handles = readOnly || !selected
       ? null
       : fillMarkerHandle
       ? grabHandle(
@@ -1817,7 +1837,7 @@ export default function ChartDrawLayer({
     ? { id: "__preview__", tool: pending.tool, points: freehandRef.current ? pending.points : [...pending.points, cursor], style: previewStyle(pending.tool), text: pending.tool === "emoji" ? emoji : undefined }
     : null;
 
-  const captureActive = active || activeTool === "eraser";
+  const captureActive = !readOnly && (active || activeTool === "eraser");
   return (
     <><svg
       ref={svgRef}
@@ -1825,6 +1845,7 @@ export default function ChartDrawLayer({
       width={width}
       height={height}
       data-viewport={viewportVersion}
+      data-draw-read-only={readOnly}
       style={{ pointerEvents: "none" }}
     >
       {/*

@@ -27,6 +27,7 @@ interface Props {
   adapter: PrecisionChartAdapter;
   theme: PrecisionTheme;
   enabled?: boolean;
+  readOnly?: boolean;
   externalActiveTool?: PrecisionToolId | null;
   externalSelectionMode?: boolean;
   externalKeepDrawing?: boolean;
@@ -140,6 +141,7 @@ export default function PrecisionToolsLayer({
   adapter,
   theme,
   enabled = true,
+  readOnly = false,
   externalActiveTool = null,
   onHistoryEdit,
   externalSelectionMode = false,
@@ -455,6 +457,16 @@ export default function PrecisionToolsLayer({
   const claim = useCallback(() => { claimChartInteraction("precision-tools"); setEngaged(true); }, []);
   const release = useCallback(() => { releaseChartInteraction("precision-tools"); setEngaged(false); store.cancelDraft(); store.select([]); placedCountRef.current = 0; }, [store]);
 
+  useLayoutEffect(() => {
+    if (!readOnly) return;
+    dragRef.current = null;
+    lassoRef.current = null;
+    zoomStartRef.current = null;
+    setSelectionBox(null);
+    release();
+    if (interactionCanvasRef.current) interactionCanvasRef.current.style.pointerEvents = "none";
+  }, [readOnly, release]);
+
   const setMode = (mode: typeof snapshot.toolbar.mode) => {
     if (mode === "hand") {
       store.cancelDraft(); placedCountRef.current = 0;
@@ -481,6 +493,7 @@ export default function PrecisionToolsLayer({
   // which the toolbar is visibly closed but the chart still owns the click,
   // making a fast Buy/Sell Calculator placement appear to do nothing.
   useLayoutEffect(() => {
+    if (readOnly) { release(); return; }
     if (externalActiveTool) {
       selectTool(externalActiveTool);
       store.setToolbar((toolbar) => ({ ...toolbar, hidden: false }));
@@ -497,7 +510,7 @@ export default function PrecisionToolsLayer({
     // chart's interaction claim. It exists to draw objects placed before the
     // precision toolbar was retired; nothing here takes input any more.
     release();
-  }, [claim, externalActiveTool, externalSelectionMode, release, selectTool, store]);
+  }, [claim, externalActiveTool, externalSelectionMode, readOnly, release, selectTool, store]);
 
   useEffect(() => {
     if (appliedClearRevisionRef.current === clearRevision) return;
@@ -568,13 +581,14 @@ export default function PrecisionToolsLayer({
   // selects the object and hands the very same press to the normal
   // select-mode drag handlers through pointer capture — the Buy/Sell
   // Calculator and every other drawing can then be moved at any time.
-  const dormantGrabStateRef = useRef({ adapter, anchorAtPoint, claim, engaged, store });
-  dormantGrabStateRef.current = { adapter, anchorAtPoint, claim, engaged, store };
+  const dormantGrabStateRef = useRef({ adapter, anchorAtPoint, claim, engaged, readOnly, store });
+  dormantGrabStateRef.current = { adapter, anchorAtPoint, claim, engaged, readOnly, store };
   useEffect(() => {
     const handleDormantGrab = (event: PointerEvent) => {
       if (event.button !== 0) return;
       if ((event.target as Element | null)?.closest?.('[data-chart-drawing-ui],[data-chart-drawing-id],button,input,textarea,select')) return;
       const current = dormantGrabStateRef.current;
+      if (current.readOnly) return;
       const liveSnapshot = current.store.getSnapshot();
       if (current.engaged || liveSnapshot.toolbar.hidden || !liveSnapshot.objects.length) return;
       const canvas = interactionCanvasRef.current;
@@ -603,6 +617,7 @@ export default function PrecisionToolsLayer({
   }, []);
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (readOnly) return;
     if (!engaged || event.button !== 0) return;
     const anchor = pointerAnchor(event); if (!anchor) return;
     const point = { x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY };
@@ -696,6 +711,7 @@ export default function PrecisionToolsLayer({
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (readOnly) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     pointerRef.current = point;
@@ -779,6 +795,10 @@ export default function PrecisionToolsLayer({
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (readOnly) {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      return;
+    }
     if (lassoRef.current) {
       const box = lassoRef.current;
       const left = Math.min(box.start.x, box.end.x), right = Math.max(box.start.x, box.end.x);
@@ -843,6 +863,7 @@ export default function PrecisionToolsLayer({
 
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
+      if (readOnly) return;
       if (!engaged || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
       const meta = event.ctrlKey || event.metaKey;
       if (event.key === "Escape") { release(); return; }
@@ -856,13 +877,14 @@ export default function PrecisionToolsLayer({
     };
     const up = (event: KeyboardEvent) => {
       if (event.key === "Alt") snapDisabledRef.current = false;
-      if (event.code === "Space" && interactionCanvasRef.current) interactionCanvasRef.current.style.pointerEvents = engaged ? "auto" : "none";
+      if (event.code === "Space" && interactionCanvasRef.current) interactionCanvasRef.current.style.pointerEvents = !readOnly && engaged ? "auto" : "none";
     };
     window.addEventListener("keydown", handle); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", handle); window.removeEventListener("keyup", up); };
-  }, [chartId, engaged, onHistoryEdit, release, setActiveConfigSlot, snapshot.objects, snapshot.selectedIds, store, workspaceId]);
+  }, [chartId, engaged, onHistoryEdit, readOnly, release, setActiveConfigSlot, snapshot.objects, snapshot.selectedIds, store, workspaceId]);
 
   const clipboardMenu = useChartDrawingClipboard({
+    readOnly,
     svgRef: interactionCanvasRef, selectedId: snapshot.selectedIds[0] ?? null,
     findAt: event => {
       if ((event.target as Element | null)?.closest?.('[data-chart-drawing-id]')) return null;
@@ -908,7 +930,7 @@ export default function PrecisionToolsLayer({
   return <div className="pointer-events-none absolute inset-0 z-[66] overflow-hidden" data-precision-tools-root data-revision={revision}>
     {clipboardMenu}
     <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" aria-label="Precision Tools rendering layer" />
-    <canvas ref={interactionCanvasRef} className="absolute inset-0 touch-none" style={{ pointerEvents: engaged ? "auto" : "none", cursor: snapshot.toolbar.mode === "select" ? "crosshair" : snapshot.toolbar.mode === "hand" ? "grab" : "crosshair" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => { pointerRef.current = null; resizeCanvas(interactionCanvasRef.current, false); }} aria-label="Precision Tools interaction layer" />
+    <canvas ref={interactionCanvasRef} className="absolute inset-0 touch-none" style={{ pointerEvents: !readOnly && engaged ? "auto" : "none", cursor: snapshot.toolbar.mode === "select" ? "crosshair" : snapshot.toolbar.mode === "hand" ? "grab" : "crosshair" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => { pointerRef.current = null; resizeCanvas(interactionCanvasRef.current, false); }} aria-label="Precision Tools interaction layer" />
     {selectionBox ? <div className="pointer-events-none absolute z-[72] border border-dashed border-[#78b1ff] bg-[#4f91e9]/10" style={{ left: Math.min(selectionBox.start.x, selectionBox.end.x), top: Math.min(selectionBox.start.y, selectionBox.end.y), width: Math.abs(selectionBox.end.x - selectionBox.start.x), height: Math.abs(selectionBox.end.y - selectionBox.start.y) }} /> : null}
   </div>;
 }

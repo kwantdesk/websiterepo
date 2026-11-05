@@ -1059,6 +1059,8 @@ type WorkspacePane = {
   content: WorkspacePanelKind | null;
   /** A pane lock only pins this pane; it must never lock the whole workspace. */
   locked: boolean;
+  /** Protect drawing geometry without pinning the pane or its viewport. */
+  drawingsLocked?: boolean;
   /** Embedded GEX Map configuration (columns, exposure metrics, view mode),
    * saved and restored with the workspace. */
   gexMapState?: GexMapEmbedState;
@@ -2453,6 +2455,7 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     // Existing saved workspaces predate mixed panels and are chart panes.
     content: pane.content === null || isWorkspacePanelKind(pane.content) ? pane.content : "charts",
     locked: pane.locked === true,
+    drawingsLocked: pane.drawingsLocked === true,
     // The embedded GEX Map validates this itself on mount; carry it through
     // so saved column/metric/view choices survive workspace loads.
     ...(pane.gexMapState && typeof pane.gexMapState === "object" ? { gexMapState: pane.gexMapState } : {}),
@@ -9893,6 +9896,7 @@ function WorkspaceChartPaneComponent({
           crosshairSyncScope={crosshairSyncScope}
           crosshairLinked={crosshairLinked}
           candlesVisible={candlesVisible}
+          drawingsLocked={pane.drawingsLocked === true}
           viewportSyncGroup={viewportSyncGroup}
           viewportSyncRole={viewportSyncRole}
           keyboardActive={active}
@@ -19120,6 +19124,25 @@ export default function KwantifyWorkspace({
     );
   }
 
+  function renderChartDrawingLockButton(pane: WorkspacePane) {
+    const locked = pane.drawingsLocked === true;
+    const Icon = locked ? Lock : Unlock;
+    return (
+      <button
+        type="button"
+        data-chart-drawing-lock
+        title={locked ? "Unlock this chart's drawings and tools" : "Lock this chart's drawings and tools"}
+        aria-label={locked ? "Unlock chart drawings and tools" : "Lock chart drawings and tools"}
+        aria-pressed={locked}
+        className={"flex h-7 w-7 shrink-0 items-center justify-center rounded-lg " + (locked ? "bg-primary/15 text-primary" : "text-muted hover:bg-surface hover:text-primary")}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => updateWorkspacePane(pane.id, { drawingsLocked: !locked })}
+      >
+        <Icon className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
+
   function renderChartWithOrderTicket(paneId: string, chart: React.ReactNode) {
     return (
       <div className="flex h-full min-h-0 min-w-0">
@@ -19667,6 +19690,7 @@ export default function KwantifyWorkspace({
           </div>
           <div className="flex items-center gap-1">
             {isWorkspaceChartKind(pane.content) ? renderChartTradeButton(pane) : null}
+            {isWorkspaceChartKind(pane.content) ? renderChartDrawingLockButton(pane) : null}
             {isWorkspaceChartKind(pane.content) ? (
               <button
                 type="button"
@@ -19851,6 +19875,7 @@ export default function KwantifyWorkspace({
               {floating.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
             </button>
             {isWorkspaceChartKind(pane.content) ? renderChartTradeButton(pane) : null}
+            {isWorkspaceChartKind(pane.content) ? renderChartDrawingLockButton(pane) : null}
             {isWorkspaceChartKind(pane.content) ? (
               <button
                 type="button"

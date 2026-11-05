@@ -812,6 +812,7 @@ interface ChartProps {
    * so a session can be framed off profiles and levels alone.
    */
   candlesVisible?: boolean;
+  drawingsLocked?: boolean;
   /** Per-pane candle style and colours; null means follow the chart theme. */
   candleSettings?: Record<string, unknown> | null;
   keyboardActive?: boolean;
@@ -3257,6 +3258,7 @@ function Chart({
   quietLoading = false,
   crosshairLinked = false,
   candlesVisible = true,
+  drawingsLocked = false,
   candleSettings = null,
   keyboardActive = true,
   workspaceId = "default-workspace",
@@ -3736,7 +3738,7 @@ function Chart({
   // rather than to whatever was current when the effect was created.
   const chartingDrawingsRef = useRef<Drawing[]>(chartingDrawings);
   chartingDrawingsRef.current = chartingDrawings;
-  const drawingUndo = useChartDrawingUndo(chartContainerRef, `${chartInstanceId}:${instrument}`, keyboardActive);
+  const drawingUndo = useChartDrawingUndo(chartContainerRef, `${chartInstanceId}:${instrument}`, keyboardActive && !drawingsLocked);
   const recordPrecisionDrawingMove = useCallback((before: PrecisionObject[], after: PrecisionObject[], restore: (objects: PrecisionObject[]) => void) => {
     drawingUndo.record("precision", before, after, restore);
   }, [drawingUndo]);
@@ -3774,7 +3776,8 @@ function Chart({
   const [positionSettingsDrawingId, setPositionSettingsDrawingId] = useState<string | null>(null);
   const [drawingInteraction, setDrawingInteraction] = useState<DrawingInteraction | null>(null);
   const [hideDrawings, setHideDrawings] = useState(false);
-  const [drawingsLocked, setDrawingsLocked] = useState(false);
+  const drawingsLockedRef = useRef(drawingsLocked);
+  drawingsLockedRef.current = drawingsLocked;
   const [magnetMode, setMagnetMode] = useState<"off" | "weak" | "medium" | "strong">("medium");
   const magnetModeRef = useRef<"off" | "weak" | "medium" | "strong">("medium");
   // Holds pointer-speed history and the current lock so the magnet stays
@@ -4022,6 +4025,7 @@ function Chart({
     onChartingDrawingsChange?.(normalized, { clearAll });
   }, [onChartingDrawingsChange]);
   function updateSvgDrawing(drawing: Drawing) {
+    if (drawingsLockedRef.current) return;
     const previous = chartingDrawingsRef.current.find(({ id }) => id === drawing.id);
     if (!previous || JSON.stringify(previous) === JSON.stringify(drawing)) return;
     drawingUndo.record("svg:" + drawing.id, previous, drawing, value => {
@@ -4036,6 +4040,7 @@ function Chart({
   useEffect(() => {
     if (!drawSelectedId) return;
     const onKey = (event: KeyboardEvent) => {
+      if (drawingsLockedRef.current) return;
       if (event.key !== "Backspace" && event.key !== "Delete") return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
@@ -13903,6 +13908,29 @@ function Chart({
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [chartInstanceId, drawings, instrument]);
 
+  useLayoutEffect(() => {
+    professionalDrawingManagerRef.current?.setInteractionEnabled(!drawingsLocked);
+    if (!drawingsLocked) return;
+    selectedToolRef.current = "cursor";
+    setSelectedTool("cursor");
+    setDrawTool("cursor");
+    setDrawingInteraction(null);
+    setDraftDrawing(null);
+    setSelectedDrawingId(null);
+    setDrawSelectedId(null);
+    setPositionSettingsDrawingId(null);
+    setShowDrawingSettings(false);
+    setDrawSettingsOpen(false);
+    setDrawTextInput(null);
+    setTextEditor(null);
+    professionalBrushDrawingRef.current = null;
+    professionalPendingAnchorsRef.current = [];
+    if (professionalDrawingPreviewRef.current) {
+      professionalDrawingManagerRef.current?.removeDrawing(professionalDrawingPreviewRef.current.id);
+      professionalDrawingPreviewRef.current = null;
+    }
+  }, [chartReadyRevision, drawingsLocked]);
+
   useEffect(() => {
     selectedToolRef.current = selectedTool;
     const manager = professionalDrawingManagerRef.current;
@@ -14391,6 +14419,7 @@ function Chart({
   }
 
   function handleDrawingPointerDown(event: React.PointerEvent<SVGSVGElement>) {
+    if (drawingsLockedRef.current) return;
     if (event.button !== 0) return;
 
     const point = getPointerPoint(event.clientX, event.clientY, selectedTool !== "cursor");
@@ -14469,6 +14498,7 @@ function Chart({
   }
 
   function handleDrawingPointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    if (drawingsLockedRef.current) return;
     latestPointerRef.current = { x: event.clientX, y: event.clientY };
     if (drawingInteraction) {
       const point = getPointerPoint(event.clientX, event.clientY, false);
@@ -14554,6 +14584,7 @@ function Chart({
   }
 
   function handleDrawingPointerUp(event: React.PointerEvent<SVGSVGElement>) {
+    if (drawingsLockedRef.current) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -14924,7 +14955,7 @@ function Chart({
               height={Math.abs(Math.max(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom)
                 - Math.min(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom)) + hitPadding * 2}
               fill="transparent"
-              style={{ pointerEvents: "all", cursor: drawingsLocked ? "default" : "move" }}
+              style={{ pointerEvents: drawingsLocked ? "none" : "all", cursor: drawingsLocked ? "default" : "move" }}
             />
           );
         }
@@ -15659,6 +15690,7 @@ function Chart({
     };
     const drawingManager = new DrawingManager();
     drawingManager.attach(chart, candleSeries, chartContainerRef.current);
+    drawingManager.setInteractionEnabled(!drawingsLockedRef.current);
     professionalDrawingManagerRef.current = drawingManager;
     drawingManager.setActiveTool(
       selectedToolRef.current === "selection" || precisionToolForDrawingTool(selectedToolRef.current) || isSvgPositionTool(selectedToolRef.current)
@@ -15807,6 +15839,7 @@ function Chart({
     };
 
     const handleProfessionalDrawingClick = (event: MouseEvent) => {
+      if (drawingsLockedRef.current) return;
       if (isDrawingUiTarget(event)) return;
       const tool = selectedToolRef.current;
       if (tool === "brush") {
@@ -15885,6 +15918,7 @@ function Chart({
     };
 
     const handleProfessionalDrawingMove = (event: MouseEvent) => {
+      if (drawingsLockedRef.current) return;
       const tool = selectedToolRef.current;
       const brush = professionalBrushDrawingRef.current;
       if (tool === "brush" && brush) {
@@ -15906,6 +15940,7 @@ function Chart({
     };
 
     const handleProfessionalDrawingPointerDown = (event: MouseEvent) => {
+      if (drawingsLockedRef.current) return;
       const tool = selectedToolRef.current;
       if (isDrawingUiTarget(event) || (tool !== "eraser" && !isProfessionalDrawingTool(tool))) return;
       if (tool === "brush") {
@@ -15931,6 +15966,7 @@ function Chart({
     };
 
     const handleProfessionalDrawingPointerUp = (event: MouseEvent) => {
+      if (drawingsLockedRef.current) return;
       const brush = professionalBrushDrawingRef.current;
       if (!brush) return;
       const point = drawingPointFromMouse(event);
@@ -18092,6 +18128,8 @@ function Chart({
         return;
       }
 
+      if (drawingsLockedRef.current) return;
+
       const commandKey = event.ctrlKey || event.metaKey;
       // Sidebar drawing shortcuts are handled once by the focused SVG layer.
       // Legacy drawing handlers must not paste into every mounted panel.
@@ -18969,6 +19007,7 @@ function Chart({
           that owns its own layout space, so chart content, candles and
           overlays begin to its right instead of rendering underneath it. */}
       {toolbarEnabled ? (
+        <div className="contents" inert={drawingsLocked}>
         <ChartDrawToolbar
           activeTool={drawTool}
           keepDrawing={drawKeepDrawing}
@@ -18991,11 +19030,13 @@ function Chart({
           }}
           onClearAll={clearAllChartDrawings}
         />
+        </div>
       ) : null}
       <div
         ref={chartContainerRef}
         className="relative h-full min-w-0 flex-1 overflow-hidden"
         data-chart-instance-id={chartInstanceId}
+        data-chart-drawings-locked={drawingsLocked}
         data-chart-context-menu="full"
         data-volume-profile-count={renderedVolumeProfiles.length}
         data-volume-profile-provider={renderedVolumeProfiles.at(-1)?.provider ?? "none"}
@@ -19054,6 +19095,7 @@ function Chart({
       {toolbarEnabled ? (
         <>
           <ChartDrawLayer
+            readOnly={drawingsLocked}
             key={`drawings:${precisionClearRevision}`}
             width={overlaySize.width}
             height={overlaySize.height}
@@ -21053,6 +21095,7 @@ function Chart({
       {toolbarEnabled && chartVisualReady ? (
         <PrecisionToolsBoundary>
           <PrecisionToolsLayer
+            readOnly={drawingsLocked}
             workspaceId={workspaceId}
             chartId={`${chartInstanceId}:${normalizePaperSymbol(contractSymbol ?? instrument)}`}
             onHistoryEdit={recordPrecisionDrawingMove}

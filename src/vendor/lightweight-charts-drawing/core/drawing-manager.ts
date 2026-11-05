@@ -44,6 +44,7 @@ export class DrawingManager {
 
   // Interaction state
   private _activeTool: string | null = null;
+  private _interactionEnabled = true;
   private _isDragging: boolean = false;
   private _dragAnchorIndex: number | null = null;
   private _dragWholeDrawing: boolean = false;
@@ -287,6 +288,26 @@ export class DrawingManager {
     this.emit('tool:changed', { toolType: toolType || undefined });
   }
 
+  /** Read-only presentation: keep rendering, but leave gestures to the chart. */
+  setInteractionEnabled(enabled: boolean): void {
+    this._interactionEnabled = enabled;
+    if (enabled) return;
+    if (this._dragAnimationFrame !== null) window.cancelAnimationFrame(this._dragAnimationFrame);
+    this._dragAnimationFrame = null;
+    this._pendingDragPoint = null;
+    this._isDragging = false;
+    this._dragAnchorIndex = null;
+    this._dragWholeDrawing = false;
+    this._dragStartAnchor = null;
+    this._dragOriginalAnchorsByDrawing.clear();
+    this._isMarqueeSelecting = false;
+    this._marqueeStart = null;
+    this._marqueeCurrent = null;
+    this._suppressNextClick = false;
+    this.hideMarqueeElement();
+    this.deselectAll();
+  }
+
   /**
    * Get the active drawing tool
    */
@@ -334,6 +355,7 @@ export class DrawingManager {
   // ============ Event Handling ============
 
   private handleClick(params: MouseEventParams): void {
+    if (!this._interactionEnabled) return;
     if (this._suppressNextClick) {
       this._suppressNextClick = false;
       return;
@@ -354,6 +376,7 @@ export class DrawingManager {
   }
 
   private handleMouseDown(event: MouseEvent): void {
+    if (!this._interactionEnabled) return;
     const point = this.getPointFromEvent(event);
     if (!point) return;
 
@@ -428,6 +451,7 @@ export class DrawingManager {
   }
 
   private handleDoubleClick(event: MouseEvent): void {
+    if (!this._interactionEnabled) return;
     if (this._activeTool) return;
     const point = this.getPointFromEvent(event);
     if (!point) return;
@@ -442,6 +466,7 @@ export class DrawingManager {
   }
 
   private handleMouseMove(event: MouseEvent): void {
+    if (!this._interactionEnabled) return;
     if (this._isMarqueeSelecting && this._marqueeStart) {
       const point = this.getPointFromEvent(event);
       if (!point) return;
@@ -468,6 +493,7 @@ export class DrawingManager {
   }
 
   private applyDragPoint(point: Point): void {
+    if (!this._interactionEnabled) return;
     if (!this._isDragging || !this._selectedId) return;
     const drawing = this._drawings.get(this._selectedId);
     if (!drawing) return;

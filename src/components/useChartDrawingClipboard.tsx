@@ -13,6 +13,7 @@ const activeLayers = new WeakMap<Document, string>();
 const layerHits = new WeakMap<Element, Map<string, (event: MouseEvent) => string | null>>();
 
 export function useChartDrawingClipboard(args: {
+  readOnly?: boolean;
   svgRef: RefObject<SVGSVGElement | HTMLCanvasElement | null>;
   drawings?: Drawing[]; selectedId: string | null;
   toX?: (time: number) => number | null; toY?: (price: number) => number | null;
@@ -33,6 +34,7 @@ export function useChartDrawingClipboard(args: {
   };
   const paste = () => {
     const current = live.current;
+    if (current.readOnly) return false;
     if (current.clipboard) return current.clipboard.paste();
     const drawing = pasteChartDrawing((source, ordinal) => {
       const anchor = source.points[0];
@@ -52,8 +54,9 @@ export function useChartDrawingClipboard(args: {
     const container = (svg?.closest?.('[data-chart-instance-id]') ?? svg?.parentElement) as HTMLElement | null;
     if (!svg || !container) return;
     const doc = svg.ownerDocument;
-    const hasClipboard = () => live.current.clipboard?.has() ?? hasChartDrawingClipboard();
+    const hasClipboard = () => !live.current.readOnly && (live.current.clipboard?.has() ?? hasChartDrawingClipboard());
     const findAt = (event: MouseEvent) => {
+      if (live.current.readOnly) return null;
       if (live.current.findAt) return live.current.findAt(event);
       const hit = (event.target as Element | null)?.closest?.('[data-chart-drawing-id]');
       return hit && svg.contains(hit) ? hit.getAttribute('data-chart-drawing-id') : null;
