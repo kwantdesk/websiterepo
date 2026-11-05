@@ -1,0 +1,8 @@
+import React,{useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import Chart from '@/components/Chart';
+import {defaultChartSettings} from '@/lib/chartSettings';
+const start=1793700000000;
+const candles=Array.from({length:120},(_,i)=>({timestamp:start+i*60000,open:28300+i*.25,close:28300.25+i*.25,high:28301+i*.25,low:28299+i*.25,volume:100}));
+function Fixture(){const [state,setState]=useState({width:800,floating:false,footprint:false});Object.assign(window,{resizeAxisFixture:setState});return <div data-panel style={{width:state.width,height:680}}><div className={'kwant-chart-pane-scrollport flex h-full min-h-0 flex-col border border-border '+(state.floating?'kwant-floating-chart-surface':'')}><div className="kwant-workspace-pane-header flex shrink-0 items-center justify-between px-2.5"><div className="flex flex-1 items-center gap-2">{['FOOTPRINT','NQ','1m'].map(label=><button key={label} style={{height:28,padding:8}}>{label}</button>)}</div><div className="flex items-center gap-1">{['Trade','Lock','Link','Crosshair','Refresh','Settings','Duplicate','Float','Close'].map(label=><button key={label} style={{height:28,width:32}} title={label}>{label[0]}</button>)}</div></div><div className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden"><Chart instrument="NQ" chartInstanceId="axis-fit" candles={candles} settings={defaultChartSettings} timeframe="1m" orderFlowHistoryReady={true} indicators={state.footprint?[{instanceId:'fixture-footprint',indicatorId:'deep-print-footprint',enabled:true,settings:{}}]:[]} /></div></div></div>}
+createRoot(document.getElementById('root')!).render(<Fixture/>);
