@@ -12394,19 +12394,6 @@ export default function KwantifyWorkspace({
     ),
     [chartPlacementSuspended, orderSide, orderType, pendingChartOrder, rightPanel, selectedOrderQuantity, tradingUnlocked],
   );
-  useEffect(() => {
-    if (!inlineTicketOpen) return;
-    const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Element) {
-        if (event.target.closest("[data-inline-ticket], [data-chart-trade], [data-chart-order-confirmation]")) return;
-        if (armedOrder && event.target.closest("[data-inline-ticket-chart]")) return;
-      }
-      setInlineTicketPaneId(null);
-      setRightPanel(null);
-    };
-    document.addEventListener("pointerdown", dismiss, true);
-    return () => document.removeEventListener("pointerdown", dismiss, true);
-  }, [armedOrder, inlineTicketOpen]);
   const selectedPaperLeverage = selectedPaperTradingAccount
     ? parseLeverage(selectedPaperTradingAccount.leverage)
     : 1;
