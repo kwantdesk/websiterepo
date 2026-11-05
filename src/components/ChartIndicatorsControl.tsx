@@ -70,6 +70,7 @@ import {
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
 import BounceGexMapSettings, { isBounceMirrorPresentationKey } from "@/components/gex-map/BounceGexMapSettings";
+import BounceGexMapColours from "@/components/gex-map/BounceGexMapColours";
 import { defaultTpoSettings, tpoSettingsToRecord } from "@/lib/tpo/settings";
 import { DAILY_TPO_SESSION_PRESETS, selectedTpoQuickSessions, toggleTpoQuickSession } from "@/lib/tpo/quickSessions";
 import KstIndicatorSettings from "@/components/KstIndicatorSettings";
@@ -4176,6 +4177,12 @@ export default function ChartIndicatorsControl({
 
               {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
                 <BounceGexMapSettings instrument={instrument} settings={settingsInstance.settings ?? {}} onChange={(patch) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...patch } }))} />
+              ) : null}
+
+              {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
+                <div data-settings-section="Colours">
+                  <BounceGexMapColours />
+                </div>
               ) : null}
 
               {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror === false ? (
