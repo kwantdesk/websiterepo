@@ -455,7 +455,8 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
             "olisa-chart-settings",
           )
         : false;
-      const profileChartSettings = hasStoredChartSettings ? null : extractUserChartSettings(user);
+      const profileChartSettings = hydrated && !hasStoredChartSettings && !hydrated.snapshot.values["olisa-theme"]
+        ? extractUserChartSettings(user) : null;
       if (!hasStoredChartSettings && profileChartSettings) {
         setChartSettings(profileChartSettings);
         setThemeSettings((current) => mergeChartSettingsIntoTheme(current, profileChartSettings));

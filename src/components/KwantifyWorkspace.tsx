@@ -15239,7 +15239,8 @@ export default function KwantifyWorkspace({
             "olisa-chart-settings",
           )
         : false;
-      const profileChartSettings = hasStoredChartSettings ? null : extractUserChartSettings(user);
+      const profileChartSettings = hydrated && !hasStoredChartSettings && !hydrated.snapshot.values["olisa-theme"]
+        ? extractUserChartSettings(user) : null;
       if (!hasStoredChartSettings && profileChartSettings) {
         saveStoredChartSettings(profileChartSettings);
         const activeSettings = loadScopedChartSettings(chartWorkspaceScopeRef.current);
@@ -17109,7 +17110,10 @@ export default function KwantifyWorkspace({
     // Restore the workspace's saved look first: the overall theme and custom
     // palettes it was saved with win over whatever theme is currently active,
     // so an old workspace always comes back exactly as it was designed.
-    if (preset.theme) saveTheme(preset.theme);
+    if (preset.theme) {
+      const palette = preset.chartSettings ? normalizeChartSettings(preset.chartSettings) : undefined;
+      saveTheme(preset.theme, palette?.themeLinked ? palette : undefined);
+    }
     if (preset.gexMapPalette) saveGexMapPalette(preset.gexMapPalette);
     const panes = preset.panes.length ? preset.panes : defaultWorkspacePanes(chartWorkspaceScopeRef.current);
     const normalizedTree = normalizeWorkspaceLayoutNode(
@@ -17139,7 +17143,6 @@ export default function KwantifyWorkspace({
       setChartSettings(nextChartSettings);
       setDraftChartSettings(nextChartSettings);
       setChartSettingsSnapshot(nextChartSettings);
-      if (chartWorkspaceScopeRef.current !== "algo") saveStoredChartSettings(nextChartSettings);
       saveScopedChartSettings(chartWorkspaceScopeRef.current, nextChartSettings);
     }
     if (preset.indicators) {

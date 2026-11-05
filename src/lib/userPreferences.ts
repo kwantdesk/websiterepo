@@ -4,6 +4,7 @@ import { isTrackedStorageKey } from "./accountPreferenceKeys.ts";
 export { isTrackedStorageKey } from "./accountPreferenceKeys.ts";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { applyTheme } from "./theme.ts";
+import { reconcileThemeChoice } from "./themeChoice.ts";
 import { retainLocalChartAppearance } from "./chartSettings.ts";
 import { writeProtectedItem } from "./browserStorageQuota.ts";
 import { inFlightGexWorkspace } from "./gexDataPreferenceOwnership.ts";
@@ -413,6 +414,10 @@ export async function hydrateUserPreferences(
   if (localPreferencesBelongToUser) selected = { ...selected,
     values: mergeWorkspacePresetPreferences(current.values, latest.values, selected.values,
       mergeDrawingClearBarriers(latest.values, selected.values, selected.values)) };
+  selected = { ...selected, values: reconcileThemeChoice(
+    selected.values, selected.values, cloud?.values ?? {}, scoped?.values ?? {},
+    localPreferencesBelongToUser || (!activePreferenceOwner && !legacyPreferenceOwner) ? latest.values : {},
+  ) };
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
   applyBrowserPreferences(selected, user.id);
   applyTheme();

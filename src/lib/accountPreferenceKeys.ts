@@ -1,6 +1,7 @@
 const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:custom-themes:v1",
   "olisa-theme",
+  "kwantdesk:theme-choice:v1",
   "olisa-chart-settings",
   "kwantdesk:chart-workspace-settings:v1",
   "olisa-chart-defaults",

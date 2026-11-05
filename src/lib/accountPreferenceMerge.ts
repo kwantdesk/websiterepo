@@ -1,3 +1,4 @@
+import { reconcileThemeChoice } from './themeChoice.ts';
 import { mergeDrawingClearBarriers } from './drawingClearBarriers';
 import { mergeWorkspacePresetPreferences } from './workspacePresetPreferences';
 import type { UserPreferenceSnapshot } from './userPreferences';
@@ -201,6 +202,7 @@ export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, loca
       values[key] = JSON.stringify(mergeById(parse(base.values[key]) ?? [], parse(local.values[key]) ?? [], parse(remote.values[key]) ?? []));
     } else values[key] = local.values[key];
   }
+  values = reconcileThemeChoice(values, remote.values, base.values, local.values);
   values = mergeDrawingClearBarriers(local.values, remote.values, values);
   values = mergeWorkspacePresetPreferences(base.values, local.values, remote.values, values);
   return { version: 1, complete: true, updatedAt: same(values, remote.values) ? remote.updatedAt : new Date().toISOString(), values };

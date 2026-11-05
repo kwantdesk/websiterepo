@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { saveTheme, resetTheme, defaultTheme } from "../src/lib/theme.ts";
+import { serializeThemeChoice, THEME_CHOICE_KEY } from "../src/lib/themeChoice.ts";
+import { mergeAccountPreferenceChanges } from "../src/lib/accountPreferenceMerge.ts";
 import { themePresets } from "../src/lib/themePresets.ts";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, defaultChartSettings, chartSettingsForTheme, mergeChartSettingsIntoTheme } from "../src/lib/chartSettings.ts";
 import { resolveCandleSeriesColors } from "../src/lib/candleStyle.ts";
@@ -94,6 +96,7 @@ test("a newer account theme replaces an older device theme along with chart sett
   const cloudChart = { ...chartSettingsForTheme(oldTheme, defaultChartSettings), timezone: "Europe/London" };
   const snapshot = { version: 1, complete: true, updatedAt: "2099-01-01T00:00:00Z", values: {
     "olisa-theme": JSON.stringify(oldTheme), [CHART_SETTINGS_STORAGE_KEY]: JSON.stringify(cloudChart),
+    [THEME_CHOICE_KEY]: serializeThemeChoice(store.get(THEME_CHOICE_KEY), JSON.stringify(oldTheme), cloudChart),
     ...Object.fromEntries(runtimeKeys.map((key) => [key, JSON.stringify(cloudChart)])),
   } };
   await hydrateUserPreferences(cloudClient(snapshot), { id: "owner", user_metadata: {} });
@@ -172,4 +175,40 @@ test("failed cloud saves throw and retain the prior acknowledged base", async ()
   const client={from(){const chain={select(){return chain},eq(){return chain},async maybeSingle(){return {data:null,error:{code:'offline'}}}};return chain;}};
   await assert.rejects(saveUserPreferences(client,'owner',{...base,values:{'olisa-chart-workspace-layout':'quad'}}));
   assert.equal(readScopedPreferences('owner').values['olisa-chart-workspace-layout'],'single');
+});
+
+test("a newer layout revision cannot rewind the selected theme or its wick colours", async () => {
+  const { store } = browser();
+  const chosen = themePresets[1].colors;
+  const old = themePresets[2].colors;
+  store.set("kwantdesk:active-preferences-owner:v1", "owner");
+  saveTheme(chosen, { ...chartSettingsForTheme(chosen, defaultChartSettings), wickUpColor: "#AABBCC" });
+  const local = { version: 1, complete: true, updatedAt: "2026-11-05T00:00:00Z", values: Object.fromEntries(store) };
+  const remote = { ...local, updatedAt: "2099-01-01T00:00:00Z", values: {
+    "olisa-theme": JSON.stringify(old),
+    [CHART_SETTINGS_STORAGE_KEY]: JSON.stringify({ ...chartSettingsForTheme(old, defaultChartSettings), timezone: "UTC" }),
+    "olisa-chart-workspace-layout": "quad",
+  } };
+  const merged = mergeAccountPreferenceChanges(local, local, remote);
+  assert.equal(merged.values["olisa-theme"], JSON.stringify(chosen));
+  await hydrateUserPreferences(cloudClient(remote), { id: "owner", user_metadata: {} });
+  assert.equal(store.get("olisa-theme"), JSON.stringify(chosen));
+  const chart = JSON.parse(store.get(CHART_SETTINGS_STORAGE_KEY));
+  assert.equal(chart.backgroundColor, chosen.chartBackground);
+  assert.equal(chart.wickUpColor, "#AABBCC");
+  assert.equal(chart.timezone, "UTC");
+  assert.equal(store.get("olisa-chart-workspace-layout"), "quad");
+});
+
+test("an explicit reset survives a later stale snapshot and cannot leak across accounts", async () => {
+  const { store } = browser();
+  store.set("kwantdesk:active-preferences-owner:v1", "owner");
+  saveTheme(themePresets[1].colors);
+  const old = { version: 1, complete: true, updatedAt: "2099-01-01T00:00:00Z", values: Object.fromEntries(store) };
+  resetTheme();
+  await hydrateUserPreferences(cloudClient(old), { id: "owner", user_metadata: {} });
+  assert.equal(store.has("olisa-theme"), false);
+  assert.equal(JSON.parse(store.get(CHART_SETTINGS_STORAGE_KEY)).backgroundColor, defaultTheme.chartBackground);
+  await hydrateUserPreferences(cloudClient(old), { id: "other", user_metadata: {} });
+  assert.equal(store.get("olisa-theme"), old.values["olisa-theme"]);
 });
