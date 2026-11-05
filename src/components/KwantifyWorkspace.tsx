@@ -6499,8 +6499,7 @@ function WorkspaceChartPaneComponent({
       }
 
       const publishExecutions = () => {
-        if (needsOrderFlowHistory
-          && (footprintLiveActive || instantTapeLiveActive || auctionGapLiveActive || bigContractsLiveActive)) {
+        if (needsOrderFlowHistory) {
           window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT, {
             detail: {
               key: pane.id,

@@ -26,6 +26,14 @@ export class LiveDeltaPaneModel {
     const limit = Math.max(4000, this.source?.length ?? 0);
     if (this.history.length > limit) this.history = this.history.slice(-limit);
   }
+  observeSnapshot(candles: Candle[]) {
+    if (!candles.length || (candles.at(-1)!.timestamp < (this.history.at(-1)?.timestamp ?? -Infinity))) return;
+    // A coalesced batch may span more than four second/event bars. Keep every
+    // canonical bar in the study window, not just a sampled price tail.
+    this.live = mergeLiveIndicatorTail(candles.slice(-256), this.live);
+    const limit = Math.max(4000, this.source?.length ?? 0);
+    this.history = mergeLiveIndicatorTail(candles.slice(-limit), this.live);
+  }
   calculate(group: LiveDeltaGroup, inputs: LiveDeltaInputs) {
     if (!isLiveDeltaPane(group.indicatorId)) return group.series;
     const series = calculateIndicatorSeries({ indicatorId: group.indicatorId, instanceId: group.key,

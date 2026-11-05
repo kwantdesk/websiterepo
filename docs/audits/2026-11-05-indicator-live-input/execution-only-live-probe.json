@@ -1,0 +1,24 @@
+{
+  "at": "2026-11-05T09:32:16.395Z",
+  "transportStatus": 200,
+  "seedCount": 128,
+  "seedAsOf": 1793871127947,
+  "batchCount": 5,
+  "recordCount": 7,
+  "lastExecution": 1793871135754,
+  "cvdValueChanges": 5,
+  "lastCvdValue": 120,
+  "executionOnlyPaneChanges": 5,
+  "lastPaneValue": 120,
+  "paneMatchesEngine": true,
+  "observations": [
+    {
+      "status": "checking",
+      "at": "2026-11-05T09:32:07.852Z"
+    },
+    {
+      "status": "connected",
+      "at": "2026-11-05T09:32:09.147Z"
+    }
+  ]
+}

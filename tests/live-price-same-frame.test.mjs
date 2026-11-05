@@ -20,7 +20,7 @@ function fixture(eventBased=false, studies=false){
     candleSeriesRef:ref({update:data=>calls.push(data)}),lastRenderedCandleTimeRef:ref(null),lastRenderedSourceTimestampRef:ref(null),
     heikinAshiActiveRef:ref(false),liveFootprintEnabledRef:ref(false),recordChartTickPaint:()=>{},
     eventSourceTimeByChartTimeRef:ref(new Map()),eventChartTimeBySourceTimeRef:ref(new Map()),
-    volumeIndicatorEnabled:studies,nonFootprintOrderFlowIndicatorEnabled:studies,liveVolumeSampleTimerRef:ref(null),pendingLiveVolumeCandleRef:ref([]),
+    volumeIndicatorEnabled:studies,nonFootprintOrderFlowIndicatorEnabled:studies,nonFootprintIndicatorSamplingEnabled:studies,liveVolumeSampleTimerRef:ref(null),pendingLiveVolumeCandleRef:ref([]),
     keyboardActive:true,mergeLiveIndicatorTail,startTransition:fn=>fn(),sample:[],setSampledIndicatorCandles:fn=>{context.sample=typeof fn==='function'?fn(context.sample):fn;},
     window:{setTimeout:fn=>{const id=++sequence;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id),addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name),requestAnimationFrame:fn=>{const id=++sequence;frames.set(id,fn);return id;},cancelAnimationFrame:id=>frames.delete(id)},
   });
@@ -58,4 +58,9 @@ test('actual live CVD sampler retains final closing flow and updates the next ca
  f.send(flow(120000,9,4),true);
  assert.equal(f.sample().at(-1).deltaClose,5);
  assert.equal(f.context.pendingLiveVolumeCandleRef.current.length,2,'tail survives until hydration uses it');
+});
+
+test('live input capture also runs for ordinary indicators without a Volume or CVD pane',()=>{
+ const f=fixture();f.context.nonFootprintIndicatorSamplingEnabled=true;f.context.sample=[bar(60000,100)];
+ f.send(bar(60000,105),true);assert.equal(f.sample().at(-1).close,105);
 });

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { LIVE_CHART_CANDLE_EVENT, type LiveChartCandleDetail } from "@/lib/chartLiveEvents";
+import { LIVE_CHART_CANDLE_EVENT, LIVE_CHART_EXECUTION_EVENT, type LiveChartCandleDetail, type LiveChartExecutionDetail } from "@/lib/chartLiveEvents";
 import { deltaPaneIdentity, isLiveDeltaPane, LIVE_DELTA_PANE_INTERVAL_MS, LiveDeltaPaneModel, type LiveDeltaGroup, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
 
 /** Only the lower panes rerender. Busy profile/footprint transitions in Chart
@@ -40,10 +40,23 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
       model.observe(detail.candle);
       schedule();
     };
+    const receiveExecutions = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
+      if (!detail || detail.key !== chartKey || !detail.candles?.length) return;
+      // Use canonical execution-backed bars, independently of price-paint
+      // coalescing. Do not reconstruct delta from price or add the tape twice.
+      const latest = current.current.inputs;
+      if (!latest) return;
+      model.hydrate(latest.candles);
+      model.observeSnapshot(detail.candles);
+      schedule();
+    };
     window.addEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+    window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receiveExecutions);
     schedule();
     return () => {
       window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+      window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receiveExecutions);
       if (timer !== null) clearTimeout(timer);
       hydrate.current = null;
     };

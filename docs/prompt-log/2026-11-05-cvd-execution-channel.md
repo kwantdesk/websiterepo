@@ -1,0 +1,16 @@
+# Indicator live-input follow-up — 5 November 2026
+
+Owner reports CVD and Delta still not populating live and expects all indicators to receive live inputs. Prior release 9e83d322 added a local pane subscriber but did not change the workspace execution-channel publication guard. No owner browser used. No gateway, terminal or subscription restart, account/order/workspace changes or new provider requests.
+
+## Code omissions repaired
+- Workspace published LIVE_CHART_EXECUTION_EVENT only when Footprint, Instant Tape, Auction Gap or Big Contracts was enabled. CVD/Delta-only panes were excluded. Publish it for every pane requiring order-flow input, using the already-shared tape and canonical bar array; no new network polling.
+- Local CVD/Delta panes now consume those canonical bar snapshots directly as well as candle paint notifications. Both represent totals, not increments: receiving both cannot double-count. Complete study-window snapshots preserve every bar in coalesced batches instead of only the last four. Replay and scope isolation retained.
+- Generic Chart sampler captured the forming candle only for Volume/order-flow studies. A standalone moving average/ordinary study could keep recomputing an older prop array while native price moved. Capture forming input for every enabled non-Footprint study and merge it into the regular sampler. Volume remains bounded at250ms when active, order-flow750ms, other study snapshots1000ms; expensive full indicator recomputation does not run per execution. Existing study-specific confirmed-bar/remote-data semantics remain intact.
+
+## Validation
+-54 targeted tests pass, including actual workspace publisher guard with CVD-only flags, execution-only hook delivery over four candles without price-paint events, duplicate channel delivery,20-bar coalesced delivery, actual ordinary MA sampler using a forming close, viewport/axis behavior, replay, CVD continuity and stream handoff.
+- Scoped lint for modified local hook/model passes. Large Chart/Workspace source is verified by full isolated production build including TypeScript.
+- Live read-only signed VPS-edge probe using the real execution decoder/engine, actual candle aggregation and the updated hook harness: HTTP200,128 seed records,5 incremental batches/7 new prints,5 CVD changes and5 pane changes, identical final CVD120. Parent input stayed at the seed snapshot; only canonical execution events drove subsequent pane updates. See docs/audits/2026-11-05-indicator-live-input/execution-only-live-probe.json. Harness is Node with DOM/hook substitutes; this does not prove owner-tab receipt, browser display latency or all catalogue tools' live semantics.
+- Public diagnostics at investigation showed deployed prior SHA and healthy authenticated Rithmic gateway. Its separate executionProfile check uses obsolete NQU6/Databento and returned503; that legacy diagnostic is not evidence of the current NQZ6 execution SSE being down and was not changed in this task.
+
+Release through existing main-only integration after the final isolated production build. Record deployment receipt locally; do not trigger another build only for the receipt. No forced refresh of an active trading page.

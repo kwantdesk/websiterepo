@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { LiveDeltaPaneModel, LIVE_DELTA_PANE_INTERVAL_MS, isLiveDeltaPane, deltaPaneIdentity } from '../src/lib/liveDeltaPanes.ts';
 import { calculateIndicatorSeries } from '../src/lib/chartIndicatorEngine.ts';
-import { LIVE_CHART_CANDLE_EVENT } from '../src/lib/chartLiveEvents.ts';
+import { LIVE_CHART_CANDLE_EVENT, LIVE_CHART_EXECUTION_EVENT } from '../src/lib/chartLiveEvents.ts';
 const start=Date.UTC(2026,10,5,8);
 const theme={primary:'#fff',secondary:'#ccc',positive:'#0f0',negative:'#f00',muted:'#888'};
 const candle=(i,ask=10,bid=3)=>({timestamp:start+i*60000,open:100,high:101,low:99,close:100,volume:ask+bid,askVolume:ask,bidVolume:bid,askTrades:ask,bidTrades:bid,delta:ask-bid});
@@ -45,9 +45,9 @@ function harness(groups,inputs){
  const useRef=value=>{const i=cursor++;return refs[i]??=( {current:value} );};
  const useState=value=>{const i=cursor++;if(!(i in states))states[i]=value;return[states[i],v=>{states[i]=typeof v==='function'?v(states[i]):v;render();}];};
  const useEffect=(fn,deps)=>{const i=cursor++;if(!equal(effects[i]?.deps,deps))queued.push(()=>{effects[i]?.cleanup?.();effects[i]={deps,cleanup:fn()};});};
- const hook=new Function('useEffect','useRef','useState','LIVE_CHART_CANDLE_EVENT','deltaPaneIdentity','isLiveDeltaPane','LIVE_DELTA_PANE_INTERVAL_MS','LiveDeltaPaneModel','window','setTimeout','clearTimeout',code+';return useLiveDeltaPanes;')(useEffect,useRef,useState,LIVE_CHART_CANDLE_EVENT,deltaPaneIdentity,isLiveDeltaPane,LIVE_DELTA_PANE_INTERVAL_MS,LiveDeltaPaneModel,window,(fn,ms)=>{const id=++next;timers.set(id,{fn,ms});return id;},id=>timers.delete(id));
+ const hook=new Function('useEffect','useRef','useState','LIVE_CHART_CANDLE_EVENT','LIVE_CHART_EXECUTION_EVENT','deltaPaneIdentity','isLiveDeltaPane','LIVE_DELTA_PANE_INTERVAL_MS','LiveDeltaPaneModel','window','setTimeout','clearTimeout',code+';return useLiveDeltaPanes;')(useEffect,useRef,useState,LIVE_CHART_CANDLE_EVENT,LIVE_CHART_EXECUTION_EVENT,deltaPaneIdentity,isLiveDeltaPane,LIVE_DELTA_PANE_INTERVAL_MS,LiveDeltaPaneModel,window,(fn,ms)=>{const id=++next;timers.set(id,{fn,ms});return id;},id=>timers.delete(id));
  function render(){cursor=0;output=hook(props.groups,props.scope,props.key,props.inputs);const q=queued;queued=[];for(const effect of q)effect();}
- render();return {get output(){return output;},get timers(){return timers;},emit(c,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT,{detail:{key,candle:c}}));},flush(){const q=[...timers.values()];timers.clear();for(const t of q)t.fn();},update(p){props={...props,...p};render();},dispose(){for(const effect of effects)effect?.cleanup?.();}};
+ render();return {get output(){return output;},get timers(){return timers;},emit(c,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT,{detail:{key,candle:c}}));},executions(candles,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT,{detail:{key,candles,records:[],tape:[],continuity:'continuous'}}));},flush(){const q=[...timers.values()];timers.clear();for(const t of q)t.fn();},update(p){props={...props,...p};render();},dispose(){for(const effect of effects)effect?.cleanup?.();}};
 }
 test('actual pane hook paints without parent rerenders and does not create an idle timer loop',()=>{
  const h=harness(ids.map(id=>group(id)),input([candle(0)]));try{
@@ -60,5 +60,23 @@ test('actual pane hook paints without parent rerenders and does not create an id
 test('actual hook switches settings and contract scope without leaking previous cumulative values',()=>{
  const h=harness([group('cumulative-volume-delta')],input([candle(0)]));try{h.flush();h.emit(candle(1,50,3));h.flush();
  h.update({scope:'ES:5m',inputs:input([candle(0,2,10)])});h.flush();assert.equal(h.output[0].series[0].data.at(-1).value,-8);
+ }finally{h.dispose();}
+});
+
+test('execution-only delivery advances CVD and Delta with no price-paint events or parent updates',()=>{
+ const h=harness(ids.map(id=>group(id)),input([candle(0)]));try{h.flush();
+ const bars=[candle(0)];for(let i=1;i<=4;i++){bars.push(candle(i,i*10,3));h.executions(bars);h.flush();for(const g of h.output)assert.equal(g.series[0].data.at(-1).time,(start+i*60000)/1000);}
+ assert.equal(h.output.find(g=>g.indicatorId==='delta-bar').series[0].data.at(-1).value,37);
+ assert.equal(h.output.find(g=>g.indicatorId==='cumulative-volume-delta').series[0].data.at(-1).value,95);
+ // Receiving the same canonical candle through both channels cannot double count.
+ h.emit(bars.at(-1));h.flush();assert.equal(h.output.find(g=>g.indicatorId==='cumulative-volume-delta').series[0].data.at(-1).value,95);
+ h.executions([candle(10)],'other');assert.equal(h.timers.size,0);
+ h.update({key:undefined,scope:'replay'});h.executions([candle(11)]);assert.equal(h.timers.size,0);
+ }finally{h.dispose();}
+});
+
+test('coalesced execution snapshots retain all skipped second-bar flow, not only the last four bars',()=>{
+ const h=harness(ids.map(id=>group(id)),input([candle(0)]));try{h.flush();const bars=Array.from({length:20},(_,i)=>candle(i,10,3));h.executions(bars);h.flush();
+ const cvd=h.output.find(g=>g.indicatorId==='cumulative-volume-delta').series[0].data;assert.equal(cvd.length,20);assert.equal(cvd.at(-1).value,140);
  }finally{h.dispose();}
 });

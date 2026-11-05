@@ -4727,14 +4727,14 @@ function Chart({
         candle: authoritativeCandle,
       };
       latestCandleRef.current = authoritativeCandle;
-      if (volumeIndicatorEnabled || nonFootprintOrderFlowIndicatorEnabled) {
+      if (nonFootprintIndicatorSamplingEnabled) {
         pendingLiveVolumeCandleRef.current = enqueueLiveCandleSnapshot(
           pendingLiveVolumeCandleRef.current, authoritativeCandle, 4, true,
         );
         if (liveVolumeSampleTimerRef.current === null) {
-          // Volume and the order-flow panes (CVD, delta studies) need a React
-          // snapshot of the forming candle, which carries its live aggressor
-          // fields. Footprint geometry is updated directly above and its live
+          // Every candle-based study needs the forming bar, not just Volume
+          // and CVD. Price can advance without a parent candle-prop commit.
+          // Footprint geometry is updated directly above and its live
           // tape bypasses React entirely.
           liveVolumeSampleTimerRef.current = window.setTimeout(() => {
             liveVolumeSampleTimerRef.current = null;
@@ -4750,7 +4750,8 @@ function Chart({
           // the Volume pane alone, but with CVD/delta studies enabled a
           // 4-per-second engine pass on every pane creates enough allocation
           // churn to starve the GC in large multi-chart workspaces.
-          }, keyboardActive && !nonFootprintOrderFlowIndicatorEnabled ? 250 : 750);
+          }, keyboardActive && volumeIndicatorEnabled && !nonFootprintOrderFlowIndicatorEnabled
+            ? 250 : nonFootprintOrderFlowIndicatorEnabled ? 750 : 1_000);
         }
       }
       if (detail.paintInCurrentFrame && timeframeToMs(timeframe) !== null) {
@@ -4774,7 +4775,7 @@ function Chart({
       }
       pendingLiveVolumeCandleRef.current = [];
     };
-  }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, nonFootprintOrderFlowIndicatorEnabled, observedCandleScope, timeframe, volumeIndicatorEnabled]);
+  }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, nonFootprintIndicatorSamplingEnabled, nonFootprintOrderFlowIndicatorEnabled, observedCandleScope, timeframe, volumeIndicatorEnabled]);
 
   useEffect(() => {
     if (!liveCandleEventKey) return;
@@ -4997,7 +4998,7 @@ function Chart({
       indicatorSampleTimerRef.current = null;
       queueChartFrameWork(`indicators:${chartFrameWorkKey}`, () => {
         const pendingCandles = pendingIndicatorCandlesRef.current;
-        const liveIndicatorCandle = volumeIndicatorEnabled || nonFootprintOrderFlowIndicatorEnabled
+        const liveIndicatorCandle = nonFootprintIndicatorSamplingEnabled
           ? latestCandleRef.current
           : null;
         startTransition(() => {
