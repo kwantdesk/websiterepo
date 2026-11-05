@@ -1,14 +1,18 @@
-import {createPriceController} from './price-runtime.js?v=3';
+import {createPriceController} from './price-runtime.js?v=4';
 import {mergeSnapshots,profileHistoryRecords} from './models.js?v=2';
 import {trimSnapshotRows} from './retention.js';
 import {stateSourceKey,statePanelCategory} from './state-panels.js?v=1';
+import {snapshotInterval,nextSnapshotDelay} from './cadence.js';
 
 // One price owner per ticker, one retained positioning source per selector.
 // The existing workspace coordinator calls refresh; panels never own timers.
 export function createStateSources({api,history,subscribe,onChange,now=Date.now,createPrices=createPriceController,packageName='state'}){
  const sources=new Map(),prices=new Map();let options={active:false,date:null,live:true},disposed=false;
+ const queue=[];let activeRequests=0,activeBackground=0;
+ const pump=()=>{while(activeRequests<2&&queue.length){let index=queue.findIndex(job=>!job.background);if(index<0){if(activeBackground)break;index=0;}const [job]=queue.splice(index,1);if(job.signal?.aborted){job.reject(new DOMException('Aborted','AbortError'));continue;}activeRequests++;if(job.background)activeBackground++;void(async()=>{try{job.resolve(await api(job.path,job.signal));}catch(error){job.reject(error);}finally{activeRequests--;if(job.background)activeBackground--;pump();}})();}};
+ const request=(path,signal,background=false)=>new Promise((resolve,reject)=>{queue.push({path,signal,background,resolve,reject});pump();});
  const notify=(kind='snapshot')=>{if(!disposed)onChange(kind);};
- const remove=key=>{sources.get(key)?.controller?.abort();sources.delete(key);};
+ const remove=key=>{const source=sources.get(key);source?.controller?.abort();sources.delete(key);};
  const current=source=>!disposed&&sources.get(source.key)===source;
  function reconcile(panels,next){
   options={...options,...next};const wanted=new Map(panels.map(panel=>[stateSourceKey(panel),panel])),tickers=new Set(panels.map(panel=>panel.ticker));let changed=false;
@@ -24,23 +28,29 @@ export function createStateSources({api,history,subscribe,onChange,now=Date.now,
  async function read(source,force){
   if(source.pending)return source.pending;
   if(!current(source)||!options.active)return;
-  if(!force&&source.fetched!==null&&now()-source.fetched<(source.error?60000:30000))return;
+  if(!force&&source.fetched!==null&&now()-source.fetched<snapshotInterval(source))return;
   source.fetched=now();const controller=new AbortController();source.controller=controller;
   const job=(async()=>{try{
    const query=new URLSearchParams({ticker:source.ticker,package:packageName,category:source.category});if(source.date)query.set('date',source.date);
-   const envelope=await api((source.date?'history?':'snapshot?')+query,controller.signal);
+   const envelope=await request((source.date?'history?':'snapshot?')+query,controller.signal);
    if(!current(source)||controller.signal.aborted)return;
    if(envelope.data?.category&&envelope.data.category!==source.category)throw Error('PROFILE_DATA_MISMATCH');
    const rows=source.date?profileHistoryRecords(envelope,{ticker:source.ticker,package:packageName,category:source.category,date:source.date}):mergeSnapshots([],[envelope.data],source.ticker);
    if(!rows.length)throw Error('INSTRUMENT_DATA_MISMATCH');
    if(rows.some(row=>row.category&&row.category!==source.category))throw Error('PROFILE_DATA_MISMATCH');
    const merged=mergeSnapshots(source.records,rows,source.ticker);
-   source.records=envelope.profilePages?trimSnapshotRows(merged,32_000_000,30000):trimSnapshotRows(merged);source.envelope=envelope;source.error=null;notify();
-  }catch(error){if(current(source)&&!controller.signal.aborted){source.error=error.message;notify();}}
+   source.records=envelope.profilePages?trimSnapshotRows(merged,32_000_000,30000):trimSnapshotRows(merged);
+   source.envelope=envelope;source.error=null;
+   if(options.live&&!source.date&&envelope.recordedOnly!==true)
+    prices.get(source.ticker)?.observePositioningQuote?.(envelope.data,{notify:false});
+   notify();
+  }catch(error){if(current(source)&&!controller.signal.aborted){source.error=error.message;source.retryAfterSeconds=error.retryAfterSeconds;notify();}}
   finally{if(source.controller===controller){source.pending=null;source.controller=null;}}})();source.pending=job;return job;
  }
+
  return {
   reconcile,get:panel=>sources.get(stateSourceKey(panel)),prices:ticker=>prices.get(ticker),
+  nextDelay:()=>nextSnapshotDelay(sources.values(),now()),
   async refresh({force=false}={}){
    if(!options.active)return;
    const queue=[...sources.values()];let index=0;

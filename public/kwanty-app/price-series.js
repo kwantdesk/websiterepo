@@ -19,7 +19,9 @@ export function createPriceSeries({maxBars = 6_000, maxQuotes = 3_000} = {}) {
   const barLimit = Math.min(30_000, Math.max(1, Math.floor(Number(maxBars) || 6_000)));
   const quoteLimit = Math.min(30_000, Math.max(1, Math.floor(Number(maxQuotes) || 3_000)));
   let scope = {symbol: '', sessionDate: null};
-  let bars = new Map(), quotes = [], latest = null;
+  let bars = new Map(), quotes = [], latest = null, latestCandleQuote = null;
+  const isNewQuote = (point, previous) => !previous || point.time > previous.time
+    || point.time === previous.time && point.spot !== previous.spot;
   const matches = context => !!scope.symbol && symbolName(context?.symbol) === scope.symbol
     && (context?.sessionDate == null || scope.sessionDate == null || context.sessionDate === scope.sessionDate);
   const trimBars = () => {
@@ -40,7 +42,7 @@ export function createPriceSeries({maxBars = 6_000, maxQuotes = 3_000} = {}) {
   return {
     reset({symbol, sessionDate = null} = {}) {
       scope = {symbol: symbolName(symbol), sessionDate};
-      bars = new Map(); quotes = []; latest = null;
+      bars = new Map(); quotes = []; latest = null; latestCandleQuote = null;
     },
     seed(rows, context) {
       if (!matches(context) || !Array.isArray(rows) || rows.length > 100_000) return false;
@@ -72,18 +74,22 @@ export function createPriceSeries({maxBars = 6_000, maxQuotes = 3_000} = {}) {
               observationOnly: true, provenance: 'ohlc+observed-quote',
             } : {})});
       }
-      if (latest) applyQuote(latest);
+      if (latestCandleQuote) applyQuote(latestCandleQuote);
       trimBars(); return true;
     },
-    quote(frame) {
+    quote(frame, {updateCandle = true} = {}) {
       if (!matches(frame) || !epoch(frame?.timestamp) || !numeric(frame.lastPrice) || frame.lastPrice <= 0) return false;
       const point = {time: frame.timestamp, spot: frame.lastPrice, provenance: 'observed-quote'};
-      if (latest && (point.time < latest.time || point.time === latest.time && point.spot === latest.spot)) return false;
+      // Positioning spot can lead the displayed quote without replacing or
+      // contaminating the separately sourced candle series.
+      const candleQuote = updateCandle && isNewQuote(point, latestCandleQuote);
+      if (candleQuote) {latestCandleQuote = point; applyQuote(point);}
+      if (!isNewQuote(point, latest)) return candleQuote;
       latest = point;
       if (quotes.at(-1)?.time === point.time) quotes[quotes.length - 1] = point;
       else quotes.push(point);
       if (quotes.length > quoteLimit) quotes.splice(0, quotes.length - quoteLimit);
-      applyQuote(point); return true;
+      return true;
     },
     candles(intervalMs = MINUTE, {cutoffTime = Infinity} = {}) {
       if (!numeric(intervalMs) || intervalMs < MINUTE || intervalMs % MINUTE !== 0) return [];

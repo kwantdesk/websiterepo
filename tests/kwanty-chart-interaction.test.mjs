@@ -123,3 +123,9 @@ test('line/page wheel units normalize and extreme inputs stay finite',()=>{
   near(result.endTime-result.startTime,1000);
   for(const value of Object.values(result))if(typeof value==='number')assert.ok(Number.isFinite(value));
 });
+
+test('source State and Classic price-axis drag pans the domain without changing magnification or unrelated axes',()=>{
+ for(const pkg of ['state','classic'])for(const side of ['left','right']){const g={...profile,priceAxisSide:side},view={startTime:t+1000,endTime:t+2000,minExposure:-7,maxExposure:13,saved:true},next=panChartView(pkg,g,view,{dx:19,dy:100,region:'price-axis'});near(next.minPrice,95);near(next.maxPrice,115);near(next.maxPrice-next.minPrice,20);const y=(range,value)=>g.bottom-(value-range.minPrice)/(range.maxPrice-range.minPrice)*(g.bottom-g.top);near(y(next,100)-y({minPrice:90,maxPrice:110},100),100);assert.equal(next.startTime,view.startTime);assert.equal(next.endTime,view.endTime);assert.equal(next.minExposure,-7);assert.equal(next.maxExposure,13);assert.equal(next.saved,true);assert.equal(view.minPrice,undefined);const reverse=panChartView(pkg,{...g,minPrice:next.minPrice,maxPrice:next.maxPrice},next,{dx:0,dy:-100,region:'price-axis'});near(reverse.minPrice,90);near(reverse.maxPrice,110);}
+ const sourceLike={...profile,minPrice:7520,maxPrice:7640,top:34,bottom:634},moved=panChartView('state',sourceLike,{}, {dx:0,dy:100,region:'price-axis'});near(moved.minPrice,7540);near(moved.maxPrice,7660);near(moved.maxPrice-moved.minPrice,120);
+ const metric=panChartView('orderflow',orderflow,{}, {dx:0,dy:100,region:'metric-axis'});assert.ok(metric.maxValue-metric.minValue>400,'unverified OrderFlow axis semantics remain unchanged');
+});

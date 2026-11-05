@@ -29,7 +29,7 @@ export async function installTheme(next){
   document.documentElement.style.color=palette.foreground;
   for(const[key,value]of Object.entries(palette))document.documentElement.style.setProperty('--site-'+key,value);
   const background=channels(palette.background)||[0,0,0];document.documentElement.style.colorScheme=(Math.max(...background.slice(0,3))+Math.min(...background.slice(0,3)))<255?'dark':'light';
-  colorCatalogue??=fetch(new URL('./site-colors.json',import.meta.url)).then(r=>{if(!r.ok)throw Error('Theme catalogue unavailable');return r.json();}).catch(error=>{colorCatalogue=undefined;throw error;});
+  colorCatalogue??=fetch(new URL('./site-colors.json',import.meta.url),{signal:AbortSignal.timeout(5000)}).then(r=>{if(!r.ok)throw Error('Theme catalogue unavailable');return r.json();}).catch(error=>{colorCatalogue=undefined;throw error;});
   let colors;try{colors=await colorCatalogue;}catch{return;} // A style download must not block canvas/theme notifications.
   for(const color of colors){const suffix=[...new TextEncoder().encode(color)].map(n=>n.toString(16).padStart(2,'0')).join('');document.documentElement.style.setProperty('--gex-'+suffix,themePaint(color));}
 }

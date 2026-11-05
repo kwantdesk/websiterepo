@@ -4,6 +4,7 @@ import {botStorage,botFetch} from './site-runtime.js';
 import {ORDERFLOW_METRICS} from './orderflow-chart.js?v=5';
 import {SOURCE_TIMEZONES} from './timezones.js';
 import {CLASSIC_HISTORY_KEYS,HISTORY_DRAW_STYLES,historyDrawStyle} from './history-style.js?v=1';
+import {ORDERFLOW_MAJOR_LEVELS,orderflowMajorSetting} from './orderflow-major-levels.js?v=1';
 
 const BASE=[['background','Chart Background','color'],['showCrosshairs','Show Cursor Crosshairs','boolean']];
 const SPOT=[['show_spot_history','Spot History'],['candleUp','Candle Up','fixed'],['candleDown','Candle Down','fixed']];
@@ -19,13 +20,13 @@ export function editorRows(state){
   for(const metric of metrics){const d=ORDERFLOW_METRICS[metric];for(let i=0;i<2;i++)for(const [sign,j]of [['positive',0],['negative',1]])rows.push([`series:${d.fields[i]}:${sign}`,`${i?'Next':'Latest'} ${d.label} (${sign==='positive'?'+':'−'})`,null,d.colors[i*2+j]]);
    if(metric==='aggregate-dex')for(const [field,label,colors]of [['agg_call_dex','Aggregate Call DEX',[themePaint("lime"),themePaint("orange"),themePaint("#006400"),themePaint("#b8860b")]],['agg_put_dex','Aggregate Put DEX',[themePaint("crimson"),themePaint("#3682f0"),themePaint("#8b0000"),themePaint("#1e4c8c")]]])for(let i=0;i<2;i++)for(const [sign,j]of [['positive',0],['negative',1]])rows.push([`series:${i?'one_':''}${field}:${sign}`,`${i?'Next':'Latest'} ${label} (${sign==='positive'?'+':'−'})`,null,colors[i*2+j]]);
   }
-  rows.push(['major_call_gamma','Major Call Gamma',null,themePaint("#00ff00")],['major_put_gamma','Major Put Gamma',null,themePaint("#ff0000")],['major_long_gamma','Major Long Gamma',null,themePaint("#00ffff")],['major_short_gamma','Major Short Gamma',null,themePaint("#ae4ad5")],['time_marker','Profile Time Marker',null,themePaint("#ff9800")]);return rows;
+  rows.push(...ORDERFLOW_MAJOR_LEVELS.map(definition=>[definition.key,definition.label,null,themePaint(definition.color)]),['time_marker','Profile Time Marker',null,themePaint("#ff9800")]);return rows;
  }
- if(state.package==='state'&&state.greek){const greek=state.greek,title=greek[0].toUpperCase()+greek.slice(1),positive={get delta(){return themePaint("#4caf50");},get gamma(){return themePaint("#00ffff");},get vanna(){return themePaint("#3682f0");},get charm(){return themePaint("#daa520");}}[greek];return [...BASE,...(greek==='gamma'?[['major_long_gamma','Major Long Gamma',null,themePaint("#00ffff")],['major_short_gamma','Major Short Gamma',null,themePaint("#ae4ad5")]]:[]),[greek,'Long '+title,'fixed',positive],[greek+'_neg','Short '+title,'fixed',themePaint("#ae4ad5")],...[['five',5],['fifteen',15],['thirty',30]].map(([key,minute])=>[greek+'_'+key,`${title} (${minute} Min Prior)`,'boolean']),['call_skew','Call Skew',null,themePaint("#61ff00")],['put_skew','Put Skew',null,themePaint("#ff0000")],...SPOT,['expected_move','Expected Move (±1σ)',null,themePaint("#888888")],['showGrid','Grid','boolean']];}
- const rows=[...BASE,...(state.package==='classic'?[['zero_gamma','Zero Gamma']]:[]),['major_pos_vol',state.package==='state'?'Major Call Gamma':'Major Positive Volume'],['major_neg_vol',state.package==='state'?'Major Put Gamma':'Major Negative Volume'],...(state.package==='classic'?[['major_pos_oi','Major Positive OI'],['major_neg_oi','Major Negative OI']]:[]),...['one','five','ten','fifteen','thirty'].map((key,i)=>[key,[1,5,10,15,30][i]+' Min']),['gex_vol','Pos GEX by Volume','fixed'],['gex_vol_neg','Neg GEX by Volume','fixed'],...(state.package==='classic'?[['gex_oi','Pos GEX by OI','fixed'],['gex_oi_neg','Neg GEX by OI','fixed']]:[]),['show_volume','Show GEX Volume','boolean'],...(state.package==='classic'?[['show_oi','Show GEX OI','boolean']]:[]),...SPOT,...(state.package==='classic'?[['show_zero_gamma_history','Zero Gamma History'],['show_call_major_history','Major Positive History'],['show_put_major_history','Major Negative History']]:[]),['showGrid','Grid','boolean']];return rows;
+ if(state.package==='state'&&state.greek){const greek=state.greek,title=greek[0].toUpperCase()+greek.slice(1),positive={get delta(){return themePaint("#4caf50");},get gamma(){return themePaint("#00ffff");},get vanna(){return themePaint("#3682f0");},get charm(){return themePaint("#daa520");}}[greek];return [...BASE,...(greek==='gamma'?[['major_long_gamma','Major Long Gamma',null,themePaint("#00ffff")],['major_short_gamma','Major Short Gamma',null,themePaint("#ae4ad5")]]:[]),[greek,(greek==='gamma'?'Long ':'Positive ')+title,'fixed',positive],[greek+'_neg',(greek==='gamma'?'Short ':'Negative ')+title,'fixed',themePaint("#ae4ad5")],...[['five',5],['fifteen',15],['thirty',30]].map(([key,minute])=>[greek+'_'+key,`${title} (${minute} Min Prior)`,'boolean']),['call_skew','Call Skew',null,themePaint("#61ff00")],['put_skew','Put Skew',null,themePaint("#ff0000")],...SPOT,['expected_move','Expected Move (±1σ)',null,themePaint("#888888")],['showGrid','Grid','boolean']];}
+ const rows=[...BASE,...(state.package==='classic'?[['zero_gamma','Zero Gamma']]:[]),['major_pos_vol','Major Positive Volume'],['major_neg_vol','Major Negative Volume'],...(state.package==='classic'?[['major_pos_oi','Major Positive OI'],['major_neg_oi','Major Negative OI']]:[]),...['one','five','ten','fifteen','thirty'].map((key,i)=>[key,[1,5,10,15,30][i]+' Min']),['gex_vol','Pos GEX by Volume','fixed'],['gex_vol_neg','Neg GEX by Volume','fixed'],...(state.package==='classic'?[['gex_oi','Pos GEX by OI','fixed'],['gex_oi_neg','Neg GEX by OI','fixed']]:[]),['show_volume','Show GEX Volume','boolean'],...(state.package==='classic'?[['show_oi','Show GEX OI','boolean']]:[]),...SPOT,...(state.package==='classic'?[['show_zero_gamma_history','Zero Gamma History'],['show_call_major_history','Major Positive History'],['show_put_major_history','Major Negative History']]:[]),['showGrid','Grid','boolean']];return rows;
 }
 export function readEditorSetting(settings,key){
- if(!key.startsWith('series:'))return settings[key];
+ if(!key.startsWith('series:'))return orderflowMajorSetting(settings,key)??settings[key];
  const [,field,sign]=key.split(':'),s=settings.series?.[field]||{};
  return {color:sign==='positive'?s.color:s.negativeColor,display:(sign==='positive'?s.showPositive:s.showNegative)!==false};
 }
@@ -55,9 +56,16 @@ export function mountSettingsEditor({state,settings,defaults,persist,redraw,clea
    add('size','Size','number',editorStyleSize(settings(),key));
    if(state.package==='classic'&&CLASSIC_HISTORY_KEYS.includes(key))add('drawStyle','Draw style','select',historyDrawStyle(value),HISTORY_DRAW_STYLES);
    if(['show_spot_history','show_zero_gamma_history','show_call_major_history','show_put_major_history','expected_move','time_marker'].includes(key))add('lineType','Line style','select',value?.lineType||(key==='expected_move'||key==='show_zero_gamma_history'||key==='time_marker'?'dashed':key.includes('major_history')?'dotted':'solid'),['solid','dashed','dotted']);
-   if(key==='show_spot_history')add('showHorizontalLine','Horizontal price line','checkbox',value?.showHorizontalLine!==false);
+   if(key==='show_spot_history'){
+    add('showVerticalLine','Vertical time line','checkbox',value?.showVerticalLine!==false);
+    add('showHorizontalLine','Horizontal price line','checkbox',value?.showHorizontalLine!==false);
+   }
    if(key==='time_marker')add('showVerticalLine','Vertical time line','checkbox',value?.showVerticalLine!==false);
-   if(key==='expected_move')add('labelPosition','Label position','select',value?.labelPosition||'auto',['auto','left','center','right']);
+   if(key==='expected_move'){
+    add('labelPosition','Label position','select',value?.labelPosition||'auto',['auto','left','center','right']);
+    add('labelColor','Label text color','color',value?.labelColor||themePaint('#000000'));
+    const font=add('labelFontSize','Font size','number',value?.labelFontSize??12);font.min='8';font.max='32';font.step='1';
+   }
   }
   if(details.children.length>1)row.append(details);
  }

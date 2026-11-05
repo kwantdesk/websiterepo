@@ -1,6 +1,7 @@
-import {createPriceController} from './price-runtime.js?v=3';
+import {createPriceController} from './price-runtime.js?v=4';
 import {mergeSnapshots,profileHistoryRecords,sourceDate} from './models.js?v=2';
 import {trimSnapshotRows} from './retention.js';
+import {snapshotInterval,nextSnapshotDelay} from './cadence.js';
 // Completed provider sessions contain ~23,400 one-second observations. The
 // generic 1,200-row profile budget silently discarded most of that history.
 const retainOrderflow=rows=>trimSnapshotRows(rows,40_000_000,30000);
@@ -24,7 +25,7 @@ export function createOrderflowSources({api,history,subscribe,sessionHistory,onC
  const current=source=>!disposed&&sources.get(source.ticker)===source;
  async function read(source,force){
   if(source.pending)return source.pending;
-  if(!force&&source.fetched!==null&&now()-source.fetched<(source.error?60000:30000))return;
+  if(!force&&source.fetched!==null&&now()-source.fetched<snapshotInterval(source))return;
   source.fetched=now();const controller=new AbortController();source.controller=controller;
   const job=(async()=>{
    try{
@@ -45,7 +46,10 @@ export function createOrderflowSources({api,history,subscribe,sessionHistory,onC
     if(!current(source)||controller.signal.aborted)return;
     const rows=source.date?profileHistoryRecords(envelope,{ticker:source.ticker,package:'orderflow',category:'orderflow',date:source.date}):mergeSnapshots([], [envelope.data],source.ticker);
     if(!rows.length)throw Error('INSTRUMENT_DATA_MISMATCH');
-    source.records=retainOrderflow(mergeSnapshots(source.records,rows,source.ticker));source.envelope=envelope;source.error=null;notify();
+    source.records=retainOrderflow(mergeSnapshots(source.records,rows,source.ticker));source.envelope=envelope;source.error=null;
+    if(options.live&&!source.date&&envelope.recordedOnly!==true&&(!envelope.data.category||envelope.data.category==='orderflow'))
+     source.prices.observePositioningQuote?.(envelope.data,{notify:false});
+    notify();
     const date=sourceDate(rows.at(-1).timestamp);
     if(!source.date&&!source.restoring.has(date)){
      // Revisit through the existing snapshot coordinator: the shared session
@@ -59,12 +63,13 @@ export function createOrderflowSources({api,history,subscribe,sessionHistory,onC
      }).catch(()=>{/* Keep genuine existing observations on a failed refresh. */}).finally(()=>{if(source.restoring.get(date)===restore)source.restoring.delete(date);});
      source.restoring.set(date,restore);
     }
-   }catch(error){if(current(source)&&!controller.signal.aborted){source.error=error.message;notify();}}
+   }catch(error){if(current(source)&&!controller.signal.aborted){source.error=error.message;source.retryAfterSeconds=error.retryAfterSeconds;notify();}}
    finally{if(source.controller===controller){source.pending=null;source.controller=null;}}
   })();source.pending=job;return job;
  }
  return {
   reconcile,get:ticker=>sources.get(ticker),
+  nextDelay:()=>nextSnapshotDelay(sources.values(),now()),
   refresh:({force=false}={})=>options.active?Promise.all([...sources.values()].map(source=>read(source,force))):Promise.resolve(),
   refreshPrices:()=>Promise.all([...sources.values()].map(source=>source.prices.refresh())),
   cancel(){for(const source of sources.values()){source.controller?.abort();source.controller=null;source.pending=null;source.fetched=null;}},

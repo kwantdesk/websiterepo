@@ -11,6 +11,9 @@ export const botPriceHistory=(symbol,date)=>host?.priceHistory?host.priceHistory
 export const botSubscribePrice=(symbol,listener,onError)=>host?.subscribePrice?host.subscribePrice(symbol,listener,onError):()=>{};
 if(typeof window!=='undefined'&&host){
  window.__kwantSelectPreferences=createSelectPreferences(botStorage);
- window.__kwantyActive=host.active;await installTheme(host.theme());
- window.addEventListener('message',async event=>{if(event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='kwanty-site-theme'){await installTheme(host.theme());window.dispatchEvent(new Event('kwanty-theme'));}if(event.data?.type==='kwanty-site-activity'){window.__kwantyActive=event.data.active===true;window.dispatchEvent(new Event('kwanty-activity'));}});
+ // Palette roles apply synchronously. The optional colour catalogue must not
+ // hold module evaluation (and every chart/settings handler) behind its fetch.
+ const applyTheme=()=>{void installTheme(host.theme()).then(()=>window.dispatchEvent(new Event('kwanty-theme'))).catch(()=>{});};
+ window.__kwantyActive=host.active;applyTheme();
+ window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='kwanty-site-theme')applyTheme();if(event.data?.type==='kwanty-site-activity'){window.__kwantyActive=event.data.active===true;window.dispatchEvent(new Event('kwanty-activity'));}});
 }

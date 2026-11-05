@@ -79,6 +79,13 @@ export function panChartView(pkg, geometry, view, gesture = {}) {
   if (!validPlot(geometry) || !finite(gesture.dx) || !finite(gesture.dy)) return result;
   const region = gesture.region ?? 'plot', axis = axisFor(pkg, region, gesture.ctrlKey);
   if (!axis) return result;
+  if(region==='price-axis'&&(pkg==='state'||pkg==='classic')){
+    // Reference profile axes use ChartJS linear pan: move both endpoints by
+    // the same pixel-derived distance. Ctrl+wheel remains vertical scaling.
+    const [, , low,high]=rangeFor(geometry,'price');
+    if(validRange(low,high))Object.assign(result,transformedRange(geometry,'price',.5,1,gesture.dy/(geometry.bottom-geometry.top)*(high-low)));
+    return result;
+  }
   if (region === 'price-axis' || region === 'metric-axis') {
     Object.assign(result, transformedRange(geometry, axis, .5, Math.exp(clamp(gesture.dy * .005, -4, 4))));
     return result;

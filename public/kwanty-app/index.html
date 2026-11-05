@@ -23,7 +23,7 @@
   <div id="profileControls">
    <div id="stateSections" hidden><h3 class="green">gex profile</h3></div>
    <div id="gexCategories" class="categories" role="group" aria-label="GEX expiry"><button data-category="gex_full" class="selected">90d (agg)</button><button data-category="gex_zero">latest</button><button data-category="gex_one">next</button></div>
-   <div id="greekControls" hidden><h3 class="amber">options profile</h3><div class="greek-layout"><div class="categories"><button data-greek-expiry="zero" class="selected">latest</button><button data-greek-expiry="one">next</button></div><div class="greeks"><label><input type="checkbox" name="greek" value="delta"> delta</label><label><input type="checkbox" name="greek" value="gamma"> gamma</label><label><input type="checkbox" name="greek" value="vanna"> vanna</label><label><input type="checkbox" name="greek" value="charm"> charm</label></div></div><p class="small-note">Net Greek exposure. Classified call/put volume splits are not supplied by this public API.</p></div>
+   <div id="greekControls" hidden><h3 class="amber">options profile</h3><div class="greek-layout"><div class="categories"><button data-greek-expiry="zero" class="selected">latest</button><button data-greek-expiry="one">next</button></div><div class="greeks"><label><input type="checkbox" name="greek" value="delta"> delta</label><label><input type="checkbox" name="greek" value="gamma"> gamma</label><label><input type="checkbox" name="greek" value="vanna"> vanna</label><label><input type="checkbox" name="greek" value="charm"> charm</label></div></div></div>
   </div>
   <div id="statePanelControls" hidden></div>
   <div id="orderflowControls" hidden></div>
@@ -37,5 +37,5 @@
 </div>
 <div id="message" role="alert" hidden></div>
 <dialog id="settingsDialog" aria-labelledby="settingsTitle"><div class="dialog-head"><h2 id="settingsTitle">settings</h2><button id="closeSettings" aria-label="Close settings">×</button></div><form id="settingsForm"><div id="settingsRows"></div><fieldset id="chartTypeSettings"><legend>Chart Type</legend><label><input type="radio" name="spotViewMode" value="line"> Line</label><label><input type="radio" name="spotViewMode" value="candles"> Candles</label></fieldset><fieldset><legend>Price Transform</legend><label>Multiplier <input name="priceMultiplier" type="number" step="0.0001" value="1"></label><label>Offset <input name="priceOffset" type="number" step="0.01" value="0"></label></fieldset><fieldset id="alignmentSettings"><legend>Profile Alignment</legend><select name="alignment"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></fieldset><label class="setting-line">Time Zone<select name="timeZone"><option value="America/New_York">New York</option><option value="Australia/Brisbane">Brisbane</option><option value="UTC">UTC</option></select></label><footer><button id="resetSettings" type="button">RESET</button><button type="submit">SAVE</button></footer></form></dialog>
-<script type="module" src="/kwanty-app/app.js?v=24"></script>
+<script type="module" src="/kwanty-app/app.js?v=25"></script>
 </body></html>

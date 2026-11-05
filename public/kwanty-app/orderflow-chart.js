@@ -232,7 +232,7 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   if (endTime <= startTime) { startTime -= 30000; endTime += 30000; }
   const visible = data.points.filter(point => point.time >= startTime && point.time <= endTime);
   const visibleValues = data.series.flatMap(series => series.values.filter(point => point.time >= startTime && point.time <= endTime).map(point => point.value));
-  const computed = extent(visibleValues);
+  const computed = extent(visibleValues, data.series.some(series=>series.flow));
   let minValue = finite(view.minValue) ?? computed[0], maxValue = finite(view.maxValue) ?? computed[1];
   if (maxValue <= minValue) { minValue -= 1; maxValue += 1; }
   const candleMode = settings.spotViewMode === 'candles';
@@ -241,8 +241,16 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   // Hiding the price marks must not delete the independent price coordinate
   // system used by enabled profiles. Retain genuine observed price anchors,
   // including snapshot spots when an external candle request is still empty.
+  const quoteTime=orderflowTimestamp(options.liveSpot?.time),rawQuote=finite(options.liveSpot?.spot);
+  const liveSpot=options.showSpot!==false&&quoteTime!==null&&quoteTime>=startTime&&quoteTime<=endTime&&rawQuote!==null&&rawQuote>0
+    ? {time:quoteTime,spot:rawQuote*(finite(settings.priceMultiplier)??1)+(finite(settings.priceOffset)??0)} : null;
   const profilePriceAnchors = profilesVisible ? [...visiblePrices.map(point=>point.spot),...visible.map(point=>point.spot)] : [];
-  const spotDomain = extent([...(options.showSpot === false && !profilesVisible ? [] : candleMode ? visibleCandles.flatMap(candle=>[candle.low,candle.high]) : visiblePrices.map(point => point.spot)), ...profilePriceAnchors, ...(settings.showMajorLevels === false ? [] : (data.levels || []).flatMap(level => level.values.filter(point => point.time >= startTime && point.time <= endTime).map(point => point.value)))]);
+  const priceAnchors=[...(options.showSpot === false && !profilesVisible ? [] : candleMode ? visibleCandles.flatMap(candle=>[candle.low,candle.high]) : visiblePrices.map(point=>point.spot)),...profilePriceAnchors,...(settings.showMajorLevels === false ? [] : (data.levels||[]).flatMap(level=>level.values.filter(point=>point.time>=startTime&&point.time<=endTime).map(point=>point.value)))];
+  // Empty execution history must not move a genuine snapshot's price axis to
+  // zero. This anchors coordinates only; it never generates candles or a line.
+  if(priceAxisVisible&&!priceAnchors.some(value=>finite(value)!==null))priceAnchors.push(...visible.map(point=>point.spot));
+  if(liveSpot)priceAnchors.push(liveSpot.spot);
+  const spotDomain=extent(priceAnchors);
   if(finite(view.minSpot)!==null&&finite(view.maxSpot)!==null&&view.maxSpot>view.minSpot){spotDomain[0]=view.minSpot;spotDomain[1]=view.maxSpot;}
   const timeX = time => left + (time - startTime) / (endTime - startTime) * (right - left);
   const valueY = value => bottom - (value - minValue) / (maxValue - minValue) * (bottom - top);
@@ -359,6 +367,11 @@ export function renderOrderflow(ctx, width, height, options = {}) {
     else {ctx.strokeStyle = spotColor; ctx.lineWidth = 1; pathLine(ctx, (data.pricePoints||data.points).map(point => ({ time: point.time, value: point.spot })), timeX, spotY);}
     const observed = visiblePrices.filter(point => point.spot !== null);
     if (!candleMode && observed.length === 1) { ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(timeX(observed[0].time), spotY(observed[0].spot), 2, 0, Math.PI * 2); ctx.fill(); }
+  }
+  if(liveSpot&&liveSpot.spot>=spotDomain[0]&&liveSpot.spot<=spotDomain[1]){
+    const x=timeX(liveSpot.time),y=spotY(liveSpot.spot);
+    ctx.strokeStyle=spotColor;ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(right,y);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=spotColor;ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);ctx.fill();
   }
   const hovered = options.hover && settings.showCrosshairs !== false ? hitTest(options.hover) : null;
   if (hovered) { ctx.strokeStyle = settings.lightMode ? themePaint("#666666") : themePaint("#aaa"); ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(timeX(finite(options.hover?.time)??hovered.time), top); ctx.lineTo(timeX(finite(options.hover?.time)??hovered.time), bottom);if(Number.isFinite(options.hover.y)){ctx.moveTo(left,options.hover.y);ctx.lineTo(right,options.hover.y);} ctx.stroke(); ctx.setLineDash([]); }

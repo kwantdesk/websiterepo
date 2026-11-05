@@ -2,6 +2,7 @@ import {themePaint} from './site-theme.js';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {botStorage,botFetch} from './site-runtime.js';
 import {trimSnapshotRows} from './retention.js';
+import {snapshotInterval} from './cadence.js';
 import {defaultProfileSlots,drawProfileOverlay} from './profile-overlay.js';
 import {sourceDate,sourceTime,finite} from './models.js?v=2';
 import {createOverlayHistory,nearestArchivedProfileTime} from './overlay-history.js?v=1';
@@ -24,20 +25,46 @@ export function selectProfileSnapshot(records,{ticker,targetTimestamp,pinnedTime
 export function nearestActualProfileTime(records,targetMs,ceiling,ticker){const candidates=records.filter(r=>r.ticker===ticker&&r.timestamp<=ceiling&&sourceDate(r.timestamp)===sourceDate(ceiling));if(!candidates.length)return null;return candidates.reduce((best,r)=>Math.abs(r.timestamp*1000-targetMs)<Math.abs(best.timestamp*1000-targetMs)?r:best).timestamp;}
 export function shiftedProfileOffset(value,delta){return delta===null?0:Math.max(-100,Math.min(100,(finite(value)??0)+(finite(delta)??0)));}
 
+// All visible profile slots share one source per exact ticker/package/category.
+// Existing workspace paints drive eligibility; this pool owns no timers, price
+// subscriptions or history requests, and reserves a bounded live request budget.
+export function createLiveOverlaySources({api,onChange=()=>{},canRead=()=>true,now=Date.now}){
+ const caches=new Map(),queue=[];let active=0,disposed=false;
+ const keyFor=selector=>new URLSearchParams({ticker:selector.ticker,package:selector.package,category:selector.category}).toString();
+ const current=source=>!disposed&&caches.get(source.key)===source;
+ const pump=()=>{while(!disposed&&active<2&&queue.length){
+  const source=queue.shift(),controller=source.controller;
+  if(!current(source)||!canRead()){controller.abort();source.pending=null;source.controller=null;source.fetched=null;source.finish();continue;}active++;
+  void Promise.resolve().then(()=>{if(!current(source)||!canRead()){controller.abort();source.fetched=null;throw new DOMException('Aborted','AbortError');}return api('snapshot?'+source.key,controller.signal);}).then(envelope=>{
+   if(!current(source)||controller.signal.aborted)return;
+   const payload=envelope?.data,selector=source.selector;
+   if(payload?.ticker!==selector.ticker)throw Error('PROFILE_INSTRUMENT_MISMATCH');
+   if(payload.category&&payload.category!==selector.category||envelope.package&&envelope.package!==selector.package||envelope.category&&envelope.category!==selector.category)throw Error('PROFILE_DATA_MISMATCH');
+   if(finite(payload.timestamp)===null)throw Error('PROFILE_TIMESTAMP_MISSING');
+   source.records=source.records.filter(row=>row.timestamp!==payload.timestamp&&sourceDate(row.timestamp)===sourceDate(payload.timestamp));
+   source.records.push(payload);source.records.sort((a,b)=>a.timestamp-b.timestamp);trimSnapshotRows(source.records,1000000,1200);
+   source.error=null;source.retryAfterSeconds=null;
+  }).catch(error=>{if(current(source)&&!controller.signal.aborted){source.error=error.message;source.retryAfterSeconds=error.retryAfterSeconds;}}).finally(()=>{
+   active--;source.pending=null;source.controller=null;source.finish();pump();if(current(source)&&!controller.signal.aborted)onChange();
+  });
+ }};
+ return {get(selector,{active:enabled=true}={}){
+  const key=keyFor(selector);let source=caches.get(key);
+  if(!source){if(caches.size>=12){const candidate=[...caches].find(([,entry])=>!entry.pending);if(candidate)caches.delete(candidate[0]);}source={key,selector:{...selector},records:[],fetched:null,pending:null,error:null,retryAfterSeconds:null,controller:null,finish:()=>{}};caches.set(key,source);}
+  if(disposed||!enabled||!canRead()||source.pending||source.fetched!==null&&now()-source.fetched<snapshotInterval(source))return source;
+  source.fetched=now();source.controller=new AbortController();source.pending=new Promise(resolve=>{source.finish=resolve;});queue.push(source);pump();return source;
+ },peek:selector=>caches.get(keyFor(selector)),dispose(){disposed=true;for(const source of caches.values()){source.controller?.abort();source.finish();}queue.length=0;caches.clear();}};
+}
+
 export function createOverlayEditor({state,api,persist,redraw,message,selectedPayload}){
- const caches=new Map(),$=s=>document.querySelector(s),make=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;};let panel=null,active=0;
+ const $=s=>document.querySelector(s),make=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;};let panel=null,active=0;
+ const liveSelection=()=>state.auto===true&&!state.historyMode&&state.replayIndex===null;
+ const liveSources=createLiveOverlaySources({api,canRead:()=>state.package==='orderflow'&&liveSelection()&&window.__kwantyActive!==false&&!document.hidden,onChange:()=>{redraw();if(panel&&dialog.open)renderStatus();}});
  const dialog=make('dialog');dialog.id='profileOverlayDialog';dialog.setAttribute('aria-label','Profile overlay settings');document.body.append(dialog);
  const archive=createOverlayHistory({api,onChange:()=>{redraw();if(panel&&dialog.open)renderStatus();}});
  function slots(p){return p.profileSlots??=defaultProfileSlots();}
  const tickerFor=p=>p?.ticker||state.ticker;
- function keyFor(slot,p=panel){return new URLSearchParams(profileSelector(slot,tickerFor(p))).toString();}
- function ensure(slot,p){
-  const key=keyFor(slot,p);let cache=caches.get(key);if(!cache){if(caches.size>=12){const candidate=[...caches].find(([,entry])=>!entry.pending);if(candidate)caches.delete(candidate[0]);}cache={records:[],fetched:0,pending:null,error:null};caches.set(key,cache);}
-  const last=cache.records.at(-1),ttl=30000;
-  if(!cache.pending&&Date.now()-cache.fetched>(cache.error?60000:ttl)&&!state.historyMode&&window.__kwantyActive!==false&&!document.hidden){cache.fetched=Date.now();cache.pending=api('snapshot?'+key).then(envelope=>{const p=envelope.data,selector=Object.fromEntries(new URLSearchParams(key));if(p.ticker!==selector.ticker)throw new Error('PROFILE_INSTRUMENT_MISMATCH');cache.records=cache.records.filter(r=>r.timestamp!==p.timestamp&&sourceDate(r.timestamp)===sourceDate(p.timestamp));cache.records.push(p);cache.records.sort((a,b)=>a.timestamp-b.timestamp);trimSnapshotRows(cache.records,1000000,1200);cache.error=null;}).catch(error=>{cache.error=error.message;}).finally(()=>{cache.pending=null;redraw();if(panel&&dialog.open)renderStatus();});}
-  return cache;
- }
- const liveSelection=()=>state.auto===true&&!state.historyMode&&state.replayIndex===null;
+ function ensure(slot,p){return liveSources.get(profileSelector(slot,tickerFor(p)));}
  function selection(slot,p,records){
   const target=selectedPayload(p)?.timestamp,pin=finite(slot.time);
   if((state.historyMode||state.replayIndex!==null||pin!==null&&sourceDate(pin)===sourceDate(target))&&finite(target)!==null){
@@ -49,7 +76,7 @@ export function createOverlayEditor({state,api,persist,redraw,message,selectedPa
   }
   return {...selectProfileSnapshot(records,{ticker:tickerFor(p),targetTimestamp:target,pinnedTimestamp:slot.time,live:liveSelection()}),records};
  }
- function renderStatus(){const status=dialog.querySelector('.profile-source-status');if(!status||!panel)return;const slot=slots(panel)[active],cache=caches.get(keyFor(slot)),selected=slot.show?selection(slot,panel,cache?.records||[]):{},picked=selected.payload,error=selected.historical?selected.error:cache?.error;if(slot.show&&!error&&!picked&&(selected.pending||cache?.pending)){showWorkspaceLoading(status,'Loading profile');return;}status.textContent=!slot.show?'Profile hidden':error?'Profile unavailable: '+error:picked?`Native ${profileSelector(slot,tickerFor(panel)).package}/${slot.category} · source ${sourceTime(picked.timestamp,state.settings.orderflow.timeZone)}`:'No actual same-session profile at or before this time. Historical profiles are not fabricated.';}
+ function renderStatus(){const status=dialog.querySelector('.profile-source-status');if(!status||!panel)return;const slot=slots(panel)[active],cache=liveSources.peek(profileSelector(slot,tickerFor(panel))),selected=slot.show?selection(slot,panel,cache?.records||[]):{},picked=selected.payload,error=selected.historical?selected.error:cache?.error;if(slot.show&&!error&&!picked&&(selected.pending||cache?.pending)){showWorkspaceLoading(status,'Loading profile');return;}status.textContent=!slot.show?'Profile hidden':error?'Profile unavailable: '+error:picked?`Native ${profileSelector(slot,tickerFor(panel)).package}/${slot.category} · source ${sourceTime(picked.timestamp,state.settings.orderflow.timeZone)}`:'No actual same-session profile at or before this time. Historical profiles are not fabricated.';}
  function changed(rebuild=false){persist();redraw();if(rebuild)render();else renderStatus();}
  function render(){
   if(!panel)return;dialog.replaceChildren();const head=make('div');head.className='dialog-head';head.append(make('h2','profiles'));const close=make('button','×');close.type='button';close.setAttribute('aria-label','Close profile settings');close.onclick=()=>dialog.close();head.append(close);dialog.append(head);
@@ -65,10 +92,10 @@ export function createOverlayEditor({state,api,persist,redraw,message,selectedPa
   const today=make('button','load session');today.type='button';today.disabled=!selectedPayload(panel);today.title='Load recorded profiles for this chart’s selected session';today.onclick=()=>{const target=selectedPayload(panel)?.timestamp;if(finite(target)===null)return;slot.time=target;archive.retry(profileSelector(slot,tickerFor(panel)),sourceDate(target));changed();};dialog.append(today);const status=make('p');status.className='small-note profile-source-status';dialog.append(status);dialog.append(make('p','Historical profiles use exact recorded observations. Missing sessions and timestamps are never invented.'));renderStatus();
  }
  function paint(ctx,geometry,p){if(!geometry)return;const target=selectedPayload(p);if(!target)return;const painted=slots(p).map(slot=>{if(!slot.show)return slot;const cache=ensure(slot,p),{time,payload}=selection(slot,p,cache.records);return {...slot,time,payload};});return drawProfileOverlay(ctx,geometry,{slots:painted,settings:{...state.settings.orderflow,stateSettings:state.settings.state,classicSettings:state.settings.classic,liveContractSettings:state.settings.state}});}
- function markerAt(p,layout,point,geometry){if(!layout||point.y<geometry.bottom-32||point.y>geometry.bottom+8)return null;const layer=layout.layers.slice().reverse().find(l=>Math.abs(l.markerX-point.x)<=8);if(!layer)return null;const slot=slots(p)[layer.slotIndex],cache=caches.get(keyFor(slot,p)),picked=selection(slot,p,cache?.records||[]);return {slotIndex:layer.slotIndex,available:(picked.records?.length||0)>1};}
- function dragTo(p,index,timeMs){const slot=slots(p)[index],cache=caches.get(keyFor(slot,p)),target=selectedPayload(p);if(!target)return;const picked=selection(slot,p,cache?.records||[]),timestamp=picked.historical?nearestArchivedProfileTime(picked.records||[],timeMs,target.timestamp):nearestActualProfileTime(picked.records||[],timeMs,target.timestamp,tickerFor(p));if(timestamp!==null){slot.time=timestamp;persist();}}
+ function markerAt(p,layout,point,geometry){if(!layout||point.y<geometry.bottom-32||point.y>geometry.bottom+8)return null;const layer=layout.layers.slice().reverse().find(l=>Math.abs(l.markerX-point.x)<=8);if(!layer)return null;const slot=slots(p)[layer.slotIndex],cache=liveSources.peek(profileSelector(slot,tickerFor(p))),picked=selection(slot,p,cache?.records||[]);return {slotIndex:layer.slotIndex,available:(picked.records?.length||0)>1};}
+ function dragTo(p,index,timeMs){const slot=slots(p)[index],cache=liveSources.peek(profileSelector(slot,tickerFor(p))),target=selectedPayload(p);if(!target)return;const picked=selection(slot,p,cache?.records||[]),timestamp=picked.historical?nearestArchivedProfileTime(picked.records||[],timeMs,target.timestamp):nearestActualProfileTime(picked.records||[],timeMs,target.timestamp,tickerFor(p));if(timestamp!==null){slot.time=timestamp;persist();}}
  function frameReady(p,timestamp){let pending=false;for(const slot of slots(p)){if(!slot.show)continue;const time=profileSelectionTime(slot.time,timestamp);if(time===null)continue;const result=archive.select(profileSelector(slot,tickerFor(p)),sourceDate(timestamp),time);if(result.error)return {pending:false,error:result.error};pending=pending||!!result.pending;}return {pending,error:null};}
  function open(p){panel=p;active=0;render();dialog.show();}
  function retryHistory(date){const seen=new Set();for(const p of state.panels){for(const slot of slots(p)){if(!slot.show)continue;const selector=profileSelector(slot,tickerFor(p)),key=JSON.stringify(selector);if(seen.has(key))continue;seen.add(key);archive.retry(selector,date);}}}
- return {paint,open,markerAt,dragTo,frameReady,retryHistory,close:()=>dialog.close(),dispose:()=>{archive.dispose();dialog.remove();}};
+ return {paint,open,markerAt,dragTo,frameReady,retryHistory,close:()=>dialog.close(),dispose:()=>{liveSources.dispose();archive.dispose();dialog.remove();}};
 }

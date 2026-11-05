@@ -1,4 +1,4 @@
-import {createPriceSeries} from './price-series.js?v=3';
+import {createPriceSeries} from './price-series.js?v=4';
 
 const canonical=ticker=>ticker==='ES_SPX'?'ES':ticker==='NQ_NDX'?'NQ':ticker==='SPXW'?'SPX':ticker;
 // One underlying series per iframe; all its Classic/State/Orderflow panels share
@@ -6,7 +6,7 @@ const canonical=ticker=>ticker==='ES_SPX'?'ES':ticker==='NQ_NDX'?'NQ':ticker==='
 export function createPriceController({history,subscribe,onChange,now=Date.now}){
  const series=createPriceSeries(),cache=new Map();
  let ticker=null,date=null,live=true,active=true,stop=null,generation=0,loading=false,error=null,lastHistoryBucket=null,pending=false,queuedRepair=false,disposed=false;
- const changed=()=>{cache.clear();onChange();};
+ const changed=(notify=true)=>{cache.clear();if(notify)onChange();};
  const restore=async()=>{
   if(!ticker||pending||!active||disposed)return;
   const serial=generation,symbol=canonical(ticker);pending=true;loading=true;
@@ -14,22 +14,35 @@ export function createPriceController({history,subscribe,onChange,now=Date.now})
   catch(reason){if(serial===generation){error=reason?.message||'Price history unavailable.';}}
   finally{if(serial===generation){pending=false;loading=false;onChange();if(queuedRepair){queuedRepair=false;void restore();}}}
  };
+ const receive=(frame,{positioning=false,notify=true}={})=>{
+  const symbol=canonical(ticker);
+  if(!ticker||!live||!active||disposed||frame?.symbol!==symbol)return false;
+  const candle=!positioning&&frame.candle;
+  const seeded=!!candle&&series.seed([candle],{symbol,asOf:frame.timestamp});
+  const quoted=series.quote(frame,{updateCandle:!positioning});
+  const bucket=Math.floor(frame.timestamp/60000);
+  // Only the independent price stream can request the shared OHLC repair.
+  if(!positioning&&quoted&&!candle&&Number.isFinite(bucket)&&(lastHistoryBucket===null||bucket>lastHistoryBucket)){lastHistoryBucket=bucket;if(pending)queuedRepair=true;else void restore();}
+  if(seeded||quoted)changed(notify);
+  return seeded||quoted;
+ };
  const connect=()=>{
   stop?.();stop=null;if(!ticker||!live||!active||disposed)return;
-  const serial=generation,symbol=canonical(ticker);
+  const serial=generation;
   try{stop=subscribe(ticker,frame=>{
-   if(serial!==generation||disposed||!active)return;
-   if(frame.symbol!==symbol)return;
-   let updated=false;if(frame.candle)updated=series.seed([frame.candle],{symbol,asOf:frame.timestamp});
-   const quoted=series.quote(frame);updated=quoted||updated;
-   const bucket=Math.floor(frame.timestamp/60000);
-   // Quote-only feeds need one shared authoritative OHLC repair at each minute
-   // boundary, never per tick. No source OHLC means no fabricated new candle.
-   if(quoted&&!frame.candle&&Number.isFinite(bucket)&&(lastHistoryBucket===null||bucket>lastHistoryBucket)){lastHistoryBucket=bucket;if(pending)queuedRepair=true;else void restore();}
-   if(updated)changed();
+   if(serial===generation)receive(frame);
   },reason=>{if(serial===generation){error=reason?.message||'Price stream unavailable.';onChange();}});}catch(reason){error=reason?.message||'Price stream unavailable.';}
  };
  return {
+  observePositioningQuote(data,{notify=true}={}){
+   // Native positioning uses Unix seconds. Match the selected instrument
+   // exactly and exclude projected cash/futures or aliased instruments.
+   if(!ticker||date||data?.ticker!==ticker||canonical(ticker)!==ticker||data.profilePage!=null
+    ||!Number.isFinite(data.timestamp)||data.timestamp<1e9||data.timestamp>=1e10)return false;
+   const timestamp=data.timestamp*1000;
+   if(timestamp>now()+1000)return false;
+   return receive({symbol:data.ticker,timestamp,lastPrice:data.spot},{positioning:true,notify});
+  },
   select(nextTicker,{sessionDate=null,live:nextLive=true}={}){
    if(ticker===nextTicker&&date===sessionDate&&live===nextLive)return;
    const reset=ticker!==nextTicker||date!==sessionDate;
