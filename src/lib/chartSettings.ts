@@ -239,6 +239,23 @@ export function chartSettingsForTheme(theme: ThemeColors, current: unknown): Cha
   };
 }
 
+/** Merge concurrent device edits without uploading untouched local colours. */
+export function mergeChartSettingsChanges(base: unknown, local: unknown, remote: unknown): ChartSettings {
+  const previous = normalizeChartSettings(base);
+  const edited = normalizeChartSettings(local);
+  const received = normalizeChartSettings(remote);
+  const appearanceKeys = ["themeLinked", ...CHART_THEME_COLOR_FIELDS] as const;
+  if (appearanceKeys.some(key => previous[key] !== edited[key])) {
+    received.themeLinked = edited.themeLinked;
+    for (const key of CHART_THEME_COLOR_FIELDS) received[key] = edited[key];
+  }
+  if (previous.colorBarsPreviousClose !== edited.colorBarsPreviousClose) received.colorBarsPreviousClose = edited.colorBarsPreviousClose;
+  if (previous.gridLines !== edited.gridLines) received.gridLines = edited.gridLines;
+  if (previous.timezone !== edited.timezone) received.timezone = edited.timezone;
+  if (previous.precision !== edited.precision) received.precision = edited.precision;
+  return received;
+}
+
 /** When hydration retains a local theme, retain its chart colours atomically. */
 export function retainLocalChartAppearance(
   selected: Record<string, string>, local: Record<string, string>,

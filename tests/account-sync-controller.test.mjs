@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {defaultChartSettings} from '../src/lib/chartSettings.ts';
+import {serializeThemeChoice,THEME_CHOICE_KEY} from '../src/lib/themeChoice.ts';
 import {accountPreferenceFingerprint,mergeAccountPreferenceChanges} from '../src/lib/accountPreferenceMerge.ts';
 
 const snapshot=values=>({version:1,complete:true,updatedAt:'2026-10-27T00:00:00Z',values});
-function controller(acknowledged = true){
- let state=snapshot({'olisa-theme':'desktop'}),cloud=structuredClone(state),effect;
+function controller(acknowledged = true, account = { cloud: snapshot({'olisa-theme':'desktop'}) }){
+ let state=structuredClone(account.cloud),effect;
  const listeners=new Map(),timeouts=new Map(),intervals=new Map();let sequence=0,calls=0,writes=0,applied=0,removed=0,captures=0;
  const events={addEventListener(key,fn){if(!listeners.has(key))listeners.set(key,new Set());listeners.get(key).add(fn)},removeEventListener(key,fn){listeners.get(key)?.delete(fn)},dispatchEvent(event){for(const fn of listeners.get(event.type)??[])fn(event)}};
  const window={...events,localStorage:{getItem:()=> 'owner'},setTimeout(fn){const id=++sequence;timeouts.set(id,fn);return id},clearTimeout(id){timeouts.delete(id)},setInterval(fn){const id=++sequence;intervals.set(id,fn);return id},clearInterval(id){intervals.delete(id)}};
@@ -18,15 +20,15 @@ function controller(acknowledged = true){
  const code=ts.transpileModule(fs.readFileSync('src/hooks/useAccountPreferenceSync.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const require=id=>{
   if(id==='react')return {useEffect:fn=>{effect=fn}};
-  if(id.includes('userPreferences'))return {isTrackedStorageKey:key=>key==='olisa-theme',captureBrowserPreferences:()=>{captures++;return structuredClone(state)},readScopedPreferences:()=>acknowledged ? structuredClone(cloud) : null,receiveAccountPreferences(_owner,next){state=next;applied++;}};
+  if(id.includes('userPreferences'))return {isTrackedStorageKey:key=>key==='olisa-theme',captureBrowserPreferences:()=>{captures++;return structuredClone(state)},readScopedPreferences:()=>acknowledged ? structuredClone(account.cloud) : null,receiveAccountPreferences(_owner,next){state=next;applied++;}};
   if(id.includes('accountPreferenceMerge'))return {accountPreferenceFingerprint,mergeAccountPreferenceChanges};
-  if(id.includes('accountPreferenceCloud'))return {async exchangeAccountPreferences(_client,owner,base,local,write){assert.equal(owner,'owner');calls++;const merged=mergeAccountPreferenceChanges(base,local,cloud);if(write){writes++;cloud=merged;}return {remote:structuredClone(cloud),snapshot:merged};}};
+  if(id.includes('accountPreferenceCloud'))return {async exchangeAccountPreferences(_client,owner,base,local,write){assert.equal(owner,'owner');calls++;const merged=mergeAccountPreferenceChanges(base,local,account.cloud);if(write){writes++;account.cloud=merged;}return {remote:structuredClone(account.cloud),snapshot:merged};}};
   throw Error(id);
  };
  vm.runInNewContext(code,{exports,require,window,document,CustomEvent:class {constructor(type,options){this.type=type;this.detail=options?.detail}},Date,console});
  exports.useAccountPreferenceSync({supabase:client,userId:'owner',enabled:true});const cleanup=effect();
  return {get captures(){return captures},get state(){return state},get calls(){return calls},get writes(){return writes},get applied(){return applied},get removed(){return removed},get timers(){return timeouts.size+intervals.size},get scheduled(){return [...timeouts.keys()]},
-  setState(next){state=next},setCloud(next){cloud=next},emit:(type,key)=>window.dispatchEvent({type,key}),notify:()=>notifications.broadcast(),cleanup,
+  setState(next){state=next},setCloud(next){account.cloud=next},emit:(type,key)=>window.dispatchEvent({type,key}),notify:()=>notifications.broadcast(),cleanup,
   async flush(){const queued=[...timeouts.values()];timeouts.clear();for(const fn of queued)fn();await new Promise(resolve=>setImmediate(resolve));},
  };
 }
@@ -67,3 +69,52 @@ test('cache storage storms cause no preference scans and local bursts debounce b
 test('continuous trading events retain the first bounded save deadline',async()=>{const c=controller();await c.flush();c.setState(snapshot({'olisa-theme':'edited while trading'}));c.emit('kwantdesk:preferences-changed');const scheduled=c.scheduled[0];for(let i=0;i<100;i++)c.emit('kwantdesk:preferences-changed');assert.equal(c.scheduled[0],scheduled);await c.flush();assert.equal(c.writes,1);assert.equal(c.state.values['olisa-theme'],'edited while trading');c.cleanup();});
 
 test('foreground recovery replaces an already pending timer',async()=>{const c=controller();await c.flush();c.emit('kwantdesk:preferences-changed');const pending=c.scheduled[0];c.setCloud(snapshot({'olisa-theme':'resumed phone'}));c.emit('online');assert.notEqual(c.scheduled[0],pending);assert.equal(c.scheduled.length,1);await c.flush();assert.equal(c.state.values['olisa-theme'],'resumed phone');c.cleanup();});
+
+test('an open phone changing chart settings cannot restore its stale desktop palette', async () => {
+ const key='kwantdesk:chart-workspace-settings:v1';
+ const old={...defaultChartSettings,themeLinked:false,backgroundColor:'#102030'};
+ const selected={...defaultChartSettings,backgroundColor:'#123456',wickUpColor:'#FEDCBA'};
+ const theme=JSON.stringify({chartBackground:selected.backgroundColor});
+ const account={cloud:snapshot({[key]:JSON.stringify(old)})};
+ const desktop=controller(true,account),phone=controller(true,account);
+ try {
+  await desktop.flush();
+  await phone.flush();
+  desktop.setState(snapshot({
+   ...desktop.state.values,[key]:JSON.stringify(selected),'olisa-theme':theme,
+   [THEME_CHOICE_KEY]:serializeThemeChoice(null,theme,selected),
+  }));
+  desktop.emit('kwantdesk:preferences-changed');
+  await desktop.flush();
+
+  // The phone had this workspace open before the desktop changed theme.
+  phone.setState(snapshot({...phone.state.values,[key]:JSON.stringify({...old,timezone:'UTC'})}));
+  phone.emit('focus');
+  await phone.flush();
+  desktop.notify();
+  await desktop.flush();
+
+  for(const device of [desktop,phone]){
+   const settings=JSON.parse(device.state.values[key]);
+   assert.equal(settings.themeLinked,true);
+   assert.equal(settings.backgroundColor,selected.backgroundColor);
+   assert.equal(settings.wickUpColor,selected.wickUpColor);
+   assert.equal(settings.timezone,'UTC');
+   assert.equal(device.state.values['olisa-theme'],theme);
+  }
+  assert.equal(phone.writes,1);
+  assert.equal(desktop.writes,1);
+
+  // An intentional phone colour edit remains shared with the open desktop.
+  const custom={...JSON.parse(phone.state.values[key]),themeLinked:false,backgroundColor:'#445566'};
+  phone.setState(snapshot({...phone.state.values,[key]:JSON.stringify(custom)}));
+  phone.emit('kwantdesk:preferences-changed');
+  await phone.flush();
+  desktop.notify();
+  await desktop.flush();
+  assert.deepEqual(JSON.parse(desktop.state.values[key]),custom);
+ } finally {
+  desktop.cleanup();
+  phone.cleanup();
+ }
+});

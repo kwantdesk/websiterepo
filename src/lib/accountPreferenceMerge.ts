@@ -1,3 +1,5 @@
+import { CHART_SETTINGS_STORAGE_KEY, mergeChartSettingsChanges } from './chartSettings.ts';
+import { workspaceScopeStorageKey } from './chartWorkspaceScope.ts';
 import { reconcileThemeChoice } from './themeChoice.ts';
 import { mergeDrawingClearBarriers } from './drawingClearBarriers';
 import { mergeWorkspacePresetPreferences } from './workspacePresetPreferences';
@@ -7,6 +9,12 @@ import { normalizePaperTradingLedger, paperAccountJournalFills, type PaperAccoun
 
 export const PAPER_LEDGER_KEY = 'kwantify-paper-trading-ledger-v1';
 const PAPER_ACCOUNTS_KEY = 'kwantify-paper-trading-accounts';
+const chartSettingsKeys = new Set([
+  CHART_SETTINGS_STORAGE_KEY,
+  ...(['charts', 'gamma', 'algo'] as const).map(scope =>
+    workspaceScopeStorageKey(scope, 'kwantdesk:chart-workspace-settings:v1')),
+  workspaceScopeStorageKey('gamma', CHART_SETTINGS_STORAGE_KEY),
+]);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const parse = (text?: string) => { try { return JSON.parse(text ?? 'null'); } catch { return null; } };
 
@@ -187,6 +195,15 @@ export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, loca
     else if (key === CHART_DRAWING_PREFERENCE_KEY) {
       const merged = mergeChartDrawingPreferences(base.values[key], local.values[key], remote.values[key]);
       if (merged !== undefined) values[key] = merged;
+    } else if (chartSettingsKeys.has(key) && base.values[key] && remote.values[key]) {
+      const previous = parse(base.values[key]);
+      const edited = parse(local.values[key]);
+      const received = parse(remote.values[key]);
+      if (previous && edited && received) {
+        values[key] = JSON.stringify(mergeChartSettingsChanges(previous, edited, received));
+      } else {
+        values[key] = local.values[key];
+      }
     } else if (key === PAPER_LEDGER_KEY && remote.values[key]) {
       const b = normalizePaperTradingLedger(parse(base.values[key]));
       const l = normalizePaperTradingLedger(parse(local.values[key]));
