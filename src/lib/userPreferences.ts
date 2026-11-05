@@ -7,6 +7,7 @@ import { writeProtectedItem } from "./browserStorageQuota.ts";
 import { inFlightGexWorkspace } from "./gexDataPreferenceOwnership.ts";
 import { accountPreferenceFingerprint } from "./accountPreferenceMerge";
 import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from "./chartDrawingPreferences";
+import { accountPreferenceReadUnavailable, isMissingPreferenceStore } from "./accountPreferenceErrors";
 
 import { mergeDrawingClearBarriers } from "./drawingClearBarriers";
 
@@ -155,8 +156,11 @@ export async function loadCloudPreferences(
     .eq("user_id", user.id)
     .abortSignal(signal).maybeSingle();
 
-  if (!error && data?.preferences) {
-    return normalizeSnapshot(data.preferences, data.updated_at);
+  if (error && !isMissingPreferenceStore(error)) throw accountPreferenceReadUnavailable();
+  if (!error && data) {
+    const snapshot = normalizeSnapshot(data.preferences, data.updated_at);
+    if (!snapshot) throw accountPreferenceReadUnavailable();
+    return snapshot;
   }
 
   const { data: socialFallback, error: socialFallbackError } = await supabase
@@ -165,13 +169,15 @@ export async function loadCloudPreferences(
     .eq("user_id", user.id)
     .eq("id", SOCIAL_PREFERENCES_ID)
     .abortSignal(signal).maybeSingle();
-  if (!socialFallbackError && socialFallback?.payload) {
+  if (socialFallbackError && !isMissingPreferenceStore(socialFallbackError)) throw accountPreferenceReadUnavailable();
+  if (!socialFallbackError && socialFallback) {
     const payload = socialFallback.payload as Record<string, unknown>;
     const snapshot = normalizeSnapshot(
-      payload.preferences ?? payload,
+      payload?.preferences ?? payload,
       socialFallback.updated_at,
     );
     if (snapshot) return snapshot;
+    throw accountPreferenceReadUnavailable();
   }
 
   const metadataSnapshot = normalizeSnapshot(user.user_metadata?.[USER_PREFERENCES_METADATA_KEY]);

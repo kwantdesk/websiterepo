@@ -16,7 +16,9 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
     let active = true, busy = false, queued = false, failures = 0;
     let retryAfter = 0, timer: number | undefined;
     let refreshScheduled = false;
-    let base = readScopedPreferences(userId) ?? captureBrowserPreferences();
+    const acknowledged = readScopedPreferences(userId);
+    let needsInitialRead = !acknowledged;
+    let base = acknowledged ?? captureBrowserPreferences();
     // Broadcast is a change hint only. The authenticated, RLS-scoped database
     // read carries the data; no account/workspace/trade payload is broadcast.
     const channel = supabase.channel(`account-preference-hints:${userId}`, { config: { broadcast: { self: false } } });
@@ -27,8 +29,12 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
       busy = true;
       const sent = captureBrowserPreferences();
       const dirty = accountPreferenceFingerprint(sent) !== accountPreferenceFingerprint(base);
+      const write = !needsInitialRead && dirty;
       try {
-        const result = await exchangeAccountPreferences(supabase, userId, base, sent, dirty);
+        // Following failed initial hydration, this browser's defaults are not
+        // an acknowledged account revision. Read the real account first; only
+        // subsequent edits may be uploaded. Preserve edits during this read.
+        const result = await exchangeAccountPreferences(supabase, userId, base, needsInitialRead ? base : sent, write);
         if (!active) return;
         // Preserve edits made while the request was in flight.
         const latest = captureBrowserPreferences();
@@ -40,10 +46,11 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
           applied.values[ledgerKey] = latest.values[ledgerKey];
         }
         base = result.remote;
+        needsInitialRead = false;
         receiveAccountPreferences(userId, applied, result.remote);
         failures = 0; retryAfter = 0;
         window.dispatchEvent(new CustomEvent('kwantdesk:account-sync-status', { detail: { state: 'saved', userId } }));
-        if (dirty && channelReady) void channel.send({ type: 'broadcast', event: 'changed', payload: {} });
+        if (write && channelReady) void channel.send({ type: 'broadcast', event: 'changed', payload: {} });
         if (accountPreferenceFingerprint(applied) !== accountPreferenceFingerprint(base)) queued = true;
       } catch {
         failures++;

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeSnapshot, type UserPreferenceSnapshot } from './userPreferences';
 import { mergeAccountPreferenceChanges } from './accountPreferenceMerge';
+import { accountPreferenceReadUnavailable, isMissingPreferenceStore } from './accountPreferenceErrors';
 
 const empty = (): UserPreferenceSnapshot => ({ version: 1, complete: true, updatedAt: new Date(0).toISOString(), values: {} });
 
@@ -12,15 +13,20 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
       let query = client.from(table).select(table === 'user_preferences' ? 'preferences,updated_at' : 'payload,updated_at').eq('user_id', userId);
       if (table === 'social_objects') query = query.eq('id', 'account-preferences');
       const result = await query.abortSignal(signal).maybeSingle();
-      if (result.error) break;
+      if (result.error) {
+        if (isMissingPreferenceStore(result.error)) break;
+        throw accountPreferenceReadUnavailable();
+      }
       const row = result.data as unknown as { preferences?: unknown; payload?: { preferences?: unknown }; updated_at: string } | null;
       const raw = table === 'user_preferences' ? row?.preferences : row?.payload?.preferences;
       let remote = normalizeSnapshot(raw, row?.updated_at);
-      if (row && !remote) break; // Corrupt cloud state is never permission to erase local work.
+      if (row && !remote) throw accountPreferenceReadUnavailable();
       if (!row && table === 'user_preferences') {
         const legacy = await client.from('social_objects').select('payload,updated_at')
           .eq('user_id', userId).eq('id', 'account-preferences').abortSignal(signal).maybeSingle();
+        if (legacy.error && !isMissingPreferenceStore(legacy.error)) throw accountPreferenceReadUnavailable();
         remote = normalizeSnapshot(legacy.data?.payload?.preferences, legacy.data?.updated_at);
+        if (legacy.data && !remote) throw accountPreferenceReadUnavailable();
       }
       remote ??= row ? empty() : base;
       const snapshot = mergeAccountPreferenceChanges(base, local, remote);
@@ -34,7 +40,7 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
         let update = client.from(table).update(fields).eq('user_id', userId).eq('updated_at', row.updated_at);
         if (table === 'social_objects') update = update.eq('id', 'account-preferences');
         const saved = await update.select('updated_at').abortSignal(signal).maybeSingle();
-        if (saved.error) break;
+        if (saved.error) throw accountPreferenceReadUnavailable();
         if (!saved.data) {
           if (attempt === 4) throw new Error('Account changed concurrently; retrying.');
           continue; // A competing write won; rebase, never overwrite.
@@ -49,7 +55,7 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
           if (attempt === 4) throw new Error('Account changed concurrently; retrying.');
           continue;
         }
-        if (saved.error) break;
+        if (saved.error) throw accountPreferenceReadUnavailable();
       }
       return { remote: snapshot, snapshot };
     }

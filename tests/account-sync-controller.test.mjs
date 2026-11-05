@@ -6,7 +6,7 @@ import ts from 'typescript';
 import {accountPreferenceFingerprint,mergeAccountPreferenceChanges} from '../src/lib/accountPreferenceMerge.ts';
 
 const snapshot=values=>({version:1,complete:true,updatedAt:'2026-10-27T00:00:00Z',values});
-function controller(){
+function controller(acknowledged = true){
  let state=snapshot({'olisa-theme':'desktop'}),cloud=structuredClone(state),effect;
  const listeners=new Map(),timeouts=new Map(),intervals=new Map();let sequence=0,calls=0,writes=0,applied=0,removed=0,captures=0;
  const events={addEventListener(key,fn){if(!listeners.has(key))listeners.set(key,new Set());listeners.get(key).add(fn)},removeEventListener(key,fn){listeners.get(key)?.delete(fn)},dispatchEvent(event){for(const fn of listeners.get(event.type)??[])fn(event)}};
@@ -18,7 +18,7 @@ function controller(){
  const code=ts.transpileModule(fs.readFileSync('src/hooks/useAccountPreferenceSync.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const require=id=>{
   if(id==='react')return {useEffect:fn=>{effect=fn}};
-  if(id.includes('userPreferences'))return {isTrackedStorageKey:key=>key==='olisa-theme',captureBrowserPreferences:()=>{captures++;return structuredClone(state)},readScopedPreferences:()=>structuredClone(cloud),receiveAccountPreferences(_owner,next){state=next;applied++;}};
+  if(id.includes('userPreferences'))return {isTrackedStorageKey:key=>key==='olisa-theme',captureBrowserPreferences:()=>{captures++;return structuredClone(state)},readScopedPreferences:()=>acknowledged ? structuredClone(cloud) : null,receiveAccountPreferences(_owner,next){state=next;applied++;}};
   if(id.includes('accountPreferenceMerge'))return {accountPreferenceFingerprint,mergeAccountPreferenceChanges};
   if(id.includes('accountPreferenceCloud'))return {async exchangeAccountPreferences(_client,owner,base,local,write){assert.equal(owner,'owner');calls++;const merged=mergeAccountPreferenceChanges(base,local,cloud);if(write){writes++;cloud=merged;}return {remote:structuredClone(cloud),snapshot:merged};}};
   throw Error(id);
@@ -38,6 +38,19 @@ test('live account receiver applies peer revisions and edits made locally do not
  assert.equal(c.writes,1);const count=c.calls;
  c.emit('kwantdesk:preferences-changed');await c.flush();assert.equal(c.calls,count);
  c.cleanup();assert.equal(c.removed,1);assert.equal(c.timers,0);
+});
+
+test('a fresh phone recovering from failed hydration reads desktop state before uploading defaults',async()=>{
+ const c=controller(false);
+ c.setState(snapshot({'olisa-theme':'phone defaults','olisa-chart-workspace-layout':'single'}));
+ c.setCloud(snapshot({'olisa-theme':'saved desktop','olisa-chart-workspace-layout':'quad'}));
+ await c.flush();
+ assert.equal(c.writes,0);
+ assert.equal(c.state.values['olisa-theme'],'saved desktop');
+ assert.equal(c.state.values['olisa-chart-workspace-layout'],'quad');
+ c.setState(snapshot({...c.state.values,'olisa-theme':'intentional phone edit'}));
+ c.emit('kwantdesk:preferences-changed');await c.flush();
+ assert.equal(c.writes,1);assert.equal(c.state.values['olisa-theme'],'intentional phone edit');c.cleanup();
 });
 test('one hundred unchanged local preference events cause no account reads or writes',async()=>{
  const c=controller();await c.flush();const before=c.calls;
