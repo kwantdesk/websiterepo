@@ -19,7 +19,11 @@ export function useBounceMappingHistory(input: {
     const load = async () => {
       if (cancelled) return;
       if (document.visibilityState === "hidden") { retry = setTimeout(load, 60_000); return; }
-      const from = newYorkSessionTimestamp(input.sessionDate, 8 * 60), to = newYorkSessionTimestamp(input.sessionDate, 17 * 60);
+      const from = newYorkSessionTimestamp(input.sessionDate, 8 * 60);
+      // The owned-history API rejects future range ends. During the session,
+      // asking through 17:00 ET left futures mapping permanently empty.
+      const to = Math.min(Date.now(), newYorkSessionTimestamp(input.sessionDate, 17 * 60));
+      if (to <= from) return;
       const query = new URLSearchParams({ symbol: input.instrument, timeframe: "1m", days: "1", from: String(from), to: String(to) });
       try {
         const response = await fetchWorkspaceData<{ candles: PricePoint[] }>(key, "/api/cme-history?" + query, {
