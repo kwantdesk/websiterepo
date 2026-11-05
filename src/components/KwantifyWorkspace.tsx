@@ -10695,6 +10695,8 @@ export default function KwantifyWorkspace({
   const [mobileDrawingsOpen, setMobileDrawingsOpen] = useState(false);
   const [mobileSidePanelOpen, setMobileSidePanelOpen] = useState(false);
   const [activePaneId, setActivePaneId] = useState<string>(initialChartWorkspaceRuntime.activePaneId);
+  const activePaneIdRef = useRef(activePaneId);
+  activePaneIdRef.current = activePaneId;
   const [workspacePanelPickerPaneId, setWorkspacePanelPickerPaneId] = useState<string | null>(null);
   const [optionsFlowPickerOpen, setOptionsFlowPickerOpen] = useState(false);
   const [workspacePanelTransition, setWorkspacePanelTransition] = useState<{
@@ -15333,22 +15335,29 @@ export default function KwantifyWorkspace({
       const keys = detail?.keys;
       const changed = (key: string) => !keys || keys.includes(key);
       const scope = chartWorkspaceScopeRef.current;
-      const workspaceChanged = !keys || keys.some(key => scope !== "charts"
+      const activePaneKey = workspaceScopeStorageKey(scope, "olisa-chart-workspace-active-pane");
+      const remote = detail?.source === "remote";
+      // Focus is local to a mounted screen. A desktop click must not replace
+      // the phone's only visible chart; the saved focus still seeds new mounts.
+      const workspaceChanged = !keys || keys.some(key => !(remote && key === activePaneKey) && (scope !== "charts"
         ? key.startsWith(workspaceStoragePrefix(scope))
         : key.startsWith("olisa-chart-workspace-") || key === CHART_INDICATORS_STORAGE_KEY
           || key === CHART_WORKSPACE_SETTINGS_STORAGE_KEY || key === PANE_LEVEL_VISIBILITY_STORAGE_KEY
           || key === WORKSPACE_PRESETS_STORAGE_KEY || key === ACTIVE_WORKSPACE_PRESET_STORAGE_KEY
-          || key === CHART_SETTINGS_STORAGE_KEY || key === CHART_TEMPLATES_STORAGE_KEY);
+          || key === CHART_SETTINGS_STORAGE_KEY || key === CHART_TEMPLATES_STORAGE_KEY));
       if (workspaceChanged) {
         workspaceScopeHydratingRef.current = true;
         const next = loadChartWorkspaceRuntime(scope);
-        const pane = next.panes.find(item => item.id === next.activePaneId) ?? next.panes[0];
+        const available = new Set([...collectWorkspacePaneIds(next.tree), ...next.floatingWindows.map(item => item.paneId)]);
+        const focusedPane = remote && available.has(activePaneIdRef.current)
+          ? next.panes.find(item => item.id === activePaneIdRef.current) : undefined;
+        const pane = focusedPane ?? next.panes.find(item => item.id === next.activePaneId) ?? next.panes[0];
         setWorkspaceLayout(next.layout); setWorkspaceLocked(next.locked);
         setWorkspaceSplitRatio(next.splitRatio); setWorkspaceQuadSplit(next.quadSplit);
         setWorkspacePanes(current => JSON.stringify(current) === JSON.stringify(next.panes) ? current : next.panes);
         setWorkspaceTree(next.tree); setWorkspaceFloatingWindows(next.floatingWindows);
         setWorkspacePresets(next.presets); setActiveWorkspacePresetId(next.activePresetId);
-        setActivePaneId(next.activePaneId); setPaneIndicators(next.indicators);
+        setActivePaneId(pane.id); setPaneIndicators(next.indicators);
         setPaneLevelVisibility(next.levelVisibility); setLinkedViewportPaneIds(new Set(next.linkedPaneIds));
         setChartSettings(next.chartSettings); setDraftChartSettings(next.chartSettings);
         setChartSettingsSnapshot(next.chartSettings); setTemplates(next.templates);
