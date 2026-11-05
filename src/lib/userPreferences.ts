@@ -10,6 +10,7 @@ import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from "./ch
 import { accountPreferenceReadUnavailable, isMissingPreferenceStore } from "./accountPreferenceErrors";
 
 import { mergeDrawingClearBarriers } from "./drawingClearBarriers";
+import { mergeWorkspacePresetPreferences } from "./workspacePresetPreferences";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
@@ -399,7 +400,8 @@ export async function hydrateUserPreferences(
   }
 
   if (localPreferencesBelongToUser) selected = { ...selected,
-    values: mergeDrawingClearBarriers(latest.values, selected.values, selected.values) };
+    values: mergeWorkspacePresetPreferences(current.values, latest.values, selected.values,
+      mergeDrawingClearBarriers(latest.values, selected.values, selected.values)) };
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
   applyBrowserPreferences(selected);
   applyTheme();

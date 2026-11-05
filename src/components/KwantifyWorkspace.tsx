@@ -12,6 +12,7 @@ import { workspaceReplaySessionBounds } from "@/lib/workspaceReplay";
 import { readChartDrawingStore, updateChartDrawingPane } from "@/lib/chartDrawingPreferences";
 
 import { mergePaperTradingLedgerUpdate } from "@/lib/accountPreferenceMerge";
+import { WORKSPACE_PRESET_DELETIONS_KEY, isWorkspacePresetDeleted, markWorkspacePresetDeleted, mergeWorkspacePresetPreferences } from "@/lib/workspacePresetPreferences";
 
 import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
 import { createExecutionPaintScheduler } from '@/lib/executionPaintScheduler';
@@ -2706,7 +2707,8 @@ function persistChartWorkspaceRuntime(
   write("olisa-chart-workspace-panes", JSON.stringify(runtime.panes));
   write("olisa-chart-workspace-tree", JSON.stringify(runtime.tree));
   write(WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY, JSON.stringify(runtime.floatingWindows));
-  write(WORKSPACE_PRESETS_STORAGE_KEY, JSON.stringify(runtime.presets));
+  // The named library is written only by explicit Save/Import/Delete actions.
+  // A scope switch must not publish an older rendered copy over a peer save.
   if (runtime.activePresetId) write(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY, runtime.activePresetId);
   else window.localStorage.removeItem(workspaceScopeStorageKey(scope, ACTIVE_WORKSPACE_PRESET_STORAGE_KEY));
   write("olisa-chart-workspace-active-pane", runtime.activePaneId);
@@ -13662,14 +13664,6 @@ export default function KwantifyWorkspace({
   }, [preferencesReady, workspaceFloatingWindows]);
 
   useEffect(() => {
-    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
-    writeProtectedItem(
-      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
-      JSON.stringify(workspacePresets),
-    );
-  }, [preferencesReady, workspacePresets]);
-
-  useEffect(() => {
     if (
       activeWorkspacePresetId
       && workspacePresets.some((preset) => preset.id === activeWorkspacePresetId)
@@ -16943,20 +16937,34 @@ export default function KwantifyWorkspace({
     window.addEventListener("pointercancel", finishResize);
   };
 
-  const persistWorkspacePresets = (nextPresets: WorkspacePreset[]) => {
-    const normalizedPresets = normalizeWorkspacePresets(nextPresets, chartWorkspaceScopeRef.current);
-    setWorkspacePresets(normalizedPresets);
+  const persistWorkspacePresets = (nextPresets: WorkspacePreset[], deletedPresetId?: string) => {
+    const scope = chartWorkspaceScopeRef.current;
+    const key = workspaceScopeStorageKey(scope, WORKSPACE_PRESETS_STORAGE_KEY);
+    const previousDeletions = window.localStorage.getItem(WORKSPACE_PRESET_DELETIONS_KEY);
+    if (deletedPresetId && !writeProtectedItem(WORKSPACE_PRESET_DELETIONS_KEY,
+      markWorkspacePresetDeleted(previousDeletions ?? undefined, key, deletedPresetId)).ok) {
+      showReportToast("error", "This workspace could not be deleted because browser storage is full.", 6000);
+      return null;
+    }
+    const protectedValues = mergeWorkspacePresetPreferences({ [key]: JSON.stringify(workspacePresets) }, { [key]: JSON.stringify(nextPresets) }, {
+      [key]: window.localStorage.getItem(key) ?? "[]",
+      [WORKSPACE_PRESET_DELETIONS_KEY]: window.localStorage.getItem(WORKSPACE_PRESET_DELETIONS_KEY) ?? "{}",
+    }, {});
+    const normalizedPresets = normalizeWorkspacePresets(JSON.parse(protectedValues[key]), scope);
     // The write can fail: browser storage is a few megabytes and a workspace
     // carries every pane, indicator and drawing in it. writeProtectedItem
     // evicts re-fetchable cache and retries, but it can still come up short,
     // and it REPORTS that. Ignoring the result is how a save that did not
     // happen came to show "Workspace updated".
     const written = writeProtectedItem(
-      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
+      key,
       JSON.stringify(normalizedPresets),
     );
     if (!written.ok) {
-      setWorkspacePresets(workspacePresets);
+      if (deletedPresetId) {
+        if (previousDeletions === null) window.localStorage.removeItem(WORKSPACE_PRESET_DELETIONS_KEY);
+        else writeProtectedItem(WORKSPACE_PRESET_DELETIONS_KEY, previousDeletions);
+      }
       showReportToast(
         "error",
         "Browser storage is full, so this workspace was not saved. Close some tabs of this app and try again.",
@@ -16964,6 +16972,7 @@ export default function KwantifyWorkspace({
       );
       return null;
     }
+    setWorkspacePresets(normalizedPresets);
     // A saved workspace is an explicit user action. Push it to the account
     // store immediately instead of waiting for the next interval sync, so
     // closing the app right after Quick Save cannot lose the workspace.
@@ -17147,7 +17156,7 @@ export default function KwantifyWorkspace({
 
   const deleteWorkspacePreset = (presetId: string) => {
     const preset = workspacePresets.find((candidate) => candidate.id === presetId);
-    persistWorkspacePresets(workspacePresets.filter((candidate) => candidate.id !== presetId));
+    if (!persistWorkspacePresets(workspacePresets.filter((candidate) => candidate.id !== presetId), presetId)) return;
     if (activeWorkspacePresetId === presetId) setActiveWorkspacePresetId(null);
     setWorkspaceDeleteCandidate(null);
     showReportToast("success", `Workspace "${preset?.name ?? "preset"}" deleted`, 1800);
@@ -17217,13 +17226,21 @@ export default function KwantifyWorkspace({
       ) {
         throw new Error("This is not a valid Kwant Desk workspace backup.");
       }
-      const importedPresets = normalizeWorkspacePresets(parsed.presets, chartWorkspaceScopeRef.current);
+      const libraryKey = workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY);
+      const removed = window.localStorage.getItem(WORKSPACE_PRESET_DELETIONS_KEY) ?? undefined;
+      // Explicitly restoring a deleted backup creates a new identity; an old
+      // phone carrying the deleted identity still cannot resurrect that copy.
+      const importedPresets = normalizeWorkspacePresets(parsed.presets, chartWorkspaceScopeRef.current).map(preset => ({
+        ...preset,
+        id: isWorkspacePresetDeleted(removed, libraryKey, preset.id) ? crypto.randomUUID() : preset.id,
+        updatedAt: new Date().toISOString(),
+      }));
       if (importedPresets.length !== parsed.presets.length) {
         throw new Error("The backup contains an invalid workspace.");
       }
       const merged = new Map(workspacePresets.map((preset) => [preset.id, preset]));
       importedPresets.forEach((preset) => merged.set(preset.id, preset));
-      persistWorkspacePresets([...merged.values()]);
+      if (!persistWorkspacePresets([...merged.values()])) return;
       const importedWorkspace = importedPresets[0];
       if (importedWorkspace) applyWorkspacePreset(importedWorkspace);
       showReportToast(

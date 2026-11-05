@@ -1,4 +1,5 @@
 import { mergeDrawingClearBarriers } from './drawingClearBarriers';
+import { mergeWorkspacePresetPreferences } from './workspacePresetPreferences';
 import type { UserPreferenceSnapshot } from './userPreferences';
 import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from './chartDrawingPreferences';
 import { normalizePaperTradingLedger, paperAccountJournalFills, type PaperAccountLedger, type PaperPosition, type PaperTradeFill, type PaperTradingLedger } from './paperTrading';
@@ -201,5 +202,6 @@ export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, loca
     } else values[key] = local.values[key];
   }
   values = mergeDrawingClearBarriers(local.values, remote.values, values);
+  values = mergeWorkspacePresetPreferences(base.values, local.values, remote.values, values);
   return { version: 1, complete: true, updatedAt: same(values, remote.values) ? remote.updatedAt : new Date().toISOString(), values };
 }
