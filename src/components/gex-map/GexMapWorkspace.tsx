@@ -34,7 +34,7 @@ import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix, { loadFutureSettings } from "@/components/gex-map/GexMapFutureMatrix";
 import GexMapWorkspacesMenu from "./GexMapWorkspacesMenu";
 import {
-  readActiveGexMapWorkspace, rememberActiveGexMapWorkspace,
+  GEX_MAP_ZOOM_MIN, GEX_MAP_ZOOM_MAX, readActiveGexMapWorkspace, rememberActiveGexMapWorkspace,
   type GexMapWorkspacePreset, type GexMapWorkspaceSnapshot,
 } from "@/lib/gexMapWorkspaces";
 import { buildGexMapSnapshots as buildSnapshots, gexMapPriceAt as priceAt, gexMapSurfaceRows } from "@/lib/gexMapSnapshots";
@@ -216,8 +216,6 @@ const SPEEDS = [1, 2, 5, 10] as const;
 const FRAME_STEPS = [1, 2, 5, 10] as const;
 const GEX_MAP_ZOOM_STORAGE_KEY = "kwantdesk:gex-map-zoom:v1";
 const GEX_MAP_PRICE_LOCK_STORAGE_KEY = "kwantdesk:gex-map-price-lock:v1";
-const GEX_MAP_ZOOM_MIN = 0.5;
-const GEX_MAP_ZOOM_MAX = 1.5;
 const GEX_MAP_ZOOM_STEP = 0.1;
 const MAX_GEX_MAP_PANELS = 4;
 const GEX_MAP_STAR_PREFERENCES_KEY = "kwantdesk:gex-map:star-preferences:v1";
@@ -1862,7 +1860,7 @@ function GexMapWorkspace({
               ))}
             </div>
 
-            <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
+            <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round((timeHorizon === "future" ? futureZoom : ladderZoom) * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
               <button
                 type="button"
                 onClick={() => (timeHorizon === "future" ? adjustFutureZoom(-1) : adjustLadderZoom(-1))}

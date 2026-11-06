@@ -6,6 +6,9 @@ import { GEX_MAP_REPLAY_WINDOWS, type GexMapReplayWindowId } from "@/lib/gexMapR
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 import { WORKSPACE_PRESET_DELETIONS_KEY, isWorkspacePresetDeleted, markWorkspacePresetDeleted } from "@/lib/workspacePresetPreferences";
 
+export const GEX_MAP_ZOOM_MIN = 0.5;
+export const GEX_MAP_ZOOM_MAX = 2;
+
 export const GEX_MAP_WORKSPACES_KEY = "kwantdesk:gex-map-workspaces:v1";
 const ACTIVE_KEY = "kwantdesk:gex-map-active-workspace:v1";
 const FILE_KIND = "kwantdesk.gex-map-workspaces";
@@ -57,7 +60,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function zoom(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? Math.min(1.5, Math.max(0.5, value)) : 1;
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(GEX_MAP_ZOOM_MAX, Math.max(GEX_MAP_ZOOM_MIN, value)) : 1;
 }
 
 function normalizeSnapshot(value: unknown): GexMapWorkspaceSnapshot | null {
