@@ -31,7 +31,6 @@ import {
   Workflow,
 } from "lucide-react";
 import { startRendererHealthRecorder } from "@/lib/rendererHealth";
-import HighImpactNewsChip from "@/components/HighImpactNewsChip";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 type SidebarKey =
   | "ai"
@@ -367,7 +366,6 @@ function AppSidebar({
       </nav>
 
       <div className="kwant-primary-workspace-utilities relative z-10 ml-auto flex shrink-0 items-center gap-1.5 bg-panel">
-        <HighImpactNewsChip />
         <button
           type="button"
           onClick={onTradesClick}

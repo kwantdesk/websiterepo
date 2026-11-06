@@ -6,7 +6,7 @@ import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, defaultChartSettings, loadStoredChartSettings } from "@/lib/chartSettings";
 import { MARKET_INDEX_DEFINITIONS } from "@/lib/marketIndices";
 import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components/ui/TimeZoneSelect";
-import { normalizeTimeZone } from "@/lib/timeZones";
+import { GEX_DATA_TIME_ZONE_CHANGE_EVENT, normalizeTimeZone } from "@/lib/timeZones";
 import GexPaletteSettings from "./GexPaletteSettings";
 import { GEX_MAP_PALETTE_PRESETS } from "@/lib/gexMapPalette";
 import { resolveGexBoxRoles } from "@/lib/gexBoxTheme";
@@ -67,7 +67,10 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       const changed = next !== timeZoneRef.current;
       timeZoneRef.current = next;
       setTimeZone(next);
-      if (changed) broadcast(frame.current?.contentWindow ?? null, "gex-data-site-timezone");
+      if (changed) {
+        broadcast(frame.current?.contentWindow ?? null, "gex-data-site-timezone");
+        window.dispatchEvent(new CustomEvent(GEX_DATA_TIME_ZONE_CHANGE_EVENT));
+      }
     };
     const syncPalette = () => {
       const saved = readValues()[PALETTE_KEY];
@@ -154,6 +157,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       },
     };
     window.__kwantGexDataHost = host;
+    window.dispatchEvent(new CustomEvent(GEX_DATA_TIME_ZONE_CHANGE_EVENT));
     setGeneration(value => value + 1); setReady(true);
     const themeChanged = () => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme");
     const hydrated = (event: Event) => { const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys; if (keys && !keys.some(key => key.startsWith("kwantdesk:gex-data:") || key === "olisa-theme" || key === CHART_SETTINGS_STORAGE_KEY)) return; syncTimeZone(); syncPalette(); cache.clear(); setGeneration(value => value + 1); };

@@ -1,108 +1,186 @@
 "use client";
 
 import { memo, useEffect, useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
-import type { EconomicCalendarEvent } from "@/lib/economicCalendar";
+import { AlertTriangle, Minus, Plus } from "lucide-react";
+import {
+  ECONOMIC_CALENDAR_TIME_ZONE_CHANGE_EVENT,
+  ECONOMIC_CALENDAR_TIME_ZONE_KEY,
+  type EconomicCalendarEvent,
+} from "@/lib/economicCalendar";
+import {
+  CHART_SETTINGS_CHANGE_EVENT,
+  CHART_SETTINGS_STORAGE_KEY,
+  chartSettingsFromChangeEvent,
+  defaultChartSettings,
+} from "@/lib/chartSettings";
+import { GEX_DATA_TIME_ZONE_CHANGE_EVENT, normalizeTimeZone } from "@/lib/timeZones";
+import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 
-// Site-wide "never miss high-impact news" chip. Lives in the top bar on every
-// workspace, watching the same authoritative economic-calendar API as the News
-// page (TradingView calendar primary, the Forex Factory weekly feed as
-// fallback). When a high-impact USD release is inside the warning window it
-// shows a live countdown — amber inside 90 minutes, red and pulsing inside 10
-// minutes, and "LIVE" for the first minutes after the print.
 const REFRESH_MS = 5 * 60_000;
-const WARNING_WINDOW_MS = 90 * 60_000;
+const HOUR_MS = 60 * 60_000;
 const CRITICAL_WINDOW_MS = 10 * 60_000;
-const RELEASED_LINGER_MS = 3 * 60_000;
 
-type ChipEvent = { name: string; timeMs: number };
+type NewsEvent = Pick<EconomicCalendarEvent, "name" | "currency" | "status"> & {
+  key: string;
+  timeMs: number;
+};
 
-function isCalendarEvent(value: unknown): value is EconomicCalendarEvent {
-  if (!value || typeof value !== "object") return false;
-  const row = value as Partial<EconomicCalendarEvent>;
-  return typeof row.name === "string" && typeof row.date === "string" && typeof row.impact === "string";
+function highImpactEvents(rows: unknown[]): NewsEvent[] {
+  const events = new Map<string, NewsEvent>();
+  for (const value of rows) {
+    if (!value || typeof value !== "object") continue;
+    const row = value as Partial<EconomicCalendarEvent>;
+    if (row.impact !== "High" || typeof row.name !== "string" || typeof row.currency !== "string" || typeof row.date !== "string") continue;
+    const timeMs = Date.parse(row.date);
+    if (!Number.isFinite(timeMs)) continue;
+    // Keep the notification minimized even if a refresh switches calendar providers.
+    const key = JSON.stringify([row.currency, row.name, timeMs]);
+    events.set(key, { key, name: row.name, currency: row.currency, timeMs, status: row.status === "released" ? "released" : "scheduled" });
+  }
+  return [...events.values()].sort((a, b) => a.timeMs - b.timeMs);
 }
 
 function formatCountdown(deltaMs: number) {
-  const totalSeconds = Math.max(0, Math.floor(deltaMs / 1_000));
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-  if (minutes >= 10) return `${minutes}m`;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  const totalSeconds = Math.ceil(deltaMs / 1_000);
+  const minutes = Math.floor(totalSeconds / 60);
+  if (minutes === 60) return "In 1h";
+  if (minutes >= 10) return `In ${minutes}m`;
+  return `In ${minutes}:${String(totalSeconds % 60).padStart(2, "0")}`;
 }
 
-function HighImpactNewsChip() {
-  const [events, setEvents] = useState<ChipEvent[]>([]);
+function HighImpactNewsChip({ path }: { path: string }) {
+  const [events, setEvents] = useState<NewsEvent[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [timeZone, setTimeZone] = useState(defaultChartSettings.timezone);
+  const [minimized, setMinimized] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
+    const sync = (event?: Event) => {
+      const chartTimeZone = chartSettingsFromChangeEvent(event?.type === CHART_SETTINGS_CHANGE_EVENT ? event : undefined).timezone;
+      let selected = chartTimeZone;
+      if (path === "/news") {
+        const detail = event?.type === ECONOMIC_CALENDAR_TIME_ZONE_CHANGE_EVENT ? (event as CustomEvent<string>).detail : undefined;
+        try { selected = detail || localStorage.getItem(ECONOMIC_CALENDAR_TIME_ZONE_KEY) || chartTimeZone; } catch { selected = detail || chartTimeZone; }
+      } else if (path === "/gex-data") {
+        selected = window.__kwantGexDataHost?.read("gex-data-timezone") || chartTimeZone;
+      }
+      setTimeZone(normalizeTimeZone(selected));
+    };
+    const storage = (event: StorageEvent) => {
+      if (event.key === CHART_SETTINGS_STORAGE_KEY || event.key === ECONOMIC_CALENDAR_TIME_ZONE_KEY || event.key === null) sync();
+    };
+    sync();
+    window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, sync);
+    window.addEventListener(GEX_DATA_TIME_ZONE_CHANGE_EVENT, sync);
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, sync);
+    window.addEventListener(ECONOMIC_CALENDAR_TIME_ZONE_CHANGE_EVENT, sync);
+    window.addEventListener("storage", storage);
+    return () => {
+      window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, sync);
+      window.removeEventListener(GEX_DATA_TIME_ZONE_CHANGE_EVENT, sync);
+      window.removeEventListener(PREFERENCES_HYDRATED_EVENT, sync);
+      window.removeEventListener(ECONOMIC_CALENDAR_TIME_ZONE_CHANGE_EVENT, sync);
+      window.removeEventListener("storage", storage);
+    };
+  }, [path]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let pending = false;
+    let lastRequestMs = -Infinity;
+    const refresh = async () => {
+      if (document.hidden || pending || Date.now() - lastRequestMs < REFRESH_MS) return;
+      pending = true;
+      lastRequestMs = Date.now();
       try {
-        const today = new Date();
-        const from = today.toISOString().slice(0, 10);
-        const to = new Date(today.getTime() + 24 * 3_600_000).toISOString().slice(0, 10);
-        const response = await fetch(`/api/economic-calendar?from=${from}&to=${to}`, { cache: "no-store" });
+        // Include both sides of midnight so recent releases and the next
+        // warning window remain covered even when the UTC date changes.
+        const from = new Date(lastRequestMs - HOUR_MS).toISOString().slice(0, 10);
+        const to = new Date(lastRequestMs + 24 * HOUR_MS).toISOString().slice(0, 10);
+        const response = await fetch(`/api/economic-calendar?from=${from}&to=${to}`, { signal: controller.signal });
         if (!response.ok) return;
-        const payload: unknown = await response.json();
-        const rows = (payload as { events?: unknown[] })?.events;
-        if (!Array.isArray(rows) || cancelled) return;
-        const upcoming = rows
-          .filter(isCalendarEvent)
-          .filter((event) => event.impact === "High" && event.currency === "USD")
-          .map((event) => ({ name: event.name, timeMs: Date.parse(event.date) }))
-          .filter((event) => Number.isFinite(event.timeMs))
-          .sort((a, b) => a.timeMs - b.timeMs);
-        setEvents(upcoming);
+        const { events: rows } = await response.json() as { events?: unknown[] };
+        if (!Array.isArray(rows) || controller.signal.aborted) return;
+        setEvents(highImpactEvents(rows));
+        setNowMs(Date.now());
       } catch {
-        // The chip is an alerting aid; a fetch failure silently retries on the
-        // next cycle rather than adding noise to the trading chrome.
+        // Retain the previous calendar through a transient failure.
+      } finally {
+        pending = false;
       }
     };
-    void load();
-    const timer = window.setInterval(() => void load(), REFRESH_MS);
+    const resume = () => {
+      if (document.hidden) return;
+      setNowMs(Date.now());
+      void refresh();
+    };
+    resume();
+    const timer = window.setInterval(refresh, REFRESH_MS);
+    document.addEventListener("visibilitychange", resume);
     return () => {
-      cancelled = true;
+      controller.abort();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", resume);
     };
   }, []);
 
-  const next = useMemo(
-    () => events.find((event) => event.timeMs + RELEASED_LINGER_MS > nowMs) ?? null,
-    [events, nowMs],
-  );
-  const untilMs = next ? next.timeMs - nowMs : Number.POSITIVE_INFINITY;
-  const visible = next !== null && untilMs <= WARNING_WINDOW_MS;
+  const active = events.filter(({ timeMs }) => nowMs >= timeMs - HOUR_MS && nowMs < timeMs + HOUR_MS);
+  const collapsed = active.length > 0 && active.every(({ key }) => minimized.has(key));
+  const formatter = useMemo(() => new Intl.DateTimeFormat("en-AU", {
+    timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+    hourCycle: "h23", timeZoneName: "short",
+  }), [timeZone]);
 
-  // Tick the countdown only while the chip is on screen.
   useEffect(() => {
-    if (!visible) {
-      const idle = window.setInterval(() => setNowMs(Date.now()), 60_000);
-      return () => window.clearInterval(idle);
+    let next = Infinity;
+    for (const { timeMs } of events) {
+      for (const boundary of [timeMs - HOUR_MS, timeMs - CRITICAL_WINDOW_MS, timeMs, timeMs + HOUR_MS]) {
+        if (boundary > nowMs) next = Math.min(next, boundary);
+      }
+      if (!collapsed && nowMs >= timeMs - HOUR_MS && nowMs < timeMs) next = Math.min(next, nowMs + 1_000);
     }
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [visible]);
+    if (!Number.isFinite(next)) return;
+    const timer = window.setTimeout(() => setNowMs(Date.now()), Math.max(1, next - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [events, nowMs, collapsed]);
 
-  if (!next || !visible) return null;
-  const released = untilMs <= 0;
-  const critical = untilMs <= CRITICAL_WINDOW_MS;
-  const tone = released || critical
-    ? "border-danger/45 bg-danger/15 text-danger"
-    : "border-warning/45 bg-warning/10 text-warning";
-  const label = next.name.length > 26 ? `${next.name.slice(0, 25)}…` : next.name;
+  if (!active.length) return null;
+
   return (
-    <a
-      href="/news"
-      title={`High-impact USD release: ${next.name}`}
-      className={`flex h-6 shrink-0 items-center gap-1.5 border px-2 text-[9px] font-bold uppercase tracking-[0.1em] transition-colors hover:brightness-110 ${tone} ${critical && !released ? "animate-pulse" : ""}`}
-    >
-      <AlertTriangle className="h-3 w-3" strokeWidth={2} />
-      <span className="max-w-[180px] truncate">{label}</span>
-      <span className="font-mono">{released ? "LIVE" : formatCountdown(untilMs)}</span>
-    </a>
+    <aside aria-label="High-impact news" className="absolute bottom-full right-0 mb-2 w-80 max-w-[calc(100vw_-_24px_-_env(safe-area-inset-left)_-_env(safe-area-inset-right))] rounded-2xl border border-danger/45 bg-panel text-foreground shadow-xl">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <AlertTriangle size={16} className="shrink-0 text-danger" aria-hidden="true" />
+        <span className="min-w-0 flex-1 text-xs font-semibold">High-impact news <span className="text-muted">· {active.length}</span></span>
+        <button
+          type="button"
+          aria-label={collapsed ? "Expand news warnings" : "Minimize news warnings"}
+          aria-expanded={!collapsed}
+          aria-controls="high-impact-news-events"
+          className="flex size-7 items-center justify-center rounded-lg text-foreground hover:bg-surface focus-visible:ring-2 focus-visible:ring-primary"
+          onClick={() => setMinimized(new Set(collapsed ? [] : active.map(({ key }) => key)))}
+        >
+          {collapsed ? <Plus size={14} aria-hidden="true" /> : <Minus size={14} aria-hidden="true" />}
+        </button>
+      </div>
+      <ul id="high-impact-news-events" hidden={collapsed} className="max-h-[min(42dvh,18rem)] overflow-y-auto overscroll-contain border-t border-border px-3">
+        {active.map((event) => {
+          const untilMs = event.timeMs - nowMs;
+          const status = untilMs > 0 ? formatCountdown(untilMs) : event.status === "released" ? "Released" : "Release time passed";
+          return (
+            <li key={event.key} className="border-b border-border py-2.5 last:border-b-0">
+              <a href="/news?view=calendar" className="block rounded-md hover:underline">
+                <span className="block break-words text-xs font-semibold">{event.currency} · {event.name}</span>
+                <span className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-[11px]">
+                  <time className="text-muted" dateTime={new Date(event.timeMs).toISOString()}>{formatter.format(event.timeMs)}</time>
+                  <span className={untilMs <= CRITICAL_WINDOW_MS ? "font-semibold text-danger" : "font-semibold text-warning"}>{status}</span>
+                </span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+      <span aria-hidden="true" className="absolute -bottom-1 right-7 size-2 rotate-45 border-b border-r border-danger/45 bg-panel" />
+    </aside>
   );
 }
 

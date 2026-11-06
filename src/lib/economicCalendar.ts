@@ -1,3 +1,6 @@
+export const ECONOMIC_CALENDAR_TIME_ZONE_KEY = "kwantdesk:economic-calendar-timezone:v1";
+export const ECONOMIC_CALENDAR_TIME_ZONE_CHANGE_EVENT = "kwantdesk:economic-calendar-timezone-change";
+
 export const ECONOMIC_CALENDAR_CURRENCIES = [
   "USD",
   "EUR",

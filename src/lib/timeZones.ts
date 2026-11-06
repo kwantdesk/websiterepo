@@ -1,3 +1,5 @@
+export const GEX_DATA_TIME_ZONE_CHANGE_EVENT = "kwantdesk:gex-data-timezone-change";
+
 const LEGACY_TIME_ZONES: Record<string, string> = {
   "(UTC-5) New York": "America/New_York",
   "(UTC+0) London": "Europe/London",

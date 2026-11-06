@@ -34,6 +34,8 @@ import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
   ECONOMIC_CALENDAR_CURRENCIES,
+  ECONOMIC_CALENDAR_TIME_ZONE_CHANGE_EVENT,
+  ECONOMIC_CALENDAR_TIME_ZONE_KEY as TIME_ZONE_STORAGE_KEY,
   type EconomicCalendarEvent,
   type EconomicCalendarPayload,
   type EconomicCurrency,
@@ -54,7 +56,6 @@ const FinancialInfoWorkspace = dynamic(() => import("./FinancialInfoWorkspace"),
 const ALERTS_STORAGE_KEY = "kwantdesk:economic-calendar-alerts:v1";
 const CURRENCIES_STORAGE_KEY = "kwantdesk:economic-calendar-currencies:v1";
 const CALENDAR_CACHE_STORAGE_KEY = "kwantdesk:economic-calendar-cache:v2";
-const TIME_ZONE_STORAGE_KEY = "kwantdesk:economic-calendar-timezone:v1";
 const CALENDAR_HISTORY_DAYS = 7;
 const CALENDAR_FORWARD_DAYS = 90;
 const DEFAULT_CURRENCIES: EconomicCurrency[] = ["USD", "EUR", "GBP", "JPY", "AUD"];
@@ -419,6 +420,7 @@ function EconomicCalendarWorkspace() {
 
   useEffect(() => {
     writeLocalStorage(TIME_ZONE_STORAGE_KEY, timeZone);
+    window.dispatchEvent(new CustomEvent(ECONOMIC_CALENDAR_TIME_ZONE_CHANGE_EVENT, { detail: timeZone }));
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [timeZone]);
 
