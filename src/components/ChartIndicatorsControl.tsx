@@ -1038,28 +1038,28 @@ function IndicatorSettingsSections({ children }: { children: ReactNode }) {
   // sections; fall back to the first rather than rendering an empty page.
   const current = sections.includes(active) ? active : sections[0] ?? "General";
   if (sections.length <= 1) {
-    return <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">{children}</div>;
+    return <div className="kwant-indicator-settings-body min-h-0 flex-1 space-y-4 overflow-y-auto">{children}</div>;
   }
   return (
     <>
-      <div data-indicator-settings-tabs="sections" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div data-indicator-settings-tabs="sections" className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {sections.map((section) => (
           <button
             key={section}
             type="button"
             aria-pressed={section === current}
             onClick={() => setActive(section)}
-            className={`shrink-0 whitespace-nowrap px-3 pb-2 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+            className={`shrink-0 whitespace-nowrap transition-colors ${
               section === current
-                ? "text-primary shadow-[inset_0_-2px_0_var(--primary)]"
-                : "text-muted hover:text-foreground"
+                ? "bg-primary/10 text-primary"
+                : "text-muted hover:bg-surface hover:text-foreground"
             }`}
           >
             {section}
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+      <div className="kwant-indicator-settings-body min-h-0 flex-1 space-y-4 overflow-y-auto">
         {entries.filter((entry) => entry.section === current).map((entry) => entry.node)}
       </div>
     </>
@@ -2186,10 +2186,12 @@ export default function ChartIndicatorsControl({
           <div
             ref={settingsDialogRef}
             data-indicator-settings-dialog
-            className="pointer-events-auto relative flex h-[min(760px,calc(100vh-2rem))] w-[min(900px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
+            role="dialog"
+            aria-label={`${settingsDefinition.name} settings`}
+            className="pointer-events-auto relative flex h-[min(760px,calc(100dvh-2rem))] w-[min(900px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden border border-border bg-panel shadow-2xl shadow-black/60"
           >
             <div
-              className="flex shrink-0 touch-none select-none items-center justify-between border-b border-border px-5 py-4 cursor-move active:cursor-grabbing"
+              className="kwant-indicator-settings-header flex shrink-0 touch-none select-none items-center justify-between border-b border-border cursor-move active:cursor-grabbing"
               title="Drag settings window"
               onPointerDown={beginSettingsDialogDrag}
               onPointerMove={moveSettingsDialog}
@@ -2198,7 +2200,7 @@ export default function ChartIndicatorsControl({
             >
               <div className="min-w-0">
                 <div className="truncate text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
-                <div className="mt-0.5 truncate text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} · live calculation</div>
+                <div className="mt-0.5 truncate text-[11px] text-muted">{settingsDefinition.category} · live calculation</div>
               </div>
               {unsavedSettingsPrompt ? (
                 <div className="absolute inset-0 z-[60] flex items-center justify-center rounded-xl bg-background/85 p-4 backdrop-blur-sm">
@@ -2340,7 +2342,7 @@ export default function ChartIndicatorsControl({
                       type="button"
                       onClick={() => setVolumeProfileTab(tab.id)}
                       aria-pressed={volumeProfileTab === tab.id}
-                      className={`h-8 shrink-0 whitespace-nowrap border px-3 text-[9px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+                      className={`shrink-0 whitespace-nowrap border transition-colors ${
                         volumeProfileTab === tab.id
                           ? "border-primary/55 bg-primary/10 text-primary"
                           : "border-transparent bg-background text-muted hover:border-border hover:text-foreground"

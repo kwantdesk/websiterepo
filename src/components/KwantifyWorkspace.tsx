@@ -18854,12 +18854,12 @@ export default function KwantifyWorkspace({
     }
     return (
       <div className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} flex min-h-0 items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl`}>
-        <div className="@container my-auto w-full max-w-[840px] rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
+        <div data-workspace-panel-picker className="@container my-auto w-full max-w-[840px] border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-primary">
                 <Plus className="h-4 w-4" />
-                <h3 className="truncate text-[12px] font-semibold uppercase tracking-[0.13em]">Add to workspace</h3>
+                <div className="truncate text-[15px] font-semibold text-foreground">Add to workspace</div>
               </div>
               <p className="mt-1.5 hidden text-[10px] leading-4 text-muted @[380px]:block">Choose a live KwantDesk workspace for this panel.</p>
             </div>
@@ -18894,8 +18894,8 @@ export default function KwantifyWorkspace({
                     <Icon className="h-[17px] w-[17px]" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[10px] font-semibold text-foreground">{option.label}</span>
-                    <span className="mt-0.5 hidden truncate text-[8px] text-muted @[300px]:block">{option.description}</span>
+                    <span className="block truncate text-[12px] font-semibold text-foreground">{option.label}</span>
+                    <span className="mt-0.5 hidden truncate text-[10px] text-muted @[300px]:block">{option.description}</span>
                   </span>
                 </button>
               );
@@ -18919,7 +18919,7 @@ export default function KwantifyWorkspace({
                   className={`group flex min-h-[66px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none ${pane.content === option.id || workspacePanelTransition?.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Icon className="h-[17px] w-[17px]" /></span>
-                  <span className="min-w-0"><span className="block text-[9px] font-semibold leading-3 text-foreground">{option.label}</span><span className="mt-1 hidden text-[8px] leading-3 text-muted @[300px]:block">{option.description}</span></span>
+                  <span className="min-w-0"><span className="block text-[12px] font-semibold leading-4 text-foreground">{option.label}</span><span className="mt-1 hidden text-[10px] leading-4 text-muted @[300px]:block">{option.description}</span></span>
                 </button>
               );
             })}
@@ -18940,8 +18940,8 @@ export default function KwantifyWorkspace({
                     <Icon className="h-[17px] w-[17px]" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-[9px] font-semibold leading-3 text-foreground">{option.label}</span>
-                    <span className="mt-1 hidden text-[8px] leading-3 text-muted @[300px]:block">{option.description}</span>
+                    <span className="block text-[12px] font-semibold leading-4 text-foreground">{option.label}</span>
+                    <span className="mt-1 hidden text-[10px] leading-4 text-muted @[300px]:block">{option.description}</span>
                   </span>
                 </button>
               );

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../../public/gex-data-app/range-input.css";
+@import "../../public/gex-data-app/workspace-chrome.css";
 
 :root {
   /* The CHARTS workspace header is the shell's vertical rhythm reference. */
@@ -1417,6 +1418,7 @@ header.kwant-command-rail {
    HOME / CHARTS / GAMMA / GEX MAP controls beside it. */
 header.kwant-command-rail .kwant-primary-nav-control {
   box-sizing: border-box;
+  border-radius: var(--kwant-control-radius);
   height: 28px;
   min-height: 28px;
   max-height: 28px;
@@ -1680,10 +1682,27 @@ header.kwant-command-rail .kwant-primary-nav-control {
   .kwant-chart-command-deck .kwant-chart-actions { grid-column: 1; grid-row: 3; }
 }
 
-body:has(.kwant-command-rail) .rounded-3xl { border-radius: 6px !important; }
-body:has(.kwant-command-rail) .rounded-2xl { border-radius: 5px !important; }
-body:has(.kwant-command-rail) .rounded-xl { border-radius: 4px !important; }
-body:has(.kwant-command-rail) .rounded-lg { border-radius: 3px !important; }
+/* Keep the original compact geometry on chart panes and their drawing UI. */
+:is(body.kwant-cockpit-ui, body:has(.kwant-command-rail))
+  :where(.kwant-chart-pane-scrollport, [data-chart-instance-id], .kwant-draw-toolbar) {
+  &.rounded-3xl, & .rounded-3xl { border-radius: 6px !important; }
+  &.rounded-2xl, & .rounded-2xl { border-radius: 5px !important; }
+  &.rounded-xl, & .rounded-xl { border-radius: 4px !important; }
+  &.rounded-lg, & .rounded-lg { border-radius: 3px !important; }
+}
+
+body.kwant-cockpit-ui :where(.kwant-chart-pane-scrollport, [data-chart-instance-id], .kwant-draw-toolbar) {
+  &.rounded-md, & .rounded-md { border-radius: 2px !important; }
+}
+
+/* Give workspace controls a shared radius while preserving pills and joined controls. */
+:is(body.kwant-cockpit-ui, body:has(.kwant-command-rail))
+  :where(button, [role="button"], a[class~="border"], select, textarea, input:not([type="range"], [type="checkbox"], [type="radio"], [type="color"])):not(:where(.kwant-chart-pane-scrollport, [data-chart-instance-id], .kwant-draw-toolbar, .kwant-chart-pane-scrollport *, [data-chart-instance-id] *, .kwant-draw-toolbar *)) {
+  &:not([class*="rounded-"]),
+  &.rounded-none, &.rounded-sm, &.rounded-md, &.rounded-lg, &[class~="rounded-[3px]"] {
+    border-radius: var(--kwant-control-radius);
+  }
+}
 
 body.kwant-cockpit-ui *,
 body.kwant-cockpit-ui *::before,
@@ -1784,7 +1803,7 @@ body.kwant-cockpit-ui .kwant-chart-command-deck {
 
 body.kwant-cockpit-ui .kwant-chart-command-deck button {
   min-height: 27px;
-  border-radius: 3px !important;
+  border-radius: var(--kwant-control-radius);
   font-family: "Aleph", sans-serif;
   font-size: 10px;
   font-weight: 600;
@@ -1798,7 +1817,7 @@ body.kwant-cockpit-ui .kwant-chart-timezone-control,
 body.kwant-cockpit-ui .kwant-workspace-toolbar-control {
   height: 28px;
   min-height: 28px;
-  border-radius: 3px !important;
+  border-radius: var(--kwant-control-radius);
   font-family: "Aleph", sans-serif;
   font-size: 10px;
   font-weight: 600;
@@ -1808,14 +1827,6 @@ body.kwant-cockpit-ui .kwant-workspace-toolbar-control {
 body.kwant-cockpit-ui .kwant-chart-command-deck > div {
   border-color: #24282d;
 }
-
-/* Panels lock together like a rack. Only avatars, status lamps and explicit
-   pills retain a full radius. */
-body.kwant-cockpit-ui .rounded-3xl { border-radius: 6px !important; }
-body.kwant-cockpit-ui .rounded-2xl { border-radius: 5px !important; }
-body.kwant-cockpit-ui .rounded-xl { border-radius: 4px !important; }
-body.kwant-cockpit-ui .rounded-lg { border-radius: 3px !important; }
-body.kwant-cockpit-ui .rounded-md { border-radius: 2px !important; }
 
 /* Remove the oversized SaaS spacing while retaining each page's information
    architecture. These utilities are scoped to the product shell only. */
@@ -1883,7 +1894,7 @@ body.kwant-cockpit-ui select {
    its spacing and corners so cockpit utility compression cannot flatten it. */
 .kwant-indicator-library-overlay { padding: 20px; }
 .kwant-indicator-library {
-  border-radius: 16px;
+  border-radius: var(--kwant-dialog-radius);
   min-height: 0;
 }
 .kwant-indicator-library-header {
@@ -1896,7 +1907,7 @@ body.kwant-cockpit-ui select {
 .kwant-indicator-library-star,
 .kwant-indicator-library-add,
 .kwant-indicator-library-done {
-  border-radius: 8px;
+  border-radius: var(--kwant-control-radius);
 }
 .kwant-indicator-library-search {
   width: min(360px, 42%);
@@ -1968,6 +1979,57 @@ body .kwant-indicator-library .kwant-indicator-library-search input:focus-visibl
   padding: 16px 24px;
 }
 .kwant-indicator-library-done { padding: 9px 18px; }
+
+body [data-indicator-settings-dialog],
+body [data-workspace-panel-picker] {
+  border-radius: var(--kwant-dialog-radius);
+}
+
+body.kwant-cockpit-ui [data-indicator-settings-dialog][role="dialog"] {
+  border-color: var(--border);
+  background-color: var(--panel);
+}
+
+.kwant-indicator-settings-header {
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+[data-indicator-settings-tabs="sections"] {
+  padding: 8px 16px;
+}
+
+body [data-indicator-settings-tabs] > button {
+  min-height: 30px;
+  border-radius: var(--kwant-control-radius);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kwant-indicator-settings-body {
+  padding: 16px 20px;
+}
+
+.kwant-indicator-settings-body > :where(.border) {
+  border-radius: var(--kwant-card-radius);
+}
+
+.kwant-indicator-settings-body :where(label, legend, .kwant-indicator-numeric > div) {
+  font-size: 11px;
+  line-height: 1.45;
+  letter-spacing: .04em;
+}
+
+body .kwant-indicator-settings-body .kwant-indicator-number {
+  font-size: 11px;
+}
+
+@media (max-width: 640px) {
+  .kwant-indicator-settings-header,
+  .kwant-indicator-settings-body { padding: 12px; }
+  [data-indicator-settings-tabs="sections"] { padding-inline: 12px; }
+}
 
 @media (max-width: 800px) {
   .kwant-indicator-library-row { flex-wrap: wrap; }

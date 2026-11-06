@@ -1,0 +1,15 @@
+:root {
+  --kwant-control-radius: 8px;
+  --kwant-card-radius: 12px;
+  --kwant-dialog-radius: 16px;
+}
+
+/* The embedded workspaces have their own documents and theme stylesheets. */
+body[data-phone-workspace] :is(header, .top-deck, .tool-controls, .dock-body, dialog, .workspace-dialog, .add-tool-dialog, .filter-group-editor-dialog)
+  :is(button, select, input:not([type="range"], [type="radio"], [type="checkbox"], [type="color"]), .kwant-choice-trigger, .choice-dropdown):not([data-tool]) {
+  border-radius: var(--kwant-control-radius) !important;
+}
+
+body[data-phone-workspace] :is(dialog, .workspace-dialog, .add-tool-dialog, .filter-group-editor-dialog, .trade-detail-dialog) {
+  border-radius: var(--kwant-dialog-radius) !important;
+}
