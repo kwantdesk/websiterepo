@@ -19,6 +19,19 @@ import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 const REFRESH_MS = 5 * 60_000;
 const HOUR_MS = 60 * 60_000;
 const CRITICAL_WINDOW_MS = 10 * 60_000;
+const DISMISSED_STORAGE_KEY = "kwantdesk:high-impact-news-dismissed:v1";
+
+function readDismissed(nowMs: number): Map<string, number> {
+  try {
+    const entries: unknown = JSON.parse(localStorage.getItem(DISMISSED_STORAGE_KEY) ?? "[]");
+    if (Array.isArray(entries)) {
+      return new Map(entries.filter((entry): entry is [string, number] =>
+        Array.isArray(entry) && typeof entry[0] === "string" && Number.isFinite(entry[1]) && entry[1] > nowMs,
+      ));
+    }
+  } catch { /* Dismissal still works in memory if storage is unavailable. */ }
+  return new Map();
+}
 
 type NewsEvent = Pick<EconomicCalendarEvent, "name" | "currency" | "status"> & {
   key: string;
@@ -53,6 +66,17 @@ function HighImpactNewsChip({ path }: { path: string }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [timeZone, setTimeZone] = useState(defaultChartSettings.timezone);
   const [minimized, setMinimized] = useState<Set<string>>(() => new Set());
+  const [dismissed, setDismissed] = useState<Map<string, number>>(() => new Map());
+
+  useEffect(() => {
+    const sync = () => setDismissed(readDismissed(Date.now()));
+    const storage = (event: StorageEvent) => {
+      if (event.key === DISMISSED_STORAGE_KEY || event.key === null) sync();
+    };
+    sync();
+    window.addEventListener("storage", storage);
+    return () => window.removeEventListener("storage", storage);
+  }, []);
 
   useEffect(() => {
     const sync = (event?: Event) => {
@@ -124,7 +148,9 @@ function HighImpactNewsChip({ path }: { path: string }) {
     };
   }, []);
 
-  const active = events.filter(({ timeMs }) => nowMs >= timeMs - HOUR_MS && nowMs < timeMs + HOUR_MS);
+  const active = events.filter(({ key, timeMs }) =>
+    !dismissed.has(key) && nowMs >= timeMs - HOUR_MS && nowMs < timeMs + HOUR_MS,
+  );
   const collapsed = active.length > 0 && active.every(({ key }) => minimized.has(key));
   const formatter = useMemo(() => new Intl.DateTimeFormat("en-AU", {
     timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
@@ -133,7 +159,8 @@ function HighImpactNewsChip({ path }: { path: string }) {
 
   useEffect(() => {
     let next = Infinity;
-    for (const { timeMs } of events) {
+    for (const { key, timeMs } of events) {
+      if (dismissed.has(key)) continue;
       for (const boundary of [timeMs - HOUR_MS, timeMs - CRITICAL_WINDOW_MS, timeMs, timeMs + HOUR_MS]) {
         if (boundary > nowMs) next = Math.min(next, boundary);
       }
@@ -142,7 +169,20 @@ function HighImpactNewsChip({ path }: { path: string }) {
     if (!Number.isFinite(next)) return;
     const timer = window.setTimeout(() => setNowMs(Date.now()), Math.max(1, next - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [events, nowMs, collapsed]);
+  }, [events, nowMs, collapsed, dismissed]);
+
+  function dismissActive() {
+    const now = Date.now();
+    const next = readDismissed(now);
+    for (const [key, expiresAt] of dismissed) {
+      if (expiresAt > now) next.set(key, expiresAt);
+    }
+    for (const { key, timeMs } of active) next.set(key, timeMs + HOUR_MS);
+    setDismissed(next);
+    try {
+      localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify([...next]));
+    } catch { /* Keep the in-memory dismissal. */ }
+  }
 
   if (!active.length) return null;
 
@@ -160,6 +200,14 @@ function HighImpactNewsChip({ path }: { path: string }) {
           onClick={() => setMinimized(new Set(collapsed ? [] : active.map(({ key }) => key)))}
         >
           {collapsed ? <Plus size={14} aria-hidden="true" /> : <Minus size={14} aria-hidden="true" />}
+        </button>
+        <button
+          type="button"
+          aria-label="Dismiss current news warnings"
+          className="h-7 shrink-0 rounded-lg px-2 text-[11px] font-semibold text-foreground hover:bg-surface focus-visible:ring-2 focus-visible:ring-primary"
+          onClick={dismissActive}
+        >
+          Dismiss
         </button>
       </div>
       <ul id="high-impact-news-events" hidden={collapsed} className="max-h-[min(42dvh,18rem)] overflow-y-auto overscroll-contain border-t border-border px-3">
