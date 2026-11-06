@@ -70,6 +70,15 @@ function executionConflict(known: PaperAccountLedger, incoming: PaperAccountLedg
     return p.status === 'open' && (closed.has(p.id)
       || p.remainingQuantity > Math.min(previous?.remainingQuantity ?? Infinity, recordedRemaining) + 1e-9);
   })) return true;
+  if (incoming.positions.some(position => {
+    const previous = known.positions.find(candidate => candidate.id === position.id);
+    if (!previous || position.status !== 'open' || previous.status !== 'open') return false;
+    if ((previous.stopLossActivatedAt ?? 0) > (position.stopLossActivatedAt ?? 0)) return true;
+    return position.takeProfits.some(target => {
+      const priorTarget = previous.takeProfits.find(candidate => candidate.id === target.id);
+      return (priorTarget?.priceActivatedAt ?? 0) > (target.priceActivatedAt ?? 0);
+    });
+  })) return true;
   const finalOrders = new Set(known.orders.filter(order => ['filled', 'cancelled', 'rejected'].includes(order.status)).map(order => order.id));
   if (incoming.orders.some(order => order.status === 'working' && finalOrders.has(order.id))) return true;
   const fills = new Map(knownFills.map(fill => [fill.id, fill]));
@@ -134,16 +143,23 @@ function mergeTradingAccount(base: PaperAccountLedger | undefined, local: PaperA
     // A partial fill or target edit can carry the baseline's null/older stop.
     // Only an actual stop edit may replace the peer's changed stop (including
     // an explicit removal); do not infer intent from quote/account timestamps.
-    const stopLoss = original && same(a.stopLoss, original.stopLoss) ? b.stopLoss : a.stopLoss;
+    const stopA = a.stopLossActivatedAt ?? 0;
+    const stopB = b.stopLossActivatedAt ?? 0;
+    const stop = stopA !== stopB ? (stopA > stopB ? a : b)
+      : original && same(a.stopLoss, original.stopLoss) ? b : a;
     const takeProfits = mergeById(original?.takeProfits ?? [], a.takeProfits, b.takeProfits, (left, right) => {
       const previous = original?.takeProfits.find(target => target.id === left.id);
+      const leftAt = left.priceActivatedAt ?? 0;
+      const rightAt = right.priceActivatedAt ?? 0;
+      const newer = leftAt !== rightAt ? (leftAt > rightAt ? left : right) : null;
       return { ...left,
-        price: previous && same(left.price, previous.price) ? right.price : left.price,
+        price: newer?.price ?? (previous && same(left.price, previous.price) ? right.price : left.price),
+        priceActivatedAt: newer?.priceActivatedAt ?? left.priceActivatedAt,
         quantity: previous && same(left.quantity, previous.quantity) ? right.quantity : left.quantity,
         filledQuantity: Math.max(left.filledQuantity, right.filledQuantity),
       };
     });
-    return { ...chosen, stopLoss, takeProfits: takeProfits.map(target => ({ ...target,
+    return { ...chosen, stopLoss: stop.stopLoss, stopLossActivatedAt: stop.stopLossActivatedAt, takeProfits: takeProfits.map(target => ({ ...target,
       filledQuantity: Math.max(target.filledQuantity,
         a.takeProfits.find(t => t.id === target.id)?.filledQuantity ?? 0,
         b.takeProfits.find(t => t.id === target.id)?.filledQuantity ?? 0) })) };

@@ -11,7 +11,7 @@ function open(stopLoss = null) {
   return result.ledger;
 }
 const position = ledger => ledger.accounts[record.id].positions[0];
-const edit = (ledger, change) => updatePaperProtection(ledger, record.id, position(ledger).id, change).ledger;
+const edit = (ledger, change) => updatePaperProtection(ledger, record.id, position(ledger).id, change, timestamp + 250).ledger;
 const snapshot = ledger => ({ version: 1, complete: true, updatedAt: new Date(timestamp).toISOString(), values: { [PAPER_LEDGER_KEY]: JSON.stringify(ledger) } });
 const merge = (base, local, remote) => JSON.parse(mergeAccountPreferenceChanges(snapshot(base), snapshot(local), snapshot(remote)).values[PAPER_LEDGER_KEY]);
 for (const reverse of [false, true]) {
@@ -75,3 +75,14 @@ for (const reverse of [false, true]) {
     assert.deepEqual(result.takeProfits, []);
   });
 }
+
+test("a stale peer cannot restore an earlier target revision", () => {
+ const base = open();
+ const id = position(base).id;
+ const targetId = position(base).takeProfits[0].id;
+ const older = updatePaperProtection(base, record.id, id, { kind: "take_profit", targetId, price: 30012 }, timestamp + 250).ledger;
+ const newer = updatePaperProtection(older, record.id, id, { kind: "take_profit", targetId, price: 30020 }, timestamp + 750).ledger;
+ const target = position(merge(newer, newer, older)).takeProfits[0];
+ assert.equal(target.price, 30020);
+ assert.equal(target.priceActivatedAt, timestamp + 750);
+});

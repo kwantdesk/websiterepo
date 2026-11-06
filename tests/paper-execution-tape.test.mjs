@@ -107,7 +107,7 @@ for (const side of ['buy','sell']) for (const role of ['take_profit','stop_loss'
 for(const side of ['buy','sell'])test(`${side} breakeven stop fills at the exact entry tick without needing a prior recross`,()=>{
   const {record,ledger}=open(side);
   const id=ledger.accounts[record.id].positions[0].id;
-  const placed=updatePaperProtection(ledger,record.id,id,{kind:'stop_loss',price:24000});
+  const placed=updatePaperProtection(ledger,record.id,id,{kind:'stop_loss',price:24000},time);
   assert.equal(placed.error,undefined);
   const next=processPaperExecutionTape(placed.ledger,[record],'NQ',[print(24000)]);
   assert.equal(exits(next,record.id)[0].price,24000);

@@ -18610,33 +18610,20 @@ export default function KwantifyWorkspace({
     const quote = position ? resolvePaperExecutionQuote(position.symbol) : null;
     // The preview and release must use exactly the same tick-snapped price.
     // A fresh quote must not silently relocate the handle on pointerup.
-    const result = updatePaperProtection(current, accountId, positionId, update);
+    const replayClock = bottomWorkspaceSection === "backtesting" || (chartWorkspaceScope === "gamma" && gexVueReplay.active);
+    if (replayClock && !quote && update.price !== null) {
+      showPaperOrderMessage("error", "Replay price is unavailable.");
+      return;
+    }
+    const activatedAt = replayClock ? quote?.timestamp ?? position?.protectionQuoteAt : Math.max(Date.now(), quote?.timestamp ?? 0);
+    const result = updatePaperProtection(current, accountId, positionId, update, activatedAt);
     if (result.error) {
       showPaperOrderMessage("error", result.error);
       return;
     }
 
-    // Releasing a stop handle only arms the snapped stop. It must not replay
-    // the quote used during the pointer release and turn placement into a fill.
-    if (update.kind === "stop_loss" || update.price == null) {
-      commitProtection(result.ledger);
-      return;
-    }
-
-    const next = position && quote
-      ? processPaperQuote(
-          result.ledger,
-          paperTradingAccounts,
-          position.symbol,
-          quote,
-          {
-            executionAuthorized: true,
-            suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
-            marketableProtectionPositionIds: new Set([positionId]),
-          },
-        )
-      : result.ledger;
-    commitProtection(next);
+    // Pointer release edits the working level. Only the execution path can fill it.
+    if (result.ledger !== current) commitProtection(result.ledger);
   };
 
   const handlePaperProtectionDragStateChange = useCallback((positionId: string, dragging: boolean) => {

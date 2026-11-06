@@ -121,9 +121,9 @@ test("release stores the chosen tick instead of silently moving the stop to a la
   const record = { id: "account", name: "fixture", balance: "$50,000", leverage: "1:30" };
   const result = placePaperOrder(emptyPaperTradingLedger(), [record], { accountId: record.id, symbol: "NQ", side: "buy", type: "market", quantity: 1, price: null, stopLoss: null, takeProfits: [] }, { bid: 29900, ask: 29900, timestamp: 1793000000000 });
   const position = result.ledger.accounts.account.positions[0];
-  const updated = updatePaperProtection(result.ledger, record.id, position.id, { kind: "stop_loss", price: 29901.13 });
+  const updated = updatePaperProtection(result.ledger, record.id, position.id, { kind: "stop_loss", price: 29901.13 }, 1793000000001);
   assert.equal(updated.ledger.accounts.account.positions[0].stopLoss, 29901.25);
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
-  assert.match(workspace, /updatePaperProtection\(current, accountId, positionId, update\)/);
+  assert.match(workspace, /updatePaperProtection\(current, accountId, positionId, update, activatedAt\)/);
   assert.doesNotMatch(workspace, /price: constrainDraggedPaperStop\(/);
 });

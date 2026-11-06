@@ -13,7 +13,9 @@ function fixture(side='buy',type='market'){
  const base=placePaperOrder(emptyPaperTradingLedger(),[account],{accountId:account.id,symbol:'NQ',side,type,quantity:1,price:type==='market'?null:30000,stopLoss:side==='buy'?29990:30010,takeProfits:[]},quote(type==='market'?30000:side==='buy'?30001:29999,start)).ledger;
  let stored=structuredClone(base),rendered=base;const writes=[],messages=[];
  const context={paperLedgerRef:{current:base},updatePaperProtection,updatePaperOrderProtection,processPaperQuote,
-  resolvePaperExecutionQuote:()=>quote(30000),paperTradingAccounts:[account],suspendedPaperProtectionIdsRef:{current:new Set()},
+  resolvePaperExecutionQuote:()=>quote(30000), Date: { now: () => start + 500 },
+  bottomWorkspaceSection: "charts", chartWorkspaceScope: "charts", gexVueReplay: { active: false },
+  paperTradingAccounts:[account],suspendedPaperProtectionIdsRef:{current:new Set()},
   savePaperTradingLedger:ledger=>{stored=structuredClone(ledger);writes.push(stored);return {ok:true}},
   commitPaperLedger:ledger=>{context.paperLedgerRef.current=ledger;rendered=ledger},showPaperOrderMessage:(...args)=>messages.push(args)};
  vm.runInNewContext(ts.transpileModule(handler+'\nglobalThis.update=handlePaperProtectionUpdate;', {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
@@ -59,4 +61,47 @@ test('explicit stop removal saves synchronously and invalid edits never overwrit
  const h=fixture(),position=h.base.accounts.fixture.positions[0];
  h.context.update('fixture',position.id,{kind:'stop_loss',price:-1});assert.equal(h.writes.length,0);
  h.context.update('fixture',position.id,{kind:'stop_loss',price:null});assert.equal(h.stored.accounts.fixture.positions[0].stopLoss,null);assert.equal(h.writes.length,1);
+});
+
+test("short target drag cannot replay a quote or a queued pre-edit trade", () => {
+ const h = fixture("sell");
+ const position = h.base.accounts.fixture.positions[0];
+ h.context.resolvePaperExecutionQuote = () => quote(30000, start + 200);
+ h.context.update("fixture", position.id, { kind: "take_profit", price: 29995 });
+ const target = h.stored.accounts.fixture.positions[0].takeProfits[0];
+ // A stale quote would have looked marketable and closed the position on release.
+ h.context.resolvePaperExecutionQuote = () => quote(29960, start + 400);
+ h.context.update("fixture", position.id, { kind: "take_profit", targetId: target.id, price: 29980 });
+ let ledger = normalizePaperTradingLedger(JSON.parse(JSON.stringify(h.stored)));
+ assert.equal(ledger.accounts.fixture.positions[0].status, "open");
+ assert.equal(ledger.accounts.fixture.positions[0].takeProfits[0].priceActivatedAt, start + 500);
+ const feed = (price, at) => { ledger = processPaperQuote(ledger, [account], "NQ", quote(price, at), { executionAuthorized: true }); };
+ feed(29970, start + 450);
+ feed(29970, start + 500);
+ feed(29995, start + 501);
+ assert.equal(ledger.accounts.fixture.positions[0].status, "open");
+ feed(29980, start + 502);
+ assert.equal(ledger.accounts.fixture.fills.at(-1).role, "take_profit");
+ assert.equal(ledger.accounts.fixture.fills.at(-1).price, 29980);
+});
+
+test("editing a target does not disarm the existing stop", () => {
+ const h = fixture("sell");
+ const position = h.base.accounts.fixture.positions[0];
+ h.context.update("fixture", position.id, { kind: "take_profit", price: 29980 });
+ const after = processPaperQuote(h.stored, [account], "NQ", quote(30010, start + 450), { executionAuthorized: true });
+ assert.equal(after.accounts.fixture.fills.at(-1).role, "stop_loss");
+});
+test("replay amendments use the replay clock and wait for a later replay trade", () => {
+ const h = fixture("sell");
+ const position = h.base.accounts.fixture.positions[0];
+ h.context.bottomWorkspaceSection = "backtesting";
+ h.context.Date.now = () => start + 1_000_000;
+ h.context.resolvePaperExecutionQuote = () => quote(30000, start + 600);
+ h.context.update("fixture", position.id, { kind: "take_profit", price: 29990 });
+ assert.equal(h.stored.accounts.fixture.positions[0].takeProfits[0].priceActivatedAt, start + 600);
+ const sameTick = processPaperQuote(h.stored, [account], "NQ", quote(29990, start + 600), { executionAuthorized: true });
+ assert.equal(sameTick.accounts.fixture.positions[0].status, "open");
+ const nextTick = processPaperQuote(sameTick, [account], "NQ", quote(29990, start + 601), { executionAuthorized: true });
+ assert.equal(nextTick.accounts.fixture.fills.at(-1).price, 29990);
 });

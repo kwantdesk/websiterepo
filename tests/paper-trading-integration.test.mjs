@@ -221,7 +221,7 @@ test("active stop-loss and take-profit labels can be removed and recreated from 
   assert.match(chart, /kind: "take_profit",[\s\S]*?targetId: level\.targetId,[\s\S]*?price: null/);
   assert.match(chart, /Remove \$\{level\.kind === "stop_loss" \? "stop loss" : "take profit"\}/);
   assert.match(engine, /takeProfits: position\.takeProfits\.filter\(\(target\) => target\.id !== update\.targetId\)/);
-  assert.match(workspace, /update\.kind === "stop_loss" \|\| update\.price == null/);
+  assert.match(workspace, /if \(result\.ledger !== current\) commitProtection\(result\.ledger\)/);
 });
 
 test("paper fills render as persistent candle-anchored entry and exit arrows", () => {

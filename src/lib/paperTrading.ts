@@ -52,8 +52,6 @@ export type PaperQuoteProcessingOptions = {
   executionAuthorized?: boolean;
   /** Protection is deliberately inactive while the trader is holding a drag handle. */
   suspendedProtectionPositionIds?: ReadonlySet<string>;
-  /** A newly dropped marketable level exits at the current executable price. */
-  marketableProtectionPositionIds?: ReadonlySet<string>;
 };
 
 export type PaperTakeProfit = {
@@ -61,6 +59,7 @@ export type PaperTakeProfit = {
   price: number;
   quantity: number;
   filledQuantity: number;
+  priceActivatedAt?: number;
 };
 
 export type PaperPosition = {
@@ -81,6 +80,7 @@ export type PaperPosition = {
   marginUsed: number;
   leverage: number;
   stopLoss: number | null;
+  stopLossActivatedAt?: number;
   takeProfits: PaperTakeProfit[];
   status: "open" | "closed";
   closedAt?: number;
@@ -675,6 +675,7 @@ function normalizePosition(value: Partial<PaperPosition>): PaperPosition | null 
     marginUsed: Math.max(0, finite(value.marginUsed)),
     leverage: positive(value.leverage),
     stopLoss: value.stopLoss == null ? null : positive(value.stopLoss),
+    stopLossActivatedAt: Number.isFinite(value.stopLossActivatedAt) ? value.stopLossActivatedAt : undefined,
     takeProfits: Array.isArray(value.takeProfits)
       ? value.takeProfits
           .filter((target): target is PaperTakeProfit => Boolean(target?.id) && positive(target?.price) > 0)
@@ -683,6 +684,7 @@ function normalizePosition(value: Partial<PaperPosition>): PaperPosition | null 
             price: positive(target.price),
             quantity: positive(target.quantity),
             filledQuantity: Math.max(0, finite(target.filledQuantity)),
+            priceActivatedAt: Number.isFinite(target.priceActivatedAt) ? target.priceActivatedAt : undefined,
           }))
       : [],
     status: remainingQuantity > 0 && value.status !== "closed" ? "open" : "closed",
@@ -1305,10 +1307,7 @@ export function processPaperQuote(
       // tapped without closing: a long's take profit at 24,000 was tested
       // against the bid, which sits a tick below the print that reached it.
       const protectionMark = crossingPrice(quote, markPrice);
-      const marketableRelease = options.marketableProtectionPositionIds?.has(position.id) === true;
-
-      const protectionIsSuspended = options.suspendedProtectionPositionIds?.has(position.id) === true
-        && options.marketableProtectionPositionIds?.has(position.id) !== true;
+      const protectionIsSuspended = options.suspendedProtectionPositionIds?.has(position.id) === true;
       if (protectionIsSuspended) {
         // A drag disables fills, not price tracking. Keeping this watermark at
         // the latest executable price means the newly placed stop is armed
@@ -1333,25 +1332,16 @@ export function processPaperQuote(
       // requirement that the preceding mark was strictly on the other side.
       // Breakeven stops and a level held during a drag can start exactly ON
       // their watermark; requiring another crossing leaves them unarmed.
-      const stopHit = position.stopLoss != null && (
-        marketableRelease
-          ? (position.side === "buy" ? markPrice <= position.stopLoss : markPrice >= position.stopLoss)
-          : position.side === "buy"
-            ? protectionMark <= position.stopLoss
-            : protectionMark >= position.stopLoss
-      );
+      // A delayed execution cannot trigger a level that was edited after it traded.
+      const stopHit = position.stopLoss != null
+        && quote.timestamp > (position.stopLossActivatedAt ?? -Infinity)
+        && (position.side === "buy" ? protectionMark <= position.stopLoss : protectionMark >= position.stopLoss);
       if (stopHit) {
-        // A working simulated stop fills at its configured tick. When a trader
-        // releases a dragged stop beyond the current market it is already
-        // marketable, so that one release fills at the executable bid/ask.
-        const stopFillPrice = marketableRelease
-          ? markPrice
-          : position.stopLoss!;
         account = closePositionQuantity(
           account,
           position,
           position.remainingQuantity,
-          snapPaperPrice(position.symbol, stopFillPrice),
+          snapPaperPrice(position.symbol, position.stopLoss!),
           quote.timestamp,
           "stop_loss",
           `sl-${position.id}`,
@@ -1367,23 +1357,16 @@ export function processPaperQuote(
         position = account.positions.find((candidate) => candidate.id === originalPosition.id) ?? position;
         if (position.status !== "open") break;
         const remainingTargetQuantity = Math.max(0, target.quantity - target.filledQuantity);
-        const targetHit = remainingTargetQuantity > 0 && (
-          marketableRelease
-            ? (position.side === "buy" ? markPrice >= target.price : markPrice <= target.price)
-            : position.side === "buy"
-              ? protectionMark >= target.price
-              : protectionMark <= target.price
-        );
+        const targetHit = remainingTargetQuantity > 0
+          && quote.timestamp > (target.priceActivatedAt ?? -Infinity)
+          && (position.side === "buy" ? protectionMark >= target.price : protectionMark <= target.price);
         if (!targetHit) continue;
         const closeQuantity = Math.min(position.remainingQuantity, remainingTargetQuantity);
-        const targetFillPrice = marketableRelease
-          ? markPrice
-          : target.price;
         account = closePositionQuantity(
           account,
           position,
           closeQuantity,
-          snapPaperPrice(position.symbol, targetFillPrice),
+          snapPaperPrice(position.symbol, target.price),
           quote.timestamp,
           "take_profit",
           `tp-${target.id}`,
@@ -1436,6 +1419,7 @@ export function updatePaperProtection(
   accountId: string,
   positionId: string,
   update: PaperProtectionUpdate,
+  activatedAt = Date.now(),
 ): { ledger: PaperTradingLedger; error?: string } {
   const account = ledger.accounts[accountId];
   const position = account?.positions.find((candidate) => candidate.id === positionId);
@@ -1443,7 +1427,9 @@ export function updatePaperProtection(
   if (update.kind === "stop_loss") {
     const price = update.price == null ? null : snapPaperPrice(position.symbol, update.price);
     if (price != null && !(price > 0)) return { ledger, error: "Enter a valid stop-loss price" };
-    const nextPosition = { ...position, stopLoss: price };
+    if (price === position.stopLoss) return { ledger };
+    const nextPosition = { ...position, stopLoss: price,
+      stopLossActivatedAt: Math.max(activatedAt, position.openedAt, position.protectionQuoteAt, position.stopLossActivatedAt ?? 0) };
     return {
       ledger: {
         ...ledger,
@@ -1467,6 +1453,7 @@ export function updatePaperProtection(
       positionId,
       update.price,
       update.quantity ?? position.remainingQuantity,
+      activatedAt,
     );
   }
 
@@ -1507,6 +1494,8 @@ export function updatePaperProtection(
     currentTarget.filledQuantity + Math.max(0, position.remainingQuantity - allocatedElsewhere),
   );
   const requestedQuantity = positive(update.quantity, currentTarget.quantity);
+  const quantity = Math.max(currentTarget.filledQuantity, Math.min(availableQuantity, requestedQuantity));
+  if (price === currentTarget.price && quantity === currentTarget.quantity) return { ledger };
   const nextPosition = {
     ...position,
     takeProfits: position.takeProfits.map((target) =>
@@ -1514,7 +1503,8 @@ export function updatePaperProtection(
         ? {
             ...target,
             price,
-            quantity: Math.max(target.filledQuantity, Math.min(availableQuantity, requestedQuantity)),
+            quantity,
+            priceActivatedAt: Math.max(activatedAt, position.openedAt, position.protectionQuoteAt, target.priceActivatedAt ?? 0),
           }
         : target),
   };
@@ -1539,6 +1529,7 @@ export function addPaperTakeProfit(
   positionId: string,
   price: number,
   quantity: number,
+  activatedAt = Date.now(),
 ) {
   const account = ledger.accounts[accountId];
   const position = account?.positions.find((candidate) => candidate.id === positionId);
@@ -1558,6 +1549,7 @@ export function addPaperTakeProfit(
     price: snappedPrice,
     quantity: Math.min(availableQuantity, positive(quantity)),
     filledQuantity: 0,
+    priceActivatedAt: Math.max(activatedAt, position.openedAt, position.protectionQuoteAt),
   };
   return {
     ledger: {
