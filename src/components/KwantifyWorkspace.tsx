@@ -362,6 +362,7 @@ import {
 } from "@/lib/databento";
 import {
   CHART_INTERVAL_GROUPS,
+  orderedFavouriteChartIntervals,
   formatChartInterval,
   isEventBasedChartInterval,
   parseChartIntervalInput,
@@ -11736,7 +11737,7 @@ export default function KwantifyWorkspace({
     [activeChartBrokerLabel],
   );
   const visibleFavouriteIntervals = useMemo(
-    () => favTFs.filter((interval) => supportsChartInterval(interval, activeChartBrokerLabel)),
+    () => orderedFavouriteChartIntervals(favTFs, activeChartBrokerLabel),
     [activeChartBrokerLabel, favTFs],
   );
   const watchlistSymbolsCsv = useMemo(() => {

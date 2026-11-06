@@ -41,6 +41,7 @@ import { browserTimeZone, normalizeTimeZone, timeZoneCity } from "@/lib/timeZone
 import type { HistoricalZyonPriceWindow, HistoricalZyonReplayInput } from "@/lib/historicalZyon";
 import {
   CHART_INTERVAL_GROUPS,
+  orderedFavouriteChartIntervals,
   formatChartInterval,
   makeCustomChartInterval,
   parseChartIntervalInput,
@@ -1096,7 +1097,7 @@ export default function BacktestingWorkspace({
     [],
   );
   const visibleFavouriteTimeframes = useMemo(
-    () => favouriteTimeframes.filter((interval) => supportsChartInterval(interval, "Databento")),
+    () => orderedFavouriteChartIntervals(favouriteTimeframes, "Databento"),
     [favouriteTimeframes],
   );
 

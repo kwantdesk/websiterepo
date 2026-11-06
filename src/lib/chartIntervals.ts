@@ -251,6 +251,26 @@ export function supportsChartInterval(value: string, broker: string) {
   return false;
 }
 
+export function orderedFavouriteChartIntervals(favourites: readonly string[], broker: string) {
+  const groupOrder = new Map(CHART_INTERVAL_GROUPS.map((group, index) => [group.kind, index]));
+  return favourites.flatMap((id) => {
+    if (!supportsChartInterval(id, broker)) return [];
+    const option = getChartInterval(id);
+    if (!option) return [];
+    // Compare custom and preset intervals in the same units within a group.
+    const value = id.endsWith("h") ? Number.parseInt(id, 10) * 60
+      : id.endsWith("W") ? Number.parseInt(id, 10) * 7
+        : id.endsWith("M") ? Number.parseInt(id, 10) * 30
+          : option.value;
+    return [{ ...option, value }];
+  }).sort((left, right) =>
+    groupOrder.get(left.kind)! - groupOrder.get(right.kind)!
+    || left.value - right.value
+    || (left.secondaryValue ?? 0) - (right.secondaryValue ?? 0)
+    || left.id.localeCompare(right.id),
+  ).map((option) => option.id);
+}
+
 export function makeCustomChartInterval(kind: ChartIntervalKind, value: number, secondaryValue?: number) {
   const primary = Math.max(1, Math.round(value));
   const secondary = Math.max(1, Math.round(secondaryValue ?? 1));
