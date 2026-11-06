@@ -1520,13 +1520,11 @@ function displayCmeSymbol(symbol: string) {
   return symbol.replace(/\.[vnc]\.\d+$/i, "");
 }
 
-// October 2026 average daily futures volume in CME Group's monthly ADV report.
-// https://www.cmegroup.com/daily_bulletin/monthly_volume/Web_ADV_Report_CMEG.pdf
-const mostTradedCmeSymbols = ["SR3.v.0", "MNQ.v.0", "ZN.v.0", "ZF.v.0", "ES.v.0"];
+const pinnedCmeSymbols = ["ES.v.0", "MES.v.0", "NQ.v.0", "MNQ.v.0"];
 const cmeFuturesPickerCategories = [
   {
-    category: "CME Futures · Most Traded",
-    instruments: mostTradedCmeSymbols.flatMap((symbol) => {
+    category: "CME Futures · Pinned",
+    instruments: pinnedCmeSymbols.flatMap((symbol) => {
       const instrument = DATABENTO_FUTURES.find((future) => future.symbol === symbol);
       return instrument ? [instrument] : [];
     }),
@@ -1534,7 +1532,7 @@ const cmeFuturesPickerCategories = [
   {
     category: "CME Futures",
     instruments: DATABENTO_FUTURES
-      .filter(({ symbol }) => !mostTradedCmeSymbols.includes(symbol))
+      .filter(({ symbol }) => !pinnedCmeSymbols.includes(symbol))
       .sort((left, right) => displayCmeSymbol(left.symbol).localeCompare(displayCmeSymbol(right.symbol), "en", { numeric: true })),
   },
 ].map(({ category, instruments }) => ({
