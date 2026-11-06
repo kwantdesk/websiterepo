@@ -2654,13 +2654,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       } as CSSProperties}
     >
       <header className="shrink-0 bg-panel">
-        <div className="flex min-h-[64px] flex-wrap items-center gap-3 px-4 py-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><NotebookPen className="h-4 w-4" /></span>
-          <div className="min-w-0">
-            <h1 className="text-[14px] font-semibold tracking-[-0.01em] text-foreground">{accountFilter === "all" ? "Overall Journal" : accountFilter}</h1>
-            <p className="mt-0.5 text-[9px] text-muted">{accountFilter === "all" ? "Consolidated performance across every journal account" : accountFilter === "ZYON Journal" ? "Personal outcomes created from reviewed ZYON Gameplans" : "Imported performance · review evidence · measurable edge"}</p>
-          </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex min-h-12 items-center justify-center px-4 py-2">
+          <div role="group" aria-label="Journal actions" className="flex flex-wrap items-center justify-center gap-2">
             {zyonJournalSelected ? <button type="button" disabled={!ready || zyonLoading || Boolean(journalLifecycleBusy)} onClick={() => { setZyonResetConfirmation(""); setZyonResetError(""); setShowZyonReset(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:border-danger/40 hover:text-danger disabled:opacity-35"><RefreshCw className="h-3.5 w-3.5" />Reset journal</button> : null}
             {accountFilter !== "all" && !zyonJournalSelected && accountRecord.has(accountFilter) ? <button type="button" disabled={!ready || Boolean(journalLifecycleBusy)} onClick={() => { setResetJournalTarget(accountFilter); setResetJournalConfirmation(""); setResetJournalError(""); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:border-danger/40 hover:text-danger disabled:opacity-35"><RefreshCw className="h-3.5 w-3.5" />Reset journal</button> : null}
             <span className={`flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 text-[9px] ${saveStatus === "error" ? "text-danger" : "text-muted"}`}>
@@ -2678,7 +2673,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         </div>
         {journalLifecycleMessage ? <div className="mx-4 mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-2 text-[8px] text-muted"><Check className="h-3.5 w-3.5 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{journalLifecycleMessage}</span><button type="button" onClick={() => setJournalLifecycleMessage("")} className="text-muted hover:text-foreground"><X className="h-3.5 w-3.5" /></button></div> : null}
         <div className="border-t border-border/70 px-3 py-2">
-          <div className="flex items-stretch gap-2 overflow-x-auto pb-1" aria-label="Journal accounts">
+          <div className="flex items-stretch justify-center-safe gap-2 overflow-x-auto pb-1" aria-label="Journal accounts">
             {accountViews.map(({ id, label, detail, stats: accountStats, icon: Icon }) => {
               const active = accountFilter === id;
               return (
@@ -2753,6 +2748,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           value={tab}
           onChange={setTab}
           ariaLabel="Journal views"
+          className="[&>div]:justify-center-safe"
         />
       </header>
 
