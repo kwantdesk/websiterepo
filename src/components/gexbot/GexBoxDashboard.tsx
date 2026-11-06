@@ -1,5 +1,6 @@
 "use client";
 
+import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import {
   Activity, BarChart3, BookOpen, Copy, Download, Expand,
   FileUp, Grip, LayoutDashboard, Maximize2,
@@ -1162,7 +1163,7 @@ function PanelSettingsDialog({ panel, onChange, onClose }: { panel: DashboardPan
     <div className="flex h-10 cursor-move items-center justify-between border-b border-border px-3" onPointerDown={(event) => { drag.current = { x: event.clientX, y: event.clientY, px: position.x, py: position.y }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (!drag.current) return; setPosition({ x: drag.current.px + event.clientX - drag.current.x, y: drag.current.py + event.clientY - drag.current.y }); }} onPointerUp={() => { drag.current = null; }}><span className="text-[10px] font-semibold uppercase tracking-[.16em]">{panel.title} settings</span><button onClick={onClose}><X className="h-4 w-4 text-muted" /></button></div>
     <div className="grid max-h-[70vh] grid-cols-2 gap-3 overflow-y-auto p-4 text-[9px]">
       {uses.symbol ? <Field label="Symbol"><KwantSelect value={panel.settings.symbol} onChange={(e) => update("symbol", e.target.value)}>{["SPX", "SPXW", "SPY", "NDX", "QQQ"].map((v) => <option key={v}>{v}</option>)}</KwantSelect></Field> : null}
-      {uses.date ? <Field label="Session date"><input type="date" value={panel.settings.date} onChange={(e) => update("date", e.target.value)} /></Field> : null}
+      {uses.date ? <Field label="Session date"><KwantDateTimeInput type="date" value={panel.settings.date} onValueChange={(nextValue) => update("date", nextValue)} /></Field> : null}
       {uses.aggregation ? <Field label="Aggregation"><KwantSelect value={panel.settings.aggregation} onChange={(e) => update("aggregation", e.target.value)}>{["1m", "2m", "3m", "4m", "5m", "10m", "15m", "20m", "30m", "1h", "2h", "4h"].map((v) => <option key={v}>{v}</option>)}</KwantSelect></Field> : null}
       {uses.greek ? <Field label="Greek"><KwantSelect value={panel.settings.greek} onChange={(e) => update("greek", e.target.value)}>{["GEX", "DEX", "VEX", "CHEX"].map((v) => <option key={v}>{v}</option>)}</KwantSelect></Field> : null}
       {uses.expiry ? <Field label="Expiration"><KwantSelect value={panel.settings.expiry} onChange={(e) => update("expiry", e.target.value)}>{["0DTE", "FRONT", "0-7DTE", "ALL"].map((v) => <option key={v}>{v}</option>)}</KwantSelect></Field> : null}

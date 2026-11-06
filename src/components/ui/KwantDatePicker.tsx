@@ -14,8 +14,7 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
  * on top of a dark cockpit. This follows the same portal-and-position pattern
  * as KwantSelect so a date reads like every other control here.
  *
- * Weekends are never selectable: there is no CME RTH session on one, and
- * offering it only produces an empty replay.
+ * Trading calendars default to weekdays. General-purpose fields can pass their own date rules.
  */
 export function isInsideKwantDatePicker(target: EventTarget | Node | null): boolean {
   return target instanceof Element ? Boolean(target.closest("[data-kwant-date-menu]")) : false;
@@ -31,6 +30,11 @@ const addMonths = (date: Date, months: number) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
 const isWeekend = (date: Date) => date.getUTCDay() === 0 || date.getUTCDay() === 6;
 
+function monthFor(value: string) {
+  const date = toDate(value);
+  return startOfMonth(Number.isFinite(date.getTime()) ? date : new Date());
+}
+
 type KwantDatePickerProps = {
   value: string;
   onChange: (value: string) => void;
@@ -38,7 +42,11 @@ type KwantDatePickerProps = {
   max?: string;
   /** Earliest selectable date, inclusive. */
   min?: string;
+  id?: string;
   label?: string;
+  title?: string;
+  allowClear?: boolean;
+  onFocus?: () => void;
   className?: string;
   disabled?: boolean;
   isDateSelectable?: (date: string) => boolean;
@@ -49,19 +57,24 @@ export default function KwantDatePicker({
   onChange,
   max,
   min,
+  id,
   label = "Select date",
+  title,
+  allowClear = false,
+  onFocus,
   className = "",
   disabled = false,
   isDateSelectable,
 }: KwantDatePickerProps) {
   const [open, setOpen] = useState(false);
+  const [typedDate, setTypedDate] = useState(value);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-  const [month, setMonth] = useState(() => startOfMonth(toDate(value || toValue(new Date()))));
+  const [month, setMonth] = useState(() => monthFor(value));
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) setMonth(startOfMonth(toDate(value || toValue(new Date()))));
+    if (!open) setMonth(monthFor(value));
   }, [open, value]);
 
   useEffect(() => {
@@ -71,17 +84,26 @@ export default function KwantDatePicker({
       if (triggerRef.current?.contains(event.target as Node)) return;
       setOpen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    const menu = menuRef.current;
+    (menu?.querySelector<HTMLElement>('[aria-pressed="true"]:not(:disabled)')
+      ?? menu?.querySelector<HTMLElement>("button:not(:disabled)"))?.focus();
     const stopOutsideDismissal = captureDropdownDismissal(onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
       stopOutsideDismissal();
-      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [open]);
 
   const WIDTH = 244;
-  const HEIGHT = 300;
+  const HEIGHT = allowClear ? 300 : 258;
   const openMenu = () => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect || disabled) return;
@@ -95,6 +117,7 @@ export default function KwantDatePicker({
       left: Math.max(8, Math.min(rect.left, window.innerWidth - WIDTH - 8)),
       top,
     });
+    setTypedDate(value);
     setOpen(true);
   };
 
@@ -117,6 +140,16 @@ export default function KwantDatePicker({
     return false;
   };
 
+  const selectDate = (date: string) => {
+    onChange(date);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+  const parsedTypedDate = toDate(typedDate);
+  const typedDateValid = Number.isFinite(parsedTypedDate.getTime())
+    && toValue(parsedTypedDate) === typedDate && !outOfRange(parsedTypedDate)
+    && (isDateSelectable ? isDateSelectable(typedDate) : !isWeekend(parsedTypedDate));
+
   const monthLabel = new Intl.DateTimeFormat("en-GB", {
     month: "long", year: "numeric", timeZone: "UTC",
   }).format(month);
@@ -125,14 +158,19 @@ export default function KwantDatePicker({
     <>
       <button
         ref={triggerRef}
+        id={id}
         type="button"
+        title={title}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onFocus={onFocus}
         disabled={disabled}
         aria-label={label}
         onClick={() => (open ? setOpen(false) : openMenu())}
         className={`group inline-flex h-7 shrink-0 items-center gap-1.5 border border-border bg-surface px-2 font-mono text-[9px] text-foreground outline-none transition-colors hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-45 ${open ? "border-primary/50" : ""} ${className}`}
       >
         <CalendarDays className="h-3 w-3 shrink-0 text-muted group-hover:text-primary" />
-        <span className="tabular-nums">{value || "—"}</span>
+        <span className="truncate tabular-nums">{value || "—"}</span>
       </button>
 
       {open && position && typeof document !== "undefined"
@@ -140,7 +178,9 @@ export default function KwantDatePicker({
           <div
             ref={menuRef}
             data-kwant-date-menu
-            className="fixed z-[12000] overflow-hidden rounded-2xl border border-border bg-panel/95 p-2 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
+            role="dialog"
+            aria-label={label}
+            className="fixed z-[12000] max-h-[calc(100dvh-16px)] overflow-auto rounded-2xl border border-border bg-panel/95 p-2 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
             style={{ left: position.left, top: position.top, width: WIDTH }}
           >
             <div className="flex items-center justify-between px-1 pb-2">
@@ -185,7 +225,8 @@ export default function KwantDatePicker({
                     key={iso}
                     type="button"
                     disabled={unavailable}
-                    onClick={() => { onChange(iso); setOpen(false); }}
+                    aria-pressed={selected}
+                    onClick={() => selectDate(iso)}
                     className={`flex h-7 items-center justify-center rounded-lg font-mono text-[10px] tabular-nums transition-colors ${
                       selected
                         ? "bg-primary/20 text-primary ring-1 ring-primary/50"
@@ -199,6 +240,27 @@ export default function KwantDatePicker({
                 );
               })}
             </div>
+            {allowClear ? (
+              <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-2">
+                <input
+                  type="text"
+                  aria-label="Date (YYYY-MM-DD)"
+                  placeholder="YYYY-MM-DD"
+                  className="h-7 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[10px] text-foreground"
+                  value={typedDate}
+                  onChange={(event) => setTypedDate(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    if (typedDateValid) selectDate(typedDate);
+                  }}
+                />
+                <button type="button" disabled={!typedDateValid} onClick={() => selectDate(typedDate)}
+                  className="rounded-lg px-2 py-1 text-[10px] text-primary disabled:opacity-40">Set</button>
+                {value ? <button type="button" onClick={() => selectDate("")}
+                  className="rounded-lg px-2 py-1 text-[10px] text-muted hover:text-foreground">Clear</button> : null}
+              </div>
+            ) : null}
           </div>,
           document.body,
         )

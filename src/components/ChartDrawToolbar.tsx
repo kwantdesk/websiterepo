@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import ChartEmojiPicker from "./ChartEmojiPicker";
+import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import {
   DRAW_TOOL_GROUPS,
   DRAW_TOOL_LAST_USED_EVENT,
@@ -186,7 +187,7 @@ export default function ChartDrawToolbar({
     if (!openGroup) return;
     const close = (event: Event) => {
       const target = event.target as Node;
-      if (menuRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target) || isInsideKwantSelectMenu(target)) return;
       if (Object.values(triggers.current).some((n) => n?.contains(target))) return;
       setOpenGroup(null);
     };

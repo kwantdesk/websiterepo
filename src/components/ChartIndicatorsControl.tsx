@@ -1,5 +1,7 @@
 "use client";
 
+import { isInsideKwantDatePicker } from "@/components/ui/KwantDatePicker";
+import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import SuperTrendIndicatorSettings from "@/components/SuperTrendIndicatorSettings";
 import { GAMMA_ENVIRONMENT_SOURCES } from "@/lib/chartGammaConversion";
 import AuctionGapIndicatorSettings from "@/components/AuctionGapIndicatorSettings";
@@ -1186,7 +1188,7 @@ export default function ChartIndicatorsControl({
       const target = event.target as Node | null;
       if (target && rootRef.current?.contains(target)) return;
       if (target && menuRef.current?.contains(target)) return;
-      if (isInsideChartColorPopover(target) || isInsideKwantSelectMenu(target)) return;
+      if (isInsideChartColorPopover(target) || isInsideKwantSelectMenu(target) || isInsideKwantDatePicker(target)) return;
       setOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
@@ -1621,7 +1623,7 @@ export default function ChartIndicatorsControl({
       // close the settings (this silently swallowed dropdown choices like
       // the Gamma Environment position).
       if (isInsideChartColorPopover(target)) return;
-      if (isInsideKwantSelectMenu(target)) return;
+      if (isInsideKwantSelectMenu(target) || isInsideKwantDatePicker(target)) return;
       closeSettingsDialog();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -2422,25 +2424,25 @@ export default function ChartIndicatorsControl({
                         <>
                           <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                             <span>Custom start</span>
-                            <input
+                            <KwantDateTimeInput
                               type="datetime-local"
                               value={String(settingsInstance.settings?.compositeCustomStartMs ?? "")}
-                              onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                              onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({
                                 ...current,
-                                settings: { ...(current.settings ?? {}), compositeCustomStartMs: event.target.value },
+                                settings: { ...(current.settings ?? {}), compositeCustomStartMs: nextValue },
                               }))}
                               className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                             />
                           </label>
                           <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                             <span>Custom end</span>
-                            <input
+                            <KwantDateTimeInput
                               type="datetime-local"
                               disabled={settingsInstance.settings?.compositeCustomEndFollowsLatest !== false}
                               value={String(settingsInstance.settings?.compositeCustomEndMs ?? "")}
-                              onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                              onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({
                                 ...current,
-                                settings: { ...(current.settings ?? {}), compositeCustomEndMs: event.target.value },
+                                settings: { ...(current.settings ?? {}), compositeCustomEndMs: nextValue },
                               }))}
                               className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none disabled:opacity-40 focus:border-primary/40"
                             />
@@ -3249,12 +3251,12 @@ export default function ChartIndicatorsControl({
                     return (
                       <label key={key} className={`space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted ${custom ? "" : "opacity-40"}`}>
                         <span>{label} · exchange time</span>
-                        <input
+                        <KwantDateTimeInput
                           type="time"
                           disabled={!custom}
                           value={value}
-                          onChange={(event) => {
-                            const [hours, mins] = event.target.value.split(":").map(Number);
+                          onValueChange={(nextValue) => {
+                            const [hours, mins] = nextValue.split(":").map(Number);
                             if (!Number.isFinite(hours) || !Number.isFinite(mins)) return;
                             replaceSession(settingsInstance.instanceId, (current) => ({
                               ...current,
@@ -3947,10 +3949,10 @@ export default function ChartIndicatorsControl({
                   {String(settingsInstance.settings?.historyMode ?? "current-session") === "session-date" ? (
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                       <span>Historical session date</span>
-                      <input
+                      <KwantDateTimeInput
                         type="date"
                         value={String(settingsInstance.settings?.sessionDate ?? "")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), sessionDate: event.target.value } }))}
+                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), sessionDate: nextValue } }))}
                         className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                       />
                     </label>
@@ -3959,19 +3961,19 @@ export default function ChartIndicatorsControl({
                     <>
                       <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                         <span>Start time</span>
-                        <input
+                        <KwantDateTimeInput
                           type="datetime-local"
                           value={String(settingsInstance.settings?.startTime ?? "")}
-                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), startTime: event.target.value } }))}
+                          onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), startTime: nextValue } }))}
                           className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                         />
                       </label>
                       <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                         <span>End time</span>
-                        <input
+                        <KwantDateTimeInput
                           type="datetime-local"
                           value={String(settingsInstance.settings?.endTime ?? "")}
-                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), endTime: event.target.value } }))}
+                          onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), endTime: nextValue } }))}
                           className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                         />
                       </label>
@@ -4831,10 +4833,10 @@ export default function ChartIndicatorsControl({
                         {([["sessionStart", "Start", "09:30"], ["sessionEnd", "End", "16:00"]] as const).map(([key, label, fallback]) => (
                           <label key={key} className="block">
                             <span className="text-[9px] uppercase tracking-[0.1em] text-muted">{label} · exchange time</span>
-                            <input
+                            <KwantDateTimeInput
                               type="time"
                               value={String(trackerSettings[key] ?? fallback)}
-                              onChange={(event) => patch({ [key]: event.target.value })}
+                              onValueChange={(nextValue) => patch({ [key]: nextValue })}
                               className="mt-1 h-8 w-full rounded-lg border border-border bg-background px-2 font-mono text-[11px] text-foreground outline-none focus:border-primary/40"
                             />
                           </label>
@@ -5591,11 +5593,11 @@ export default function ChartIndicatorsControl({
                     </label>
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>Explicit daily end</span>
-                      <input
+                      <KwantDateTimeInput
                         type="time"
                         step="1"
                         value={String(settingsInstance.settings?.dailyEndTime ?? "16:00:00")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), dailyEndTime: event.target.value } }))}
+                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), dailyEndTime: nextValue } }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                       />
                     </label>
@@ -5623,11 +5625,11 @@ export default function ChartIndicatorsControl({
                     </label>
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>Explicit week end time</span>
-                      <input
+                      <KwantDateTimeInput
                         type="time"
                         step="1"
                         value={String(settingsInstance.settings?.weekEndTime ?? "16:00:00")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), weekEndTime: event.target.value } }))}
+                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), weekEndTime: nextValue } }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                       />
                     </label>
@@ -5661,16 +5663,16 @@ export default function ChartIndicatorsControl({
                     </div>
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>Custom range start (UTC)</span>
-                      <input
+                      <KwantDateTimeInput
                         type="datetime-local"
                         value={settingsInstance.settings?.customStartMs ? new Date(Number(settingsInstance.settings.customStartMs)).toISOString().slice(0, 16) : ""}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
                           settings: {
                             ...(current.settings ?? {}),
                             scheduleKind: "custom-range",
                             periodMode: "custom-range",
-                            customStartMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0,
+                            customStartMs: nextValue ? Date.parse(`${nextValue}:00Z`) : 0,
                           },
                         }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
@@ -5678,17 +5680,17 @@ export default function ChartIndicatorsControl({
                     </label>
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>Custom range end (UTC)</span>
-                      <input
+                      <KwantDateTimeInput
                         type="datetime-local"
                         value={settingsInstance.settings?.customEndMs ? new Date(Number(settingsInstance.settings.customEndMs)).toISOString().slice(0, 16) : ""}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
                           settings: {
                             ...(current.settings ?? {}),
                             scheduleKind: "custom-range",
                             periodMode: "custom-range",
                             customEndFollowsLatest: false,
-                            customEndMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0,
+                            customEndMs: nextValue ? Date.parse(`${nextValue}:00Z`) : 0,
                           },
                         }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
@@ -5696,13 +5698,13 @@ export default function ChartIndicatorsControl({
                     </label>
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{settingsDefinition.id === "weekly-tpo" ? "Week start time" : "Daily start time"}</span>
-                      <input
+                      <KwantDateTimeInput
                         type="time"
                         step="1"
                         value={String(settingsInstance.settings?.[settingsDefinition.id === "weekly-tpo" ? "weekStartTime" : "dailyStartTime"] ?? "17:00:00")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
-                          settings: { ...(current.settings ?? {}), [settingsDefinition.id === "weekly-tpo" ? "weekStartTime" : "dailyStartTime"]: event.target.value },
+                          settings: { ...(current.settings ?? {}), [settingsDefinition.id === "weekly-tpo" ? "weekStartTime" : "dailyStartTime"]: nextValue },
                         }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                       />
@@ -6181,7 +6183,7 @@ export default function ChartIndicatorsControl({
                   )}
                   <label className="space-y-1.5 text-[9px] text-muted sm:col-span-2">
                     <span>Chart style</span>
-                    <select
+                    <KwantSelect
                       value={String(settingsInstance.settings?.style ?? "candlestick")}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                         ...current,
@@ -6194,7 +6196,7 @@ export default function ChartIndicatorsControl({
                       <option value="ohlc">OHLC</option>
                       <option value="line">Line</option>
                       <option value="hidden">Hidden</option>
-                    </select>
+                    </KwantSelect>
                   </label>
                   {[
                     ["Secondary price axis", "useSecondaryAxis"],
@@ -6763,8 +6765,8 @@ export default function ChartIndicatorsControl({
                     {(["customStartTime", "customEndTime"] as const).map((key) => (
                       <label key={key} className="block space-y-1 text-[10px] text-muted">
                         <span>{key === "customStartTime" ? "Ini Time" : "End Time"} · exchange time</span>
-                        <input type="time" step="1" value={String(settingsInstance.settings?.[key] ?? "00:00:00")}
-                          onChange={(event) => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value } }))}
+                        <KwantDateTimeInput type="time" step="1" value={String(settingsInstance.settings?.[key] ?? "00:00:00")}
+                          onValueChange={(nextValue) => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...(current.settings ?? {}), [key]: nextValue } }))}
                           className="h-9 w-full border border-border bg-background px-3 text-foreground" />
                       </label>
                     ))}
@@ -7009,10 +7011,10 @@ export default function ChartIndicatorsControl({
                   {(["customSessionStart", "customSessionEnd"] as const).map((key) => (
                     <label key={key} className="block space-y-1 text-[10px] text-muted">
                       <span>{key === "customSessionStart" ? "Initial time" : "End time"}</span>
-                      <input type="time" step={1} value={String(settingsInstance.settings?.[key] ?? "00:00:00")}
+                      <KwantDateTimeInput type="time" step={1} value={String(settingsInstance.settings?.[key] ?? "00:00:00")}
                         disabled={settingsInstance.settings?.customSessionEnabled !== true}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                          ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value },
+                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...(current.settings ?? {}), [key]: nextValue },
                         }))}
                         className="h-9 w-full border border-border bg-background px-3 font-mono text-foreground disabled:opacity-45" />
                     </label>
@@ -7801,7 +7803,7 @@ export default function ChartIndicatorsControl({
                   ] as const).map(([label, key]) => (
                     <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{label}</span>
-                      <input type="datetime-local" value={Number(settingsInstance.settings?.[key] ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.[key])).toISOString().slice(0, 16) : ""} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value ? Date.parse(event.target.value + "Z") : 0 } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" />
+                      <KwantDateTimeInput type="datetime-local" value={Number(settingsInstance.settings?.[key] ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.[key])).toISOString().slice(0, 16) : ""} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: nextValue ? Date.parse(nextValue + "Z") : 0 } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" />
                     </label>
                   )) : null}
                   {[
@@ -7863,7 +7865,7 @@ export default function ChartIndicatorsControl({
                   <div className="space-y-4 border border-primary/20 bg-primary/[0.035] p-3">
                     <div className="grid gap-3 sm:grid-cols-2">
                       {select("Starting mode", "startMode", [["zig-zag", "Zig Zag"], ["date", "Date"]])}
-                      {String(settingsInstance.settings?.startMode ?? "zig-zag") === "date" ? <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2"><span>Start date (UTC)</span><input type="datetime-local" value={Number(settingsInstance.settings?.startDateMs ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.startDateMs)).toISOString().slice(0, 16) : ""} onChange={(event) => update({ startDateMs: event.target.value ? Date.parse(event.target.value + "Z") : 0 })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label> : null}
+                      {String(settingsInstance.settings?.startMode ?? "zig-zag") === "date" ? <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2"><span>Start date (UTC)</span><KwantDateTimeInput type="datetime-local" value={Number(settingsInstance.settings?.startDateMs ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.startDateMs)).toISOString().slice(0, 16) : ""} onValueChange={(nextValue) => update({ startDateMs: nextValue ? Date.parse(nextValue + "Z") : 0 })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label> : null}
                       {toggle("Enable Zig Zag swing", "enableZigZagSwing")}
                       {toggle("Include swings in first half", "includeSwingBeforeMidTrend")}
                       {toggle("Enable retracements", "enableRetracements")}
@@ -7945,7 +7947,7 @@ export default function ChartIndicatorsControl({
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Plot type</span><KwantSelect value={String(settingsInstance.settings?.plotType ?? "label-and-line")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), plotType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Important Levels plot type"><option value="label">Label</option><option value="line">Line</option><option value="label-and-line">Label and line</option></KwantSelect></label>
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Text align</span><KwantSelect value={String(settingsInstance.settings?.textAlign ?? "right")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), textAlign: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Important Levels text align"><option value="left">Left</option><option value="right">Right</option><option value="current-right">Current to right</option><option value="current-last">Current to last</option></KwantSelect></label>
                     <button type="button" aria-pressed={settingsInstance.settings?.skipLast === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), skipLast: current.settings?.skipLast !== true } }))} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Skip last period</span><span className={settingsInstance.settings?.skipLast === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.skipLast === true ? "On" : "Off"}</span></button>
-                    {String(settingsInstance.settings?.filterTime ?? "eth") === "custom" ? <><label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Ini session · exchange time</span><input type="time" value={String(settingsInstance.settings?.customStartTime ?? "08:30")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customStartTime: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-foreground" /></label><label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>End session · exchange time</span><input type="time" value={String(settingsInstance.settings?.customEndTime ?? "15:15")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customEndTime: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-foreground" /></label></> : null}
+                    {String(settingsInstance.settings?.filterTime ?? "eth") === "custom" ? <><label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Ini session · exchange time</span><KwantDateTimeInput type="time" value={String(settingsInstance.settings?.customStartTime ?? "08:30")} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customStartTime: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-foreground" /></label><label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>End session · exchange time</span><KwantDateTimeInput type="time" value={String(settingsInstance.settings?.customEndTime ?? "15:15")} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customEndTime: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-foreground" /></label></> : null}
                   </div>
                   <p className="text-[8px] leading-4 text-muted">Daily, weekly and monthly levels use Chicago exchange sessions. OHLC, midpoint and VWAP use authoritative candles; POC and value area appear only when exact volume-at-price history exists.</p>
                 </div>
@@ -7970,8 +7972,8 @@ export default function ChartIndicatorsControl({
                       return (
                         <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
                           <button type="button" aria-pressed={enabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [enabledKey]: !enabled } }))} className="flex h-8 w-full items-center justify-between text-[9px] uppercase tracking-[0.14em] text-foreground"><span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>
-                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start · New York exchange time</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}Start`] ?? start)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Start`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
-                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End · New York exchange time</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}End`] ?? end)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}End`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start · New York exchange time</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}Start`] ?? start)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Start`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End · New York exchange time</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}End`] ?? end)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}End`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
                         </div>
                       );
                     })}
@@ -7994,8 +7996,8 @@ export default function ChartIndicatorsControl({
                       return (
                         <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
                           <button type="button" aria-pressed={enabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [enabledKey]: !enabled } }))} className="flex h-8 w-full items-center justify-between text-[9px] uppercase tracking-[0.14em] text-foreground"><span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>
-                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start · Chicago time</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}Start`] ?? start)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Start`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
-                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End · Chicago time</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}End`] ?? end)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}End`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start · Chicago time</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}Start`] ?? start)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Start`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End · Chicago time</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}End`] ?? end)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}End`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
                         </div>
                       );
                     })}
@@ -8030,8 +8032,8 @@ export default function ChartIndicatorsControl({
                       return (
                       <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
                         <button type="button" aria-pressed={enabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Enabled`]: !enabled } }))} className="flex h-8 w-full items-center justify-between text-[9px] uppercase tracking-[0.14em] text-foreground"><span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>
-                        <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start session</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}StartTime`] ?? start)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}StartTime`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
-                        <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End session</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}EndTime`] ?? end)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}EndTime`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                        <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start session</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}StartTime`] ?? start)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}StartTime`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                        <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End session</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}EndTime`] ?? end)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}EndTime`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
                         <button type="button" aria-pressed={vwapEnabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}VwapEnabled`]: !vwapEnabled } }))} className="flex h-8 w-full items-center justify-between border border-border px-2 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Session VWAP</span><span className={vwapEnabled ? "text-primary" : "text-muted"}>{vwapEnabled ? "On" : "Off"}</span></button>
                       </div>
                       );
@@ -8095,12 +8097,12 @@ export default function ChartIndicatorsControl({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>Custom start time · Chicago exchange time</span>
-                      <input
+                      <KwantDateTimeInput
                         type="time"
                         step={60}
                         disabled={settingsInstance.settings?.useCustomStartTime !== true}
                         value={String(settingsInstance.settings?.customStartTime ?? "17:00")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customStartTime: event.target.value } }))}
+                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customStartTime: nextValue } }))}
                         className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none disabled:opacity-45"
                       />
                     </label>

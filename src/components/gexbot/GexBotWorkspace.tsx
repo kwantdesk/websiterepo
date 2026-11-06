@@ -1,5 +1,6 @@
 "use client";
 
+import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import {
   Activity,
   BarChart3,
@@ -1326,7 +1327,7 @@ export default function GexBotWorkspace() {
                   <button type="button" onClick={() => { setReplayTimestamp(null); setReplayActive(true); }} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:border-primary/30 hover:text-primary"><Play className="h-3 w-3" />Replay previous NY</button>
                 ) : (
                   <>
-                    <input type="date" aria-label="Replay session date" value={replayDate} max={new Date().toISOString().slice(0, 10)} onChange={(event) => { setReplayPlaying(false); setReplayData(null); setReplayTimestamp(null); setReplayDate(event.target.value); }} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-foreground" />
+                    <KwantDateTimeInput type="date" aria-label="Replay session date" value={replayDate} max={new Date().toISOString().slice(0, 10)} onValueChange={(nextValue) => { setReplayPlaying(false); setReplayData(null); setReplayTimestamp(null); setReplayDate(nextValue); }} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-foreground" />
                     <button type="button" disabled={!replayFrames.length} onClick={() => { setReplayPlaying(false); setReplayTimestamp(replayStart); }} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-muted disabled:opacity-40" aria-label="Replay start">|&lt;</button>
                     <button type="button" disabled={!replayFrames.length} onClick={() => moveReplay(-60_000)} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-muted disabled:opacity-40" aria-label="Replay back one minute">−1m</button>
                     <button type="button" disabled={replayLoading || !replayFrames.length} onClick={() => setReplayPlaying((current) => !current)} className="flex h-7 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-[8px] font-semibold uppercase text-primary disabled:opacity-40">{replayPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}{replayPlaying ? "Pause" : "Play"}</button>

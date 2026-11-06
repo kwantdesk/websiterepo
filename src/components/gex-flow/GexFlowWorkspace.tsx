@@ -1,5 +1,6 @@
 "use client";
 
+import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, Bell, Blocks, ChevronDown, ChevronRight, Columns3, Download,
@@ -394,8 +395,8 @@ export default function GexFlowWorkspace({ accountKey, active = true, workspaceS
       <KwantSelect value={mode} onChange={(event) => setMode(event.target.value as GexFlowMode)} className="h-7 w-32"><option value="HYBRID">HYBRID</option><option value="CONSOLIDATED">CONSOLIDATED</option><option value="RAW">RAW TAPE</option></KwantSelect>
       <button onClick={togglePaused} className={`flex h-7 items-center gap-1 border px-2 text-[8px] font-semibold ${paused ? "border-warning/50 text-warning" : "border-primary/40 text-primary"}`}>{paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}{paused ? "RESUME" : "PAUSE LIVE FEED"}</button>
       <KwantSelect value={refreshMode} onChange={(event) => setRefreshMode(event.target.value)} className="h-7 w-20"><option>AUTO</option><option value="2">2s</option><option value="5">5s</option><option value="10">10s</option><option value="30">30s</option><option>MANUAL</option></KwantSelect>
-      <input type="date" value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} className="h-7 border border-border bg-background px-2 font-mono text-[8px] [color-scheme:dark]" />
-      {sessionDate ? <input type="time" step="60" value={replayTime} onChange={(event) => setReplayTime(event.target.value)} className="h-7 border border-border bg-background px-2 font-mono text-[8px] [color-scheme:dark]" title="Replay clock" /> : null}
+      <KwantDateTimeInput type="date" value={sessionDate} onValueChange={(nextValue) => setSessionDate(nextValue)} className="h-7 border border-border bg-background px-2 font-mono text-[8px] [color-scheme:dark]" />
+      {sessionDate ? <KwantDateTimeInput type="time" step="60" value={replayTime} onValueChange={(nextValue) => setReplayTime(nextValue)} className="h-7 border border-border bg-background px-2 font-mono text-[8px] [color-scheme:dark]" title="Replay clock" /> : null}
       {sessionDate ? <button onClick={() => { setSessionDate(""); setReplayTime(""); }} className="h-7 border border-primary/40 px-2 text-[8px] text-primary">LIVE</button> : null}
       <span className="ml-auto font-mono text-[8px] text-muted">{visibleRows.length.toLocaleString()} RESULTS</span>
       <KwantSelect value={resultLimit} onChange={(event) => setResultLimit(Number(event.target.value))} className="h-7 w-20">{[25, 50, 100].map((value) => <option key={value}>{value}</option>)}</KwantSelect>

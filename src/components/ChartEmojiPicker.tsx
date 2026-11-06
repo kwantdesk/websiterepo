@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { useMemo, useRef, useState } from "react";
 import { CHART_EMOJI_CATALOG, CHART_EMOJI_CATEGORIES, chartEmojiIdentity, chartEmojiPage, filterChartEmojis } from "@/lib/chartEmojiCatalog";
 
@@ -32,11 +34,11 @@ export default function ChartEmojiPicker({ emoji, quickEmojis, onSelect }: { emo
       <input type="search" aria-label="Search chart emojis" placeholder="Search emojis: magnet, rocket, bull…" value={query}
         onChange={(event) => { setQuery(event.target.value); resetPage(); }}
         className="h-8 w-full shrink-0 rounded border border-border bg-surface px-2 text-xs text-foreground outline-none focus:border-primary" />
-      <select aria-label="Emoji category" value={group} onChange={(event) => { setGroup(Number(event.target.value)); resetPage(); }}
+      <KwantSelect aria-label="Emoji category" value={group} onChange={(event) => { setGroup(Number(event.target.value)); resetPage(); }}
         className="h-8 w-full shrink-0 rounded border border-border bg-surface px-2 text-xs text-foreground">
         <option value={-1}>All categories</option>
         {CHART_EMOJI_CATEGORIES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-      </select>
+      </KwantSelect>
       <label className="flex shrink-0 items-center gap-2 text-[11px] text-muted">
         <input type="checkbox" checked={includeSkinTones} onChange={(event) => { setIncludeSkinTones(event.target.checked); resetPage(); }} className="accent-primary" />
         Include skin-tone variations

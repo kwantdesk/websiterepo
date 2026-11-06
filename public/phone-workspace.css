@@ -1,11 +1,11 @@
 .kwant-embed-phone-toggle, .kwant-embed-phone-bar, .kwant-embed-phone-panels,
 .kwant-embed-phone-drawer, .kwant-embed-phone-shade { display: none; }
-.kwant-embed-phone-panels + .kwant-choice-trigger { display: none; }
+.kwant-embed-phone-panels + .kwant-choice-trigger { display: none !important; }
 @media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
   body[data-phone-workspace] { min-width: 0 !important; width: 100%; height: 100dvh; overflow: hidden; }
   .kwant-embed-phone-toggle, .kwant-embed-phone-panels:not([hidden]) { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: 36px; min-height: 36px; padding: 0 10px; border: 1px solid var(--site-border, var(--ui-line, #555)); background: var(--site-panel, var(--ui-bg, #111)); color: var(--site-foreground, var(--ui-text, #eee)); border-radius: 6px; font: inherit; font-size: 12px; }
   .kwant-embed-phone-panels:not([hidden]) { min-width: 0; max-width: 45vw; flex-shrink: 1; }
-  .kwant-embed-phone-panels:not([hidden]) + .kwant-choice-trigger { display: inline-flex; min-width: 0; max-width: 45vw; min-height: 36px; flex-shrink: 1; }
+  .kwant-embed-phone-panels:not([hidden]) + .kwant-choice-trigger:not([hidden]) { display: inline-flex !important; min-width: 0; max-width: 45vw; min-height: 36px; flex-shrink: 1; }
   .kwant-embed-phone-bar { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 40px; min-height: 40px; padding: 2px 8px; }
   .kwant-embed-phone-drawer:not([hidden]) { display: flex; flex-direction: column; gap: 14px; position: fixed; z-index: 160; right: 0; top: 0; bottom: 0; width: min(360px, 100vw); max-width: 100vw; height: 100dvh; overflow: auto; overscroll-behavior: contain; padding: 0 12px 20px; box-sizing: border-box; background: var(--site-panel, var(--ui-bg, #111)); color: var(--site-foreground, var(--ui-text, #eee)); border-left: 1px solid var(--site-border, var(--ui-line, #555)); }
   .kwant-embed-phone-shade:not([hidden]) { display: block; position: fixed; z-index: 159; inset: 0; width: 100%; height: 100%; background: #0007; border: 0; }

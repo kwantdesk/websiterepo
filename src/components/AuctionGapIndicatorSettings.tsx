@@ -1,5 +1,6 @@
 "use client";
 
+import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
 
@@ -22,10 +23,10 @@ export default function AuctionGapIndicatorSettings({ settings, section, onChang
     const minute = Number(s[key]);
     return <label key={key} className="block space-y-1 text-[10px] text-muted">
       <span>{label} · exchange time</span>
-      <input type="time" aria-label={`Auction Gap ${label}`} step={60}
+      <KwantDateTimeInput type="time" aria-label={`Auction Gap ${label}`} step={60}
         value={`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`}
-        onChange={event => {
-          const match = /^(\d{2}):(\d{2})$/.exec(event.target.value);
+        onValueChange={(nextValue) => {
+          const match = /^(\d{2}):(\d{2})$/.exec(nextValue);
           if (match) onChange({ [key]: Number(match[1]) * 60 + Number(match[2]) });
         }} className="h-9 w-full border border-border bg-background px-3 text-foreground" />
     </label>;

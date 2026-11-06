@@ -21,6 +21,7 @@ export function installThemedSelects(doc = document) {
       return;
     }
     if (select.multiple || select.size > 1) return;
+    if (doc.body.dataset.phoneWorkspace === 'heatmap' && !select.matches('.kwant-embed-phone-panels')) return;
     const button = doc.createElement('button');
     button.type = 'button'; button.className = 'kwant-choice-trigger';
     button.setAttribute('aria-haspopup', 'listbox');
@@ -32,6 +33,7 @@ export function installThemedSelects(doc = document) {
     select.tabIndex = -1; select.setAttribute('aria-hidden', 'true');
     const sync = () => {
       text.textContent = select.selectedOptions[0]?.textContent || 'Select';
+      button.hidden = select.hidden;
       button.disabled = select.disabled || !select.options.length;
       button.setAttribute('aria-label', select.getAttribute('aria-label') || select.name || text.textContent);
       if (active?.select === select) close();
@@ -171,7 +173,7 @@ export function installThemedSelects(doc = document) {
       control.button.remove(); controls.delete(select);
     }
   });
-  observer.observe(doc.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'selected', 'label', 'aria-label']});
+  observer.observe(doc.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'selected', 'label', 'aria-label']});
   doc.addEventListener('pointerdown', event => {
     if (active && !active.menu.contains(event.target) && !active.button.contains(event.target)) close();
   });

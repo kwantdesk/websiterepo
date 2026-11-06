@@ -1,0 +1,26 @@
+[data-kwant-date-source], .kwant-date-input-host[hidden] { display:none!important; }
+.kwant-date-input-host { display:contents; }
+.kwant-date-input-host .kwant-choice-trigger { border-radius:8px!important; }
+.kwant-date-input-menu {
+  position:fixed;z-index:12001;box-sizing:border-box;max-height:calc(100dvh - 16px);overflow:auto;
+  border:1px solid var(--site-border);border-radius:16px;padding:8px;
+  background:var(--site-panel);color:var(--site-foreground);box-shadow:0 22px 70px #0009;
+  font:11px Aleph,sans-serif;
+}
+.kwant-date-input-menu .net-drift-calendar-navigation {
+  display:grid;grid-template-columns:26px 1fr 26px;align-items:center;text-align:center;gap:4px;margin-bottom:6px;
+}
+.kwant-date-input-menu .net-drift-calendar-grid {
+  display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;text-align:center;
+}
+.kwant-date-input-menu .net-drift-calendar-weekday { color:var(--site-muted);padding-bottom:4px; }
+.kwant-date-input-menu button {
+  height:28px;min-width:0;padding:0 3px;border:1px solid transparent!important;border-radius:8px!important;
+  background:transparent!important;color:var(--site-foreground)!important;font:inherit;cursor:pointer;
+}
+.kwant-date-input-menu button:not(:disabled):is(:hover,:focus-visible),
+.kwant-date-input-menu button[aria-pressed=true] {
+  background:var(--site-surface)!important;color:var(--site-primary)!important;
+}
+.kwant-date-input-menu button:disabled { opacity:.4;cursor:not-allowed; }
+.kwant-date-input-menu .net-drift-clear { margin-top:4px;padding-inline:7px; }

@@ -1,5 +1,6 @@
 "use client";
 
+import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import {
   Activity,
   Archive,
@@ -3592,7 +3593,7 @@ export default function SocialsWorkspace({
                       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted sm:col-span-2">Plan name<input value={zyonGameplanDraft.title} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, title: event.target.value.slice(0, 120) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Market root<KwantSelect value={zyonGameplanDraft.root} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, root: event.target.value as ZyonGameplanDraft["root"] } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="NQ">NQ</option><option value="ES">ES</option></KwantSelect></label>
-                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Trading date<input type="date" value={zyonGameplanDraft.sessionDate} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, sessionDate: event.target.value } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Trading date<KwantDateTimeInput type="date" value={zyonGameplanDraft.sessionDate} onValueChange={(nextValue) => setZyonGameplanDraft((current) => current ? { ...current, sessionDate: nextValue } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
                       </div>
 
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,5 +1,6 @@
 "use client";
 
+import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import KwantSelect from "@/components/ui/KwantSelect";
 
 import { useEffect, useState } from "react";
@@ -207,7 +208,7 @@ export default function AlertsPage() {
                         <div><h3 className="text-[15px] font-semibold">{briefing.title}</h3><p className="mt-1 text-[12px] text-muted">{briefing.schedule}</p></div>
                         <Toggle enabled={enabled} onClick={() => setBriefingOn((current) => ({ ...current, [briefing.title]: !enabled }))} />
                       </div>
-                      {briefing.title.includes("Morning") || briefing.title.includes("Evening") ? <input type="time" defaultValue={briefing.title.includes("Morning") ? "07:00" : "20:00"} className="mb-3 rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-[12px] text-muted outline-none" /> : null}
+                      {briefing.title.includes("Morning") || briefing.title.includes("Evening") ? <KwantDateTimeInput type="time" defaultValue={briefing.title.includes("Morning") ? "07:00" : "20:00"} className="mb-3 rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-[12px] text-muted outline-none" /> : null}
                       {briefing.title === "Drawdown Alert" && <div className="mb-3 flex items-center gap-2 text-[13px] text-muted">Threshold <input defaultValue="3" className="w-16 rounded-lg border border-border bg-surface px-2 py-1 font-mono outline-none" />%</div>}
                       <p className="mb-4 text-[13px] leading-6 text-muted">{briefing.content}</p>
                       <div className="rounded-2xl border border-border bg-background/50 p-4 font-mono text-[12px] leading-6 text-muted">
