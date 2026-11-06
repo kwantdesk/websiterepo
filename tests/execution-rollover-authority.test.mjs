@@ -3,12 +3,35 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import ts from 'typescript';
 import vm from 'node:vm';
-import { executionCandlePaintBatch, mergeHistoricalAndLiveCandleSeries } from '../src/lib/liveCandleAuthority.ts';
+import { executionCandlePaintBatch, mergeHistoricalAndLiveCandle, mergeHistoricalAndLiveCandleSeries } from '../src/lib/liveCandleAuthority.ts';
+import { continueRecordedEventBars } from '../src/lib/eventBars.ts';
 import { ObservedCandleHistory } from '../src/lib/observedCandleHistory.ts';
 import { applyInstitutionalTradesToCandles } from '../src/lib/institutionalMarketData.ts';
 
 const bar = (timestamp, extra = {}) => ({ timestamp, open:100, high:103, low:98, close:101, volume:10, ...extra });
 const print = (timestamp, price) => ({timestamp, open:price, high:price, low:price, close:price, volume:1, trades:1});
+
+test('a later archive close and earlier archive open survive a partial live refresh', () => {
+  const archive = bar(60000, {open:99, close:102, sourceStartTimestamp:60001, sourceEndTimestamp:119990});
+  const live = bar(60000, {open:101, high:105, close:100, sourceStartTimestamp:60005, sourceEndTimestamp:119980});
+  const result = mergeHistoricalAndLiveCandle(archive, live, 60000, true);
+  assert.deepEqual([result.open, result.high, result.low, result.close], [99, 105, 98, 102]);
+  assert.equal(result.sourceEndTimestamp, 119990);
+});
+
+test('event history keeps its archive threshold and replays only the unconsumed live suffix', () => {
+  const history = [bar(10000, {volume:6, sourceStartTimestamp:10000, sourceEndTimestamp:10010})];
+  const trades = [
+    {timestamp:10009, price:104, size:3},
+    {timestamp:10010, price:101, size:3},
+    {timestamp:10011, price:105, size:7},
+  ];
+  assert.deepEqual(continueRecordedEventBars([], trades, '10v', 'NQ'), []);
+  const resumed = continueRecordedEventBars(history, trades, '10v', 'NQ');
+  assert.deepEqual(resumed.map(candle => candle.volume), [13]);
+  assert.equal(resumed[0].open, history[0].open);
+  assert.equal(resumed[0].high, 105);
+});
 const text = fs.readFileSync(new URL('../src/components/KwantifyWorkspace.tsx', import.meta.url), 'utf8');
 const source = ts.createSourceFile('Workspace.tsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const find = predicate => { let result; const visit = node => { if (predicate(node)) result=node; ts.forEachChild(node,visit); }; visit(source); return result; };
@@ -21,7 +44,7 @@ test('actual execution rollover publication retains the final close and wick bef
   const oldBuffer=new ObservedCandleHistory();
   oldBuffer.observe(scope,before[0],119800);
   oldBuffer.observe(scope,next.at(-1),120010); // Previous tail-only publication.
-  assert.equal(oldBuffer.merge(scope,next)[0].close,101,'negative control reproduces the stale rendered close');
+  assert.equal(oldBuffer.merge(scope,next)[0].close,99,'a stale direct observation cannot overwrite a later recorded close');
   assert.equal(next[0].close,99,'the execution writer already has the actual final close');
   const buffer=new ObservedCandleHistory();
   buffer.observe(scope,before[0],119800);
@@ -55,7 +78,7 @@ test('the execution writer establishes live authority without depending on quote
   const loop=find(node=>ts.isForOfStatement(node)&&node.expression.getText(source)==='records'
     &&node.statement.getText(source).includes('liveTailStartTimestampRef.current'));
   assert.ok(loop);
-  const ctx=vm.createContext({records:[print(120010,101),print(120005,100)],liveTailStartTimestampRef:{current:null}});
+  const ctx=vm.createContext({records:[print(120010,101),print(120005,100)],liveTailStartTimestampRef:{current:null},newestExecutionTimestamp:-Infinity});
   const code=ts.transpileModule(loop.getText(source),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   vm.runInContext(code,ctx);
   assert.equal(ctx.liveTailStartTimestampRef.current,120005);

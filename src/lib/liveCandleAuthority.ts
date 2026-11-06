@@ -47,14 +47,26 @@ export function mergeHistoricalAndLiveCandle(
   timestamp: number,
   preserveLiveOpen: boolean,
 ): Candle {
+  const historicalStart = historical.sourceStartTimestamp;
+  const liveStart = live.sourceStartTimestamp;
+  const historicalEnd = historical.sourceEndTimestamp;
+  const liveEnd = live.sourceEndTimestamp;
+  const useLiveOpen = historicalStart !== undefined && liveStart !== undefined
+    ? liveStart < historicalStart : preserveLiveOpen;
+  const useHistoricalClose = historicalEnd !== undefined && liveEnd !== undefined
+    && historicalEnd > liveEnd;
   return {
     ...historical,
     ...live,
     timestamp,
-    open: preserveLiveOpen ? live.open : historical.open,
+    open: useLiveOpen ? live.open : historical.open,
     high: Math.max(historical.high, live.high),
     low: Math.min(historical.low, live.low),
-    close: live.close,
+    close: useHistoricalClose ? historical.close : live.close,
+    sourceStartTimestamp: historicalStart !== undefined && liveStart !== undefined
+      ? Math.min(historicalStart, liveStart) : historicalStart ?? (preserveLiveOpen ? liveStart : undefined),
+    sourceEndTimestamp: historicalEnd !== undefined && liveEnd !== undefined
+      ? Math.max(historicalEnd, liveEnd) : liveEnd,
     volume: Math.max(
       Number(historical.volume ?? 0),
       Number(live.volume ?? 0),
@@ -125,16 +137,23 @@ export function retainFormingCandleExtrema(
   const mergedDelta = hasClassifiedVolume
     ? askVolume - bidVolume
     : Number(incoming.delta ?? previous.delta ?? 0);
+  const previousStart = previous.sourceStartTimestamp;
+  const incomingStart = incoming.sourceStartTimestamp;
+  const previousEnd = previous.sourceEndTimestamp;
+  const incomingEnd = incoming.sourceEndTimestamp;
+  const earlierOpen = incomingStart !== undefined && previousStart !== undefined && incomingStart < previousStart;
+  const olderClose = incomingEnd !== undefined && previousEnd !== undefined && incomingEnd < previousEnd;
   return {
     ...previous,
     ...incoming,
     // Earlier exchange evidence may correct a first-arrival open. An ordinary
     // snapshot without an earlier execution watermark must never move it.
-    open: incoming.sourceStartTimestamp !== undefined && previous.sourceStartTimestamp !== undefined
-      && incoming.sourceStartTimestamp < previous.sourceStartTimestamp ? incoming.open : previous.open,
+    open: earlierOpen ? incoming.open : previous.open,
     high: Math.max(previous.high, incoming.high, previous.open, incoming.open, incoming.close),
     low: Math.min(previous.low, incoming.low, previous.open, incoming.open, incoming.close),
-    close: incoming.close,
+    close: olderClose ? previous.close : incoming.close,
+    sourceStartTimestamp: earlierOpen ? incomingStart : previousStart,
+    sourceEndTimestamp: olderClose ? previousEnd : incomingEnd ?? previousEnd,
     volume: Math.max(Number(previous.volume ?? 0), Number(incoming.volume ?? 0)),
     trades: Math.max(Number(previous.trades ?? 0), Number(incoming.trades ?? 0)),
     askVolume: hasClassifiedVolume ? askVolume : incoming.askVolume,

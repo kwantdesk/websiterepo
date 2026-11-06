@@ -370,10 +370,11 @@ import {
   makeCustomChartInterval,
   supportsChartInterval,
   hasRecordedChartSource,
+  MAX_CHART_HISTORY_BARS,
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { chartTimeBucketStartMs } from "@/lib/chartTimeBucket";
-import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
+import { applyMarketTradesToEventBars, continueRecordedEventBars, futuresTickSize, type MarketTrade } from "@/lib/eventBars";
 import { DESK_SESSIONS, RTH_END_MINUTES, profileMatchesRequestedSessions, requestedSessionIds, RTH_START_MINUTES, currentDeskSession, resolveSessionSegments, sessionTradingDate } from "@/lib/volumeProfileSessions";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
@@ -620,6 +621,17 @@ function appendLosslessPaneRecords(
   // deleting its oldest entries under load creates a false CVD gap and can
   // leave the continuity guard pinned to an older snapshot.
   for (const record of records) target.push(record);
+}
+
+function eventTradesFromRecords(records: InstitutionalTrade[], contractSymbol: string | null): MarketTrade[] {
+  return records.map((record) => ({
+    timestamp: record.timestamp,
+    contractSymbol: contractSymbol ?? undefined,
+    price: record.close,
+    size: Math.max(0, Number(record.volume ?? 0)),
+    trades: Math.max(1, Number(record.trades ?? 1)),
+    delta: Number(record.delta ?? 0),
+  }));
 }
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
@@ -3373,7 +3385,7 @@ function mergeLiveMidIntoCandles(
     if (!nextCandle) return candles;
     updated[lastIndex] = repairedLast;
     updated.push(nextCandle);
-    if (updated.length > 600) updated.shift();
+    if (updated.length > MAX_CHART_HISTORY_BARS) updated.shift();
     return updated;
   }
 
@@ -5771,6 +5783,8 @@ function WorkspaceChartPaneComponent({
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
+  const eventHistoryTailRef = useRef<{ records: InstitutionalTrade[]; droppedThrough: number } | null>(null);
+  const eventHistorySeedRef = useRef<InstitutionalTrade[]>([]);
   const lightweightLiveTailRef = useRef<{
     source: Candle[];
     start: number;
@@ -6554,19 +6568,23 @@ function WorkspaceChartPaneComponent({
       queueProfileUpdate(records);
       const previousCandles = latestCandlesRef.current;
       const nextCandles = isEventBasedChartInterval(pane.timeframe)
-        ? applyMarketTradesToEventBars(
-            previousCandles,
-            records.map((record) => ({
-              timestamp: record.timestamp,
-              contractSymbol: resolvedContractSymbol,
-              price: record.close,
-              size: Math.max(0, Number(record.volume ?? 0)),
-              trades: Math.max(1, Number(record.trades ?? 1)),
-              delta: Number(record.delta ?? 0),
-            })),
-            pane.timeframe,
-            pane.symbol,
-          )
+        ? (() => {
+            const pendingTail = eventHistoryTailRef.current;
+            if (pendingTail) {
+              appendLosslessPaneRecords(pendingTail.records, records);
+              // A normal archive request overlaps the live stream. Bound
+              // temporary memory if it stalls through an exceptionally busy burst.
+              if (pendingTail.records.length > 100_000) {
+                for (const removed of pendingTail.records.splice(0, pendingTail.records.length - 80_000)) {
+                  pendingTail.droppedThrough = Math.max(pendingTail.droppedThrough, removed.timestamp);
+                }
+              }
+            }
+            // A threshold bar must begin at the archive's established boundary.
+            return previousCandles.length
+              ? applyMarketTradesToEventBars(previousCandles, eventTradesFromRecords(records, resolvedContractSymbol), pane.timeframe, pane.symbol)
+              : previousCandles;
+          })()
         : applyInstitutionalTradesToCandles(
             previousCandles,
             records,
@@ -6664,6 +6682,7 @@ function WorkspaceChartPaneComponent({
       },
       onSeed: (records) => {
         if (!records.length) return;
+        if (isEventBasedChartInterval(pane.timeframe)) eventHistorySeedRef.current = records;
         markMarketActive(records.reduce((newest, record) => Number.isFinite(record.timestamp)
           ? Math.max(newest, record.timestamp) : newest, -Infinity));
         rithmicConnectedRef.current = true;
@@ -6704,20 +6723,10 @@ function WorkspaceChartPaneComponent({
         // invent one. Until history arrives the records are still captured in
         // the shared execution tape above, so nothing is lost — they fold onto
         // the correct boundaries the moment the real bars exist.
-        const canExtendEventBars = latestCandlesRef.current.length > 0;
         const seededCandles = isEventBasedChartInterval(pane.timeframe)
-          ? !canExtendEventBars
-            ? latestCandlesRef.current
-            : applyMarketTradesToEventBars(
+          ? continueRecordedEventBars(
               latestCandlesRef.current,
-              records.map((record) => ({
-                timestamp: record.timestamp,
-                contractSymbol: resolvedContractSymbol,
-                price: record.close,
-                size: Math.max(0, Number(record.volume ?? 0)),
-                trades: Math.max(1, Number(record.trades ?? 1)),
-                delta: Number(record.delta ?? 0),
-              })),
+              eventTradesFromRecords(records, resolvedContractSymbol),
               pane.timeframe,
               pane.symbol,
             )
@@ -6748,6 +6757,7 @@ function WorkspaceChartPaneComponent({
       if (marketTradeStateSyncTimer !== null) window.clearTimeout(marketTradeStateSyncTimer);
       pendingProfileRecords = [];
       pendingExecutionRecords = [];
+      eventHistorySeedRef.current = [];
     };
   }, [
     markMarketActive,
@@ -6822,6 +6832,25 @@ function WorkspaceChartPaneComponent({
     skipInheritedFlowRef.current = Boolean(inherited?.orderFlowReady);
     workspaceDuplicateSeeds.discard(chartInstanceId);
     const requestController = new AbortController();
+    const eventHistory = pane.broker === "Databento" && isEventBasedChartInterval(pane.timeframe);
+    eventHistoryTailRef.current = !inherited && !replayHistoryRange && eventHistory
+      ? { records: [], droppedThrough: -Infinity } : null;
+    const continueEventHistory = (history: Candle[]) => {
+      const pending = eventHistoryTailRef.current;
+      if (!pending) return history;
+      if (pending.droppedThrough > (history.at(-1)?.sourceEndTimestamp ?? -Infinity)) {
+        throw new Error("Recorded event history has not reached the live stream yet.");
+      }
+      const through = history.at(-1)?.sourceEndTimestamp ?? Infinity;
+      const observed = new Map<string, InstitutionalTrade>();
+      for (const records of [eventHistorySeedRef.current, pending.records]) {
+        for (const record of records) {
+          if (record.timestamp > through && !record.flowOnly) observed.set(workspaceExecutionIdentity(record), record);
+        }
+      }
+      const records = [...observed.values()].sort((a, b) => a.timestamp - b.timestamp || a.recordIndex - b.recordIndex);
+      return continueRecordedEventBars(history, eventTradesFromRecords(records, resolvedContractSymbol), pane.timeframe, pane.symbol);
+    };
     let reconciliationTimer: number | null = null;
     const repairGate = new ChartHistoryRepairGate();
     const scheduleTailRepair = (minimumDelay = 0) => {
@@ -7233,6 +7262,7 @@ function WorkspaceChartPaneComponent({
       const mustReconcileLiveMarketIndexHistory = pane.broker === "Market Index"
         && newYorkCashSessionIsOpen();
       if (cachedIsHydrated && !mustReconcileLiveMarketIndexHistory) {
+        eventHistoryTailRef.current = null;
         historyHydratedRef.current = true;
         setOrderFlowHistoryReady(true);
         visibleHistoryReady = true;
@@ -7375,7 +7405,9 @@ function WorkspaceChartPaneComponent({
         const historyWithObserved = pane.broker === "Databento"
           ? mergeObservedDatabentoTail(mergedHistory, latestObserved, pane.timeframe)
           : mergedHistory;
-        const mergedBase = pane.broker === "Databento"
+        const mergedBase = eventHistory
+          ? continueEventHistory(historyWithObserved)
+          : pane.broker === "Databento"
           ? mergeHistoricalWithLiveTail(
               historyWithObserved,
               latestCandlesRef.current,
@@ -7406,6 +7438,7 @@ function WorkspaceChartPaneComponent({
         const tailNeedsReconciliation = pane.broker === "Databento"
           && cmeChartTailNeedsReconciliation(merged, pane.timeframe);
         latestCandlesRef.current = merged;
+        eventHistoryTailRef.current = null;
         latestMarketTradesRef.current = nextMarketTrades;
         if (nextMarketTrades.length) {
           storeWorkspaceExecutionTape(
@@ -7430,6 +7463,7 @@ function WorkspaceChartPaneComponent({
         }
       } catch (loadError) {
         if (cancelled) return;
+        eventHistoryTailRef.current = null;
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
         /*
          * The route's own words, when it has any.
@@ -7498,7 +7532,7 @@ function WorkspaceChartPaneComponent({
             // before this pane has verified it. Cache the successful result once.
             true,
           ),
-          resolvedContractSymbol
+          resolvedContractSymbol && !eventHistory
             ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
             : Promise.resolve([] as Candle[]),
         ]);
@@ -7506,7 +7540,7 @@ function WorkspaceChartPaneComponent({
         let repaired = trimChartHistoryForPeriod(
           trimCandlesAfterActiveBucket(
             sanitizeCandles(
-              mergeHistoricalWithLiveTail(
+              eventHistory ? continueEventHistory(mergeChartHistory(eventPagesRef.current.candles, historical)) : mergeHistoricalWithLiveTail(
                 mergeChartHistory(
                   mergeChartHistory(latestCandlesRef.current, historical),
                   seam,
@@ -7537,6 +7571,7 @@ function WorkspaceChartPaneComponent({
         historyHydratedRef.current = !stillBroken;
         if (!stillBroken) {
           recovered = true;
+          eventHistoryTailRef.current = null;
           setCandles(repaired);
           if (hasUsableOrderFlowHistory(repaired)) {
             setOrderFlowHistoryReady(true);
@@ -7560,6 +7595,10 @@ function WorkspaceChartPaneComponent({
 
     const requestTailReconciliation = () => {
       if (cancelled || reconciliationTimer !== null || pane.broker !== "Databento") return;
+      if (eventHistory) {
+        if (eventHistoryTailRef.current) return;
+        eventHistoryTailRef.current = { records: [], droppedThrough: -Infinity };
+      }
       historyHydratedRef.current = false;
       scheduleTailRepair();
     };

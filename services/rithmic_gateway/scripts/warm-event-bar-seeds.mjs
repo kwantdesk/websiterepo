@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {eventSeedInputs,saveEventSeed,eventSeedFile} from '../src/event-bar-seeds.mjs';
 import {createEventBarBuilder} from '../src/event-bar-builder.mjs';
 import {readArchiveRecords} from '../src/archive-reader.mjs';
-import {decodeTrade,readSessionTradeRecords} from '../src/trade-tape-archive.mjs';
+import {decodeTrade,readOrderedEventTradeRecords} from '../src/trade-tape-archive.mjs';
 import {chicagoTradingDate} from '../src/trading-session.mjs';
 const flag=(key,fallback)=>{const i=process.argv.indexOf('--'+key);return i>=0?process.argv[i+1]:fallback};
 const dir=flag('dir','/recordings'),catalog=JSON.parse(await readFile(flag('catalog','/audit/catalog.json'),'utf8')),contracts=JSON.parse(await readFile(flag('contracts','/audit/contracts.json'),'utf8'));
@@ -19,7 +19,7 @@ for(const instrument of catalog.futures){
  const save=async date=>{for(const {interval,builder}of builders)await saveEventSeed(dir,instrument.venue,symbol,interval,date,inputByDate.get(date).fingerprint,builder.finish().at(-1)??null,true)};
  for(const file of inputByDate.get(second).files){const date=file.split(/[\\/]/).at(-2);while(index<targets.length&&targets[index]<=date)await save(targets[index++]);
   const contractSymbol=file.split(/[\\/]/).at(-1).split('.')[0].slice(instrument.venue.length+1);
-  await readSessionTradeRecords(file,symbol,true,row=>{const t=decodeTrade(row);if(!t)return;const record={timestamp:t.timestamp,price:t.price,size:t.size,trades:1,delta:t.side>0?t.size:t.side<0?-t.size:0,contractSymbol};for(const {builder}of builders)builder.add(record);prints++});
+  await readOrderedEventTradeRecords(file,symbol,true,row=>{const t=decodeTrade(row);if(!t)return;const record={timestamp:t.timestamp,price:t.price,size:t.size,trades:1,delta:t.side>0?t.size:t.side<0?-t.size:0,contractSymbol};for(const {builder}of builders)builder.add(record);prints++});
  }
  while(index<targets.length)await save(targets[index++]);console.log(JSON.stringify({root:instrument.root,prints,intervals:intervals.length,anchors:targets}));
 }

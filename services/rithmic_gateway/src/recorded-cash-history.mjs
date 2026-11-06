@@ -12,14 +12,30 @@ export class RecordedCashHistory {
  record(snapshot,receivedAt=this.now()){
   const symbol=String(snapshot?.symbol||'').toUpperCase(),time=Number(snapshot?.timestamp),price=Number(snapshot?.lastPrice);
   if(!CASH_SYMBOLS.has(symbol)||symbol==='SPXW'||!Number.isFinite(time)||time<=0||!Number.isFinite(price)||price<=0)return;
-  const previous=this.last.get(symbol);this.last.set(symbol,{price,time});
+  const previous=this.last.get(symbol);
+  if(!previous||time>=previous.time)this.last.set(symbol,{price,time});
   // Idle closing quotes are raw-recorded, but cannot create weekend candles.
   if(Math.abs(receivedAt-time)>15*60000||snapshot.marketOpen===false&&(!previous||previous.price===price))return;
   const day=new Date(time).toISOString().slice(0,10),key=day+'/'+symbol;
   let bars=this.days.get(key);if(!bars){let stored;try{stored=JSON.parse(readFileSync(join(this.dir,day,symbol+'.json'),'utf8'))}catch{}bars=new Map(stored?.source==='VPS recorded live quotes'?stored.candles.map(b=>[b.timestamp,b]):[]);this.days.set(key,bars)}
   const bucket=Math.floor(time/60000)*60000;let bar=bars.get(bucket);const candle=snapshot.candle;
   const valid=candle&&Number(candle.time)===bucket&&[candle.open,candle.high,candle.low,candle.close].every(Number.isFinite)&&candle.high>=Math.max(candle.open,candle.close)&&candle.low<=Math.min(candle.open,candle.close);
-  if(valid){if(bar&&receivedAt<(bar.lastCaptureAt??bar.lastObservation??bucket))return;bar={timestamp:bucket,open:candle.open,high:candle.high,low:candle.low,close:candle.close,volume:0,lastCaptureAt:receivedAt};}
+  if(valid){
+   // A provider candle's time labels its opening minute, not its last
+   // observation. Compare captures within the minute, preserving any
+   // extrema already seen on the quote stream.
+   if(bar&&receivedAt<(bar.lastCaptureAt??bucket))return;
+   const observation=Math.min(receivedAt,bucket+59999);
+   const previousObservation=bar?.lastObservation??Math.min(bar?.lastCaptureAt??bucket,bucket+59999);
+   bar={
+    timestamp:bucket,open:candle.open,
+    high:Math.max(candle.high,bar?.high??candle.high),
+    low:Math.min(candle.low,bar?.low??candle.low),
+    close:bar&&previousObservation>observation?bar.close:candle.close,
+    volume:0,firstObservation:bucket,
+    lastObservation:Math.max(observation,previousObservation),lastCaptureAt:receivedAt,
+   };
+  }
   else if(!bar)bar={timestamp:bucket,open:price,high:price,low:price,close:price,volume:0,firstObservation:time,lastObservation:time};
   else{bar.high=Math.max(bar.high,price);bar.low=Math.min(bar.low,price);if(time<(bar.firstObservation??bucket)){bar.open=price;bar.firstObservation=time}if(time>=(bar.lastObservation??bucket)){bar.close=price;bar.lastObservation=time}}
   bars.set(bucket,bar);this.dirty.add(key);

@@ -49,7 +49,18 @@ export type DatabentoBar = {
   low: number;
   close: number;
   volume: number;
+  sourceStartTimestamp?: number;
+  sourceEndTimestamp?: number;
 };
+
+function recordedBarWatermarks(candle: Record<string, unknown>) {
+  return {
+    ...(typeof candle.sourceStartTimestamp === "number" && Number.isFinite(candle.sourceStartTimestamp)
+      ? { sourceStartTimestamp: candle.sourceStartTimestamp } : {}),
+    ...(typeof candle.sourceEndTimestamp === "number" && Number.isFinite(candle.sourceEndTimestamp)
+      ? { sourceEndTimestamp: candle.sourceEndTimestamp } : {}),
+  };
+}
 
 // Compact tuple sent to the browser for execution-tape indicators.
 // Exact prints use the first four values. Historical routes may instead send
@@ -491,6 +502,7 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
   const query = new URLSearchParams({
     symbol: contractRootSymbol(symbol),
     interval: timeframe,
+    sourceTimes: "1",
   });
   if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
   if (Number.isFinite(requestedTo)) query.set("toMs", String(requestedTo));
@@ -514,6 +526,7 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
         low: Number(candle.low),
         close: Number(candle.close),
         volume: Number(candle.volume ?? 0),
+        ...recordedBarWatermarks(candle),
       };
     })
     .filter((row) => row.timestamp > 0 && row.close > 0)
@@ -555,6 +568,7 @@ export async function getDatabentoOrderFlowHistory(
     symbol: contractRootSymbol(symbol),
     interval: timeframe,
     orderFlow: "1",
+    sourceTimes: "1",
   });
   if (options.auctionGap) query.set("auctionGap", "1");
   if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
@@ -585,6 +599,7 @@ export async function getDatabentoOrderFlowHistory(
         low: Number(candle.low),
         close: Number(candle.close),
         volume: Number(candle.volume ?? 0),
+        ...recordedBarWatermarks(candle),
       };
       /*
        * Flow is copied across only when the bar actually carries it. An

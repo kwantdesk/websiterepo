@@ -502,6 +502,24 @@ test("event bars are folded once beside the tape with exact flow and a shared ca
   });
 });
 
+test("event history folds late executions in source order across a second boundary", async () => {
+  await withArchive(async (archive) => {
+    const client = new EventEmitter();
+    archive.attach(client);
+    for (const [offset, price] of [[100, 100], [1200, 103], [500, 96], [2100, 104]]) {
+      client.emit("rawMessage", print(offset, price, 3, "BUY"));
+    }
+    await archive.close();
+    const result = await archive.loadEventBars({
+      exchange: "CME", symbol: "NQU6", interval: "2t",
+      fromMs: T0 - 1, toMs: T0 + 5_000,
+    });
+    assert.equal(result.lateExecutionsOutsideWindow, 0);
+    assert.deepEqual(result.candles.map(({open, high, low, close, volume}) => [open, high, low, close, volume]),
+      [[100, 100, 96, 96, 6], [96, 104, 96, 104, 6]]);
+  });
+});
+
 test("event history can include coverage-proven compact Auction Gap rows in the same scan", async () => {
   const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
   try {

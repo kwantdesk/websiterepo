@@ -21,6 +21,21 @@ export type EventCandle = Candle & {
   sourceEndTimestamp?: number;
 };
 
+/** Continue the archive's threshold sequence with observations outside its
+ * inclusive execution boundary. Chart timestamps can be synthetic on bursts
+ * and cannot establish that boundary. */
+export function continueRecordedEventBars(
+  history: Candle[],
+  records: MarketTrade[],
+  timeframe: string,
+  symbol: string,
+) {
+  const through = history.at(-1)?.sourceEndTimestamp;
+  if (through === undefined || !Number.isFinite(through)) return history;
+  const newer = records.filter((record) => record.timestamp > through);
+  return newer.length ? applyMarketTradesToEventBars(history, newer, timeframe, symbol) : history;
+}
+
 type EventThreshold = {
   kind: NonNullable<ReturnType<typeof getChartInterval>>["kind"];
   value: number;

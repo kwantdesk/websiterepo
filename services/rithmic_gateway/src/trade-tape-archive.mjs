@@ -189,6 +189,47 @@ export function readSessionTradeRecords(file,symbol,continuous,accept) {
   return readArchiveRecords(file,row=>{if(Number(row?.[0])>=start&&Number(row?.[0])<end)accept(row)});
 }
 
+// Keep the current and previous second until their order is known. This
+// corrects late source timestamps without loading an entire session into RAM.
+export const EVENT_TAPE_ORDER_VERSION = "source-time-two-seconds-v1";
+export async function readOrderedEventTradeRecords(file, symbol, continuous, accept) {
+  const seconds = new Map();
+  let newest = -Infinity;
+  let lateExecutionsOutsideWindow = 0;
+  const flush = (second) => {
+    const bucket = seconds.get(second);
+    if (bucket.needsSort) bucket.rows.sort((a, b) => a[0] - b[0]);
+    for (const row of bucket.rows) accept(row);
+    seconds.delete(second);
+  };
+  const flushBefore = (threshold) => {
+    for (const second of [...seconds.keys()].sort((a, b) => a - b)) {
+      if (second < threshold) flush(second);
+    }
+  };
+  const receipt = await readSessionTradeRecords(file, symbol, continuous, (row) => {
+    const second = Math.floor(row[0] / 1000);
+    if (!Number.isFinite(second)) return;
+    if (second > newest) {
+      newest = second;
+      flushBefore(newest - 1);
+    }
+    if (second < newest - 1) {
+      lateExecutionsOutsideWindow++;
+      return;
+    }
+    let bucket = seconds.get(second);
+    if (!bucket) {
+      bucket = { rows: [], needsSort: false };
+      seconds.set(second, bucket);
+    }
+    if (row[0] < (bucket.rows.at(-1)?.[0] ?? -Infinity)) bucket.needsSort = true;
+    bucket.rows.push(row);
+  });
+  flushBefore(Infinity);
+  return { ...receipt, lateExecutionsOutsideWindow };
+}
+
 export class TradeTapeArchive {
   constructor(options = {}) {
     this.dir = join(String(options.dir || "recordings"), DIR_NAME);
@@ -534,6 +575,7 @@ export class TradeTapeArchive {
       dates.add(chicagoTradingDate(end));
       let sourceRecordCount = 0;
       let foldedSourceRecordCount = 0;
+      let lateExecutionsOutsideWindow = 0;
       let earliestMs = null;
       let latestMs = null;
 
@@ -608,7 +650,10 @@ export class TradeTapeArchive {
         // Backfill is older than the first live print by construction.
         for (const file of sessionTradeFiles(this.dir, tradingDate, upper, upperSymbol, continuous)) {
           sourceContract = file.split(/[\\/]/).at(-1).split(".")[0].slice(upper.length + 1);
-          if (existsSync(file)) await readSessionTradeRecords(file, upperSymbol, continuous, accept);
+          if (existsSync(file)) {
+            const receipt = await readOrderedEventTradeRecords(file, upperSymbol, continuous, accept);
+            lateExecutionsOutsideWindow += receipt.lateExecutionsOutsideWindow;
+          }
         }
       }
 
@@ -635,7 +680,7 @@ export class TradeTapeArchive {
           fromMs: Number(candle.sourceStartTimestamp),
           toMs: Number(candle.sourceEndTimestamp) + 1,
         }));
-        const coverageComplete = !ownershipTruncated && volumesMatch && intervals.length > 0
+        const coverageComplete = !ownershipTruncated && lateExecutionsOutsideWindow === 0 && volumesMatch && intervals.length > 0
           && provesCoverageIntervals(coverageReceipts, { exchange: upper, symbol: upperSymbol }, intervals);
         auctionGapRows = coverageComplete ? {
           schemaVersion: "kwantify-auction-gap-rows-v2",
@@ -649,7 +694,7 @@ export class TradeTapeArchive {
           provider: "Rithmic",
           contractSymbol: upperSymbol,
           coverageComplete: false,
-          executionOrderComplete: !ownershipTruncated,
+          executionOrderComplete: !ownershipTruncated && lateExecutionsOutsideWindow === 0,
           reason: ownershipTruncated ? "event-history-truncated"
             : !volumesMatch ? "source-volume-mismatch" : "historical-coverage-unproved",
           rows: [],
@@ -666,6 +711,7 @@ export class TradeTapeArchive {
         latestMs,
         sourceRecordCount,
         foldedSourceRecordCount,
+        lateExecutionsOutsideWindow,
         truncated: builder.totalBarCount > cap,
         totalBarCount: builder.totalBarCount,
         returnedBarCount: candles.length,

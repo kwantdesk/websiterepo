@@ -185,13 +185,19 @@ export function resampleBars(bars, intervalMs, interval = "") {
     const identity = timestamp;
     const existing = buckets.get(identity);
     if (!existing) {
-      buckets.set(identity, { t: timestamp, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v });
+      buckets.set(identity, {
+        t: timestamp, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v,
+        ...(Number.isFinite(bar.f) ? { f: bar.f } : {}),
+        ...(Number.isFinite(bar.e) ? { e: bar.e } : {}),
+      });
       continue;
     }
     existing.h = Math.max(existing.h, bar.h);
     existing.l = Math.min(existing.l, bar.l);
     existing.c = bar.c;
     existing.v += bar.v;
+    if (Number.isFinite(bar.e)) existing.e = bar.e;
+    else if (existing.e !== undefined) delete existing.e;
   }
   return [...buckets.values()].sort((a, b) => a.t - b.t);
 }
@@ -470,7 +476,7 @@ export class FuturesBarArchive {
    * one still being built, so the live edge is continuous with the past
    * rather than arriving as a separate seam.
    */
-  async load({ exchange, symbol, interval, fromMs, toMs, limit, continuous = true }) {
+  async load({ exchange, symbol, interval, fromMs, toMs, limit, continuous = true, includeWatermarks = false }) {
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
     const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();
@@ -545,6 +551,8 @@ export class FuturesBarArchive {
         low: bar.l,
         close: bar.c,
         volume: bar.v,
+        ...(includeWatermarks && Number.isFinite(bar.f) ? { sourceStartTimestamp: Math.floor(bar.f / 1000) } : {}),
+        ...(includeWatermarks && Number.isFinite(bar.e) ? { sourceEndTimestamp: Math.floor(bar.e / 1000) } : {}),
       })),
     };
   }
