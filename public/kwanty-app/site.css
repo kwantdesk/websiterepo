@@ -88,7 +88,7 @@ header>nav{grid-column:2;grid-row:1;justify-self:center}
 /* Match the Charts command deck: 44px rows, 28px controls and themed panels.
    Phone controls keep their dedicated drawer in phone-workspace.css. */
 @media (min-width:768px) {
-  body { --kwanty-command-row:44px; --kwanty-command-height:45px; }
+  body { --kwanty-command-row:var(--kwant-workspace-command-row); --kwanty-command-height:var(--kwant-workspace-command-height); }
   body > header {
     display:grid;grid-template-columns:minmax(0,1fr) max-content minmax(0,1fr);
     grid-template-rows:var(--kwanty-command-row);gap:0;padding:0;
@@ -99,7 +99,7 @@ header>nav{grid-column:2;grid-row:1;justify-self:center}
   body > main { height:calc(100dvh - var(--kwanty-command-height)); }
   body > header > :is(.chart-top-controls,nav,.workspace-header-actions) {
     min-width:0;height:var(--kwanty-command-row);min-height:var(--kwanty-command-row);
-    box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 12px;
+    box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 var(--kwant-workspace-command-inset);
   }
   body > header > .chart-top-controls {
     grid-column:1;grid-row:1;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;
@@ -111,7 +111,7 @@ header>nav{grid-column:2;grid-row:1;justify-self:center}
   }
   body > header > .workspace-header-actions > :first-child { margin-left:auto; }
   body > header :is(button,select,.kwant-choice-trigger) {
-    flex-shrink:0;box-sizing:border-box;height:28px;min-height:28px;max-height:28px;
+    flex-shrink:0;box-sizing:border-box;height:var(--kwant-workspace-command-control);min-height:var(--kwant-workspace-command-control);max-height:var(--kwant-workspace-command-control);
     padding:0 10px;font-size:10px;font-weight:600;letter-spacing:.075em;line-height:1;
     border-radius:3px!important;white-space:nowrap;
   }
@@ -134,7 +134,7 @@ header>nav{grid-column:2;grid-row:1;justify-self:center}
   body > header .template-overflow summary { padding:0 10px;height:28px;display:flex;align-items:center;font-size:10px; }
 }
 @media (min-width:768px) and (max-width:1279px) {
-  body { --kwanty-command-height:89px; }
+  body { --kwanty-command-height:calc(2 * var(--kwanty-command-row) + 1px); }
   body > header { grid-template-columns:minmax(0,1fr) max-content;grid-template-rows:repeat(2,var(--kwanty-command-row)); }
   body > header > .chart-top-controls { grid-column:1 / -1;grid-row:1; }
   body > header > nav { grid-column:1;grid-row:2;justify-self:center; }

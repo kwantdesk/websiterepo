@@ -196,3 +196,32 @@ html[data-embed="true"] .cvd-panel header { background: var(--ui-bg); }
   grid-template-rows:minmax(0,1fr) var(--cvd-panel-height);
 }
 .chart-module.cvd-open::after { height:var(--cvd-panel-height); }
+
+/* The standalone page uses GEX View's command row. Embedded chart panes and
+   the phone drawer keep their compact layout. */
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) {
+  html[data-embed="true"][data-shell-toolbar] .terminal-shell {
+    grid-template-rows: repeat(2, var(--kwant-workspace-command-height)) minmax(0, 1fr);
+  }
+
+  html[data-embed="true"][data-shell-toolbar] :is(.app-bar, .top-deck) {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--kwant-workspace-command-height);
+    min-height: var(--kwant-workspace-command-height);
+    background: var(--ui-panel);
+  }
+
+  html[data-embed="true"][data-shell-toolbar] .app-bar,
+  html[data-embed="true"][data-shell-toolbar] .tool-rail {
+    padding: 0 var(--kwant-workspace-command-inset);
+  }
+
+  html[data-embed="true"][data-shell-toolbar] :is(.instrument-tabs, .app-actions, .tool-rail) {
+    height: var(--kwant-workspace-command-row);
+  }
+
+  html[data-embed="true"][data-shell-toolbar] :is(.app-bar, .top-deck) button {
+    border-radius: var(--kwant-control-radius);
+  }
+}

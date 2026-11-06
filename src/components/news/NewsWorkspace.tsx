@@ -901,7 +901,7 @@ export default function NewsWorkspace({ accountKey = "local", active = true }: {
   ];
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <WorkspaceSubnav items={sections} value={view} onChange={changeView} ariaLabel="News sections" />
+      <WorkspaceSubnav items={sections} value={view} onChange={changeView} ariaLabel="News sections" className="kwant-workspace-secondary-bar kwant-news-subnav" />
       <div className="min-h-0 flex-1">
         {view === "calendar" ? <EconomicCalendarWorkspace /> : view === "financial-info" ? <FinancialInfoWorkspace />
           : view === "options-expirations" ? <OptionsExpirationCalendar key={accountKey} accountKey={accountKey} active={active} />

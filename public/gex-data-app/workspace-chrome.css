@@ -1,5 +1,9 @@
 :root {
   --kwant-control-radius: 8px;
+  --kwant-workspace-command-row: calc(var(--kwant-shell-bar-height, 36px) + 8px);
+  --kwant-workspace-command-height: calc(var(--kwant-workspace-command-row) + 1px);
+  --kwant-workspace-command-inset: 8px;
+  --kwant-workspace-command-control: 28px;
   --kwant-card-radius: 12px;
   --kwant-dialog-radius: 16px;
 }

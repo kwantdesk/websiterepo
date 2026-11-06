@@ -1590,7 +1590,7 @@ header.kwant-command-rail .kwant-primary-nav-control {
    (10px in Windows), not necessarily the WebKit fallback's 7px. Scoped rules
    keep the bar draggable without clipping controls or adding vertical scroll. */
 .kwant-chart-toolbar-shell {
-  --kwant-chart-toolbar-row-height: calc(var(--kwant-shell-bar-height) + 8px);
+  --kwant-chart-toolbar-row-height: var(--kwant-workspace-command-row);
   container: chart-toolbar / inline-size;
   min-width: 0;
   flex-shrink: 0;
@@ -2162,6 +2162,40 @@ body.kwant-cockpit-ui canvas {
      trader removes it with its own close button. */
   grid-template-columns: repeat(var(--gex-map-panel-count, 3), minmax(0, 1fr));
   grid-auto-rows: minmax(250px, 1fr);
+}
+
+.kwant-workspace-secondary-bar,
+.gex-map-header[data-standalone] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: var(--kwant-workspace-command-height);
+  min-height: var(--kwant-workspace-command-height);
+  padding: 0 var(--kwant-workspace-command-inset);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.kwant-workspace-secondary-control,
+.kwant-news-subnav > div > button,
+.gex-map-header[data-standalone] button {
+  box-sizing: border-box;
+  height: var(--kwant-workspace-command-control);
+  min-height: var(--kwant-workspace-command-control);
+  border-radius: var(--kwant-control-radius);
+  font: 600 10px/1 "Aleph", sans-serif;
+  letter-spacing: .075em;
+}
+
+.kwant-news-subnav > div { justify-content: safe center; }
+
+.gex-map-header[data-standalone] .gex-map-header-controls > div,
+.gex-map-header[data-standalone] .gex-map-header-actions > [role="group"] {
+  height: 34px;
+}
+
+.gex-map-header[data-standalone] .gex-map-header-controls .h-5.w-5 {
+  width: var(--kwant-workspace-command-control);
 }
 
 .gex-map-header[data-standalone] {

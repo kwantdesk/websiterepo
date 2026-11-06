@@ -196,7 +196,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       onPreview={id => { paletteRef.current = id; broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme"); }}
       onSave={id => { window.__kwantGexDataHost?.write(PALETTE_KEY, id); setShowPalette(false); }}
       onClose={() => setShowPalette(false)} />}
-    {ready && <div className="absolute right-2 top-[5px] z-30 flex h-7 items-center bg-background">
+    {ready && <div className="absolute right-2 top-[6px] z-30 flex h-7 items-center bg-panel md:top-[8px]">
       <TimeZoneSelect value={timeZone} onChange={next => window.__kwantGexDataHost?.write(TIME_ZONE_KEY, normalizeTimeZone(next))}
         menuLabel="Chart timezone" compact className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME} />
     </div>}

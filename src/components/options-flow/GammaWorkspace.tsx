@@ -1056,22 +1056,22 @@ export default function GammaWorkspace() {
   return (
     <div className="kwant-gamma-workspace h-full min-h-0 overflow-y-auto bg-background text-foreground">
       <main className="min-w-0">
-        <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <header className="kwant-workspace-secondary-bar flex shrink-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <ScanLine className="h-[17px] w-[17px]" />
           </span>
-          <div className="hidden min-w-0 sm:block">
+          <div className="hidden min-w-0 lg:block">
             <h1 className="truncate text-[13px] font-semibold">Options</h1>
             <p className="truncate text-[10px] text-muted">Dealer positioning, gamma intelligence and consolidated tape</p>
           </div>
-          <div className="hidden h-5 w-px bg-border sm:block" />
-          <div ref={instrumentMenuRef} className="relative z-[120]">
+          <div className="hidden h-5 w-px shrink-0 bg-border lg:block" />
+          <div ref={instrumentMenuRef} className="relative z-[120] min-w-0">
             <button
               type="button"
               aria-haspopup="listbox"
               aria-expanded={instrumentMenuOpen}
               onClick={() => setInstrumentMenuOpen((open) => !open)}
-              className={`group/instrument flex h-8 min-w-[178px] items-center gap-2 rounded-xl border px-2.5 text-left transition-all ${
+              className={`group/instrument kwant-workspace-secondary-control flex w-full max-w-[240px] sm:min-w-[178px] items-center gap-2 rounded-xl border px-2.5 text-left transition-all ${
                 instrumentMenuOpen
                   ? "border-primary/35 bg-primary/[0.07] shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-primary)_12%,transparent)]"
                   : "border-border bg-surface hover:border-primary/20 hover:bg-card"
@@ -1090,7 +1090,7 @@ export default function GammaWorkspace() {
               <div
                 role="listbox"
                 aria-label="Options Flow instrument"
-                className="absolute left-0 top-[calc(100%+7px)] z-[130] w-[292px] overflow-hidden rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+                className="absolute left-0 top-[calc(100%+7px)] z-[130] w-[min(292px,calc(100vw-60px))] overflow-hidden rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.5)] backdrop-blur-xl"
               >
                 <div className="flex items-center justify-between px-2.5 pb-1.5 pt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
                   <span>Options underlying</span>
@@ -1132,16 +1132,16 @@ export default function GammaWorkspace() {
             ) : null}
           </div>
           {headerMarketData?.lastPrice !== null && headerMarketData?.lastPrice !== undefined ? <span ref={livePriceRef} data-gamma-number="true" className={`rounded-md px-1.5 py-1 font-mono text-[12px] font-semibold transition-colors duration-150 ${priceTick === "UP" ? "bg-primary/10 text-primary" : priceTick === "DOWN" ? "bg-danger/10 text-danger" : "text-foreground"}`}>{headerMarketData.symbol} {formatPrice(headerMarketData.lastPrice)}</span> : null}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-2">
             {headerMarketData ? (
-              <span data-gamma-time="true" className="hidden items-center gap-1.5 text-[10px] text-muted md:flex">
+              <span data-gamma-time="true" className="hidden shrink-0 items-center gap-1.5 text-[10px] text-muted md:flex">
                 <Clock3 className="h-3 w-3" /> Price {formatClock(headerMarketData.asOf)}
               </span>
             ) : null}
-            <span data-gamma-time="true" className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold ${headerMarketData?.status === "LIVE" ? "border-primary/20 bg-primary/10 text-primary" : headerMarketData?.status === "UNAVAILABLE" ? "border-danger/20 bg-danger/10 text-danger" : "border-border bg-surface text-muted"}`}>
+            <span data-gamma-time="true" className={`kwant-workspace-secondary-control hidden min-w-0 items-center gap-1.5 border px-2.5 sm:flex ${headerMarketData?.status === "LIVE" ? "border-primary/20 bg-primary/10 text-primary" : headerMarketData?.status === "UNAVAILABLE" ? "border-danger/20 bg-danger/10 text-danger" : "border-border bg-surface text-muted"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${headerMarketData?.status === "LIVE" ? "animate-pulse bg-primary" : "bg-muted"}`} /> {headerMarketData ? `${headerMarketData.provider} · ${headerMarketData.status.replace("_", " ")} · ${formatPulse(pricePulseMs)}` : "CONNECTING"}
             </span>
-            <button type="button" onClick={() => void loadData(symbol, priceMode, true)} disabled={refreshing} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-foreground disabled:opacity-50" title="Refresh now">
+            <button type="button" onClick={() => void loadData(symbol, priceMode, true)} disabled={refreshing} className="kwant-workspace-secondary-control flex w-7 shrink-0 items-center justify-center border border-border bg-surface text-muted transition-colors hover:text-foreground disabled:opacity-50" title="Refresh now">
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
             </button>
           </div>
