@@ -451,6 +451,17 @@ export const FIB_CIRCLE_COEFFS = [0.236, 0.382, 0.5, 0.618, 1];
 
 export type DrawPoint = { time: number; price: number };
 
+export function formatDrawingDuration(startSeconds: number, endSeconds: number) {
+  const seconds = Math.floor(Math.abs(endSeconds - startSeconds));
+  if (seconds < 60) return `${seconds}s`;
+
+  const totalMinutes = Math.floor(seconds / 60);
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor(totalMinutes / 60) % 24;
+  const minutes = totalMinutes % 60;
+  return [days && `${days}d`, hours && `${hours}h`, minutes && `${minutes}m`].filter(Boolean).join(" ");
+}
+
 export type Drawing = {
   id: string;
   tool: DrawToolId;

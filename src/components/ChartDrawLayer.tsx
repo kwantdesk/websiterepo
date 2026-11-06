@@ -19,6 +19,7 @@ import {
   FIB_RETRACEMENT_LEVELS,
   FIB_TIME_COEFFS,
   createDrawing,
+  formatDrawingDuration,
   horizontalExtensionBounds,
   resolveDrawColor,
   updateDrawingHandle,
@@ -1412,19 +1413,22 @@ export default function ChartDrawLayer({
         }
         case "dateRange": {
           if (!b || a.x == null || b.x == null) return null;
-          const bars = Math.round((pr[1].time - pr[0].time) / 60);
-          return <g>{line(a.x!, a.y!, b.x, a.y!)}{line(a.x!, a.y! - 6, a.x!, a.y! + 6)}{line(b.x, a.y! - 6, b.x, a.y! + 6)}{style.showLabels ? label((a.x! + b.x) / 2, a.y! - 4, `${bars}m`) : null}</g>;
+          const duration = formatDrawingDuration(pr[0].time, pr[1].time);
+          return <g>{line(a.x!, a.y!, b.x, a.y!)}{line(a.x!, a.y! - 6, a.x!, a.y! + 6)}{line(b.x, a.y! - 6, b.x, a.y! + 6)}{style.showLabels ? label((a.x! + b.x) / 2, a.y! - 4, duration) : null}</g>;
         }
         case "datePriceRange": {
           if (!b || a.x == null || b.x == null) return null;
-          const d = pr[1].price - pr[0].price; const bars = Math.round((pr[1].time - pr[0].time) / 60);
-          return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={stroke} fillOpacity={style.fillOpacity} stroke={stroke} strokeWidth={w} strokeDasharray={dash} />{style.showLabels ? label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(2)} · ${bars}m`) : null}</g>;
+          const d = pr[1].price - pr[0].price;
+          const duration = formatDrawingDuration(pr[0].time, pr[1].time);
+          return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={stroke} fillOpacity={style.fillOpacity} stroke={stroke} strokeWidth={w} strokeDasharray={dash} />{style.showLabels ? label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(2)} · ${duration}`) : null}</g>;
         }
         case "measure": {
           if (!b || a.x == null || b.x == null) return null;
-          const d = pr[1].price - pr[0].price; const pct = pr[0].price ? (d / pr[0].price) * 100 : 0; const bars = Math.round((pr[1].time - pr[0].time) / 60);
+          const d = pr[1].price - pr[0].price;
+          const pct = pr[0].price ? (d / pr[0].price) * 100 : 0;
+          const duration = formatDrawingDuration(pr[0].time, pr[1].time);
           const green = d >= 0 ? "#089981" : "#F23645";
-          return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={green} fillOpacity={0.12} stroke={green} strokeWidth={1} />{line(a.x!, a.y!, b.x, b.y!, green)}{label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(2)} (${pct.toFixed(2)}%) · ${bars}m`, green)}</g>;
+          return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={green} fillOpacity={0.12} stroke={green} strokeWidth={1} />{line(a.x!, a.y!, b.x, b.y!, green)}{label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(2)} (${pct.toFixed(2)}%) · ${duration}`, green)}</g>;
         }
         case "emoji": {
           if (a.x == null || a.y == null) return null;

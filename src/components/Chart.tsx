@@ -530,7 +530,7 @@ import { getChartDrawingContextActions, type ChartDrawingContextActions } from '
 import { buildPaperFillMarkers } from '@/lib/paperFillMarkers';
 import { drawingCoordinateToTime, drawingTimeToCoordinate, type DrawingTimeScale } from "@/lib/chartDrawingCoordinates";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
-import { DEFAULT_POSITION_PROFIT_COLOR, DEFAULT_POSITION_LOSS_COLOR, createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
+import { DEFAULT_POSITION_PROFIT_COLOR, DEFAULT_POSITION_LOSS_COLOR, createDrawing, formatDrawingDuration, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
@@ -3058,16 +3058,6 @@ function recentExecutionTail(trades: InstitutionalTrade[], windowMs: number) {
     else last = middle;
   }
   return first > 0 ? trades.slice(first) : trades;
-}
-
-function formatDateRangeLabel(a: number, b: number) {
-  const diffSeconds = Math.abs(b - a);
-  const diffMinutes = Math.round(diffSeconds / 60);
-  if (diffMinutes < 60) return `${diffMinutes}m`;
-  const diffHours = diffMinutes / 60;
-  if (diffHours < 24) return `${diffHours.toFixed(diffHours >= 10 ? 0 : 1)}h`;
-  const diffDays = diffHours / 24;
-  return `${diffDays.toFixed(diffDays >= 10 ? 0 : 1)}d`;
 }
 
 function timeframeToMs(timeframe?: string) {
@@ -14796,7 +14786,7 @@ function Chart({
               {formatPriceDistance(a.price, b.price, priceFormat.precision)}
             </text>
             <text x={(ax + bx) / 2} y={(ay + by) / 2 + 6} fill="#A1A1AA" fontSize="10" fontFamily="'Aleph', monospace" textAnchor="middle">
-              {formatDateRangeLabel(a.time, b.time)}
+              {formatDrawingDuration(a.time, b.time)}
             </text>
           </g>
         );
@@ -14854,7 +14844,7 @@ function Chart({
                     {formatPriceDistance(a.price, b.price, priceFormat.precision)}
                   </text>
                   <text x={x + 8} y={y + 34} fill={isQuickMeasurement ? readableTextOn(settings.backgroundColor) : "#A1A1AA"} fontSize="10" fontFamily="'Aleph', monospace">
-                    {formatDateRangeLabel(a.time, b.time)}
+                    {formatDrawingDuration(a.time, b.time)}
                   </text>
                 </>
               )}
@@ -15003,7 +14993,7 @@ function Chart({
               <line x1={ax} y1={ay - 10} x2={ax} y2={ay + 10} {...commonStroke} />
               <line x1={bx} y1={ay - 10} x2={bx} y2={ay + 10} {...commonStroke} />
               <text x={(ax + bx) / 2} y={ay - 10} fill="#E4E4E7" fontSize="11" fontFamily="'Aleph', monospace" textAnchor="middle">
-                {formatDateRangeLabel(a.time, b.time)}
+                {formatDrawingDuration(a.time, b.time)}
               </text>
             </g>
           );
