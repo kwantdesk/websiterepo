@@ -32,7 +32,12 @@ export { GexMapDropdown } from "./GexMapSettingsDialog";
 import { useGexMapSettingsBridge } from "./useLinkedGexMapSettings";
 import { publishGexMapSurface, subscribeGexMapSurface } from "@/lib/gexMapSurfaceBus";
 import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
-import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
+import GexMapFutureMatrix, { loadFutureSettings } from "@/components/gex-map/GexMapFutureMatrix";
+import GexMapWorkspacesMenu from "./GexMapWorkspacesMenu";
+import {
+  readActiveGexMapWorkspace, rememberActiveGexMapWorkspace,
+  type GexMapWorkspacePreset, type GexMapWorkspaceSnapshot,
+} from "@/lib/gexMapWorkspaces";
 import { buildGexMapSnapshots as buildSnapshots, gexMapPriceAt as priceAt, gexMapSurfaceRows } from "@/lib/gexMapSnapshots";
 import {
   DEFAULT_GEX_MAP_EXPIRY_SCOPE,
@@ -152,6 +157,8 @@ export type GexMapWorkspaceProps = {
    * which measurement it is drawing.
    */
   enableDealerModel?: boolean;
+  /** Only the standalone GEX Map page owns this workspace library. */
+  enableWorkspaces?: boolean;
 };
 
 /**
@@ -1130,7 +1137,13 @@ function GexMapWorkspace({
   // could be switched back to PRESENT would just be a second GEX Map.
   lockedTimeHorizon = null,
   enableDealerModel = false,
+  enableWorkspaces = false,
 }: GexMapWorkspaceProps = {}) {
+  const [initialWorkspace] = useState(() => enableWorkspaces ? readActiveGexMapWorkspace() : null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(initialWorkspace?.id ?? null);
+  const [privateWorkspace, setPrivateWorkspace] = useState(Boolean(initialWorkspace));
+  const initialSnapshot = initialWorkspace?.snapshot;
+  const [futureSettings, setFutureSettings] = useState(() => initialSnapshot?.futureSettings ?? loadFutureSettings());
   const replayDisplay = useMemo(() => gexMapReplayDisplay(timeZone), [timeZone]);
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
@@ -1142,7 +1155,7 @@ function GexMapWorkspace({
   // and back. Only the value present at mount matters.
   const initialEmbedStateRef = useRef<GexMapEmbedState | null | undefined>(undefined);
   if (initialEmbedStateRef.current === undefined) {
-    initialEmbedStateRef.current = normalizeGexMapEmbedState(persistedState);
+    initialEmbedStateRef.current = initialSnapshot?.view ?? normalizeGexMapEmbedState(persistedState);
   }
   const onStateChangeRef = useRef(onStateChange);
   useEffect(() => {
@@ -1193,7 +1206,7 @@ function GexMapWorkspace({
     () => initialEmbedStateRef.current?.representation ?? DEFAULT_GEX_MAP_REPRESENTATION,
   );
   // Node zoom: SSR-safe default first, stored value applied after hydration.
-  const [ladderZoom, setLadderZoom] = useState(1);
+  const [ladderZoom, setLadderZoom] = useState(initialSnapshot?.ladderZoom ?? 1);
   // PRESENT (live per-strike ladders) vs FUTURE (forward expiry×strike
   // matrix). Persisted so the map reopens on the horizon last worked in.
   const [storedTimeHorizon, setTimeHorizon] = useState<"present" | "future">(() => {
@@ -1205,6 +1218,7 @@ function GexMapWorkspace({
   // the GEX Map page has to reopen on whichever horizon IT was last left on.
   const timeHorizon = lockedTimeHorizon ?? storedTimeHorizon;
   useEffect(() => {
+    if (initialSnapshot) return;
     try {
       const stored = Number(window.localStorage.getItem(GEX_MAP_ZOOM_STORAGE_KEY));
       if (Number.isFinite(stored) && stored >= GEX_MAP_ZOOM_MIN && stored <= GEX_MAP_ZOOM_MAX) {
@@ -1213,12 +1227,13 @@ function GexMapWorkspace({
     } catch {
       // Zoom stays at 100% when browser storage is unavailable.
     }
-  }, []);
+  }, [initialSnapshot]);
   const adjustLadderZoom = useCallback((direction: 1 | -1) => {
     setLadderZoom((current) => {
       const next = Math.round(
         Math.min(GEX_MAP_ZOOM_MAX, Math.max(GEX_MAP_ZOOM_MIN, current + direction * GEX_MAP_ZOOM_STEP)) * 10,
       ) / 10;
+      if (privateWorkspace) return next;
       try {
         window.localStorage.setItem(GEX_MAP_ZOOM_STORAGE_KEY, String(next));
         window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
@@ -1227,10 +1242,11 @@ function GexMapWorkspace({
       }
       return next;
     });
-  }, []);
+  }, [privateWorkspace]);
   // FUTURE matrix zoom is independent of the ladder zoom and starts at 100%.
-  const [futureZoom, setFutureZoom] = useState(1);
+  const [futureZoom, setFutureZoom] = useState(initialSnapshot?.futureZoom ?? 1);
   useEffect(() => {
+    if (initialSnapshot) return;
     try {
       const stored = Number(window.localStorage.getItem("kwantdesk:gex-map-future-zoom:v1"));
       if (Number.isFinite(stored) && stored >= GEX_MAP_ZOOM_MIN && stored <= GEX_MAP_ZOOM_MAX) {
@@ -1239,12 +1255,13 @@ function GexMapWorkspace({
     } catch {
       // Zoom stays at 100% when browser storage is unavailable.
     }
-  }, []);
+  }, [initialSnapshot]);
   const adjustFutureZoom = useCallback((direction: 1 | -1) => {
     setFutureZoom((current) => {
       const next = Math.round(
         Math.min(GEX_MAP_ZOOM_MAX, Math.max(GEX_MAP_ZOOM_MIN, current + direction * GEX_MAP_ZOOM_STEP)) * 10,
       ) / 10;
+      if (privateWorkspace) return next;
       try {
         window.localStorage.setItem("kwantdesk:gex-map-future-zoom:v1", String(next));
         window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
@@ -1253,19 +1270,21 @@ function GexMapWorkspace({
       }
       return next;
     });
-  }, []);
+  }, [privateWorkspace]);
   // Price lock: SSR-safe default first, stored value applied after hydration.
-  const [priceLocked, setPriceLocked] = useState(false);
+  const [priceLocked, setPriceLocked] = useState(initialSnapshot?.priceLocked ?? false);
   useEffect(() => {
+    if (initialSnapshot) return;
     try {
       setPriceLocked(window.localStorage.getItem(GEX_MAP_PRICE_LOCK_STORAGE_KEY) === "true");
     } catch {
       // The lock simply starts open when browser storage is unavailable.
     }
-  }, []);
+  }, [initialSnapshot]);
   const togglePriceLock = useCallback(() => {
     setPriceLocked((current) => {
       const next = !current;
+      if (privateWorkspace) return next;
       try {
         window.localStorage.setItem(GEX_MAP_PRICE_LOCK_STORAGE_KEY, String(next));
         window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
@@ -1274,7 +1293,7 @@ function GexMapWorkspace({
       }
       return next;
     });
-  }, []);
+  }, [privateWorkspace]);
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
   // One forced refetch per replay session when a panel reports that its
@@ -1294,21 +1313,22 @@ function GexMapWorkspace({
   const [viewMode, setViewMode] = useState<GexMapViewMode>(
     () => initialEmbedStateRef.current?.viewMode ?? "star",
   );
-  const [starSettings, setStarSettings] = useState<GexMapStarSettings>({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS });
+  const [starSettings, setStarSettings] = useState<GexMapStarSettings>(() => initialSnapshot?.starSettings ?? { ...RECOMMENDED_GEX_MAP_STAR_SETTINGS });
   const [starSettingsOpen, setStarSettingsOpen] = useState(false);
   // The saved palette is the committed truth; edits inside the settings
   // dialog preview live and either commit on Save or revert on close.
-  const [savedPalette, setSavedPalette] = useState<GexMapPalette>(() => loadGexMapPalette());
+  const [savedPalette, setSavedPalette] = useState<GexMapPalette>(() => initialSnapshot?.palette ?? loadGexMapPalette());
   const [palettePreview, setPalettePreview] = useState<GexMapPalette | null>(null);
   const activePalette = palettePreview ?? savedPalette;
   useEffect(() => {
+    if (privateWorkspace) return;
     const applyExternalPalette = (event: Event) => {
       const next = normalizeGexMapPalette((event as CustomEvent).detail);
       setSavedPalette((currentSaved) => gexMapPalettesEqual(currentSaved, next) ? currentSaved : next);
     };
     window.addEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, applyExternalPalette);
     return () => window.removeEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, applyExternalPalette);
-  }, []);
+  }, [privateWorkspace]);
   const starPreferencesHydratedRef = useRef(false);
   const forceRefreshRef = useRef(false);
   const replayMode = externalReplay?.active ?? internalReplayMode;
@@ -1343,6 +1363,7 @@ function GexMapWorkspace({
   }, [market]);
 
   useEffect(() => {
+    if (initialSnapshot) return;
     const stored = readGexMapStarPreferences();
     if (stored) {
       // A pane-saved view mode outranks the global preference.
@@ -1350,12 +1371,12 @@ function GexMapWorkspace({
       setStarSettings(stored.settings);
     }
     starPreferencesHydratedRef.current = true;
-  }, []);
+  }, [initialSnapshot]);
 
   useEffect(() => {
-    if (!starPreferencesHydratedRef.current) return;
+    if (privateWorkspace || !starPreferencesHydratedRef.current) return;
     writeProtectedItem(GEX_MAP_STAR_PREFERENCES_KEY, JSON.stringify({ viewMode, settings: starSettings }));
-  }, [starSettings, viewMode]);
+  }, [privateWorkspace, starSettings, viewMode]);
 
   useEffect(() => {
     const toggleView = (event: KeyboardEvent) => {
@@ -1375,7 +1396,7 @@ function GexMapWorkspace({
     // linked market actually changes, and never over a pane-saved configuration.
     const marketChanged = panelsMarketRef.current !== linkedMarket;
     panelsMarketRef.current = linkedMarket;
-    const nextPanels = marketChanged && !initialEmbedStateRef.current
+    const nextPanels = marketChanged && !privateWorkspace && !initialEmbedStateRef.current
       ? initialPanelsForMarket(linkedMarket)
       : panelsRef.current.map((panel) => ({ ...panel }));
     const cachedData = Object.fromEntries(nextPanels.map((panel) => [
@@ -1396,7 +1417,7 @@ function GexMapWorkspace({
     setPanelData(cachedData);
     setPanelErrors(Object.fromEntries(nextPanels.map((panel) => [panel.id, null])));
     setLoading(Object.fromEntries(nextPanels.map((panel) => [panel.id, !cachedData[panel.id]])));
-  }, [linkedMarket, panelCacheKey, requestedReplayDate]);
+  }, [linkedMarket, panelCacheKey, privateWorkspace, requestedReplayDate]);
   // Report configuration changes to the host workspace so quick-save and
   // presets capture exactly what the user configured on this pane.
   useEffect(() => {
@@ -1416,7 +1437,7 @@ function GexMapWorkspace({
     setPanels(next.panels); setViewMode(next.viewMode); setStepMinutes(next.stepMinutes as typeof stepMinutes);
     setExpiryScope(next.expiryScope); setRepresentation(next.representation); setExposureModel(next.exposureModel);
     setStarSettings(next.starSettings); setPlaying(false);
-  });
+  }, !privateWorkspace);
   useEffect(() => {
     const stops = panels.map((panel) => subscribeGexMapSurface(panelCacheKey(panel), (payload) => {
       if (!panelMatches(panel, payload)) return;
@@ -1577,6 +1598,7 @@ function GexMapWorkspace({
   }, [exposureModel, expiryScope, panelCacheKey, panelMatches, panels, refreshToken, replayMode, representation, requestedReplayDate, linkedSettingsReady]);
 
   const [replayWindow, setReplayWindow] = useState<GexMapReplayWindowId>(() => {
+    if (initialSnapshot) return initialSnapshot.replayWindow;
     if (typeof window === "undefined") return "rth";
     const stored = window.localStorage.getItem(GEX_MAP_REPLAY_WINDOW_KEY);
     return GEX_MAP_REPLAY_WINDOWS.some((entry) => entry.id === stored)
@@ -1584,8 +1606,8 @@ function GexMapWorkspace({
       : "rth";
   });
   useEffect(() => {
-    writeProtectedItem(GEX_MAP_REPLAY_WINDOW_KEY, replayWindow);
-  }, [replayWindow]);
+    if (!privateWorkspace) writeProtectedItem(GEX_MAP_REPLAY_WINDOW_KEY, replayWindow);
+  }, [privateWorkspace, replayWindow]);
 
   const timeline = useMemo(() => {
     const timestamps = new Set<number>();
@@ -1697,6 +1719,42 @@ function GexMapWorkspace({
     setCursor(0);
   }
 
+  function workspaceSnapshot(): GexMapWorkspaceSnapshot {
+    return {
+      view: { surfaceVersion: 2, panels, viewMode, stepMinutes, expiryScope, representation, exposureModel, timeHorizon },
+      starSettings, palette: savedPalette, ladderZoom, futureZoom, priceLocked, replayWindow,
+      futureSettings: privateWorkspace ? futureSettings : loadFutureSettings(),
+    };
+  }
+
+  function activateWorkspace(preset: GexMapWorkspacePreset) {
+    setPrivateWorkspace(true);
+    setActiveWorkspaceId(preset.id);
+    setFutureSettings(preset.snapshot.futureSettings);
+    rememberActiveGexMapWorkspace(preset.id);
+  }
+
+  function applyWorkspace(preset: GexMapWorkspacePreset) {
+    activateWorkspace(preset);
+    const { view, starSettings, palette, ladderZoom, futureZoom, priceLocked, replayWindow } = preset.snapshot;
+    setPanels(view.panels);
+    setViewMode(view.viewMode);
+    setStepMinutes(view.stepMinutes as (typeof FRAME_STEPS)[number]);
+    setExpiryScope(view.expiryScope);
+    setRepresentation(view.representation);
+    setExposureModel(view.exposureModel ?? "STRUCTURAL_OI");
+    setTimeHorizon(view.timeHorizon ?? "present");
+    setStarSettings(starSettings);
+    setSavedPalette(palette);
+    setPalettePreview(null);
+    setLadderZoom(ladderZoom);
+    setFutureZoom(futureZoom);
+    setPriceLocked(priceLocked);
+    setReplayWindow(replayWindow);
+    setCursor(0);
+    setPlaying(false);
+  }
+
   return (
     <div className="gex-map-workspace relative flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -1740,6 +1798,7 @@ function GexMapWorkspace({
                 type="button"
                 onClick={() => {
                   setTimeHorizon(mode);
+                  if (privateWorkspace) return;
                   try {
                     window.localStorage.setItem(GEX_MAP_TIME_HORIZON_KEY, mode);
                     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
@@ -1912,6 +1971,12 @@ function GexMapWorkspace({
             >
               <RefreshCw className="h-3 w-3" />
             </button>
+            {enableWorkspaces ? <GexMapWorkspacesMenu activeId={activeWorkspaceId} snapshot={workspaceSnapshot}
+              onActivate={applyWorkspace} onSaved={activateWorkspace} onDelete={(id) => {
+                if (id !== activeWorkspaceId) return;
+                setActiveWorkspaceId(null);
+                rememberActiveGexMapWorkspace(null);
+              }} /> : null}
             {!externalReplay ? <button
               type="button"
               onClick={replayMode ? exitReplay : enterReplay}
@@ -1925,7 +1990,9 @@ function GexMapWorkspace({
 
         {timeHorizon === "future" ? (
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <GexMapFutureMatrix palette={activePalette} zoom={futureZoom} />
+            <GexMapFutureMatrix palette={activePalette} zoom={futureZoom}
+              workspaceSettings={privateWorkspace ? futureSettings : undefined}
+              onWorkspaceSettingsChange={privateWorkspace ? setFutureSettings : undefined} />
           </div>
         ) : (
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1.5 pt-0">
@@ -2062,7 +2129,7 @@ function GexMapWorkspace({
         onPaletteChange={setPalettePreview}
         onPaletteSave={() => {
           const next = palettePreview ?? savedPalette;
-          saveGexMapPalette(next);
+          if (!privateWorkspace) saveGexMapPalette(next);
           setSavedPalette(next);
           setPalettePreview(null);
         }}

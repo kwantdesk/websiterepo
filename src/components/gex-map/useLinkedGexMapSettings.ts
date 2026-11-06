@@ -22,13 +22,14 @@ export function useLinkedGexMapSettingsState(enabled = true) {
 export function useLinkedGexMapSettings() { return useLinkedGexMapSettingsState().settings; }
 
 /** One shared profile. Remote updates are acknowledged, never echoed as stale local changes. */
-export function useGexMapSettingsBridge(local: LinkedGexMapSettings, apply: (settings: LinkedGexMapSettings) => void) {
-  const shared = useLinkedGexMapSettings();
+export function useGexMapSettingsBridge(local: LinkedGexMapSettings, apply: (settings: LinkedGexMapSettings) => void, enabled = true) {
+  const { settings: shared } = useLinkedGexMapSettingsState(enabled);
   const signature = JSON.stringify(normalizeLinkedGexMapSettings(local));
   const previous = useRef<string | null>(null), applied = useRef<string | null>(null), sharedSeen = useRef("");
   const [ready, setReady] = useState(false);
   const applyRef = useRef(apply); applyRef.current = apply;
   useEffect(() => {
+    if (!enabled) return;
     const next = normalizeLinkedGexMapSettings(local), sharedSignature = JSON.stringify(shared);
     const project = (value: LinkedGexMapSettings) => normalizeLinkedGexMapSettings({ ...value, panels: next.panels.map((p) => {
       const match = value.panels.find((v) => v.id === p.id && v.symbol === p.symbol);
@@ -59,6 +60,6 @@ export function useGexMapSettingsBridge(local: LinkedGexMapSettings, apply: (set
     }
     // The serialized signature represents all fields; stable refs avoid reapplying on ordinary renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, shared]);
-  return ready;
+  }, [enabled, signature, shared]);
+  return !enabled || ready;
 }

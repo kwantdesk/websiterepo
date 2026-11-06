@@ -1,6 +1,6 @@
 export const WORKSPACE_PRESET_DELETIONS_KEY = 'kwantdesk:workspace-preset-deletions:v1';
 const PRESET_KEY = 'kwantdesk-chart-workspace-presets';
-const libraryKeys = [PRESET_KEY, `kwantdesk:gamma-charting:${PRESET_KEY}`, `kwantdesk:algo-charting:${PRESET_KEY}`];
+const libraryKeys = [PRESET_KEY, 'kwantdesk:gex-map-workspaces:v1', `kwantdesk:gamma-charting:${PRESET_KEY}`, `kwantdesk:algo-charting:${PRESET_KEY}`];
 type Values = Record<string, string>;
 type SavedPreset = { id: string; updatedAt?: string; [key: string]: unknown };
 function records(raw?: string): SavedPreset[] {

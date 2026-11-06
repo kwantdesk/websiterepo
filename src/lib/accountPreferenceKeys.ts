@@ -46,6 +46,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:footprint:templates:v1",
   "kwantdesk:tpo-user-presets:v1",
   "kwantdesk:gex-interval-map-presets:v1",
+  "kwantdesk:gex-map-workspaces:v1",
   "kwantdesk:gex-map-palette:v1",
   "kwantdesk:gex-map-zoom:v1",
   "kwantdesk:gex-map-future:v1",

@@ -50,6 +50,16 @@ test('deletion records are tracked and isolated to the workspace scope', () => {
   assert.equal(JSON.parse(result[key]).length, 1);
   assert.equal(JSON.parse(result[scope]).length, 0);
 });
+test('GEX Map saves merge and delete within their own library', () => {
+  const map = 'kwantdesk:gex-map-workspaces:v1';
+  assert.equal(isTrackedStorageKey(map), true);
+  const baseline = { [key]: JSON.stringify([preset('same')]), [map]: JSON.stringify([preset('same')]) };
+  const local = { ...baseline, [DELETIONS]: markWorkspacePresetDeleted(undefined, map, 'same') };
+  const remote = { ...baseline, [map]: JSON.stringify([preset('same'), preset('other-map')]) };
+  const merged = merge(baseline, local, remote);
+  assert.deepEqual(JSON.parse(merged[key]).map(item => item.id), ['same']);
+  assert.deepEqual(JSON.parse(merged[map]).map(item => item.id), ['other-map']);
+});
 test('malformed or missing phone library cannot erase a valid remote library', () => {
   const known = { [key]: JSON.stringify([preset('kept')]) };
   assert.deepEqual(JSON.parse(merge(known, { [key]: 'broken' }, known)[key]).map(item => item.id), ['kept']);

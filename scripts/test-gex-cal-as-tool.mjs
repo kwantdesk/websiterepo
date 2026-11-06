@@ -57,7 +57,7 @@ check("the horizon switch is hidden when pinned", () => {
 
 check("it keeps the map's real controls", () => {
   // The point of hosting the workspace rather than the bare matrix.
-  assert.match(map, /<GexMapFutureMatrix palette=\{activePalette\} zoom=\{futureZoom\} \/>/);
+  assert.match(map, /<GexMapFutureMatrix palette=\{activePalette\} zoom=\{futureZoom\}[\s\S]*?\/>/);
   assert.match(map, /adjustFutureZoom/);
 });
 

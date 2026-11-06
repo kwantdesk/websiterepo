@@ -7,6 +7,7 @@ import { gexMapExposureRange, gexMapHeatColorCss, gexMapHeatStrength, gexMapSign
 import { parseResolvedColor, readableTextOn } from "@/lib/readableContrast";
 import GexMapExposureLegend from "./GexMapExposureLegend";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
+import { GEX_MAP_FUTURE_LOOKAHEADS, normalizeGexMapFutureSettings, type GexMapFutureSettings } from "@/lib/gexMapWorkspaces";
 
 // GEX MAP · FUTURE view: the forward positioning matrix. Strikes run down the
 // left, one column per upcoming EXPIRY inside the lookahead window, and every
@@ -27,43 +28,22 @@ type FutureChain = {
 };
 
 const FUTURE_SETTINGS_KEY = "kwantdesk:gex-map-future:v1";
-const LOOKAHEAD_CHOICES = [7, 14, 21, 30, 60] as const;
+type FutureGreek = GexMapFutureSettings["greek"];
+type FutureValueMode = GexMapFutureSettings["valueMode"];
 
-type FutureGreek = "GAMMA" | "VANNA";
-type FutureValueMode = "star-percent" | "signed";
-
-type FutureSettings = {
-  symbol: string;
-  greek: FutureGreek;
-  lookaheadDays: number;
-  valueMode: FutureValueMode;
-  highlightPercent: number;
-};
-
-const DEFAULT_FUTURE_SETTINGS: FutureSettings = {
-  symbol: "SPX",
-  greek: "GAMMA",
-  lookaheadDays: 14,
-  valueMode: "star-percent",
-  highlightPercent: 0,
-};
-
-function loadFutureSettings(): FutureSettings {
-  if (typeof window === "undefined") return DEFAULT_FUTURE_SETTINGS;
+export function loadFutureSettings(): GexMapFutureSettings {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(FUTURE_SETTINGS_KEY) || "{}") as Partial<FutureSettings>;
-    return {
-      symbol: OPTIONS_FLOW_INSTRUMENTS.some((item) => item.symbol === parsed.symbol) ? String(parsed.symbol) : "SPX",
-      greek: parsed.greek === "VANNA" ? "VANNA" : "GAMMA",
-      lookaheadDays: LOOKAHEAD_CHOICES.includes(Number(parsed.lookaheadDays) as typeof LOOKAHEAD_CHOICES[number])
-        ? Number(parsed.lookaheadDays)
-        : 14,
-      valueMode: parsed.valueMode === "signed" ? "signed" : "star-percent",
-      highlightPercent: Math.min(90, Math.max(0, Number(parsed.highlightPercent) || 0)),
-    };
+    return normalizeGexMapFutureSettings(JSON.parse(window.localStorage.getItem(FUTURE_SETTINGS_KEY) ?? "null"));
   } catch {
-    return DEFAULT_FUTURE_SETTINGS;
+    return normalizeGexMapFutureSettings(null);
   }
+}
+
+function saveFutureSettings(settings: GexMapFutureSettings) {
+  try {
+    window.localStorage.setItem(FUTURE_SETTINGS_KEY, JSON.stringify(settings));
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  } catch { /* Preferences can still be edited for this session. */ }
 }
 
 function formatCompactDollars(value: number) {
@@ -82,25 +62,27 @@ function expirationHeading(expiration: string) {
   return { date: expiration.slice(5), weekday };
 }
 
-export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: GexMapPalette; zoom?: number }) {
-  const [settings, setSettings] = useState<FutureSettings>(() => loadFutureSettings());
+export default function GexMapFutureMatrix({ palette, zoom = 1, workspaceSettings, onWorkspaceSettingsChange }: {
+  palette: GexMapPalette;
+  zoom?: number;
+  workspaceSettings?: GexMapFutureSettings;
+  onWorkspaceSettingsChange?: (settings: GexMapFutureSettings) => void;
+}) {
+  const [localSettings, setLocalSettings] = useState(loadFutureSettings);
+  const settings = workspaceSettings ?? localSettings;
   const [chain, setChain] = useState<FutureChain | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
 
-  const patchSettings = useCallback((patch: Partial<FutureSettings>) => {
-    setSettings((current) => {
-      const next = { ...current, ...patch };
-      try {
-        window.localStorage.setItem(FUTURE_SETTINGS_KEY, JSON.stringify(next));
-        window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
-      } catch {
-        // Preference persistence is a convenience, never a blocker.
-      }
-      return next;
-    });
-  }, []);
+  const patchSettings = useCallback((patch: Partial<GexMapFutureSettings>) => {
+    const next = { ...settings, ...patch };
+    if (onWorkspaceSettingsChange) onWorkspaceSettingsChange(next);
+    else {
+      setLocalSettings(next);
+      saveFutureSettings(next);
+    }
+  }, [onWorkspaceSettingsChange, settings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,7 +226,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
         <GexMapDropdown
           ariaLabel="Forward window"
           value={String(settings.lookaheadDays)}
-          options={LOOKAHEAD_CHOICES.map((days) => ({
+          options={GEX_MAP_FUTURE_LOOKAHEADS.map((days) => ({
             value: String(days),
             label: `${days}d`,
             detail: `Expiries within ${days} days`,
