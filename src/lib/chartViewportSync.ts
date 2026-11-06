@@ -1,4 +1,6 @@
 export type ChartViewportSyncRole = "independent" | "peer";
+type PriceRange = { from: number; to: number };
+type ViewportCandle = { timestamp: number; close: number; low: number; high: number };
 
 export type ChartViewportSnapshot = {
   groupId: string;
@@ -37,6 +39,42 @@ export function linkedPriceAnchorAt(
   if (!candle || !Number.isFinite(candle.close) || candle.close <= 0
     || (timestamp !== undefined && intervalMs && timestamp - candle.timestamp >= intervalMs)) return null;
   return { timestamp: candle.timestamp, price: candle.close };
+}
+
+function firstCandleInWindow(candles: readonly { timestamp: number }[], from: number) {
+  let low = 0;
+  let high = candles.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (candles[middle].timestamp < from) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+export function linkedWindowHasCandles(
+  candles: readonly { timestamp: number }[], window: PriceRange,
+) {
+  const first = candles[firstCandleInWindow(candles, window.from * 1_000)];
+  return Boolean(first && first.timestamp <= window.to * 1_000);
+}
+
+/** Keep percentage alignment while the translated scale still shows prices.
+ * If different volatility or an old scale would hide every bar, keep the zoom
+ * and bring a real candle from this same window into view. */
+export function keepLinkedPricesInFrame(
+  range: PriceRange, candles: readonly ViewportCandle[], window: PriceRange, anchorPrice?: number,
+) {
+  if (!Number.isFinite(range.from) || !Number.isFinite(range.to) || range.to <= range.from) return range;
+  let visibleClose: number | undefined;
+  const end = window.to * 1_000;
+  for (let index = firstCandleInWindow(candles, window.from * 1_000); index < candles.length; index += 1) {
+    const candle = candles[index];
+    if (candle.timestamp > end) break;
+    if (candle.low <= range.to && candle.high >= range.from) return range;
+    if (Number.isFinite(candle.close) && candle.close > 0) visibleClose = candle.close;
+  }
+  return visibleClose === undefined ? range : centerPriceRangeOnAnchor(range, anchorPrice ?? visibleClose);
 }
 
 /**
@@ -126,6 +164,19 @@ export function shouldAdvanceLinkedLiveViewport(snapshot: ChartViewportSnapshot,
 
 const VIEWPORT_SYNC_EVENT = "kwantdesk:chart-viewport-sync";
 const latestByGroup = new Map<string, ChartViewportSnapshot>();
+const interactionByGroup = new Map<string, string>();
+
+export function claimChartViewportInteraction(groupId: string, chartId: string) {
+  interactionByGroup.set(groupId, chartId);
+}
+
+export function ownsChartViewportInteraction(groupId: string, chartId: string) {
+  return interactionByGroup.get(groupId) === chartId;
+}
+
+export function releaseChartViewportInteraction(groupId: string, chartId: string) {
+  if (ownsChartViewportInteraction(groupId, chartId)) interactionByGroup.delete(groupId);
+}
 
 export function publishChartViewport(snapshot: ChartViewportSnapshot) {
   latestByGroup.set(snapshot.groupId, snapshot);

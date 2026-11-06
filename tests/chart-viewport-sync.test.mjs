@@ -162,3 +162,18 @@ test("source pivots across overnight gaps retain the actual preceding candle tim
   assert.equal(viewport.linkedPriceAnchorAt([], 1000), null);
   assert.equal(viewport.linkedPriceAnchorAt([{ timestamp: 1000, close: NaN }], 1000), null);
 });
+
+test("a peer never translates a viewport into a session or gap without candles", () => {
+  const rows = [{ timestamp: 1000 }, { timestamp: 2000 }, { timestamp: 6000 }];
+  assert.equal(viewport.linkedWindowHasCandles(rows, { from: 3, to: 5 }), false);
+  assert.equal(viewport.linkedWindowHasCandles(rows, { from: 5, to: 9 }), true);
+});
+
+test("a peer only recenters when translated prices hide every candle, preserving the zoom", () => {
+  const rows = [{ timestamp: 1000, low: 680, high: 690, close: 685 }, { timestamp: 2000, low: 690, high: 700, close: 695 }];
+  const time = { from: 1, to: 2 };
+  const intersecting = { from: 697, to: 702 };
+  assert.equal(viewport.keepLinkedPricesInFrame(intersecting, rows, time), intersecting);
+  assert.deepEqual(viewport.keepLinkedPricesInFrame({ from: 740, to: 750 }, rows, time, 685), { from: 680, to: 690 });
+  assert.deepEqual(viewport.keepLinkedPricesInFrame({ from: 740, to: 750 }, rows, time), { from: 690, to: 700 });
+});

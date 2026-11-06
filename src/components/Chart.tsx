@@ -765,11 +765,16 @@ import {
 import {
   centerPriceRangeOnAnchor,
   chartViewportReplayScope,
+  claimChartViewportInteraction,
+  keepLinkedPricesInFrame,
   linkedLogicalAtTimestamp,
   linkedPriceAnchorAt,
+  linkedWindowHasCandles,
+  ownsChartViewportInteraction,
   shouldAdvanceLinkedLiveViewport,
   publishChartViewport,
   readLatestChartViewport,
+  releaseChartViewportInteraction,
   resolveLinkedLogicalRange,
   resolveLinkedPriceRange,
   subscribeChartViewport,
@@ -3405,6 +3410,7 @@ function Chart({
   const viewportSyncReleaseTimerRef = useRef<number | null>(null);
   const viewportSyncGroupRef = useRef(viewportSyncGroup);
   const viewportSyncRestoreRef = useRef<((resetToLive?: boolean) => void) | null>(null);
+  const viewportSyncRetryDeferredRef = useRef<(() => void) | null>(null);
   const viewportSyncReplayScope = chartViewportReplayScope(replayTimestampMs);
   const viewportSyncReplayScopeRef = useRef(viewportSyncReplayScope);
   viewportSyncReplayScopeRef.current = viewportSyncReplayScope;
@@ -16925,17 +16931,26 @@ function Chart({
 
     const canApplySnapshots = viewportSyncRole === "peer";
     const canPublishSnapshots = viewportSyncRole === "peer";
+    const intervalMs = timeframeToMs(timeframe);
+    let waitingForHistory = false;
+    const ownsGesture = () => viewportSyncUserInteractionRef.current
+      && ownsChartViewportInteraction(viewportSyncGroup, chartInstanceId);
 
     const applySnapshot = (snapshot: ChartViewportSnapshot, allowOwn = false) => {
       if (
         !canApplySnapshots
         || (!allowOwn && snapshot.sourceChartId === chartInstanceId)
+        || (!allowOwn && ownsGesture())
         || snapshot.timeframe !== (timeframe ?? "")
         || (snapshot.replayScope ?? "live") !== viewportSyncReplayScopeRef.current
       ) return;
       const currentCandles = viewportSyncCandlesRef.current;
       if (!currentCandles.length) return;
-      const anchor = linkedPriceAnchorAt(currentCandles, snapshot.anchorTimestamp, timeframeToMs(timeframe));
+      // Extrapolating the native axis across a missing session can send a
+      // follower into empty space. Keep its last view and retry on new history.
+      waitingForHistory = intervalMs !== null && !linkedWindowHasCandles(currentCandles, snapshot.visibleTimeRange);
+      if (waitingForHistory) return;
+      const anchor = linkedPriceAnchorAt(currentCandles, snapshot.anchorTimestamp, intervalMs);
       viewportSyncApplyingRef.current = true;
       try {
         const timeScale = chart.timeScale();
@@ -16944,7 +16959,7 @@ function Chart({
             const nativeTime = eventChartTimeBySourceTimeRef.current.get(time) ?? Math.floor(time / 1_000);
             const index = timeScale.timeToIndex(nativeTime as Time);
             return index === null ? null : Number(index);
-          }, timeframeToMs(timeframe)));
+          }, intervalMs));
         if (logicalRange) {
           chart.timeScale().setVisibleLogicalRange(logicalRange);
         } else {
@@ -16953,11 +16968,19 @@ function Chart({
             to: snapshot.visibleTimeRange.to as Time,
           });
         }
-        const targetRange = anchor ? resolveLinkedPriceRange(snapshot, instrument, anchor.price) : null;
         const priceScale = chart.priceScale("right") as ReturnType<IChartApi["priceScale"]> & {
+          getVisibleRange?: () => { from: number; to: number } | null;
           setVisibleRange?: (range: { from: number; to: number } | null) => void;
           setAutoScale?: (enabled: boolean) => void;
         };
+        const localRange = priceScale.getVisibleRange?.() ?? null;
+        const translatedRange = anchor ? resolveLinkedPriceRange(snapshot, instrument, anchor.price) : localRange;
+        const anchorInWindow = anchor && anchor.timestamp >= snapshot.visibleTimeRange.from * 1_000
+          && anchor.timestamp <= snapshot.visibleTimeRange.to * 1_000 ? anchor.price : undefined;
+        const targetRange = translatedRange && intervalMs !== null
+          ? keepLinkedPricesInFrame(translatedRange, currentCandles, snapshot.visibleTimeRange, anchorInWindow)
+          : anchor ? translatedRange : null;
+        if (!anchor && targetRange === localRange) return;
         if (targetRange && Number.isFinite(targetRange.from) && Number.isFinite(targetRange.to) && targetRange.to > targetRange.from) {
           priceScale.setAutoScale?.(false);
           priceScale.setVisibleRange?.(targetRange);
@@ -16980,13 +17003,13 @@ function Chart({
       if (
         !canPublishSnapshots
         || viewportSyncApplyingRef.current
-        || (!allowWithoutInteraction && !viewportSyncUserInteractionRef.current)
+        || (!allowWithoutInteraction && !ownsGesture())
       ) return;
       if (viewportSyncPublishFrameRef.current !== null) return;
       viewportSyncPublishFrameRef.current = window.requestAnimationFrame(() => {
         viewportSyncPublishFrameRef.current = null;
         // Another peer may have become leader after this frame was queued.
-        if (viewportSyncApplyingRef.current) return;
+        if (viewportSyncApplyingRef.current || (!allowWithoutInteraction && !ownsGesture())) return;
         const existing = readLatestChartViewport(viewportSyncGroup);
         if (seedOnly && existing?.timeframe === (timeframe ?? "") && (existing.replayScope ?? "live") === viewportSyncReplayScopeRef.current
           && !shouldAdvanceLinkedLiveViewport(existing, viewportSyncCandlesRef.current.at(-1)?.timestamp, timeframeToMs(timeframe))) return;
@@ -17059,38 +17082,40 @@ function Chart({
       if (trailingPublishTimer !== null) window.clearTimeout(trailingPublishTimer);
       trailingPublishTimer = window.setTimeout(publishSnapshot, 48);
     };
-    const beginPointerInteraction = () => {
+    const claimGesture = () => {
+      claimChartViewportInteraction(viewportSyncGroup, chartInstanceId);
       viewportSyncUserInteractionRef.current = true;
       if (viewportSyncReleaseTimerRef.current !== null) {
         window.clearTimeout(viewportSyncReleaseTimerRef.current);
         viewportSyncReleaseTimerRef.current = null;
       }
+    };
+    const beginPointerInteraction = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      claimGesture();
       publishSnapshot();
     };
     const handleWindowPointerMove = () => {
       if (viewportSyncUserInteractionRef.current) publishSnapshot();
     };
-    const finishPointerInteraction = () => {
-      if (!viewportSyncUserInteractionRef.current) return;
-      publishTrailingSnapshot();
-      // Keep ownership through Lightweight Charts' final inertial/range event,
-      // then release it. Followers never acquire ownership from an applied
-      // snapshot, so whichever chart the user touches remains the sole leader.
+    const releaseGestureAfter = (delay: number) => {
+      if (viewportSyncReleaseTimerRef.current !== null) window.clearTimeout(viewportSyncReleaseTimerRef.current);
       viewportSyncReleaseTimerRef.current = window.setTimeout(() => {
         viewportSyncUserInteractionRef.current = false;
         viewportSyncReleaseTimerRef.current = null;
-      }, 96);
+        releaseChartViewportInteraction(viewportSyncGroup, chartInstanceId);
+      }, delay);
+    };
+    const finishPointerInteraction = () => {
+      if (!ownsGesture()) return;
+      publishTrailingSnapshot();
+      // Keep ownership through the native scale's final range event.
+      releaseGestureAfter(96);
     };
     const handleWheelInteraction = () => {
-      viewportSyncUserInteractionRef.current = true;
-      if (viewportSyncReleaseTimerRef.current !== null) {
-        window.clearTimeout(viewportSyncReleaseTimerRef.current);
-      }
+      claimGesture();
       publishTrailingSnapshot();
-      viewportSyncReleaseTimerRef.current = window.setTimeout(() => {
-        viewportSyncUserInteractionRef.current = false;
-        viewportSyncReleaseTimerRef.current = null;
-      }, 140);
+      releaseGestureAfter(140);
     };
     const handleVisibleTimeRangeChange = () => publishSnapshot();
     const timeScale = chart.timeScale();
@@ -17124,6 +17149,8 @@ function Chart({
       const latest = readLatestChartViewport(viewportSyncGroup);
       if (latest) applySnapshot(latest);
     };
+    const retryDeferred = () => { if (waitingForHistory) retryLatest(); };
+    viewportSyncRetryDeferredRef.current = retryDeferred;
     const restoreAfterData = (resetToLive = false) => {
       const latest = readLatestChartViewport(viewportSyncGroup);
       if (!resetToLive && latest && latest.timeframe === (timeframe ?? "") && (latest.replayScope ?? "live") === viewportSyncReplayScopeRef.current
@@ -17140,7 +17167,7 @@ function Chart({
       if (resizeSyncFrame !== null) return;
       resizeSyncFrame = window.requestAnimationFrame(() => {
         resizeSyncFrame = null;
-        if (viewportSyncUserInteractionRef.current) {
+        if (ownsGesture()) {
           publishSnapshot();
           return;
         }
@@ -17155,6 +17182,7 @@ function Chart({
       timeScale.unsubscribeSizeChange(handleLinkedPlotResize);
       if (resizeSyncFrame !== null) window.cancelAnimationFrame(resizeSyncFrame);
       if (viewportSyncRestoreRef.current === restoreAfterData) viewportSyncRestoreRef.current = null;
+      if (viewportSyncRetryDeferredRef.current === retryDeferred) viewportSyncRetryDeferredRef.current = null;
       if (initialPublishTimer !== null) window.clearTimeout(initialPublishTimer);
       if (trailingPublishTimer !== null) window.clearTimeout(trailingPublishTimer);
       window.clearTimeout(retryTimer);
@@ -17177,8 +17205,15 @@ function Chart({
         viewportSyncReleaseTimerRef.current = null;
       }
       viewportSyncUserInteractionRef.current = false;
+      releaseChartViewportInteraction(viewportSyncGroup, chartInstanceId);
     };
   }, [chartInstanceId, chartReadyRevision, instrument, timeframe, viewportSyncGroup, viewportSyncRole, viewportSyncReplayScope]);
+
+  const firstViewportCandleTime = candles[0]?.timestamp;
+  const lastViewportCandleTime = candles.at(-1)?.timestamp;
+  useEffect(() => {
+    viewportSyncRetryDeferredRef.current?.();
+  }, [firstViewportCandleTime, lastViewportCandleTime, candles.length]);
 
   useEffect(() => {
     cvdDivergencePricePrimitiveRef.current?.update(baseCalculatedIndicatorSeries.flatMap(definition => {

@@ -42,7 +42,7 @@ function fixture(t, role = "peer") {
     chartRef: ref({ timeScale: () => scale, priceScale: () => price }), chartContainerRef: ref(new EventTarget()),
     viewportSyncGroup: group, viewportSyncRole: role, chartInstanceId: "pane", instrument: "SPY", timeframe: "1m",
     viewportSyncCandlesRef: ref(candles), viewportSyncApplyingRef: ref(false), viewportSyncUserInteractionRef: ref(false),
-    viewportSyncPublishFrameRef: ref(null), viewportSyncReleaseTimerRef: ref(null), viewportSyncRestoreRef: ref(null),
+    viewportSyncPublishFrameRef: ref(null), viewportSyncReleaseTimerRef: ref(null), viewportSyncRestoreRef: ref(null), viewportSyncRetryDeferredRef: ref(null),
     viewportSyncReplayScopeRef: ref("live"), eventChartTimeBySourceTimeRef: ref(new Map()), eventSourceTimeByChartTimeRef: ref(new Map()),
     timeframeToMs: () => 60000, ...viewport,
   };
@@ -72,9 +72,36 @@ test("bursts of native plot/axis width changes coalesce into one restore", t => 
   assert.equal(f.frames.size, 1); f.flush(); assert.equal(f.applications(), 1);
 });
 test("an active gesture leads with its current range rather than being reset", t => {
-  const f = fixture(t); f.context.viewportSyncUserInteractionRef.current = true; f.resize(); f.flush();
+  const f = fixture(t);
+  f.context.chartContainerRef.current.dispatchEvent(Object.assign(new Event("pointerdown"), { button: 0 }));
+  f.resize(); f.flush();
   assert.deepEqual(viewport.readLatestChartViewport(f.snapshot.groupId).visibleLogicalRange, { from: 30, to: 50 });
   assert.equal(f.applications(), 0);
+});
+test("a queued old leader cannot publish after another pane starts a gesture", t => {
+  const f = fixture(t);
+  f.context.chartContainerRef.current.dispatchEvent(Object.assign(new Event("pointerdown"), { button: 0 }));
+  f.resize();
+  viewport.claimChartViewportInteraction(f.snapshot.groupId, "another-pane");
+  f.flush();
+  assert.deepEqual(viewport.readLatestChartViewport(f.snapshot.groupId).visibleLogicalRange, f.snapshot.visibleLogicalRange);
+  viewport.releaseChartViewportInteraction(f.snapshot.groupId, "another-pane");
+});
+test("a disjoint window leaves the recipient in frame and retries after history arrives", t => {
+  const f = fixture(t);
+  const candles = f.context.viewportSyncCandlesRef.current;
+  const first = candles[0].timestamp;
+  const later = (index) => first + index * 60_000;
+  const requested = { ...f.snapshot, sourceChartId: "other", visibleLogicalRange: { from: 110, to: 125 },
+    visibleTimeRange: { from: later(110) / 1_000, to: later(125) / 1_000 },
+    timeScaleAnchors: [{ timestamp: later(110), logical: 110 }, { timestamp: later(125), logical: 125 }] };
+  viewport.publishChartViewport(requested);
+  assert.deepEqual(f.current(), { from: 10, to: 50 });
+  f.context.viewportSyncCandlesRef.current = [...candles, ...Array.from({ length: 26 }, (_, i) => ({
+    timestamp: later(100 + i), close: 760, high: 761, low: 759,
+  }))];
+  f.context.viewportSyncRetryDeferredRef.current();
+  assert.deepEqual(f.current(), requested.visibleLogicalRange);
 });
 test("unlink/unmount cancels pending native resize work and subscriptions", t => {
   const f = fixture(t); f.resize(); f.cleanup(); f.flush();
