@@ -2,6 +2,7 @@ import type { Candle } from "@/lib/backtester";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import { retainFormingCandleExtrema } from "./liveCandleAuthority.ts";
+import { candleDeltaPath } from "./candleDeltaPath.ts";
 
 export const LIVE_CHART_CANDLE_EVENT = "kwantdesk:live-chart-candle";
 export const CLOSED_CHART_HISTORY_EVENT = "kwantdesk:closed-chart-history";
@@ -219,6 +220,8 @@ export function mergeLiveIndicatorCandle(
     Math.max(0, Number(last.bidTrades ?? 0)),
     Math.max(0, Number(liveCandle.bidTrades ?? 0)),
   );
+  const previousPath = candleDeltaPath(last);
+  const livePath = candleDeltaPath(liveCandle);
   const merged = {
     ...last,
     ...liveCandle,
@@ -229,17 +232,9 @@ export function mergeLiveIndicatorCandle(
     askTrades,
     bidTrades,
     delta: askVolume - bidVolume,
-    deltaOpen: Number(last.deltaOpen ?? liveCandle.deltaOpen ?? 0),
-    deltaHigh: Math.max(
-      Number(last.deltaHigh ?? last.delta ?? 0),
-      Number(liveCandle.deltaHigh ?? liveCandle.delta ?? 0),
-      askVolume - bidVolume,
-    ),
-    deltaLow: Math.min(
-      Number(last.deltaLow ?? last.delta ?? 0),
-      Number(liveCandle.deltaLow ?? liveCandle.delta ?? 0),
-      askVolume - bidVolume,
-    ),
+    deltaOpen: 0,
+    deltaHigh: Math.max(previousPath.high, livePath.high, askVolume - bidVolume),
+    deltaLow: Math.min(previousPath.low, livePath.low, askVolume - bidVolume),
     deltaClose: askVolume - bidVolume,
   };
   if (
@@ -252,6 +247,8 @@ export function mergeLiveIndicatorCandle(
     && merged.trades === Number(last.trades ?? 0)
     && merged.askTrades === Number(last.askTrades ?? 0)
     && merged.bidTrades === Number(last.bidTrades ?? 0)
+    && merged.deltaOpen === last.deltaOpen
+    && merged.deltaClose === last.deltaClose
     && merged.deltaHigh === last.deltaHigh
     && merged.deltaLow === last.deltaLow
   ) return snapshot;

@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { candleDeltaPath } from "@/lib/candleDeltaPath";
 import { clipReplayIndicatorSeries, replayCausalCandles, replaySafeIndicators } from "@/lib/replayIndicatorSafety";
 import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
 import { calculatePivotPoints } from "@/lib/pivotPoints";
@@ -771,26 +772,15 @@ function computeIndicatorSeries(
       // stale cached deltaClose (often zero after a hydrate) must not flatten
       // current flow even though its actual Ask/Bid totals keep advancing.
       const delta = ask - bid;
-      const sourceOpen = useTradeCounts ? 0 : finite(candle.deltaOpen, 0);
-      // Live gateway snapshots can carry session-cumulative delta OHLC.
-      // Translate only when the declared close-open proves that basis.
-      const pathOffset = !useTradeCounts && Number.isFinite(candle.deltaClose)
-        && Math.abs((Number(candle.deltaClose) - sourceOpen) - delta) < 1e-6
-        ? sourceOpen : 0;
-      const relativeHigh = useTradeCounts
-        ? Math.max(0, delta)
-        : finite(candle.deltaHigh, Math.max(0, delta) + pathOffset) - pathOffset;
-      const relativeLow = useTradeCounts
-        ? Math.min(0, delta)
-        : finite(candle.deltaLow, Math.min(0, delta) + pathOffset) - pathOffset;
+      const path = useTradeCounts ? { high: Math.max(0, delta), low: Math.min(0, delta) } : candleDeltaPath(candle, delta);
       const passesFilter = total >= filterMin && (filterMax === 0 || total <= filterMax);
       const filteredDelta = passesFilter ? delta : 0;
       const plottedDelta = dedicatedStudy ? filteredDelta : delta;
       const cumulativeBase = cumulative;
       // The previous verified close is the cumulative candle's open. Source
       // session offsets and old baked open=close values are not another flow.
-      const cumulativeHigh = cumulativeBase + (passesFilter || !dedicatedStudy ? relativeHigh : 0);
-      const cumulativeLow = cumulativeBase + (passesFilter || !dedicatedStudy ? relativeLow : 0);
+      const cumulativeHigh = cumulativeBase + (passesFilter || !dedicatedStudy ? path.high : 0);
+      const cumulativeLow = cumulativeBase + (passesFilter || !dedicatedStudy ? path.low : 0);
       cumulative = cumulativeBase + plottedDelta;
       const cumulativeOpen = cumulativeBase;
       cumulativeAsk += ask;

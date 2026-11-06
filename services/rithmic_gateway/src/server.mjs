@@ -22,6 +22,7 @@ import {
   tradeSeedLimit,
 } from "./trade-sse-continuity.mjs";
 import { BarFlowArchive } from "./bar-flow-archive.mjs";
+import { supplementArchivedBarFlow } from "./bar-flow-live-coverage.mjs";
 import { SessionProfileArchive } from "./session-profile-archive.mjs";
 import {
   combinedVolumeProfileCoverage,
@@ -1727,9 +1728,14 @@ const server = createServer(async (request, response) => {
           fromMs: candles.length ? candles[0].timestamp : url.searchParams.get("fromMs"),
           toMs: url.searchParams.get("toMs"),
         });
+        const flowByTime = supplementArchivedBarFlow({
+          candles, archived: flowWindow.flow, intervalMs,
+          fromMs: url.searchParams.get("fromMs"), toMs: url.searchParams.get("toMs"),
+          readLive: (range) => client.book.flowCandles(instrument.exchange, instrument.symbol, range),
+        });
         let covered = 0;
         const withFlow = candles.map((candle) => {
-          const flow = flowWindow.flow.get(candle.timestamp);
+          const flow = flowByTime.get(candle.timestamp);
           if (!flow) return candle;
           covered += 1;
           return {

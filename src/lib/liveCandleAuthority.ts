@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { candleDeltaPath } from "./candleDeltaPath.ts";
 
 /** Publish every bar touched by a clock-bar rollover, including the final
  * executions of the closing bar. Publishing only the new tail loses that
@@ -137,6 +138,8 @@ export function retainFormingCandleExtrema(
   const mergedDelta = hasClassifiedVolume
     ? askVolume - bidVolume
     : Number(incoming.delta ?? previous.delta ?? 0);
+  const previousPath = candleDeltaPath(previous);
+  const incomingPath = candleDeltaPath(incoming);
   const previousStart = previous.sourceStartTimestamp;
   const incomingStart = incoming.sourceStartTimestamp;
   const previousEnd = previous.sourceEndTimestamp;
@@ -161,17 +164,9 @@ export function retainFormingCandleExtrema(
     askTrades: Math.max(Number(previous.askTrades ?? 0), Number(incoming.askTrades ?? 0)),
     bidTrades: Math.max(Number(previous.bidTrades ?? 0), Number(incoming.bidTrades ?? 0)),
     delta: mergedDelta,
-    deltaOpen: Number(previous.deltaOpen ?? incoming.deltaOpen ?? 0),
-    deltaHigh: Math.max(
-      Number(previous.deltaHigh ?? previous.delta ?? 0),
-      Number(incoming.deltaHigh ?? incoming.delta ?? 0),
-      mergedDelta,
-    ),
-    deltaLow: Math.min(
-      Number(previous.deltaLow ?? previous.delta ?? 0),
-      Number(incoming.deltaLow ?? incoming.delta ?? 0),
-      mergedDelta,
-    ),
+    deltaOpen: 0,
+    deltaHigh: Math.max(previousPath.high, incomingPath.high, mergedDelta),
+    deltaLow: Math.min(previousPath.low, incomingPath.low, mergedDelta),
     deltaClose: mergedDelta,
   };
 }

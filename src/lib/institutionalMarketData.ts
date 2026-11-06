@@ -1,5 +1,6 @@
 import { excludeUnverifiedCashHistory } from "./cashHistoryQuality.ts";
 import { chartTimeBucketStartMs } from "./chartTimeBucket.ts";
+import { candleDeltaPath } from "./candleDeltaPath.ts";
 import type { Candle } from "@/lib/backtester";
 import { fetchWithDeadline } from "./marketDataRequest.ts";
 import { auctionGapHistorySource } from "./auctionGapHistorySource.ts";
@@ -1599,7 +1600,11 @@ export function applyInstitutionalTradesToCandles(
       continue;
     }
 
-    const deltaClose = (last.deltaClose ?? last.delta ?? 0) + recordDelta;
+    const previousDelta = last.askVolume !== undefined || last.bidVolume !== undefined
+      ? Number(last.askVolume ?? 0) - Number(last.bidVolume ?? 0)
+      : (last.delta ?? last.deltaClose ?? 0);
+    const previousPath = candleDeltaPath(last, previousDelta);
+    const deltaClose = previousDelta + recordDelta;
     next[candleIndex] = {
       ...last,
       ...(bucketMs ? {
@@ -1619,9 +1624,9 @@ export function applyInstitutionalTradesToCandles(
       bidTrades: (last.bidTrades || 0) + (record.aggressor === "SELL" ? record.trades || 0 : 0),
       askTrades: (last.askTrades || 0) + (record.aggressor === "BUY" ? record.trades || 0 : 0),
       delta: deltaClose,
-      deltaOpen: last.deltaOpen ?? 0,
-      deltaHigh: Math.max(last.deltaHigh ?? 0, deltaClose),
-      deltaLow: Math.min(last.deltaLow ?? 0, deltaClose),
+      deltaOpen: 0,
+      deltaHigh: Math.max(previousPath.high, deltaClose),
+      deltaLow: Math.min(previousPath.low, deltaClose),
       deltaClose,
     };
   }
@@ -1870,16 +1875,8 @@ export function enrichCandlesWithInstitutionalCandleFlow(
     if (!flow) return candle;
     const askVolume = Math.max(0, Number(flow.askVolume ?? 0));
     const bidVolume = Math.max(0, Number(flow.bidVolume ?? 0));
-    const delta = Number.isFinite(Number(flow.delta))
-      ? Number(flow.delta)
-      : askVolume - bidVolume;
-    const sourceOpen = Number.isFinite(Number(flow.deltaOpen)) ? Number(flow.deltaOpen) : 0;
-    const sourceHigh = Number.isFinite(Number(flow.deltaHigh))
-      ? Number(flow.deltaHigh)
-      : sourceOpen + Math.max(0, delta);
-    const sourceLow = Number.isFinite(Number(flow.deltaLow))
-      ? Number(flow.deltaLow)
-      : sourceOpen + Math.min(0, delta);
+    const delta = askVolume - bidVolume;
+    const path = candleDeltaPath(flow, delta);
     return {
       ...candle,
       volume: Math.max(Number(candle.volume ?? 0), askVolume + bidVolume),
@@ -1890,8 +1887,8 @@ export function enrichCandlesWithInstitutionalCandleFlow(
       bidTrades: Math.max(0, Number(flow.bidTrades ?? 0)),
       delta,
       deltaOpen: 0,
-      deltaHigh: sourceHigh - sourceOpen,
-      deltaLow: sourceLow - sourceOpen,
+      deltaHigh: path.high,
+      deltaLow: path.low,
       deltaClose: delta,
     };
   });
