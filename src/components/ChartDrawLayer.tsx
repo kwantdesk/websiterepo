@@ -1554,7 +1554,7 @@ export default function ChartDrawLayer({
             : (volumeProfileCache.get(drawing.id) ?? volumeProfile(candles, t0, t1, rows, valueArea));
           if (!prof) return exactRequired ? <g>
             <rect x={Math.min(x0,x1)} y={plotTopInset} width={Math.max(1,Math.abs(x1-x0))} height={Math.max(1,height-plotTopInset-plotBottomInset)} fill="none" stroke={stroke} strokeWidth={w} strokeDasharray="4 4" />
-            {label(Math.min(x0,x1)+4,a.y ?? plotTopInset+14,volumeProfileMessages[drawing.id] || (preview ? "Select profile range" : "Exact volume-at-price unavailable"),stroke)}
+            {(anchored || preview) && label(Math.min(x0,x1)+4,a.y ?? plotTopInset+14,volumeProfileMessages[drawing.id] || (preview ? "Select profile range" : "Exact volume-at-price unavailable"),stroke)}
           </g> : null;
           const exactProfile = volumeProfiles[drawing.id];
           if (!anchored && exactProfile?.levels.length && Number.isFinite(exactProfile.poc) && Number.isFinite(exactProfile.vah) && Number.isFinite(exactProfile.val)) return <ChartDrawingVolumeProfile
