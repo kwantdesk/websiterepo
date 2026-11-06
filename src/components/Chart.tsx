@@ -3386,6 +3386,8 @@ function Chart({
   );
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const drawingKeyboardScopeRef = useRef<HTMLDivElement>(null);
+  const flushDrawingHistoryRef = useRef<(() => void) | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const historyEdgeCallbackRef = useRef(onHistoryEdgeReached);
   historyEdgeCallbackRef.current = onHistoryEdgeReached;
@@ -3760,7 +3762,7 @@ function Chart({
   storedChartingDrawingsRef.current = storedChartingDrawings;
   const chartingDrawingsRef = useRef<Drawing[]>(chartingDrawings);
   chartingDrawingsRef.current = chartingDrawings;
-  const drawingUndo = useChartDrawingUndo(chartContainerRef, `${chartInstanceId}:${instrument}`, keyboardActive && !drawingsLocked);
+  const drawingUndo = useChartDrawingUndo(drawingKeyboardScopeRef, `${chartInstanceId}:${instrument}`, !drawingsLocked, flushDrawingHistoryRef);
   const recordPrecisionDrawingMove = useCallback((before: PrecisionObject[], after: PrecisionObject[], restore: (objects: PrecisionObject[]) => void) => {
     drawingUndo.record("precision", before, after, restore);
   }, [drawingUndo]);
@@ -4057,14 +4059,31 @@ function Chart({
     chartingDrawingsRef.current = normalized;
     onChartingDrawingsChange?.(stored, { clearAll });
   }, [onChartingDrawingsChange]);
-  function updateSvgDrawing(drawing: Drawing) {
+  function editSvgDrawing(id: string, next: Drawing | null, recordHistory = true) {
     if (drawingsLockedRef.current) return;
-    const previous = chartingDrawingsRef.current.find(({ id }) => id === drawing.id);
-    if (!previous || JSON.stringify(previous) === JSON.stringify(drawing)) return;
-    drawingUndo.record("svg:" + drawing.id, previous, drawing, value => {
-      commitDrawings(chartingDrawingsRef.current.map(item => item.id === value.id ? value : item));
-    });
-    commitDrawings(chartingDrawingsRef.current.map((item) => item.id === drawing.id ? drawing : item));
+    const index = chartingDrawingsRef.current.findIndex(drawing => drawing.id === id);
+    const previous = chartingDrawingsRef.current[index] ?? null;
+    if (JSON.stringify(previous) === JSON.stringify(next)) return;
+    const restore = (drawing: Drawing | null) => {
+      const current = [...chartingDrawingsRef.current];
+      const position = current.findIndex(item => item.id === id);
+      if (position >= 0) {
+        if (drawing) current[position] = drawing;
+        else current.splice(position, 1);
+      } else if (drawing) {
+        current.splice(index < 0 ? current.length : index, 0, drawing);
+      }
+      commitDrawings(current);
+    };
+    if (recordHistory) drawingUndo.record("svg:" + id, previous, next, restore);
+    restore(next);
+  }
+  function updateSvgDrawing(drawing: Drawing, recordHistory = true) {
+    if (!chartingDrawingsRef.current.some(item => item.id === drawing.id)) return;
+    editSvgDrawing(drawing.id, drawing, recordHistory);
+  }
+  function addSvgDrawing(drawing: Drawing) {
+    editSvgDrawing(drawing.id, drawing);
   }
 
 
@@ -4079,7 +4098,7 @@ function Chart({
       const tag = target?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) return;
       event.preventDefault();
-      commitDrawings(chartingDrawings.filter((drawing) => drawing.id !== drawSelectedId));
+      editSvgDrawing(drawSelectedId, null);
       setDrawSelectedId(null);
       setDrawSettingsOpen(false);
     };
@@ -4106,7 +4125,7 @@ function Chart({
   drawTextCommitRef.current = drawTextInput
     ? () => {
         const value = drawTextInput.value.trim();
-        if (value) commitDrawings([...chartingDrawings, createDrawing(drawTextInput.tool, drawTextInput.points, value)]);
+        if (value) addSvgDrawing(createDrawing(drawTextInput.tool, drawTextInput.points, value));
         setDrawTextInput(null);
       }
     : null;
@@ -15776,6 +15795,7 @@ function Chart({
       professionalDrawingStateTimer = null;
       syncProfessionalDrawingState();
     };
+    flushDrawingHistoryRef.current = flushProfessionalDrawingStateSync;
     const drawingUnsubscribers = [
       drawingManager.on("drawing:added", syncProfessionalDrawingState),
       drawingManager.on("drawing:removed", syncProfessionalDrawingState),
@@ -16380,6 +16400,7 @@ function Chart({
       window.removeEventListener("mouseup", resetMagnetGesture, true);
       window.removeEventListener("mouseup", flushProfessionalDrawingStateSync);
       window.removeEventListener("pointerup", flushProfessionalDrawingStateSync);
+      if (flushDrawingHistoryRef.current === flushProfessionalDrawingStateSync) flushDrawingHistoryRef.current = null;
       if (professionalDrawingStateTimer !== null) {
         window.clearTimeout(professionalDrawingStateTimer);
         professionalDrawingStateTimer = null;
@@ -19053,7 +19074,7 @@ function Chart({
   };
 
   return (
-    <div className="flex h-full w-full min-w-0 overflow-hidden">
+    <div ref={drawingKeyboardScopeRef} className="flex h-full w-full min-w-0 overflow-hidden">
       {/* The charting toolbar is the chart's LEFT EDGE: a static flex column
           that owns its own layout space, so chart content, candles and
           overlays begin to its right instead of rendering underneath it. */}
@@ -19075,7 +19096,7 @@ function Chart({
           hasSelection={Boolean(drawSelectedId)}
           onDeleteSelection={() => {
             if (!drawSelectedId) return;
-            commitDrawings(chartingDrawings.filter((drawing) => drawing.id !== drawSelectedId));
+            editSvgDrawing(drawSelectedId, null);
             setDrawSelectedId(null);
             setDrawSettingsOpen(false);
           }}
@@ -19183,10 +19204,10 @@ function Chart({
             subscribeViewport={subscribeDrawViewport}
             projectionRevision={() => drawingTimelineRevisionRef.current}
             onOpenSettings={(id) => { setDrawSelectedId(id); setDrawTool("cursor"); setDrawSettingsOpen(true); }}
-            onCommit={(drawing) => { commitDrawings([...chartingDrawingsRef.current, drawing]); setDrawSelectedId(drawing.id); }}
+            onCommit={(drawing) => { addSvgDrawing(drawing); setDrawSelectedId(drawing.id); }}
             onUpdate={updateSvgDrawing}
             onSelect={setDrawSelectedId}
-            onDelete={(id) => { commitDrawings(chartingDrawingsRef.current.filter((drawing) => drawing.id !== id)); if (drawSelectedId === id) setDrawSelectedId(null); }}
+            onDelete={(id) => { editSvgDrawing(id, null); if (drawSelectedId === id) setDrawSelectedId(null); }}
             onToolConsumed={() => setDrawTool("cursor")}
             onRequestText={(points, tool) => {
               const anchor = points[points.length - 1];
@@ -19205,7 +19226,7 @@ function Chart({
               onBlur={(event) => {
                 const value = drawTextInput.value.trim();
                 if (value) {
-                  commitDrawings([...chartingDrawings, createDrawing(drawTextInput.tool, drawTextInput.points, value)]);
+                  addSvgDrawing(createDrawing(drawTextInput.tool, drawTextInput.points, value));
                   setDrawTextInput(null);
                   return;
                 }
@@ -19242,7 +19263,7 @@ function Chart({
             themeBearColor={settings.downColor}
             profileTheme={settings}
             drawing={drawSettingsOpen && drawSelectedId ? (chartingDrawings.find((drawing) => drawing.id === drawSelectedId) ?? null) : null}
-            onChange={(next) => commitDrawings(chartingDrawings.map((d) => d.id === next.id ? next : d))}
+            onChange={updateSvgDrawing}
             onClose={() => setDrawSettingsOpen(false)}
           />
         </>
@@ -21754,6 +21775,10 @@ function Chart({
             onClick={() => { copyLegacyDrawing(contextMenu.legacyDrawingId ?? null); setContextMenu(null); }}>Copy drawing <span className="text-muted">Ctrl/⌘ C</span></button> : null}
           {contextMenu.drawingClipboardActions?.paste || professionalClipboardRef.current || legacyDrawingClipboardRef.current ? <button className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
             onClick={() => { if (contextMenu.drawingClipboardActions?.paste) contextMenu.drawingClipboardActions.paste(); else pasteLegacyOrProfessionalDrawing(); setContextMenu(null); }}>Paste drawing <span className="text-muted">Ctrl/⌘ V</span></button> : null}
+          {!drawingsLocked && drawingUndo.canUndo ? <button type="button" className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+            onClick={() => { flushDrawingHistoryRef.current?.(); drawingUndo.step(); setContextMenu(null); }}>Undo drawing edit <span className="text-muted">Ctrl/⌘ Z</span></button> : null}
+          {!drawingsLocked && drawingUndo.canRedo ? <button type="button" className="flex w-full items-center justify-between px-4 py-2 text-xs hover:bg-surface"
+            onClick={() => { flushDrawingHistoryRef.current?.(); drawingUndo.step(true); setContextMenu(null); }}>Redo drawing edit <span className="text-muted">Ctrl/⌘ ⇧ Z</span></button> : null}
           {contextMenu.tpoHit ? (
             <>
               <div className="px-4 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">

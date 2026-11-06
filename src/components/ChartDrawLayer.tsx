@@ -81,7 +81,7 @@ type Props = {
   /** Changes before the native series timeline is replaced (not on ticks). */
   projectionRevision?: () => number;
   onCommit: (drawing: Drawing) => void;
-  onUpdate: (drawing: Drawing) => void;
+  onUpdate: (drawing: Drawing, recordHistory?: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onToolConsumed: () => void;
@@ -122,8 +122,8 @@ export default function ChartDrawLayer({
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
   // Window-level touch/drag callbacks may outlive the render that started them.
-  const onUpdate = useCallback((drawing: Drawing) => {
-    if (!readOnlyRef.current) onUpdateDrawing(drawing);
+  const onUpdate = useCallback((drawing: Drawing, recordHistory = true) => {
+    if (!readOnlyRef.current) onUpdateDrawing(drawing, recordHistory);
   }, [onUpdateDrawing]);
   const svgRef = useRef<SVGSVGElement>(null);
   const clipboardMenu = useChartDrawingClipboard({ readOnly, svgRef, drawings, selectedId: readOnly ? null : selectedId, toX, toY, fromXY, onCommit: readOnly ? undefined : onCommit, onSelect });
@@ -513,7 +513,7 @@ export default function ChartDrawLayer({
       if (drawing.tool !== "entryArrow" && drawing.tool !== "exitArrow") continue;
       const size = fillMarkerSizesRef.current.get(drawing.id);
       if (size && (!Number.isFinite(drawing.style.fillMarkerHalfWidthPx) || !Number.isFinite(drawing.style.fillMarkerHalfHeightPx))) {
-        onUpdate({ ...drawing, style: { ...drawing.style, fillMarkerHalfWidthPx: size.halfWidth, fillMarkerHalfHeightPx: size.halfHeight } });
+        onUpdate({ ...drawing, style: { ...drawing.style, fillMarkerHalfWidthPx: size.halfWidth, fillMarkerHalfHeightPx: size.halfHeight } }, false);
         break;
       }
     }
