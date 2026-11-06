@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getJournalRouteActor } from "@/lib/serverAuth";
 import {
   applyJournalAccountResets,
   isZyonJournalAccountName,
+  JOURNAL_COPY_LIMIT,
+  JOURNAL_COPY_PREFIX,
   type JournalAccount,
   type JournalEvidence,
   type JournalImportBatch,
@@ -375,6 +378,23 @@ async function journalClient(request: NextRequest) {
   }
 }
 
+async function loadJournalTradeRows(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, userId: string) {
+  const trades: TradeRow[] = [];
+  const pageSize = 1_000;
+  for (let offset = 0; offset < 20_000; offset += pageSize) {
+    const { data, error } = await supabase.from("journal_trades")
+      .select("account_id,payload")
+      .eq("user_id", userId)
+      .order("opened_at", { ascending: false })
+      .order("id")
+      .range(offset, offset + pageSize - 1);
+    if (error) return { data: null, error };
+    trades.push(...(data ?? []) as TradeRow[]);
+    if (!data || data.length < pageSize) break;
+  }
+  return { data: trades, error: null };
+}
+
 export async function GET(request: NextRequest) {
   const { actor, supabase } = await journalClient(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
@@ -386,12 +406,7 @@ export async function GET(request: NextRequest) {
       .select("id,name,source,created_at,updated_at")
       .eq("user_id", actor.userId)
       .order("created_at", { ascending: true }),
-    supabase
-      .from("journal_trades")
-      .select("account_id,payload")
-      .eq("user_id", actor.userId)
-      .order("opened_at", { ascending: false })
-      .limit(20_000),
+    loadJournalTradeRows(supabase, actor.userId),
     supabase
       .from("journal_imports")
       .select("account_id,payload")
@@ -470,6 +485,7 @@ export async function POST(request: NextRequest) {
     account?: unknown;
     accountId?: unknown;
     accountIds?: unknown;
+    tradeIds?: unknown;
     newName?: unknown;
     trades?: unknown;
     imports?: unknown;
@@ -782,7 +798,7 @@ export async function POST(request: NextRequest) {
 
   if (action === "create-account") {
     const account = cleanText(body.account, 80);
-    if (!account || isZyonJournalAccountName(account)) {
+    if (!account || account.toLowerCase() === "all" || isZyonJournalAccountName(account)) {
       return NextResponse.json({ error: "Choose a unique KwantDesk Journal name." }, { status: 400 });
     }
     const { data: existingAccounts, error: existingError } = await supabase
@@ -804,6 +820,64 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) return NextResponse.json({ error: "The KwantDesk Journal could not be created." }, { status: 502 });
     return NextResponse.json({ cloud: true, account: fromAccountRow(data as AccountRow) });
+  }
+
+  if (action === "copy-trades") {
+    const destinationId = cleanId(body.accountId);
+    const ids = Array.isArray(body.tradeIds) ? [...new Set(body.tradeIds.map((value) => cleanId(value)).filter(Boolean))] : [];
+    if (!destinationId || !ids.length || ids.length > JOURNAL_COPY_LIMIT) {
+      return NextResponse.json({ error: `Choose a journal and up to ${JOURNAL_COPY_LIMIT} trades.` }, { status: 400 });
+    }
+
+    const importedAt = new Date().toISOString();
+    const [{ data: sourceRows, error: sourceError }, { data: accountRows, error: accountError }] = await Promise.all([
+      supabase.from("journal_trades").select("account_id,payload").eq("user_id", actor.userId).in("id", ids),
+      supabase.from("journal_accounts").select("id,name").eq("user_id", actor.userId),
+    ]);
+    if (sourceError || accountError) return NextResponse.json({ error: "The journals or source trades could not be checked." }, { status: 502 });
+    const accounts = new Map((accountRows ?? []).map((row) => [String(row.id), String(row.name)]));
+    const destination = accounts.get(destinationId);
+    if (!destination || isZyonJournalAccountName(destination)) {
+      return NextResponse.json({ error: "The destination journal no longer exists." }, { status: 404 });
+    }
+
+    const sources = (sourceRows ?? []) as TradeRow[];
+    const stateIds = [...new Set([destinationId, ...sources.map((row) => row.account_id)])].map((id) => `journal-account-state:${id}`);
+    const { data: states, error: stateError } = await supabase.from("social_objects")
+      .select("id,payload").eq("user_id", actor.userId).in("id", stateIds);
+    if (stateError) return NextResponse.json({ error: "Journal state could not be checked." }, { status: 502 });
+    const accountStates = new Map((states ?? []).map((row) => [String(row.id), accountStateFromPayload(row.payload)]));
+    const destinationState = accountStates.get(`journal-account-state:${destinationId}`);
+    if (destinationState?.archivedAt) return NextResponse.json({ error: "Restore the destination journal before importing." }, { status: 409 });
+
+    const copies = new Map<string, JournalTrade>();
+    for (const { account_id: sourceId, payload: trade } of sources) {
+      const source = accounts.get(sourceId);
+      if (!source || !trade?.id || sourceId === destinationId || isZyonJournalAccountName(source) || trade.sourceImportId?.startsWith("zyon:")) continue;
+      const resetAt = accountStates.get(`journal-account-state:${sourceId}`)?.resetAt;
+      if (resetAt && Date.parse(trade.journalCopy?.importedAt ?? trade.closedAt ?? trade.openedAt) <= Date.parse(resetAt)) continue;
+      const originalTradeId = trade.journalCopy?.originalTradeId ?? trade.id;
+      const hash = createHash("sha256").update(JSON.stringify([destinationId, destinationState?.resetAt ?? null, originalTradeId])).digest("hex");
+      const id = JOURNAL_COPY_PREFIX + hash;
+      copies.set(id, {
+        ...trade,
+        id,
+        account: destination,
+        sourceImportId: id,
+        journalCopy: { originalTradeId, sourceJournal: trade.journalCopy?.sourceJournal ?? source, importedAt },
+      });
+    }
+
+    if (!copies.size) return NextResponse.json({ error: "The selected trades are no longer available to import. Reload Journal and try again." }, { status: 409 });
+    const { data: inserted, error } = await supabase.from("journal_trades")
+      .upsert([...copies.values()].map((trade) => ({
+        user_id: actor.userId, id: trade.id, account_id: destinationId, source_import_id: trade.sourceImportId,
+        opened_at: trade.openedAt, closed_at: trade.closedAt, payload: trade,
+      })), { onConflict: "user_id,id", ignoreDuplicates: true })
+      .select("payload");
+    if (error) return NextResponse.json({ error: "The selected trades could not be imported." }, { status: 502 });
+    const trades = (inserted ?? []).map((row) => row.payload as JournalTrade);
+    return NextResponse.json({ cloud: true, trades, skipped: ids.length - trades.length });
   }
 
   if (action === "create-trade") {
@@ -877,6 +951,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (existingError) return NextResponse.json({ error: "Journal trade could not be checked." }, { status: 502 });
     if (!existingRow) return NextResponse.json({ error: "That Journal trade no longer exists." }, { status: 404 });
+    trade.journalCopy = (existingRow.payload as JournalTrade).journalCopy;
     const previousTrade = sanitizeTrade(existingRow.payload, account);
     const { error } = await supabase
       .from("journal_trades")
@@ -919,7 +994,7 @@ export async function POST(request: NextRequest) {
   const id = cleanId(body.accountId) || accountId(account);
   const trades = (Array.isArray(body.trades) ? body.trades : [])
     .map((trade) => sanitizeTrade(trade, account))
-    .filter((trade): trade is JournalTrade => Boolean(trade))
+    .filter((trade): trade is JournalTrade => Boolean(trade && !trade.id.startsWith(JOURNAL_COPY_PREFIX)))
     .slice(0, 5_000);
   if (appendPaper && trades.some(trade => !trade.id.startsWith("paper:"))) {
     return NextResponse.json({ error: "Choose a linked demo journal with paper execution records." }, { status: 400 });

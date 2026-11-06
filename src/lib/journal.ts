@@ -59,7 +59,20 @@ export type JournalTrade = {
   sourceSheet?: string;
   sourceRows: number[];
   fingerprint: string;
+  journalCopy?: { originalTradeId: string; sourceJournal: string; importedAt: string };
 };
+
+export const JOURNAL_COPY_PREFIX = "journal-copy:";
+export const JOURNAL_COPY_LIMIT = 100;
+
+export function uniqueJournalOutcomes(trades: JournalTrade[]) {
+  const outcomes = new Map<string, JournalTrade>();
+  for (const trade of trades) {
+    const original = trade.journalCopy?.originalTradeId ?? trade.id;
+    if (!outcomes.has(original) || !trade.journalCopy) outcomes.set(original, trade);
+  }
+  return [...outcomes.values()];
+}
 
 export type JournalAccount = {
   id: string;
@@ -90,7 +103,7 @@ export function applyJournalAccountResets(state: JournalState): JournalState {
   };
   return {
     ...state,
-    trades: state.trades.filter(trade => visible(trade.account, trade.closedAt ?? trade.openedAt)),
+    trades: state.trades.filter(trade => visible(trade.account, trade.journalCopy?.importedAt ?? trade.closedAt ?? trade.openedAt)),
     imports: state.imports.filter(batch => visible(batch.account, batch.importedAt)),
     evidence: state.evidence.filter(item => visible(item.account, item.importedAt)),
   };
