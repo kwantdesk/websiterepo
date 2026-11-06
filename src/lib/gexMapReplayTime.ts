@@ -1,6 +1,31 @@
-import { newYorkSessionTimestamp } from "@/lib/gexVueReplay";
+import { GEX_VUE_REPLAY_OPEN_MINUTE, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
 import { GEX_MAP_REPLAY_WINDOWS, type GexMapReplayWindowId } from "@/lib/gexMapReplayWindow";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
+
+/** A date in the replay calendar is the local date of the US cash open. */
+export function gexReplayCalendar(timeZone: string) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: normalizeTimeZone(timeZone), year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  function localOpenDate(sessionDate: string) {
+    if (!sessionDate) return "";
+    const parts = formatter.formatToParts(newYorkSessionTimestamp(sessionDate, GEX_VUE_REPLAY_OPEN_MINUTE));
+    const read = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
+    return `${read("year")}-${read("month")}-${read("day")}`;
+  }
+  function exchangeDate(localDate: string) {
+    const midnight = Date.parse(`${localDate}T00:00:00Z`);
+    if (!Number.isFinite(midnight)) return null;
+    for (const offset of [0, -1, 1]) {
+      const day = new Date(midnight + offset * 86_400_000);
+      if (day.getUTCDay() === 0 || day.getUTCDay() === 6) continue;
+      const candidate = day.toISOString().slice(0, 10);
+      if (localOpenDate(candidate) === localDate) return candidate;
+    }
+    return null;
+  }
+  return { localOpenDate, exchangeDate };
+}
 
 /** Display-only conversion. Session keys, frame instants and filters stay in exchange time. */
 export function gexMapReplayDisplay(timeZone: string) {

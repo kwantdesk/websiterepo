@@ -41,6 +41,7 @@ type KwantDatePickerProps = {
   label?: string;
   className?: string;
   disabled?: boolean;
+  isDateSelectable?: (date: string) => boolean;
 };
 
 export default function KwantDatePicker({
@@ -51,6 +52,7 @@ export default function KwantDatePicker({
   label = "Select date",
   className = "",
   disabled = false,
+  isDateSelectable,
 }: KwantDatePickerProps) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
@@ -176,7 +178,7 @@ export default function KwantDatePicker({
               {days.map((date, index) => {
                 if (!date) return <span key={`pad-${index}`} />;
                 const iso = toValue(date);
-                const unavailable = isWeekend(date) || outOfRange(date);
+                const unavailable = outOfRange(date) || (isDateSelectable ? !isDateSelectable(iso) : isWeekend(date));
                 const selected = iso === value;
                 return (
                   <button

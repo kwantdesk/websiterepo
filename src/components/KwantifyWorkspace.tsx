@@ -9,6 +9,7 @@ import { createChartDuplicateSeeds } from "@/lib/chartDuplicateSeed";
 import type { AlgoChartIntegration, AlgoChartFocus } from "@/lib/algoChartIntegration";
 import { DRAWING_CLEAR_BARRIERS_KEY, chartDrawingPaneDocumentKey, markDrawingDocumentCleared } from "@/lib/drawingClearBarriers";
 import { workspaceScopeStorageKey, workspaceStoragePrefix, workspaceTemplateStorageKey, workspaceChartInstanceId, viewportSyncGroupForScope, type ChartWorkspaceScope } from "@/lib/chartWorkspaceScope";
+import ReplaySessionDatePicker from "@/components/ReplaySessionDatePicker";
 import { workspaceReplaySessionBounds } from "@/lib/workspaceReplay";
 import { readChartDrawingStore, updateChartDrawingPane } from "@/lib/chartDrawingPreferences";
 
@@ -33,7 +34,6 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import { beginChartHistoryRead, readChartCacheWithin } from "@/lib/chartHistoryRead";
 import { fetchJsonWithBudget, readMarketDataJson } from "@/lib/marketDataRequest";
 import { chartActivityRemainingMs, chartSourceTimestamp } from "@/lib/chartCountdown";
-import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
 import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
@@ -20310,7 +20310,8 @@ export default function KwantifyWorkspace({
                     {bottomWorkspaceSection === "gamvue" ? "GEX Replay" : "REPLAY · read only"}
                   </span>
                   <span className="shrink-0 text-[9px] text-muted" title="Live-only tools and book indicators are paused. Forming candles require recorded executions; complete historical profiles appear only after their recorded end time.">Recorded data only</span>
-                  <KwantDatePicker
+                  <ReplaySessionDatePicker
+                    timeZone={replayScope === "gamma" ? chartSettings.timezone : undefined}
                     value={gexVueReplay.sessionDate}
                     max={latestCompletedNewYorkSession()}
                     min={earliestGexVueReplaySessionDate()}

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import KwantDatePicker from "@/components/ui/KwantDatePicker";
+import ReplaySessionDatePicker from "@/components/ReplaySessionDatePicker";
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import { latestCompletedNewYorkSession, newYorkSessionTimestamp, type GexVueReplayState } from "@/lib/gexVueReplay";
@@ -39,6 +39,15 @@ export default function WorkspaceReplayDialog({ state, scope, initialTimeZone = 
     }
     setTimeZone(nextZone); setError("");
   };
+  const changeDate = (nextDate: string) => {
+    const nextBounds = workspaceReplaySessionBounds(state, nextDate, scope);
+    const elapsedMs = selection ? selection.timestampMs - bounds.startMs : 0;
+    const clock = workspaceReplayClockParts(Math.min(nextBounds.endMs, nextBounds.startMs + elapsedMs), timeZone);
+    setDate(nextDate);
+    setHour(clock.hour);
+    setMinute(clock.minute);
+    setError("");
+  };
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -62,8 +71,9 @@ export default function WorkspaceReplayDialog({ state, scope, initialTimeZone = 
       <div className="flex items-center justify-between"><h2 id="workspace-replay-title" className="text-sm font-semibold">Replay workspace</h2><button onClick={onClose} aria-label="Close replay picker" className="px-2 text-muted">×</button></div>
       <p className="my-4 text-xs text-muted">One historical clock for all panels. Choose the trading session and your time zone. Only recorded data is replayed; missing history is shown as unavailable.</p>
       <form onSubmit={event => { event.preventDefault(); try { if (date > maxSessionDate) throw new Error("Choose a completed exchange session."); onGo(selectWorkspaceReplaySession(state, date, scope, `${hour}:${minute}`, timeZone), timeZone); } catch (reason) { setError(reason instanceof Error ? reason.message : "Invalid replay selection."); } }}>
-        <label className="mb-2 block text-xs">Trading date · exchange session</label>
-        <KwantDatePicker value={date} onChange={setDate} min={earliestGexVueReplaySessionDate()} max={maxSessionDate} label="Replay trading date" />
+        <label className="mb-2 block text-xs">{scope === "gamma" ? `Session open date · ${timeZoneCity(timeZone)}` : "Trading date · CME session"}</label>
+        <ReplaySessionDatePicker value={date} onChange={changeDate} min={earliestGexVueReplaySessionDate()} max={maxSessionDate}
+          label="Replay trading date" timeZone={scope === "gamma" ? timeZone : undefined} />
         <label className="mb-2 mt-4 block text-xs">Time zone</label>
         <TimeZoneSelect value={timeZone} onChange={changeTimeZone} menuLabel="Replay timezone" referenceTimestampMs={selection?.timestampMs ?? bounds.startMs} />
         <label className="mb-2 mt-4 block text-xs">Start time · {timeZoneCity(timeZone)}</label>

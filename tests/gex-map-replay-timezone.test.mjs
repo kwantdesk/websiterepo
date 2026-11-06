@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { gexMapReplayDisplay } from "../src/lib/gexMapReplayTime.ts";
+import { gexMapReplayDisplay, gexReplayCalendar } from "../src/lib/gexMapReplayTime.ts";
 import { framesInReplayWindow } from "../src/lib/gexMapReplayWindow.ts";
 const open = Date.parse("2026-10-30T13:30:00Z"), close = Date.parse("2026-10-30T19:59:00Z");
 test("Brisbane history follows the website clock, including midnight rollover", () => {
@@ -38,4 +38,20 @@ test("unavailable session and invalid timezone have safe display fallbacks", () 
   assert.equal(gexMapReplayDisplay("invalid").clock(open), "13:30:00 · UTC · UTC");
   assert.equal(gexMapReplayDisplay("UTC").window("rth", ""), "NY OPEN · New York session");
   assert.equal(gexMapReplayDisplay("UTC").window("all", "2026-10-30"), "Every recorded frame");
+});
+
+test("the replay calendar maps the local cash open back to the same New York archive", () => {
+  const brisbane = gexReplayCalendar("Australia/Brisbane");
+  assert.equal(brisbane.localOpenDate("2026-10-30"), "2026-10-30");
+  assert.equal(brisbane.localOpenDate("2026-11-06"), "2026-11-07");
+  assert.equal(brisbane.exchangeDate("2026-11-07"), "2026-11-06");
+  assert.equal(brisbane.exchangeDate("2026-11-08"), null);
+  assert.equal(brisbane.exchangeDate("2026-11-06"), "2026-11-05");
+  assert.equal(brisbane.exchangeDate("2026-02-30"), null);
+  for (const zone of ["UTC", "Australia/Brisbane", "Pacific/Auckland", "America/Los_Angeles", "America/New_York"]) {
+    const calendar = gexReplayCalendar(zone);
+    for (const date of ["2026-10-30", "2026-11-02", "2026-11-06"]) {
+      assert.equal(calendar.exchangeDate(calendar.localOpenDate(date)), date);
+    }
+  }
 });

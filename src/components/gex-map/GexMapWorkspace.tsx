@@ -26,7 +26,6 @@ import {
   X,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
-import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import GexMapSettingsDialog, { GexMapDropdown } from "./GexMapSettingsDialog";
 export { GexMapDropdown } from "./GexMapSettingsDialog";
 import { useGexMapSettingsBridge } from "./useLinkedGexMapSettings";
@@ -94,6 +93,7 @@ import {
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import ReplaySessionDatePicker from "@/components/ReplaySessionDatePicker";
 import { gexMapReplayDisplay } from "@/lib/gexMapReplayTime";
 import {
   GEX_MAP_REPLAY_WINDOWS,
@@ -2018,7 +2018,8 @@ function GexMapWorkspace({
         {replayMode && !externalReplay ? (
           <footer className="shrink-0 overflow-x-auto border-t border-border bg-panel px-3 py-2">
             <div className="flex min-w-max items-center gap-2">
-              <div title="US trading session date (New York). Replay times follow the website timezone."><KwantDatePicker
+              <ReplaySessionDatePicker
+                timeZone={timeZone}
                 label="Replay date"
                 value={replayDate}
                 max={currentSessionDate || undefined}
@@ -2028,7 +2029,7 @@ function GexMapWorkspace({
                   setPlaying(false);
                 }}
                 className="h-9 rounded-lg px-3 text-[10px]"
-              /></div>
+              />
 
               <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
                 <button type="button" onClick={() => setCursor(0)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
