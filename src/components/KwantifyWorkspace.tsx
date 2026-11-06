@@ -19596,7 +19596,7 @@ export default function KwantifyWorkspace({
     const paneLevelState = paneLevelVisibility[pane.id] ?? EMPTY_PANE_LEVEL_VISIBILITY;
     const chartPane = (
       <WorkspaceChartPane
-        key={`${pane.id}:refresh-${paneRefreshNonces[pane.id] ?? 0}`}
+        key={`${pane.id}:${pane.broker}:${pane.symbol}:refresh-${paneRefreshNonces[pane.id] ?? 0}`}
         onOpenIndicatorSettings={(instanceId) => {
           setActivePaneId(pane.id);
           setIndicatorSettingsOpenRequest({ paneId: pane.id, instanceId, requestId: Date.now() });

@@ -1,6 +1,7 @@
 "use client";
 import { useChartDrawingUndo } from "@/components/useChartDrawingUndo";
 import { recordChartTickPaint } from "@/lib/chartTickAudit";
+import { commitChartDrawingProjection, drawingPriceBasis, projectChartDrawing } from "@/lib/chartDrawingInstrument";
 import { futuresAwarePriceFormat } from "@/lib/instrumentPriceFormat";
 
 import { beginPaperProtectionDrag } from "@/lib/paperProtectionDrag";
@@ -3263,7 +3264,7 @@ function Chart({
   onOpenSettings,
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
-  chartingDrawings = EMPTY_CHARTING_DRAWINGS,
+  chartingDrawings: storedChartingDrawings = EMPTY_CHARTING_DRAWINGS,
   onChartingDrawingsChange,
   indicators: rawIndicators = EMPTY_CHART_ITEMS,
   overlaySeries = EMPTY_CHART_ITEMS,
@@ -3728,6 +3729,34 @@ function Chart({
   // The live drawing set, read by the legacy-position migration below, which
   // runs from a hydration effect and must append to whatever is current
   // rather than to whatever was current when the effect was created.
+  const drawingMarket = useMemo(() => ({
+    instrument,
+    candles,
+    intervalMs: timeframeToMs(timeframe) ?? 60_000,
+    tickSize: getPriceFormat(instrument).minMove,
+  }), [instrument, candles, timeframe]);
+  const drawingInstrumentProjectionRef = useRef<{ stored: Drawing[]; projected: Drawing[] } | null>(null);
+  const chartingDrawings = useMemo(() => {
+    const projected = storedChartingDrawings.flatMap(drawing => {
+      const visible = projectChartDrawing(drawing, drawingMarket);
+      return visible ? [visible] : [];
+    });
+    const previous = drawingInstrumentProjectionRef.current;
+    // A fresh candle array with identical anchor prices must not restart the
+    // exact profile debounce or invalidate every drawing on each live update.
+    if (previous?.stored === storedChartingDrawings && previous.projected.length === projected.length
+        && projected.every((drawing, index) => {
+          const prior = previous.projected[index];
+          return drawing.id === prior.id && drawing.points.every((point, pointIndex) =>
+            point.price === prior.points[pointIndex].price && point.time === prior.points[pointIndex].time);
+        })) return previous.projected;
+    drawingInstrumentProjectionRef.current = { stored: storedChartingDrawings, projected };
+    return projected;
+  }, [storedChartingDrawings, drawingMarket]);
+  const drawingMarketRef = useRef(drawingMarket);
+  drawingMarketRef.current = drawingMarket;
+  const storedChartingDrawingsRef = useRef(storedChartingDrawings);
+  storedChartingDrawingsRef.current = storedChartingDrawings;
   const chartingDrawingsRef = useRef<Drawing[]>(chartingDrawings);
   chartingDrawingsRef.current = chartingDrawings;
   const drawingUndo = useChartDrawingUndo(chartContainerRef, `${chartInstanceId}:${instrument}`, keyboardActive && !drawingsLocked);
@@ -4011,10 +4040,21 @@ function Chart({
       unsubscribeRepaint?.();
     };
   }, []);
+  useEffect(() => {
+    if (!onChartingDrawingsChange || !drawingMarket.candles.length
+        || !storedChartingDrawings.some(drawing => !drawing.priceBasis)) return;
+    onChartingDrawingsChange(storedChartingDrawings.map(drawing => drawing.priceBasis ? drawing : {
+      ...drawing, priceBasis: drawingPriceBasis(drawing.points, drawingMarket),
+    }));
+  }, [drawingMarket, onChartingDrawingsChange, storedChartingDrawings]);
   const commitDrawings = useCallback((next: Drawing[], clearAll = false) => {
     const normalized = normalizeDrawings(next);
+    const stored = clearAll ? [] : commitChartDrawingProjection(
+      storedChartingDrawingsRef.current, chartingDrawingsRef.current, normalized, drawingMarketRef.current,
+    );
+    storedChartingDrawingsRef.current = stored;
     chartingDrawingsRef.current = normalized;
-    onChartingDrawingsChange?.(normalized, { clearAll });
+    onChartingDrawingsChange?.(stored, { clearAll });
   }, [onChartingDrawingsChange]);
   function updateSvgDrawing(drawing: Drawing) {
     if (drawingsLockedRef.current) return;
@@ -19131,6 +19171,7 @@ function Chart({
               return time != null && price != null && Number.isFinite(price) ? { time, price: Number(price) } : null;
             }}
             candles={chartingDrawCandles}
+            pricePrecision={priceFormat.precision}
             volumeProfiles={drawVolumeProfiles}
             requireExactFixedVolumeProfiles
             magnet={drawMagnet}

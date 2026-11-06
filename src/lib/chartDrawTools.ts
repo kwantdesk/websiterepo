@@ -462,7 +462,10 @@ export function formatDrawingDuration(startSeconds: number, endSeconds: number) 
   return [days && `${days}d`, hours && `${hours}h`, minutes && `${minutes}m`].filter(Boolean).join(" ");
 }
 
+export type DrawingPriceBasis = { instrument: string; reference?: { timestamp: number; price: number } };
+
 export type Drawing = {
+  priceBasis?: DrawingPriceBasis;
   id: string;
   tool: DrawToolId;
   points: DrawPoint[];
@@ -610,7 +613,13 @@ export function normalizeDrawings(value: unknown): Drawing[] {
     const style = candidate.style && typeof candidate.style === "object"
       ? { ...defaultStyleFor(candidate.tool!), ...migrateDrawStyle(candidate.style) }
       : defaultStyleFor(candidate.tool!);
+    const basis = candidate.priceBasis;
+    const priceBasis = typeof basis?.instrument === "string" && basis.instrument
+      ? { instrument: basis.instrument, reference: basis.reference && Number.isFinite(basis.reference.timestamp)
+          && Number.isFinite(basis.reference.price) ? basis.reference : undefined }
+      : undefined;
     out.push({
+      priceBasis,
       id: candidate.id,
       tool: candidate.tool!,
       points,

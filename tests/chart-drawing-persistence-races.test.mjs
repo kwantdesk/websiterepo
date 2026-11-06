@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import {createDrawing,normalizeDrawings} from '../src/lib/chartDrawTools.ts';
+import {commitChartDrawingProjection} from '../src/lib/chartDrawingInstrument.ts';
 import {CHART_DRAWING_PREFERENCE_KEY as key,mergeChartDrawingPreferences,readChartDrawingStore,updateChartDrawingPane} from '../src/lib/chartDrawingPreferences.ts';
 import {mergeAccountPreferenceChanges} from '../src/lib/accountPreferenceMerge.ts';
 import {hydrateUserPreferences} from '../src/lib/userPreferences.ts';
@@ -57,7 +58,7 @@ test('actual retained layer callbacks cannot discard a drawing created after the
   const layer=find(source,n=>ts.isJsxSelfClosingElement(n)&&n.tagName.getText(source)==='ChartDrawLayer');
   const declaration=find(source,n=>ts.isVariableDeclaration(n)&&n.name.getText(source)==='commitDrawings');
   assert.ok(layer);assert.ok(declaration);
-  const ctx=vm.createContext({chartingDrawings:[],chartingDrawingsRef:{current:[]},normalizeDrawings,drawingUndo:{record:()=>{}},onChartingDrawingsChange:()=>{},setDrawSelectedId:()=>{}});
+  const ctx=vm.createContext({chartingDrawings:[],chartingDrawingsRef:{current:[]},storedChartingDrawingsRef:{current:[]},drawingMarketRef:{current:{instrument:'NQ',candles:[],intervalMs:60_000,tickSize:0.25}},commitChartDrawingProjection,normalizeDrawings,drawingsLockedRef:{current:false},drawingUndo:{record:()=>{}},onChartingDrawingsChange:()=>{},setDrawSelectedId:()=>{}});
   const callback=declaration.initializer.arguments[0].getText(source);
   const update=find(source,n=>ts.isFunctionDeclaration(n)&&n.name?.text==='updateSvgDrawing');
   let code=`var commitDrawings=${callback};${update.getText(source)}`;

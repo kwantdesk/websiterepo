@@ -43,6 +43,7 @@ import { chartAnchoredEmojiScreenSize } from "@/lib/chartEmojiScale";
 // per-tool rendering, selection handles and dragging. The chart supplies the
 // coordinate system — the only thing shared with the chart.
 type Props = {
+  pricePrecision?: number;
   readOnly?: boolean;
   width: number;
   /**
@@ -112,6 +113,7 @@ const dashFor = (style: DrawLineStyle, width: number) =>
 const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "priceLabel", "flagMark"];
 
 export default function ChartDrawLayer({
+  pricePrecision = 2,
   readOnly = false,
   width, height, priceScaleWidth = 0, activeTool, emoji, keepDrawing, drawings, selectedId,
   toX, toY, fromXY, candles, volumeProfiles = {}, requireExactVolumeProfiles = false, requireExactFixedVolumeProfiles = false, volumeProfileMessages = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, projectionRevision,
@@ -1221,7 +1223,7 @@ export default function ChartDrawLayer({
           const dtBars = pr[1].time - pr[0].time;
           const dPrice = pr[1].price - pr[0].price;
           const ang = Math.atan2(-(b.y! - a.y!), b.x - a.x!) * 180 / Math.PI;
-          const text = drawing.tool === "trendAngle" ? `${ang.toFixed(1)}°` : `${dPrice >= 0 ? "+" : ""}${dPrice.toFixed(2)} · ${Math.round(dtBars / 60)}m`;
+          const text = drawing.tool === "trendAngle" ? `${ang.toFixed(1)}°` : `${dPrice >= 0 ? "+" : ""}${dPrice.toFixed(pricePrecision)} · ${Math.round(dtBars / 60)}m`;
           return <g>{line(a.x!, a.y!, b.x, b.y!)}{style.showLabels ? label((a.x! + b.x) / 2, (a.y! + b.y!) / 2 - 4, text) : null}</g>;
         }
         case "ray": {
@@ -1319,7 +1321,7 @@ export default function ChartDrawLayer({
           const p0 = pr[0].price; const p1 = pr[1].price;
           return <g>{FIB_RETRACEMENT_LEVELS.map((lv) => {
             const price = p1 + (p0 - p1) * lv.coeff; const ly = toY(price);
-            return ly == null ? null : <g key={lv.coeff}>{line(left, ly, right, ly, stroke)}{style.showLabels ? label(labelX, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
+            return ly == null ? null : <g key={lv.coeff}>{line(left, ly, right, ly, stroke)}{style.showLabels ? label(labelX, ly - 2, `${lv.coeff} (${price.toFixed(pricePrecision)})`, stroke) : null}</g>;
           })}</g>;
         }
         case "fibExtension": {
@@ -1327,7 +1329,7 @@ export default function ChartDrawLayer({
           const move = pr[1].price - pr[0].price;
           return <g>{FIB_LEVELS.map((lv) => {
             const price = pr[2].price + move * lv.coeff; const ly = toY(price);
-            return ly == null ? null : <g key={lv.coeff}>{line(c.x!, ly, width + EDGE_OVERSCAN, ly, stroke)}{style.showLabels ? label(c.x! + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
+            return ly == null ? null : <g key={lv.coeff}>{line(c.x!, ly, width + EDGE_OVERSCAN, ly, stroke)}{style.showLabels ? label(c.x! + 2, ly - 2, `${lv.coeff} (${price.toFixed(pricePrecision)})`, stroke) : null}</g>;
           })}</g>;
         }
         case "fibChannel": {
@@ -1390,7 +1392,7 @@ export default function ChartDrawLayer({
           // risk/reward ratio.
           const lastClose = currentPrice != null && Number.isFinite(currentPrice) ? currentPrice : candles.length ? candles[candles.length - 1].close : null;
           const openPnl = lastClose == null ? null : (long ? lastClose - entryP : entryP - lastClose);
-          const stats = `${openPnl == null ? "" : `Open P&L: ${openPnl >= 0 ? "+" : ""}${openPnl.toFixed(2)} · `}${risk === 0 ? "Break-even · Risk/Reward Ratio: —" : `Risk/Reward Ratio: ${rr.toFixed(2)}`}`;
+          const stats = `${openPnl == null ? "" : `Open P&L: ${openPnl >= 0 ? "+" : ""}${openPnl.toFixed(pricePrecision)} · `}${risk === 0 ? "Break-even · Risk/Reward Ratio: —" : `Risk/Reward Ratio: ${rr.toFixed(2)}`}`;
           return (
             <g>
               <rect x={xL} y={Math.min(entryY, targetY)} width={xR - xL} height={Math.max(1, Math.abs(targetY - entryY))} fill={green} fillOpacity={0.18} />
@@ -1406,8 +1408,8 @@ export default function ChartDrawLayer({
                 */}
               {style.showLabels && (selected || preview) ? (
                 <g>
-                  {chip(midX, targetY, `Target: ${targetP.toFixed(2)} (${long ? "+" : "-"}${reward.toFixed(2)} · ${pct(reward)})`, green)}
-                  {chip(midX, stopY, `Stop: ${stopP.toFixed(2)} (${long ? "-" : "+"}${risk.toFixed(2)} · ${pct(risk)})`, red)}
+                  {chip(midX, targetY, `Target: ${targetP.toFixed(pricePrecision)} (${long ? "+" : "-"}${reward.toFixed(pricePrecision)} · ${pct(reward)})`, green)}
+                  {chip(midX, stopY, `Stop: ${stopP.toFixed(pricePrecision)} (${long ? "-" : "+"}${risk.toFixed(pricePrecision)} · ${pct(risk)})`, red)}
                   {chip(midX, entryY, stats, "#5A6270")}
                 </g>
               ) : null}
@@ -1417,7 +1419,7 @@ export default function ChartDrawLayer({
         case "priceRange": {
           if (!b || a.x == null || b.x == null) return null;
           const d = pr[1].price - pr[0].price;
-          return <g>{line(a.x!, a.y!, a.x!, b.y!)}{line(a.x! - 6, a.y!, a.x! + 6, a.y!)}{line(a.x! - 6, b.y!, a.x! + 6, b.y!)}{style.showLabels ? label(a.x! + 6, (a.y! + b.y!) / 2, `${d >= 0 ? "+" : ""}${d.toFixed(2)}`) : null}</g>;
+          return <g>{line(a.x!, a.y!, a.x!, b.y!)}{line(a.x! - 6, a.y!, a.x! + 6, a.y!)}{line(a.x! - 6, b.y!, a.x! + 6, b.y!)}{style.showLabels ? label(a.x! + 6, (a.y! + b.y!) / 2, `${d >= 0 ? "+" : ""}${d.toFixed(pricePrecision)}`) : null}</g>;
         }
         case "dateRange": {
           if (!b || a.x == null || b.x == null) return null;
@@ -1428,7 +1430,7 @@ export default function ChartDrawLayer({
           if (!b || a.x == null || b.x == null) return null;
           const d = pr[1].price - pr[0].price;
           const duration = formatDrawingDuration(pr[0].time, pr[1].time);
-          return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={stroke} fillOpacity={style.fillOpacity} stroke={stroke} strokeWidth={w} strokeDasharray={dash} />{style.showLabels ? label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(2)} · ${duration}`) : null}</g>;
+          return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={stroke} fillOpacity={style.fillOpacity} stroke={stroke} strokeWidth={w} strokeDasharray={dash} />{style.showLabels ? label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(pricePrecision)} · ${duration}`) : null}</g>;
         }
         case "measure": {
           if (!b || a.x == null || b.x == null) return null;
@@ -1436,7 +1438,7 @@ export default function ChartDrawLayer({
           const pct = pr[0].price ? (d / pr[0].price) * 100 : 0;
           const duration = formatDrawingDuration(pr[0].time, pr[1].time);
           const green = d >= 0 ? "#089981" : "#F23645";
-          return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={green} fillOpacity={0.12} stroke={green} strokeWidth={1} />{line(a.x!, a.y!, b.x, b.y!, green)}{label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(2)} (${pct.toFixed(2)}%) · ${duration}`, green)}</g>;
+          return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={green} fillOpacity={0.12} stroke={green} strokeWidth={1} />{line(a.x!, a.y!, b.x, b.y!, green)}{label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(pricePrecision)} (${pct.toFixed(2)}%) · ${duration}`, green)}</g>;
         }
         case "emoji": {
           if (a.x == null || a.y == null) return null;
@@ -1489,7 +1491,7 @@ export default function ChartDrawLayer({
         }
         case "priceLabel": {
           if (a.x == null) return null;
-          return <g><rect x={a.x} y={a.y! - 9} width={Math.max(46, (drawing.text?.length ?? 6) * 7)} height={16} rx={2} fill={stroke} /><text x={a.x + 4} y={a.y! + 3} fill="#fff" fontSize={11} fontFamily="Aleph, monospace">{drawing.text || pr[0].price.toFixed(2)}</text></g>;
+          return <g><rect x={a.x} y={a.y! - 9} width={Math.max(46, (drawing.text?.length ?? 6) * 7)} height={16} rx={2} fill={stroke} /><text x={a.x + 4} y={a.y! + 3} fill="#fff" fontSize={11} fontFamily="Aleph, monospace">{drawing.text || pr[0].price.toFixed(pricePrecision)}</text></g>;
         }
         case "signpost": {
           if (!b || a.x == null) return null;
@@ -1608,9 +1610,9 @@ export default function ChartDrawLayer({
             {showValueAreaLines && vahY != null ? line(boxLeft, vahY, boxRight, vahY, valueAreaStroke, valueAreaLineWidth) : null}
             {showValueAreaLines && valY != null ? line(boxLeft, valY, boxRight, valY, valueAreaStroke, valueAreaLineWidth) : null}
             {showPoc && pocY != null ? line(boxLeft, pocY, boxRight, pocY, pocStroke, pocLineWidth) : null}
-            {showValueAreaLines && style.showLabels && vahY != null ? label(boxLeft + 3, vahY - 2, `VAH ${prof.vahHigh.toFixed(2)}`, valueAreaStroke) : null}
-            {showPoc && style.showLabels && pocY != null ? label(boxLeft + 3, pocY - 2, `POC ${prof.poc.toFixed(2)}`, pocStroke) : null}
-            {showValueAreaLines && style.showLabels && valY != null ? label(boxLeft + 3, valY - 2, `VAL ${prof.valLow.toFixed(2)}`, valueAreaStroke) : null}
+            {showValueAreaLines && style.showLabels && vahY != null ? label(boxLeft + 3, vahY - 2, `VAH ${prof.vahHigh.toFixed(pricePrecision)}`, valueAreaStroke) : null}
+            {showPoc && style.showLabels && pocY != null ? label(boxLeft + 3, pocY - 2, `POC ${prof.poc.toFixed(pricePrecision)}`, pocStroke) : null}
+            {showValueAreaLines && style.showLabels && valY != null ? label(boxLeft + 3, valY - 2, `VAL ${prof.valLow.toFixed(pricePrecision)}`, valueAreaStroke) : null}
           </g>;
         }
         case "anchoredVwap": {
