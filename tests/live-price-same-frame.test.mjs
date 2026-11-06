@@ -6,6 +6,7 @@ import ts from 'typescript';
 import {ObservedCandleHistory} from '../src/lib/observedCandleHistory.ts';
 import {enqueueLiveCandleSnapshot, mergeLiveIndicatorTail} from '../src/lib/chartLiveEvents.ts';
 import {retainFormingCandleExtrema} from '../src/lib/liveCandleAuthority.ts';
+import {toHeikinAshi, toHeikinAshiCandle} from '../src/lib/candleStyle.ts';
 
 const source=ts.createSourceFile('Chart.tsx',fs.readFileSync('src/components/Chart.tsx','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
 let effect;const visit=node=>{if(ts.isCallExpression(node)&&node.expression.getText(source)==='useEffect'&&node.arguments[0]?.getText(source).includes('let pendingCandles: Candle[]'))effect=node.arguments[0];ts.forEachChild(node,visit);};visit(source);assert.ok(effect);
@@ -18,7 +19,7 @@ function fixture(eventBased=false, studies=false){
     timeframeToMs:()=>eventBased?null:60000,retainFormingCandleExtrema,enqueueLiveCandleSnapshot,
     observedCandleHistoryRef:ref(new ObservedCandleHistory()),observedCandleScope:'test',
     candleSeriesRef:ref({update:data=>calls.push(data)}),lastRenderedCandleTimeRef:ref(null),lastRenderedSourceTimestampRef:ref(null),
-    heikinAshiActiveRef:ref(false),liveFootprintEnabledRef:ref(false),recordChartTickPaint:()=>{},
+    toHeikinAshiCandle,MismatchDirection:{NearestLeft:-1},heikinAshiActiveRef:ref(false),liveFootprintEnabledRef:ref(false),recordChartTickPaint:()=>{},
     eventSourceTimeByChartTimeRef:ref(new Map()),eventChartTimeBySourceTimeRef:ref(new Map()),
     volumeIndicatorEnabled:studies,nonFootprintOrderFlowIndicatorEnabled:studies,nonFootprintIndicatorSamplingEnabled:studies,liveVolumeSampleTimerRef:ref(null),pendingLiveVolumeCandleRef:ref([]),
     keyboardActive:true,mergeLiveIndicatorTail,startTransition:fn=>fn(),sample:[],setSampledIndicatorCandles:fn=>{context.sample=typeof fn==='function'?fn(context.sample):fn;},
@@ -63,4 +64,28 @@ test('actual live CVD sampler retains final closing flow and updates the next ca
 test('live input capture also runs for ordinary indicators without a Volume or CVD pane',()=>{
  const f=fixture();f.context.nonFootprintIndicatorSamplingEnabled=true;f.context.sample=[bar(60000,100)];
  f.send(bar(60000,105),true);assert.equal(f.sample().at(-1).close,105);
+});
+
+test('Heikin Ashi paints consecutive executions and rollover without a history redraw', () => {
+  const f = fixture();
+  const first = {...bar(60000, 102), open: 98};
+  const forming = bar(120000);
+  const [prior, initial] = toHeikinAshi([first, forming]);
+  const rendered = new Map([[60, prior], [120, initial]]);
+  f.context.heikinAshiActiveRef.current = true;
+  f.context.lastRenderedCandleTimeRef.current = 120;
+  f.context.lastRenderedSourceTimestampRef.current = 120000;
+  f.context.chartRef = ref({timeScale: () => ({timeToIndex: time => [...rendered.keys()].indexOf(time)})});
+  f.context.candleSeriesRef.current = {
+    dataByIndex: index => [...rendered.values()][index] ?? null,
+    update: data => { rendered.set(data.time, data); f.calls.push(data); },
+  };
+
+  f.send(bar(120000, 101), true);
+  f.send({...bar(120000, 99), sourceEndTimestamp:120200}, true);
+  f.send(bar(180000, 103), true);
+  const expected = toHeikinAshi([first, {...bar(120000, 99), high:101}, bar(180000, 103)]);
+  assert.deepEqual(f.calls.map(row => row.close), [100.5, expected[1].close, expected[2].close]);
+  assert.deepEqual(f.calls.map(row => row.open), [expected[1].open, expected[1].open, expected[2].open]);
+  assert.equal(f.frames.size, 0);
 });

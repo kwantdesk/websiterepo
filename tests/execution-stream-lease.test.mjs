@@ -40,5 +40,11 @@ test('planned renewal has no outage backoff and reconnect seed dedup retains new
  engine.start();await new Promise(setImmediate);sources[0].emit('seed',{streamId:'first',batchSequence:0,continuity:'continuous',records:[record(1)]});
  const leaseTimer=[...timers.values()].find(t=>t.ms>290000);assert.ok(leaseTimer);leaseTimer.fn();const reconnect=[...timers.values()].find(t=>t.ms===0);assert.ok(reconnect,'planned renewal cannot wait four seconds');reconnect.fn();await new Promise(setImmediate);
  assert.equal(sources[0].closed,true);assert.equal(new URL(requests[1],origin).searchParams.get('seedLimit'),'4096');sources[1].emit('seed',{streamId:'next',batchSequence:0,continuity:'continuous',records:[record(1),record(2)]});
- [...timers.values()].find(t=>t.ms===8).fn();assert.equal(seeds.length,1);assert.equal(batches.length,1);assert.equal(batches[0].length,1);assert.equal(batches[0][0].eventId,'2');engine.stop();
+ [...timers.values()].find(t=>t.ms===8).fn();assert.equal(seeds.length,1);assert.equal(batches.length,1);assert.equal(batches[0].length,1);assert.equal(batches[0][0].eventId,'2');
+ sources[1].onerror();const fastRetry=[...timers.entries()].find(([,timer])=>timer.ms===250);
+ assert.ok(fastRetry,'an established stream retries promptly');
+ timers.delete(fastRetry[0]);fastRetry[1].fn();await new Promise(setImmediate);
+ sources[2].emit('seed',{streamId:'recovered',batchSequence:0,continuity:'continuous',records:[record(2)]});
+ sources[2].onerror();assert.ok([...timers.values()].some(timer=>timer.ms===4000),'rapid failures still back off');
+ engine.stop();
 });

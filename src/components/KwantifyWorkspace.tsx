@@ -6404,10 +6404,11 @@ function WorkspaceChartPaneComponent({
       );
       const firstRebuildIndex = candles.findIndex((candle) => candle.timestamp > completeFrom);
       if (firstRebuildIndex < 0) return candles;
-      const rebuilt = enrichCandlesWithInstitutionalTrades(candles, exact, candles.length);
-      if (rebuilt === candles) return candles;
-      return rebuilt.map((candle, index) =>
-        index < firstRebuildIndex ? candles[index] : candle);
+      // Keep the same 17-bar cadence context used to cap the last bar.
+      const rebuildStart = Math.min(firstRebuildIndex, Math.max(0, candles.length - 17));
+      const rebuildWindow = candles.slice(rebuildStart);
+      const rebuilt = enrichCandlesWithInstitutionalTrades(rebuildWindow, exact, rebuildWindow.length);
+      return candles.slice(0, firstRebuildIndex).concat(rebuilt.slice(firstRebuildIndex - rebuildStart));
     };
     const scheduleMarketTradeStateSync = () => {
       // Footprint receives live batches through its canvas primitive below.

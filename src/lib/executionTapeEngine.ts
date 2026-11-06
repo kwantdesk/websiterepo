@@ -91,6 +91,7 @@ export function createExecutionTapeEngine(
   let seedPublished = false;
   let stopped = false;
   let lastActivityAt = Date.now();
+  let lastFastTransportRetryAt = -Infinity;
   let pending: InstitutionalTrade[] = [];
   let publishTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -308,6 +309,12 @@ export function createExecutionTapeEngine(
         // EventSource's implicit reconnect can leave the feed half-open after
         // the hosting proxy rotates it. Own the lifecycle explicitly so the
         // pane never stays frozen behind a healthy quote.
+        const now = Date.now();
+        if (connectionSeeded && now - lastFastTransportRetryAt >= STREAM_STALE_AFTER_MS) {
+          lastFastTransportRetryAt = now;
+          scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);
+          return;
+        }
         scheduleReconnect();
       };
     } catch {

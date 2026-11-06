@@ -51,7 +51,7 @@ export function createChart(
   return chart;
 }
 
-export { LineStyle, LineType } from "lightweight-charts";
+export { LineStyle, LineType, MismatchDirection } from "lightweight-charts";
 export type {
   ISeriesApi,
   ISeriesPrimitive,

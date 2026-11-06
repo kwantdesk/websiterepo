@@ -47,6 +47,7 @@ import {
   createChart,
   LineStyle,
   LineType,
+  MismatchDirection,
   type IChartApi,
   type ISeriesPrimitive,
   type ISeriesPrimitivePaneRenderer,
@@ -240,6 +241,7 @@ import {
   resolveCandleStyle,
   isHeikinAshiStyle,
   toHeikinAshi,
+  toHeikinAshiCandle,
   CANDLE_SETTING_KEYS,
   OPEN_CANDLE_SETTINGS_EVENT,
 } from "@/lib/candleStyle";
@@ -4643,23 +4645,38 @@ function Chart({
         scheduleNext();
         return;
       }
-      /*
-       * A Heikin Ashi bar is an average of the one before it, so a single
-       * updated bar cannot be computed from the tick alone. The redraw effect
-       * recomputes the whole series instead; pushing the raw bar here would
-       * paint one true candle in the middle of a smoothed series.
-       */
-      if (heikinAshiActiveRef.current) {
-        scheduleNext();
-        return;
-      }
       try {
-        candleSeriesRef.current.update({
+        const series = candleSeriesRef.current;
+        let paintedCandle = candle;
+        if (heikinAshiActiveRef.current) {
+          // Historical corrections can affect every later derived bar.
+          // Leave those to the existing history redraw.
+          if (historicalUpdate) {
+            scheduleNext();
+            return;
+          }
+          const lastTime = lastRenderedCandleTimeRef.current;
+          const lastIndex = lastTime === null
+            ? null
+            : chartRef.current?.timeScale().timeToIndex(lastTime as Time);
+          const previous = lastIndex == null
+            ? null
+            : series.dataByIndex(
+                Number(lastIndex) - (candleTime === lastTime ? 1 : 0),
+                MismatchDirection.NearestLeft,
+              );
+          const previousBody = previous && "open" in previous && "close" in previous
+            && typeof previous.open === "number" && typeof previous.close === "number"
+            ? { open: previous.open, close: previous.close }
+            : undefined;
+          paintedCandle = toHeikinAshiCandle(candle, previousBody);
+        }
+        series.update({
           time: candleTime as Time,
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
+          open: paintedCandle.open,
+          high: paintedCandle.high,
+          low: paintedCandle.low,
+          close: paintedCandle.close,
         }, historicalUpdate);
         recordChartTickPaint(instrument, candle.sourceEndTimestamp);
         if (!historicalUpdate && liveFootprintEnabledRef.current && footprintPrimitiveRef.current) {
@@ -15075,10 +15092,8 @@ function Chart({
        */
       styleChanged || changedClockHistory ||
       /*
-       * An averaged bar has no incremental form: every Heikin Ashi bar is
-       * computed from the one before it, so advancing the series means
-       * recomputing it. Redrawing is the only correct way to move it forward,
-       * not an optimisation to skip.
+       * Props can correct earlier Heikin Ashi bars and affect the whole chain.
+       * Live tail ticks use the preceding painted bar and update one bar.
        */
       isHeikinAshiStyle(candleStyle) ||
       prevCandlesLengthRef.current === 0 ||

@@ -193,25 +193,26 @@ export type OhlcCandle = { open: number; high: number; low: number; close: numbe
  * These are DERIVED values, not traded prices - the first bar seeds from the
  * real open and close rather than inventing a prior bar to average against.
  */
+export function toHeikinAshiCandle<T extends OhlcCandle>(
+  candle: T,
+  previous?: Pick<OhlcCandle, "open" | "close">,
+): T {
+  const close = (candle.open + candle.high + candle.low + candle.close) / 4;
+  const open = previous
+    ? (previous.open + previous.close) / 2
+    : (candle.open + candle.close) / 2;
+  return {
+    ...candle,
+    open,
+    close,
+    high: Math.max(candle.high, open, close),
+    low: Math.min(candle.low, open, close),
+  };
+}
+
 export function toHeikinAshi<T extends OhlcCandle>(candles: readonly T[]): T[] {
   const out: T[] = [];
-  let previousOpen = 0;
-  let previousClose = 0;
-  for (const [index, candle] of candles.entries()) {
-    const close = (candle.open + candle.high + candle.low + candle.close) / 4;
-    const open = index === 0
-      ? (candle.open + candle.close) / 2
-      : (previousOpen + previousClose) / 2;
-    out.push({
-      ...candle,
-      open,
-      close,
-      high: Math.max(candle.high, open, close),
-      low: Math.min(candle.low, open, close),
-    });
-    previousOpen = open;
-    previousClose = close;
-  }
+  for (const candle of candles) out.push(toHeikinAshiCandle(candle, out.at(-1)));
   return out;
 }
 
