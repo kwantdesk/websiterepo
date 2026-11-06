@@ -322,8 +322,10 @@ export function calculateBigTradePrintsWithContext(
         filterMode, manualFilter, percentile: automaticPercentile, standardDevScale,
       })
     : baseScale;
-  const rthScale = splitSessions && rthVolumes.length >= MIN_SESSION_SAMPLE
-    ? buildSessionScale(rthVolumes, {
+  // A thin RTH tape can borrow the combined sample for sizing, but must
+  // still apply the configured RTH filter mode and minimum.
+  const rthScale = splitSessions
+    ? buildSessionScale(rthVolumes.length >= MIN_SESSION_SAMPLE ? rthVolumes : volumes, {
         filterMode: rthFilterMode,
         manualFilter: rthManualFilter,
         percentile: rthPercentile,
@@ -337,15 +339,10 @@ export function calculateBigTradePrintsWithContext(
   // Capping. A single outsized print otherwise sets the top of the scale and
   // flattens every other marker toward the floor. "size" keeps the print but
   // draws it at full size; "reject" removes it from the study altogether.
-  const cappingMode = String(settings.cappingMode ?? (Number(settings.maximumFilter ?? 0) > 0 ? "reject" : "off"));
-  const cappingMaxVolume = Math.max(0, Number(settings.cappingMaxVolume ?? settings.maximumFilter ?? 0));
+  const maximumFilter = Math.max(0, Number(settings.maximumFilter ?? 0));
+  const cappingMode = String(settings.cappingMode ?? "off");
+  const cappingMaxVolume = Math.max(0, Number(settings.cappingMaxVolume ?? 0));
   const capActive = cappingMaxVolume > 0 && cappingMode !== "off";
-
-  const qualified = candidates.filter((candidate) => {
-    if (candidate.volume < scaleFor(candidate.timestamp).threshold) return false;
-    if (capActive && cappingMode === "reject" && candidate.volume > cappingMaxVolume) return false;
-    return true;
-  });
   // No early return when nothing qualified.
   //
   // The context below is the measured SCALE — thresholds, capping and marker
@@ -386,6 +383,7 @@ export function calculateBigTradePrintsWithContext(
   // of the retained, time-distributed execution history.
   const context: BigTradeLiveContext = {
     scaleFor,
+    maximumFilter,
     capActive,
     cappingMode,
     cappingMaxVolume,
@@ -395,6 +393,7 @@ export function calculateBigTradePrintsWithContext(
     maxOpacity,
     lastCandidate: { ...candidates[candidates.length - 1] },
   };
+  const qualified = candidates.filter(({ timestamp, volume }) => admitsBigTrade(context, timestamp, volume));
   return {
     prints: distributeContractMarkers(qualified, 12_000).map((candidate) => sizeBigTradePrint(candidate, context)),
     context,
@@ -413,6 +412,7 @@ export function calculateBigTradePrintsWithContext(
  */
 export type BigTradeLiveContext = {
   scaleFor: (timestamp: number) => { threshold: number; sizeFloor: number; visualCeiling: number };
+  maximumFilter: number;
   capActive: boolean;
   cappingMode: string;
   cappingMaxVolume: number;
@@ -606,6 +606,7 @@ export function retainBigTradePrints(
 
 export function admitsBigTrade(context: BigTradeLiveContext, timestamp: number, volume: number) {
   if (volume < context.scaleFor(timestamp).threshold) return false;
+  if (context.maximumFilter > 0 && volume > context.maximumFilter) return false;
   if (context.capActive && context.cappingMode === "reject" && volume > context.cappingMaxVolume) return false;
   return true;
 }

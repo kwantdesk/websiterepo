@@ -7569,8 +7569,7 @@ export default function ChartIndicatorsControl({
                       menuLabel="Bar POC input data"
                     >
                       <option value="volume">Volume</option>
-                      <option value="order">Order count</option>
-                      <option value="aggregate-trades">Aggregate trades</option>
+                      <option value="order">Trade count</option>
                     </KwantSelect>
                   </label>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
@@ -7715,7 +7714,7 @@ export default function ChartIndicatorsControl({
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Input data</span>
                     <KwantSelect value={String(settingsInstance.settings?.inputData ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), inputData: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="KWANT Delta input data">
-                      <option value="volume">Volume</option><option value="aggregate-trades">Aggregate trades</option><option value="trades">Trades</option><option value="order">Order</option>
+                      <option value="volume">Volume</option><option value="trades">Trade count</option>
                     </KwantSelect>
                   </label>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
@@ -7825,7 +7824,7 @@ export default function ChartIndicatorsControl({
                   {[
                     ["VBP period", "periodMode", [["composite", "Composite"], ["multiples", "Multiples"], ["visible", "Visible"], ["personalized", "Personalized"]]],
                     ["Length type", "lengthType", [["minutes", "Minutes"], ["days", "Days"], ["weeks", "Weeks"], ["months", "Months"], ["volume", "Volume"]]],
-                    ["Input data", "inputData", [["volume", "Volume"], ["order", "Order"], ["aggregate-trades", "Aggregate trades"], ["trades", "Number of trades"]]],
+                    ["Input data", "inputData", [["volume", "Volume"], ["aggregate-trades", "Aggregate trades"], ["trades", "Number of trades"]]],
                     ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
                     ["Filter / split time", "filterMode", [["none", "None"], ["filter", "Filter"], ["split", "Split"]]],
                     ["POC line", "pocLineMode", [["show", "Show"], ["developing", "Developing"], ["extend-shifted", "Extend shifted"]]],
@@ -7846,11 +7845,11 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   {String(settingsInstance.settings?.periodMode ?? "multiples") === "personalized" ? ([
-                    ["Custom start", "customStartMs"], ["Custom end", "customEndMs"],
+                    ["Custom start (UTC)", "customStartMs"], ["Custom end (UTC)", "customEndMs"],
                   ] as const).map(([label, key]) => (
                     <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{label}</span>
-                      <input type="datetime-local" value={Number(settingsInstance.settings?.[key] ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.[key])).toISOString().slice(0, 16) : ""} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value ? new Date(event.target.value).getTime() : 0 } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" />
+                      <input type="datetime-local" value={Number(settingsInstance.settings?.[key] ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.[key])).toISOString().slice(0, 16) : ""} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value ? Date.parse(event.target.value + "Z") : 0 } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" />
                     </label>
                   )) : null}
                   {[
@@ -7861,7 +7860,6 @@ export default function ChartIndicatorsControl({
                     ["Show summary", "showSummary"], ["Summary trades", "showSummaryTrades"],
                     ["Show level labels", "showLevelLabels"], ["Show label prices", "showLevelLabelPrice"],
                   ].map(([label, key]) => { const on = settingsInstance.settings?.[key] === true; return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
-                  {settingsInstance.settings?.inputData === "order" ? <p className="text-[8px] leading-4 text-warning sm:col-span-2">Order mode requires historical resting-order-at-price snapshots. Quant Desk will show a waiting state rather than fabricate this from executed trades.</p> : null}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">Level-only profiles use exact Rithmic classified volume at price. Composite, Multiples, Visible and Personalized windows recalculate live as the forming execution row changes.</p>
                 </div>
               ) : null}
@@ -7878,7 +7876,7 @@ export default function ChartIndicatorsControl({
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>Data type</span>
                       <KwantSelect value={String(settingsInstance.settings?.dataType ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), dataType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Market Statistics data type">
-                        <option value="volume">Volume</option><option value="order">Order</option><option value="aggregate-trades">Aggregate trades</option>
+                        <option value="volume">Volume</option><option value="aggregate-trades">Aggregate trades</option>
                       </KwantSelect>
                     </label>
                   ) : (
@@ -7893,7 +7891,6 @@ export default function ChartIndicatorsControl({
                     const on = settingsInstance.settings?.[key] !== false;
                     return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
                   })}
-                  {settingsInstance.settings?.dataType === "order" && settingsInstance.settings?.statMode !== "bars" ? <p className="text-[8px] leading-4 text-warning sm:col-span-2">Order mode requires historical resting-order events. Quant Desk reports that requirement instead of substituting executed volume.</p> : null}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">Ranges count exact Rithmic executions or exact bar statistics per exchange day. % Dev. Std. controls how far from the dataset mean observations are admitted; AVG is mean daily frequency and Dev is the maximum daily frequency.</p>
                 </div>
               ) : null}
@@ -7913,9 +7910,8 @@ export default function ChartIndicatorsControl({
                 return (
                   <div className="space-y-4 border border-primary/20 bg-primary/[0.035] p-3">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {select("Input data", "inputData", [["volume", "Volume"], ["order", "Orders"]])}
                       {select("Starting mode", "startMode", [["zig-zag", "Zig Zag"], ["date", "Date"]])}
-                      {String(settingsInstance.settings?.startMode ?? "zig-zag") === "date" ? <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2"><span>Start date</span><input type="datetime-local" value={Number(settingsInstance.settings?.startDateMs ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.startDateMs)).toISOString().slice(0, 16) : ""} onChange={(event) => update({ startDateMs: event.target.value ? new Date(event.target.value).getTime() : 0 })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label> : null}
+                      {String(settingsInstance.settings?.startMode ?? "zig-zag") === "date" ? <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2"><span>Start date (UTC)</span><input type="datetime-local" value={Number(settingsInstance.settings?.startDateMs ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.startDateMs)).toISOString().slice(0, 16) : ""} onChange={(event) => update({ startDateMs: event.target.value ? Date.parse(event.target.value + "Z") : 0 })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label> : null}
                       {toggle("Enable Zig Zag swing", "enableZigZagSwing")}
                       {toggle("Include swings in first half", "includeSwingBeforeMidTrend")}
                       {toggle("Enable retracements", "enableRetracements")}
@@ -7944,7 +7940,6 @@ export default function ChartIndicatorsControl({
                         </div>
                       </div>
                     ))}
-                    {settingsInstance.settings?.inputData === "order" ? <p className="text-[8px] leading-4 text-warning">Order mode requires historical resting-order-at-price snapshots. The chart reports a waiting state and never substitutes executed volume.</p> : null}
                   </div>
                 );
               })() : null}
@@ -8006,8 +8001,8 @@ export default function ChartIndicatorsControl({
 
               {settingsDefinition.id === "speed-of-tape" ? (
                 <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
-                  <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Database</span><KwantSelect value={String(settingsInstance.settings?.database ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), database: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Speed of Tape database"><option value="volume">Volume</option><option value="order">Order</option><option value="trades">Trades</option></KwantSelect></label>
-                  {String(settingsInstance.settings?.database ?? "volume") === "order" ? <p className="text-[8px] leading-4 text-warning">Order mode requires historical order-placement events. The current execution feed does not expose them, so this mode reports unavailable instead of substituting trades.</p> : <p className="text-[8px] leading-4 text-muted">Measures exact execution intensity inside fixed N-second windows. Deviation filtering keeps only windows at or above mean plus the selected standard-deviation multiple.</p>}
+                  <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Database</span><KwantSelect value={String(settingsInstance.settings?.database ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), database: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Speed of Tape database"><option value="volume">Volume</option><option value="trades">Trades</option></KwantSelect></label>
+                  <p className="text-[8px] leading-4 text-muted">Measures exact execution intensity inside fixed N-second windows. Deviation filtering keeps only windows at or above the configured threshold.</p>
                 </div>
               ) : null}
 
@@ -8330,6 +8325,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "session-highs-lows" && SESSION_HIGH_LOW_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "session-marker" && SESSION_MARKER_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "pulling-stacking" && (key === "includeOwnOrders" || key === "includeImpliedOrders"))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
                     && (typeof value === "boolean" || isColourSetting(key, value)))
@@ -8345,15 +8341,11 @@ export default function ChartIndicatorsControl({
                   VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
                   || isTpoIndicator(settingsDefinition.id)
                 ) && isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset);
-                const unsupportedOrderFilter = (key: string) => settingsDefinition.id === "pulling-stacking"
-                  && (key === "includeOwnOrders" || key === "includeImpliedOrders");
                 const control = ([key, value]: readonly [string, unknown, string]) => (
                     typeof value === "boolean" ? (
                       <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
                         <input
                           type="checkbox"
-                          disabled={unsupportedOrderFilter(key)}
-                          title={unsupportedOrderFilter(key) ? "Unavailable: own and implied order filters are not supported by the current depth pipeline." : undefined}
                           checked={settingsDefinition.id === "depth-of-market" ? domProColumnToggleValue(settingsInstance.settings, key) ?? value === true : value === true}
                           onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
@@ -8363,7 +8355,7 @@ export default function ChartIndicatorsControl({
                           }))}
                           className="accent-primary"
                         />
-                        <span>{titleFromKey(key, settingsDefinition.id)}{unsupportedOrderFilter(key) ? " · not supported" : ""}</span>
+                        <span>{titleFromKey(key, settingsDefinition.id)}</span>
                       </label>
                     ) : (
                       <div key={key} className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">

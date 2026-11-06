@@ -52,6 +52,7 @@ export async function runAudit(report: any, onProgress: any) {
                 sectionNames.push(...expanders.map(label => path + ' >> ' + label));
             }
             for (const section of sectionNames) {
+                await render(def);
                 await goTab(section);
                 item.sections.push(section);
                 let snapshots = controls().map(meta);
@@ -60,7 +61,18 @@ export async function runAudit(report: any, onProgress: any) {
                         continue;
                     await render(def);
                     await goTab(section);
-                    const el: any = controls()[index], m = meta(el);
+                    const expected = snapshots[index];
+                    const matches = (field: ReturnType<typeof meta>) => field.tag === expected.tag
+                        && field.type === expected.type && field.label === expected.label
+                        && field.popup === expected.popup;
+                    const occurrence = snapshots.slice(0, index).filter(matches).length;
+                    const resolveControl = () => controls().filter(field => matches(meta(field)))[occurrence] as HTMLElement | undefined;
+                    const el: any = resolveControl();
+                    if (!el) {
+                        item.checks.push({ ...expected, section, status: 'control unavailable after dialog reset' });
+                        continue;
+                    }
+                    const m = meta(el);
                     console.log('CONTROL', def.id, section, index, m.label);
                     if (process.env.AUDIT_DROPDOWNS_ONLY && m.popup !== 'listbox' && m.tag !== 'SELECT')
                         continue;
@@ -77,7 +89,7 @@ export async function runAudit(report: any, onProgress: any) {
                             if (el.type === 'checkbox') {
                                 await click(el);
                             }
-                            else if (['number', 'range', 'text', 'time', 'date', 'color'].includes(el.type) || el.tagName === 'TEXTAREA') {
+                            else if (['number', 'range', 'text', 'time', 'date', 'datetime-local', 'color'].includes(el.type) || el.tagName === 'TEXTAREA') {
                                 let value = el.value;
                                 if (['number', 'range'].includes(el.type)) {
                                     const step = el.type === 'range' ? (Number(el.max) - Number(el.min)) / 4 : Number(el.step) || 1, min = el.min === '' ? -Infinity : Number(el.min), max = el.max === '' ? Infinity : Number(el.max), n = Number(value);
@@ -87,6 +99,8 @@ export async function runAudit(report: any, onProgress: any) {
                                     value = value.toLowerCase() === '#12ab34' ? '#654321' : '#12ab34';
                                 else if (el.type === 'time')
                                     value = value === '01:00' ? '02:00' : '01:00';
+                                else if (el.type === 'datetime-local')
+                                    value = '2026-11-05T10:30';
                                 else if (el.type === 'date')
                                     value = '2026-10-30';
                                 else if (/expirations|YYYY-MM-DD/i.test(m.label))
@@ -114,7 +128,7 @@ export async function runAudit(report: any, onProgress: any) {
                                 for (const label of choices) {
                                     await render(def);
                                     await goTab(section);
-                                    const field: any = controls()[index];
+                                    const field: any = resolveControl();
                                     await click(field);
                                     const choice = Array.from(document.querySelectorAll('[role="option"]')).find(option => option.textContent?.trim() === label) as HTMLElement;
                                     if (choice?.getAttribute('aria-selected') === 'true') {
@@ -144,7 +158,7 @@ export async function runAudit(report: any, onProgress: any) {
                                 for (const choice of choices) {
                                     await render(def);
                                     await goTab(section);
-                                    const field: any = controls()[index];
+                                    const field: any = resolveControl();
                                     if (field.value === choice.value) {
                                         optionChecks.push({ ...choice, status: 'already selected' });
                                         continue;

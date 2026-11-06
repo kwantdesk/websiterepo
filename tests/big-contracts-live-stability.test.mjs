@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { admitLiveBigTradePrints, calculateBigTradePrintsWithContext, mergeBigTradeLiveMarkers, anchorBigTradePrintsToCandles } from '../src/lib/bigTrades.ts';
+import { admitLiveBigTradePrints, advanceBigTradeLiveAccumulator, createBigTradeLiveAccumulator, calculateBigTradePrintsWithContext, mergeBigTradeLiveMarkers, anchorBigTradePrintsToCandles } from '../src/lib/bigTrades.ts';
 const now=Date.UTC(2026,9,27,3);
 const trade=(id,timestamp,volume,extra={})=>({eventId:id,recordIndex:timestamp,timestamp,open:20000,high:20000,low:20000,close:20000,trades:1,volume,askVolume:volume,bidVolume:0,delta:volume,aggressor:'BUY',...extra});
 const settings={filterMode:'manual',manualFilter:50,enableClustering:false,sessionFilterEnabled:false};
@@ -45,7 +45,7 @@ test('actual chart live handler preserves a 50-contract marker through sampled r
  const js=ts.transpileModule(source.slice(start,end)+';globalThis.receive=receive;', {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const tape=[trade('summary',now+1000,500,{flowOnly:true}),trade('real',now+2000,50),trade('unclassified',now+3000,500,{aggressor:'UNKNOWN'})];
  let drawn=[];
- const runtime={liveCandleEventKey:'pane',liveReplayActiveRef:{current:false},bigTradesPrimitiveRef:{current:{update:markers=>drawn=markers}},bigTradeLiveContextRef:{current:context()},bigTradePrimitiveOptionsRef:{current:{}},bigTradeCommittedRef:{current:{watermark:now,markers:[]}},admitLiveBigTradePrints,anchorBigTradePrintsToCandles,mergeBigTradeLiveMarkers,timeframe:'1m',candleIntervalMs:60000,isEventBasedChartInterval:()=>false,sampledIndicatorCandlesRef:{current:[{timestamp:now,open:20000,high:20001,low:19999,close:20000,volume:1}]},eventChartTimeBySourceTimeRef:{current:new Map()},bigTradesIndicator:{settings:{maxMarkersPerBar:50}}};
+ const runtime={liveCandleEventKey:'pane',liveReplayActiveRef:{current:false},bigTradeLatestLiveTapeRef:{current:null},observedCandleScope:'nq',priceFormat:{minMove:.25},bigTradeLiveAccumulatorRef:{current:createBigTradeLiveAccumulator(context(),[],now)},advanceBigTradeLiveAccumulator,bigTradesPrimitiveRef:{current:{update:markers=>drawn=markers}},bigTradeLiveContextRef:{current:context()},bigTradePrimitiveOptionsRef:{current:{}},bigTradeCommittedRef:{current:{watermark:now,markers:[]}},admitLiveBigTradePrints,anchorBigTradePrintsToCandles,mergeBigTradeLiveMarkers,timeframe:'1m',candleIntervalMs:60000,isEventBasedChartInterval:()=>false,sampledIndicatorCandlesRef:{current:[{timestamp:now,open:20000,high:20001,low:19999,close:20000,volume:1}]},eventChartTimeBySourceTimeRef:{current:new Map()},bigTradesIndicator:{settings:{maxMarkersPerBar:50}}};
  vm.createContext(runtime);vm.runInContext(js,runtime);runtime.receive({detail:{key:'pane',tape}});
  assert.equal(drawn.length,1);assert.equal(drawn[0].id,'real');assert.equal(drawn[0].time,now/1000);assert.equal(drawn[0].volume,50);
  const full=calculateBigTradePrintsWithContext([],tape,settings,now+3000).prints;

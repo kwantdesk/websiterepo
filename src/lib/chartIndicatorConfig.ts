@@ -3351,7 +3351,7 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
   }
   if (normalizedInstance.indicatorId === "speed-of-tape") {
     const settings: Record<string, number | string | boolean> = { ...defaultIndicatorSettings("speed-of-tape"), ...(normalizedInstance.settings ?? {}) };
-    settings.database = ["volume", "order", "trades"].includes(String(settings.database)) ? settings.database : "volume";
+    settings.database = ["volume", "trades"].includes(String(settings.database)) ? settings.database : "volume";
     for (const definition of INDICATOR_NUMERIC_SETTINGS["speed-of-tape"] ?? []) {
       const parsed = Number(settings[definition.key]); settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }
@@ -3517,7 +3517,11 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
       ...normalizedInstance,
       settings: {
         ...defaults,
-        ...normalizeBarPocSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }),
+        ...normalizeBarPocSettings({
+          ...defaults,
+          ...(normalizedInstance.settings ?? {}),
+          inputData: normalizedInstance.settings?.inputData === "order" ? "order" : "volume",
+        }),
       },
     };
   }
@@ -3546,7 +3550,13 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
     const savedColors = Object.fromEntries(Object.keys(defaults)
       .filter(key => /Color$/.test(key) && /^#[0-9a-f]{6}$/i.test(String(normalizedInstance.settings?.[key] ?? "")))
       .map(key => [key, String(normalizedInstance.settings![key]).toUpperCase()]));
-    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepDeltaSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }), ...savedColors } };
+    const input = normalizedInstance.settings?.inputData;
+    const settings = normalizeDeepDeltaSettings({
+      ...defaults,
+      ...(normalizedInstance.settings ?? {}),
+      inputData: input === "trades" || input === "order" ? "trades" : "volume",
+    });
+    return { ...normalizedInstance, settings: { ...defaults, ...settings, ...savedColors } };
   }
   if (normalizedInstance.indicatorId === "deep-wall") {
     const defaults = defaultIndicatorSettings("deep-wall");
@@ -3571,6 +3581,7 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
         ...normalizeDeepProfileValuesSettings({
           ...defaults,
           ...saved,
+          inputData: saved.inputData === "order" ? "volume" : saved.inputData,
           developingValueArea: saved.developingValueArea
             ?? (saved.showDevelopingValueArea === true ? "dash" : defaults.developingValueArea),
           pocLineWidth: saved.pocLineWidth ?? legacyLineWidth ?? defaults.pocLineWidth,
@@ -3585,6 +3596,7 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
   if (normalizedInstance.indicatorId === "market-statistics") {
     const defaults = defaultIndicatorSettings("market-statistics");
     const incoming = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    if (incoming.dataType === "order") incoming.dataType = "volume";
     return {
       ...normalizedInstance,
       settings: { ...incoming, ...normalizeMarketStatisticsSettings(incoming) },
@@ -3592,7 +3604,7 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
   }
   if (normalizedInstance.indicatorId === "confluence-identifier") {
     const defaults = defaultIndicatorSettings("confluence-identifier");
-    const incoming = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    const incoming = { ...defaults, ...(normalizedInstance.settings ?? {}), inputData: "volume" };
     return { ...normalizedInstance, settings: { ...incoming, ...normalizeConfluenceIdentifierSettings(incoming) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
