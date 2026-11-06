@@ -2164,6 +2164,11 @@ body.kwant-cockpit-ui canvas {
   grid-auto-rows: minmax(250px, 1fr);
 }
 
+.gex-map-header[data-standalone] {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) max-content minmax(max-content, 1fr);
+}
+
 @container (max-width: 720px) {
   .gex-map-header {
     align-content: center;
@@ -2180,9 +2185,9 @@ body.kwant-cockpit-ui canvas {
     overflow-x: auto;
   }
 
-  .gex-map-header > div:nth-child(2),
-  .gex-map-header-actions > div:first-child,
-  .gex-map-header-actions > button:last-child {
+  .gex-map-header:not([data-standalone]) .gex-map-frame-steps,
+  .gex-map-header:not([data-standalone]) .gex-map-header-actions > [aria-label="Replay window"],
+  .gex-map-header:not([data-standalone]) .gex-map-header-actions > button:last-child {
     display: none;
   }
 

@@ -1755,160 +1755,175 @@ function GexMapWorkspace({
     setPlaying(false);
   }
 
+  const starSettingsButton = (
+    <button
+      type="button"
+      onClick={() => setStarSettingsOpen(true)}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
+      title="STAR view settings"
+      aria-label="Open Star view settings"
+    >
+      <SlidersHorizontal className="h-3 w-3" />
+    </button>
+  );
+
   return (
     <div className="gex-map-workspace relative flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="gex-map-header sticky top-0 z-40 flex min-h-[48px] shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border bg-panel px-2 py-1.5">
+        <header className="gex-map-header sticky top-0 z-40 flex min-h-[48px] shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border bg-panel px-2 py-1.5" data-standalone={enableWorkspaces || undefined}>
 
-          <button
-            type="button"
-            onClick={() => setStarSettingsOpen(true)}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
-            title="STAR view settings"
-            aria-label="Open Star view settings"
-          >
-            <SlidersHorizontal className="h-3 w-3" />
-          </button>
-
-          <div className="gex-map-frame-steps ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5">
-            {FRAME_STEPS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => {
-                  setStepMinutes(value);
-                  setCursor(0);
-                  setPlaying(false);
-                }}
-                className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${stepMinutes === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
-              >
-                {value}m
-              </button>
-            ))}
+          <div className="flex shrink-0 items-center">
+            {enableWorkspaces ? <GexMapWorkspacesMenu activeId={activeWorkspaceId} snapshot={workspaceSnapshot}
+              onActivate={applyWorkspace} onSaved={activateWorkspace} onDelete={(id) => {
+                if (id !== activeWorkspaceId) return;
+                setActiveWorkspaceId(null);
+                rememberActiveGexMapWorkspace(null);
+              }} /> : starSettingsButton}
           </div>
 
-          {/* PRESENT = the live per-strike ladders; FUTURE = the forward
-              expiry×strike matrix built from the same options surface. Hidden
-              when the host pinned a horizon: a page that is only ever FUTURE
-              should not offer a way out of itself. */}
-          <div className={`ml-1 h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5 ${lockedTimeHorizon ? "hidden" : "flex"}`}>
-            {(["present", "future"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => {
-                  setTimeHorizon(mode);
-                  if (privateWorkspace) return;
-                  try {
-                    window.localStorage.setItem(GEX_MAP_TIME_HORIZON_KEY, mode);
-                    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
-                  } catch { /* persistence is best-effort */ }
-                }}
-                aria-pressed={timeHorizon === mode}
-                className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2.5 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${timeHorizon === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
-
-          {enableDealerModel ? (
-            /*
-              * Which calculation is on screen. These are two different
-              * measurements of the same chain, not two versions of one, so the
-              * control names both rather than offering a "v2" that implies the
-              * other is out of date.
-              */
-            <div
-              className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
-              title="The Structural OI model uses the provider's exposure by strike. Dealer is our reconstructed dealer-inventory estimate, not a proprietary participant-position feed. Gamma only; other metrics remain structural."
-            >
-              {([
-                ["STRUCTURAL_OI", "STRUCTURAL"],
-                ["DEALER_INVENTORY", "DEALER"],
-              ] as const).map(([value, label]) => (
+          <div className="gex-map-header-controls flex shrink-0 items-center gap-1.5">
+            <div className="gex-map-frame-steps ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5">
+              {FRAME_STEPS.map((value) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => {
-                    setExposureModel(value);
+                    setStepMinutes(value);
                     setCursor(0);
                     setPlaying(false);
                   }}
-                  aria-pressed={exposureModel === value}
-                  className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${exposureModel === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                  className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${stepMinutes === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
                 >
-                  {label}
+                  {value}m
                 </button>
               ))}
             </div>
-          ) : null}
 
-          <div
-            className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
-            title="Front / 0DTE is the comparable dealer ladder. All Exp is a complete-chain structural diagnostic."
-          >
-            {(["ALL_EXPIRIES", "FRONT_EXPIRY"] as const).map((scope) => (
-              <button
-                key={scope}
-                type="button"
-                onClick={() => {
-                  setExpiryScope(scope);
-                  setCursor(0);
-                  setPlaying(false);
-                }}
-                aria-pressed={expiryScope === scope}
-                className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${expiryScope === scope ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+            {/* PRESENT = the live per-strike ladders; FUTURE = the forward
+                expiry×strike matrix built from the same options surface. Hidden
+                when the host pinned a horizon: a page that is only ever FUTURE
+                should not offer a way out of itself. */}
+            <div className={`ml-1 h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5 ${lockedTimeHorizon ? "hidden" : "flex"}`}>
+              {(["present", "future"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setTimeHorizon(mode);
+                    if (privateWorkspace) return;
+                    try {
+                      window.localStorage.setItem(GEX_MAP_TIME_HORIZON_KEY, mode);
+                      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+                    } catch { /* persistence is best-effort */ }
+                  }}
+                  aria-pressed={timeHorizon === mode}
+                  className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2.5 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${timeHorizon === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+
+            {enableDealerModel ? (
+              /*
+                * Which calculation is on screen. These are two different
+                * measurements of the same chain, not two versions of one, so the
+                * control names both rather than offering a "v2" that implies the
+                * other is out of date.
+                */
+              <div
+                className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
+                title="The Structural OI model uses the provider's exposure by strike. Dealer is our reconstructed dealer-inventory estimate, not a proprietary participant-position feed. Gamma only; other metrics remain structural."
               >
-                {scope === "ALL_EXPIRIES" ? "All Exp" : "Front / 0DTE"}
-              </button>
-            ))}
-          </div>
+                {([
+                  ["STRUCTURAL_OI", "STRUCTURAL"],
+                  ["DEALER_INVENTORY", "DEALER"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setExposureModel(value);
+                      setCursor(0);
+                      setPlaying(false);
+                    }}
+                    aria-pressed={exposureModel === value}
+                    className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${exposureModel === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
-          <div
-            className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
-            title="Exposure display unit. $1 is directly comparable with dollar-move ladders; 1% is the larger native percent-move convention."
-          >
-            {(["PER_ONE_DOLLAR_MOVE", "PER_ONE_PERCENT_MOVE"] as const).map((mode) => (
+            <div
+              className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
+              title="Front / 0DTE is the comparable dealer ladder. All Exp is a complete-chain structural diagnostic."
+            >
+              {(["ALL_EXPIRIES", "FRONT_EXPIRY"] as const).map((scope) => (
+                <button
+                  key={scope}
+                  type="button"
+                  onClick={() => {
+                    setExpiryScope(scope);
+                    setCursor(0);
+                    setPlaying(false);
+                  }}
+                  aria-pressed={expiryScope === scope}
+                  className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${expiryScope === scope ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                >
+                  {scope === "ALL_EXPIRIES" ? "All Exp" : "Front / 0DTE"}
+                </button>
+              ))}
+            </div>
+
+            <div
+              className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
+              title="Exposure display unit. $1 is directly comparable with dollar-move ladders; 1% is the larger native percent-move convention."
+            >
+              {(["PER_ONE_DOLLAR_MOVE", "PER_ONE_PERCENT_MOVE"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setRepresentation(mode);
+                    setCursor(0);
+                    setPlaying(false);
+                  }}
+                  aria-pressed={representation === mode}
+                  className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${representation === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                >
+                  {mode === "PER_ONE_DOLLAR_MOVE" ? "$1" : "1%"}
+                </button>
+              ))}
+            </div>
+
+            <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
               <button
-                key={mode}
                 type="button"
-                onClick={() => {
-                  setRepresentation(mode);
-                  setCursor(0);
-                  setPlaying(false);
-                }}
-                aria-pressed={representation === mode}
-                className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${representation === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                onClick={() => (timeHorizon === "future" ? adjustFutureZoom(-1) : adjustLadderZoom(-1))}
+                disabled={(timeHorizon === "future" ? futureZoom : ladderZoom) <= GEX_MAP_ZOOM_MIN}
+                className="flex h-5 w-5 items-center justify-center rounded-[var(--kwant-control-radius,8px)] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="Zoom strike nodes out (show more)"
               >
-                {mode === "PER_ONE_DOLLAR_MOVE" ? "$1" : "1%"}
+                <Minus className="h-3 w-3" />
               </button>
-            ))}
-          </div>
+              <span className="min-w-[30px] text-center text-[9px] font-semibold uppercase leading-none tracking-[0.075em] text-foreground">{Math.round((timeHorizon === "future" ? futureZoom : ladderZoom) * 100)}%</span>
+              <button
+                type="button"
+                onClick={() => (timeHorizon === "future" ? adjustFutureZoom(1) : adjustLadderZoom(1))}
+                disabled={(timeHorizon === "future" ? futureZoom : ladderZoom) >= GEX_MAP_ZOOM_MAX}
+                className="flex h-5 w-5 items-center justify-center rounded-[var(--kwant-control-radius,8px)] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="Zoom strike nodes in (show fewer)"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </div>
 
-          <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
-            <button
-              type="button"
-              onClick={() => (timeHorizon === "future" ? adjustFutureZoom(-1) : adjustLadderZoom(-1))}
-              disabled={(timeHorizon === "future" ? futureZoom : ladderZoom) <= GEX_MAP_ZOOM_MIN}
-              className="flex h-5 w-5 items-center justify-center rounded-[var(--kwant-control-radius,8px)] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
-              aria-label="Zoom strike nodes out (show more)"
-            >
-              <Minus className="h-3 w-3" />
-            </button>
-            <span className="min-w-[30px] text-center text-[9px] font-semibold uppercase leading-none tracking-[0.075em] text-foreground">{Math.round((timeHorizon === "future" ? futureZoom : ladderZoom) * 100)}%</span>
-            <button
-              type="button"
-              onClick={() => (timeHorizon === "future" ? adjustFutureZoom(1) : adjustLadderZoom(1))}
-              disabled={(timeHorizon === "future" ? futureZoom : ladderZoom) >= GEX_MAP_ZOOM_MAX}
-              className="flex h-5 w-5 items-center justify-center rounded-[var(--kwant-control-radius,8px)] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
-              aria-label="Zoom strike nodes in (show fewer)"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
           </div>
 
           <div className="gex-map-header-actions ml-auto flex shrink-0 items-center gap-1">
+            {enableWorkspaces ? starSettingsButton : null}
             {/*
               * Which part of the day a replay covers.
               *
@@ -1971,12 +1986,6 @@ function GexMapWorkspace({
             >
               <RefreshCw className="h-3 w-3" />
             </button>
-            {enableWorkspaces ? <GexMapWorkspacesMenu activeId={activeWorkspaceId} snapshot={workspaceSnapshot}
-              onActivate={applyWorkspace} onSaved={activateWorkspace} onDelete={(id) => {
-                if (id !== activeWorkspaceId) return;
-                setActiveWorkspaceId(null);
-                rememberActiveGexMapWorkspace(null);
-              }} /> : null}
             {!externalReplay ? <button
               type="button"
               onClick={replayMode ? exitReplay : enterReplay}
