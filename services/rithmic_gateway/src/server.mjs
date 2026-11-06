@@ -44,7 +44,6 @@ import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-clien
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
 import { ExposureArchiver } from "./exposure-archiver.mjs";
-import { HeatCellArchiveReader, heatCellArchiveRequest } from "./heat-cell-archive.mjs";
 import { archiveStorageHealth } from "./archive-storage-health.mjs";
 import { EventLoopLoadGuard, isDeferrableDuringOverload } from "./event-loop-load-guard.mjs";
 import { VendorDataEdge } from "./vendor-data-edge.mjs";
@@ -146,7 +145,6 @@ const exposureArchiver = new ExposureArchiver({
   enabled: config.exposureArchiveEnabled,
 });
 const archiveQuantDataResponse = (entry) => exposureArchiver.archive(entry);
-const heatCellArchive = new HeatCellArchiveReader({ dir: config.recordDir, key: config.gatewayToken });
 // Every upstream REST consumer shares ONE account budget. Never create one
 // scheduler per pane, service or user: the provider quota is account-wide.
 const quantDataRequestBudget = config.quantDataApiKey
@@ -1308,15 +1306,6 @@ const server = createServer(async (request, response) => {
     });
   }
   try {
-    if (url.pathname === "/v1/market-data/heat-map-history") {
-      if (eventLoopLoadGuard.isOverloaded()) return json(response, 503, { code: "live_feed_priority", error: "Recorded history is temporarily paused to protect the live feed." });
-      const controller = new AbortController(), cancel = () => { if (!response.writableEnded) controller.abort(); };
-      response.once("close", cancel);
-      try {
-        const result = await heatCellArchiveRequest(request, url, heatCellArchive, controller.signal);
-        return json(response, result.status, result.body);
-      } finally { response.off("close", cancel); }
-    }
     if (url.pathname === "/v1/financial-info") {
       if (request.method !== "GET") return json(response, 405, { error: "Method not allowed." });
       if (url.search) return json(response, 400, { error: "Unsupported parameter." });
