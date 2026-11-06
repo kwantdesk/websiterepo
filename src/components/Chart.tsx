@@ -3144,9 +3144,10 @@ function inferCandleIntervalMs(candles: Candle[]) {
 function formatPriceDistance(entry: number, other: number, precision: number) {
   const diff = other - entry;
   const absolute = Math.abs(diff);
-  const percent = entry !== 0 ? (absolute / entry) * 100 : 0;
-  const sign = diff >= 0 ? "+" : "-";
-  return `${sign}${absolute.toFixed(precision)} (${percent.toFixed(2)}%)`;
+  const percent = entry !== 0 ? (absolute / Math.abs(entry)) * 100 : null;
+  const sign = diff > 0 ? "+" : diff < 0 ? "-" : "";
+  const percentLabel = percent === null ? "—" : `${sign}${percent.toFixed(2)}%`;
+  return `${sign}${absolute.toFixed(precision)} (${percentLabel})`;
 }
 
 function groupToolsBySection(tools: ToolbarTool[]) {
