@@ -1,3 +1,4 @@
+import { excludeUnverifiedCashHistory } from "./cashHistoryQuality.ts";
 import { chartTimeBucketStartMs } from "./chartTimeBucket.ts";
 import type { Candle } from "@/lib/backtester";
 import { fetchWithDeadline } from "./marketDataRequest.ts";
@@ -1496,14 +1497,9 @@ export function repairInstitutionalCandleSeries(
   timeframe: string,
   symbol: string,
 ) {
-  const threshold = eventThreshold(timeframe, symbol);
-  void threshold;
-  void symbol;
-  // Integrity is validated at ingestion. A missing time bucket remains
-  // missing and an over-range execution remains visible; synthesizing a flat
-  // no-trade bar or rewriting a real wick conceals the very outage/bad print
-  // an operator must investigate.
-  return candles;
+  // Reapply the recorded incident filter to older browser caches. Keep gaps
+  // and genuine price extremes as received outside the quarantined window.
+  return excludeUnverifiedCashHistory(candles, symbol, timeframe);
 }
 
 export function applyInstitutionalTradesToCandles(

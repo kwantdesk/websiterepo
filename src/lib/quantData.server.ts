@@ -1,6 +1,7 @@
 import "server-only";
 import { optionsOpeningClock } from "./optionsOpeningRefresh.ts";
 import { chartTimeBucketStartMs } from "./chartTimeBucket.ts";
+import { excludeUnverifiedCashHistory } from "@/lib/cashHistoryQuality";
 import type { UnderlyingHistoryCoverage } from "@/lib/underlyingHistoryCoverage";
 import { unstable_cache } from "next/cache";
 import { fetchInstitutionalMarketData, isInstitutionalMarketDataConfigured } from "@/lib/institutionalMarketData.server";
@@ -1129,9 +1130,11 @@ export async function getOptionsUnderlyingHistory(input: {
       }
       return candle;
     });
-    return Object.assign(candles, { historyCoverage: {
-      partial: payload.truncated === true, requestedFrom: from, requestedTo: to,
-      availableFrom: candles[0]?.timestamp ?? null, availableTo: candles.at(-1)?.timestamp ?? null,
+    const verified = excludeUnverifiedCashHistory(candles, cashTicker, input.timeframe);
+    const unverifiedBars = candles.length - verified.length;
+    return Object.assign(verified, { historyCoverage: {
+      partial: payload.truncated === true || unverifiedBars > 0, unverifiedBars, requestedFrom: from, requestedTo: to,
+      availableFrom: verified[0]?.timestamp ?? null, availableTo: verified.at(-1)?.timestamp ?? null,
     } });
   }
   let payloads: unknown[];

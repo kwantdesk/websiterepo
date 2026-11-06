@@ -7368,10 +7368,12 @@ function WorkspaceChartPaneComponent({
         );
         if (cancelled) return;
         receivedBaseHistory = true;
-        const historyCoverage = (nextCandles as Candle[] & { historyCoverage?: { partial?: boolean } }).historyCoverage;
+        const historyCoverage = (nextCandles as Candle[] & { historyCoverage?: { partial?: boolean; unverifiedBars?: number } }).historyCoverage;
         setHistoryCoverageWarning(historyCoverage?.partial ? {
           key: `${pane.broker}:${pane.symbol}:${pane.timeframe}:${period}`,
-          message: "Showing available history only; part of the requested range is not available yet.",
+          message: historyCoverage.unverifiedBars
+            ? "SPY history has a gap on Nov 5 because the recorded prices conflict."
+            : "Showing available history only; part of the requested range is not available yet.",
         } : null);
         const downloadedMarketTrades = needsOrderFlowHistory
           ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? []
