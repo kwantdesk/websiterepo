@@ -1,4 +1,5 @@
-import { MINIMUM_CHART_HISTORY_SESSIONS, cmeSessionDateKey } from "@/lib/chartHistoryWindow";
+import { RTH_START_MINUTES, RTH_END_MINUTES, requestedSessionIds, resolveSessionSegments, sessionTradingDate, type SessionFilterMode, type SessionWindowKind } from "@/lib/volumeProfileSessions";
+import { MINIMUM_CHART_HISTORY_SESSIONS, cmeSessionDateKey, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 
 /**
  * Which volume profiles a replay may legitimately show at a given clock.
@@ -16,16 +17,18 @@ import { MINIMUM_CHART_HISTORY_SESSIONS, cmeSessionDateKey } from "@/lib/chartHi
  */
 export type ReplayProfileJob = {
   tradingDate: string;
-  /**
-   * A session that finished before the cursor. The gateway resolves the whole
-   * CME window itself, which is both complete and safely in the past.
-   */
+  startMs: number;
+  endMs: number;
   completed: boolean;
-  /** Set only while a session is still developing under the replay cursor. */
-  endMs?: number;
+  sessionId?: string;
+  sessionLabel?: string;
 };
 
-const DAY_MS = 24 * 60 * 60_000;
+// Archive rows are minute aggregates. A cutoff inside a minute would
+// include later executions even if the response echoes the requested end.
+export function replayProfileCheckpoint(clock: number): number {
+  return Math.floor(clock / 60_000) * 60_000;
+}
 
 function tradingDate(timestamp: number) {
   return cmeSessionDateKey(timestamp) ?? new Date(timestamp).toISOString().slice(0, 10);
@@ -71,14 +74,36 @@ export function replayProfileJobs(
   candles: readonly { timestamp: number }[],
   replayClock: number,
   maxSessions: number = MINIMUM_CHART_HISTORY_SESSIONS,
+  settings: Record<string, unknown> = {},
 ): ReplayProfileJob[] {
-  const cursorDate = Number.isFinite(replayClock) ? tradingDate(replayClock) : null;
-  if (!cursorDate) return [];
-  return replayProfileTradingDates(candles, replayClock, maxSessions)
-    .filter((date) => date <= cursorDate)
-    .map((date) => (date === cursorDate
-      ? { tradingDate: date, completed: false, endMs: replayClock }
-      : { tradingDate: date, completed: true }));
+  const cutoff = replayProfileCheckpoint(replayClock);
+  const mode = String(settings.filterMode ?? "none").toLowerCase() as SessionFilterMode;
+  const ids = requestedSessionIds(settings);
+  const useEndSessionAsStartDay = settings.useEndSessionAsStartDay === true;
+  return replayProfileTradingDates(candles, replayClock, maxSessions).flatMap((date) => {
+    const session = cmeSessionWindowForDate(date);
+    if (!session) return [];
+    const midnight = Date.parse(date + "T00:00:00Z");
+    const windows = ids?.size
+      ? resolveSessionSegments(midnight - 12 * 3_600_000, midnight + 36 * 3_600_000, {
+          mode,
+          window: [...ids][0] as SessionWindowKind,
+          customStartMinutes: Number(settings.sessionStartMinutes ?? RTH_START_MINUTES),
+          customEndMinutes: Number(settings.sessionEndMinutes ?? RTH_END_MINUTES),
+          useEndSessionAsStartDay,
+        }).filter((segment) => ids.has(segment.id) && (
+          mode === "triple"
+            ? tradingDate(segment.startMs) === date
+            : sessionTradingDate(segment, useEndSessionAsStartDay) === date
+        )).map(({ startMs, endMs, id, label }) => ({ startMs, endMs, sessionId: id, sessionLabel: label }))
+      : [session];
+    return windows.flatMap((window) => {
+      const endMs = Math.min(window.endMs, cutoff);
+      return endMs > window.startMs
+        ? [{ ...window, tradingDate: date, endMs, completed: endMs === window.endMs }]
+        : [];
+    });
+  });
 }
 
 /**
@@ -90,19 +115,9 @@ export function replayWeeklyProfileWindow(
   replayClock: number,
   maxSessions: number = MINIMUM_CHART_HISTORY_SESSIONS,
 ): { startMs: number; endMs: number } | null {
-  const dates = replayProfileTradingDates(candles, replayClock, maxSessions);
-  if (!dates.length) return null;
-  const covered = new Set(dates);
-  let startMs = Infinity;
-  for (const candle of candles) {
-    const timestamp = Number(candle.timestamp);
-    if (!Number.isFinite(timestamp) || timestamp > replayClock) continue;
-    if (covered.has(tradingDate(timestamp)) && timestamp < startMs) startMs = timestamp;
-  }
-  // Globex opens the evening before the trading date, so a session with no
-  // committed bar yet still needs a start earlier than the cursor.
-  if (!Number.isFinite(startMs)) startMs = replayClock - DAY_MS;
-  return { startMs, endMs: replayClock };
+  const jobs = replayProfileJobs(candles, replayClock, maxSessions);
+  if (!jobs.length) return null;
+  return { startMs: jobs[0].startMs, endMs: jobs[jobs.length - 1].endMs };
 }
 
 /**

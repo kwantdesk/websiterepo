@@ -6140,12 +6140,16 @@ function WorkspaceChartPaneComponent({
   // Exact archive profiles use completed-minute checkpoints in replay. Never
   // fan out a history HTTP request for every 200 ms transport tick.
   const replayProfileClockMs = replayTimestampMs == null ? null : Math.floor(replayTimestampMs / 60_000) * 60_000;
+  const filterFutureProfileDates = replayTimestampMs != null;
   const dailyTradingDates = useMemo(() => {
     const dates = new Set<string>();
-    candles.forEach((candle) => dates.add(chicagoTradingDate(candle.timestamp)));
+    for (const candle of candles) {
+      const date = chicagoTradingDate(candle.timestamp);
+      if (!filterFutureProfileDates || date <= currentDailyTradingDate) dates.add(date);
+    }
     dates.add(currentDailyTradingDate);
     return [...dates].sort().slice(-dailyProfileCount);
-  }, [candles, currentDailyTradingDate, dailyProfileCount]);
+  }, [candles, currentDailyTradingDate, dailyProfileCount, filterFutureProfileDates]);
   const dailyTradingDateSignature = dailyTradingDates.join(",");
   const compositeProfileRange = useMemo(() => resolveCompositeVolumeProfileRange({
     candles,

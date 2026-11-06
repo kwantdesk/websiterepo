@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { institutionalVolumeProfileRequest } from "../src/lib/institutionalMarketData.ts";
+import { resolveVolumeProfileRange } from "../services/rithmic_gateway/src/trading-session.mjs";
 import {
   replayProfileJobs,
   replayProfileTradingDates,
@@ -45,7 +47,7 @@ const cursor = at(12, 14);
   assert.equal(developing[0].tradingDate, "2026-08-12");
   assert.equal(developing[0].endMs, cursor, "it must stop at the replay cursor");
   for (const job of jobs.filter((job) => job.completed)) {
-    assert.equal(job.endMs, undefined, `${job.tradingDate} is wholly in the past`);
+    assert.ok(job.startMs < job.endMs && job.endMs <= cursor);
   }
 }
 
@@ -92,10 +94,36 @@ const cursor = at(12, 14);
   assert.ok(window, "a weekly window is produced");
   assert.equal(window.endMs, cursor, "the weekly profile stops at the cursor");
   assert.ok(window.startMs < cursor);
-  assert.ok(window.startMs >= at(6, 14) - 1, "it starts inside the five covered sessions");
+  assert.equal(window.startMs, at(5, 22), "it starts at the first session open");
   // Future candles cannot drag the start forward or the end past the cursor.
   const polluted = replayWeeklyProfileWindow([...candlesFor(WEEK), ...candlesFor([13])], cursor);
   assert.equal(polluted.endMs, cursor);
+}
+
+// --- the client request and gateway agree on the recorded session ---
+{
+  const day = "2026-11-05";
+  const open = Date.UTC(2026, 10, 4, 23);
+  const clock = Date.UTC(2026, 10, 5, 14, 30, 25);
+  const job = replayProfileJobs([{ timestamp: open }], clock).at(-1);
+  assert.equal(job.startMs, open);
+  assert.equal(job.endMs, clock - 25_000, "exclude the archive's unfinished minute");
+  for (const startMs of [undefined, job.startMs]) {
+    const { query } = institutionalVolumeProfileRequest({
+      symbol: "NQ", period: "daily", tradingDate: day, startMs, endMs: job.endMs,
+    });
+    assert.deepEqual(resolveVolumeProfileRange(query, clock), {
+      tradingDate: day, startMs: open, endMs: job.endMs,
+    });
+  }
+  assert.deepEqual(replayProfileJobs([{ timestamp: open }], open + 59_999), []);
+  const windows = replayProfileJobs([{ timestamp: open }], clock, 1, {
+    filterMode: "triple", sessionAsiaEnabled: true, sessionTokyoEnabled: false,
+    sessionLondonEnabled: false, sessionNewYorkEnabled: true,
+  });
+  assert.deepEqual(windows.map(({ sessionId }) => sessionId), ["asia"],
+    "New York has not had a completed minute at 08:30:25 Chicago");
+  assert.equal(windows[0].startMs, open);
 }
 
 // --- a cached profile from a later cursor is rejected ---

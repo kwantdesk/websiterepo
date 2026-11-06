@@ -1008,11 +1008,11 @@ export function institutionalVolumeProfileRequest(args: InstitutionalVolumeProfi
   // Browser labels are the business-date CLOSE; gateway archive keys name
   // the preceding session OPEN. Send the actual window rather than letting
   // the same date label silently select the following (often empty) session.
-  if (args.period === "daily" && args.tradingDate && !Number.isFinite(args.startMs) && !Number.isFinite(args.endMs)) {
+  if (args.period === "daily" && args.tradingDate && !Number.isFinite(args.startMs)) {
     const session = cmeSessionWindowForDate(args.tradingDate);
     if (session) {
       query.set("startMs", String(session.startMs));
-      query.set("endMs", String(session.endMs));
+      if (!Number.isFinite(args.endMs)) query.set("endMs", String(session.endMs));
     }
   }
   return { askedValueAreaPercent, query, cacheKey: query.toString() };
