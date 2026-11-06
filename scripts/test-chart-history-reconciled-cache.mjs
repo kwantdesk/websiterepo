@@ -18,7 +18,7 @@ test('repaired candle caches reject legacy partial captures while keeping curren
  const derived=await cache.readCompatibleChartHistoryCache('NQ.v.0','5m');assert.equal(derived.candles[0].close,102);assert.equal(derived.key,'time-v8::NQ.v.0::5m');
 });
 
-test("fresh monthly caches retain candles whose calendar open predates the cache lifetime",async()=>{const stamp=Date.now()-40*86400000,key="time-v8::NQ.v.0::1M";rows.set(key,{...current,key,timeframe:"1M",candles:[{...current.candles[0],timestamp:stamp}]});assert.equal((await cache.readChartHistoryCache("NQ.v.0","1M")).candles[0].timestamp,stamp)});
+test("fresh monthly caches retain candles whose calendar open predates the cache lifetime",async()=>{const stamp=Date.now()-40*86400000,key="calendar-v9::NQ.v.0::1M";rows.set(key,{...current,key,timeframe:"1M",candles:[{...current.candles[0],timestamp:stamp}]});assert.equal((await cache.readChartHistoryCache("NQ.v.0","1M")).candles[0].timestamp,stamp)});
 test("dense saved history exceeds the former 120,000-bar cutoff",async()=>{const key="time-v8::ES.v.0::1s",candles=Array.from({length:120001},(_,i)=>({...current.candles[0],timestamp:at-120000000+i*1000}));rows.set(key,{...current,key,symbol:"ES.v.0",timeframe:"1s",candles});assert.equal((await cache.readChartHistoryCache("ES.v.0","1s")).candles.length,120001)});
 
 test("an intraday cache cannot masquerade as complete calendar history",async()=>{assert.equal(await cache.readCompatibleChartHistoryCache("ES.v.0","1M"),null)});

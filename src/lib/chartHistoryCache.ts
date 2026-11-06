@@ -117,6 +117,8 @@ function executionFingerprint(records: InstitutionalTrade[]) {
 }
 
 function cacheKey(symbol: string, timeframe: string) {
+  // Old base history re-bucketed exchange calendar bars on a UTC clock.
+  if (/^\d+[DWM]$/.test(timeframe)) return `calendar-v9::${symbol}::${timeframe}`;
   // v8 excludes provider-imported event history. Bars use only captured prints
   // from the ordered native execution tape and
   // carries source watermarks into live continuation. Keep v6's approximate

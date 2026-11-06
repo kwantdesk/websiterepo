@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
+import { getChartInterval } from "../src/lib/chartIntervals.ts";
 import { chartTimeBucketStartMs } from "../src/lib/chartTimeBucket.ts";
 
 function loadFunction(path, name, globals) {
@@ -33,7 +34,7 @@ test("real candle loader returns while optional flow and browser persistence rem
     getPeriodConfig: () => ({ from: "2026-10-12" }),
     FALLBACK_CTRADER_BROKER_NAMES: [], OANDA_INSTRUMENT_MAP: {}, OANDA_GRANULARITY_MAP: {},
     getHistoricalCandleLimit: () => 10000, DEFAULT_CHART_HISTORY_CALENDAR_DAYS: 10,
-    workspaceCandleRequests: new Map(), isEventBasedChartInterval: () => false,
+    workspaceCandleRequests: new Map(), isEventBasedChartInterval: () => false, getChartInterval,
     fetchWorkspaceOrderFlow: () => { optionalRequests++; return never; },
     fetchJsonWithBudget: async () => ({ response: { ok: true }, payload: { candles: [candle], executions: [] } }),
     sanitizeCandles: rows => rows, decodeExecutionTape: rows => rows,
@@ -109,7 +110,7 @@ test("contract resolution rerender cannot abort a shared futures history request
   const gate=new Promise(resolve=>{release=resolve});
   const load=loadFunction('../src/components/KwantifyWorkspace.tsx','fetchWorkspaceCandles',{
     getPeriodConfig:()=>({from:'2026-10-12'}),FALLBACK_CTRADER_BROKER_NAMES:[],OANDA_INSTRUMENT_MAP:{},OANDA_GRANULARITY_MAP:{},
-    getHistoricalCandleLimit:()=>10000,DEFAULT_CHART_HISTORY_CALENDAR_DAYS:10,workspaceCandleRequests:new Map(),isEventBasedChartInterval:()=>false,
+    getHistoricalCandleLimit:()=>10000,DEFAULT_CHART_HISTORY_CALENDAR_DAYS:10,workspaceCandleRequests:new Map(),isEventBasedChartInterval:()=>false, getChartInterval,
     fetchJsonWithBudget:async(_url,_budget,_fresh,options)=>{requests++;await gate;if(options?.signal?.aborted)throw new DOMException('Cancelled','AbortError');return {response:{ok:true},payload:{candles:[candle],executions:[]}}},
     sanitizeCandles:rows=>rows,decodeExecutionTape:rows=>rows,mergeInstitutionalTradeTape:(a,b)=>[...a,...b],workspaceExecutionTape:new Map(),workspaceOrderFlowKey:()=> 'GC:1m',
     writeChartHistoryCache:async()=>null,writeExecutionTapeCache:async()=>null,
@@ -126,7 +127,7 @@ test("contract resolution rerender cannot abort a shared futures history request
 test("closed futures sessions do not hold history behind a live-seam network request", async () => {
   const load = loadFunction("../src/components/KwantifyWorkspace.tsx", "fetchWorkspaceLiveSeam", {
     scopedFuturesContract: () => 'NQZ6',
-    isEventBasedChartInterval: () => false,
+    isEventBasedChartInterval: () => false, getChartInterval,
     isCmeClosedSessionTimestamp: () => true,
     fetchInstitutionalSnapshot: () => { throw new Error("Closed session must not request a live seam"); },
   });

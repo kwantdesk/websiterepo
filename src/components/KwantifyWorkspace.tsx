@@ -364,10 +364,12 @@ import {
   CHART_INTERVAL_GROUPS,
   orderedFavouriteChartIntervals,
   formatChartInterval,
+  getChartInterval,
   isEventBasedChartInterval,
   parseChartIntervalInput,
   makeCustomChartInterval,
   supportsChartInterval,
+  hasRecordedChartSource,
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { chartTimeBucketStartMs } from "@/lib/chartTimeBucket";
@@ -408,6 +410,7 @@ import {
   isCmeClosedSessionTimestamp,
   timeframeDurationMs,
   trimToRecentChartSessions,
+  chartHistoryWindowStart,
 } from "@/lib/chartHistoryWindow";
 import { readLiveQuoteCache, writeLiveQuoteCache } from "@/lib/liveQuoteCache";
 import {
@@ -1625,10 +1628,10 @@ type PaneHeaderMenuOption = {
 
 /** Interval choices a pane's broker can actually serve, grouped like the
  * top-bar interval menu. */
-function paneIntervalMenuOptions(broker: string): PaneHeaderMenuOption[] {
+function paneIntervalMenuOptions(broker: string, symbol: string): PaneHeaderMenuOption[] {
   return CHART_INTERVAL_GROUPS.flatMap((group) =>
     group.options
-      .filter((option) => supportsChartInterval(option.id, broker))
+      .filter((option) => supportsChartInterval(option.id, broker, symbol))
       .map((option) => ({ value: option.id, label: option.label, group: group.label })),
   );
 }
@@ -2446,8 +2449,8 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     ? "Market Index"
     : pane.broker ?? fallback.broker;
   const requestedTimeframe = pane.timeframe ?? fallback.timeframe;
-  const timeframe = broker === "Market Index" && !supportsChartInterval(requestedTimeframe, broker)
-    ? "1D"
+  const timeframe = !supportsChartInterval(requestedTimeframe, broker, pane.symbol)
+    ? "1m"
     : requestedTimeframe;
   return {
     id: pane.id ?? fallback.id,
@@ -2855,8 +2858,10 @@ function requestedChartHistoryStart(period: string) {
   return Date.parse(getPeriodConfig(period).from);
 }
 
-function trimChartHistoryForPeriod(candles: Candle[], period: string, requestedFrom: number) {
-  const withinRequestedWindow = candles.filter((candle) => candle.timestamp >= requestedFrom);
+function trimChartHistoryForPeriod(candles: Candle[], period: string, requestedFrom: number, timeframe: string) {
+  const windowStart = chartHistoryWindowStart(requestedFrom, timeframe);
+  const withinRequestedWindow = candles.filter((candle) => candle.timestamp >= windowStart
+    || (candle.sourceEndTimestamp ?? candle.timestamp) >= requestedFrom);
   return period === "5D"
     ? trimToRecentChartSessions(withinRequestedWindow)
     : withinRequestedWindow;
@@ -3933,7 +3938,7 @@ async function fetchWorkspaceCandles(
       // checks its own cancelled flag before presenting the result.
       const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(
         `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${auctionGapExpectedContract ? "&auctionGap=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
-        isEventBasedChartInterval(timeframe) ? 285_000 : 45_000,
+        isEventBasedChartInterval(timeframe) || getChartInterval(timeframe)?.kind === "second" ? 285_000 : 45_000,
         forceFresh,
       );
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
@@ -5580,7 +5585,7 @@ function WorkspaceChartPaneComponent({
     const toMs = newYorkSessionTimestamp(replaySessionDate, GEX_VUE_REPLAY_CLOSE_MINUTE + 5);
     return replayChartHistoryRange({ startMs: fromMs, endMs: toMs }, period);
   }, [pane.broker, pane.timeframe, period, replayActive, replaySessionDate]);
-  const eventPageScope = `${pane.id}:${pane.symbol}:${pane.timeframe}:${replayHistoryRange?.key ?? "live"}`;
+  const eventPageScope = `${pane.id}:${pane.symbol}:${pane.timeframe}:${period}:${replayHistoryRange?.key ?? "live"}`;
   const eventPagesRef = useRef({ scope: eventPageScope, candles: [] as Candle[], busy: false, done: false, retryAt: 0 });
   if (eventPagesRef.current.scope !== eventPageScope) eventPagesRef.current = { scope: eventPageScope, candles: [], busy: false, done: false, retryAt: 0 };
   const loadEarlierEventHistory = useCallback(async () => {
@@ -5591,7 +5596,10 @@ function WorkspaceChartPaneComponent({
     if (!first || latestCandlesRef.current.length < 50_000 || state.busy || state.done || state.retryAt > Date.now()) return;
     state.busy = true;
     const to = first.sourceStartTimestamp ?? first.timestamp;
-    const from = replayHistoryRange?.fromMs ?? Date.now() - DEFAULT_CHART_HISTORY_CALENDAR_DAYS * 86400000;
+    const from = replayHistoryRange?.fromMs ?? Math.max(
+      requestedChartHistoryStart(period), Date.now() - DEFAULT_CHART_HISTORY_CALENDAR_DAYS * 86400000,
+    );
+    if (to <= from) { state.busy = false; state.done = true; return; }
     try {
       const query = new URLSearchParams({ symbol: pane.symbol, timeframe: pane.timeframe,
         from: String(from), to: String(to), before: String(first.timestamp) });
@@ -5609,7 +5617,7 @@ function WorkspaceChartPaneComponent({
       }
     } catch { state.retryAt = Date.now() + 10_000; }
     finally { state.busy = false; }
-  }, [eventPageScope, pane.broker, pane.symbol, pane.timeframe, replayHistoryRange]);
+  }, [eventPageScope, pane.broker, pane.symbol, pane.timeframe, period, replayHistoryRange]);
   const replayVisibleCandleCount = useMemo(() => {
     if (!replayActive || !replayTimestampMs) return -1;
     return replayObservationCount(plottedCandles, replayTimestampMs);
@@ -6841,7 +6849,7 @@ function WorkspaceChartPaneComponent({
             .filter((candle) => (
               candle.timestamp >= replayHistoryRange.fromMs
               && candle.timestamp <= replayHistoryRange.toMs
-            )), period, replayHistoryRange.fromMs);
+            )), period, replayHistoryRange.fromMs, pane.timeframe);
           if (!clean.length) throw new Error("No candles were recorded for this replay session.");
           const replayTape = replayOrderFlowRequired
             ? workspaceExecutionTape.get(
@@ -6899,6 +6907,7 @@ function WorkspaceChartPaneComponent({
       immediateHistory,
       period,
       requestedFrom,
+      pane.timeframe,
     );
     const immediateCandles = inherited ? mergeHistoricalWithLiveTail(
       pane.broker === "Databento"
@@ -7142,7 +7151,7 @@ function WorkspaceChartPaneComponent({
         ),
         pane.timeframe,
       );
-      const cachedBase = trimChartHistoryForPeriod(cachedHistory, period, requestedFrom);
+      const cachedBase = trimChartHistoryForPeriod(cachedHistory, period, requestedFrom, pane.timeframe);
       const latestObservedTail = pane.broker === "Databento"
         ? readDatabentoLiveTail(pane.symbol)
         : [];
@@ -7242,6 +7251,7 @@ function WorkspaceChartPaneComponent({
             ),
             period,
             requestedFrom,
+            pane.timeframe,
           );
           baseCandles = applyAvailableOrderFlowHistory(
             baseCandles,
@@ -7318,7 +7328,7 @@ function WorkspaceChartPaneComponent({
           pane.timeframe,
         );
         const clean = pane.broker === "Databento"
-          ? trimChartHistoryForPeriod(downloaded, period, requestedFrom)
+          ? trimChartHistoryForPeriod(downloaded, period, requestedFrom, pane.timeframe)
           : downloaded;
         let mergedHistory = pane.broker === "Databento"
           ? mergeChartHistory(
@@ -7489,6 +7499,7 @@ function WorkspaceChartPaneComponent({
           ),
           period,
           requestedFrom,
+          pane.timeframe,
         );
         repaired = needsOrderFlowHistory
           ? applyAvailableOrderFlowHistory(
@@ -11731,14 +11742,14 @@ export default function KwantifyWorkspace({
     () => CHART_INTERVAL_GROUPS
       .map((group) => ({
         ...group,
-        options: group.options.filter((option) => supportsChartInterval(option.id, activeChartBrokerLabel)),
+        options: group.options.filter((option) => supportsChartInterval(option.id, activeChartBrokerLabel, selectedInstrument)),
       }))
       .filter((group) => group.options.length > 0),
-    [activeChartBrokerLabel],
+    [activeChartBrokerLabel, selectedInstrument],
   );
   const visibleFavouriteIntervals = useMemo(
-    () => orderedFavouriteChartIntervals(favTFs, activeChartBrokerLabel),
-    [activeChartBrokerLabel, favTFs],
+    () => orderedFavouriteChartIntervals(favTFs, activeChartBrokerLabel, selectedInstrument),
+    [activeChartBrokerLabel, favTFs, selectedInstrument],
   );
   const watchlistSymbolsCsv = useMemo(() => {
     const unique = new Set<string>();
@@ -11821,7 +11832,7 @@ export default function KwantifyWorkspace({
       category: group,
       broker: "Market Index",
       items: MARKET_INDEX_DEFINITIONS
-        .filter((instrument) => instrument.group === group)
+        .filter((instrument) => instrument.group === group && hasRecordedChartSource("Market Index", instrument.symbol))
         .map((instrument) => [instrument.symbol, `${instrument.displayName} · ${instrument.exchange}`]),
     })),
   ];
@@ -18044,8 +18055,9 @@ export default function KwantifyWorkspace({
     // history route, which has no such instrument and left the pane blank.
     const inferredBroker = !broker && isMarketIndexSymbol(symbol) ? "Market Index" : null;
     const nextBroker = broker ?? inferredBroker ?? connectedBroker ?? "OANDA";
-    const nextTimeframe = nextBroker === "Market Index" && !supportsChartInterval(selectedTimeframe, nextBroker)
-      ? "1D"
+    if (!hasRecordedChartSource(nextBroker, symbol)) return;
+    const nextTimeframe = !supportsChartInterval(selectedTimeframe, nextBroker, symbol)
+      ? "1m"
       : selectedTimeframe;
     if (nextBroker === "Databento") {
       void warmDatabentoChartHistory(symbol, "1m");
@@ -18070,11 +18082,12 @@ export default function KwantifyWorkspace({
   };
 
   const selectTimeframe = (timeframe: string) => {
+    if (!supportsChartInterval(timeframe, activeWorkspacePane.broker, activeWorkspacePane.symbol)) return;
     clearBacktest();
     if (linkedViewportPaneIds.has(activePaneId)) {
       clearChartViewportGroup(viewportSyncGroupForScope(chartWorkspaceScopeRef.current));
       setWorkspacePanes((current) => current.map((pane) => (
-        linkedViewportPaneIds.has(pane.id)
+        linkedViewportPaneIds.has(pane.id) && supportsChartInterval(timeframe, pane.broker, pane.symbol)
           ? { ...pane, timeframe }
           : pane
       )));
@@ -18155,23 +18168,24 @@ export default function KwantifyWorkspace({
     const draft = intervalDrafts[kind];
     if (!draft) return;
     const interval = makeCustomChartInterval(kind, draft.primary, draft.secondary);
-    if (!interval || !supportsChartInterval(interval, activeChartBrokerLabel)) return;
+    if (!interval || !supportsChartInterval(interval, activeChartBrokerLabel, selectedInstrument)) return;
     selectTimeframe(interval);
     setShowAllTF(false);
   };
 
   const selectWorkspacePaneTimeframe = (paneId: string, timeframe: string) => {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
-    if (!pane || !supportsChartInterval(timeframe, pane.broker)) return false;
+    if (!pane || !supportsChartInterval(timeframe, pane.broker, pane.symbol)) return false;
     clearBacktest();
     if (linkedViewportPaneIds.has(paneId)) {
       clearChartViewportGroup(viewportSyncGroupForScope(chartWorkspaceScopeRef.current));
       setWorkspacePanes((current) => current.map((candidate) => (
-        linkedViewportPaneIds.has(candidate.id)
+        linkedViewportPaneIds.has(candidate.id) && supportsChartInterval(timeframe, candidate.broker, candidate.symbol)
           ? { ...candidate, timeframe }
           : candidate
       )));
-      if (linkedViewportPaneIds.has(activePaneId)) {
+      if (linkedViewportPaneIds.has(activePaneId)
+        && supportsChartInterval(timeframe, activeWorkspacePane.broker, activeWorkspacePane.symbol)) {
         setSelectedTimeframe(timeframe);
       }
       return true;
@@ -18193,8 +18207,9 @@ export default function KwantifyWorkspace({
     clearBacktest();
     const inferredBroker = !broker && isMarketIndexSymbol(symbol) ? "Market Index" : null;
     const nextBroker = broker ?? inferredBroker ?? pane.broker ?? "OANDA";
-    const nextTimeframe = nextBroker === "Market Index" && !supportsChartInterval(pane.timeframe, nextBroker)
-      ? "1D"
+    if (!hasRecordedChartSource(nextBroker, symbol)) return;
+    const nextTimeframe = !supportsChartInterval(pane.timeframe, nextBroker, symbol)
+      ? "1m"
       : pane.timeframe;
     if (nextBroker === "Databento") {
       void warmDatabentoChartHistory(symbol, "1m");
@@ -19747,14 +19762,14 @@ export default function KwantifyWorkspace({
               title="Change this chart's timeframe"
               menuLabel="Timeframe"
               value={pane.timeframe}
-              options={paneIntervalMenuOptions(pane.broker)}
+              options={paneIntervalMenuOptions(pane.broker, pane.symbol)}
               menuWidth={214}
               searchable
               favourites={favTFs}
               onToggleFavourite={(option) => toggleFavTF(option.value)}
               queryOption={(input) => {
                 const parsed = parseChartIntervalInput(input);
-                if (!parsed || !supportsChartInterval(parsed, pane.broker)) return null;
+                if (!parsed || !supportsChartInterval(parsed, pane.broker, pane.symbol)) return null;
                 return { value: parsed, label: formatChartInterval(parsed), detail: "Custom", group: "Custom" };
               }}
               onSelect={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
@@ -19922,7 +19937,7 @@ export default function KwantifyWorkspace({
                   title="Change this chart's timeframe"
                   menuLabel="Timeframe"
                   value={pane.timeframe}
-                  options={paneIntervalMenuOptions(pane.broker)}
+                  options={paneIntervalMenuOptions(pane.broker, pane.symbol)}
                   menuWidth={184}
                   onSelect={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
                 />

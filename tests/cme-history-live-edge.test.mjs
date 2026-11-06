@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {registerHooks} from 'node:module';
 import {cmeChartTailNeedsReconciliation} from '../src/lib/chartHistoryWindow.ts';
+import {chartTimeBucketStartMs} from '../src/lib/chartTimeBucket.ts';
 
 // The shared Node alias hook treats `.server` as an extension. Resolve those
 // actual TS files locally; no application modules or provider calls are stubbed.
@@ -32,6 +33,10 @@ test('actual candle and flow adapters request the gateway live edge, not a delay
     assert.equal(url.pathname,'/v1/market-data/history');
     calls.push(url);
     const from=Number(url.searchParams.get('fromMs')),to=Number(url.searchParams.get('toMs'));
+    const timeframe=url.searchParams.get('interval');
+    if (['1D','1W','1M'].includes(timeframe)) {
+      return Response.json({symbol:'NQZ6',candles:[{...rows[0],timestamp:chartTimeBucketStartMs(from,timeframe)}]});
+    }
     return Response.json({symbol:'NQZ6',candles:rows.filter(row=>row.timestamp>=from&&row.timestamp<to),executions:[]});
   };
   try{
@@ -42,6 +47,10 @@ test('actual candle and flow adapters request the gateway live edge, not a delay
       assert.equal(cmeChartTailNeedsReconciliation(bars,timeframe,now),false,timeframe);
       assert.equal(bars.at(-1).high,105);
       assert.equal(bars.at(-1).close,102);
+    }
+    for (const timeframe of ['1D','1W','1M']) {
+      const bars=await getDatabentoBars('NQ.c.0',timeframe,start,end);
+      assert.equal(bars[0].timestamp,chartTimeBucketStartMs(Date.parse(start),timeframe));
     }
     const flow=await getDatabentoOrderFlowHistory('NQ.c.0','1m',start,end);
     assert.equal(Number(calls.at(-1).searchParams.get('toMs')),now);

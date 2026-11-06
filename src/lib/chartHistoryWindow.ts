@@ -309,6 +309,13 @@ export function trimToRecentChartSessions(
   return sorted.slice(startIndex);
 }
 
+/** Include the aggregate that overlaps the selected history boundary. */
+export function chartHistoryWindowStart(requestedFrom: number, timeframe: string) {
+  return timeframeDurationMs(timeframe) === null
+    ? requestedFrom
+    : chartTimeBucketStartMs(requestedFrom, timeframe);
+}
+
 export function timeframeDurationMs(timeframe: string) {
   const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
   if (!match) return null;

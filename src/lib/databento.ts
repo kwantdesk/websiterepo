@@ -406,56 +406,6 @@ export async function getDatabentoValueAreaProfiles(
   });
 }
 
-function sourceSchema(timeframe: string) {
-  const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
-  if (match?.[2] === "s") return "ohlcv-1s";
-  if (match?.[2] === "h") return "ohlcv-1h";
-  if (match && ["D", "W", "M"].includes(match[2])) return "ohlcv-1d";
-  return "ohlcv-1m";
-}
-
-function timeframeMs(timeframe: string) {
-  const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
-  if (!match) return 5 * 60_000;
-  const value = Math.max(1, Number(match[1]));
-  const units: Record<string, number> = {
-    s: 1_000,
-    m: 60_000,
-    h: 60 * 60_000,
-    D: 86_400_000,
-    W: 7 * 86_400_000,
-    M: 30 * 86_400_000,
-  };
-  return value * (units[match[2]] ?? 5 * 60_000);
-}
-
-function resample(rows: DatabentoBar[], timeframe: string) {
-  const size = timeframeMs(timeframe);
-  const schema = sourceSchema(timeframe);
-  const sourceSize = schema === "ohlcv-1s"
-    ? 1_000
-    : schema === "ohlcv-1m"
-      ? 60_000
-      : schema === "ohlcv-1h"
-        ? 60 * 60_000
-        : 86_400_000;
-  if (size < sourceSize) return rows;
-  const buckets = new Map<number, DatabentoBar>();
-  for (const row of rows) {
-    const timestamp = Math.floor(row.timestamp / size) * size;
-    const existing = buckets.get(timestamp);
-    if (!existing) {
-      buckets.set(timestamp, { ...row, timestamp });
-      continue;
-    }
-    existing.high = Math.max(existing.high, row.high);
-    existing.low = Math.min(existing.low, row.low);
-    existing.close = row.close;
-    existing.volume += row.volume;
-  }
-  return [...buckets.values()].sort((a, b) => a.timestamp - b.timestamp);
-}
-
 /**
  * "NQ.c.0" and "NQZ5" both mean the NQ book to the collector, which resolves
  * the front month itself from its own subscriptions.
@@ -544,7 +494,11 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
   });
   if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
   if (Number.isFinite(requestedTo)) query.set("toMs", String(requestedTo));
-  const response = await fetchInstitutionalMarketData(`/v1/market-data/history?${query}`);
+  const response = await fetchInstitutionalMarketData(
+    `/v1/market-data/history?${query}`,
+    undefined,
+    getChartInterval(timeframe)?.kind === "second" ? 125_000 : undefined,
+  );
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`Chart history is unavailable (${response.status}): ${detail.slice(0, 300)}`);
@@ -564,10 +518,9 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
     })
     .filter((row) => row.timestamp > 0 && row.close > 0)
     .sort((a, b) => a.timestamp - b.timestamp);
-  // The gateway already rolls its minutes up to the requested interval; this
-  // is a no-op for anything it served and still correct if it ever returns
-  // finer bars than were asked for.
-  return resample(bars, timeframe);
+  // The recorder has already aggregated this interval on its own exchange
+  // clock. Re-bucketing here changes weekly and monthly opens.
+  return bars;
 }
 
 export async function getDatabentoOrderFlowHistory(
@@ -606,7 +559,11 @@ export async function getDatabentoOrderFlowHistory(
   if (options.auctionGap) query.set("auctionGap", "1");
   if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
   if (Number.isFinite(requestedTo)) query.set("toMs", String(requestedTo));
-  const response = await fetchInstitutionalMarketData(`/v1/market-data/history?${query}`);
+  const response = await fetchInstitutionalMarketData(
+    `/v1/market-data/history?${query}`,
+    undefined,
+    getChartInterval(timeframe)?.kind === "second" ? 125_000 : undefined,
+  );
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`Chart history is unavailable (${response.status}): ${detail.slice(0, 300)}`);

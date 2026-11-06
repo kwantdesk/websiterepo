@@ -227,10 +227,19 @@ export function isEventBasedChartInterval(value: string) {
   return Boolean(option && !["second", "minute", "time"].includes(option.kind));
 }
 
-export function supportsChartInterval(value: string, broker: string) {
+export function hasRecordedChartSource(broker: string, symbol?: string) {
+  // VXN is a valid watchlist symbol, but this account has no recorded VXN feed.
+  return broker !== "Market Index" || symbol?.toUpperCase() !== "VXN";
+}
+
+export function supportsChartInterval(value: string, broker: string, symbol?: string) {
   const option = getChartInterval(value);
-  if (!option) return false;
-  if (broker === "Databento") return true;
+  if (!option || !hasRecordedChartSource(broker, symbol)
+    || !Number.isSafeInteger(option.value) || option.value < 1
+    || (option.secondaryValue !== undefined && (!Number.isSafeInteger(option.secondaryValue) || option.secondaryValue < 1))) return false;
+  // The sub-minute archive folds executions. A multi-minute duration belongs
+  // in the minute picker rather than in the seconds path.
+  if (broker === "Databento") return option.kind !== "second" || option.value < 60;
   // Options underlyings and indices use Massive aggregates for real intraday
   // history. Event-built futures intervals remain intentionally unavailable.
   // VIX still has its official Cboe daily fallback when Massive is absent.
@@ -251,10 +260,10 @@ export function supportsChartInterval(value: string, broker: string) {
   return false;
 }
 
-export function orderedFavouriteChartIntervals(favourites: readonly string[], broker: string) {
+export function orderedFavouriteChartIntervals(favourites: readonly string[], broker: string, symbol?: string) {
   const groupOrder = new Map(CHART_INTERVAL_GROUPS.map((group, index) => [group.kind, index]));
   return favourites.flatMap((id) => {
-    if (!supportsChartInterval(id, broker)) return [];
+    if (!supportsChartInterval(id, broker, symbol)) return [];
     const option = getChartInterval(id);
     if (!option) return [];
     // Compare custom and preset intervals in the same units within a group.

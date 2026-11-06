@@ -12,7 +12,7 @@ import type { Candle } from "@/lib/backtester";
 import {
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
 } from "@/lib/chartHistoryWindow";
-import { isEventBasedChartInterval } from "@/lib/chartIntervals";
+import { isEventBasedChartInterval, supportsChartInterval } from "@/lib/chartIntervals";
 import {
   getDatabentoEventBars,
   getDatabentoEventHistory,
@@ -267,6 +267,10 @@ export async function GET(request: Request) {
     : DEFAULT_HISTORY_DAYS;
   if (!symbol || symbol.length > 90) {
     return NextResponse.json({ error: "A valid CME instrument is required." }, { status: 400 });
+  }
+
+  if (!supportsChartInterval(timeframe, "Databento")) {
+    return NextResponse.json({ error: "Unsupported CME chart interval." }, { status: 400 });
   }
 
   const now = Date.now();

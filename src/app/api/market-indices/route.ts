@@ -1,3 +1,4 @@
+import { supportsChartInterval } from "@/lib/chartIntervals";
 import { NextResponse } from "next/server";
 
 import {
@@ -201,6 +202,9 @@ export async function GET(request: Request) {
   const timeframe = url.searchParams.get("timeframe")?.trim() || "5m";
   if (!getMarketIndexDefinition(symbol)) {
     return NextResponse.json({ error: "A supported market instrument is required." }, { status: 400 });
+  }
+  if (!supportsChartInterval(timeframe, "Market Index", symbol)) {
+    return NextResponse.json({ error: "This instrument has no recorded data at the selected interval." }, { status: 400 });
   }
   const now = Date.now();
   const requestedFrom = Number(url.searchParams.get("from"));
