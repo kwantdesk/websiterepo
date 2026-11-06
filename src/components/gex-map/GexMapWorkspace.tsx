@@ -1705,14 +1705,14 @@ function GexMapWorkspace({
           <button
             type="button"
             onClick={() => setStarSettingsOpen(true)}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
             title="STAR view settings"
             aria-label="Open Star view settings"
           >
             <SlidersHorizontal className="h-3 w-3" />
           </button>
 
-          <div className="gex-map-frame-steps ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5">
+          <div className="gex-map-frame-steps ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5">
             {FRAME_STEPS.map((value) => (
               <button
                 key={value}
@@ -1722,7 +1722,7 @@ function GexMapWorkspace({
                   setCursor(0);
                   setPlaying(false);
                 }}
-                className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${stepMinutes === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${stepMinutes === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
               >
                 {value}m
               </button>
@@ -1733,7 +1733,7 @@ function GexMapWorkspace({
               expiry×strike matrix built from the same options surface. Hidden
               when the host pinned a horizon: a page that is only ever FUTURE
               should not offer a way out of itself. */}
-          <div className={`ml-1 h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5 ${lockedTimeHorizon ? "hidden" : "flex"}`}>
+          <div className={`ml-1 h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5 ${lockedTimeHorizon ? "hidden" : "flex"}`}>
             {(["present", "future"] as const).map((mode) => (
               <button
                 key={mode}
@@ -1746,7 +1746,7 @@ function GexMapWorkspace({
                   } catch { /* persistence is best-effort */ }
                 }}
                 aria-pressed={timeHorizon === mode}
-                className={`h-5 rounded-[2px] px-2.5 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${timeHorizon === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2.5 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${timeHorizon === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
               >
                 {mode}
               </button>
@@ -1761,7 +1761,7 @@ function GexMapWorkspace({
               * other is out of date.
               */
             <div
-              className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
+              className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
               title="The Structural OI model uses the provider's exposure by strike. Dealer is our reconstructed dealer-inventory estimate, not a proprietary participant-position feed. Gamma only; other metrics remain structural."
             >
               {([
@@ -1777,7 +1777,7 @@ function GexMapWorkspace({
                     setPlaying(false);
                   }}
                   aria-pressed={exposureModel === value}
-                  className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${exposureModel === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                  className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${exposureModel === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
                 >
                   {label}
                 </button>
@@ -1786,7 +1786,7 @@ function GexMapWorkspace({
           ) : null}
 
           <div
-            className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
+            className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
             title="Front / 0DTE is the comparable dealer ladder. All Exp is a complete-chain structural diagnostic."
           >
             {(["ALL_EXPIRIES", "FRONT_EXPIRY"] as const).map((scope) => (
@@ -1799,7 +1799,7 @@ function GexMapWorkspace({
                   setPlaying(false);
                 }}
                 aria-pressed={expiryScope === scope}
-                className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${expiryScope === scope ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${expiryScope === scope ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
               >
                 {scope === "ALL_EXPIRIES" ? "All Exp" : "Front / 0DTE"}
               </button>
@@ -1807,7 +1807,7 @@ function GexMapWorkspace({
           </div>
 
           <div
-            className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
+            className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
             title="Exposure display unit. $1 is directly comparable with dollar-move ladders; 1% is the larger native percent-move convention."
           >
             {(["PER_ONE_DOLLAR_MOVE", "PER_ONE_PERCENT_MOVE"] as const).map((mode) => (
@@ -1820,19 +1820,19 @@ function GexMapWorkspace({
                   setPlaying(false);
                 }}
                 aria-pressed={representation === mode}
-                className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${representation === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${representation === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
               >
                 {mode === "PER_ONE_DOLLAR_MOVE" ? "$1" : "1%"}
               </button>
             ))}
           </div>
 
-          <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
+          <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
             <button
               type="button"
               onClick={() => (timeHorizon === "future" ? adjustFutureZoom(-1) : adjustLadderZoom(-1))}
               disabled={(timeHorizon === "future" ? futureZoom : ladderZoom) <= GEX_MAP_ZOOM_MIN}
-              className="flex h-5 w-5 items-center justify-center rounded-[2px] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+              className="flex h-5 w-5 items-center justify-center rounded-[var(--kwant-control-radius,8px)] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
               aria-label="Zoom strike nodes out (show more)"
             >
               <Minus className="h-3 w-3" />
@@ -1842,7 +1842,7 @@ function GexMapWorkspace({
               type="button"
               onClick={() => (timeHorizon === "future" ? adjustFutureZoom(1) : adjustLadderZoom(1))}
               disabled={(timeHorizon === "future" ? futureZoom : ladderZoom) >= GEX_MAP_ZOOM_MAX}
-              className="flex h-5 w-5 items-center justify-center rounded-[2px] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+              className="flex h-5 w-5 items-center justify-center rounded-[var(--kwant-control-radius,8px)] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
               aria-label="Zoom strike nodes in (show fewer)"
             >
               <Plus className="h-3 w-3" />
@@ -1859,7 +1859,7 @@ function GexMapWorkspace({
               */}
             {replayMode ? (
               <div
-                className="flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
+                className="flex h-7 shrink-0 items-center gap-0.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 p-0.5"
                 role="group"
                 aria-label="Replay window"
               >
@@ -1870,7 +1870,7 @@ function GexMapWorkspace({
                     onClick={() => setReplayWindow(entry.id)}
                     aria-pressed={replayWindow === entry.id}
                     title={replayDisplay.window(entry.id, requestedReplayDate)}
-                    className={`h-6 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${
+                    className={`h-6 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${
                       replayWindow === entry.id
                         ? "bg-surface text-primary"
                         : "text-muted hover:text-foreground"
@@ -1885,7 +1885,7 @@ function GexMapWorkspace({
               type="button"
               onClick={addPanel}
               disabled={panels.length >= MAX_GEX_MAP_PANELS}
-              className="flex h-7 w-7 items-center justify-center rounded-[3px] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+              className="flex h-7 w-7 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
               title={panels.length >= MAX_GEX_MAP_PANELS ? "Four GEX columns are already open" : "Add another GEX column"}
               aria-label="Add another GEX column"
             >
@@ -1895,7 +1895,7 @@ function GexMapWorkspace({
               type="button"
               onClick={togglePriceLock}
               aria-pressed={priceLocked}
-              className={`flex h-7 w-7 items-center justify-center rounded-[3px] border transition-colors ${priceLocked ? "border-primary/30 bg-primary/10 text-primary" : "border-border/70 bg-background/35 text-muted hover:border-primary/30 hover:bg-surface hover:text-foreground"}`}
+              className={`flex h-7 w-7 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border transition-colors ${priceLocked ? "border-primary/30 bg-primary/10 text-primary" : "border-border/70 bg-background/35 text-muted hover:border-primary/30 hover:bg-surface hover:text-foreground"}`}
               title={priceLocked ? "Price lock on — scrolling is off and price stays centred. Click to unlock." : "Lock price to the centre — scrolling turns off and every column follows spot like a slot machine."}
               aria-label={priceLocked ? "Unlock GEX Map scrolling" : "Lock GEX Map price to centre"}
             >
@@ -1907,7 +1907,7 @@ function GexMapWorkspace({
                 forceRefreshRef.current = true;
                 setRefreshToken((value) => value + 1);
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-[3px] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
               title="Sync now"
             >
               <RefreshCw className="h-3 w-3" />
@@ -1915,7 +1915,7 @@ function GexMapWorkspace({
             {!externalReplay ? <button
               type="button"
               onClick={replayMode ? exitReplay : enterReplay}
-              className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${replayMode ? "border-primary/25 bg-primary/10 text-primary" : "border-border/70 bg-background/35 text-muted hover:border-primary/30 hover:bg-surface hover:text-foreground"}`}
+              className={`flex h-7 items-center gap-1.5 rounded-[var(--kwant-control-radius,8px)] border px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${replayMode ? "border-primary/25 bg-primary/10 text-primary" : "border-border/70 bg-background/35 text-muted hover:border-primary/30 hover:bg-surface hover:text-foreground"}`}
             >
               {replayMode ? <Radio className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
               {replayMode ? "Exit Replay" : "Replay"}
