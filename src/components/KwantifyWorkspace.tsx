@@ -605,6 +605,7 @@ const SocialNotificationsPanel = dynamic(() => import("@/components/socials/Soci
 // coalesces prints into 40ms batches and the pane folds those in 40-120ms
 // batches, which bounds React work without withholding live profile data.
 const PROFILE_COMMIT_INTERVAL_BACKGROUND_MS = 3_000;
+const OPTIONS_EXECUTION_WARNING = "Options trading execution coming soon";
 
 function appendLosslessPaneRecords(
   target: InstitutionalTrade[],
@@ -11896,6 +11897,12 @@ export default function KwantifyWorkspace({
     [activePaneId, workspacePanes],
   );
   const activePaneIsChart = isWorkspaceChartKind(activeWorkspacePane.content);
+  const optionsChartTradingUnavailable = !mapTicketContext && (
+    isMarketIndexSymbol(paperTradingInstrument)
+    || (chartSurfaceActive && activePaneIsChart && (
+      activeWorkspacePane.broker === "Market Index" || isMarketIndexSymbol(activeWorkspacePane.symbol)
+    ))
+  );
   const paperLiveExecutionEnabled = paperAccountsHydrated && paperTradingAccounts.length > 0
     && optimisticWorkspaceSection !== "backtesting";
   const paperExecutionSymbols = new Set<string>();
@@ -12396,6 +12403,7 @@ export default function KwantifyWorkspace({
   const armedOrder = useMemo(
     () => (
       tradingUnlocked
+      && !optionsChartTradingUnavailable
       && rightPanel === "order"
       && !chartPlacementSuspended
       && pendingChartOrder === null
@@ -12403,7 +12411,7 @@ export default function KwantifyWorkspace({
         ? { side: orderSide, type: orderType as "limit" | "stop", quantity: selectedOrderQuantity }
         : null
     ),
-    [chartPlacementSuspended, orderSide, orderType, pendingChartOrder, rightPanel, selectedOrderQuantity, tradingUnlocked],
+    [chartPlacementSuspended, optionsChartTradingUnavailable, orderSide, orderType, pendingChartOrder, rightPanel, selectedOrderQuantity, tradingUnlocked],
   );
   const selectedPaperLeverage = selectedPaperTradingAccount
     ? parseLeverage(selectedPaperTradingAccount.leverage)
@@ -18266,6 +18274,12 @@ export default function KwantifyWorkspace({
 
   const openPaperOrderTicket = () => {
     setInlineTicketPaneId(null);
+    if (optionsChartTradingUnavailable) {
+      setShowTradesMenu(false);
+      setTradesMenuView("root");
+      setRightPanel("order");
+      return;
+    }
     const account = selectedPaperTradingAccount ?? paperTradingAccounts[0] ?? null;
     if (!account) {
       openPaperAccountLinker();
@@ -18379,6 +18393,10 @@ export default function KwantifyWorkspace({
      */
     price?: number;
   }) => {
+    if (optionsChartTradingUnavailable) {
+      showReportToast("error", OPTIONS_EXECUTION_WARNING, 4_000);
+      return;
+    }
     const submitSide = intent?.side ?? orderSide;
     const submitType = intent?.type ?? orderType;
     const submitQuantity = intent?.quantity ?? selectedOrderQuantity;
@@ -19181,20 +19199,35 @@ export default function KwantifyWorkspace({
     );
   }
 
-  function renderChartWithOrderTicket(paneId: string, chart: React.ReactNode) {
+  function renderChartWithOrderTicket(pane: WorkspacePane, chart: React.ReactNode) {
+    const paneId = pane.id;
+    const optionsChart = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
     return (
       <div className="flex h-full min-h-0 min-w-0">
         <div data-inline-ticket-chart={inlineTicketOpen && inlineTicketPaneId === paneId ? "" : undefined} className="relative min-h-0 min-w-0 flex-1">{chart}</div>
         {inlineTicketOpen && inlineTicketPaneId === paneId && (
           <aside data-inline-ticket aria-label="Chart order ticket" className="kwant-inline-order-ticket flex min-h-0 w-[280px] max-w-[55%] shrink-0 flex-col border-l border-border bg-panel">
-            {renderOrderTicket()}
+            {renderOrderTicket(optionsChart || optionsChartTradingUnavailable)}
           </aside>
         )}
       </div>
     );
   }
 
-  function renderOrderTicket() {
+  function renderOrderTicket(executionUnavailable = optionsChartTradingUnavailable) {
+    if (executionUnavailable) {
+      return (
+        <div className="flex min-w-0 flex-1 items-start gap-2 p-4">
+          <div role="alert" className="flex min-w-0 flex-1 items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-[13px] font-medium text-foreground">
+            <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <span>{OPTIONS_EXECUTION_WARNING}</span>
+          </div>
+          <button type="button" onClick={closeOrderTicket} aria-label="Close order ticket" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex-1 overflow-y-auto p-4" onKeyDown={handleOrderTicketKeyDown}>
         <div className="mb-4 flex items-center justify-between">
@@ -19666,7 +19699,7 @@ export default function KwantifyWorkspace({
         onChartDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
       />
     );
-    if (floating) return renderChartWithOrderTicket(pane.id, chartPane);
+    if (floating) return renderChartWithOrderTicket(pane, chartPane);
     const chartOption = ALL_WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
     const ChartPanelIcon = chartOption?.icon ?? BarChart3;
     return (
@@ -19822,7 +19855,7 @@ export default function KwantifyWorkspace({
               <X className="h-3.5 w-3.5" />
             </button>
         </div>
-        <div className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden">{renderChartWithOrderTicket(pane.id, chartPane)}</div>
+        <div className="kwant-chart-pane-content relative min-h-0 flex-1 overflow-hidden">{renderChartWithOrderTicket(pane, chartPane)}</div>
       </div>
     );
   }
@@ -21966,7 +21999,7 @@ export default function KwantifyWorkspace({
         </div>
       </div>
 
-          {rightPanel === "order" && pendingChartOrder && (
+          {rightPanel === "order" && !optionsChartTradingUnavailable && pendingChartOrder && (
             <div
               data-chart-order-confirmation
               className="fixed inset-0 z-[120] flex items-center justify-center bg-background/70 backdrop-blur-sm"
