@@ -882,6 +882,7 @@ export default function ChartDrawLayer({
     event.stopPropagation();
     onSelect(drawing.id);
     const origin = drawing.points.map((point) => ({ ...point }));
+    const moveProfileRange = mode === "move" && drawing.tool === "fixedRangeVolumeProfile";
     // Moving a whole drawing measures its delta from the RAW pointer.
     //
     // Taking it from the magnet-snapped point made the delta jump to whichever
@@ -912,7 +913,13 @@ export default function ChartDrawLayer({
     // release would use the value captured when the drag began.
     let latest = origin;
     const onMove = (moveEvent: PointerEvent) => {
-      if (mode === "move") {
+      if (moveProfileRange) {
+        // The profile's price rows come from executions in its time range.
+        const dx = moveEvent.clientX - startX;
+        const times = startPixels.map(({ x }) => x === null ? null : timeAtX(x + dx));
+        if (times.some(time => time === null) || times[0] === times[1]) return;
+        latest = origin.map((point, index) => ({ ...point, time: times[index] ?? point.time }));
+      } else if (mode === "move") {
         const dx = moveEvent.clientX - startX;
         const dy = moveEvent.clientY - startY;
         const moved: DrawPoint[] = [];
@@ -940,7 +947,7 @@ export default function ChartDrawLayer({
     // Now the anchor that sits closest to a candle level pulls the whole
     // drawing onto it, and a single dragged anchor snaps in its own right.
     const settle = () => {
-      if (!magnet || latest === origin) return;
+      if (!magnet || latest === origin || moveProfileRange) return;
       // A freehand stroke has no meaningful anchor to pin to a wick, and
       // shifting the whole thing so one arbitrary sample lands on one would
       // move a drawing the trader placed by hand.
@@ -1191,6 +1198,7 @@ export default function ChartDrawLayer({
     const stroke = resolveDrawColor(style, themeColor);
     const w = style.width;
     const selected = !preview && drawing.id === selectedId;
+    const interactive = !readOnly && !preview && !active && activeTool !== "eraser";
     const coords = drawing.points.map((p) => ({ x: toX(p.time), y: toY(p.price) }));
     const pr = drawing.points;
     const line = (x1: number, y1: number, x2: number, y2: number, color = stroke, sw = w) =>
@@ -1562,6 +1570,11 @@ export default function ChartDrawLayer({
             theme={profileTheme ?? { upColor: themeColor ?? stroke, downColor: themeBearColor ?? stroke, borderUpColor: themeColor ?? stroke, borderDownColor: themeBearColor ?? stroke }}
             width={Math.max(4, width - priceScaleWidth)} height={Math.max(4, height - plotBottomInset)} toX={toX} toY={toY}
             fromY={y => fromXY(0, y)?.price ?? null}
+            renderHitTargets={preview ? undefined : painted => (
+              <g data-draw-hit="body" aria-hidden="true" style={{ pointerEvents: "none" }}>
+                {chartSvgHitTargets(painted, true, interactive)}
+              </g>
+            )}
           />;
           if (style.profileMode && style.profileMode !== "volume") return <g>{label(x0, plotTopInset + 14, "Exact executions required for delta / bid-ask", stroke)}</g>;
           const boxRight = anchored ? x1 : Math.max(x0, x1);
@@ -1699,12 +1712,7 @@ export default function ChartDrawLayer({
     })();
 
     if (!body) return null;
-    const interactive = !readOnly && !preview && !active && activeTool !== "eraser";
-    // Volume profiles anchor to the exact wicks the trader clicked. A body
-    // drag silently shifting both anchors was how profiles "wandered"; the
-    // body now only selects, and repositioning happens through the two
-    // anchor dots alone.
-    const bodyMovable = drawing.tool !== "fixedRangeVolumeProfile" && drawing.tool !== "anchoredVolumeProfile";
+    const bodyMovable = drawing.tool !== "anchoredVolumeProfile";
     const valid = coords.filter((p) => p.x != null && p.y != null) as { x: number; y: number }[];
     const allowBodyFills = ["longPosition", "shortPosition", "entryArrow", "exitArrow", "fixedRangeVolumeProfile", "anchoredVolumeProfile"].includes(drawing.tool);
     const hit = !preview ? <g data-draw-hit="body" aria-hidden="true" style={{ pointerEvents: "none" }}>{chartSvgHitTargets(body, allowBodyFills, interactive)}</g> : null;
