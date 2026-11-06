@@ -9,6 +9,13 @@ import {
 import { buildGexMapSnapshots, gexMapPriceAt } from "../src/lib/gexMapSnapshots.ts";
 import { gexMapSnapshotIdentity } from "../src/lib/gexMapSnapshotIdentity.server.ts";
 import { conditionalJson } from "../src/lib/conditionalJson.ts";
+import {
+  clearWorkspaceData,
+  fetchWorkspaceData,
+  isCompletedGexMapCacheSession,
+  readWorkspaceData,
+  writeWorkspaceData,
+} from "../src/lib/workspaceDataCache.ts";
 
 const MINUTE = 60_000;
 
@@ -69,6 +76,8 @@ test("live GEX Map compaction preserves every selectable comparison surface", ()
   const compact = compactLiveGexMapPanel(payload);
   const lastTimestamp = payload.frames.at(-1).timestamp;
 
+  assert.equal(compact.compact, true);
+  assert.equal(payload.compact, undefined);
   assert.equal(compact.frames.at(-1).timestamp, lastTimestamp);
   assert.equal(compact.candles.length, 2);
   assert.equal(compact.latestStrikes, payload.latestStrikes);
@@ -88,6 +97,51 @@ test("live GEX Map compaction preserves every selectable comparison surface", ()
   const compactBytes = Buffer.byteLength(JSON.stringify(compact));
   assert.ok(compactBytes < fullBytes * 0.1,
     `expected live payload below 10% of full history, got ${(compactBytes / fullBytes * 100).toFixed(1)}%`);
+});
+
+test("a dated NDX replay ignores old five-frame browser snapshots and fetches the opening history", async () => {
+  const values = new Map();
+  const storage = {
+    getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: key => values.delete(key),
+  };
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const replayKey = "gex-map:NDX:GAMMA:2026-08-25:FRONT_EXPIRY:PER_ONE_PERCENT_MOVE";
+  const liveKey = "gex-map:NDX:GAMMA:live:FRONT_EXPIRY:PER_ONE_PERCENT_MOVE";
+  const fallbackPrefix = "kwantdesk:gex-map-last-good:v1:";
+  const complete = { ...buildPayload(), symbol: "NDX" };
+  let requests = 0;
+  globalThis.window = { localStorage: storage, sessionStorage: storage };
+  globalThis.fetch = async () => { requests++; return Response.json(complete); };
+  try {
+    const oldFallback = JSON.stringify({
+      value: { ...complete, frames: complete.frames.slice(-5) }, updatedAt: Date.now(),
+    });
+    storage.setItem(fallbackPrefix + replayKey, oldFallback);
+    assert.equal(readWorkspaceData(replayKey), null);
+    const loaded = await fetchWorkspaceData(replayKey, "/api/gex-map?symbol=NDX&sessionDate=2026-08-25", { maxAgeMs: 6 * 60 * 60_000 });
+    assert.equal(requests, 1);
+    assert.equal(loaded.frames[0].timestamp, Date.UTC(2026, 7, 25, 13, 30));
+    assert.equal(storage.getItem(fallbackPrefix + replayKey), oldFallback, "loading replay does not write a compact fallback");
+    writeWorkspaceData(liveKey, complete);
+    clearWorkspaceData(liveKey);
+    assert.equal(readWorkspaceData(liveKey).compact, true);
+  } finally {
+    clearWorkspaceData(replayKey);
+    clearWorkspaceData(liveKey);
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the intraday replay cache expires by the New York close, including standard time", () => {
+  assert.equal(isCompletedGexMapCacheSession("2026-11-05", new Date("2026-11-05T21:14:59Z")), false);
+  assert.equal(isCompletedGexMapCacheSession("2026-11-05", new Date("2026-11-05T21:15:00Z")), true);
+  assert.equal(isCompletedGexMapCacheSession("2026-11-05", new Date("2026-11-06T03:00:00Z")), true);
+  assert.equal(isCompletedGexMapCacheSession("2026-11-05", new Date("2026-11-06T08:00:00Z")), true);
 });
 
 test("compact and full live snapshots have identical opening/current/comparison call, put and net rows", () => {

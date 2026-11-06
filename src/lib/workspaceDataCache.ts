@@ -129,12 +129,12 @@ const GEX_MAP_LAST_GOOD_PREFIX = "kwantdesk:gex-map-last-good:v1:";
 const GEX_MAP_LAST_GOOD_MAX_AGE_MS = 72 * 60 * 60 * 1_000;
 const WORKSPACE_REQUEST_TIMEOUT_MS = 20_000;
 
-function isGexMapKey(key: string) {
-  return key.startsWith("gex-map:");
+function isLiveGexMapKey(key: string) {
+  return key.startsWith("gex-map:") && key.split(":", 4)[3] === "live";
 }
 
 function readLastGoodGexMap<T>(key: string): T | null {
-  if (typeof window === "undefined" || !isGexMapKey(key)) return null;
+  if (typeof window === "undefined" || !isLiveGexMapKey(key)) return null;
   try {
     const stored = window.localStorage.getItem(`${GEX_MAP_LAST_GOOD_PREFIX}${key}`);
     if (!stored) return null;
@@ -151,11 +151,11 @@ function readLastGoodGexMap<T>(key: string): T | null {
 }
 
 function writeLastGoodGexMap<T>(key: string, value: T, updatedAt: number) {
-  if (typeof window === "undefined" || !isGexMapKey(key) || !value || typeof value !== "object") return;
+  if (typeof window === "undefined" || !isLiveGexMapKey(key) || !value || typeof value !== "object") return;
   // The dealer model is a second ladder per panel, and this mirror exists so a
   // provider restart cannot blank the map - a guarantee the experimental model
   // does not need and should not pay for in quota that belongs to saved work.
-  if (key.endsWith(":dealer")) return;
+  if (/:dealer(?:-v\d+)?$/.test(key)) return;
   try {
     const payload = value as Record<string, unknown>;
     // The active map can contain hundreds of minute frames per panel. Keep a
@@ -164,6 +164,7 @@ function writeLastGoodGexMap<T>(key: string, value: T, updatedAt: number) {
     // full playback history when the provider is healthy.
     const compact = {
       ...payload,
+      compact: true,
       frames: Array.isArray(payload.frames) ? payload.frames.slice(-5) : [],
       candles: Array.isArray(payload.candles) ? payload.candles.slice(-10) : [],
     };
@@ -289,7 +290,25 @@ export function gexMapCacheKey(
   scope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
 ) {
-  return `gex-map:${symbol}:${greekMode}:${sessionDate || "live"}:${scope}:${representation}`;
+  const key = `gex-map:${symbol}:${greekMode}:${sessionDate || "live"}:${scope}:${representation}`;
+  if (!sessionDate) return key;
+  return `${key}:${isCompletedGexMapCacheSession(sessionDate) ? "archive-v2" : "intraday-v2"}`;
+}
+
+const newYorkCacheClock = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+
+export function isCompletedGexMapCacheSession(sessionDate: string, now = new Date()) {
+  const parts = newYorkCacheClock.formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(value => value.type === type)?.value ?? "";
+  const today = `${part("year")}-${part("month")}-${part("day")}`;
+  return sessionDate < today || (sessionDate === today && Number(part("hour")) * 60 + Number(part("minute")) >= 16 * 60 + 15);
+}
+
+export function gexMapReplayCacheMaxAge(sessionDate: string) {
+  return sessionDate && isCompletedGexMapCacheSession(sessionDate) ? 6 * 60 * 60_000 : 60_000;
 }
 
 export function compactGexMapLiveCacheKey(
@@ -298,7 +317,7 @@ export function compactGexMapLiveCacheKey(
   scope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
 ) {
-  return `${gexMapCacheKey(symbol, greekMode, "", scope, representation)}:compact-v2`;
+  return `${gexMapCacheKey(symbol, greekMode, "", scope, representation)}:compact-v3`;
 }
 
 export function gameplanCacheKey(root: string, session: string) {

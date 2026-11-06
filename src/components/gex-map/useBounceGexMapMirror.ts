@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLinkedGexMapSettingsState } from "./useLinkedGexMapSettings";
 import { effectiveLinkedGexMapModel, linkedGexMapPanel, normalizeLinkedGexMapSettings, readLocalGexMapStarSettings } from "@/lib/gexMapLinkedSettings";
 import { isGexMapSurfaceFor, hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
-import { compactGexMapLiveCacheKey, fetchWorkspaceData, gexMapCacheKey, readWorkspaceData } from "@/lib/workspaceDataCache";
+import { compactGexMapLiveCacheKey, fetchWorkspaceData, gexMapCacheKey, gexMapReplayCacheMaxAge, readWorkspaceData } from "@/lib/workspaceDataCache";
 import { subscribeGexMapSurface, publishGexMapSurface } from "@/lib/gexMapSurfaceBus";
 import { GEX_MAP_PALETTE_CHANGE_EVENT, gexMapSignedScaleHex, loadGexMapPalette } from "@/lib/gexMapPalette";
 import { prepareBounceGexMirror, selectBounceGexMirror } from "@/lib/bounceGexMapMirror";
@@ -67,7 +67,7 @@ export function useBounceGexMapMirror(input: {
           maxAgeMs: gap ? 0 : 60_000, timeoutMs: 45_000,
           validate: (p) => isGexMapSurfaceFor(p as GexMapPanelPayload, { symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate: head.sessionDate }),
         });
-        if (cancelled || !hasRenderableGexMapSurface(archive)) return;
+        if (cancelled || archive.compact || !hasRenderableGexMapSurface(archive)) return;
         const current = stateRef.current.key === key ? stateRef.current.payload : null;
         historyRef.current = { key, payload: mergeBounceGexMapHistory(archive, current ?? head) };
         setPaletteRevision((v) => v + 1);
@@ -75,7 +75,7 @@ export function useBounceGexMapMirror(input: {
       finally { historyRequestInFlight = false; }
     }
     const accept = (p: GexMapPanelPayload) => {
-      if (cancelled || !isGexMapSurfaceFor(p, { symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate })) return;
+      if (cancelled || (sessionDate && p.compact) || !isGexMapSurfaceFor(p, { symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate })) return;
       setState((current) => current.key === key && current.payload === p ? current : { key, payload: p });
       setError(null); setLoading(false);
       void ensureHistory(p);
@@ -95,10 +95,10 @@ export function useBounceGexMapMirror(input: {
         const query = new URLSearchParams({ symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation,
           ...(model === "DEALER_INVENTORY" ? { model } : {}), ...(sessionDate ? { sessionDate } : { compact: "1" }), ...(headOnly ? { head: "1" } : {}) });
         const payload = await fetchWorkspaceData<GexMapPanelPayload>(headOnly ? key + ":head" : key, "/api/gex-map?" + query, {
-          maxAgeMs: sessionDate ? 6 * 60 * 60000 : 5000, timeoutMs: 45000,
+          maxAgeMs: sessionDate ? gexMapReplayCacheMaxAge(sessionDate) : 5000, timeoutMs: 45000,
           validate: (value) => {
             const p = value as GexMapPanelPayload;
-            return isGexMapSurfaceFor(p, { symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate });
+            return (!sessionDate || p?.compact !== true) && isGexMapSurfaceFor(p, { symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate });
           }, invalidMessage: "The selected GEX Map surface is unavailable.",
         });
         if (!cancelled) { accept(payload); if (!headOnly) publishGexMapSurface(key, payload); }

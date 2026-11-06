@@ -57,6 +57,8 @@ export type GexMapPanelPayload = {
   latestStrikes: ExposureStrike[];
   frames: GexMapFrame[];
   candles: OptionsCandle[];
+  /** A live summary cannot establish coverage for a dated replay. */
+  compact?: true;
   /** Current strike snapshot exists but opening minute history is not ready. */
   historyPending?: boolean;
   netExposure: number;
@@ -86,7 +88,7 @@ export function compactLiveGexMapPanel(
   lookbackMinutes: readonly number[] = GEX_MAP_LIVE_LOOKBACK_MINUTES,
 ): GexMapPanelPayload {
   if (!payload.frames.length) {
-    return { ...payload, candles: payload.candles.slice(-2) };
+    return { ...payload, compact: true, candles: payload.candles.slice(-2) };
   }
 
   const lastTimestamp = payload.frames[payload.frames.length - 1].timestamp;
@@ -131,6 +133,7 @@ export function compactLiveGexMapPanel(
 
   return {
     ...payload,
+    compact: true,
     frames,
     candles: payload.candles.slice(-2),
   };
