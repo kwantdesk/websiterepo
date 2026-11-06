@@ -1,3 +1,4 @@
+import type { SessionFilterMode, SessionWindowKind } from "@/lib/volumeProfileSessions";
 export const TPO_CHART_INDICATOR_ID = "tpo-chart";
 export const WEEKLY_TPO_INDICATOR_ID = "weekly-tpo";
 export const TPO_SETTINGS_SCHEMA_VERSION = 2;
@@ -38,7 +39,7 @@ export type TpoExtensionMode =
   | "until-first-interaction"
   | "to-window-end"
   | "to-next-profile";
-export type TpoFilterMode = "none" | "filter" | "split-two" | "split-three";
+export type TpoFilterMode = SessionFilterMode | "split-two" | "split-three";
 export type TpoSessionPreset = "rth" | "eth" | "custom";
 export type TpoColourCalculation = "time" | "volume" | "delta";
 export type TpoColourReference = "fixed" | "fading" | "multiple-ranges";
@@ -268,6 +269,14 @@ export interface TpoIndicatorSettings {
   summaryBackgroundOpacity: number;
   summaryFontSize: number;
   filterMode: TpoFilterMode;
+  /** Empty for saved settings that still use the original TPO schedule. */
+  filterTime: SessionWindowKind | "";
+  sessionStartMinutes: number;
+  sessionEndMinutes: number;
+  sessionAsiaEnabled: boolean;
+  sessionTokyoEnabled: boolean;
+  sessionLondonEnabled: boolean;
+  sessionNewYorkEnabled: boolean;
   sessionPreset: TpoSessionPreset;
   customSessionStart: string;
   customSessionEnd: string;

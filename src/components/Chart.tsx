@@ -17755,7 +17755,8 @@ function Chart({
           && developing?.developing
           && cached.calculationKey === calculationKey
           && calculationSettings.periodMode !== "custom-range"
-          && !calculationSettings.quickSessions.includes(","),
+          && !calculationSettings.quickSessions.includes(",")
+          && !(calculationSettings.filterTime && calculationSettings.filterMode !== "none"),
         );
         if (canRefreshDevelopingOnly && developing) {
           const liveProfiles = buildTpoProfiles({

@@ -11,6 +11,8 @@ import type {
 import { DAILY_TPO_SESSION_PRESETS } from "./quickSessions.ts";
 import { priceToTick } from "./types.ts";
 import { exchangeClockParts } from "@/lib/exchangeClock";
+import { cmeSessionDateKey } from "@/lib/chartHistoryWindow";
+import { isWithinSessionSegments, requestedSessionIds, resolveSessionSegments, sessionTradingDate, type SessionSegment } from "@/lib/volumeProfileSessions";
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = DAY_MS * 7;
@@ -75,7 +77,45 @@ type MutableCell = {
   hasSide: boolean;
 };
 
-type PeriodBoundary = { startMs: number; endMs: number; id: string };
+type PeriodBoundary = { startMs: number; endMs: number; id: string; windows?: SessionSegment[] };
+
+function sharedSessionWindows(timestamps: number[], settings: TpoIndicatorSettings): SessionSegment[] | undefined {
+  const { filterTime, filterMode } = settings;
+  if (!filterTime || (filterMode !== "filter" && filterMode !== "splitted" && filterMode !== "triple")) return undefined;
+  const ids = requestedSessionIds({
+    filterMode, filterTime,
+    sessionAsiaEnabled: settings.sessionAsiaEnabled,
+    sessionTokyoEnabled: settings.sessionTokyoEnabled,
+    sessionLondonEnabled: settings.sessionLondonEnabled,
+    sessionNewYorkEnabled: settings.sessionNewYorkEnabled,
+  });
+  if (!ids?.size) return undefined;
+  // Ask for complete bounds even when the chart starts mid-session. This
+  // keeps subperiod letters and identities stable as more history arrives.
+  const first = reduceMin(timestamps);
+  const last = reduceMax(timestamps);
+  return resolveSessionSegments(first - DAY_MS, last + DAY_MS, {
+    mode: filterMode,
+    window: filterTime,
+    customStartMinutes: settings.sessionStartMinutes,
+    customEndMinutes: settings.sessionEndMinutes,
+    useEndSessionAsStartDay: settings.useEndSessionAsStartDay,
+  }).filter((window) => ids.has(window.id) && window.endMs > first && window.startMs <= last);
+}
+
+function dailySessionPeriods(windows: SessionSegment[], settings: TpoIndicatorSettings): PeriodBoundary[] {
+  const periodsByDate = new Map<string, PeriodBoundary[]>();
+  for (const window of windows) {
+    const sessionDate = sessionTradingDate(window, settings.useEndSessionAsStartDay);
+    const date = settings.filterMode === "triple" ? cmeSessionDateKey(window.startMs) ?? sessionDate : sessionDate;
+    const periods = periodsByDate.get(date) ?? [];
+    const { startMs, endMs } = window;
+    periods.push({ startMs, endMs, id: "session:" + window.id + ":" + startMs, windows: [window] });
+    periodsByDate.set(date, periods);
+  }
+  return [...periodsByDate.keys()].sort().slice(-settings.profileCount)
+    .flatMap((date) => periodsByDate.get(date) ?? []);
+}
 
 /**
  * Exchange-local parts for a timestamp.
@@ -133,12 +173,12 @@ function dailyBoundary(timestampMs: number, settings: TpoIndicatorSettings): Per
   // next profile, so an overnight market's day is bounded by its own close
   // rather than by the configured daily start.
   const startClock = parseClock(
-    settings.useEndSessionAsStartDay && settings.filterMode === "filter" && settings.sessionPreset === "custom"
+    !settings.filterTime && settings.useEndSessionAsStartDay && settings.filterMode === "filter" && settings.sessionPreset === "custom"
       ? settings.customSessionEnd
       : settings.dailyStartTime,
   );
   const effectiveStartTime = settings.useEndSessionAsStartDay
-    && settings.filterMode === "filter"
+    && !settings.filterTime && settings.filterMode === "filter"
     && settings.sessionPreset === "custom"
     ? settings.customSessionEnd
     : settings.dailyStartTime;
@@ -241,8 +281,9 @@ function chooseTicksPerRow(
   return Math.max(1, Math.ceil(range / Math.max(20, settings.autoTargetRows) * settings.autoGroupFactor));
 }
 
-function isInsideSession(timestampMs: number, settings: TpoIndicatorSettings) {
-  if (settings.filterMode !== "filter" || settings.sessionPreset === "eth") return true;
+function isInsideSession(timestampMs: number, settings: TpoIndicatorSettings, windows?: SessionSegment[]) {
+  if (windows) return windows.length > 0 && isWithinSessionSegments(timestampMs, windows);
+  if (settings.filterTime || settings.filterMode !== "filter" || settings.sessionPreset === "eth") return true;
   const parts = zonedParts(timestampMs, settings.timezone);
   const seconds = parts.hour * 3_600 + parts.minute * 60 + parts.second;
   const start = clockSeconds(settings.sessionPreset === "rth" ? "08:30:00" : settings.customSessionStart);
@@ -257,9 +298,9 @@ function hasCompleteExactCoverage(
   settings: TpoIndicatorSettings,
   nowMs: number,
 ) {
-  const periodTrades = trades.filter((trade) => trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs);
+  const periodTrades = trades.filter((trade) => trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs && (!period.windows || isInsideSession(trade.timestampMs, settings, period.windows)));
   if (!periodTrades.length) return false;
-  const periodBars = bars.filter((bar) => bar.endTimeMs > period.startMs && bar.startTimeMs < period.endMs);
+  const periodBars = bars.filter((bar) => bar.endTimeMs > period.startMs && bar.startTimeMs < period.endMs && (!period.windows || isInsideSession(bar.startTimeMs, settings, period.windows)));
   if (!periodBars.length) return true;
   const expectedStartMs = Math.max(period.startMs, mapMin(periodBars, (bar) => bar.startTimeMs));
   const expectedEndMs = Math.min(
@@ -594,8 +635,8 @@ function buildOneProfile(
   nowMs: number,
   ticksPerRowOverride?: number,
 ): TpoProfileModel | null {
-  const periodTrades = trades.filter((trade) => trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs && isInsideSession(trade.timestampMs, settings));
-  const periodBars = bars.filter((bar) => bar.endTimeMs > period.startMs && bar.startTimeMs < period.endMs && isInsideSession(bar.startTimeMs, settings));
+  const periodTrades = trades.filter((trade) => trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs && isInsideSession(trade.timestampMs, settings, period.windows));
+  const periodBars = bars.filter((bar) => bar.endTimeMs > period.startMs && bar.startTimeMs < period.endMs && isInsideSession(bar.startTimeMs, settings, period.windows));
   if (!periodTrades.length && !periodBars.length) return null;
   const latestSourceMs = Math.max(
     mapMax(periodTrades, (trade) => trade.timestampMs + 1, period.startMs + 1),
@@ -830,7 +871,7 @@ export function buildTpoProfiles({
   settings: TpoIndicatorSettings;
   nowMs?: number;
 }): TpoProfileModel[] {
-  if (settings.scheduleKind === "daily" && settings.periodMode === "multiple-profiles" && settings.quickSessions) {
+  if (!settings.filterTime && settings.scheduleKind === "daily" && settings.periodMode === "multiple-profiles" && settings.quickSessions) {
     const selected = new Set(settings.quickSessions.split(","));
     return DAILY_TPO_SESSION_PRESETS.filter(preset => selected.has(preset.id)).flatMap(preset =>
       buildTpoProfiles({ trades, bars, nowMs, settings: {
@@ -852,20 +893,43 @@ export function buildTpoProfiles({
       ? bars.map((bar) => bar.startTimeMs)
       : [...trades.map((trade) => trade.timestampMs), ...bars.map((bar) => bar.startTimeMs)];
   if (!timestamps.length) return [];
+  const windows = sharedSessionWindows(timestamps, settings);
   if (settings.periodMode === "all-loaded-bars") {
     const startMs = reduceMin(timestamps);
     const endMs = mapMax(timestamps, (timestamp) => timestamp + 1, nowMs + 1);
-    const profile = buildOneProfile({ startMs, endMs, id: `loaded:${startMs}` }, trades, bars, settings, preferredSource, nowMs);
+    const profile = buildOneProfile({ startMs, endMs, id: `loaded:${startMs}`, windows }, trades, bars, settings, preferredSource, nowMs);
     return profile ? [profile] : [];
   }
-  const periods = new Map<string, PeriodBoundary>();
-  timestamps.forEach((timestamp) => {
-    const period = periodBoundaryForTime(timestamp, settings);
-    if (period) periods.set(period.id, period);
-  });
-  const orderedPeriods = [...periods.values()]
-    .sort((left, right) => left.startMs - right.startMs)
-    .slice(-settings.profileCount);
+  let orderedPeriods: PeriodBoundary[];
+  if (windows && settings.scheduleKind === "daily" && settings.periodMode === "multiple-profiles") {
+    // An untraded window (weekend, maintenance, or one that has yet to open)
+    // must not displace a day with actual data at the profile-count cutoff.
+    const sortedTimestamps = [...timestamps].sort((a, b) => a - b);
+    const populated = windows.filter(({ startMs, endMs }) => {
+      let low = 0;
+      let high = sortedTimestamps.length;
+      while (low < high) {
+        const mid = (low + high) >>> 1;
+        if (sortedTimestamps[mid] < startMs) low = mid + 1;
+        else high = mid;
+      }
+      return low < sortedTimestamps.length && sortedTimestamps[low] < endMs;
+    });
+    orderedPeriods = dailySessionPeriods(populated, settings);
+  } else {
+    const periods = new Map<string, PeriodBoundary>();
+    timestamps.forEach((timestamp) => {
+      if (windows && !isInsideSession(timestamp, settings, windows)) return;
+      const period = periodBoundaryForTime(timestamp, settings);
+      if (period && !periods.has(period.id)) periods.set(period.id, period);
+    });
+    orderedPeriods = [...periods.values()].sort((a, b) => a.startMs - b.startMs).slice(-settings.profileCount);
+    if (windows) {
+      for (const period of orderedPeriods) {
+        period.windows = windows.filter((window) => window.startMs < period.endMs && window.endMs > period.startMs);
+      }
+    }
+  }
   const profiles: TpoProfileModel[] = [];
   orderedPeriods.forEach((period) => {
     const periodHasExactTrades = hasCompleteExactCoverage(period, trades, bars, settings, nowMs);

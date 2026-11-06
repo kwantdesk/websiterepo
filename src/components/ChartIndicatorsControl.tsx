@@ -72,7 +72,6 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import BounceGexMapSettings, { isBounceMirrorPresentationKey } from "@/components/gex-map/BounceGexMapSettings";
 import BounceGexMapColours from "@/components/gex-map/BounceGexMapColours";
 import { defaultTpoSettings, tpoSettingsToRecord } from "@/lib/tpo/settings";
-import { DAILY_TPO_SESSION_PRESETS, selectedTpoQuickSessions, toggleTpoQuickSession } from "@/lib/tpo/quickSessions";
 import KstIndicatorSettings from "@/components/KstIndicatorSettings";
 import {
   FOOTPRINT_CHART_TYPES,
@@ -3065,8 +3064,28 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "sessions" ? (
-                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+              {((VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "sessions")
+                || isTpoIndicator(settingsDefinition.id)) ? (() => {
+                const tpo = isTpoIndicator(settingsDefinition.id);
+                const values = settingsInstance.settings ?? {};
+                const legacyTpo = tpo && !values.filterTime;
+                const sessionSettings = legacyTpo ? { ...values, filterMode: "none", filterTime: "rth" } : values;
+                const replaceSession = (instanceId: string, update: (current: ChartIndicatorInstance) => ChartIndicatorInstance) =>
+                  replace(instanceId, (current) => {
+                    if (!tpo) return update(current);
+                    const original = current.settings ?? {};
+                    return update({
+                      ...current,
+                      settings: {
+                        ...original,
+                        filterMode: original.filterTime ? original.filterMode : "none",
+                        filterTime: original.filterTime || "rth",
+                        quickSessions: "",
+                      },
+                    });
+                  });
+                return (
+                <div data-settings-section="Filter / split time" className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Filter / split time</div>
                   {([
                     /* Weekly defaults to a rolling five-session calculation. */
@@ -3092,8 +3111,8 @@ export default function ChartIndicatorsControl({
                     <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{label}</span>
                       <KwantSelect
-                        value={String(settingsInstance.settings?.[key] ?? fallback)}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => {
+                        value={String(sessionSettings[key] ?? fallback)}
+                        onChange={(event) => replaceSession(settingsInstance.instanceId, (current) => {
                           const nextValue = event.target.value;
                           const settings = { ...(current.settings ?? {}), [key]: nextValue };
                           // A custom clock with Filter mode still on "None"
@@ -3129,15 +3148,15 @@ export default function ChartIndicatorsControl({
                     <span className="block text-[9px] uppercase tracking-[0.12em] text-muted">Sessions drawn</span>
                     <div className="grid grid-cols-2 gap-2">
                       {DESK_SESSIONS.map(({ label, settingsKey: key }) => {
-                        const splitting = String(settingsInstance.settings?.filterMode ?? "none") === "triple";
+                        const splitting = String(sessionSettings.filterMode ?? "none") === "triple";
                         // Off the split there is one profile covering everything,
                         // so no single session reads as selected.
-                        const on = splitting && profileSessionEnabled(settingsInstance.settings ?? {}, key);
+                        const on = splitting && profileSessionEnabled(sessionSettings, key);
                         return (
                           <button
                             key={key}
                             type="button"
-                            onClick={() => replace(settingsInstance.instanceId, (current) => {
+                            onClick={() => replaceSession(settingsInstance.instanceId, (current) => {
                               const settings = { ...(current.settings ?? {}) };
                               const wasSplitting = String(settings.filterMode ?? "none") === "triple";
                               /*
@@ -3207,7 +3226,10 @@ export default function ChartIndicatorsControl({
                       })}
                     </div>
                     <span className="block text-[8px] leading-4 text-muted">
-                      Picking a session splits the day and draws only what is selected; the rest keep their own
+                      {settingsDefinition.id === "weekly-tpo"
+                        ? "Weekly TPO includes the selected windows in each weekly profile. "
+                        : "Picking a session splits the day and draws only what is selected. "}
+                      The sessions keep their own
                       boundaries rather than absorbing the ones left out. Globex keeps the original
                       17:00–02:00 Chicago window. Asia / Tokyo starts at 10:00 Brisbane (09:00 Tokyo)
                       and overlaps Globex until the same cutoff; selecting it never shortens Globex.
@@ -3219,10 +3241,10 @@ export default function ChartIndicatorsControl({
                     ["Session start", "sessionStartMinutes", 8 * 60 + 30],
                     ["Session end", "sessionEndMinutes", 15 * 60 + 15],
                   ] as const).map(([label, key, fallback]) => {
-                    const minutes = Number(settingsInstance.settings?.[key] ?? fallback);
+                    const minutes = Number(sessionSettings[key] ?? fallback);
                     const value = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-                    const mode = String(settingsInstance.settings?.filterMode ?? "none");
-                    const custom = String(settingsInstance.settings?.filterTime ?? "rth") === "custom"
+                    const mode = String(sessionSettings.filterMode ?? "none");
+                    const custom = String(sessionSettings.filterTime ?? "rth") === "custom"
                       && (mode === "filter" || mode === "splitted");
                     return (
                       <label key={key} className={`space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted ${custom ? "" : "opacity-40"}`}>
@@ -3234,11 +3256,11 @@ export default function ChartIndicatorsControl({
                           onChange={(event) => {
                             const [hours, mins] = event.target.value.split(":").map(Number);
                             if (!Number.isFinite(hours) || !Number.isFinite(mins)) return;
-                            replace(settingsInstance.instanceId, (current) => ({
+                            replaceSession(settingsInstance.instanceId, (current) => ({
                               ...current,
                               settings: {
                                 ...(current.settings ?? {}),
-                                filterMode: "filter",
+                                filterMode: tpo ? current.settings?.filterMode ?? "filter" : "filter",
                                 filterTime: "custom",
                                 [key]: hours * 60 + mins,
                               },
@@ -3249,10 +3271,19 @@ export default function ChartIndicatorsControl({
                       </label>
                     );
                   })}
+                  {legacyTpo && (values.quickSessions || (values.filterMode && values.filterMode !== "none")) ? (
+                    <div className="text-[9px] leading-4 text-muted sm:col-span-2">
+                      A saved TPO session preset is active. Choose a session or a filter here to replace it.
+                      <button type="button" className="ml-2 underline" onClick={() =>
+                        replaceSession(settingsInstance.instanceId, (current) => current)}>
+                        Use whole session
+                      </button>
+                    </div>
+                  ) : null}
                   <button
                     type="button"
-                    disabled={String(settingsInstance.settings?.filterTime ?? "rth") !== "custom"}
-                    onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                    disabled={String(sessionSettings.filterTime ?? "rth") !== "custom"}
+                    onClick={() => replaceSession(settingsInstance.instanceId, (current) => ({
                       ...current,
                       settings: {
                         ...(current.settings ?? {}),
@@ -3260,15 +3291,16 @@ export default function ChartIndicatorsControl({
                       },
                     }))}
                     className={`h-9 border px-2 text-[8px] uppercase tracking-[0.1em] disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-2 ${
-                      settingsInstance.settings?.useEndSessionAsStartDay === true
+                      sessionSettings.useEndSessionAsStartDay === true
                         ? "border-primary/55 bg-primary/10 text-primary"
                         : "border-border bg-background text-muted"
                     }`}
                   >
-                    Use end session as start day · {settingsInstance.settings?.useEndSessionAsStartDay === true ? "ON" : "OFF"}
+                    Use end session as start day · {sessionSettings.useEndSessionAsStartDay === true ? "ON" : "OFF"}
                   </button>
                 </div>
-              ) : null}
+                );
+              })() : null}
 
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "point-of-control" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
@@ -5417,52 +5449,6 @@ export default function ChartIndicatorsControl({
                       One square is one distinct subperiod visit at one grouped price row. Exact executions are preferred; range-derived occupancy is labelled on-chart.
                     </p>
                   </div>
-                  {settingsDefinition.id === "tpo-chart" ? (
-                    <div className="space-y-2 border border-border bg-background/65 p-2.5">
-                      <div>
-                        <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">Quick session</div>
-                        <div className="mt-0.5 text-[8px] leading-3 text-muted">Select any sessions to keep together. Click again to remove one; clear all to use the default session.</div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                        {DAILY_TPO_SESSION_PRESETS.map((preset) => {
-                          const active = selectedTpoQuickSessions(settingsInstance.settings).includes(preset.id);
-                          return (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              aria-pressed={active}
-                              onClick={() => replace(settingsInstance.instanceId, (current) => {
-                                const quickSessions = toggleTpoQuickSession(current.settings, preset.id);
-                                const defaults = tpoSettingsToRecord(defaultTpoSettings("daily-tpo", chartSettings, instrument));
-                                const first = DAILY_TPO_SESSION_PRESETS.find(candidate => quickSessions.split(",").includes(candidate.id));
-                                const session = first?.settings ?? Object.fromEntries(Object.keys(preset.settings).map(key => [key, defaults[key]]));
-                                return {
-                                  ...current,
-                                  settings: {
-                                    ...(current.settings ?? {}),
-                                    scheduleKind: "daily",
-                                    periodMode: "multiple-profiles",
-                                    filterMode: "none",
-                                    customStartMs: 0,
-                                    customEndMs: 0,
-                                    customEndFollowsLatest: false,
-                                    ...session,
-                                    quickSessions,
-                                  },
-                                };
-                              })}
-                              className={`min-h-12 border px-2 py-1.5 text-left transition-colors ${active
-                                ? "border-primary/60 bg-primary/12 text-primary"
-                                : "border-border bg-background text-muted hover:border-primary/40 hover:text-foreground"}`}
-                            >
-                              <span className="block text-[8px] font-semibold uppercase tracking-[0.08em]">{preset.label}</span>
-                              <span className="mt-0.5 block text-[7px] leading-3 opacity-75">{preset.description}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {TPO_PRESETS.map((preset) => (
                       <button
@@ -5576,8 +5562,6 @@ export default function ChartIndicatorsControl({
                       ["Data fidelity", "visitSource", [["automatic", "Automatic"], ["exact-trades", "Exact trades"], ["bar-range", "Bar range"]]],
                       ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
                       ["Width mode", "widthMode", [["automatic", "Automatic"], ["period-percent", "Period percent"], ["window-percent", "Window percent"], ["fixed-bars", "Fixed bars"]]],
-                      ["Session action", "filterMode", [["none", "No filter"], ["filter", "Filter"], ["split-two", "Split two"], ["split-three", "Split three"]]],
-                      ["Session filter", "sessionPreset", [["eth", "ETH"], ["rth", "RTH"], ["custom", "Custom"]]],
                       ["Length unit", "lengthUnit", [["minute", "Minutes"], ["day", "Days"], ["week", "Weeks"], ["month", "Months"]]],
                       ["Daily end", "dailyEndMode", [["next-daily-start", "Next daily start"], ["explicit-time", "Explicit time"]]],
                       ["Weekly end", "weekEndMode", [["next-week-start", "Next week start"], ["explicit-day-time", "Explicit day/time"]]],
@@ -5707,26 +5691,6 @@ export default function ChartIndicatorsControl({
                             customEndMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0,
                           },
                         }))}
-                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
-                      />
-                    </label>
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>Custom session start</span>
-                      <input
-                        type="time"
-                        step="1"
-                        value={String(settingsInstance.settings?.customSessionStart ?? "17:00:00")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customSessionStart: event.target.value } }))}
-                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
-                      />
-                    </label>
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>Custom session end</span>
-                      <input
-                        type="time"
-                        step="1"
-                        value={String(settingsInstance.settings?.customSessionEnd ?? "16:00:00")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customSessionEnd: event.target.value } }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                       />
                     </label>
@@ -5872,20 +5836,6 @@ export default function ChartIndicatorsControl({
                         {dropdown("Summary layout", "summaryLayout", [["compact", "Compact"], ["full", "Full"]] as const)}
                         {dropdown("Summary location", "summaryLocation", [["top-left", "Top left"], ["top-right", "Top right"], ["bottom-left", "Bottom left"], ["bottom-right", "Bottom right"]] as const)}
                       </div>
-                    ))}
-                    {page("Filter/split time", (
-                      <>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {dropdown("Filter mode", "filterMode", [["none", "None"], ["filter", "Filter"], ["split-two", "Split two"], ["split-three", "Split three"]] as const)}
-                          {dropdown("Filter time", "sessionPreset", [["eth", "ETH"], ["rth", "RTH"], ["custom", "Custom"]] as const)}
-                        </div>
-                        {toggle(
-                          "Use end session as start day",
-                          "useEndSessionAsStartDay",
-                          false,
-                          "Opens each profile at the custom session's END time, so an overnight market's day is bounded by its own close. Applies with Filter mode on a Custom session.",
-                        )}
-                      </>
                     ))}
                   </>
                 );

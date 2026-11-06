@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { resolveSessionSegments } from "../src/lib/volumeProfileSessions.ts";
 
 const root = process.cwd();
 
@@ -60,16 +61,50 @@ test("weekly custom dates activate custom-range calculation and POC visibility o
   assert.match(primitive, /if \(settings\.showPoc\s*&&\s*\(settings\.showDevelopingPoc/);
 });
 
-test("Daily TPO exposes one-click, timezone-aware market-open sessions", async () => {
+test("legacy saved TPO market-open presets remain readable", async () => {
   const presets = await readFile(path.join(root, "src/lib/tpo/quickSessions.ts"), "utf8");
-  const controls = await readFile(path.join(root, "src/components/ChartIndicatorsControl.tsx"), "utf8");
   assert.match(presets, /label:\s*"RTH only"[\s\S]*timezone:\s*"America\/New_York"[\s\S]*dailyStartTime:\s*"09:30:00"[\s\S]*dailyEndTime:\s*"16:00:00"/);
   assert.match(presets, /label:\s*"Globex open"[\s\S]*dailyStartTime:\s*"18:00:00"[\s\S]*dailyEndTime:\s*"17:00:00"/);
   assert.match(presets, /label:\s*"New York open"/);
   assert.match(presets, /label:\s*"London open"[\s\S]*timezone:\s*"Europe\/London"/);
   assert.match(presets, /label:\s*"Tokyo open"[\s\S]*timezone:\s*"Asia\/Tokyo"/);
   assert.match(presets, /label:\s*"Sydney open"[\s\S]*timezone:\s*"Australia\/Sydney"/);
-  assert.match(controls, /scheduleKind:\s*"daily",\s*periodMode:\s*"multiple-profiles",\s*filterMode:\s*"none"/);
+});
+
+test("daily TPO uses the same Globex and New York windows as Volume Profile", () => {
+  const open = Date.parse("2026-11-04T23:00:00Z");
+  const ny = Date.parse("2026-11-05T14:30:00Z");
+  const nowMs = Date.parse("2026-11-05T16:00:00Z");
+  const makeTrade = (timestampMs, price) => ({ timestampMs, price, size: 1, tickSize: 0.25, instrumentId: "NQ" });
+  const trades = [
+    makeTrade(open + 60_000, 25000),
+    makeTrade(open + 10 * 3_600_000, 25010), // London only, omitted.
+    makeTrade(ny + 60_000, 25020),
+  ];
+  const selected = settings.validateTpoSettings({
+    ...settings.defaultTpoSettings("daily-tpo"),
+    filterMode: "triple", filterTime: "rth", profileCount: 1,
+    sessionAsiaEnabled: true, sessionTokyoEnabled: false, sessionLondonEnabled: false, sessionNewYorkEnabled: true,
+    visitSource: "exact-trades", groupingMode: "manual", ticksPerRow: 1,
+  }, "daily-tpo", undefined, "NQ");
+  const profiles = engine.buildTpoProfiles({ trades, bars: [], settings: selected, nowMs });
+  const shared = resolveSessionSegments(open, Date.parse("2026-11-05T22:00:00Z"), {
+    mode: "triple", window: "rth", customStartMinutes: 510, customEndMinutes: 915, useEndSessionAsStartDay: false,
+  }).filter(({ id }) => id === "asia" || id === "newyork");
+  assert.deepEqual(profiles.map(p => p.startTimeMs), shared.map(w => w.startMs));
+  assert.deepEqual(profiles.map(p => p.totalTrades), [1, 1]);
+  assert.deepEqual(profiles.map(p => p.developing), [false, true]);
+  assert.notEqual(settings.tpoCalculationSettingsKey(selected),
+    settings.tpoCalculationSettingsKey({ ...selected, sessionNewYorkEnabled: false }));
+
+  const weekly = settings.validateTpoSettings({
+    ...settings.defaultTpoSettings("weekly-tpo"), ...settings.tpoSettingsToRecord(selected),
+    scheduleKind: "weekly",
+  }, "weekly-tpo", undefined, "NQ");
+  assert.deepEqual(engine.buildTpoProfiles({ trades, bars: [], settings: weekly, nowMs }).map(p => p.totalTrades), [2]);
+
+  const custom = { ...selected, filterMode: "splitted", filterTime: "custom", sessionStartMinutes: 16 * 60 + 50, sessionEndMinutes: 60 };
+  assert.deepEqual(engine.buildTpoProfiles({ trades, bars: [], settings: custom, nowMs }).map(p => p.totalTrades), [1]);
 });
 
 test("TPO always renders above candles", async () => {
