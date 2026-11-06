@@ -4094,6 +4094,7 @@ function Chart({
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const chartWatermark = chartWatermarkSize(overlaySize.width, overlaySize.height, CHART_WATERMARK_SCALE);
   const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(STABLE_RIGHT_PRICE_SCALE_WIDTH);
+  const [nativeTimeScaleHeight, setNativeTimeScaleHeight] = useState(CHART_TIME_AXIS_HEIGHT);
   // One shared SVG clip per chart instance keeps every overlay (drawings, TPO
   // zones, Expected Move rails) inside the price pane, under the price scale.
   const chartPaneClipId = `chart-pane-clip-${chartInstanceId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -15324,7 +15325,7 @@ function Chart({
     });
 
     chartRef.current = chart;
-    const syncNativePriceScaleWidth = () => {
+    const syncNativeAxisInsets = () => {
       // A queued resize frame may outlive navigation or chart replacement.
       if (chartRef.current !== chart) return;
       const nextWidth = Math.max(
@@ -15336,8 +15337,10 @@ function Chart({
       // contraction was also moving the paper-position rail and every overlay
       // anchored to the plot's right edge.
       setNativePriceScaleWidth((current) => nextWidth > current ? nextWidth : current);
+      const timeScaleHeight = chart.timeScale().height();
+      if (timeScaleHeight > 0) setNativeTimeScaleHeight(timeScaleHeight);
     };
-    window.requestAnimationFrame(syncNativePriceScaleWidth);
+    window.requestAnimationFrame(syncNativeAxisInsets);
     setChartReadyRevision((current) => current + 1);
 
     const candleSeries = chart.addCandlestickSeries({
@@ -16116,7 +16119,7 @@ function Chart({
           height,
         });
         setOverlaySize({ width, height });
-        window.requestAnimationFrame(syncNativePriceScaleWidth);
+        window.requestAnimationFrame(syncNativeAxisInsets);
       }
     };
 
@@ -19209,7 +19212,7 @@ function Chart({
         </div>
       ) : null}
       <ChartCornerBadges
-        bottomInset={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
+        bottomInset={indicatorPaneHeight > 0 ? indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT : nativeTimeScaleHeight}
         topInset={topIndicatorPaneHeight}
         leftInset={toolbarPlotLeftInset}
         priceScaleWidth={nativePriceScaleWidth}

@@ -8,6 +8,7 @@ export type ChartCornerBadge = {
   content: ReactNode;
 };
 
+const RIGHT_CORNER_GAP = 10;
 const positions = ["top-left", "top-middle", "top-right", "bottom-left", "bottom-middle", "bottom-right"] as const;
 
 /** One layout owner for chart badges, above/below docked study panes.
@@ -28,13 +29,13 @@ export default function ChartCornerBadges({ badges, bottomInset, topInset, leftI
     const right = position.endsWith("right");
     const middle = position.endsWith("middle");
     const style: CSSProperties = {
-      ...(bottom ? { bottom: bottomInset + (right ? 0 : 8) } : { top: topInset + 12 }),
+      ...(bottom ? { bottom: bottomInset + (right ? RIGHT_CORNER_GAP : 8) } : { top: topInset + 12 }),
       ...(right ? { right: 0 } : middle ? { left: "50%", transform: "translateX(-50%)" } : { left: leftInset + 12 }),
       alignItems: right ? "flex-end" : middle ? "center" : "flex-start",
       maxWidth: `calc(100% - ${leftInset}px)`,
     };
     return <div key={position} data-chart-corner={position} className="pointer-events-none absolute z-[32] flex flex-col gap-2" style={style}>
-      {entries.map(badge => <div key={badge.id} data-chart-corner-badge={badge.id} className="empty:hidden" style={{ marginRight: right ? priceScaleWidth + 10 : 0 }}>
+      {entries.map(badge => <div key={badge.id} data-chart-corner-badge={badge.id} className="empty:hidden" style={{ marginRight: right ? priceScaleWidth + RIGHT_CORNER_GAP : 0 }}>
         {badge.content}
       </div>)}
     </div>;

@@ -22,14 +22,14 @@ const render = (patch = {}) => renderToStaticMarkup(React.createElement(CornerBa
   ], ...patch,
 }));
 
-test('bottom-right badges use the price-pane boundary and countdown is last', () => {
+test('bottom-right timer clears the price and time boundaries by the same gap', () => {
   const html = render();
-  assert.match(html, /data-chart-corner="bottom-right"[^>]*bottom:364px;right:0/);
+  assert.match(html, /data-chart-corner="bottom-right"[^>]*bottom:374px;right:0/);
   assert.ok(html.indexOf('data-chart-corner-badge="gamma"') < html.indexOf('data-chart-corner-badge="vix"'));
   assert.ok(html.indexOf('data-chart-corner-badge="vix"') < html.indexOf('data-chart-corner-badge="timer"'));
   assert.match(html, /data-chart-corner-badge="timer"[^>]*margin-right:70px/);
   assert.match(html, /zoom:2/);
-  assert.match(render({ bottomInset: 504 }), /bottom:504px/);
+  assert.match(render({ bottomInset: 504 }), /bottom:514px/);
 });
 
 test('all other corners clear the docked panes, and absent badges add no item', () => {
@@ -43,7 +43,7 @@ test('all other corners clear the docked panes, and absent badges add no item', 
 
 test('the actual chart supplies both pane offsets and leaves countdown positioning to the stack', () => {
   const chart = readFileSync(new URL('../src/components/Chart.tsx', import.meta.url), 'utf8');
-  assert.match(chart, /<ChartCornerBadges\s+bottomInset=\{indicatorPaneHeight \+ CHART_TIME_AXIS_HEIGHT\}\s+topInset=\{topIndicatorPaneHeight\}/);
+  assert.match(chart, /<ChartCornerBadges\s+bottomInset=\{indicatorPaneHeight > 0 \? indicatorPaneHeight \+ CHART_TIME_AXIS_HEIGHT : nativeTimeScaleHeight\}\s+topInset=\{topIndicatorPaneHeight\}/);
   const timer = readFileSync(new URL('../src/components/CandleCountdownBadge.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(timer, /absolute|bottom-0|right-0/);
   assert.ok(chart.indexOf('id: "gamma-environment", position: gammaEnvironmentPosition') < chart.indexOf('id: "candle-countdown", position: "bottom-right"'));
