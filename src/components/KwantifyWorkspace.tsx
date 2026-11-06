@@ -1508,6 +1508,29 @@ function displayCmeSymbol(symbol: string) {
   return symbol.replace(/\.[vnc]\.\d+$/i, "");
 }
 
+// October 2026 average daily futures volume in CME Group's monthly ADV report.
+// https://www.cmegroup.com/daily_bulletin/monthly_volume/Web_ADV_Report_CMEG.pdf
+const mostTradedCmeSymbols = ["SR3.v.0", "MNQ.v.0", "ZN.v.0", "ZF.v.0", "ES.v.0"];
+const cmeFuturesPickerCategories = [
+  {
+    category: "CME Futures · Most Traded",
+    instruments: mostTradedCmeSymbols.flatMap((symbol) => {
+      const instrument = DATABENTO_FUTURES.find((future) => future.symbol === symbol);
+      return instrument ? [instrument] : [];
+    }),
+  },
+  {
+    category: "CME Futures",
+    instruments: DATABENTO_FUTURES
+      .filter(({ symbol }) => !mostTradedCmeSymbols.includes(symbol))
+      .sort((left, right) => displayCmeSymbol(left.symbol).localeCompare(displayCmeSymbol(right.symbol), "en", { numeric: true })),
+  },
+].map(({ category, instruments }) => ({
+  category,
+  broker: "Databento",
+  items: instruments.map(({ symbol, label, venue }) => [symbol, `${label} · ${venue}`]),
+}));
+
 function liquidityMapInstrument(symbol: string) {
   const contractRoot = displayCmeSymbol(symbol)
     .toUpperCase()
@@ -11818,11 +11841,7 @@ export default function KwantifyWorkspace({
     return Array.from(unique).join(",");
   }, [activeChartBrokerLabel, gammaChartSymbols, selectedInstrument, workspacePanes]);
   const instrumentCategories = [
-    {
-      category: "CME Futures",
-      broker: "Databento",
-      items: DATABENTO_FUTURES.map((instrument) => [instrument.symbol, `${instrument.label} · ${instrument.venue}`]),
-    },
+    ...cmeFuturesPickerCategories,
     {
       category: "CME Options",
       broker: "Databento",
