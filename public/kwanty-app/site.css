@@ -9,13 +9,24 @@ button.selected,button[aria-pressed=true]{color:var(--site-primary)!important;bo
 aside,dialog,.dialog-head,.side-heading{background:var(--site-panel)!important;color:var(--site-foreground)!important}
 #themeToggle{display:none!important}[data-kwanty-diagnostic]{display:none!important}
 #legacyReplayControls,#workspaceReplay[hidden],#workspaceReplayRetry[hidden]{display:none!important}
-header>nav .workspace-replay-trigger{display:inline-flex;align-items:center;justify-content:center;gap:6px;line-height:1;font-weight:600;border-color:transparent;background:transparent!important}
-header>nav .workspace-replay-trigger svg{flex-shrink:0;stroke-width:2}
+/* Match the Charts command buttons in the standalone bar and phone drawer. */
+body[data-phone-workspace=kwanty] .kwanty-command {
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:var(--kwant-workspace-command-control);padding:0 10px;
+  border:1px solid transparent!important;border-radius:var(--kwant-control-radius)!important;
+  background:transparent!important;color:var(--site-muted)!important;
+  font:600 10px/1 Aleph,sans-serif;letter-spacing:.075em;text-transform:uppercase;white-space:nowrap;
+}
+body[data-phone-workspace=kwanty] .kwanty-command:hover { background:var(--site-surface)!important;color:var(--site-foreground)!important; }
+body[data-phone-workspace=kwanty] #workspaceReplay[aria-pressed=true] { color:var(--site-primary)!important; }
+.kwanty-command svg { width:14px;height:14px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
+.kwanty-command-utilities { display:grid;gap:2px;padding-top:4px;margin-top:4px;border-top:1px solid var(--site-border); }
+body[data-phone-workspace=kwanty] .template-overflow-menu button { justify-content:flex-start;text-align:left; }
 .bot-template-actions{display:flex;gap:5px;margin-left:auto}.bot-template-actions button{font-size:11px}
 #chartEmpty{inset:0;top:0;width:100%;height:100%;padding:0}
 @media(max-width:700px){header{flex-wrap:nowrap;gap:4px;padding:4px}header nav{gap:3px}.bot-template-actions{overflow:auto;min-width:0}}
 
-.workspace-header-actions .bot-template-actions{overflow:visible;flex-shrink:0}.template-overflow{position:relative}.template-overflow summary{cursor:pointer;list-style:none;padding:7px 8px;font-size:10px;font-weight:600;text-transform:uppercase}.template-overflow-menu{position:absolute;right:0;top:100%;min-width:100px;z-index:100;display:flex;flex-direction:column;padding:4px;background:var(--site-panel);border:1px solid var(--site-border);border-radius:8px}
+.workspace-header-actions .bot-template-actions{overflow:visible;flex-shrink:0}.template-overflow{position:relative}.template-overflow summary{cursor:pointer;list-style:none;padding:7px 8px;font-size:10px;font-weight:600;text-transform:uppercase}.template-overflow-menu{position:absolute;right:0;top:100%;min-width:156px;z-index:100;display:flex;flex-direction:column;padding:4px;background:var(--site-panel);border:1px solid var(--site-border);border-radius:8px}
 
 .state-chart-content{position:absolute;inset:32px 0 0;min-height:0}
 .state-chart-content canvas{margin-left:36px;width:calc(100% - 36px);height:100%}
@@ -109,11 +120,11 @@ header>nav{grid-column:2;grid-row:1;justify-self:center}
   body > header > .workspace-header-actions {
     grid-column:3;grid-row:1;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
   }
-  body > header > .workspace-header-actions > :first-child { margin-left:auto; }
+  body > header > .workspace-header-actions > :first-child { margin-inline-start:auto; }
   body > header :is(button,select,.kwant-choice-trigger) {
     flex-shrink:0;box-sizing:border-box;height:var(--kwant-workspace-command-control);min-height:var(--kwant-workspace-command-control);max-height:var(--kwant-workspace-command-control);
     padding:0 10px;font-size:10px;font-weight:600;letter-spacing:.075em;line-height:1;
-    border-radius:3px!important;white-space:nowrap;
+    border-radius:var(--kwant-control-radius)!important;white-space:nowrap;
   }
   body > header :is(nav,.workspace-header-actions) button,
   body > header .timeframe-buttons button,body > header .ticker-favourites button {
@@ -129,9 +140,14 @@ header>nav{grid-column:2;grid-row:1;justify-self:center}
   body > header .kwant-choice-trigger { width:auto;min-width:58px;max-width:160px; }
   body > header #workspaceInstrument + .kwant-choice-trigger { min-width:76px; }
   body > header #workspaceLayout + .kwant-choice-trigger { min-width:108px; }
-  body > header .bot-template-actions { flex-shrink:0;gap:8px;overflow:visible; }
+  body > header .bot-template-actions { flex-shrink:0;gap:2px;overflow:visible; }
   body > header .template-overflow-menu { position:fixed;top:var(--kwanty-command-height);right:12px; }
-  body > header .template-overflow summary { padding:0 10px;height:28px;display:flex;align-items:center;font-size:10px; }
+  body > header .template-overflow summary {
+    padding:0 10px;height:28px;display:flex;align-items:center;font-size:10px;
+    color:var(--site-muted);border-radius:var(--kwant-control-radius);
+  }
+  body > header .template-overflow summary:hover,
+  body > header .template-overflow[open] summary { color:var(--site-foreground);background:var(--site-surface); }
 }
 @media (min-width:768px) and (max-width:1279px) {
   body { --kwanty-command-height:calc(2 * var(--kwanty-command-row) + 1px); }

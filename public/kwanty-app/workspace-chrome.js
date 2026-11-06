@@ -5,12 +5,21 @@ export function mountWorkspaceChrome({onTicker,onAdd,onLayout,onIndicators,layou
  ticker.addEventListener('change',()=>onTicker(ticker.value));
  const sync=()=>{if(ticker.options.length!==sidebar.options.length||ticker.options[0]?.value!==sidebar.options[0]?.value){ticker.replaceChildren(...[...sidebar.options].map(option=>option.cloneNode(true)));}ticker.value=sidebar.value;};
  const observer=new MutationObserver(sync);observer.observe(sidebar,{childList:true});sync();
- for(const id of ['workspaceReplay','workspaceReplayRetry','toggleSidebar','fullscreen','screenshot']){const button=document.getElementById(id);if(button)actions.append(button);}
- const add=document.createElement('button');add.type='button';add.textContent='+ Add chart';add.onclick=onAdd;actions.append(add);
+ for(const id of ['workspaceReplay','workspaceReplayRetry']) actions.append(document.getElementById(id));
+ const add=document.createElement('button');add.type='button';add.className='kwanty-command';
+ add.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add chart</span>';
+ add.onclick=onAdd;actions.append(add);
+ const utilities=document.createElement('div');utilities.className='kwanty-command-utilities';utilities.setAttribute('role','group');utilities.setAttribute('aria-label','Chart view actions');
+ for(const [id,label] of [['toggleSidebar','Settings panel'],['fullscreen','Fullscreen'],['screenshot','Save chart image']]){
+  const button=document.getElementById(id);button.classList.add('kwanty-command');
+  const text=document.createElement('span');text.textContent=label;button.append(text);utilities.append(button);
+ }
+ actions.append(utilities);
  const select=document.createElement('select');select.id='workspaceLayout';select.setAttribute('aria-label','Chart layout');
  for(const [value,label]of [['stack','Stack'],['columns','Side by side'],['grid','Grid']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
  select.value=layout;select.onchange=()=>onLayout(select.value);controls.append(select);
- const indicators=document.createElement('button');indicators.type='button';indicators.textContent='Indicators';indicators.setAttribute('aria-label','Chart indicators');indicators.onclick=onIndicators;actions.prepend(indicators);
+ const indicators=document.createElement('button');indicators.type='button';indicators.className='kwanty-command';
+ indicators.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18M8 16v-3m5 3V8m5 8v-5"/></svg><span>Indicators</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';indicators.setAttribute('aria-label','Chart indicators');indicators.onclick=onIndicators;actions.prepend(indicators);
  return {sync,dispose:()=>observer.disconnect(),layout:value=>select.value=value};
 }
 
