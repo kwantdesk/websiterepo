@@ -162,8 +162,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "deep-delta",
   "deep-wall",
   "deep-v-tracker",
-  "deep-profile-swing",
-  "deep-profile-values",
   "market-statistics",
   "confluence-identifier",
   "cumulative-volume-delta",

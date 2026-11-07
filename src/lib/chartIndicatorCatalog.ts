@@ -130,8 +130,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Custom Draw-On Volume Profile", "Volume & Profiles", "Draw a start and end range directly on the chart.", true, "Kwantify"),
   indicator("Ask/Bid Volume Profile", "Volume & Profiles", "Back-to-back ask and bid volume at each price.", true, "Kwantify"),
   indicator("Delta Profile", "Volume & Profiles", "Net aggressive volume distributed by price.", true, "Kwantify"),
-  indicator("KWANT Profile Swing", "Volume & Profiles", "Automatically anchors profiles to price swings.", true, "Reference", "Deep Profile Swing"),
-  indicator("KWANT Profile Values", "Volume & Profiles", "POC, value area, VWAP, peaks and valleys without profile bars.", true, "Reference", "Deep Profile Values"),
   indicator("VWAP", "Volume & Profiles", "Session volume-weighted average price.", false, "Kwantify"),
   indicator("VWAP Envelopes", "Volume & Profiles", "VWAP with configurable standard-deviation envelopes."),
   indicator("Rolling VWAP", "Volume & Profiles", "Continuous rolling-period VWAP.", false, "Kwantify"),
