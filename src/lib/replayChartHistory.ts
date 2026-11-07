@@ -1,5 +1,6 @@
 import type { Candle } from "./backtester";
 import type { InstitutionalTrade } from "./institutionalMarketData";
+import { replayFormingCandle } from "./replayFormingCandle";
 
 const DAY_MS = 86_400_000;
 const PERIOD_DAYS: Record<string, number> = { "1D": 1, "5D": 10, "1W": 7, "1M": 30, "3M": 90, "6M": 180, "1Y": 365, All: 1460 };
@@ -18,6 +19,23 @@ export function replayChartHistoryRange(session: { startMs: number; endMs: numbe
 /** Live recomputation has a tail budget; replay must cover every revealed bar. */
 export function replayIndicatorCandles<T>(candles: T[], liveLimit: number, replayClock: number | null | undefined): T[] {
   return replayClock == null ? candles.slice(-Math.max(1, liveLimit)) : candles;
+}
+
+/** The one candle cut used by every price/footprint pane in Charts replay.
+ * The caller supplies only bars whose opening timestamp has been revealed. */
+export function replayCandlesAtClock(candles: Candle[], prints: InstitutionalTrade[], clock: number | null,
+  intervalMs: number, eventBased: boolean): Candle[] {
+  if (clock === null || !candles.length) return candles;
+  if (eventBased) return candles.filter((candle, index) => {
+    const end = Number(candle.sourceEndTimestamp);
+    if (Number.isFinite(end) && end >= candle.timestamp) return end <= clock;
+    return index + 1 < candles.length && candles[index + 1].timestamp <= clock;
+  });
+  const last = candles[candles.length - 1];
+  // Use the archive's actual open, including exchange-aligned daily bars.
+  if (intervalMs <= 0 || clock >= last.timestamp + intervalMs) return candles;
+  const forming = replayFormingCandle(last.timestamp, clock, prints);
+  return forming ? [...candles.slice(0, -1), forming] : candles.slice(0, -1);
 }
 
 /** A whole-bar price ladder is usable only after that exact bar closes.

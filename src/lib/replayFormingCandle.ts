@@ -1,6 +1,6 @@
 import type { Candle } from "@/lib/backtester";
 
-type ReplayPrint = { timestamp: number; close: number; volume?: number; trades?: number; delta?: number; bidVolume?: number; askVolume?: number; flowOnly?: boolean };
+type ReplayPrint = { timestamp: number; close: number; volume?: number; trades?: number; delta?: number; bidVolume?: number; askVolume?: number; flowOnly?: boolean; footprintSummary?: unknown };
 
 /** Fold only observed executions. Never inherit a closed bar's final wick/flow. */
 export function replayFormingCandle(timestamp: number, clock: number, prints: readonly ReplayPrint[]): Candle | null {
@@ -10,7 +10,7 @@ export function replayFormingCandle(timestamp: number, clock: number, prints: re
   let bidVolume = 0, askVolume = 0;
   for (let i = lo; i < prints.length && prints[i].timestamp <= clock; i++) {
     const print = prints[i], price = print.close;
-    if (print.flowOnly || !Number.isFinite(price) || price <= 0) continue;
+    if (print.flowOnly || print.footprintSummary || !Number.isFinite(price) || price <= 0) continue;
     if (!result) result = { timestamp, open: price, high: price, low: price, close: price, volume: 0, trades: 0 };
     result.high = Math.max(result.high, price); result.low = Math.min(result.low, price); result.close = price;
     result.volume = (result.volume ?? 0) + Math.max(0, Number(print.volume ?? 0));

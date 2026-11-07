@@ -1594,7 +1594,7 @@ function GexMapWorkspace({
   }, [panelData, panelMatches, panels, replayMode, replayWindow, requestedReplayDate, stepMinutes]);
 
   useEffect(() => {
-    if (!replayMode || !playing || timeline.length < 2) return;
+    if (externalReplay || !replayMode || !playing || timeline.length < 2) return;
     const timer = window.setInterval(() => {
       setCursor((current) => {
         if (current >= timeline.length - 1) {
@@ -1605,7 +1605,7 @@ function GexMapWorkspace({
       });
     }, Math.max(80, 1_000 / speed));
     return () => window.clearInterval(timer);
-  }, [playing, replayMode, speed, timeline.length]);
+  }, [externalReplay, playing, replayMode, speed, timeline.length]);
 
   const selectedTimestamp = replayMode
     ? externalReplay?.timestampMs ?? timeline[Math.min(cursor, Math.max(0, timeline.length - 1))] ?? null
@@ -1976,9 +1976,11 @@ function GexMapWorkspace({
 
         {timeHorizon === "future" ? (
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <GexMapFutureMatrix palette={activePalette} zoom={futureZoom}
+            {replayMode ? <div role="status" className="flex h-full items-center justify-center p-6 text-center text-xs text-muted">
+              The forward-expiry matrix has no recorded replay surface. Switch to Present for timestamped exposure replay.
+            </div> : <GexMapFutureMatrix palette={activePalette} zoom={futureZoom}
               workspaceSettings={privateWorkspace ? futureSettings : undefined}
-              onWorkspaceSettingsChange={privateWorkspace ? setFutureSettings : undefined} />
+              onWorkspaceSettingsChange={privateWorkspace ? setFutureSettings : undefined} />}
           </div>
         ) : (
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1.5 pt-0">

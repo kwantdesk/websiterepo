@@ -169,7 +169,7 @@ test("every recorded replay minute reconstructs all fields exactly without later
   assert.equal(before.previous.size, 0);
   assert.equal(before.opening.size, 0);
   assert.equal(gexMapPriceAt(payload, payload.candles[0].timestamp - 1), null);
-  assert.equal(gexMapPriceAt(payload, payload.candles[0].timestamp), payload.candles[0].close);
+  assert.equal(gexMapPriceAt(payload, payload.candles[0].timestamp), payload.candles[0].open);
 });
 
 test("short sessions do not duplicate opening when it is also a comparison or last frame", () => {

@@ -40,9 +40,8 @@ import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import WorkspaceReplayDialog from "@/components/WorkspaceReplayDialog";
 import { replayObservationCount, selectWorkspaceReplaySession, WORKSPACE_REPLAY_LIVE_ONLY_INDICATORS } from "@/lib/workspaceReplay";
-import { replayFormingCandle } from "@/lib/replayFormingCandle";
 import { chartProgressCopy } from "@/lib/chartProgressCopy";
-import { replayChartHistoryRange } from "@/lib/replayChartHistory";
+import { replayChartHistoryRange, replayCandlesAtClock } from "@/lib/replayChartHistory";
 import { REPLAY_SPEEDS, replaySpeedLabel, replayTimestampAfterElapsed, startReplayTicker } from "@/lib/replayPlayback";
 import { OPTIONS_FLOW_TOOLS, optionsFlowTool, normalizeOptionsFlowState, type OptionsFlowPanelKind, type OptionsFlowState } from "@/lib/optionsFlowTools";
 import { normalizeDrawings, type Drawing } from "@/lib/chartDrawTools";
@@ -5690,23 +5689,8 @@ function WorkspaceChartPaneComponent({
   // than exposing its future high/low or inventing an intrabar path.
   const replayDisplayCandles = useMemo(() => {
     if (!replayActive || !replayTimestampMs || !replayCandles.length) return replayCandles;
-    // Event OHLC is only knowable at its final execution. A complete event bar
-    // must not be revealed at its first print during historical playback.
-    if (isEventBasedChartInterval(pane.timeframe)) return replayCandles.filter((candle, index) => {
-      const end = Number(candle.sourceEndTimestamp);
-      if (Number.isFinite(end) && end >= candle.timestamp) return end <= replayTimestampMs;
-      return index + 1 < replayCandles.length && replayCandles[index + 1].timestamp <= replayTimestampMs;
-    });
-    const last = replayCandles[replayCandles.length - 1];
-    const bucketMs = getTimeframeMs(pane.timeframe);
-    if (bucketMs <= 0) return replayCandles;
-    // The archive timestamp is the actual bar open. UTC flooring can declare
-    // a CME daily/session-aligned bar closed hours before its real close.
-    const bucketStart = last.timestamp;
-    if (replayTimestampMs >= bucketStart + bucketMs) return replayCandles;
-    const forming = replayFormingCandle(bucketStart, replayTimestampMs, replayMarketTrades);
-    if (!forming) return replayCandles.slice(0, -1);
-    return [...replayCandles.slice(0, -1), forming];
+    return replayCandlesAtClock(replayCandles, replayMarketTrades, replayTimestampMs,
+      getTimeframeMs(pane.timeframe), isEventBasedChartInterval(pane.timeframe));
   }, [pane.timeframe, replayActive, replayCandles, replayMarketTrades, replayTimestampMs]);
   useEffect(() => {
     if (!active || !replayActive || !replayTimestampMs || !onLiveExecutionQuote) return;

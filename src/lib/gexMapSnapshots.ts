@@ -38,7 +38,10 @@ export function gexMapPriceAt(payload: GexMapPanelPayload, timestamp: number | n
   let value: number | null = null;
   for (const candle of payload.candles) {
     if (candle.timestamp > timestamp) break;
-    value = candle.close;
+    // These are minute OHLC bars stamped at OPEN. A replay inside that
+    // minute knows its open, not its final close. This same selector drives
+    // Map's spot marker and Bounce's historical classifications.
+    value = candle.timestamp + 60_000 <= timestamp ? candle.close : candle.open;
   }
   // Latest spot is not evidence of a price before the first recorded candle.
   return value;
