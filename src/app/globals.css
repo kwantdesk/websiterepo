@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../../public/number-input.css";
 @import "../../public/gex-data-app/range-input.css";
 @import "../../public/gex-data-app/workspace-chrome.css";
 
@@ -38,19 +39,7 @@
   --candle-down: #737373;
 }
 
-/* Shared precision rail for every numeric chart/indicator setting. */
-.kwant-indicator-number {
-  appearance: textfield;
-  -moz-appearance: textfield;
-}
-
-.kwant-indicator-number::-webkit-inner-spin-button,
-.kwant-indicator-number::-webkit-outer-spin-button {
-  margin: 0;
-  appearance: none;
-  -webkit-appearance: none;
-}
-
+/* Shared precision rail for numeric chart/indicator sliders. */
 .kwant-indicator-slider {
   height: 16px;
   margin: 0;
