@@ -37,7 +37,7 @@ test('event-chart points use the same remapped price-bar coordinates',()=>{
  const model=new LiveDeltaPaneModel();model.hydrate([candle(0),candle(1)]);
  const [series]=model.calculate(group('delta-bar'),{...input([]),mapTime:time=>time===start/1000?123:undefined});assert.deepEqual(series.data.map(p=>p.time),[123]);
 });
-function harness(groups,inputs){
+function harness(groups,inputs,mode="delta"){
  const source=readFileSync(new URL('../src/components/useLiveDeltaPanes.ts',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replace('export function useLiveDeltaPanes','function useLiveDeltaPanes');
  const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
  const refs=[],states=[],effects=[];let cursor=0,queued=[],timers=new Map(),next=0,output,props={groups,inputs,key:'pane',scope:'NQ:1m'};
@@ -45,8 +45,8 @@ function harness(groups,inputs){
  const useRef=value=>{const i=cursor++;return refs[i]??=( {current:value} );};
  const useState=value=>{const i=cursor++;if(!(i in states))states[i]=value;return[states[i],v=>{states[i]=typeof v==='function'?v(states[i]):v;render();}];};
  const useEffect=(fn,deps)=>{const i=cursor++;if(!equal(effects[i]?.deps,deps))queued.push(()=>{effects[i]?.cleanup?.();effects[i]={deps,cleanup:fn()};});};
- const hook=new Function('useEffect','useRef','useState','LIVE_CHART_CANDLE_EVENT','LIVE_CHART_EXECUTION_EVENT','deltaPaneIdentity','isLiveDeltaPane','LIVE_DELTA_PANE_INTERVAL_MS','LiveDeltaPaneModel','window','setTimeout','clearTimeout',code+';return useLiveDeltaPanes;')(useEffect,useRef,useState,LIVE_CHART_CANDLE_EVENT,LIVE_CHART_EXECUTION_EVENT,deltaPaneIdentity,isLiveDeltaPane,LIVE_DELTA_PANE_INTERVAL_MS,LiveDeltaPaneModel,window,(fn,ms)=>{const id=++next;timers.set(id,{fn,ms});return id;},id=>timers.delete(id));
- function render(){cursor=0;output=hook(props.groups,props.scope,props.key,props.inputs);const q=queued;queued=[];for(const effect of q)effect();}
+ const hook=new Function('useEffect','useRef','useState','LIVE_CHART_CANDLE_EVENT','LIVE_CHART_EXECUTION_EVENT','deltaPaneIdentity','isLiveDeltaPane','LIVE_DELTA_PANE_INTERVAL_MS','LiveDeltaPaneModel','window','setTimeout','clearTimeout','requestAnimationFrame','cancelAnimationFrame',code+';return useLiveDeltaPanes;')(useEffect,useRef,useState,LIVE_CHART_CANDLE_EVENT,LIVE_CHART_EXECUTION_EVENT,deltaPaneIdentity,isLiveDeltaPane,LIVE_DELTA_PANE_INTERVAL_MS,LiveDeltaPaneModel,window,(fn,ms)=>{const id=++next;timers.set(id,{fn,ms});return id;},id=>timers.delete(id),fn=>{const id=++next;timers.set(id,{fn,ms:0});return id;},id=>timers.delete(id));
+ function render(){cursor=0;output=hook(props.groups,props.scope,props.key,props.inputs,mode);const q=queued;queued=[];for(const effect of q)effect();}
  render();return {get output(){return output;},get timers(){return timers;},emit(c,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT,{detail:{key,candle:c}}));},executions(candles,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT,{detail:{key,candles,records:[],tape:[],continuity:'continuous'}}));},flush(){const q=[...timers.values()];timers.clear();for(const t of q)t.fn();},update(p){props={...props,...p};render();},dispose(){for(const effect of effects)effect?.cleanup?.();}};
 }
 test('actual pane hook paints without parent rerenders and does not create an idle timer loop',()=>{
@@ -78,5 +78,16 @@ test('execution-only delivery advances CVD and Delta with no price-paint events 
 test('coalesced execution snapshots retain all skipped second-bar flow, not only the last four bars',()=>{
  const h=harness(ids.map(id=>group(id)),input([candle(0)]));try{h.flush();const bars=Array.from({length:20},(_,i)=>candle(i,10,3));h.executions(bars);h.flush();
  const cvd=h.output.find(g=>g.indicatorId==='cumulative-volume-delta').series[0].data;assert.equal(cvd.length,20);assert.equal(cvd.at(-1).value,140);
+ }finally{h.dispose();}
+});
+
+
+test('Volume paints on the next animation frame, keeps every received bar, and honors a filter that hides all bars',()=>{
+ const h=harness([group('volume')],input([candle(0)]),'volume');try{
+ h.flush();for(let i=1;i<=4;i++){h.emit(candle(i,10+i,2));assert.equal([...h.timers.values()][0].ms,0);h.flush();assert.equal(h.output[0].series[0].data.at(-1).value,12+i);}
+ const batch=Array.from({length:1000},(_,i)=>candle(i,10+i,2));h.executions(batch);h.flush();assert.equal(h.output[0].series[0].data.length,1000);
+ h.update({groups:[group('volume',{minimumTotalVolume:1e7})]});h.flush();assert.equal(h.output[0].series[0].data.length,0);
+ h.emit(candle(1000,20,2),'other');assert.equal(h.timers.size,0);
+ h.update({key:undefined,scope:'replay'});h.emit(candle(1001));assert.equal(h.timers.size,0);
  }finally{h.dispose();}
 });

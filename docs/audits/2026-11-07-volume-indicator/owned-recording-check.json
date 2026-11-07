@@ -1,0 +1,475 @@
+{
+  "capturedAt": "2026-11-07T09:07:44.648Z",
+  "source": "read-only VPS JSON files; no provider history calls",
+  "futuresSession": "2026-11-05",
+  "cashDate": "2026-11-06",
+  "futuresFiles": 53,
+  "totalFuturesBars": 59844,
+  "futures": [
+    {
+      "symbol": "10YX6",
+      "source": "VPS recorded live trades",
+      "bars": 116,
+      "totalVolume": 369,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "MYMZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 243072,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "TNZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1315,
+      "totalVolume": 780312,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "UBZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1286,
+      "totalVolume": 463872,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "YMZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1379,
+      "totalVolume": 134300,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZBZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1288,
+      "totalVolume": 493806,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZCZ6",
+      "source": "VPS recorded live trades",
+      "bars": 909,
+      "totalVolume": 99116,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZFZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1355,
+      "totalVolume": 1788821,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZLZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1012,
+      "totalVolume": 55262,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZMZ6",
+      "source": "VPS recorded live trades",
+      "bars": 813,
+      "totalVolume": 36757,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZNZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1375,
+      "totalVolume": 2719489,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZSF7",
+      "source": "VPS recorded live trades",
+      "bars": 948,
+      "totalVolume": 75786,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZTZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1347,
+      "totalVolume": 1499479,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ZWZ6",
+      "source": "VPS recorded live trades",
+      "bars": 904,
+      "totalVolume": 59393,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "6AZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1371,
+      "totalVolume": 138779,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "6BZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1269,
+      "totalVolume": 96857,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "6CZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1306,
+      "totalVolume": 99482,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "6EZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1372,
+      "totalVolume": 241516,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "6JZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1364,
+      "totalVolume": 184352,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "6MZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1205,
+      "totalVolume": 69654,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "6NZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1327,
+      "totalVolume": 49879,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "6SZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1319,
+      "totalVolume": 33694,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "BTCX6",
+      "source": "VPS recorded live trades",
+      "bars": 1130,
+      "totalVolume": 7443,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ESZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 1873177,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "ETHX6",
+      "source": "VPS recorded live trades",
+      "bars": 1282,
+      "totalVolume": 11360,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "GFF7",
+      "source": "VPS recorded live trades",
+      "bars": 275,
+      "totalVolume": 12356,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "HEZ6",
+      "source": "VPS recorded live trades",
+      "bars": 275,
+      "totalVolume": 25720,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "LEZ6",
+      "source": "VPS recorded live trades",
+      "bars": 275,
+      "totalVolume": 23727,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "M2KZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1378,
+      "totalVolume": 136803,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "M6AZ6",
+      "source": "VPS recorded live trades",
+      "bars": 897,
+      "totalVolume": 5949,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "M6BZ6",
+      "source": "VPS recorded live trades",
+      "bars": 530,
+      "totalVolume": 3188,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "M6EZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1165,
+      "totalVolume": 16513,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "MBTX6",
+      "source": "VPS recorded live trades",
+      "bars": 1324,
+      "totalVolume": 46221,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "MESZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 1744248,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "METX6",
+      "source": "VPS recorded live trades",
+      "bars": 686,
+      "totalVolume": 45379,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "MNQZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 4253876,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "NQZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 848804,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "RTYZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 245330,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "SR3Z6",
+      "source": "VPS recorded live trades",
+      "bars": 929,
+      "totalVolume": 489526,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "GCZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 145614,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "HGZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1372,
+      "totalVolume": 52914,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "MGCZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 314106,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "SILZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1378,
+      "totalVolume": 56879,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "SIZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1368,
+      "totalVolume": 36582,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "CLZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 179689,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "HOZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1109,
+      "totalVolume": 22121,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "MCLZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1380,
+      "totalVolume": 149412,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "NGZ26",
+      "source": "VPS recorded live trades",
+      "bars": 1334,
+      "totalVolume": 127086,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "PAZ6",
+      "source": "VPS recorded live trades",
+      "bars": 919,
+      "totalVolume": 6012,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "PLF7",
+      "source": "VPS recorded live trades",
+      "bars": 1230,
+      "totalVolume": 14531,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "QGZ6",
+      "source": "VPS recorded live trades",
+      "bars": 481,
+      "totalVolume": 1998,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "QMZ6",
+      "source": "VPS recorded live trades",
+      "bars": 941,
+      "totalVolume": 4518,
+      "status": "matches-owned-minute-aggregate"
+    },
+    {
+      "symbol": "RBZ6",
+      "source": "VPS recorded live trades",
+      "bars": 1186,
+      "totalVolume": 22466,
+      "status": "matches-owned-minute-aggregate"
+    }
+  ],
+  "cash": [
+    {
+      "symbol": "AAPL",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 507,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "AMD",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 503,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "AMZN",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 461,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "IWM",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 506,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "META",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 450,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "MSFT",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 458,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "NDX",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 391,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "NVDA",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 507,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "QQQ",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 507,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "SPX",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 395,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "SPY",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 507,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "TSLA",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 507,
+      "positiveVolumeCandles": 0
+    },
+    {
+      "symbol": "VIX",
+      "source": "VPS recorded live quotes",
+      "volumeKind": "not provided by quote feed",
+      "candles": 560,
+      "positiveVolumeCandles": 0
+    }
+  ],
+  "limitations": "Validates rendering/calculation against saved owned minute aggregates. Not an independent raw-tape completeness test or current live session test."
+}

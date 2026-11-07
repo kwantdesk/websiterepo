@@ -20,21 +20,21 @@ const run = (candles, settings = {}) => calculateIndicatorSeries({
   instanceId: "volume-1",
   indicatorId: "volume",
   enabled: true,
-  settings: { backgroundMode: "dominant", deltaInputData: "volume", ...settings },
+  settings,
 }, candles, theme)[0].data;
 
-// Total volume is the height. Side volume controls direction only.
+// Total volume is the height. Colour is the single selected plot colour.
 let points = run([{ ...base, volume: 1_000, askVolume: 300, bidVolume: 700 }]);
 assert.equal(points[0].value, 1_000);
-assert.equal(points[0].color, theme.negative);
+assert.equal(points[0].color, undefined);
 
-// Delta, not candle body direction, owns DeepCharts Dominant colouring.
+// Delta and body direction do not override the chosen Volume colour.
 points = run([{ ...base, open: 101, close: 100, volume: 500, askVolume: 400, bidVolume: 100 }]);
-assert.equal(points[0].color, theme.positive);
+assert.equal(points[0].color, undefined);
 
-// Missing side history is visibly neutral and never fabricated from OHLC.
+// Missing side history never invents a directional colour from OHLC.
 points = run([{ ...base, volume: 500 }]);
-assert.equal(points[0].color, theme.muted);
+assert.equal(points[0].color, undefined);
 
 // A valid side sum repairs an absent total without changing a real total.
 points = run([{ ...base, volume: 0, askVolume: 60, bidVolume: 40 }]);
@@ -51,4 +51,4 @@ assert.equal(merged.askVolume, 80);
 assert.equal(merged.bidVolume, 45);
 assert.equal(merged.delta, 35);
 
-console.log("volume indicator DeepCharts parity checks passed");
+console.log("volume indicator total-volume and live continuity checks passed");

@@ -383,7 +383,8 @@ function calculateUnclippedIndicatorSeries(
   }
   return applyIndicatorPlotColors(
     instance.indicatorId,
-    instance.settings as Record<string, unknown> | undefined,
+    instance.indicatorId === "volume" ? { ...instance.settings, gradientPreset: "off" }
+      : instance.settings as Record<string, unknown> | undefined,
     computeIndicatorSeries(instance, candles, theme, context),
     theme,
   );
@@ -468,49 +469,16 @@ function computeIndicatorSeries(
 
   if (key === "volume") {
     if (!volumeAvailable(candles)) return [];
-    const backgroundMode = settingString(instance, "backgroundMode", "dominant");
-    const deltaInputData = settingString(instance, "deltaInputData", "volume");
     const minimumTotalVolume = Math.max(0, settingNumber(instance, "minimumTotalVolume", 0));
-    let previousVolume: number | null = null;
-    let previousClose: number | null = null;
     return [{
-      key,
-      label: "Volume",
-      kind: "histogram",
-      placement: "pane",
-      color: theme.muted,
+      key, label: "Volume", kind: "histogram", placement: "pane", color: theme.muted,
+      includeZeroInScale: true,
       data: candles.flatMap((candle) => {
         const reportedVolume = Math.max(0, finite(candle.volume));
-        const askVolume = Math.max(0, finite(candle.askVolume));
-        const bidVolume = Math.max(0, finite(candle.bidVolume));
-        const classifiedVolume = askVolume + bidVolume;
-        // Rithmic's total-volume field remains authoritative. The side sum is
-        // only a safe repair when the total is absent; taking max(total, sides)
-        // double-counts feeds whose side classification and total differ.
+        const classifiedVolume = Math.max(0, finite(candle.askVolume)) + Math.max(0, finite(candle.bidVolume));
+        // Executed total owns bar height; sides repair an absent total only.
         const value = reportedVolume > 0 ? reportedVolume : classifiedVolume;
-        const priorVolume = previousVolume;
-        const priorClose = previousClose;
-        previousVolume = value;
-        previousClose = finite(candle.close);
-        if (value < minimumTotalVolume) return [];
-
-        let color = theme.muted;
-        if (backgroundMode === "price-slope" && priorClose !== null) {
-          color = finite(candle.close) >= priorClose ? theme.positive : theme.negative;
-        } else if (backgroundMode === "volume-slope" && priorVolume !== null) {
-          color = value >= priorVolume ? theme.positive : theme.negative;
-        } else if (backgroundMode === "dominant") {
-          const ask = deltaInputData === "trades"
-            ? Math.max(0, finite(candle.askTrades))
-            : askVolume;
-          const bid = deltaInputData === "trades"
-            ? Math.max(0, finite(candle.bidTrades))
-            : bidVolume;
-          // No execution-side history means neutral, not a made-up signal
-          // from candle direction. DeepCharts defines Dominant from delta.
-          if (ask + bid > 0) color = ask >= bid ? theme.positive : theme.negative;
-        }
-        return [{ time: candle.timestamp / 1000, value, color }];
+        return value < minimumTotalVolume ? [] : [{ time: candle.timestamp / 1000, value }];
       }),
     }];
   }

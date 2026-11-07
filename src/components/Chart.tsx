@@ -8325,7 +8325,7 @@ function Chart({
         && !CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId)
       ) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
-      const studyCandles = requiresOrderFlowWindow
+      const studyCandles = instance.indicatorId === "volume" ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs) : requiresOrderFlowWindow
         ? indicatorCandles
         : DEEP_HISTORY_INDICATOR_IDS.has(instance.indicatorId)
           ? indicatorCandlesDeep
@@ -8344,6 +8344,8 @@ function Chart({
       indicatorCandlesDeep,
       indicatorCandlesLite,
       indicatorSignature,
+      sampledIndicatorCandles,
+      replayTimestampMs,
       indicators,
       instrument,
       orderFlowSeriesReady,
@@ -21131,7 +21133,7 @@ function Chart({
 
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
-        liveDeltaInputs={{ candles: indicatorCandles, instrument, tickSize: priceFormat.minMove,
+        liveDeltaInputs={{ candles: indicatorCandles, volumeCandles: sampledIndicatorCandles, instrument, tickSize: priceFormat.minMove,
           theme: visibleIndicatorTheme(settings),
           mapTime: eventChartIndicatorTimeMap ? (sourceTime) =>
             eventChartTimeBySourceTimeRef.current.get(Math.round(sourceTime * 1000))

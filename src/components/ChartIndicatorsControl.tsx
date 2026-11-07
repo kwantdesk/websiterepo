@@ -397,7 +397,7 @@ const isTpoIndicator = (id: string) => id === "tpo-chart" || id === "weekly-tpo"
 const hasOwnPaletteSection = (id: string) =>
   VOLUME_PROFILE_INDICATOR_IDS.has(id) || isTpoIndicator(id) || id === "deep-print-footprint";
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
-  indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
+  indicatorId === "volume" ? "General" : indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
     : indicatorId === "pivot-points"
       ? ["fontSize", "lineWidth", "periodsToShow"].includes(key) ? "Plot settings" : "Custom reference"
@@ -962,6 +962,9 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       askColor: chartSettings.upColor,
       bidColor: chartSettings.downColor,
     } as Record<string, string>;
+  }
+  if (indicatorId === "volume") {
+    return { plotColor: visibleIndicatorTheme(chartSettings).muted } as Record<string, string>;
   }
   if (VOLUME_PROFILE_INDICATOR_IDS.has(indicatorId)) {
     return volumeProfileThemeColours(chartSettings) as Record<string, string>;
@@ -8134,45 +8137,6 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {settingsDefinition.id === "volume" ? (
-                <div data-settings-section="General" className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                    <span>Background mode</span>
-                    <KwantSelect
-                      value={String(settingsInstance.settings?.backgroundMode ?? "dominant")}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                        ...current,
-                        settings: { ...(current.settings ?? {}), backgroundMode: event.target.value },
-                      }))}
-                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
-                      menuLabel="Volume background mode"
-                    >
-                      <option value="dominant">Dominant delta</option>
-                      <option value="fixed">Fixed</option>
-                      <option value="volume-slope">Volume slope</option>
-                      <option value="price-slope">Price slope</option>
-                    </KwantSelect>
-                  </label>
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                    <span>Delta input data</span>
-                    <KwantSelect
-                      value={String(settingsInstance.settings?.deltaInputData ?? "volume")}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                        ...current,
-                        settings: { ...(current.settings ?? {}), deltaInputData: event.target.value },
-                      }))}
-                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
-                      menuLabel="Volume delta input data"
-                    >
-                      <option value="volume">Executed volume</option>
-                      <option value="trades">Trade count</option>
-                    </KwantSelect>
-                  </label>
-                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">
-                    Dominant uses Rithmic executed bid/ask delta. Bars without verified side data stay neutral; price direction is never substituted for order flow.
-                  </p>
-                </div>
-              ) : null}
 
               {/*
                 * Colours, for any indicator that declares what it paints.
@@ -8185,7 +8149,7 @@ export default function ChartIndicatorsControl({
                 * carry settings this cannot express yet - so this steps aside
                 * for them rather than giving them a second scheme picker.
                 */}
-              {indicatorSupportsPalette(settingsDefinition.id)
+              {indicatorSupportsPalette(settingsDefinition.id) && settingsDefinition.id !== "volume"
                 && !(settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false)
                 && !hasOwnPaletteSection(settingsDefinition.id) ? (
                 <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : undefined}>
@@ -8357,7 +8321,7 @@ export default function ChartIndicatorsControl({
                   </div>
                 ));
               })()}
-              <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : "Style"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
+              <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : settingsDefinition.id === "volume" ? "General" : "Style"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
                 {settingsDefinition.id === "bounce-levels" ? (
                   <>Linked Bounce Levels uses the GEX Map colour scale. Open <span className="text-foreground">GEX Map view, nodes &amp; colours</span> above to change the shared palette.</>
                 ) : (

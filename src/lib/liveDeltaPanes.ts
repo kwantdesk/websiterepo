@@ -5,7 +5,7 @@ import { mergeLiveIndicatorTail } from "@/lib/chartLiveEvents";
 export const LIVE_DELTA_PANE_INTERVAL_MS = 200;
 export const isLiveDeltaPane = (id: string) => ["cumulative-volume-delta", "delta-cumulative-candlestick", "delta-cumulative-histogram", "delta-bar"].includes(id);
 export type LiveDeltaGroup = { key: string; indicatorId: string; settings?: Record<string, number | string | boolean>; series: CalculatedIndicatorSeries[] };
-export type LiveDeltaInputs = { candles: Candle[]; instrument: string; tickSize: number; theme: IndicatorTheme; mapTime?: (sourceTime: number) => number | undefined };
+export type LiveDeltaInputs = { candles: Candle[]; volumeCandles?: Candle[]; instrument: string; tickSize: number; theme: IndicatorTheme; mapTime?: (sourceTime: number) => number | undefined };
 export const deltaPaneIdentity = (group: LiveDeltaGroup) => JSON.stringify([group.indicatorId, group.settings ?? {}]);
 
 /** Shares the price chart's execution-backed candle events, never another feed.
@@ -35,7 +35,7 @@ export class LiveDeltaPaneModel {
     this.history = mergeLiveIndicatorTail(candles.slice(-limit), this.live);
   }
   calculate(group: LiveDeltaGroup, inputs: LiveDeltaInputs) {
-    if (!isLiveDeltaPane(group.indicatorId)) return group.series;
+    if (!isLiveDeltaPane(group.indicatorId) && group.indicatorId !== "volume") return group.series;
     const series = calculateIndicatorSeries({ indicatorId: group.indicatorId, instanceId: group.key,
       enabled: true, settings: group.settings ?? {} }, this.history, inputs.theme, inputs);
     return series.map(definition => ({ ...definition, groupKey: group.key,

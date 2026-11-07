@@ -1450,7 +1450,9 @@ function ChartIndicatorPanes({
     return group;
   });
   const deltaGroups = useLiveDeltaPanes(continuityGroups, coordinateScope, liveChartKey, liveDeltaInputs);
-  const groups = useSuperTrendLivePanes(deltaGroups, liveChartKey);
+  const volumeGroups = useLiveDeltaPanes(deltaGroups, coordinateScope, liveChartKey,
+    liveDeltaInputs ? { ...liveDeltaInputs, candles: liveDeltaInputs.volumeCandles ?? liveDeltaInputs.candles } : undefined, "volume");
+  const groups = useSuperTrendLivePanes(volumeGroups, liveChartKey);
   const superTrendScale = useRef(new SuperTrendPaneScale());
   superTrendScale.current.retain(liveChartKey, groups.filter(g => g.indicatorId === "super-trend" || g.indicatorId === "super-trend-difference").map(g => g.key));
   const rootRef = useRef<HTMLDivElement>(null);

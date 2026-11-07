@@ -1799,8 +1799,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
   ...(indicatorId === "volume" ? {
-    backgroundMode: "dominant",
-    deltaInputData: "volume",
     useThemeColors: true,
   } : {}),
   ...(["vwap", "vwap-envelopes", "rolling-vwap"].includes(indicatorId) ? {
