@@ -82,6 +82,18 @@ header button.selected,header button[aria-pressed=true],header button[aria-expan
   color:var(--site-foreground)!important;background:var(--site-surface)!important;
 }
 header button.selected,header button[aria-pressed=true] { border-color:var(--site-border)!important; }
+/* Match the outlined command buttons on GEX Data, including inactive views. */
+header nav button[data-package] {
+  border:1px solid color-mix(in srgb,var(--site-border) 70%,transparent)!important;
+  border-radius:var(--kwant-control-radius,8px)!important;
+}
+header nav button[data-package]:hover {
+  border-color:color-mix(in srgb,var(--site-primary) 30%,transparent)!important;
+}
+header nav button[data-package].selected {
+  color:var(--site-primary)!important;
+  background:color-mix(in srgb,var(--site-primary) 8%,transparent)!important;
+}
 .chart-top-controls :is(select,.kwant-choice-trigger),.chart-quick-controls :is(select,.kwant-choice-trigger) {
   height:28px;min-height:28px;width:auto;max-width:145px;padding:0 10px;
   border:1px solid var(--site-border);font-size:11px;font-weight:500;white-space:nowrap;
