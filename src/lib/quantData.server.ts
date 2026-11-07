@@ -1,4 +1,5 @@
 import "server-only";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { optionsOpeningClock } from "./optionsOpeningRefresh.ts";
 import { chartTimeBucketStartMs } from "./chartTimeBucket.ts";
 import { excludeUnverifiedCashHistory } from "@/lib/cashHistoryQuality";
@@ -2737,7 +2738,7 @@ export async function getOptionsMarketPulse(
   // Keep the live cash-tape path independent from KwantData's one-minute
   // history endpoint. History is loaded separately by the chart and merged
   // behind this quote, so an instrument switch can paint immediately.
-  if (priceMode === "CASH" && !includeHistory) {
+  if (session.marketOpen && priceMode === "CASH" && !includeHistory) {
     const liveCash = await resolveCashLevelOne({
       symbol,
       cashCandles: [],
@@ -2758,7 +2759,7 @@ export async function getOptionsMarketPulse(
     sessionDate: session.sessionDate,
     aggregationPeriod: "1m",
     filter: { ticker: cashTicker },
-  }, 1_000);
+  }, session.marketOpen ? 1_000 : 5 * 60_000);
   const candles = parseCandles(result.payload, true);
 
   if (!candles.length) {
@@ -2783,7 +2784,7 @@ export async function getOptionsMarketPulse(
 
   return {
     symbol,
-    asOf: new Date().toISOString(),
+    asOf: session.marketOpen ? new Date().toISOString() : marketData.asOf,
     refreshAfterMs,
     marketData: {
       ...marketData,
@@ -3924,6 +3925,33 @@ export async function getGexDeskReplaySessionDates(limitInput: number = 5): Prom
   return sessionDates;
 }
 
+async function readCompletedOptionsFlow(
+  symbol: string,
+  priceMode: OptionsPriceMode,
+  sessionDate: string,
+  detailMode: "CORE" | "GAMEPLAN" | "FULL",
+): Promise<OptionsFlowPayload> {
+  let build: Promise<OptionsFlowPayload> | undefined;
+  const readSource = () => build ??= buildOptionsFlowPayload(symbol, priceMode, sessionDate, detailMode);
+  try {
+    const encoded = await unstable_cache(
+      async () => {
+        const payload = await readSource();
+        // Do not keep a price-only response as the closing options book for six hours.
+        if (!payload.exposures.GAMMA?.strikes.length) throw new Error("Closing exposure is incomplete.");
+        return gzipSync(JSON.stringify(payload), { level: 1 }).toString("base64");
+      },
+      ["completed-new-york-options-flow-v3", symbol, priceMode, sessionDate, detailMode],
+      { revalidate: 6 * 60 * 60 },
+    )();
+    return JSON.parse(gunzipSync(Buffer.from(encoded, "base64")).toString("utf8")) as OptionsFlowPayload;
+  } catch {
+    // An unavailable cache must not make the closing data unavailable. If the
+    // source has already been read, reuse that same job (including failure).
+    return readSource();
+  }
+}
+
 export async function getOptionsFlowPayload(
   symbolInput: string,
   priceModeInput: string = "CASH",
@@ -3948,36 +3976,36 @@ export async function getOptionsFlowPayload(
     : requestedDetailMode === "GAMEPLAN"
       ? "GAMEPLAN"
       : "FULL";
-  const cacheKey = `${symbol}:${priceMode}:${sessionDate}:${detailMode}`;
+  const cacheKey = `${symbol}:${priceMode}:${sessionDate}:${detailMode}:${session.marketOpen ? "live" : "closed"}`;
   const lastGoodKey = `${symbol}:${priceMode}:${detailMode}`;
   const cached = requestCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
   const promise = (session.marketOpen
     ? buildOptionsFlowPayload(symbol, priceMode, undefined, detailMode)
-    : unstable_cache(
-      () => buildOptionsFlowPayload(symbol, priceMode, sessionDate, detailMode),
-      ["completed-new-york-options-flow-v2", symbol, priceMode, session.sessionDate, detailMode],
-      { revalidate: 6 * 60 * 60 },
-    )()
+    : readCompletedOptionsFlow(symbol, priceMode, sessionDate, detailMode)
   ).then((payload) => {
-    lastGoodOptionsFlowByInstrument.set(lastGoodKey, payload);
+    if (session.marketOpen || payload.exposures.GAMMA?.strikes.length) {
+      lastGoodOptionsFlowByInstrument.set(lastGoodKey, payload);
+    }
     const entry = requestCache.get(cacheKey);
     if (entry?.promise === promise) {
-      entry.expiresAt = Date.now() + (session.marketOpen ? CACHE_TTL_MS : 5 * 60_000);
+      entry.expiresAt = Date.now() + (session.marketOpen || !payload.exposures.GAMMA?.strikes.length
+        ? CACHE_TTL_MS : 5 * 60_000);
     }
     return payload;
   }).catch((error) => {
     if (requestCache.get(cacheKey)?.promise === promise) requestCache.delete(cacheKey);
     const lastGood = historical ? null : lastGoodOptionsFlowByInstrument.get(lastGoodKey);
-    if (!lastGood) throw error;
+    if (!lastGood || (!session.marketOpen && lastGood.snapshotMode !== "NEW_YORK_EOD")) throw error;
     const problem = getQuantDataHttpError(error);
+    const refreshLabel = session.marketOpen ? "Live Gamma refresh:" : "EOD refresh:";
     return {
       ...lastGood,
       refreshAfterMs: 15_000,
       errors: [
-        ...lastGood.errors.filter((message) => !message.startsWith("Live Gamma refresh:")),
-        `Live Gamma refresh: ${problem.message}. Holding the last verified snapshot.`,
+        ...lastGood.errors.filter((message) => !message.startsWith(refreshLabel)),
+        `${refreshLabel} ${problem.message}. Holding the last verified snapshot.`,
       ],
     };
   });

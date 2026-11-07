@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConfiguredQuantDataApiKey, getOptionsFlowPayload, getQuantDataHttpError } from "@/lib/quantData.server";
 
 const SYMBOL_PATTERN = /^[A-Z0-9.\-]{1,12}$/;
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   if (!getConfiguredQuantDataApiKey()) {

@@ -196,6 +196,13 @@ export async function resolveOptionsMarketData(args: {
   const futuresRoot = instrument?.futuresRoot ?? null;
   const levelTranslation = instrument?.levelTranslation ?? null;
 
+  // Keep a completed options session tied to its own underlying close.
+  // A current equity quote can be from extended hours (or a later session).
+  // A current futures quote cannot calibrate against the closed cash book.
+  if (!args.cashMarketOpen) {
+    return unavailableCashFallback({ ...args, futuresRoot });
+  }
+
   if (args.requestedMode !== "FUTURES") {
     const levelOne = await resolveCashLevelOne({
       symbol: args.symbol,

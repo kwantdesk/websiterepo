@@ -168,7 +168,7 @@ function isFreshLiveOptionsPayload(payload: OptionsFlowPayload | null, now = Dat
 function canRenderOptionsPayload(payload: OptionsFlowPayload | null, now = Date.now()) {
   return getNewYorkOptionsClock(new Date(now)).marketOpen
     ? isFreshLiveOptionsPayload(payload, now)
-    : Boolean(payload);
+    : payload?.snapshotMode === "NEW_YORK_EOD" && !payload.session.marketOpen;
 }
 
 function mergeCoreOptionsPayload(current: OptionsFlowPayload, incoming: OptionsFlowPayload) {
@@ -868,9 +868,7 @@ export default function GammaWorkspace() {
       if (requestId !== requestIdRef.current[detailMode]) return;
       if (!canRenderOptionsPayload(payload)) {
         const active = dataRef.current;
-        setError(active
-          ? "The live Options refresh returned no usable frame. Holding the last verified snapshot."
-          : "Options data is unavailable right now.");
+        setError(active ? "The refresh returned no usable snapshot." : "No verified options snapshot is available yet.");
         return;
       }
       const active = dataRef.current;
@@ -934,12 +932,13 @@ export default function GammaWorkspace() {
   }, [loadData, loading, priceMode, symbol]);
 
   useEffect(() => {
-    const interval = window.setInterval(
-      () => void loadData(symbol, priceMode, false, true, "CORE"),
-      data?.refreshAfterMs ?? LEVEL_REFRESH_MS,
-    );
+    const interval = window.setInterval(() => {
+      void loadData(symbol, priceMode, false, true, "CORE");
+    }, data?.session.marketOpen || getNewYorkOptionsClock().marketOpen
+      ? data?.refreshAfterMs ?? LEVEL_REFRESH_MS
+      : Math.max(data?.refreshAfterMs ?? 60_000, 60_000));
     return () => window.clearInterval(interval);
-  }, [data?.refreshAfterMs, loadData, priceMode, symbol]);
+  }, [data?.refreshAfterMs, data?.session.marketOpen, loadData, priceMode, symbol]);
 
   useEffect(() => {
     const interval = window.setInterval(
@@ -958,25 +957,30 @@ export default function GammaWorkspace() {
     const pollMarket = async () => {
       let nextDelay = 2_000;
       try {
+        if (!getNewYorkOptionsClock().marketOpen) {
+          nextDelay = 15_000;
+          setChartMarketPreview((active) => active === null ? active : null);
+          return;
+        }
         const response = await fetch(
           `/api/options-flow/market-data?symbol=${encodeURIComponent(symbol)}&priceMode=${priceMode}`,
           { cache: "no-store" },
         );
         const payload = await response.json() as OptionsMarketPulsePayload & { error?: string };
         if (!response.ok) throw new Error(payload.error || "Live options price pulse failed.");
-        if (cancelled || payload.symbol !== symbol) return;
+        if (cancelled || payload.symbol !== symbol || !getNewYorkOptionsClock().marketOpen) return;
 
         const current = dataRef.current;
         const marketData: OptionsMarketData = {
           ...payload.marketData,
-          candles: mergeCandles(current?.marketData.candles ?? [], payload.marketData.candles),
+          candles: mergeCandles(current?.session.marketOpen ? current.marketData.candles : [], payload.marketData.candles),
         };
         setChartMarketPreview({ key: marketKey, marketData });
         nextDelay = Math.max(250, payload.refreshAfterMs);
         setPricePulseMs(nextDelay);
 
         setData((active) => {
-          if (!active || active.symbol !== symbol || active.marketData.requestedMode !== priceMode) return active;
+          if (!active?.session.marketOpen || active.symbol !== symbol || active.marketData.requestedMode !== priceMode) return active;
           const next: OptionsFlowPayload = {
             ...active,
             stockPrice: priceMode === "CASH" ? marketData.lastPrice ?? active.stockPrice : active.stockPrice,
@@ -1005,7 +1009,7 @@ export default function GammaWorkspace() {
   const selectedInstrument = OPTIONS_FLOW_INSTRUMENTS.find((item) => item.symbol === symbol)
     ?? OPTIONS_FLOW_INSTRUMENTS[0];
   const activeMarketKey = `${symbol}:${priceMode}`;
-  const headerMarketData = chartMarketPreview?.key === activeMarketKey
+  const headerMarketData = chartMarketPreview?.key === activeMarketKey && (!data || data.session.marketOpen)
     ? chartMarketPreview.marketData
     : data?.marketData ?? null;
 
@@ -1151,7 +1155,7 @@ export default function GammaWorkspace() {
           <div className="flex min-h-[520px] items-center justify-center p-6">
             <Panel className="max-w-md p-6 text-center">
               <Database className="mx-auto h-6 w-6 text-danger" />
-              <h2 className="mt-3 text-[15px] font-semibold">Live options data unavailable</h2>
+              <h2 className="mt-3 text-[15px] font-semibold">{getNewYorkOptionsClock().marketOpen ? "Live options data unavailable" : "Closing options snapshot unavailable"}</h2>
               <p className="mt-2 text-[12px] leading-5 text-muted">{error || "Options data is unavailable right now."}</p>
               <button type="button" onClick={() => void loadData(symbol, priceMode)} className="mt-4 rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-on-primary">Try again</button>
             </Panel>
