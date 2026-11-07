@@ -4,6 +4,7 @@ import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import { journalManualOutcome } from "@/lib/journalManualOutcome";
 
 import Image from "next/image";
+import { createPortal } from "react-dom";
 import {
   resolveOutcomeColors,
   SEMANTIC_WIN,
@@ -926,6 +927,10 @@ function useOutcomeColors(): OutcomeColors {
   return colors;
 }
 
+function canEditJournalTrade(trade: JournalTrade) {
+  return !isZyonJournalAccountName(trade.account) && !trade.sourceImportId.startsWith("zyon:");
+}
+
 export default function JournalWorkspace({ accountKey, paperBalanceSource, onLinkNativeJournals }: {
   accountKey: string;
   paperBalanceSource?: { accounts: readonly PaperTradingAccountRecord[]; ledger: PaperTradingLedger };
@@ -1823,7 +1828,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
   };
 
   const openTradeEditor = (trade: JournalTrade) => {
-    if (isZyonJournalAccountName(trade.account) || trade.sourceImportId.startsWith("zyon:")) return;
+    if (!canEditJournalTrade(trade)) return;
     manualTradeTouchedRef.current.clear();
     manualDictation.stop();
     manualDictation.activate("name");
@@ -2680,19 +2685,16 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
     );
   }
 
+  // Keep outcome colours on both the workspace and its viewport overlays.
+  const journalOutcomeStyle = {
+    "--journal-win": outcomeColors.win,
+    "--journal-loss": outcomeColors.loss,
+    "--journal-win-soft": outcomeColors.winSoft,
+    "--journal-loss-soft": outcomeColors.lossSoft,
+  } as CSSProperties;
+
   return (
-    <div
-      className="flex h-full min-h-0 flex-col bg-background text-foreground"
-      // Set once here rather than threaded through fifty-six call sites, so
-      // every figure, bar, curve and calendar cell moves with the theme
-      // together.
-      style={{
-        "--journal-win": outcomeColors.win,
-        "--journal-loss": outcomeColors.loss,
-        "--journal-win-soft": outcomeColors.winSoft,
-        "--journal-loss-soft": outcomeColors.lossSoft,
-      } as CSSProperties}
-    >
+    <div className="flex h-full min-h-0 flex-col bg-background text-foreground" style={journalOutcomeStyle}>
       <header className="shrink-0 bg-panel">
         <div className="flex min-h-12 items-center justify-center px-4 py-2">
           <div role="group" aria-label="Journal actions" className="flex flex-wrap items-center justify-center gap-2">
@@ -2989,8 +2991,25 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
             </Card>
             {selectedDay ? (
               <Card className="overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border px-4 py-3"><div><h3 className="text-[11px] font-semibold text-foreground">{formatDate(`${selectedDay}T12:00:00`)}</h3><p className="mt-0.5 text-[8px] text-muted">{selectedDayTrades.length} imported trades · {money(selectedDayTrades.reduce((sum, trade) => sum + trade.netPnl, 0))}</p></div><button type="button" onClick={() => setSelectedDay("")} className="text-muted hover:text-foreground"><X className="h-4 w-4" /></button></div>
-                <div className="divide-y divide-border/60">{selectedDayTrades.map((trade) => <button key={trade.id} type="button" onClick={() => setSelectedTradeId(trade.id)} className="grid w-full grid-cols-[74px_70px_64px_minmax(80px,1fr)_90px] items-center gap-3 px-4 py-3 text-left text-[9px] hover:bg-surface/40"><span className="font-mono text-muted">{new Date(trade.openedAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}</span><span className="font-semibold">{trade.symbol}</span><span className={trade.side === "LONG" ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}>{trade.side}</span><span className="truncate text-muted">{trade.setup || trade.tags.join(", ") || "Unclassified"}</span><span className={`text-right font-mono font-semibold ${trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(trade.netPnl)}</span></button>)}</div>
+                <div className="flex items-center justify-between border-b border-border px-4 py-3"><div><h3 className="text-[11px] font-semibold text-foreground">{formatDate(`${selectedDay}T12:00:00`)}</h3><p className="mt-0.5 text-[8px] text-muted">{selectedDayTrades.length} {selectedDayTrades.length === 1 ? "trade" : "trades"} · {money(selectedDayTrades.reduce((sum, trade) => sum + trade.netPnl, 0))}</p></div><button type="button" onClick={() => setSelectedDay("")} className="text-muted hover:text-foreground"><X className="h-4 w-4" /></button></div>
+                <div className="@container divide-y divide-border/60">
+                  {selectedDayTrades.map((trade) => (
+                    <div key={trade.id} className="flex items-center gap-2 px-2 hover:bg-surface/40">
+                      <button type="button" onClick={() => setSelectedTradeId(trade.id)} className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 py-3 text-left text-[9px] @md:grid-cols-[74px_70px_64px_minmax(0,1fr)_90px]">
+                        <span className="font-mono text-muted">{new Date(trade.openedAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}</span>
+                        <span className="truncate font-semibold">{trade.symbol}</span>
+                        <span className={`hidden @md:block ${trade.side === "LONG" ? "text-[var(--journal-win)]" : trade.side === "SHORT" ? "text-[var(--journal-loss)]" : "text-muted"}`}>{trade.side}</span>
+                        <span className="hidden truncate text-muted @md:block">{trade.setup || trade.tags.join(", ") || "Unclassified"}</span>
+                        <span className={`text-right font-mono font-semibold ${trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(trade.netPnl)}</span>
+                      </button>
+                      {canEditJournalTrade(trade) ? (
+                        <button type="button" onClick={() => openTradeEditor(trade)} aria-label={`Edit ${trade.symbol} trade`} className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" />Edit
+                        </button>
+                      ) : <span className="w-12 shrink-0" aria-hidden="true" />}
+                    </div>
+                  ))}
+                </div>
               </Card>
             ) : null}
           </div>
@@ -3509,6 +3528,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
         </div>
       ) : null}
 
+      {typeof document !== "undefined" && (tradeMenuId || showTradePost || showManualTrade || deleteTradeTarget || selectedTrade || selectedEvidence) ? createPortal(<div className="text-foreground" style={journalOutcomeStyle}>
       {tradeMenuId && tradeMenuTarget ? (
         <div
           onPointerDown={(event) => event.stopPropagation()}
@@ -3516,8 +3536,8 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
           style={{ left: tradeMenuId.x, top: tradeMenuId.y }}
         >
           <button type="button" onClick={() => { setTradeMenuId(null); setSelectedTradeId(tradeMenuTarget.id); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[8px] text-muted hover:bg-surface hover:text-foreground"><Eye className="h-3.5 w-3.5" />View details</button>
-          {!isZyonJournalAccountName(tradeMenuTarget.account) && !tradeMenuTarget.sourceImportId.startsWith("zyon:") ? <button type="button" onClick={() => openTradeEditor(tradeMenuTarget)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[8px] text-muted hover:bg-surface hover:text-foreground"><Pencil className="h-3.5 w-3.5" />Edit trade</button> : null}
-          {!isZyonJournalAccountName(tradeMenuTarget.account) && !tradeMenuTarget.sourceImportId.startsWith("zyon:") ? <button type="button" onClick={() => { setTradeMenuId(null); setDeleteTradeTargetId(tradeMenuTarget.id); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[8px] text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" />Delete trade</button> : null}
+          {canEditJournalTrade(tradeMenuTarget) ? <button type="button" onClick={() => openTradeEditor(tradeMenuTarget)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[8px] text-muted hover:bg-surface hover:text-foreground"><Pencil className="h-3.5 w-3.5" />Edit trade</button> : null}
+          {canEditJournalTrade(tradeMenuTarget) ? <button type="button" onClick={() => { setTradeMenuId(null); setDeleteTradeTargetId(tradeMenuTarget.id); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[8px] text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" />Delete trade</button> : null}
         </div>
       ) : null}
 
@@ -3697,15 +3717,22 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
 
       {selectedTrade ? (
         <div className="fixed inset-0 z-[950] bg-black/55 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedTradeId(null); }}>
-          <aside className="absolute bottom-0 right-0 top-0 flex w-full max-w-[520px] flex-col border-l border-border bg-panel shadow-2xl shadow-black/60">
-            <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+          <aside role="dialog" aria-modal="true" aria-label="Trade details"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !deleteTradeTarget && !selectedEvidence) setSelectedTradeId(null);
+            }}
+            className="absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col overflow-hidden border-l border-border bg-panel text-foreground pt-[env(safe-area-inset-top)] shadow-2xl shadow-black/60">
+            <div className="flex shrink-0 items-start gap-2 border-b border-border px-4 py-4">
               <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${selectedTrade.netPnl >= 0 ? "bg-[var(--journal-win)]/10 text-[var(--journal-win)]" : "bg-[var(--journal-loss)]/10 text-[var(--journal-loss)]"}`}>{selectedTrade.side === "LONG" ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}</span>
-              <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="text-[14px] font-semibold text-foreground">{selectedTrade.symbol}</h2><span className={`rounded-md px-1.5 py-0.5 text-[8px] font-semibold ${selectedTrade.side === "LONG" ? "bg-[var(--journal-win)]/10 text-[var(--journal-win)]" : "bg-[var(--journal-loss)]/10 text-[var(--journal-loss)]"}`}>{selectedTrade.side}</span></div><p className="mt-1 truncate text-[9px] text-muted">{selectedTrade.account} · {formatDate(selectedTrade.openedAt, true)}</p>{selectedTrade.journalCopy ? <p className="mt-1 truncate text-[9px] text-muted">Imported from {selectedTrade.journalCopy.sourceJournal}</p> : null}</div>
-              <button type="button" onClick={() => setSelectedTradeId(null)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
+              <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h2 className="truncate text-[14px] font-semibold text-foreground">{selectedTrade.symbol}</h2><span className={`rounded-md px-1.5 py-0.5 text-[8px] font-semibold ${selectedTrade.side === "LONG" ? "bg-[var(--journal-win)]/10 text-[var(--journal-win)]" : "bg-[var(--journal-loss)]/10 text-[var(--journal-loss)]"}`}>{selectedTrade.side}</span></div><p className="mt-1 truncate text-[9px] text-muted">{selectedTrade.account} · {formatDate(selectedTrade.openedAt, true)}</p>{selectedTrade.journalCopy ? <p className="mt-1 truncate text-[9px] text-muted">Imported from {selectedTrade.journalCopy.sourceJournal}</p> : null}</div>
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {canEditJournalTrade(selectedTrade) ? <button type="button" onClick={() => openTradeEditor(selectedTrade)} className="flex h-8 items-center gap-1.5 rounded-lg border border-border px-2 text-[9px] font-semibold text-foreground hover:bg-surface"><Pencil className="h-3.5 w-3.5" />Edit trade</button> : null}
+                <button type="button" autoFocus aria-label="Close trade details" onClick={() => setSelectedTradeId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
+              </div>
             </div>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               {selectedTradeIsZyon ? <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/[0.07] p-3 text-[8px] leading-4 text-muted"><Bot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><span><strong className="text-foreground">Verified ZYON outcome.</strong> This record mirrors its locked Gameplan review and stays read-only here so the Journal cannot diverge from the original outcome.</span></div> : null}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-3">
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Net P&amp;L</div><div className={`mt-1 font-mono text-[16px] font-semibold ${selectedTrade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(selectedTrade.netPnl)}</div></div>
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">R multiple</div><div className="mt-1 font-mono text-[16px] font-semibold">{selectedTrade.rMultiple === null ? "—" : `${selectedTrade.rMultiple.toFixed(2)}R`}</div></div>
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Time in trade</div><div className="mt-1 font-mono text-[14px] font-semibold">{formatTradeHoldDuration(selectedTradeDetails?.durationMs)}</div></div>
@@ -3774,7 +3801,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3 border-t border-border bg-background/20 px-5 py-4">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border bg-background/20 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <div className="mr-auto text-[8px] text-muted">{selectedTrade.reviewedAt ? `Reviewed ${formatDate(selectedTrade.reviewedAt, true)}` : "Review remains open"}</div>
               {selectedTrade.journalCopy ? <button type="button" onClick={() => setDeleteTradeTargetId(selectedTrade.id)} className="flex h-8 items-center gap-1.5 rounded-xl border border-danger/25 px-3 text-[9px] font-semibold text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" />Delete trade</button> : null}
               <button
@@ -3802,6 +3829,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
           </div>
         </div>
       ) : null}
+      </div>, document.body) : null}
     </div>
   );
 }
