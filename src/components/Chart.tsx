@@ -185,6 +185,7 @@ import {
 } from "@/lib/impliedVolatilityRankClient";
 import { legibleOn, readableTextOn } from "@/lib/readableContrast";
 import { momentumOnChart, momentumScaleMargins } from "@/lib/momentumPlacement";
+import { ABSOLUTE_LEVEL_REFERENCE_EVENT, type AbsoluteLevelReferenceRequest } from "@/lib/absoluteLevels";
 import ChartIndicatorPanes, {
   type IndicatorPaneDock,
   type IndicatorPaneGroup,
@@ -4408,6 +4409,14 @@ function Chart({
   const viewportRefreshTimerRef = useRef<number | null>(null);
   const footprintViewportCoverageRef = useRef<{ first: number; last: number } | null>(null);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
+  useEffect(() => {
+    const provideReference = (event: Event) => {
+      const detail = (event as CustomEvent<AbsoluteLevelReferenceRequest>).detail;
+      if (detail?.chartInstanceId === chartInstanceId && latestCandleRef.current) detail.candle = latestCandleRef.current;
+    };
+    window.addEventListener(ABSOLUTE_LEVEL_REFERENCE_EVENT, provideReference);
+    return () => window.removeEventListener(ABSOLUTE_LEVEL_REFERENCE_EVENT, provideReference);
+  }, [chartInstanceId]);
   // Direct live paint and React history commits travel on different clocks.
   // Retain the direct candle separately so a late same-bucket state commit
   // cannot rewind its open/close one frame after it was drawn correctly.

@@ -1,6 +1,15 @@
 import type { Candle } from "./backtester";
 import type { CalculatedIndicatorSeries, IndicatorTheme } from "./chartIndicatorEngine";
 
+export const ABSOLUTE_LEVEL_REFERENCE_EVENT = "kwantdesk:absolute-level-reference";
+export type AbsoluteLevelReferenceRequest = { chartInstanceId: string; candle?: Candle };
+
+/** Seed a new manual study once from its own chart, never trail/reprice it. */
+export function absoluteLevelInitialPrices(candle?: Candle) {
+  if (!candle || ![candle.close, candle.high, candle.low].every(Number.isFinite)) return {};
+  return { firstValue: candle.close, secondValue: candle.high !== candle.close ? candle.high : candle.low };
+}
+
 export const ABSOLUTE_LEVEL_DEFAULTS = {
   firstValue: 0, secondValue: 0, firstLineWidth: 1, secondLineWidth: 1,
   firstLineStyle: "solid", secondLineStyle: "solid", useThemeColors: true,

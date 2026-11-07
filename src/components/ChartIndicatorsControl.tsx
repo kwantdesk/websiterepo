@@ -2,6 +2,8 @@
 
 import { isInsideKwantDatePicker } from "@/components/ui/KwantDatePicker";
 import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
+import { ABSOLUTE_LEVEL_REFERENCE_EVENT, absoluteLevelInitialPrices, type AbsoluteLevelReferenceRequest } from "@/lib/absoluteLevels";
+import type { Candle } from "@/lib/backtester";
 import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import SuperTrendIndicatorSettings from "@/components/SuperTrendIndicatorSettings";
 import { GAMMA_ENVIRONMENT_SOURCES } from "@/lib/chartGammaConversion";
@@ -609,6 +611,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
 
 type Props = {
   chartInstanceId?: string;
+  referenceCandle?: Candle;
   instrument: string;
   broker?: string;
   timeframe: string;
@@ -1096,6 +1099,7 @@ function toggleOn(
 
 export default function ChartIndicatorsControl({
   chartInstanceId = "primary",
+  referenceCandle,
   instrument,
   broker,
   timeframe,
@@ -1672,19 +1676,23 @@ export default function ChartIndicatorsControl({
       return;
     }
     const newInstanceId = `${indicatorId}-${crypto.randomUUID()}`;
+    const settings = defaultIndicatorSettings(indicatorId, chartSettings);
+    if (indicatorId === "absolute-levels") {
+      const detail: AbsoluteLevelReferenceRequest = { chartInstanceId, candle: referenceCandle };
+      // The mounted chart supplies its own imperative candle, including when
+      // another instrument is open beside it. No quote/feed request is needed.
+      if (!detail.candle) window.dispatchEvent(new CustomEvent(ABSOLUTE_LEVEL_REFERENCE_EVENT, { detail }));
+      Object.assign(settings, absoluteLevelInitialPrices(detail.candle));
+    }
     onChange([
       ...indicators,
       {
         instanceId: newInstanceId,
         indicatorId,
         enabled: true,
-        settings: defaultIndicatorSettings(indicatorId, chartSettings),
+        settings,
       },
     ]);
-    if (indicatorId === "absolute-levels") {
-      setLibraryOpen(false);
-      setSettingsInstanceId(newInstanceId);
-    }
   };
 
   const toggleLibraryIndicator = (indicatorId: string) => {

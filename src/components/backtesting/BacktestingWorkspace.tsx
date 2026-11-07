@@ -1769,6 +1769,7 @@ export default function BacktestingWorkspace({
             <>
               <ChartIndicatorsControl
                 instrument={selectedDefinition.id}
+                referenceCandle={visibleCandles.at(-1)}
                 timeframe={timeframe}
                 indicators={replayIndicators}
                 chartSettings={settings}

@@ -11,6 +11,21 @@ const theme = { primary: "#11ff44", secondary: "#ffaa22", positive: "#44ff66", n
 const candles = [100, 101, 102].map((close, index) => ({ timestamp: 1700000000000 + index * 60000, open: close, high: close + 1, low: close - 1, close, volume: 1 }));
 const instance = (settings = {}) => ({ instanceId: "manual-reference", indicatorId: "absolute-levels", enabled: true, settings: { ...defaultIndicatorSettings("absolute-levels"), firstValue: 100.25, secondValue: 101.5, ...settings } });
 
+test('new manual levels seed once from the active candle, retaining legitimate zero and negative prices', async () => {
+  const { absoluteLevelInitialPrices } = await import('../src/lib/absoluteLevels.ts');
+  for (const close of [28000.25, 100, .006, 0, -37.63]) {
+    const candle = {timestamp:1000,open:close,close,high:close+1,low:close-1};
+    const seeded=absoluteLevelInitialPrices(candle);
+    assert.deepEqual(seeded,{firstValue:close,secondValue:close+1});
+    assert.deepEqual(absoluteLevelInitialPrices({...candle,high:close}),{firstValue:close,secondValue:close-1});
+    const saved=normalizePaneIndicatorState({p:[instance(seeded)]}).p[0];
+    const plotted=calculateIndicatorSeries(saved,[{...candle,close:close+20,high:close+21}],theme);
+    assert.deepEqual(plotted.map(s=>s.data[0].value),[close,close+1],'new ticks must not move manual levels');
+  }
+  assert.deepEqual(absoluteLevelInitialPrices(),{});
+  assert.deepEqual(absoluteLevelInitialPrices({close:NaN,high:1,low:0}),{});
+});
+
 test("exact independent manual levels do not infer values or add chart times", () => {
   const result = calculateIndicatorSeries(instance(), candles, theme);
   assert.equal(result.length, 2);
