@@ -234,3 +234,5 @@ The owned-recording script requires the local read-only capture tmp/volume-owned
 ## Release
 
 Scoped production changes are limited to settings ownership, palette control, disabled-state explanations and React section identities. Provider data, indicator signal algorithms and recording policies were not changed. Deployment receipt is written locally after the single authorised main-only Git deployment.
+
+The first Git deployment (9f67b75d) failed because the new isolated browser fixture inferred an overly narrow React state type. The initial isolated build had included the six production files but omitted that new fixture. The fixture now explicitly uses ChartIndicatorInstance[]; the complete TypeScript inputs and production webpack build pass. The correction changes audit-fixture typing only. The previous production deployment remained active during the failed build.
