@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { Link2 } from "lucide-react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
-import { GEX_MAP_PALETTE_CHANGE_EVENT, gexMapPalettesEqual, loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
-import { linkedGexMapPanel, normalizeLinkedGexMapSettings, publishLinkedGexMapSettings, readLocalGexMapStarSettings, type LinkedGexMapSettings } from "@/lib/gexMapLinkedSettings";
+import { GEX_MAP_PALETTE_CHANGE_EVENT, gexMapPalettesEqual, loadGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
+import { linkedGexMapPanel, normalizeLinkedGexMapSettings, readLocalGexMapStarSettings, type LinkedGexMapSettings } from "@/lib/gexMapLinkedSettings";
+import type { BounceGexMapDraft } from "@/lib/bounceGexMapPreview";
 import GexMapSettingsDialog from "./GexMapSettingsDialog";
 import { useLinkedGexMapSettings } from "./useLinkedGexMapSettings";
 import { resolveBounceGexMapSource } from "@/lib/bounceGexMapSource";
@@ -23,23 +24,27 @@ export function isBounceMirrorPresentationKey(key: string) {
     || key.startsWith("alert") || key.endsWith("Notifications");
 }
 
-export default function BounceGexMapSettings({ instrument = "", settings, onChange }: {
+export default function BounceGexMapSettings({ instrument = "", settings, onChange, draft, onDraftChange }: {
   instrument?: string; settings: Settings; onChange: (patch: Settings) => void;
+  draft: BounceGexMapDraft | null; onDraftChange: (patch: BounceGexMapDraft) => void;
 }) {
   const shared = useLinkedGexMapSettings();
   const linked = settings.linkGexMapSettings !== false;
-  const profile = normalizeLinkedGexMapSettings(linked ? shared : {
+  const profile = normalizeLinkedGexMapSettings(linked ? { ...shared, ...draft?.profile } : {
     ...shared, expiryScope: settings.mapExpiryScope, representation: settings.mapRepresentation,
     exposureModel: settings.mapExposureModel, viewMode: settings.mapViewMode, stepMinutes: settings.mapStepMinutes,
     starSettings: readLocalGexMapStarSettings(settings.mapStarSettings, shared.starSettings),
   });
-  const [appearance, setAppearance] = useState(false);
   const [savedPalette, setSavedPalette] = useState<GexMapPalette>(() => loadGexMapPalette());
-  const [previewPalette, setPreviewPalette] = useState<GexMapPalette | null>(null);
   useEffect(() => {
-    const update = () => { setSavedPalette(loadGexMapPalette()); setPreviewPalette(null); };
+    const update = () => setSavedPalette(loadGexMapPalette());
+    update();
     window.addEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, update);
-    return () => window.removeEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, update);
+    window.addEventListener("kwantdesk:preferences-hydrated", update);
+    return () => {
+      window.removeEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, update);
+      window.removeEventListener("kwantdesk:preferences-hydrated", update);
+    };
   }, []);
   const source = String(settings.sourceTicker ?? "AUTO");
   const resolved = resolveBounceGexMapSource(instrument, profile, source);
@@ -48,7 +53,7 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
     : String(settings.greekMode ?? "GAMMA");
   const update = (patch: Partial<LinkedGexMapSettings>) => {
     const next = normalizeLinkedGexMapSettings({ ...profile, ...patch });
-    if (linked) publishLinkedGexMapSettings(next);
+    if (linked) onDraftChange({ profile: patch });
     else {
       const local: Settings = {};
       for (const [key, localKey] of Object.entries(coreFields)) local[localKey] = next[key as keyof typeof coreFields];
@@ -77,13 +82,16 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
         <Link2 className="h-4 w-4 shrink-0" /> Import &amp; Link GEX Map Settings
       </button>
       <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
-        <input type="checkbox" className="h-3.5 w-3.5 accent-primary" checked={linked} onChange={(e) => onChange({
-          linkGexMapSettings: e.target.checked,
-          greekMode: column?.greekMode ?? "GAMMA",
-          mapExpiryScope: profile.expiryScope, mapRepresentation: profile.representation,
-          mapExposureModel: profile.exposureModel, mapViewMode: profile.viewMode, mapStepMinutes: profile.stepMinutes,
-          mapStarSettings: JSON.stringify(profile.starSettings),
-        })} />
+        <input type="checkbox" className="h-3.5 w-3.5 accent-primary" checked={linked} onChange={(e) => {
+          if (!e.target.checked) onDraftChange({ profile: undefined });
+          onChange({
+            linkGexMapSettings: e.target.checked,
+            greekMode: column?.greekMode ?? "GAMMA",
+            mapExpiryScope: profile.expiryScope, mapRepresentation: profile.representation,
+            mapExposureModel: profile.exposureModel, mapViewMode: profile.viewMode, mapStepMinutes: profile.stepMinutes,
+            mapStarSettings: JSON.stringify(profile.starSettings),
+          });
+        }} />
         Follow GEX Map automatically
       </label>
       <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
@@ -100,7 +108,7 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
       </label>
       <p className="text-[11px] leading-5 text-muted">Carry the final available levels to the chart’s right edge, keeping their ending price, thickness and colour.</p>
       <p className="text-[11px] leading-5 text-muted">
-        {linked ? "Shared settings update GEX Map and every linked Bounce Levels chart. All map nodes remain available; the chosen view controls their emphasis."
+        {linked ? "Saving updates GEX Map and linked Bounce Levels charts. All map nodes remain available; the chosen view controls their emphasis."
           : "This chart uses its own map settings. Import & Link reconnects it to GEX Map."}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -127,19 +135,14 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
           (v) => update({ stepMinutes: Number(v) }))}
         {!linked ? select("Data time", String(settings.priceMode ?? "live"), [["live", "Live / chart replay"], ["eod", "Last completed session"]],
           (v) => onChange({ priceMode: v })) : null}
-        <button type="button" className={inputClass + " mt-auto text-left hover:bg-primary/10"} onClick={() => setAppearance((v) => !v)} aria-expanded={appearance}>
-          {appearance ? "Hide" : "Open"} GEX Map view, nodes &amp; colours
-        </button>
       </div>
       {profile.exposureModel === "DEALER_INVENTORY" && metric !== "AUTO" && metric !== "GAMMA" ? (
         <p className="text-[11px] leading-5 text-muted">Dealer inventory applies to Gamma. {metric} uses Structural OI, matching GEX Map.</p>
       ) : null}
-      {appearance ? <GexMapSettingsDialog embedded open settings={profile.starSettings} palette={previewPalette ?? savedPalette}
-        paletteDirty={previewPalette !== null && !gexMapPalettesEqual(previewPalette, savedPalette)} viewMode={profile.viewMode}
+      <GexMapSettingsDialog embedded open settings={profile.starSettings} palette={draft?.palette ?? savedPalette}
+        viewMode={profile.viewMode}
         onViewModeChange={(viewMode) => update({ viewMode })} onChange={(starSettings) => update({ starSettings })}
-        onPaletteChange={setPreviewPalette}
-        onPaletteSave={() => { if (previewPalette) saveGexMapPalette(previewPalette); setPreviewPalette(null); }}
-        onClose={() => { setAppearance(false); setPreviewPalette(null); }} /> : null}
+        onPaletteChange={(next) => onDraftChange({ palette: gexMapPalettesEqual(next, savedPalette) ? undefined : next })} />
     </div>
   );
 }

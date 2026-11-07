@@ -72,7 +72,7 @@ import {
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
 import BounceGexMapSettings, { isBounceMirrorPresentationKey } from "@/components/gex-map/BounceGexMapSettings";
-import BounceGexMapColours from "@/components/gex-map/BounceGexMapColours";
+import { commitBounceGexMapPreview, getBounceGexMapDraft, setBounceGexMapDraft, clearBounceGexMapDraft } from "@/lib/bounceGexMapPreview";
 import { defaultTpoSettings, tpoSettingsToRecord } from "@/lib/tpo/settings";
 import KstIndicatorSettings from "@/components/KstIndicatorSettings";
 import {
@@ -1486,6 +1486,8 @@ export default function ChartIndicatorsControl({
   }, [openSettingsIndicatorId]);
 
   const settingsOpenSnapshotRef = useRef<IndicatorSettingsSnapshot | null>(null);
+  const bounceDraftOwner = useRef({}).current;
+  useEffect(() => () => clearBounceGexMapDraft(bounceDraftOwner), [bounceDraftOwner, chartInstanceId, openSettingsInstanceId]);
   // Parent workspace persistence is deliberately debounced. Keep the dialog's
   // save state synchronous so its label and close guard never wait for that
   // slower round trip through props.
@@ -1542,12 +1544,13 @@ export default function ChartIndicatorsControl({
   }, [settingsInstance, settingsInstanceId]);
 
   const settingsAreDirty = useCallback(() => {
+    if (getBounceGexMapDraft(bounceDraftOwner)) return true;
     if (
       settingsHasPendingEditRef.current
       && settingsOpenSnapshotRef.current?.instanceId === settingsInstance?.instanceId
     ) return true;
     return indicatorSettingsAreDirty(settingsOpenSnapshotRef.current, settingsInstance);
-  }, [settingsInstance]);
+  }, [bounceDraftOwner, settingsInstance]);
 
   /** Persist without closing, so the trader may keep tuning after Save. */
   const commitSettings = useCallback(() => {
@@ -1568,12 +1571,13 @@ export default function ChartIndicatorsControl({
       saveFootprintSettings(liveInstance.instanceId, validated);
       committedInstance = { ...liveInstance, settings: committedSettings };
     }
+    commitBounceGexMapPreview(bounceDraftOwner);
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     settingsOpenSnapshotRef.current = captureIndicatorSettingsSnapshot(committedInstance);
     settingsHasPendingEditRef.current = false;
     refreshSettingsSaveState((revision) => revision + 1);
     setUnsavedSettingsPrompt(false);
-  }, [replace, settingsInstance]);
+  }, [bounceDraftOwner, replace, settingsInstance]);
 
   /** Save from the leave-confirmation prompt, then complete the close. */
   const commitSettingsAndClose = useCallback(() => {
@@ -1583,6 +1587,7 @@ export default function ChartIndicatorsControl({
   }, [commitSettings]);
 
   const discardSettingsAndClose = useCallback(() => {
+    clearBounceGexMapDraft(bounceDraftOwner);
     const opened = settingsOpenSnapshotRef.current;
     if (opened && settingsInstance) {
       replace(settingsInstance.instanceId, (current) => ({
@@ -1596,7 +1601,7 @@ export default function ChartIndicatorsControl({
     refreshSettingsSaveState((revision) => revision + 1);
     setUnsavedSettingsPrompt(false);
     setSettingsInstanceId(null);
-  }, [replace, settingsInstance]);
+  }, [bounceDraftOwner, replace, settingsInstance]);
 
   const closeSettingsDialog = useCallback(() => {
     // Clicking away used to save silently, which is fine until it is not: a
@@ -4212,13 +4217,13 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
-                <BounceGexMapSettings instrument={instrument} settings={settingsInstance.settings ?? {}} onChange={(patch) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...patch } }))} />
-              ) : null}
-
-              {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
-                <div data-settings-section="Colours">
-                  <BounceGexMapColours />
-                </div>
+                <BounceGexMapSettings instrument={instrument} settings={settingsInstance.settings ?? {}}
+                  onChange={(patch) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...patch } }))}
+                  draft={getBounceGexMapDraft(bounceDraftOwner)}
+                  onDraftChange={(patch) => {
+                    setBounceGexMapDraft(bounceDraftOwner, patch);
+                    refreshSettingsSaveState((revision) => revision + 1);
+                  }} />
               ) : null}
 
               {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror === false ? (

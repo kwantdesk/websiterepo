@@ -174,22 +174,22 @@ export default function GexMapSettingsDialog({
   embedded?: boolean;
   settings: GexMapStarSettings;
   palette: GexMapPalette;
-  paletteDirty: boolean;
+  paletteDirty?: boolean;
   viewMode: GexMapViewMode;
   onViewModeChange: (next: GexMapViewMode) => void;
   onChange: (next: GexMapStarSettings) => void;
   onPaletteChange: (next: GexMapPalette) => void;
-  onPaletteSave: () => void;
-  onClose: () => void;
+  onPaletteSave?: () => void;
+  onClose?: () => void;
 }) {
   useEffect(() => {
-    if (!open) return;
+    if (!open || embedded || !onClose) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [onClose, open]);
+  }, [embedded, onClose, open]);
   const [editSlot, setEditSlot] = useState<{ side: "scale" | "star"; index: number }>({
     side: "scale",
     index: GEX_MAP_STOP_COUNT - 1,
@@ -232,15 +232,7 @@ export default function GexMapSettingsDialog({
       : `${side} exposure ${Math.abs(Number(scaleSlotLabel(index)))}% of this side's peak`;
   };
   const rowClass = "grid grid-cols-[minmax(0,1fr)_160px] items-center gap-4 border-b border-border/60 py-3";
-  const content = (<section className={embedded ? "w-full rounded-xl border border-border bg-panel" : "max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]"} onPointerDown={(event) => event.stopPropagation()}>
-        <header className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-panel px-4">
-          <div>
-            <div className="text-[11px] font-semibold text-foreground">{viewMode.toUpperCase()} VIEW SETTINGS</div>
-            <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Applied to every GEX Map panel</div>
-          </div>
-          <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label="Close Star view settings"><X className="h-3.5 w-3.5" /></button>
-        </header>
-        <div className="px-4 pb-4">
+  const viewControls = <>
           <div className={rowClass}>
             <span><span className="block text-[10px] text-foreground">View</span><span className="text-[8px] text-muted">Full = every strike raw · Ninja = structural nodes · Star = only the Star node</span></span>
             <div className="flex h-7 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map view">
@@ -344,9 +336,11 @@ export default function GexMapSettingsDialog({
               </label>
             </>
           ) : null}
+  </>;
+  const colourControls = <>
           <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Colours</div>
           <div className="border-b border-border/60 py-3">
-            <span><span className="block text-[10px] text-foreground">Colour scheme</span><span className="text-[8px] text-muted">The same palettes as Footprint and volume profiles. Choose one, tweak the colours below, then Save.</span></span>
+            <span><span className="block text-[10px] text-foreground">Colour scheme</span><span className="text-[8px] text-muted">{embedded ? "Changes preview on the chart. Use the Save button at the top to keep them." : "The same palettes as Footprint and volume profiles. Choose one, tweak the colours below, then Save."}</span></span>
             <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="group" aria-label="GEX Map colour schemes">
               {GEX_MAP_SHARED_PALETTE_PRESETS.map((preset) => {
                 const presetPalette = gexMapPaletteFromPreset(preset);
@@ -462,9 +456,20 @@ export default function GexMapSettingsDialog({
               </div>
             </div>
           ) : null}
+  </>;
+  const content = (<section className={embedded ? "w-full rounded-xl border border-border bg-panel" : "max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]"} onPointerDown={(event) => event.stopPropagation()}>
+        {!embedded ? <header className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-panel px-4">
+          <div>
+            <div className="text-[11px] font-semibold text-foreground">{viewMode.toUpperCase()} VIEW SETTINGS</div>
+            <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Applied to every GEX Map panel</div>
+          </div>
+          <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label="Close Star view settings"><X className="h-3.5 w-3.5" /></button>
+        </header> : null}
+        <div className="px-4 pb-4">
+          {embedded ? <>{colourControls}<h3 className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">View and nodes</h3>{viewControls}</> : <>{viewControls}{colourControls}</>}
           <button type="button" onClick={() => onChange({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS })} className="mt-4 h-8 border border-primary/40 px-3 text-[9px] font-semibold text-primary hover:bg-primary/10">RESET RECOMMENDED DEFAULTS</button>
         </div>
-        <footer className="sticky bottom-0 z-10 flex h-12 items-center justify-between gap-3 border-t border-border bg-panel px-4">
+        {!embedded ? <footer className="sticky bottom-0 z-10 flex h-12 items-center justify-between gap-3 border-t border-border bg-panel px-4">
           <span className="text-[8px] text-muted">
             {paletteDirty ? "Colour changes preview live — Save to keep them." : "Saved colours stay until you relink the theme."}
           </span>
@@ -480,7 +485,7 @@ export default function GexMapSettingsDialog({
           >
             SAVE
           </button>
-        </footer>
+        </footer> : null}
       </section>);
   if (embedded) return content;
   return createPortal(<div
@@ -489,7 +494,7 @@ export default function GexMapSettingsDialog({
         // Portaled dropdown menus live outside this overlay's DOM subtree;
         // choosing an option must not close the whole settings dialog.
         if (isInsideChartColorPopover(event.target) || (event.target as HTMLElement).closest?.("[data-gex-map-dropdown-menu]")) return;
-        onClose();
+        onClose?.();
       }}
     >
       {content}

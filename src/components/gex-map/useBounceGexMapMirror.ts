@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLinkedGexMapSettingsState } from "./useLinkedGexMapSettings";
 import { effectiveLinkedGexMapModel, linkedGexMapPanel, normalizeLinkedGexMapSettings, readLocalGexMapStarSettings } from "@/lib/gexMapLinkedSettings";
 import { isGexMapSurfaceFor, hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
@@ -9,6 +9,7 @@ import { GEX_MAP_PALETTE_CHANGE_EVENT, gexMapSignedScaleHex, loadGexMapPalette }
 import { prepareBounceGexMirror, selectBounceGexMirror } from "@/lib/bounceGexMapMirror";
 import { mergeBounceGexMapHistory } from "@/lib/bounceGexMapHistory";
 import { resolveBounceGexMapSource } from "@/lib/bounceGexMapSource";
+import { getBounceGexMapPreview, subscribeBounceGexMapPreview } from "@/lib/bounceGexMapPreview";
 import { useBounceMappingHistory } from "./useBounceMappingHistory";
 import type { Candle } from "@/lib/backtester";
 import type { GreekMode } from "@/lib/optionsFlow";
@@ -20,11 +21,14 @@ export function useBounceGexMapMirror(input: {
 }) {
   const { settings: shared, hydrated } = useLinkedGexMapSettingsState(input.enabled), cfg = input.settings;
   const linked = cfg.linkGexMapSettings !== false;
-  const profile = useMemo(() => linked ? shared : normalizeLinkedGexMapSettings({
+  const preview = useSyncExternalStore(subscribeBounceGexMapPreview, getBounceGexMapPreview, () => null);
+  const profileDraft = input.enabled ? preview?.profile : undefined;
+  const paletteDraft = input.enabled ? preview?.palette : undefined;
+  const profile = useMemo(() => linked ? (profileDraft ? normalizeLinkedGexMapSettings({ ...shared, ...profileDraft }) : shared) : normalizeLinkedGexMapSettings({
     ...shared, expiryScope: cfg.mapExpiryScope, representation: cfg.mapRepresentation, exposureModel: cfg.mapExposureModel,
     viewMode: cfg.mapViewMode ?? shared.viewMode, stepMinutes: cfg.mapStepMinutes ?? shared.stepMinutes,
     starSettings: readLocalGexMapStarSettings(cfg.mapStarSettings, shared.starSettings),
-  }), [linked, shared, cfg.mapExpiryScope, cfg.mapRepresentation, cfg.mapExposureModel, cfg.mapViewMode, cfg.mapStepMinutes, cfg.mapStarSettings]);
+  }), [linked, shared, profileDraft, cfg.mapExpiryScope, cfg.mapRepresentation, cfg.mapExposureModel, cfg.mapViewMode, cfg.mapStepMinutes, cfg.mapStarSettings]);
   const { display, source } = resolveBounceGexMapSource(input.instrument, profile, cfg.sourceTicker);
   const panel = linkedGexMapPanel(profile, source, typeof cfg.mapColumnId === "string" ? cfg.mapColumnId : undefined);
   const symbol = linked ? panel?.symbol ?? source : source;
@@ -123,7 +127,7 @@ export function useBounceGexMapMirror(input: {
     const candles = input.candles.current;
     const paired = needsCanonicalMapping ? mappingHistory.points : candles;
     const css = typeof window !== "undefined" ? getComputedStyle(document.documentElement) : null;
-    const scale = gexMapSignedScaleHex(loadGexMapPalette(), { negative: css?.getPropertyValue("--danger").trim() || "#ef4444", positive: css?.getPropertyValue("--primary").trim() || "#22c55e" });
+    const scale = gexMapSignedScaleHex(paletteDraft ?? loadGexMapPalette(), { negative: css?.getPropertyValue("--danger").trim() || "#ef4444", positive: css?.getPropertyValue("--primary").trim() || "#22c55e" });
     let surface = payload;
     if (input.timestampMs === null && historyRef.current?.key === key) {
       surface = mergeBounceGexMapHistory(historyRef.current.payload, payload);
@@ -144,7 +148,7 @@ export function useBounceGexMapMirror(input: {
     // The ref supplies the current real chart history when a new map surface
     // arrives; OHLC price ticks must not rebuild all exposure history.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input.enabled, payload, profile, display, paletteRevision, historyGrid, key, needsCanonicalMapping, mappingHistory.key, mappingHistory.through, mappingHistory.points, input.timeframe, source]);
+  }, [input.enabled, payload, profile, display, paletteRevision, paletteDraft, historyGrid, key, needsCanonicalMapping, mappingHistory.key, mappingHistory.through, mappingHistory.points, input.timeframe, source]);
   const snapshot = useMemo(() => prepared ? selectBounceGexMirror(prepared, input.timestampMs) : null, [prepared, input.timestampMs]);
   return { snapshot, profile, loading, error, key };
 }
