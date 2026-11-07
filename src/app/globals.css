@@ -1371,8 +1371,9 @@ header.kwant-command-rail {
 }
 
 .kwant-primary-brand {
-  width: 110px;
+  width: 146px;
   height: 28px;
+  gap: 6px;
   margin-right: 8px;
   padding-inline: 3px;
   user-select: none;
@@ -1380,7 +1381,6 @@ header.kwant-command-rail {
 
 .kwant-primary-brand-wordmark {
   display: block;
-  width: 100%;
   /*
    * The mark takes the theme, not white.
    *
@@ -1412,6 +1412,22 @@ header.kwant-command-rail {
   -webkit-font-smoothing: antialiased;
 }
 
+.kwant-brand-beta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 16px;
+  padding-inline: 4px;
+  border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--phone-menu-ink, var(--foreground)) 74%, var(--phone-menu-panel, var(--panel)));
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
 /* Links and the top-right Trade trigger intentionally share one rendered
    control contract. The explicit dimensions prevent browser button defaults
    or broader cockpit button rules from making Trade look larger than the
@@ -1439,7 +1455,7 @@ header.kwant-command-rail .kwant-primary-nav-control {
    rail on the right and the navigation remains horizontally scrollable. */
 .kwant-primary-workspace-nav {
   left: 50%;
-  width: calc(100% - 268px);
+  width: calc(100% - 324px);
   height: var(--kwant-shell-bar-height);
   transform: translateX(-50%);
   scrollbar-width: none;
@@ -1469,7 +1485,7 @@ header.kwant-command-rail .kwant-primary-nav-control {
   }
 
   .kwant-primary-brand {
-    width: 98px;
+    width: 134px;
     height: 28px;
     margin-right: 5px;
     margin-top: calc((var(--kwant-shell-bar-height) - 28px) / 2);
@@ -2503,7 +2519,7 @@ body.kwant-cockpit-ui .kwant-one-liner-glow {
   }
 
   .kwant-primary-brand {
-    width: 84px;
+    width: 120px;
     margin-right: 4px;
   }
 

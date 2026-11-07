@@ -70,7 +70,13 @@ export default function MobileWorkspaceNavigation({ items, activeItem, onNavigat
       <div className="kwant-phone-menu-layer" style={menuColors}>
         <button className="kwant-phone-scrim" type="button" aria-label="Close workspace menu" tabIndex={-1} onClick={() => setOpen(false)} />
         <div ref={drawer} role="dialog" aria-modal="true" aria-label="Workspace menu" className="kwant-phone-navigation">
-          <div className="kwant-phone-drawer-heading"><strong>kwant desk</strong><button type="button" aria-label="Close workspace menu" onClick={() => setOpen(false)}><X size={20} /></button></div>
+          <div className="kwant-phone-drawer-heading">
+            <div className="flex items-center gap-2">
+              <strong>kwant desk</strong>
+              <span className="kwant-brand-beta">Beta</span>
+            </div>
+            <button type="button" aria-label="Close workspace menu" onClick={() => setOpen(false)}><X size={20} /></button>
+          </div>
           {actions.length ? <section aria-label="Current workspace controls" className="kwant-phone-menu-actions">
             <h2>Workspace controls</h2>
             {actions.map((action, index) => <button key={`${action.label}:${index}`} type="button" aria-pressed={action.active} onClick={() => { setOpen(false); action.onClick(); }}>{action.label}</button>)}
