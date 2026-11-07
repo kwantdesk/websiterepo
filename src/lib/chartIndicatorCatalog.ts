@@ -89,7 +89,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Imbalance Tracker", "Order Flow", "Tracks stacked and diagonal bid/ask imbalances.", true),
   indicator("Imbalance Rejector", "Order Flow", "Marks imbalance patterns that reject and reverse.", true),
   indicator("Unfinished Auction", "Order Flow", "Flags auction extremes with incomplete bid/ask participation.", true),
-  indicator("Bar POC Indicator", "Order Flow", "Plots each bar's highest-volume price.", true),
   indicator("Dynamic POC", "Order Flow", "Tracks the developing point of control.", true),
   indicator("Speed of Tape", "Order Flow", "Execution intensity over configurable seconds using Volume, Orders or Trades with deviation filtering.", true),
   indicator("Speed of Tape (Instant)", "Order Flow", "Low-latency transaction-speed signal.", true),

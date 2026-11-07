@@ -153,7 +153,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "imbalance-tracker",
   "imbalance-rejector",
   "unfinished-auction",
-  "bar-poc-indicator",
   "dynamic-poc",
   "ratio-highlight",
   "stop-spotter",
