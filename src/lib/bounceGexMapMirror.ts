@@ -22,6 +22,10 @@ export function prepareBounceGexMirror(input: {
   const { payload, settings, colorScale } = input;
   const display = /^(M2K|RTY)/.exec(input.displayInstrument.toUpperCase())?.[1] ?? normalizeGammaHeatmapInstrument(input.displayInstrument), source = gexMapProviderTicker(payload.symbol);
   const direct = gexMapProviderTicker(display) === source;
+  const futuresFamily = /^(NQ|MNQ)$/.test(display) ? ["NDX", "QQQ"]
+    : /^(ES|MES)$/.test(display) ? ["SPX", "SPY"]
+    : /^(RTY|M2K)$/.test(display) ? ["IWM"] : null;
+  const crossFamily = !direct && futuresFamily !== null && !futuresFamily.includes(source);
   // displayPriceAt supplies the containing minute's OPEN. Pair it with the
   // source OPEN, not that minute's final close (which creates a return-sized
   // sawtooth in every projected strike and leaks future prices into replay).
@@ -33,7 +37,21 @@ export function prepareBounceGexMirror(input: {
     const sourcePrice = candle.open, displayPrice = input.displayPriceAt(candle.timestamp);
     return sourcePrice > 0 && displayPrice && displayPrice > 0 ? { sourcePrice, displayPrice } : null;
   };
+  // Independent index returns move the entire ladder when every strike
+  // is repriced at the current ratio. Cross-family projections instead
+  // use the first matched minute opens from the session history.
+  let sessionAnchor: { timestamp: number; scale: number } | null = null;
+  if (crossFamily && !payload.compact && !payload.historyPending) {
+    for (const candle of payload.candles) {
+      if (!Number.isFinite(candle.open) || candle.open <= 0) continue;
+      const targetOpen = input.displayPriceAt(candle.timestamp);
+      if (targetOpen === null || !Number.isFinite(targetOpen) || targetOpen <= 0) continue;
+      sessionAnchor = { timestamp: candle.timestamp, scale: targetOpen / candle.open };
+      break;
+    }
+  }
   const frame = (timestamp: number, current: ReadonlyMap<number, ExposureStrike>, previous: ReadonlyMap<number, ExposureStrike>, spot: number | null, live = false): MirrorFrame | null => {
+    if (crossFamily && (!sessionAnchor || timestamp < sessionAnchor.timestamp)) return null;
     const rows = gexMapSurfaceRows(current);
     const exposureRange = gexMapExposureRange(rows.map((row) => row.net));
     // Compact live candles can lead the session archive. Both sides must still
@@ -44,13 +62,15 @@ export function prepareBounceGexMirror(input: {
     if (!(displayPrice && displayPrice > 0) || (!direct && !(spot && spot > 0))) return null;
     const sourcePrice = spot ?? displayPrice;
     const mappingSourcePrice = pair?.sourcePrice ?? sourcePrice;
-    const mapped = buildGammaHeatmapMapping({ sourceInstrument: source, displayInstrument: direct ? source : display,
+    const liveMapping = buildGammaHeatmapMapping({ sourceInstrument: source, displayInstrument: direct ? source : display,
       sourcePrice: mappingSourcePrice, displayPrice, asOf: new Date(timestamp).toISOString() });
+    const mapped = sessionAnchor ? { ...liveMapping, scale: sessionAnchor.scale, basis: 0 } : liveMapping;
     const mapping: StrikeMappingSnapshot = {
-      method: mapped.method === "direct" ? "same-underlying-direct" : mapped.method === "live-basis" ? "spot-futures-basis" : "live-ratio",
+      method: sessionAnchor ? "session-anchored-ratio" : mapped.method === "direct" ? "same-underlying-direct" : mapped.method === "live-basis" ? "spot-futures-basis" : "live-ratio",
       sourceTicker: source, displayInstrument: display, alpha: mapped.basis, beta: mapped.scale,
       sourceSpotPrice: mappingSourcePrice, displayMidPrice: displayPrice, mappedSourceSpotPrice: mapGammaHeatmapStrike(mappingSourcePrice, mapped),
-      mappingConfidence: mapped.confidence * 100, calculatedAtMs: timestamp, dataAgeMs: 0,
+      mappingConfidence: mapped.confidence * 100,
+      calculatedAtMs: sessionAnchor?.timestamp ?? timestamp, dataAgeMs: sessionAnchor ? timestamp - sessionAnchor.timestamp : 0,
     };
     const model = deriveGexMapStarModel({ rows, previous, spot, settings: settings.starSettings });
     const star = selectGexMapStarNode(rows), maximum = Math.abs(star?.net ?? 0), max = Math.max(1, maximum);
@@ -106,7 +126,7 @@ export function prepareBounceGexMirror(input: {
   };
   const independentHistory = direct && payload.candles.length > 0 && payload.candles[0].timestamp <= (payload.frames[0]?.timestamp ?? Infinity);
   const cacheKey = JSON.stringify([payload.symbol, payload.greekMode, payload.model, payload.scope, payload.representation, payload.sessionDate,
-    settings.viewMode, settings.stepMinutes, settings.starSettings, display, colorScale, independentHistory ? "" : input.historyKey,
+    settings.viewMode, settings.stepMinutes, settings.starSettings, display, colorScale, sessionAnchor, independentHistory ? "" : input.historyKey,
     direct ? "" : payload.candles.map((c) => `${c.timestamp}:${c.open}`).join("|")]);
   const cached = historyCache.get(payload.frames);
   const through = independentHistory ? Infinity : input.mappingThrough ?? Infinity;
@@ -199,6 +219,8 @@ export function selectBounceGexMirror(prepared: PreparedBounceGexMirror, timesta
     ceiling: levels.find((l) => l.mapRoleLabel?.includes("CEILING")) ?? null, gatekeepers: levels.filter((l) => l.mapRoleLabel?.includes("GATEKEEPER")),
     airPockets: frame.airPockets, mapSignature: levels.map((l) => l.sourceStrike + ":" + l.signedExposure).join("|"),
     limitations: ["Levels mirror the selected GEX Map measurement. Floors and ceilings are structural classifications, not guaranteed support or resistance.",
-      ...(frame.mapping.method === "same-underlying-direct" ? [] : ["Cross-instrument prices are mapped projections; source strike and exposure remain unchanged."])],
+      ...(frame.mapping.method === "session-anchored-ratio"
+        ? ["Cross-family strikes use the first matched minute opens as a fixed session reference. Intraday relative price drift is possible."]
+        : frame.mapping.method === "same-underlying-direct" ? [] : ["Cross-instrument prices are mapped projections; source strike and exposure remain unchanged."])],
   };
 }

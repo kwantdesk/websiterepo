@@ -54,7 +54,7 @@ export type GammaStrikeContribution = {
 };
 
 export type StrikeMappingSnapshot = {
-  method: "same-underlying-direct" | "rolling-affine-regression" | "live-ratio" | "spot-futures-basis" | "futures-calendar-spread";
+  method: "same-underlying-direct" | "rolling-affine-regression" | "live-ratio" | "session-anchored-ratio" | "spot-futures-basis" | "futures-calendar-spread";
   sourceTicker: string;
   displayInstrument: string;
   alpha: number;

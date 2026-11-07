@@ -20011,7 +20011,9 @@ function Chart({
             <span>1m / 5m / 15m ROC</span><span className="text-foreground">{bounceLevelsTooltip.node.oneMinuteRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.fiveMinuteRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.fifteenMinuteRateOfChange.toFixed(1)}%</span>
             <span>Exposure cadence</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.exposureRefreshIntervalMs ? `${(bounceLevelsTooltip.snapshot.exposureRefreshIntervalMs / 1_000).toFixed(0)}s` : "Awaiting second snapshot"}</span>
             </>}
-            <span>Mapping</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.mapping.method.replaceAll("-", " ")} · {bounceLevelsTooltip.snapshot.mapping.mappingConfidence}%</span>
+            <span>Mapping</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.mapping.method === "session-anchored-ratio"
+              ? "Session-anchored projection"
+              : `${bounceLevelsTooltip.snapshot.mapping.method.replaceAll("-", " ")} · ${bounceLevelsTooltip.snapshot.mapping.mappingConfidence}%`}</span>
             <span>Source → projected</span><span className="text-foreground">{bounceLevelsTooltip.node.sourceStrike.toLocaleString()} → {bounceLevelsTooltip.node.mappedPrice.toFixed(priceFormat.precision)}</span>
           </div>
         </div>

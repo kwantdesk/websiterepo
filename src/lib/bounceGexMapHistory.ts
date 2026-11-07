@@ -35,7 +35,7 @@ export function mergeBounceGexMapHistory(history: GexMapPanelPayload, head: GexM
   }
   if (mergedCandles) candles = [...mergedCandles.values()].sort((a, b) => a.timestamp - b.timestamp);
   if (frames !== history.frames) parents.set(frames, { frames: new WeakRef(history.frames), dirtyFrom });
-  const payload = { ...head, frames, candles };
+  const payload = { ...head, compact: history.compact, historyPending: history.historyPending, frames, candles };
   if (!variants) { variants = new WeakMap(); mergedHeads.set(head, variants); }
   variants.set(history.frames, { candles: history.candles, payload });
   return payload;
