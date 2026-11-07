@@ -1861,8 +1861,10 @@ export default function ChartDrawLayer({
     );
   };
 
-  const previewDrawing: Drawing | null = pending && cursor
-    ? { id: "__preview__", tool: pending.tool, points: freehandRef.current ? pending.points : [...pending.points, cursor], style: previewStyle(pending.tool), text: pending.tool === "emoji" ? emoji : undefined }
+  // A clicked path already has placed segments. Leaving the plot for Cursor
+  // removes only its unplaced hover leg, not those segments awaiting commit.
+  const previewDrawing: Drawing | null = pending && (cursor || pending.tool === "path")
+    ? { id: "__preview__", tool: pending.tool, points: freehandRef.current || !cursor ? pending.points : [...pending.points, cursor], style: previewStyle(pending.tool), text: pending.tool === "emoji" ? emoji : undefined }
     : null;
 
   const captureActive = !readOnly && (active || activeTool === "eraser");
