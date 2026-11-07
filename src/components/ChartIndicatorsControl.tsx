@@ -1100,7 +1100,6 @@ export default function ChartIndicatorsControl({
   timeframe,
   indicators,
   chartSettings,
-  levelControls = [],
   settingsOpenRequest = null,
   openRequest = 0,
   externalAnchor = null,
@@ -1463,7 +1462,7 @@ export default function ChartIndicatorsControl({
     : null;
   const openSettingsIndicatorId = settingsInstance?.indicatorId;
   const openSettingsInstanceId = settingsInstance?.instanceId;
-  const activeLayerCount = indicators.length + levelControls.filter((control) => control.enabled).length;
+  const activeLayerCount = indicators.length;
 
   useEffect(() => {
     if (!openSettingsIndicatorId || !VOLUME_PROFILE_INDICATOR_IDS.has(openSettingsIndicatorId)) return;
@@ -1755,44 +1754,6 @@ export default function ChartIndicatorsControl({
               </button>
             </div>
             <div className="max-h-[480px] overflow-y-auto">
-              {levelControls.length ? (
-                <section className="border-b border-border p-3">
-                  <div className="mb-2 flex items-center justify-between px-1">
-                    <span className="text-[8px] font-semibold uppercase tracking-[0.15em] text-muted">KwantDesk levels</span>
-                    <span className="text-[8px] text-muted">{levelControls.filter((control) => control.enabled).length} active</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {levelControls.map((control) => (
-                      <button
-                        key={control.id}
-                        type="button"
-                        disabled={!control.available}
-                        aria-pressed={control.enabled}
-                        onClick={control.onToggle}
-                        className={`flex min-h-[68px] items-start gap-2 rounded-xl border p-2.5 text-left transition-colors ${
-                          !control.available
-                            ? "cursor-not-allowed border-border bg-background/35 opacity-40"
-                            : control.enabled
-                              ? "border-primary/35 bg-primary/[0.09] text-foreground"
-                              : "border-border bg-surface/35 text-muted hover:border-primary/25 hover:text-foreground"
-                        }`}
-                      >
-                        <span className={`flex h-7 min-w-7 items-center justify-center rounded-lg border font-mono text-[9px] font-black ${
-                          control.enabled
-                            ? "border-primary/35 bg-primary/15 text-primary"
-                            : "border-border bg-background text-muted"
-                        } ${control.loading ? "animate-pulse" : ""}`}>
-                          {control.badge}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[10px] font-semibold">{control.label}</span>
-                          <span className="mt-1 block line-clamp-2 text-[8px] leading-3 text-muted">{control.loading ? "Loading latest levelsâ€¦" : control.description}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
               {/*
                 * Candles come first and cannot be removed.
                 *
