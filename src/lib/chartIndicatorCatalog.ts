@@ -128,7 +128,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Monthly Volume Profile", "Volume & Profiles", "Separate volume profile for each calendar month.", true, "Kwantify"),
   indicator("Session Volume Profile", "Volume & Profiles", "Profile for a configurable RTH, ETH or custom session.", true, "Kwantify"),
   indicator("Composite Volume Profile", "Volume & Profiles", "One profile across the complete loaded range.", true, "Kwantify"),
-  indicator("Visible Range Volume Profile", "Volume & Profiles", "Profile recalculated from the visible chart range.", true, "Kwantify"),
   indicator("Custom Draw-On Volume Profile", "Volume & Profiles", "Draw a start and end range directly on the chart.", true, "Kwantify"),
   indicator("Ask/Bid Volume Profile", "Volume & Profiles", "Back-to-back ask and bid volume at each price.", true, "Kwantify"),
   indicator("Delta Profile", "Volume & Profiles", "Net aggressive volume distributed by price.", true, "Kwantify"),

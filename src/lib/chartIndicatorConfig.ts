@@ -204,7 +204,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "composite-volume-profile",
   "monthly-volume-profile",
   "session-volume-profile",
-  "visible-range-volume-profile",
   "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
