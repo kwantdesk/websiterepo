@@ -276,6 +276,7 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("highlighter", "draw", "Highlighter", "freehand"),
 
   T("trendLine", "trend", "Trend Line", 2),
+  T("path", "trend", "Arrow Path", "poly"),
   T("ray", "trend", "Ray", 2),
   T("extendedLine", "trend", "Extended Line", 2),
   T("trendAngle", "trend", "Trend Angle", 2),
@@ -338,7 +339,6 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("circle", "shapes", "Circle", 2),
   T("triangleShape", "shapes", "Triangle", 3),
   T("polyline", "shapes", "Polyline", "poly"),
-  T("path", "shapes", "Path", "poly"),
 
   T("text", "annotation", "Text", 1),
   T("note", "annotation", "Note", 1),

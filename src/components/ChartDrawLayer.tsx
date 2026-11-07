@@ -417,6 +417,14 @@ export default function ChartDrawLayer({
     if (!staysArmed) onToolConsumed();
   };
 
+  // Choosing Cursor finishes the clicked path without adding the hover point.
+  useEffect(() => {
+    if (!pending || pending.tool !== "path" || activeTool === "path") return;
+    if (!readOnly && pending.points.length >= 2) onCommit(createDrawing("path", pending.points));
+    setPending(null);
+    setCursor(null);
+  }, [activeTool, pending, readOnly, onCommit]);
+
   // Dragging is driven by window-level listeners so the pointer never
   // "escapes" the drawing and the chart cannot repaint mid-drag — the source
   // of the previous glitchy, wobbling movement.
@@ -1084,9 +1092,13 @@ export default function ChartDrawLayer({
       return;
     }
     if (spec.points === "poly") {
-      setPending((current) => current && current.tool === activeTool
-        ? { ...current, points: [...current.points, point] }
-        : { tool: activeTool, points: [point] });
+      setPending((current) => {
+        if (!current || current.tool !== activeTool) return { tool: activeTool, points: [point] };
+        const last = current.points[current.points.length - 1];
+        // A double-click finishes the path; its second press is not a new vertex.
+        if (activeTool === "path" && last.time === point.time && last.price === point.price) return current;
+        return { ...current, points: [...current.points, point] };
+      });
       event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
@@ -1282,8 +1294,19 @@ export default function ChartDrawLayer({
           const pts = coords.filter((p) => p.x != null).map((p) => `${p.x},${p.y}`).join(" ");
           return <polygon points={pts} fill={stroke} fillOpacity={style.fillOpacity} stroke={stroke} strokeWidth={w} strokeDasharray={dash} />;
         }
+        case "path": {
+          const valid = coords.filter((p) => p.x != null && p.y != null);
+          const end = valid[valid.length - 1];
+          const previous = valid.slice(0, -1).reverse().find((p) => p.x !== end?.x || p.y !== end?.y);
+          if (!end || !previous) return null;
+          const angle = Math.atan2(end.y! - previous.y!, end.x! - previous.x!);
+          const head = 10;
+          return <g>
+            <polyline points={valid.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={stroke} strokeWidth={w} strokeDasharray={dash} strokeLinecap="round" strokeLinejoin="round" />
+            <path d={`M${end.x},${end.y} L${end.x! - head * Math.cos(angle - 0.5)},${end.y! - head * Math.sin(angle - 0.5)} M${end.x},${end.y} L${end.x! - head * Math.cos(angle + 0.5)},${end.y! - head * Math.sin(angle + 0.5)}`} stroke={stroke} strokeWidth={w} fill="none" />
+          </g>;
+        }
         case "polyline":
-        case "path":
         case "brush":
         case "highlighter": {
           const pts = coords.filter((p) => p.x != null).map((p) => `${p.x},${p.y}`).join(" ");
