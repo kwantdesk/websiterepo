@@ -98,7 +98,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Big Contracts", "Order Flow", "Instant Big contracts markers and Deep contracts price boxes from exact aggressive executions.", true, "Reference", "Big Trades"),
   indicator("Ratio Highlight", "Order Flow", "Highlights bid/ask ratios at price.", true),
   indicator("Stop Spotter", "Order Flow", "Locates potential stop-driven execution clusters.", true),
-  indicator("Auction Gap Tracker", "Order Flow", "Tracks auction gaps and subsequent interaction.", true),
   indicator("Session Imbalance", "Order Flow", "Aggregates imbalance behaviour across a session.", true),
   indicator("Stacked Imbalance Suite", "Order Flow", "Diagonal, horizontal and stacked aggressive-volume imbalances with scored zones, retests and breaks from the shared Footprint stream.", true, "Kwantify", undefined, "Imbalances"),
   indicator("Iceberg / Refresh Detector", "Order Flow", "Repeated passive-liquidity replenishment inferred from aggressive executions and the shared Level 3 order-book lifecycle.", true, "Kwantify", undefined, "Liquidity"),
