@@ -11,6 +11,51 @@ const candle=(i,ask=10,bid=3)=>({timestamp:start+i*60000,open:100,high:101,low:9
 const group=(id,settings={})=>({key:id,indicatorId:id,settings,series:[]});
 const ids=['cumulative-volume-delta','delta-cumulative-candlestick','delta-cumulative-histogram','delta-bar'];
 const input=(candles)=>({candles,theme,instrument:'NQ',tickSize:0.25});
+
+test('ATR and deviation hydrate next frame and update independently of delayed parent samples', () => {
+ const rows=Array.from({length:30},(_,i)=>({...candle(i),close:100+i*.25,high:110+i*.25,low:90+i*.25}));
+ const studies=['average-true-range-atr','standard-deviation'].map(id=>group(id,{length:14}));
+ const h=harness(studies,input(rows),'price');
+ try {
+  assert.equal([...h.timers.values()][0].ms,0,'first paint does not wait for the sampler');
+  h.flush();
+  for(const g of h.output) assert.ok(g.series[0].data.length);
+  const next={...rows.at(-1),high:140,close:125};
+  h.emit(next);h.emit({...next,high:145,close:130});
+  assert.equal(h.timers.size,1,'burst is coalesced');
+  assert.equal([...h.timers.values()][0].ms,100);
+  h.flush();
+  for(const g of h.output){
+   const expected=calculateIndicatorSeries({instanceId:g.key,indicatorId:g.indicatorId,enabled:true,settings:g.settings},[...rows.slice(0,-1),{...next,high:145,close:130}],theme);
+   assert.deepEqual(g.series[0].data,expected[0].data);
+  }
+  assert.equal(h.timers.size,0,'no idle polling');
+  h.update({groups:studies.map(g=>({...g,settings:{length:5}}))});h.flush();
+  assert.equal(h.output[0].series[0].label,'ATR 5');
+  h.update({key:undefined,scope:'replay'});
+  h.emit({...next,timestamp:next.timestamp+60000});assert.equal(h.timers.size,0);
+ } finally { h.dispose(); }
+});
+
+test('price studies consume execution-only event-bar batches with source-to-chart alignment', () => {
+ const rows=Array.from({length:30},(_,i)=>({...candle(i),close:100+i,high:110+i,low:90+i}));
+ const h=harness([group('standard-deviation',{length:5})],{...input(rows),mapTime:t=>t+1000},'price');
+ try{h.flush();h.executions([...rows,{...rows.at(-1),timestamp:start+30*60000,close:140,high:150}]);h.flush();
+ assert.equal(h.output[0].series[0].data.at(-1).time,(start+30*60000)/1000+1000);
+ }finally{h.dispose();}
+});
+
+test('price-study tail snapshots retain loaded history and contract changes reset the model', () => {
+ const rows=Array.from({length:60},(_,i)=>({...candle(i),close:100+i,high:110+i,low:90+i}));
+ const h=harness([group('average-true-range-atr',{length:14})],input(rows),'price');
+ try{
+  h.flush();const before=h.output[0].series[0].data.length;
+  h.executions([{...rows.at(-1),timestamp:start+60*60000,high:200}]);h.flush();
+  assert.equal(h.output[0].series[0].data.length,before+1);
+  h.update({scope:'ES:5m',inputs:input(rows.map(c=>({...c,high:102,low:99,close:100})))});h.flush();
+  assert.equal(h.output[0].series[0].data.at(-1).value,3);
+ }finally{h.dispose();}
+});
 test('live execution candles advance all delta panes across four bars while parent history is unchanged',()=>{
  const history=[candle(0)];const model=new LiveDeltaPaneModel();const inputs=input(history);model.hydrate(history);
  for(let i=1;i<=4;i++){

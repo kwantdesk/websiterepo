@@ -8319,6 +8319,7 @@ function Chart({
 
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) => {
+      if (instance.indicatorId === "standard-deviation" || instance.indicatorId === "average-true-range-atr") return [];
       if (
         !orderFlowSeriesReady
         && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId)
@@ -8433,13 +8434,21 @@ function Chart({
     // next live event bar happens to close.
   }, [candles, chartReadyRevision, timeframe]);
 
+  // Price-only studies hydrate directly from already loaded candles. They must
+  // not wait for the slower execution/indicator history sampler after Add.
+  const priceStudySeries = useMemo(() => indicators.flatMap(instance =>
+    instance.indicatorId === "standard-deviation" || instance.indicatorId === "average-true-range-atr"
+      ? calculateIndicatorSeries(instance, replayIndicatorCandles(candles, DEEP_HISTORY_INDICATOR_MAX_BARS, replayTimestampMs),
+        visibleIndicatorTheme(settings), { instrument, tickSize: priceFormat.minMove, replayTimestampMs })
+        .map(series => ({ ...series, groupKey: instance.instanceId })) : []),
+  [candles, indicatorSignature, indicators, instrument, priceFormat.minMove, replayTimestampMs,
+    settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
   const chartAlignedIndicatorSeries = useMemo(() => {
     return alignIndicatorSeriesToEventBars(
-      clipReplayIndicatorSeries(baseCalculatedIndicatorSeries, replayTimestampMs),
+      clipReplayIndicatorSeries([...baseCalculatedIndicatorSeries, ...priceStudySeries], replayTimestampMs),
       eventChartIndicatorTimeMap,
     );
-  }, [baseCalculatedIndicatorSeries, eventChartIndicatorTimeMap, replayTimestampMs]);
-
+  }, [baseCalculatedIndicatorSeries, priceStudySeries, eventChartIndicatorTimeMap, replayTimestampMs]);
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
@@ -21133,7 +21142,7 @@ function Chart({
 
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
-        liveDeltaInputs={{ candles: indicatorCandles, volumeCandles: sampledIndicatorCandles, instrument, tickSize: priceFormat.minMove,
+        liveDeltaInputs={{ candles: indicatorCandles, volumeCandles: sampledIndicatorCandles, priceCandles: candles, instrument, tickSize: priceFormat.minMove,
           theme: visibleIndicatorTheme(settings),
           mapTime: eventChartIndicatorTimeMap ? (sourceTime) =>
             eventChartTimeBySourceTimeRef.current.get(Math.round(sourceTime * 1000))

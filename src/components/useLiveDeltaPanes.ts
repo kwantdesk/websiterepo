@@ -5,8 +5,10 @@ import { deltaPaneIdentity, isLiveDeltaPane, LIVE_DELTA_PANE_INTERVAL_MS, LiveDe
 
 /** Only the lower panes rerender. Busy profile/footprint transitions in Chart
  * cannot defer an execution update for multiple bars. No extra network calls. */
-export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: string, chartKey?: string, inputs?: LiveDeltaInputs, mode: "delta" | "volume" = "delta"): T[] {
-  const accepts = (id: string) => mode === "volume" ? id === "volume" : isLiveDeltaPane(id);
+export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: string, chartKey?: string, inputs?: LiveDeltaInputs, mode: "delta" | "volume" | "price" = "delta"): T[] {
+  const accepts = (id: string) => mode === "price"
+    ? id === "standard-deviation" || id === "average-true-range-atr"
+    : mode === "volume" ? id === "volume" : isLiveDeltaPane(id);
   const state = useRef({ scope, model: new LiveDeltaPaneModel() });
   if (state.current.scope !== scope) state.current = { scope, model: new LiveDeltaPaneModel() };
   const current = useRef({ groups, inputs });
@@ -19,6 +21,9 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
     const model = state.current.model;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let frame: number | null = null;
+    let firstPaint = true;
+    let pendingSnapshot: LiveChartExecutionDetail["candles"];
+    const pendingPrices = new Map<number, LiveChartCandleDetail["candle"]>();
     const schedule = () => {
       if (timer !== null || frame !== null) return;
       const paintNow = () => {
@@ -27,6 +32,12 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
         const latest = current.current;
         if (!latest.inputs) return;
         model.hydrate(latest.inputs.candles);
+        if (pendingSnapshot) {
+          model.observeSnapshot(pendingSnapshot, true);
+          pendingSnapshot = undefined;
+        }
+        for (const candle of pendingPrices.values()) model.observe(candle);
+        pendingPrices.clear();
         const values = new Map(latest.groups.filter(group => accepts(group.indicatorId)).map(group => [group.key,
           { identity: deltaPaneIdentity(group), series: model.calculate(group, latest.inputs!) }]));
         // Deliberately urgent and local: never startTransition through Chart.
@@ -34,8 +45,9 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
       };
       // Volume follows the price paint frame, without recomputing CVD or other
       // studies at frame rate and without opening another feed subscription.
-      if (mode === "volume") frame = requestAnimationFrame(paintNow);
-      else timer = setTimeout(paintNow, LIVE_DELTA_PANE_INTERVAL_MS);
+      if (mode === "volume" || mode === "price" && firstPaint) frame = requestAnimationFrame(paintNow);
+      else timer = setTimeout(paintNow, mode === "price" ? 100 : LIVE_DELTA_PANE_INTERVAL_MS);
+      firstPaint = false;
     };
     hydrate.current = schedule;
     const receive = (event: Event) => {
@@ -43,8 +55,11 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
       if (!detail || detail.key !== chartKey) return;
       const latest = current.current.inputs;
       if (!latest) return;
-      model.hydrate(latest.candles);
-      model.observe(detail.candle);
+      if (mode === "price") pendingPrices.set(detail.candle.timestamp, detail.candle);
+      else {
+        model.hydrate(latest.candles);
+        model.observe(detail.candle);
+      }
       schedule();
     };
     const receiveExecutions = (event: Event) => {
@@ -54,8 +69,13 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
       // coalescing. Do not reconstruct delta from price or add the tape twice.
       const latest = current.current.inputs;
       if (!latest) return;
-      model.hydrate(latest.candles);
-      model.observeSnapshot(detail.candles);
+      if (mode === "price") {
+        pendingSnapshot = detail.candles;
+        pendingPrices.clear();
+      } else {
+        model.hydrate(latest.candles);
+        model.observeSnapshot(detail.candles);
+      }
       schedule();
     };
     window.addEventListener(LIVE_CHART_CANDLE_EVENT, receive);

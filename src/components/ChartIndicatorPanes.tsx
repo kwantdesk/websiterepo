@@ -60,6 +60,12 @@ function compact(value: number) {
   return value.toFixed(0);
 }
 
+function formatPaneValue(value: number, indicatorId: string) {
+  return indicatorId === "standard-deviation" || indicatorId === "average-true-range-atr"
+    ? Number(value.toPrecision(5)).toString()
+    : compact(value);
+}
+
 function formatStatValue(value: number, format: "number" | "percent" | "seconds" | "ratio", autoFormat: boolean) {
   if (!Number.isFinite(value)) return "—";
   if (format === "percent") return `${value.toFixed(Math.abs(value) >= 100 ? 0 : 1)}%`;
@@ -82,7 +88,8 @@ function seriesDomain(series: CalculatedIndicatorSeries[]) {
   let min = Math.min(...values);
   let max = Math.max(...values);
   if (min === max) {
-    const padding = Math.max(1, Math.abs(min) * 0.05);
+    const priceStudy = series.some(definition => definition.key === "standard-deviation" || definition.key === "average-true-range-atr");
+    const padding = Math.max(priceStudy ? 1e-12 : 1, Math.abs(min) * 0.05);
     min -= padding;
     max += padding;
   } else {
@@ -679,8 +686,8 @@ function ChartIndicatorPaneSurface({
                 bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                 points={sampledPanePoints(definition, xForTime, plotWidth).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
             )) : null}
-            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{compact(sharedDomain.max)}</text> : null}
-            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{compact(sharedDomain.min)}</text> : null}
+            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.max, group.indicatorId)}</text> : null}
+            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.min, group.indicatorId)}</text> : null}
             {!collapsed && secondaryDomain && group.secondaryAxisLabel ? (
               <g aria-label={`${group.secondaryAxisLabel} price scale`}>
                 <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace">{secondaryDomain.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
@@ -1304,8 +1311,8 @@ function ChartVerticalIndicatorPaneSurface({
                       bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
                       points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(point => ({ ...point, x: xForValue(point.value, definition), y: point.y + plotTop }))} />
                   )) : null}
-                  <text x={innerLeft} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace">{compact(domain.min)}</text>
-                  <text x={innerRight} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace" textAnchor="end">{compact(domain.max)}</text>
+                  <text x={innerLeft} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace">{formatPaneValue(domain.min, group.indicatorId)}</text>
+                  <text x={innerRight} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace" textAnchor="end">{formatPaneValue(domain.max, group.indicatorId)}</text>
                   {secondaryDomain && group.secondaryAxisLabel ? (
                     <text x={columnLeft + columnWidth / 2} y={headerHeight - 3} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace" textAnchor="middle">
                       {group.secondaryAxisLabel} {compact(secondaryDomain.min)}..{compact(secondaryDomain.max)}
@@ -1452,7 +1459,12 @@ function ChartIndicatorPanes({
   const deltaGroups = useLiveDeltaPanes(continuityGroups, coordinateScope, liveChartKey, liveDeltaInputs);
   const volumeGroups = useLiveDeltaPanes(deltaGroups, coordinateScope, liveChartKey,
     liveDeltaInputs ? { ...liveDeltaInputs, candles: liveDeltaInputs.volumeCandles ?? liveDeltaInputs.candles } : undefined, "volume");
-  const groups = useSuperTrendLivePanes(volumeGroups, liveChartKey);
+  const priceStudyEnabled = volumeGroups.some(group => group.indicatorId === "standard-deviation" || group.indicatorId === "average-true-range-atr");
+  const priceCandles = useMemo(() => priceStudyEnabled ? liveDeltaInputs?.priceCandles?.slice(-20_000) : undefined,
+    [liveDeltaInputs?.priceCandles, priceStudyEnabled]);
+  const priceGroups = useLiveDeltaPanes(volumeGroups, coordinateScope, liveChartKey,
+    liveDeltaInputs && priceCandles ? { ...liveDeltaInputs, candles: priceCandles } : undefined, "price");
+  const groups = useSuperTrendLivePanes(priceGroups, liveChartKey);
   const superTrendScale = useRef(new SuperTrendPaneScale());
   superTrendScale.current.retain(liveChartKey, groups.filter(g => g.indicatorId === "super-trend" || g.indicatorId === "super-trend-difference").map(g => g.key));
   const rootRef = useRef<HTMLDivElement>(null);

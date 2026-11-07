@@ -5,7 +5,7 @@ import { mergeLiveIndicatorTail } from "@/lib/chartLiveEvents";
 export const LIVE_DELTA_PANE_INTERVAL_MS = 200;
 export const isLiveDeltaPane = (id: string) => ["cumulative-volume-delta", "delta-cumulative-candlestick", "delta-cumulative-histogram", "delta-bar"].includes(id);
 export type LiveDeltaGroup = { key: string; indicatorId: string; settings?: Record<string, number | string | boolean>; series: CalculatedIndicatorSeries[] };
-export type LiveDeltaInputs = { candles: Candle[]; volumeCandles?: Candle[]; instrument: string; tickSize: number; theme: IndicatorTheme; mapTime?: (sourceTime: number) => number | undefined };
+export type LiveDeltaInputs = { candles: Candle[]; volumeCandles?: Candle[]; priceCandles?: Candle[]; instrument: string; tickSize: number; theme: IndicatorTheme; mapTime?: (sourceTime: number) => number | undefined };
 export const deltaPaneIdentity = (group: LiveDeltaGroup) => JSON.stringify([group.indicatorId, group.settings ?? {}]);
 
 /** Shares the price chart's execution-backed candle events, never another feed.
@@ -26,16 +26,19 @@ export class LiveDeltaPaneModel {
     const limit = Math.max(4000, this.source?.length ?? 0);
     if (this.history.length > limit) this.history = this.history.slice(-limit);
   }
-  observeSnapshot(candles: Candle[]) {
+  observeSnapshot(candles: Candle[], preserveEarlierHistory = false) {
     if (!candles.length || (candles.at(-1)!.timestamp < (this.history.at(-1)?.timestamp ?? -Infinity))) return;
     // A coalesced batch may span more than four second/event bars. Keep every
     // canonical bar in the study window, not just a sampled price tail.
     this.live = mergeLiveIndicatorTail(candles.slice(-256), this.live);
     const limit = Math.max(4000, this.source?.length ?? 0);
-    this.history = mergeLiveIndicatorTail(candles.slice(-limit), this.live);
+    const snapshot = preserveEarlierHistory && this.history[0]?.timestamp < candles[0].timestamp
+      ? [...this.history.filter(candle => candle.timestamp < candles[0].timestamp), ...candles].slice(-limit)
+      : candles.slice(-limit);
+    this.history = mergeLiveIndicatorTail(snapshot, this.live);
   }
   calculate(group: LiveDeltaGroup, inputs: LiveDeltaInputs) {
-    if (!isLiveDeltaPane(group.indicatorId) && group.indicatorId !== "volume") return group.series;
+    if (!isLiveDeltaPane(group.indicatorId) && !["volume", "standard-deviation", "average-true-range-atr"].includes(group.indicatorId)) return group.series;
     const series = calculateIndicatorSeries({ indicatorId: group.indicatorId, instanceId: group.key,
       enabled: true, settings: group.settings ?? {} }, this.history, inputs.theme, inputs);
     return series.map(definition => ({ ...definition, groupKey: group.key,
