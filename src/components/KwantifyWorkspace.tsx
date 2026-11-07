@@ -21703,7 +21703,7 @@ export default function KwantifyWorkspace({
             ) : null}
             {bottomWorkspaceSection === "gexmap" ? (
                 <WorkspaceFailureBoundary resetKey="gexmap" label="GEX Map">
-                  <GexMapWorkspace timeZone={chartSettings.timezone} enableDealerModel enableWorkspaces />
+                  <GexMapWorkspace timeZone={chartSettings.timezone} onTimeZoneChange={changeChartTimeZone} enableDealerModel enableWorkspaces />
                 </WorkspaceFailureBoundary>
             ) : null}
             {bottomWorkspaceSection === "liqmap" ? (

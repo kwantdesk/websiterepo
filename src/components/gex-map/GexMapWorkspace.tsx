@@ -94,6 +94,7 @@ import {
 } from "@/lib/workspaceDataCache";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import ReplaySessionDatePicker from "@/components/ReplaySessionDatePicker";
+import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components/ui/TimeZoneSelect";
 import { gexMapReplayDisplay } from "@/lib/gexMapReplayTime";
 import {
   GEX_MAP_REPLAY_WINDOWS,
@@ -132,6 +133,7 @@ export type GexMapEmbedState = {
 export type GexMapWorkspaceProps = {
   /** The host's top-right chart timezone; display only, never a session key. */
   timeZone?: string;
+  onTimeZoneChange?: (timeZone: string) => void;
   market?: GexMapMarket | null;
   externalReplay?: {
     active: boolean;
@@ -1105,6 +1107,7 @@ function ExposurePanel({
 
 function GexMapWorkspace({
   timeZone = "America/New_York",
+  onTimeZoneChange,
   market = null,
   externalReplay = null,
   persistedState = null,
@@ -1729,6 +1732,17 @@ function GexMapWorkspace({
     </button>
   );
 
+  const timeZoneControl = onTimeZoneChange ? (
+    <TimeZoneSelect
+      value={timeZone}
+      onChange={onTimeZoneChange}
+      menuLabel={replayMode ? "Replay timezone" : "GEX Map timezone"}
+      referenceTimestampMs={selectedTimestamp ?? undefined}
+      compact
+      className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME}
+    />
+  ) : null;
+
   return (
     <div className="gex-map-workspace relative flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -1956,6 +1970,7 @@ function GexMapWorkspace({
               {replayMode ? <Radio className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
               {replayMode ? "Exit Replay" : "Replay"}
             </button> : null}
+            {!replayMode ? timeZoneControl : null}
           </div>
         </header>
 
@@ -2028,6 +2043,7 @@ function GexMapWorkspace({
                 }}
                 className="h-9 rounded-lg px-3 text-[10px]"
               />
+              {timeZoneControl}
 
               <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
                 <button type="button" onClick={() => setCursor(0)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
