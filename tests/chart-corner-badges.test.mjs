@@ -41,6 +41,15 @@ test('all other corners clear the docked panes, and absent badges add no item', 
   }
 });
 
+test('top-right stack reserves the real price axis and any docked right controls', () => {
+  const html = render({ priceScaleWidth: 90, rightReservedWidth: 80,
+    badges: [{ id:'classic',position:'top-right',content:'Classic GEX' },{id:'em',position:'top-right',content:'Expected Move'}] });
+  assert.match(html,/top:92px;right:180px/);
+  assert.match(html,/calc\(100% - 240px\)/);
+  assert.match(html,/data-chart-corner-badge="classic"[^>]*margin-right:0/);
+  assert.ok(html.indexOf('data-chart-corner-badge="classic"')<html.indexOf('data-chart-corner-badge="em"'));
+});
+
 test('the actual chart supplies both pane offsets and leaves countdown positioning to the stack', () => {
   const chart = readFileSync(new URL('../src/components/Chart.tsx', import.meta.url), 'utf8');
   assert.match(chart, /<ChartCornerBadges\s+bottomInset=\{indicatorPaneHeight > 0 \? indicatorPaneHeight \+ CHART_TIME_AXIS_HEIGHT : nativeTimeScaleHeight\}\s+topInset=\{topIndicatorPaneHeight\}/);

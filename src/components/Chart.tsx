@@ -36,7 +36,7 @@ import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTr
 
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
-import ChartCornerBadges from "@/components/ChartCornerBadges";
+import ChartCornerBadges, { ChartIndicatorStatusBadge, ChartIndicatorStatusProvider } from "@/components/ChartCornerBadges";
 import CandleCountdownBadge from "@/components/CandleCountdownBadge";
 import {
   CHART_QUICK_EMOJI_EVENT,
@@ -19140,6 +19140,7 @@ function Chart({
   };
 
   return (
+    <ChartIndicatorStatusProvider>
     <div ref={drawingKeyboardScopeRef} className="flex h-full w-full min-w-0 overflow-hidden">
       {/* The charting toolbar is the chart's LEFT EDGE: a static flex column
           that owns its own layout space, so chart content, candles and
@@ -19185,10 +19186,10 @@ function Chart({
         {unavailableReplayIndicators.length ? <div className="absolute left-2 top-2 z-50 rounded border border-border bg-panel px-2 py-1 text-[10px] text-muted" title={unavailableReplayIndicators.map(instance => CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.name ?? instance.indicatorId).join(", ")}>
           {unavailableReplayIndicators.length} studies unavailable in replay · no verified historical adapter
         </div> : null}
-        {(superTrendAlertNotice || indicatorAlertNotice) ? <div role="status" aria-live="polite"
+        {(superTrendAlertNotice || indicatorAlertNotice) ? <ChartIndicatorStatusBadge role="status" aria-live="polite"
           className="pointer-events-none absolute right-3 top-3 z-50 max-w-xs border border-primary bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
           {superTrendAlertNotice || indicatorAlertNotice}
-        </div> : null}
+        </ChartIndicatorStatusBadge> : null}
       {/*
         * The Mini DOM's own left edge, as something the trader can take hold
         * of. The ladder is a canvas primitive with no element to grab, so the
@@ -19351,6 +19352,7 @@ function Chart({
         topInset={topIndicatorPaneHeight}
         leftInset={toolbarPlotLeftInset}
         priceScaleWidth={nativePriceScaleWidth}
+        rightReservedWidth={miniDomReservedWidth}
         badges={[
           { id: "flow-status", position: "bottom-right", content: orderFlowPaneStatus ? (
         <div className="pointer-events-none flex items-center gap-1.5 border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
@@ -19473,7 +19475,7 @@ function Chart({
         ]}
       />
       {pullingStackingIndicator && pullingStackingSettings.showHeader ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 top-2 z-[26] flex h-6 max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
         >
           <span className={`h-1.5 w-1.5 rounded-full ${pullingStackingStatus === "unavailable" ? "bg-danger" : pullingStackingStatus === "checking" ? "animate-pulse bg-warning" : "bg-primary"}`} />
@@ -19490,7 +19492,7 @@ function Chart({
               <span>V {Math.round(pullingStackingFrame.totals.velocity).toLocaleString()}/s</span>
             </>
           ) : <span>{pullingStackingStatus === "unavailable" ? "Order book unavailable" : "Synchronising order book…"}</span>}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {pullingStackingTooltip && pullingStackingSettings.showTooltips ? (
         <div
@@ -19523,7 +19525,7 @@ function Chart({
         </div>
       ) : null}
       {absorptionIndicator && absorptionSettings.showHeader ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 z-[27] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: pullingStackingIndicator && pullingStackingSettings.showHeader ? 38 : 8 }}
           title={absorptionFrame?.limitations.join(" ") ?? "Waiting for the shared execution and order-book stream"}
@@ -19542,7 +19544,7 @@ function Chart({
               <span>ASK {absorptionFrame.zones.filter((zone) => zone.side === "ASK" && zone.state !== "BROKEN").length}</span>
             </>
           ) : <span>{absorptionStatus === "unavailable" ? "Execution feed unavailable" : "Synchronising executions…"}</span>}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {absorptionTooltip ? (
         <div
@@ -19572,7 +19574,7 @@ function Chart({
         </div>
       ) : null}
       {stackedImbalanceIndicator ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 z-[27] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) }}
           title={stackedImbalanceFrame?.limitations.join(" ") || "Exact Footprint execution cells"}
@@ -19583,7 +19585,7 @@ function Chart({
           <span>ASK {stackedImbalanceFrame?.zones.filter((zone) => zone.side === "ASK" && !["BROKEN", "EXPIRED"].includes(zone.state)).length ?? 0}</span>
           <span>BID {stackedImbalanceFrame?.zones.filter((zone) => zone.side === "BID" && !["BROKEN", "EXPIRED"].includes(zone.state)).length ?? 0}</span>
           <span>{stackedImbalanceSettings.scopeMode.replaceAll("-", " ")}</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {stackedImbalanceTooltip ? (
         <div
@@ -19611,7 +19613,7 @@ function Chart({
         </div>
       ) : null}
       {pocAuctionIndicator && pocAuctionSettings.showHeader ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute right-2 top-2 z-[72] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           title={pocAuctionFrame?.limitations.join(" · ") || "Shared execution-volume POC and exact one-tick auction analysis"}
         >
@@ -19621,10 +19623,10 @@ function Chart({
           <span>POC {pocAuctionFrame?.activePocs.length ?? 0}</span>
           <span>UA {pocAuctionFrame?.auctions.filter((item) => item.completionState === "unfinished").length ?? 0}</span>
           <span>EXCESS {pocAuctionFrame?.auctions.filter((item) => item.completionState === "excess").length ?? 0}</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {unfinishedAuctionIndicator ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute right-2 z-[72] flex max-w-[min(600px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8 }}
           title="Exact one-tick unfinished-auction extremes from classified Rithmic executions"
@@ -19634,10 +19636,10 @@ function Chart({
           <span>{unfinishedAuctionFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
           <span>FRESH {unfinishedAuctionFrame?.levels.filter((level) => level.state === "fresh").length ?? 0}</span>
           <span>TRIGGERED {unfinishedAuctionFrame?.levels.filter((level) => level.state === "triggered").length ?? 0}</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {barPocIndicator ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute right-2 z-[72] flex max-w-[min(600px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) }}
           title="Exact per-candle point of control from classified Rithmic executions"
@@ -19646,49 +19648,49 @@ function Chart({
           <span className="text-foreground">Bar POC</span>
           <span>{barPocFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
           <span>{barPocFrame?.levels.length ?? 0} LEVELS</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {dynamicPocIndicator ? (
-        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) }} title="Rolling point of control and envelopes from exact Rithmic volume-at-price">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) }} title="Rolling point of control and envelopes from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!dynamicPocFrame || dynamicPocFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">Dynamic POC</span><span>{dynamicPocFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {ratioHighlightIndicator ? (
-        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) }} title="DeepCharts-compatible high/low auction-extreme ratios from exact Rithmic volume-at-price">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) }} title="DeepCharts-compatible high/low auction-extreme ratios from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!ratioHighlightFrame || ratioHighlightFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">Ratio Highlight</span><span>{ratioHighlightFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{ratioHighlightFrame?.markers.length ?? 0} MARKERS</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {stopSpotterIndicator ? (
-        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) }} title="Stop-run candidates requiring the complete DeepCharts parameter contract on exact Rithmic volume-at-price">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) }} title="Stop-run candidates requiring the complete DeepCharts parameter contract on exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!stopSpotterFrame || stopSpotterFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">Stop Spotter</span><span>{stopSpotterFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{stopSpotterFrame?.markers.length ?? 0} RUNS</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {deepWallIndicator ? (
-        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) }} title="Execution-confirmed ES-family passive-wall rejection markers from exact Rithmic volume-at-price">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) }} title="Execution-confirmed ES-family passive-wall rejection markers from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!deepWallFrame || deepWallFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : deepWallFrame.status === "UNSUPPORTED_INSTRUMENT" ? "bg-muted" : "bg-primary"}`} />
           <span className="text-foreground">KWANT Wall</span><span>{deepWallFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepWallFrame?.markers.length ?? 0} WALLS</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {deepVTrackerIndicator ? (
-        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) }} title="Execution-confirmed acceleration, exhaustion, slowdown, absorption and pressure from Rithmic volume-at-price">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) }} title="Execution-confirmed acceleration, exhaustion, slowdown, absorption and pressure from Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!deepVTrackerFrame || deepVTrackerFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">KWANT V-Tracker</span><span>{deepVTrackerFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepVTrackerFrame ? deepVTrackerFrame.patterns.length + deepVTrackerFrame.levels.length : 0} SIGNALS</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {deepProfileSwingIndicator ? (
-        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) }} title="Automatic swing profiles from exact Rithmic volume-at-price">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) }} title="Automatic swing profiles from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!deepProfileSwingFrame || deepProfileSwingFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">KWANT Profile Swing</span><span>{deepProfileSwingFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileSwingFrame?.profiles.length ?? 0} PROFILES</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {deepProfileValuesIndicator ? (
-        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) + (deepProfileSwingIndicator ? 26 : 0) }} title="POC, value area, VWAP and profile structure from exact Rithmic volume-at-price">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) + (deepProfileSwingIndicator ? 26 : 0) }} title="POC, value area, VWAP and profile structure from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!deepProfileValuesFrame || deepProfileValuesFrame.status.startsWith("WAITING") ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">KWANT Profile Values</span><span>{deepProfileValuesFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileValuesFrame?.profiles.length ?? 0} PROFILES</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {confluenceIdentifierIndicator && confluenceIdentifierFrame ? (() => {
         const chart = chartRef.current;
@@ -19728,14 +19730,14 @@ function Chart({
             }) : null}
             {confluenceIdentifierSettings.startMode === "date" && confluenceIdentifierFrame.startTime != null ? <line x1={clampedStartX} x2={clampedStartX} y1={0} y2={overlaySize.height} stroke={confluenceIdentifierSettings.startLineColor} strokeWidth={confluenceIdentifierSettings.lineWidth} strokeDasharray="4 4" /> : null}
           </svg>
-          <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: 8 }} title="Support and resistance confluence from exact profile structure, swings and retracements">
+          <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: 8 }} title="Support and resistance confluence from exact profile structure, swings and retracements">
             <span className={`h-1.5 w-1.5 rounded-full ${confluenceIdentifierFrame.status.startsWith("WAITING") ? "animate-pulse bg-warning" : confluenceIdentifierFrame.status === "PARTIAL" ? "bg-warning" : "bg-primary"}`} />
             <span className="text-foreground">Confluence</span><span>{confluenceIdentifierFrame.status.replaceAll("_", " ")}</span><span>{confluenceIdentifierFrame.zones.length} ZONES</span>
-          </div>
+          </ChartIndicatorStatusBadge>
         </>;
       })() : null}
       {marketStatisticsIndicator && marketStatisticsFrame ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 top-2 z-[71] min-w-[188px] border border-border/70 px-2 py-1.5 font-mono shadow-lg backdrop-blur-sm"
           style={{
             color: marketStatisticsSettings.textColor,
@@ -19761,7 +19763,7 @@ function Chart({
                 <span style={{ color: marketStatisticsSettings.deviationColor }}>Dev: {range.deviation.toFixed(range.deviation < 10 ? 1 : 0)}</span>
               </div>
             ))}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {pocAuctionTooltip ? (
         <div
@@ -19796,7 +19798,7 @@ function Chart({
         </div>
       ) : null}
       {icebergRefreshIndicator && icebergRefreshSettings.showHeader ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 z-[28] flex max-w-[min(860px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) + (stackedImbalanceIndicator ? 30 : 0) }}
           title={icebergRefreshFrame?.limitations.join(" ") ?? "Synchronising shared executions and Level 3 order-book lifecycle"}
@@ -19808,7 +19810,7 @@ function Chart({
           <span>BID {icebergRefreshFrame?.candidates.filter((candidate) => candidate.passiveSide === "BID" && !["BROKEN", "EXPIRED"].includes(candidate.state)).length ?? 0}</span>
           <span>ASK {icebergRefreshFrame?.candidates.filter((candidate) => candidate.passiveSide === "ASK" && !["BROKEN", "EXPIRED"].includes(candidate.state)).length ?? 0}</span>
           <span>SUSPECT {icebergRefreshFrame?.candidates.filter((candidate) => candidate.state === "SUSPECTED").length ?? 0}</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {icebergRefreshTooltip ? (
         <div
@@ -19831,7 +19833,7 @@ function Chart({
         </div>
       ) : null}
       {liquidityStopSweepIndicator && liquidityStopSweepSettings.showHeader ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 z-[29] flex max-w-[min(900px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) + (stackedImbalanceIndicator ? 30 : 0) + (icebergRefreshIndicator && icebergRefreshSettings.showHeader ? 30 : 0) }}
           title={liquidityStopSweepFrame?.limitations.join(" ") ?? "Synchronising shared aggressive executions and Level 3 book context"}
@@ -19843,7 +19845,7 @@ function Chart({
           <span>SELL {liquidityStopSweepFrame?.events.filter((event) => event.direction === "sell").length ?? 0}</span>
           <span>STOP? {liquidityStopSweepFrame?.events.filter((event) => event.state === "possible-stop-sweep").length ?? 0}</span>
           <span>{liquidityStopSweepFrame?.fullDepth ? "L3 BOOK" : "TRADE + BOOK CONTEXT"}</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {liquidityStopSweepTooltip ? (
         <div
@@ -19919,7 +19921,7 @@ function Chart({
         />
       ) : null}
       {gammaHeatmapIndicator && gammaHeatmapIndicator.settings?.showStatus !== false ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{
             top: 8
@@ -19943,7 +19945,7 @@ function Chart({
             </>
           ) : gammaHeatmapLoading ? <span>Loading exposure history…</span> : <span className="text-danger">{gammaHeatmapError ?? "Exposure unavailable"}</span>}
           {gammaHeatmapError && gammaHeatmapPayload ? <span className="text-warning">Refresh delayed · last good surface</span> : null}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {gammaHeatmapTooltip ? (
         <div
@@ -19968,7 +19970,7 @@ function Chart({
         </div>
       ) : null}
       {gexIntervalMapIndicator && gexIntervalMapIndicator.settings?.showHeader !== false ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: gammaHeatmapIndicator ? 38 : 8 }}
           title={gexIntervalSnapshot?.limitations.join(" ") ?? gexIntervalError ?? "Loading signed Gamma interval history"}
@@ -19986,7 +19988,7 @@ function Chart({
             </>
           ) : gexIntervalLoading ? <span>Loading interval surface…</span> : <span className="text-danger">{gexIntervalError ?? "Interval surface unavailable"}</span>}
           {gexIntervalError && gexIntervalSnapshot ? <span className="text-warning">Refresh delayed · last good surface</span> : null}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {gexIntervalTooltip ? (
         <div
@@ -20050,7 +20052,7 @@ function Chart({
         </div>
       ) : null}
       {netGammaIndicator && netGammaIndicator.settings?.showHeader !== false ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) }}
           title={netGammaProfile?.limitations.join(" ") ?? netGammaError ?? "Loading Net Gamma Exposure by strike"}
@@ -20076,7 +20078,7 @@ function Chart({
             </>
           ) : netGammaLoading ? <span>Loading strike profile…</span> : <span className="text-danger">{netGammaError ?? "Exposure unavailable"}</span>}
           {netGammaError && netGammaProfile ? <span className="text-warning">Refresh delayed · last valid profile</span> : null}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {netGammaTooltip ? (
         <div
@@ -20217,7 +20219,7 @@ function Chart({
         </div>
       ) : null}
       {darkPoolMapIndicator ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
           title={darkPoolMapPayload?.limitations.join(" ") ?? darkPoolMapError ?? "Loading real off-exchange prints"}
@@ -20236,7 +20238,7 @@ function Chart({
             </>
           ) : darkPoolMapLoading ? <span>Loading dark-pool prints…</span> : <span className="text-danger">{darkPoolMapError ?? "Dark-pool data unavailable"}</span>}
           {darkPoolMapError && darkPoolMapPayload ? <span className="text-warning">Refresh delayed · last valid map</span> : null}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {darkPoolMapTooltip ? (
         <div
@@ -20528,13 +20530,13 @@ function Chart({
         </div>
       ))}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute right-[76px] top-3 z-[19] flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground shadow-lg backdrop-blur"
           role="status"
         >
           <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
           <span>Syncing {instrument} Gamma</span>
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       {volumeProfileError ? (
         <div hidden data-volume-profile-diagnostic="unavailable">
@@ -20547,13 +20549,13 @@ function Chart({
         </div>
       ) : null}
       {footprintIndicator && footprintHasPriceLevelFlow && !footprintHasClassifiedFlow ? (
-        <div
+        <ChartIndicatorStatusBadge
           className="pointer-events-none absolute right-[76px] top-3 z-[19] max-w-[390px] border border-border/70 bg-background/92 px-3 py-2 font-mono text-[9px] leading-4 text-muted-foreground shadow-lg backdrop-blur"
           role="status"
         >
           <div className="font-semibold uppercase tracking-[0.08em] text-foreground">Limited execution classification</div>
           Bid × Ask requires aggressor-side classification. Unclassified volume is retained in total volume and POC, but is not assigned to Bid, Ask, Delta or imbalances.
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
       <div
         ref={horzLineRef}
@@ -20596,7 +20598,7 @@ function Chart({
 
 
       {hedgeLevelsIndicator ? (
-        <div className="pointer-events-none absolute right-[70px] top-3 z-[18] flex max-w-[370px] items-center gap-1.5 rounded-full border border-border bg-panel/92 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-3 z-[18] flex max-w-[370px] items-center gap-1.5 rounded-full border border-border bg-panel/92 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
           <span className="font-semibold text-foreground">Hedge Levels</span>
           {hedgeLevelsLoading && !hedgeLevelsPayload ? <span className="text-primary">Loading</span> : null}
           {hedgeLevelsPayload ? (
@@ -20608,7 +20610,7 @@ function Chart({
           {hedgeLevelsError && !hedgeLevelsPayload ? (
             <span className="max-w-[255px] truncate text-danger">{hedgeLevelsError}</span>
           ) : null}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
 
       {hedgeLevelsOverlay && hedgeLevelsPayload ? (
@@ -20726,7 +20728,7 @@ function Chart({
       ) : null}
 
       {expectedMoveIndicator ? (
-        <div className="pointer-events-none absolute right-[70px] top-[70px] z-[17] flex max-w-[330px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-[70px] z-[17] flex max-w-[330px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
           <span className="font-semibold text-foreground">Expected Move</span>
           {expectedMoveLoading && !expectedMovePayload ? <span className="text-primary">Loading</span> : null}
           {expectedMovePayload?.stale ? (
@@ -20738,11 +20740,11 @@ function Chart({
           {expectedMovePayload && !expectedMovePayload.stale && !expectedMoveOverlay ? (
             <span>Calibrating {expectedMovePayload.sourceSymbol}</span>
           ) : null}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
 
       {classicGexIndicator ? (
-        <div className="pointer-events-none absolute right-[70px] top-[104px] z-[16] flex max-w-[430px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-[104px] z-[16] flex max-w-[430px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
           <span className="font-semibold text-foreground">Classic GEX</span>
           {classicGexProfile ? (
             <span className={classicGexProfile.stale ? "text-warning" : "text-primary"}>
@@ -20759,11 +20761,11 @@ function Chart({
           {classicGexError && !classicGexProfile ? (
             <span className="max-w-[250px] truncate text-danger">{classicGexError}</span>
           ) : null}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
 
       {(gammaLevelsError || historicalStructureError) ? (
-        <div className="pointer-events-none absolute right-[70px] top-[138px] z-[15] flex max-w-[430px] flex-col items-end gap-1">
+        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-[138px] z-[15] flex max-w-[430px] flex-col items-end gap-1">
           {[
             gammaLevelsError ? `Kwant Levels · ${gammaLevelsError}` : null,
             // Value-area refresh failures stay silent here. The workspace keeps
@@ -20778,7 +20780,7 @@ function Chart({
               {message}
             </span>
           ))}
-        </div>
+        </ChartIndicatorStatusBadge>
       ) : null}
 
       {expectedMoveOverlay ? (
@@ -22144,6 +22146,7 @@ function Chart({
         />
       ) : null}
     </div>
+    </ChartIndicatorStatusProvider>
   );
 }
 
