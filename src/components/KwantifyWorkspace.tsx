@@ -11034,6 +11034,10 @@ export default function KwantifyWorkspace({
     typeof window === "undefined" ? "" : window.localStorage.getItem("kwantify-selected-paper-account") ?? "");
   const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
     typeof window === "undefined" ? emptyPaperTradingLedger() : loadPaperTradingLedger());
+  const journalPaperBalanceSource = useMemo(
+    () => preferencesReady && paperAccountsHydrated ? { accounts: paperTradingAccounts, ledger: paperLedger } : undefined,
+    [paperAccountsHydrated, paperLedger, paperTradingAccounts, preferencesReady],
+  );
   const paperLedgerRef = useRef(paperLedger);
   const paperLedgerUiTimerRef = useRef<number | null>(null);
   const paperLedgerUiLastSyncRef = useRef(0);
@@ -19173,7 +19177,7 @@ export default function KwantifyWorkspace({
           </WorkspaceFailureBoundary>
         );
       case "journal":
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-journal`} label="Journal"><JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} /></WorkspaceFailureBoundary>;
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-journal`} label="Journal"><JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} paperBalanceSource={journalPaperBalanceSource} /></WorkspaceFailureBoundary>;
       default:
         return null;
     }
@@ -21767,7 +21771,7 @@ export default function KwantifyWorkspace({
             {visitedWorkspaceSections.has("journal") ? (
               <ReactActivity mode={bottomWorkspaceSection === "journal" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="journal" label="Journal">
-                  <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} />
+                  <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} paperBalanceSource={journalPaperBalanceSource} />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

@@ -58,6 +58,7 @@ import {
   TrendingDown,
   TrendingUp,
   Upload,
+  Wallet,
   X,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
@@ -98,8 +99,8 @@ import {
 } from "@/lib/journalStore";
 import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, normalizePaperJournalAccounts, paperJournalAccountName } from "@/lib/paperJournal";
 import { ZYON_JOURNAL_VISIBLE, visibleJournalAccountFilter } from "@/lib/journalFeatureVisibility";
-import { readPaperTradingAccounts } from "@/lib/paperAccounts";
-import { loadPaperTradingLedger } from "@/lib/paperTrading";
+import { parseMoney, readPaperTradingAccounts, type PaperTradingAccountRecord } from "@/lib/paperAccounts";
+import { loadPaperTradingLedger, type PaperTradingLedger } from "@/lib/paperTrading";
 import {
   buildJournalAnalysisEvidence,
   type JournalAnalysisFinding,
@@ -925,7 +926,10 @@ function useOutcomeColors(): OutcomeColors {
   return colors;
 }
 
-export default function JournalWorkspace({ accountKey }: { accountKey: string }) {
+export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
+  accountKey: string;
+  paperBalanceSource?: { accounts: readonly PaperTradingAccountRecord[]; ledger: PaperTradingLedger };
+}) {
   const outcomeColors = useOutcomeColors();
   const resolvedAccountKey = accountKey || "local";
   const initialMemory = JOURNAL_MEMORY_CACHE.get(resolvedAccountKey);
@@ -1448,6 +1452,26 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     [analysisAccount, analysisEvidenceItems, analysisTrades],
   );
   const stats = useMemo(() => calculateJournalStats(filteredTrades, filteredEvidence), [filteredEvidence, filteredTrades]);
+  const accountBalances = useMemo(() => {
+    if (!paperBalanceSource) return null;
+    const balances = { starting: 0, current: 0, count: 0 };
+    const counted = new Set<string>();
+    for (const record of paperBalanceSource.accounts) {
+      const name = paperJournalAccountName(record);
+      if (counted.has(record.id) || archivedAccountNames.has(name) || accountSource.get(name) !== "paper"
+        || (accountFilter !== "all" && accountFilter !== name)) continue;
+      counted.add(record.id);
+      const ledger = paperBalanceSource.ledger.accounts[record.id];
+      const starting = ledger?.startingBalance ?? parseMoney(record.balance);
+      balances.starting += starting;
+      balances.current += ledger?.cashBalance ?? starting;
+      balances.count += 1;
+    }
+    return balances.count ? balances : null;
+  }, [accountFilter, accountSource, archivedAccountNames, paperBalanceSource]);
+  const balanceScope = accountFilter === "all" || (accountBalances?.count ?? 0) > 1
+    ? "Linked demo accounts"
+    : "Linked demo account";
   const advancedStats = useMemo(() => calculateJournalAdvancedStats(filteredTrades), [filteredTrades]);
   /*
    * How the trades were EXECUTED, as distinct from what they earned. The rows
@@ -2754,8 +2778,15 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === "pulse" ? (
+          <div className="grid gap-2 p-3 pb-0 sm:grid-cols-3">
+            <MetricCard label="Net P&L" value={money(stats.netPnl)} compactValue={compact(stats.netPnl)} detail={`${stats.tradeCount} imported trades`} icon={stats.netPnl >= 0 ? TrendingUp : TrendingDown} tone={stats.netPnl >= 0 ? "positive" : "negative"} />
+            <MetricCard label="Starting balance" value={money(accountBalances?.starting ?? null, false)} detail={accountBalances ? balanceScope : "No linked balance"} icon={Wallet} />
+            <MetricCard label="Current balance" value={money(accountBalances?.current ?? null, false)} detail={accountBalances ? `Cash · ${balanceScope}` : "No linked balance"} icon={Wallet} />
+          </div>
+        ) : null}
         {!filteredTrades.length && tab !== "analysis" && tab !== "evidence" && tab !== "imports" ? (
-          <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center p-6">
+          <div className={`mx-auto flex max-w-5xl items-center justify-center p-6 ${tab === "pulse" ? "min-h-[min(62dvh,480px)]" : "min-h-full"}`}>
             <div className="relative w-full overflow-hidden rounded-3xl border border-border bg-panel p-8 text-center shadow-2xl shadow-black/20">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,color-mix(in_srgb,var(--primary)_10%,transparent),transparent_42%)]" />
               <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">{accountFilter === "ZYON Journal" ? <Bot className={`h-6 w-6 ${zyonLoading ? "animate-pulse" : ""}`} /> : <Import className="h-6 w-6" />}</div>
@@ -2785,8 +2816,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
 
         {filteredTrades.length && tab === "pulse" ? (
           <div className="space-y-3 p-3">
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-              <MetricCard label="Net P&L" value={money(stats.netPnl)} compactValue={compact(stats.netPnl)} detail={`${stats.tradeCount} imported trades`} icon={stats.netPnl >= 0 ? TrendingUp : TrendingDown} tone={stats.netPnl >= 0 ? "positive" : "negative"} />
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
               <MetricCard label="Win rate" value={percent(stats.winRate)} detail={`${filteredTrades.filter((trade) => trade.netPnl > 0).length} wins · ${filteredTrades.filter((trade) => trade.netPnl < 0).length} losses`} icon={Activity} />
               <MetricCard label="Profit factor" value={ratio(stats.profitFactor)} detail={`${money(stats.grossProfit, false)} / ${money(stats.grossLoss, false)}`} icon={BarChart3} />
               <MetricCard label="Expectancy" value={money(stats.expectancy)} compactValue={stats.expectancy === null ? undefined : compact(stats.expectancy)} detail="Average net result per trade" icon={Sparkles} tone={(stats.expectancy ?? 0) >= 0 ? "positive" : "negative"} />
