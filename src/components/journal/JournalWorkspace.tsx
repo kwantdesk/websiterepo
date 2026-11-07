@@ -926,9 +926,10 @@ function useOutcomeColors(): OutcomeColors {
   return colors;
 }
 
-export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
+export default function JournalWorkspace({ accountKey, paperBalanceSource, onLinkNativeJournals }: {
   accountKey: string;
   paperBalanceSource?: { accounts: readonly PaperTradingAccountRecord[]; ledger: PaperTradingLedger };
+  onLinkNativeJournals?: (owner: string, journals: readonly JournalAccount[]) => void;
 }) {
   const outcomeColors = useOutcomeColors();
   const resolvedAccountKey = accountKey || "local";
@@ -1072,6 +1073,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
 
   const zyonJournalSelected = ZYON_JOURNAL_VISIBLE && accountFilter === ZYON_JOURNAL_ACCOUNT;
   const importTargetsZyon = isZyonJournalAccountName(importAccount);
+  const [journalCloudLoaded, setJournalCloudLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -1139,9 +1141,11 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
         imports: [...imports.values()],
       };
       const deletedNames = new Set(deletions.map(row => row.name.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase()));
+      const deletedIds = new Set(deletions.map((row) => row.id));
       const paperRecords = readPaperTradingAccounts();
       const merged = paperRecords.ok ? appendPaperTradesToJournal(mergedSources,
-        paperRecords.accounts.filter(record => !deletedNames.has(paperJournalAccountName(record).normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase())),
+        paperRecords.accounts.filter(record => !deletedNames.has(paperJournalAccountName(record).normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase())
+          && (!record.journalId || !deletedIds.has(record.journalId))),
         loadPaperTradingLedger()) : normalizePaperJournalAccounts(mergedSources);
       if (accountResetsApplied.current.accountKey === resolvedAccountKey) {
         for (const resetAccount of accountResetsApplied.current.accounts) {
@@ -1152,6 +1156,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
       setState({ ...merged, zyonResetAt: latestZyonJournalReset(merged.zyonResetAt,
         zyonResetApplied.current?.accountKey === resolvedAccountKey ? zyonResetApplied.current.resetAt : null) });
       setCloudState(cloud.cloud ? "cloud" : "local");
+      setJournalCloudLoaded(Boolean(cloud.cloud));
       setReady(true);
       setSaveStatus("saved");
       JOURNAL_MEMORY_CACHE.set(resolvedAccountKey, {
@@ -1312,6 +1317,11 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
     return () => window.removeEventListener(PAPER_JOURNAL_UPDATED_EVENT, mergeStoredTrades);
   }, [resolvedAccountKey]);
 
+  useEffect(() => {
+    if (!journalCloudLoaded || journalLifecycleBusy) return;
+    onLinkNativeJournals?.(resolvedAccountKey, rawState.accounts.filter((account) => !isZyonJournalAccountName(account.name)));
+  }, [journalCloudLoaded, journalLifecycleBusy, onLinkNativeJournals, rawState.accounts, resolvedAccountKey]);
+
   const archivedAccountNames = useMemo(
     () => new Set(state.accounts.filter((account) => Boolean(account.archivedAt)).map((account) => account.name)),
     [state.accounts],
@@ -1456,9 +1466,11 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
     if (!paperBalanceSource) return null;
     const balances = { starting: 0, current: 0, count: 0 };
     const counted = new Set<string>();
+    const journalById = new Map(state.accounts.map((account) => [account.id, account]));
     for (const record of paperBalanceSource.accounts) {
-      const name = paperJournalAccountName(record);
-      if (counted.has(record.id) || archivedAccountNames.has(name) || accountSource.get(name) !== "paper"
+      const journal = record.journalId ? journalById.get(record.journalId) : undefined;
+      const name = journal?.name ?? paperJournalAccountName(record);
+      if (counted.has(record.id) || archivedAccountNames.has(name) || (!journal && accountSource.get(name) !== "paper")
         || (accountFilter !== "all" && accountFilter !== name)) continue;
       counted.add(record.id);
       const ledger = paperBalanceSource.ledger.accounts[record.id];
@@ -1468,7 +1480,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
       balances.count += 1;
     }
     return balances.count ? balances : null;
-  }, [accountFilter, accountSource, archivedAccountNames, paperBalanceSource]);
+  }, [accountFilter, accountSource, archivedAccountNames, paperBalanceSource, state.accounts]);
   const balanceScope = accountFilter === "all" || (accountBalances?.count ?? 0) > 1
     ? "Linked demo accounts"
     : "Linked demo account";
@@ -1722,6 +1734,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
     }
     setImporting(true);
     setImportMessage("");
+    const owner = resolvedAccountKey;
     try {
       const response = await fetch("/api/journal", {
         method: "POST",
@@ -1730,7 +1743,9 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
       });
       const result = await response.json() as { cloud?: boolean; account?: JournalAccount; error?: string };
       if (!response.ok || !result.account) throw new Error(result.error || "The KwantDesk Journal could not be created.");
-      clearJournalAccountDeletion(resolvedAccountKey, result.account);
+      if (journalOwnerRef.current !== owner) return;
+      clearJournalAccountDeletion(owner, result.account);
+      onLinkNativeJournals?.(owner, [result.account]);
       setState((current) => ({
         ...current,
         accounts: [...current.accounts.filter((candidate) => candidate.id !== result.account?.id), result.account as JournalAccount],
@@ -3412,7 +3427,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource }: {
                 <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setPendingFiles([]); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "manual" ? "border-primary/45 bg-primary/[0.08] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-border bg-background/30 hover:border-primary/25"}`}>
                   <BookPlus className={`h-5 w-5 ${accountCreationMode === "manual" ? "text-primary" : "text-muted"}`} />
                   <div className="mt-3 text-[10px] font-semibold text-foreground">KwantDesk Journal</div>
-                  <div className="mt-1 text-[8px] leading-4 text-muted">Document trades manually with risk, outcome, screenshots and honest review notes.</div>
+                  <div className="mt-1 text-[8px] leading-4 text-muted">Trade from a linked demo account with $10,000 in starting funds, and document trades with screenshots and notes.</div>
                 </button>
                 <button type="button" onClick={() => { setAccountCreationMode("import"); setImportAccount("Imported account"); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "import" ? "border-primary/45 bg-primary/[0.08] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-border bg-background/30 hover:border-primary/25"}`}>
                   <Upload className={`h-5 w-5 ${accountCreationMode === "import" ? "text-primary" : "text-muted"}`} />

@@ -2,6 +2,7 @@ import { writeProtectedItem, type StorageWriteResult } from "./browserStorageQuo
 
 export type PaperTradingAccountRecord = {
   id: string;
+  journalId?: string;
   name: string;
   balance: string;
   equity: string;
@@ -20,6 +21,8 @@ export type PaperTradingAccountRecord = {
 
 export const PAPER_TRADING_ACCOUNTS_STORAGE_KEY = "kwantify-paper-trading-accounts";
 export const PAPER_TRADING_ACCOUNTS_EVENT = "kwantify-paper-trading-accounts-change";
+
+export const DEFAULT_PAPER_STARTING_BALANCE = 10_000;
 
 const defaultSparkline = "5,36 20,28 35,32 50,18 65,24 80,16 95,22 115,14";
 
@@ -44,6 +47,7 @@ export function readPaperTradingAccounts(): { ok: boolean; accounts: PaperTradin
       const equity = parsedEquity > 0 ? parsedEquity : balance;
       return [{
         id: String(account.id),
+        journalId: typeof account.journalId === "string" ? account.journalId : undefined,
         name: String(account.name),
         balance: formatMoney(balance),
         equity: formatMoney(equity),

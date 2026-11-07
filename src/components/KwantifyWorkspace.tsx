@@ -180,7 +180,8 @@ import {
   purgeDeletedJournalAccounts,
   saveJournalState,
 } from "@/lib/journalStore";
-import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, paperJournalAccountName } from "@/lib/paperJournal";
+import type { JournalAccount } from "@/lib/journal";
+import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, linkJournalPaperAccounts, paperJournalAccountName } from "@/lib/paperJournal";
 import {
   dailyPaperTradeRows,
   paperDailyExportFileName,
@@ -11107,9 +11108,10 @@ export default function KwantifyWorkspace({
         const key = paperJournalKeyRef.current;
         const deletions = loadJournalAccountDeletions(key);
         const deletedNames = new Set(deletions.map((row) => row.name.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase()));
+        const deletedIds = new Set(deletions.map((row) => row.id));
         const records = paperJournalAccountsRef.current.filter((record) => !deletedNames.has(
           paperJournalAccountName(record).normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase(),
-        ));
+        ) && (!record.journalId || !deletedIds.has(record.journalId)));
         try {
           const storedState = await loadJournalState(key);
           const state = purgeDeletedJournalAccounts(storedState, deletions);
@@ -11160,6 +11162,22 @@ export default function KwantifyWorkspace({
     syncPaperLedgerUi(true);
     schedulePaperJournalSync();
   }, [schedulePaperJournalSync, syncPaperLedgerUi]);
+  const linkNativeJournalsToTrade = useCallback((owner: string, journals: readonly JournalAccount[]) => {
+    if (!preferencesReady || !paperAccountsHydrated || owner !== paperJournalKeyRef.current) return;
+    const current = paperJournalAccountsRef.current;
+    const next = linkJournalPaperAccounts(current, journals);
+    if (next === current) return;
+    paperJournalAccountsRef.current = next;
+    setPaperTradingAccounts(next);
+    const currentLedger = paperLedgerRef.current;
+    const nextLedger = next.reduce((ledger, account) => account.journalId
+      ? ensurePaperAccountLedger(ledger, account) : ledger, currentLedger);
+    if (nextLedger !== currentLedger) {
+      commitPaperLedger(nextLedger);
+      savePaperTradingLedger(nextLedger);
+    }
+  }, [commitPaperLedger, paperAccountsHydrated, preferencesReady]);
+
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
     // Master Charts replay is inspection, not a second execution engine for
     // the live demo ledger. Live protections retain their own execution tape.
@@ -19177,7 +19195,7 @@ export default function KwantifyWorkspace({
           </WorkspaceFailureBoundary>
         );
       case "journal":
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-journal`} label="Journal"><JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} paperBalanceSource={journalPaperBalanceSource} /></WorkspaceFailureBoundary>;
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-journal`} label="Journal"><JournalWorkspace key={paperJournalKey} accountKey={paperJournalKey} paperBalanceSource={journalPaperBalanceSource} onLinkNativeJournals={linkNativeJournalsToTrade} /></WorkspaceFailureBoundary>;
       default:
         return null;
     }
@@ -21771,7 +21789,7 @@ export default function KwantifyWorkspace({
             {visitedWorkspaceSections.has("journal") ? (
               <ReactActivity mode={bottomWorkspaceSection === "journal" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="journal" label="Journal">
-                  <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} paperBalanceSource={journalPaperBalanceSource} />
+                  <JournalWorkspace key={paperJournalKey} accountKey={paperJournalKey} paperBalanceSource={journalPaperBalanceSource} onLinkNativeJournals={linkNativeJournalsToTrade} />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

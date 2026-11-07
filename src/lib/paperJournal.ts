@@ -5,7 +5,7 @@ import {
   type JournalState,
   type JournalTrade,
 } from "@/lib/journal";
-import type { PaperTradingAccountRecord } from "@/lib/paperAccounts";
+import { createPaperTradingAccount, DEFAULT_PAPER_STARTING_BALANCE, type PaperTradingAccountRecord } from "@/lib/paperAccounts";
 import {
   paperContractSpec,
   paperAccountJournalFills,
@@ -67,7 +67,38 @@ function contractClass(symbol: string): JournalTrade["contractClass"] {
   return "OTHER";
 }
 
-/** The journal account a demo account writes into. Its name is the link. */
+/** Give a native Journal an idempotent demo account, retaining any existing ledger ID. */
+export function linkJournalPaperAccounts(
+  records: PaperTradingAccountRecord[],
+  journals: readonly JournalAccount[],
+): PaperTradingAccountRecord[] {
+  let next = records;
+  for (const journal of journals) {
+    if (journal.source !== "manual" || journal.archivedAt) continue;
+    let index = next.findIndex((record) => record.journalId === journal.id);
+    if (index < 0) index = next.findIndex((record) => !record.journalId && paperJournalAccountName(record) === journal.name);
+    const existing = next[index];
+    if (existing?.journalId === journal.id && existing.name === journal.name) continue;
+    if (next === records) next = [...records];
+    if (existing) {
+      next[index] = { ...existing, name: journal.name, journalId: journal.id };
+    } else {
+      next.push({
+        ...createPaperTradingAccount({
+          name: journal.name,
+          balance: DEFAULT_PAPER_STARTING_BALANCE,
+          instrument: "All CME Futures",
+          leverage: "1:30",
+        }),
+        id: `paper-journal-${journal.id}`,
+        journalId: journal.id,
+      });
+    }
+  }
+  return next;
+}
+
+/** Legacy demo accounts are matched by name. */
 export function paperJournalAccountName(record: Pick<PaperTradingAccountRecord, "name">) {
   return record.name.trim() || "Demo account";
 }
@@ -116,7 +147,9 @@ export function ensurePaperJournalAccounts(
 ): JournalState {
   state = normalizePaperJournalAccounts(state);
   const existing = new Set(state.accounts.map((account) => account.name));
+  const existingIds = new Set(state.accounts.map((account) => account.id));
   const missing = records
+    .filter((record) => !record.journalId || !existingIds.has(record.journalId))
     .map((record) => paperJournalAccountName(record))
     .filter((name, index, names) => !existing.has(name) && names.indexOf(name) === index);
   if (!missing.length) return state;
@@ -126,15 +159,15 @@ export function ensurePaperJournalAccounts(
   const added: JournalAccount[] = missing.map((name, index) => {
     const baseId = `paper-${name}`.replace(/[^a-zA-Z0-9:_.-]/g, "").slice(0, 180);
     const record = records.find(record => paperJournalAccountName(record) === name)!;
-    const id = ids.has(baseId) ? `paper-linked-${record.id}`.replace(/[^a-zA-Z0-9:_.-]/g, "").slice(0, 180) : baseId;
+    const id = record.journalId ?? (ids.has(baseId) ? `paper-linked-${record.id}`.replace(/[^a-zA-Z0-9:_.-]/g, "").slice(0, 180) : baseId);
     ids.add(id);
     return {
-    id,
-    name,
-    source: "paper",
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    sortOrder: state.accounts.length + index,
+      id,
+      name,
+      source: record.journalId ? "manual" : "paper",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      sortOrder: state.accounts.length + index,
   }; });
   return { ...state, accounts: [...state.accounts, ...added] };
 }
@@ -228,7 +261,11 @@ export function appendPaperTradesToJournal(
 ): JournalState {
   const withAccounts = ensurePaperJournalAccounts(state, records, now);
   const known = new Set(withAccounts.trades.map((trade) => trade.id));
-  const nameById = new Map(records.map((record) => [record.id, paperJournalAccountName(record)]));
+  const journalNames = new Map(withAccounts.accounts.map((account) => [account.id, account.name]));
+  const nameById = new Map(records.map((record) => [
+    record.id,
+    record.journalId ? journalNames.get(record.journalId) : paperJournalAccountName(record),
+  ]));
 
   const added: JournalTrade[] = [];
   for (const [accountId, account] of Object.entries(ledger.accounts)) {
