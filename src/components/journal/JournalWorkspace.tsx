@@ -245,7 +245,55 @@ const MAX_CLOUD_IMAGE_BYTES = 1_800_000;
 
 function localDateTimeInput(date = new Date()) {
   const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return shifted.toISOString().slice(0, 16);
+  return shifted.toISOString().slice(0, -1);
+}
+
+const JOURNAL_CLOCK_VALUES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+function JournalExecutionClock({ label, value, bookingDate, onFocus, onChange }: {
+  label: "Entry" | "Exit";
+  value: string;
+  bookingDate: string;
+  onFocus: () => void;
+  onChange: (value: string) => void;
+}) {
+  const [date, time = ""] = value.split("T");
+  const [hour = "", minute = "", second = ""] = time.split(":");
+  const executionDate = date || bookingDate;
+  const controlClass = "h-10 w-full min-w-0 rounded-xl border border-border bg-background px-2 font-mono text-[9px] text-foreground";
+  return (
+    <fieldset className="min-w-0 lg:col-span-2">
+      <legend className="mb-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">{label} time</legend>
+      <div className="grid grid-cols-3 gap-1.5">
+        <KwantSelect aria-label={`${label} hour`} menuLabel={`${label} hour · 24-hour clock`} value={hour} disabled={!executionDate}
+          onFocus={onFocus} onChange={(event) => {
+            const nextHour = event.target.value;
+            onChange(nextHour ? `${executionDate}T${nextHour}:${minute || "00"}:${second || "00"}` : date);
+          }} className={controlClass}>
+          <option value="">Hour</option>
+          {JOURNAL_CLOCK_VALUES.slice(0, 24).map((option) => <option key={option}>{option}</option>)}
+        </KwantSelect>
+        <KwantSelect aria-label={`${label} minute`} menuLabel={`${label} minute`} value={minute} disabled={!hour}
+          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${event.target.value}:${second || "00"}`)} className={controlClass}>
+          <option value="" disabled>Min</option>
+          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}
+        </KwantSelect>
+        <KwantSelect aria-label={`${label} second`} menuLabel={`${label} second`} value={hour ? second.slice(0, 2) || "00" : ""} disabled={!hour}
+          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${minute || "00"}:${event.target.value}`)} className={controlClass}>
+          <option value="" disabled>Sec</option>
+          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}
+        </KwantSelect>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="shrink-0 text-[8px] text-muted">{label} date</span>
+        <KwantDateTimeInput type="date" aria-label={`${label} date`} value={executionDate} onFocus={onFocus}
+          onValueChange={(nextDate) => {
+            const next = nextDate || bookingDate;
+            onChange(time && next ? `${next}T${time}` : nextDate);
+          }} className="h-8 min-w-0 flex-1 rounded-xl px-2 text-[9px]" />
+      </div>
+    </fieldset>
+  );
 }
 
 function newManualTradeDraft(): ManualTradeDraft {
@@ -1039,7 +1087,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
         if (parsed === null) return current;
         value = parsed;
       } else if (field === "openedAt" || field === "closedAt") {
-        const parsed = parseDictatedDateTime(transcript, current[field]);
+        const parsed = parseDictatedDateTime(transcript, current[field] || manualBookingDate);
         if (!parsed) return current;
         value = parsed;
       } else if (field === "side") {
@@ -1068,7 +1116,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
       }
       return { ...current, [field]: value };
     });
-  }, []);
+  }, [manualBookingDate]);
 
   const manualDictation = usePersistentFieldDictation<ManualTradeDictationField>({
     initialField: "name",
@@ -1951,7 +1999,14 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
   const submitManualTrade = async () => {
     if ((!selectedAccountCanAddTrade && !editingTrade) || manualTradeSaving) return;
     let outcome: ReturnType<typeof journalManualOutcome>;
-    try { outcome = journalManualOutcome(manualTrade, manualBookingDate); }
+    try {
+      // A chosen execution date alone does not assert that the time is known.
+      outcome = journalManualOutcome({
+        ...manualTrade,
+        openedAt: manualTrade.openedAt.includes("T") ? manualTrade.openedAt : "",
+        closedAt: manualTrade.closedAt.includes("T") ? manualTrade.closedAt : "",
+      }, manualBookingDate);
+    }
     catch (error) { setManualTradeError(error instanceof Error ? error.message : "Check the trade result."); return; }
     const { netPnl } = outcome;
     const entryPrice = manualTrade.entryPrice.trim() ? Number(manualTrade.entryPrice) : null;
@@ -3638,16 +3693,29 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
               <section className="border-t border-border pt-5">
                 <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Execution and risk</h3><p className="mt-0.5 text-[8px] text-muted">Known execution details improve the breakdown. Missing details stay unrecorded.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry time</label><KwantDateTimeInput type="datetime-local" aria-label="Entry time" value={manualTrade.openedAt} onFocus={() => manualDictation.activate("openedAt")} onValueChange={(nextValue) => updateManualTradeField("openedAt", nextValue)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit time</label><KwantDateTimeInput type="datetime-local" aria-label="Exit time" value={manualTrade.closedAt} onFocus={() => manualDictation.activate("closedAt")} onValueChange={(nextValue) => updateManualTradeField("closedAt", nextValue)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <JournalExecutionClock label="Entry" value={manualTrade.openedAt} bookingDate={manualBookingDate}
+                    onFocus={() => manualDictation.activate("openedAt")} onChange={(next) => updateManualTradeField("openedAt", next)} />
+                  <JournalExecutionClock label="Exit" value={manualTrade.closedAt} bookingDate={manualBookingDate}
+                    onFocus={() => manualDictation.activate("closedAt")} onChange={(next) => updateManualTradeField("closedAt", next)} />
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry price</label><input type="number" step="any" value={manualTrade.entryPrice} onFocus={() => manualDictation.activate("entryPrice")} onChange={(event) => updateManualTradeField("entryPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit price</label><input type="number" step="any" value={manualTrade.exitPrice} onFocus={() => manualDictation.activate("exitPrice")} onChange={(event) => updateManualTradeField("exitPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Stop price</label><input type="number" step="any" value={manualTrade.stopPrice} onFocus={() => manualDictation.activate("stopPrice")} onChange={(event) => updateManualTradeField("stopPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Target price</label><input type="number" step="any" value={manualTrade.targetPrice} onFocus={() => manualDictation.activate("targetPrice")} onChange={(event) => updateManualTradeField("targetPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Initial risk ($)</label><input type="number" min="0" step="0.01" value={manualTrade.initialRisk} onFocus={() => manualDictation.activate("initialRisk")} onChange={(event) => updateManualTradeField("initialRisk", event.target.value)} placeholder="250.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                   <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Fees ($)</label><input type="number" min="0" step="0.01" value={manualTrade.fees} onFocus={() => manualDictation.activate("fees")} onChange={(event) => updateManualTradeField("fees", event.target.value)} placeholder="Leave blank if unknown" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Planned risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/45"><span className="font-mono text-[9px] text-muted">1 :</span><input type="number" min="0" step="0.01" value={manualTrade.plannedRiskReward} onFocus={() => manualDictation.activate("plannedRiskReward")} onChange={(event) => updateManualTradeField("plannedRiskReward", event.target.value)} placeholder="3.00" className="h-full min-w-0 flex-1 bg-transparent pl-2 font-mono text-[9px] text-foreground outline-none" /></div></div>
-                  <div className="sm:col-span-2 lg:col-span-4"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Realized risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-surface/45 px-3 font-mono text-[11px] font-semibold text-primary">{Number(manualTrade.initialRisk) > 0 && Number.isFinite(Number(manualTrade.netPnl)) ? riskReward(Number(manualTrade.netPnl) / Number(manualTrade.initialRisk)) : "1 : —"}</div></div>
+                  <label className="block min-w-0">
+                    <span className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Planned risk : reward</span>
+                    <span className="relative block">
+                      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-[9px] text-muted">1 :</span>
+                      <input aria-label="Planned risk to reward" type="number" min="0" step="0.01" value={manualTrade.plannedRiskReward}
+                        onFocus={() => manualDictation.activate("plannedRiskReward")} onChange={(event) => updateManualTradeField("plannedRiskReward", event.target.value)}
+                        placeholder="3.00" className="kwant-indicator-number h-10 w-full min-w-0 rounded-xl border border-border bg-background pr-3 pl-9 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" />
+                    </span>
+                  </label>
+                  <div className="min-w-0">
+                    <div className="mb-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Realized risk : reward</div>
+                    <output aria-label="Realized risk to reward" className="flex min-h-10 items-center px-3 font-mono text-[11px] font-semibold text-primary">{Number(manualTrade.initialRisk) > 0 && Number.isFinite(Number(manualTrade.netPnl)) ? riskReward(Number(manualTrade.netPnl) / Number(manualTrade.initialRisk)) : "1 : —"}</output>
+                  </div>
                 </div>
               </section>
 
