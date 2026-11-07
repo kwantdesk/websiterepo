@@ -167,7 +167,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
-  "absorption-detector",
   "stacked-imbalance-suite",
   "iceberg-refresh-detector",
   "liquidity-stop-sweep-detector",
