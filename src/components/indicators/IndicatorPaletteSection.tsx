@@ -31,8 +31,10 @@ export default function IndicatorPaletteSection({
   settings,
   theme,
   onChange,
+  showIndividualColors = true,
 }: {
   indicatorId: string;
+  showIndividualColors?: boolean;
   settings: Record<string, IndicatorSettingValue>;
   theme: IndicatorPaletteTheme;
   onChange: (next: Record<string, IndicatorSettingValue>) => void;
@@ -97,7 +99,7 @@ export default function IndicatorPaletteSection({
         * hidden. A control that vanishes reads as a bug; one that is visibly
         * locked says the scheme is what is deciding.
         */}
-      <div className="space-y-2">
+      {showIndividualColors ? <div className="space-y-2">
         {roles.map((role) => (
           <label
             key={role.key}
@@ -114,12 +116,18 @@ export default function IndicatorPaletteSection({
               disabled={active}
               // The theme value when nothing is chosen, so an untouched picker
               // shows what is actually painted rather than an empty swatch.
-              value={String(settings[role.key] ?? role.fallback(theme))}
-              onChange={(next) => set({ [role.key]: next })}
+              value={String(settings.useThemeColors !== false ? role.fallback(theme) : settings[role.key] ?? role.fallback(theme))}
+              onChange={(next) => set({
+                ...(settings.useThemeColors !== false
+                  ? Object.fromEntries(roles.map((entry) => [entry.key, entry.fallback(theme)]))
+                  : {}),
+                useThemeColors: false,
+                [role.key]: next,
+              })}
             />
           </label>
         ))}
-      </div>
+      </div> : null}
     </div>
   );
 }

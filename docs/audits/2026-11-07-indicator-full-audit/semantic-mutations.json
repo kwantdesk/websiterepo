@@ -1,0 +1,4146 @@
+[
+  {
+    "id": "big-blocks-options",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "gamma-environment",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "zero-gamma-line",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "options-delta",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "zero-gamma-bars",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "gamma-heatmap",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "net-gamma-exposure-by-strike",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "gex-interval-map",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "bounce-levels",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "dark-pool-map",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "dark-pool-gex",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "implied-volatility-rank",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "cumulative-volume-delta",
+    "category": "Order Flow",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "periodValue",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "filterMinVolume",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "filterMaxVolume",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "zeroLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showName",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showValue",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showBidAskVolumes",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "filteredEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "filteredSeparateAxis",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showZeroLine",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "deltaAskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "deltaBidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "volumeAskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "volumeBidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "filteredAskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "filteredBidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "zeroLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "cvd-divergence",
+    "category": "Order Flow",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "bullishColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "bearishColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "pivotStrength",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "lookbackBars",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "pulling-stacking",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "delta-bar",
+    "category": "Order Flow",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "ladderWidthPx",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "ladderEdgeGapPx",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "ladderLevelSpacingPx",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "ladderOpacity",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "ladderFontSize",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "showLadderValues",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "buyColor",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "sellColor",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "spineColor",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "delta-highlight",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "delta-cumulative-candlestick",
+    "category": "Order Flow",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "filterMinVolume",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "filterMaxVolume",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "sessionStartHour",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "averageLength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "averageLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "averageDeviation",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "zeroLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "resetToSession",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showAverage",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showAverageDeviations",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showZeroLine",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showName",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showValue",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "deltaAskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "deltaBidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "averageColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "deviationColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "zeroLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "delta-cumulative-histogram",
+    "category": "Order Flow",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "filterMinVolume",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "filterMaxVolume",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "sessionStartHour",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "zeroLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "resetToSession",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showName",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showValue",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showZeroLine",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "deltaAskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "deltaBidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "zeroLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "imbalance-tracker",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "imbalance-rejector",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "unfinished-auction",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "bar-poc-indicator",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "dynamic-poc",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "speed-of-tape",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "speed-of-tape-instant",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "volume-delta-sprint",
+    "category": "Order Flow",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "filterMin",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "filterMax",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "smoothingEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "smoothingLength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "showDelta",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showBid",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showAsk",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "positiveColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "negativeColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "bidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "askColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "tape-speed-order-flow-burst",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "big-trades",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "ratio-highlight",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "stop-spotter",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "auction-gap-tracker",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "session-imbalance",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "absorption-detector",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "stacked-imbalance-suite",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "iceberg-refresh-detector",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "liquidity-stop-sweep-detector",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "poc-auction-suite",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "cumulative-iceberg-stop",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "book-speed",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "depth-of-market",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "mini-dom",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "deep-print-footprint",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "deep-delta",
+    "category": "Order Flow",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "positiveColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "negativeColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range1AskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range1BidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range2AskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range2BidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range3AskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range3BidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range4AskColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range4BidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "maximumPositiveColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "minimumNegativeColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "level1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "level2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "markerColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "barGrouping",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "range1Minimum",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "range1Maximum",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "range2Minimum",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "range2Maximum",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "range3Minimum",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "range3Maximum",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "range4Minimum",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "range4Maximum",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "level1Value",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "level1LineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "level2Value",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "level2LineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "markerMinimumDelta",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "range1Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range2Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range3Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "range4Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "level1Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "level2Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "markerEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "deep-wall",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "deep-v-tracker",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "volume",
+    "category": "Volume & Profiles",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "minimumTotalVolume",
+        "status": "output-effect-observed",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "kwant-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "tpo-chart",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "weekly-tpo",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "weekly-volume-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "monthly-volume-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "session-volume-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "composite-volume-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "visible-range-volume-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "custom-draw-on-volume-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "ask-bid-volume-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "delta-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "deep-profile-swing",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "deep-profile-values",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "tpo-levels",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "vwap",
+    "category": "Volume & Profiles",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "mainColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper3Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower3Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper4Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower4Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper5Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower5Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "periodValue",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "sessionStartHour",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "bandLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "band1",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "band2",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band3",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band4",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band5",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band1Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band2Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band3Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band4Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band5Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showCurrentValue",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "vwap-envelopes",
+    "category": "Volume & Profiles",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "mainColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper3Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower3Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper4Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower4Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper5Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower5Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "periodValue",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "bandLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "band1",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "band2",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band3",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band4",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band5",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band1Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band2Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band3Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band4Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band5Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showCurrentValue",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "rolling-vwap",
+    "category": "Volume & Profiles",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper3Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower3Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper4Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower4Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upper5Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lower5Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "periodValue",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "bandLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "band1",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "band2",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band3",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band4",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band5",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "band1Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band2Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band3Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band4Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "band5Enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showCurrentValue",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "market-statistics",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "on-candle-stats",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "important-levels",
+    "category": "Market Structure",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "days",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "weeks",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "months",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "skipLast",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "fontSize",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "dailyAverage",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "dailyLow",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "dailyHigh",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "dailyOpen",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "dailyClose",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "dailyPoc",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "dailyValueArea",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "dailyVwap",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "weeklyAverage",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "weeklyLow",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "weeklyHigh",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "weeklyOpen",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "weeklyClose",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "weeklyPoc",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "weeklyValueArea",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "weeklyVwap",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "monthlyAverage",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "monthlyLow",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "monthlyHigh",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "monthlyOpen",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "monthlyClose",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "monthlyPoc",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "monthlyValueArea",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "monthlyVwap",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "highColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "openColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "closeColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "midColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "pocColor",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "valueAreaColor",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "vwapColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "absolute-levels",
+    "category": "Market Structure",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "firstValue",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "secondValue",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "firstLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "secondLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "firstLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "secondLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "pivot-points",
+    "category": "Market Structure",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "fontSize",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "periodsToShow",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "customReferenceEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "referenceValue",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "customSessionEnabled",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "pivotPointColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "r1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "r2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "s1Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "s2Color",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "price-movement-levels",
+    "category": "Market Structure",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "daysToLoad",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "stepValue",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "fontSize",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "minimumLevels",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "supportLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "resistanceLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "zeroLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "customTimeEnabled",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "textColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "supportLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "resistanceLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "zeroLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "fvg-identifier",
+    "category": "Market Structure",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "minNumTicks",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "maxNumTicks",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "backgroundOpacity",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "resetStartDay",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "removeOnShadowTriggered",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "maxBarsExtension",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 6,
+        "errors": []
+      },
+      {
+        "key": "breakoutPercent",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "downColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "gap-detector",
+    "category": "Market Structure",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "percentValue",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "tickValue",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "triggerWholeBar",
+        "status": "no-effect-in-these-fixtures-review-renderer-or-data-gate",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "backgroundOpacity",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "downColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "divergence-detector",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "confluence-identifier",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "swing-point",
+    "category": "Market Structure",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "leftBars",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "rightBars",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "filterSwing",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "textTickOffset",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "textSize",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "highColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "highTextColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowTextColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "average-daily-range-target",
+    "category": "Market Structure",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "fontSize",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "backgroundColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "textColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "sessions",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "session-highs-lows",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "ib-levels",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "gamma-levels",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "classic-gex-profile",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "session-marker",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "shift-candle",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "moving-average",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "ichimoku-indicator",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "baseLinePeriod",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "laggingSpanPeriod",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "tenkanLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "kijunLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "chikouLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "senkouLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "tenkanNameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "tenkanValueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kijunNameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kijunValueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "chikouNameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "chikouValueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "senkouNameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "senkouValueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "tenkanIncludeOnAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kijunIncludeOnAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "chikouIncludeOnAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "senkouIncludeOnAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showCloud",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cloudOpacity",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "tenkanColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kijunColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "chikouColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "senkouColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "senkouSecondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "bullishCloudColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "bearishCloudColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "parabolic-sar",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "accelerationStep",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "accelerationMaximum",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "secondaryColorEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "secondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "linear-regression",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "secondaryColorEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "secondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "regression-channel",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "bars",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "standardDeviationValue",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "zigZagAbsoluteReversal",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "zigZagReversalValue",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "midLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "upperLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "lowerLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "midColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "midUpColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "midDownColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upperColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upperUpColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upperDownColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowerColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowerUpColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowerDownColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "super-trend",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "multiplier",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "includeOnAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "valueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "nameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "nameBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "valueBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "chartColorForMarker",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "alertSoundEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "messagePopupEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "secondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "super-trend-difference",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "multiplier",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "includeOnAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "valueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "nameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "nameBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "valueBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "chartColorForMarker",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "secondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "keltner-channel",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "middleColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upperColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowerColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "atrLength",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "multiplier",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "bollinger-bands",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "middleColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upperColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowerColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "multiplier",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "donchian-channel",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "upperColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "middleColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowerColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "tillson-t3",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "volumeFactor",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "secondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "zig-zag",
+    "category": "Trend",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "absoluteReversalPercent",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "tickReversalOrLookback",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "downColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "retracementBackgroundColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "retracementFontSize",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "retracementTextColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "retracementLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "retracementLineColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showRetracement38",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showRetracement50",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showRetracement62",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showRetracement75",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "extendRight",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "relative-strength-index-rsi",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "rate-of-change-roc",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "macd-indicator",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "macdColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "histogramColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "fastLength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "slowLength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "signalLength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "momentum-indicator",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "commodity-channel-index-cci",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "know-sure-thing-kst",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "roc1",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "roc2",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "roc3",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "roc4",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "average1",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "average2",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "average3",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "average4",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "signalPeriod",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "usePercent",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "middleLevel",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "middleLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "showMiddle",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showKst",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showSignal",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kstLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "signalLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "kstNameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalNameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kstValueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalValueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kstNameBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalNameBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kstValueBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalValueBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kstChartMarker",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalChartMarker",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kstAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kstColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "kstSecondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "signalSecondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "middleColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "inverse-cyber-cycle",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "smoothingAlpha",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "cycleALength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "cycleBLength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "middleLevel",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "lowLevel",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "highLevel",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "levelWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "cycleALineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "cycleBLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 8,
+        "errors": []
+      },
+      {
+        "key": "cycleANameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleAValueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleAIncludeOnAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleBNameLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleBValueLabel",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleBIncludeOnAutoCenter",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useSecondaryAxis",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleAColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleASecondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleBColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "cycleBSecondaryColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "middleLevelColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowLevelColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "highLevelColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "aroon-up-down",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "upColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "downColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "aroon-oscillator",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "awesome-oscillator",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "fastLength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "slowLength",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "stochastic-oscillator",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "kColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "dColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "smooth",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "williams-r",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "chaikin-accumulation-distribution",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "average-directional-index-adx",
+    "category": "Momentum",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "period",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "lineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "showPlusDi",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showMinusDi",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "adxColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "plusDiColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "minusDiColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "vix-environment",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "standard-deviation",
+    "category": "Volatility",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "average-true-range-atr",
+    "category": "Volatility",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "plotColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "length",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "expected-move",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "overlay-chart",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "overlay-symbol",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "overlay-timeframe-candlestick",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "overlay-timeframe-highlight",
+    "category": "Overlays",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "parameter1",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "colorBasedOnDelta",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "standardDeviation",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "enabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "borderWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "bodyOpacity",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "shadowOpacity",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "showBackground",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "targetEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "targetLineWidth",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "extendLineLeft",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "showTargetText",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "textSize",
+        "status": "output-effect-observed",
+        "attempts": 10,
+        "errors": []
+      },
+      {
+        "key": "summaryEnabled",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "volumeSummary",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "tradeSummary",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "summaryTextSize",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "summaryToView",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "upColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "downColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "highColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "lowColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "textColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "summaryTextColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "askColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "bidColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "text-on-chart",
+    "category": "Overlays",
+    "status": "multi-fixture-mutations-completed",
+    "settings": [
+      {
+        "key": "fontSize",
+        "status": "output-effect-observed",
+        "attempts": 12,
+        "errors": []
+      },
+      {
+        "key": "textColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "backgroundColor",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      },
+      {
+        "key": "useThemeColors",
+        "status": "output-effect-observed",
+        "attempts": 2,
+        "errors": []
+      }
+    ]
+  },
+  {
+    "id": "source-code-indicator",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "kwant-stats",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "hedge-levels",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "deep-m-ivb",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "deep-pattern-builder",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  },
+  {
+    "id": "deep-m-effort-nq",
+    "status": "dedicated-model-fixtures-required",
+    "settings": []
+  }
+]

@@ -1,0 +1,863 @@
+[
+  {
+    "key": "test:gex-interval-map",
+    "command": "node scripts/test-gex-interval-map.cjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:gex-interval-map-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-interval-map-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:dom-pro-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-dom-pro-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:gex-flow",
+    "command": "node --experimental-strip-types scripts/test-gex-flow.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:gex-flow-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-flow-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:bounce-levels",
+    "command": "node scripts/test-bounce-levels.cjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:iv-rank",
+    "command": "node scripts/test-implied-volatility-rank.cjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:iv-rank-integration",
+    "command": "node scripts/test-implied-volatility-rank-integration.cjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:dark-pool-map",
+    "command": "node --experimental-strip-types scripts/test-dark-pool-map.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:dark-pool-gex",
+    "command": "node --experimental-strip-types scripts/test-dark-pool-gex.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:pulling-stacking",
+    "command": "node --experimental-strip-types scripts/test-pulling-stacking.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:absorption-detector",
+    "command": "node --experimental-strip-types scripts/test-absorption-detector.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:stacked-imbalance-suite",
+    "command": "node --experimental-strip-types scripts/test-stacked-imbalance-suite.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:imbalance-tracker",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-imbalance-tracker.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:imbalance-rejector",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-imbalance-rejector.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:iceberg-refresh-detector",
+    "command": "node --experimental-strip-types scripts/test-iceberg-refresh-detector.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:liquidity-stop-sweep-detector",
+    "command": "node --experimental-strip-types scripts/test-liquidity-stop-sweep-detector.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:poc-auction-suite",
+    "command": "node --experimental-strip-types scripts/test-poc-auction-suite.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:unfinished-auction",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-unfinished-auction.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:bar-poc-indicator",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-bar-poc-indicator.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:dynamic-poc",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-dynamic-poc.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:ratio-highlight",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-ratio-highlight.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:stop-spotter",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-stop-spotter.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:cumulative-iceberg-stop",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-cumulative-iceberg-stop.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:book-speed",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-book-speed.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-delta",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-delta.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-wall",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-wall.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-v-tracker",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-v-tracker.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-profile-swing",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-profile-swing.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-profile-values",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-profile-values.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:market-statistics",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-market-statistics.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:confluence-identifier",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-confluence-identifier.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:custom-draw-volume-profile",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-custom-draw-volume-profile.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:tape-speed-order-flow-burst",
+    "command": "node --experimental-strip-types scripts/test-tape-speed-order-flow-burst.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:speed-of-tape-instant",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-speed-of-tape-instant.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:initial-balance",
+    "command": "node --experimental-strip-types scripts/test-initial-balance.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:zero-gamma-line",
+    "command": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:options-delta",
+    "command": "node --experimental-strip-types scripts/test-options-delta.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:zero-gamma-bars",
+    "command": "node --experimental-strip-types scripts/test-zero-gamma-bars.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:gamma-heatmap",
+    "command": "node --test tests/gamma-heatmap.test.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:vwap-family",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/vwap-family.test.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:delta-ladder",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-delta-ladder.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-contracts-effort",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-contracts-effort.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:gex-flow-as-tool",
+    "command": "node scripts/test-gex-flow-as-tool.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:stats-palettes",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-stats-palettes.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-indicator-parity",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-indicator-parity.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-delta-bar",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-delta-bar.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-history-depth",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-history-depth.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:fixed-range-volume-profile-levels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-fixed-range-volume-profile-levels.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:cvd-divergence",
+    "command": "node --import ./scripts/alias-hook.mjs --experimental-strip-types scripts/test-cvd-divergence.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:cvd-session-sampling",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/cvd-session-sampling.test.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-sessions",
+    "command": "node --experimental-strip-types scripts/test-volume-profile-sessions.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:tpo-single-prints",
+    "command": "node --import ./scripts/alias-hook.mjs --experimental-strip-types scripts/test-tpo-single-prints.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-data-settings",
+    "command": "node --experimental-strip-types scripts/test-volume-profile-data-settings.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-structure",
+    "command": "node --experimental-strip-types scripts/test-volume-profile-structure.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-data",
+    "command": "node --experimental-strip-types scripts/test-volume-profile-data-settings.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:composite-volume-profile",
+    "command": "node --experimental-strip-types scripts/test-composite-volume-profile.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-zoom",
+    "command": "node scripts/test-volume-profile-zoom.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:cvd-flow-heal",
+    "command": "node scripts/test-cvd-flow-heal.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-split",
+    "command": "node scripts/test-volume-profile-split.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-grouping",
+    "command": "node scripts/test-volume-profile-grouping.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-chain",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-chain.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-gradients",
+    "command": "node scripts/test-volume-profile-gradients.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:event-indicator-alignment",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-event-indicator-alignment.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-dock",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-dock.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-labels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-labels.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-chain-fallback",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-chain-fallback.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:cvd-divergence-segments",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-cvd-divergence-segments.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-overhang",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-no-back-overhang.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:replay-volume-profiles",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-replay-volume-profiles.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:initial-balance-timeframe",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-initial-balance-timeframe.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:globex-initial-balance",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-globex-initial-balance.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:session-highs-lows",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-session-highs-lows.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:session-marker",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/session-marker.test.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:session-imbalance",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/session-imbalance.test.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:average-daily-range-target",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/average-daily-range-target.test.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-delta-sprint",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/volume-delta-sprint.test.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:overlay-timeframe-highlight",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/overlay-timeframe-highlight.test.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:tpo-settings-wired",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-tpo-settings-wired.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:profile-indicator-parity",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-profile-indicator-parity.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:tpo-default-visuals",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-default-visuals.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-bar-window",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-footprint-bar-window.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-reconcile-budget",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-reconcile-budget.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-profile-rows",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-profile-rows.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-chart-types",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-chart-types.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-replay",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-replay.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-print-footprint-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-print-footprint-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:gamma-environment-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gamma-environment-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:kwant-levels",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-kwant-levels.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:chart-overlays",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-overlays.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-m-ivb",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-m-ivb.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:deep-pattern-builder",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-pattern-builder.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:vix-environment-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:zero-gamma-line-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-zero-gamma-line-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:options-delta-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-options-delta-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:zero-gamma-bars-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-zero-gamma-bars-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:gamma-heatmap-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gamma-heatmap-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:net-gamma-exposure-native-fixture",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-net-gamma-exposure-native-fixture.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-colour-override",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-override.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:vix-environment",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-session-toggle",
+    "command": "node scripts/test-volume-profile-session-toggle.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-bar-width",
+    "command": "node scripts/test-footprint-bar-width.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-palette",
+    "command": "node scripts/test-footprint-palette.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-flow-coverage",
+    "command": "node scripts/test-footprint-flow-coverage.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-session-selection",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-session-selection.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:footprint-hysteresis",
+    "command": "node scripts/test-footprint-detail-hysteresis.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-session-filter",
+    "command": "node scripts/test-volume-profile-session-filter.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-settings-save",
+    "command": "node --experimental-strip-types scripts/test-indicator-settings-save.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-numeric-sliders",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-numeric-sliders.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-opacity",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-opacity.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-colour-controls",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-controls.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-theme-follow",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-theme-follow.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:cvd-candle-direction",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-cvd-candle-direction.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:cvd-settings-parity",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-cvd-settings-parity.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:cvd-event-flow-authority",
+    "command": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/cvd-event-flow-authority.test.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-both-sides",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-both-sides.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:value-area-rows",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-rows.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-settings-live",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-settings-live.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:developing-value-area",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-developing-value-area.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-count",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-count.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:volume-profile-sessions-split",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-sessions-split.mjs",
+    "exitCode": 0,
+    "status": "pass",
+    "timeout": false
+  },
+  {
+    "key": "test:indicator-side-colours",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-side-colours.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  },
+  {
+    "key": "test:value-area-percent",
+    "command": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-percent.mjs",
+    "exitCode": 1,
+    "status": "review-required",
+    "timeout": false
+  }
+]

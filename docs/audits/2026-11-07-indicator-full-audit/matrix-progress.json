@@ -1,0 +1,1379 @@
+[
+  {
+    "id": "big-blocks-options",
+    "name": "Big Blocks (Options)",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "gamma-environment",
+    "name": "Gamma Environment",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "zero-gamma-line",
+    "name": "Zero Gamma Line",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "options-delta",
+    "name": "Options Delta",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "zero-gamma-bars",
+    "name": "Zero Gamma Bars",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "gamma-heatmap",
+    "name": "Gamma Heatmap",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "net-gamma-exposure-by-strike",
+    "name": "Net Gamma Exposure By Strike",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "gex-interval-map",
+    "name": "GEX Interval Map",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "bounce-levels",
+    "name": "Bounce Levels",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "dark-pool-map",
+    "name": "Dark Pool Map",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "dark-pool-gex",
+    "name": "Dark Pool (GEX)",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "implied-volatility-rank",
+    "name": "Implied Volatility Rank",
+    "category": "Options Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "cumulative-volume-delta",
+    "name": "Cumulative Volume Delta",
+    "category": "Order Flow",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "requires-executions-unavailable-on-current-quote-feed": 196
+    }
+  },
+  {
+    "id": "cvd-divergence",
+    "name": "CVD Divergence",
+    "category": "Order Flow",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "requires-executions-unavailable-on-current-quote-feed": 196
+    }
+  },
+  {
+    "id": "pulling-stacking",
+    "name": "Pulling & Stacking",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "delta-bar",
+    "name": "Delta Bar",
+    "category": "Order Flow",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "requires-executions-unavailable-on-current-quote-feed": 196
+    }
+  },
+  {
+    "id": "delta-highlight",
+    "name": "Delta % Highlight",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "delta-cumulative-candlestick",
+    "name": "Delta Cumulative Candlestick",
+    "category": "Order Flow",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "requires-executions-unavailable-on-current-quote-feed": 196
+    }
+  },
+  {
+    "id": "delta-cumulative-histogram",
+    "name": "Delta Cumulative Histogram",
+    "category": "Order Flow",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "requires-executions-unavailable-on-current-quote-feed": 196
+    }
+  },
+  {
+    "id": "imbalance-tracker",
+    "name": "Imbalance Tracker",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "imbalance-rejector",
+    "name": "Imbalance Rejector",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "unfinished-auction",
+    "name": "Unfinished Auction",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "bar-poc-indicator",
+    "name": "Bar POC Indicator",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "dynamic-poc",
+    "name": "Dynamic POC",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "speed-of-tape",
+    "name": "Speed of Tape",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "speed-of-tape-instant",
+    "name": "Speed of Tape (Instant)",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "volume-delta-sprint",
+    "name": "Volume/Delta Sprint",
+    "category": "Order Flow",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "requires-executions-unavailable-on-current-quote-feed": 196
+    }
+  },
+  {
+    "id": "tape-speed-order-flow-burst",
+    "name": "Tape Speed & Order-Flow Burst",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "big-trades",
+    "name": "Big Contracts",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "ratio-highlight",
+    "name": "Ratio Highlight",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "stop-spotter",
+    "name": "Stop Spotter",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "auction-gap-tracker",
+    "name": "Auction Gap Tracker",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "session-imbalance",
+    "name": "Session Imbalance",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "absorption-detector",
+    "name": "Absorption Detector",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "stacked-imbalance-suite",
+    "name": "Stacked Imbalance Suite",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "iceberg-refresh-detector",
+    "name": "Iceberg / Refresh Detector",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "liquidity-stop-sweep-detector",
+    "name": "Liquidity Sweep / Stop Sweep Detector",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "poc-auction-suite",
+    "name": "POC & Auction Suite",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "cumulative-iceberg-stop",
+    "name": "Cumulative Iceberg/Stop",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "book-speed",
+    "name": "Book Speed",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "depth-of-market",
+    "name": "DOM Pro",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "mini-dom",
+    "name": "Mini DOM",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "deep-print-footprint",
+    "name": "Footprint",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "deep-delta",
+    "name": "KWANT Delta",
+    "category": "Order Flow",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "requires-executions-unavailable-on-current-quote-feed": 196
+    }
+  },
+  {
+    "id": "deep-wall",
+    "name": "KWANT Wall",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "deep-v-tracker",
+    "name": "KWANT V-Tracker",
+    "category": "Order Flow",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "volume",
+    "name": "Volume",
+    "category": "Volume & Profiles",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "no-series-on-this-fixture": 196
+    }
+  },
+  {
+    "id": "kwant-profile",
+    "name": "Daily Volume Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "tpo-chart",
+    "name": "TPO Daily",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "weekly-tpo",
+    "name": "TPO Weekly",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "weekly-volume-profile",
+    "name": "Weekly Volume Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "monthly-volume-profile",
+    "name": "Monthly Volume Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "session-volume-profile",
+    "name": "Session Volume Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "composite-volume-profile",
+    "name": "Composite Volume Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "visible-range-volume-profile",
+    "name": "Visible Range Volume Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "custom-draw-on-volume-profile",
+    "name": "Custom Draw-On Volume Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "ask-bid-volume-profile",
+    "name": "Ask/Bid Volume Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "delta-profile",
+    "name": "Delta Profile",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "deep-profile-swing",
+    "name": "KWANT Profile Swing",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "deep-profile-values",
+    "name": "KWANT Profile Values",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "tpo-levels",
+    "name": "TPO Levels",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "vwap",
+    "name": "VWAP",
+    "category": "Volume & Profiles",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "no-series-on-this-fixture": 196
+    }
+  },
+  {
+    "id": "vwap-envelopes",
+    "name": "VWAP Envelopes",
+    "category": "Volume & Profiles",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "no-series-on-this-fixture": 196
+    }
+  },
+  {
+    "id": "rolling-vwap",
+    "name": "Rolling VWAP",
+    "category": "Volume & Profiles",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "no-series-on-this-fixture": 196
+    }
+  },
+  {
+    "id": "market-statistics",
+    "name": "Market Statistics",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "on-candle-stats",
+    "name": "On Candle Stats",
+    "category": "Volume & Profiles",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "important-levels",
+    "name": "Important Levels",
+    "category": "Market Structure",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "requires-executions-unavailable-on-current-quote-feed": 196
+    }
+  },
+  {
+    "id": "absolute-levels",
+    "name": "Absolute Levels",
+    "category": "Market Structure",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "pivot-points",
+    "name": "Pivot Points",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "price-movement-levels",
+    "name": "Price Movement Levels",
+    "category": "Market Structure",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "fvg-identifier",
+    "name": "FVG Identifier",
+    "category": "Market Structure",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "no-series-on-this-fixture": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "gap-detector",
+    "name": "Gap Detector",
+    "category": "Market Structure",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "no-series-on-this-fixture": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "divergence-detector",
+    "name": "Divergence Detector",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "confluence-identifier",
+    "name": "Confluence Identifier",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "swing-point",
+    "name": "Swing Point",
+    "category": "Market Structure",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "average-daily-range-target",
+    "name": "Average Daily Range Target",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "sessions",
+    "name": "Sessions",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "session-highs-lows",
+    "name": "Session Highs & Lows",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "ib-levels",
+    "name": "IB Levels",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "gamma-levels",
+    "name": "Kwant Levels",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "classic-gex-profile",
+    "name": "Classic GEX Profile",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "session-marker",
+    "name": "Session Marker",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "shift-candle",
+    "name": "Shift Candle",
+    "category": "Market Structure",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "moving-average",
+    "name": "Moving Average",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "ichimoku-indicator",
+    "name": "Ichimoku Indicator",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "parabolic-sar",
+    "name": "Parabolic SAR",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "linear-regression",
+    "name": "Linear Regression",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "regression-channel",
+    "name": "Regression Channel",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "super-trend",
+    "name": "Super Trend",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "super-trend-difference",
+    "name": "Super Trend Difference",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "keltner-channel",
+    "name": "Keltner Channel",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "bollinger-bands",
+    "name": "Bollinger Bands",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "donchian-channel",
+    "name": "Donchian Channel",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "tillson-t3",
+    "name": "Tillson T3",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "zig-zag",
+    "name": "Zig Zag",
+    "category": "Trend",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "relative-strength-index-rsi",
+    "name": "Relative Strength Index (RSI)",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "rate-of-change-roc",
+    "name": "Rate of Change (ROC)",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "macd-indicator",
+    "name": "MACD Indicator",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "momentum-indicator",
+    "name": "Momentum Indicator",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "commodity-channel-index-cci",
+    "name": "Commodity Channel Index (CCI)",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "know-sure-thing-kst",
+    "name": "Know Sure Thing (KST)",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "inverse-cyber-cycle",
+    "name": "Inverse Cyber Cycle",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "aroon-up-down",
+    "name": "Aroon Up/Down",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "aroon-oscillator",
+    "name": "Aroon Oscillator",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "awesome-oscillator",
+    "name": "Awesome Oscillator",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "stochastic-oscillator",
+    "name": "Stochastic Oscillator",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "williams-r",
+    "name": "Williams %R",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "chaikin-accumulation-distribution",
+    "name": "Chaikin Accumulation/Distribution",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2650,
+      "unsupported-chart-interval": 554,
+      "no-series-on-this-fixture": 196
+    }
+  },
+  {
+    "id": "average-directional-index-adx",
+    "name": "Average Directional Index (ADX)",
+    "category": "Momentum",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "vix-environment",
+    "name": "VIX Environment",
+    "category": "Volatility",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "standard-deviation",
+    "name": "Standard Deviation",
+    "category": "Volatility",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "average-true-range-atr",
+    "name": "Average True Range (ATR)",
+    "category": "Volatility",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "expected-move",
+    "name": "Expected Move",
+    "category": "Volatility",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "overlay-chart",
+    "name": "Overlay Chart",
+    "category": "Overlays",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "overlay-symbol",
+    "name": "Overlay Symbol",
+    "category": "Overlays",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "overlay-timeframe-candlestick",
+    "name": "Overlay Timeframe Candlestick",
+    "category": "Overlays",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "overlay-timeframe-highlight",
+    "name": "Overlay Timeframe Highlight",
+    "category": "Overlays",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "text-on-chart",
+    "name": "Text on Chart",
+    "category": "Overlays",
+    "status": "calculation-matrix-checked",
+    "errors": [],
+    "counts": {
+      "calculation-and-replay-safety-pass": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "source-code-indicator",
+    "name": "Source Code Indicator",
+    "category": "Overlays",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "kwant-stats",
+    "name": "KWANT Stats",
+    "category": "KWANT Systems",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "hedge-levels",
+    "name": "Hedge Levels",
+    "category": "KWANT Systems",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "deep-m-ivb",
+    "name": "KWANT-M IVB",
+    "category": "KWANT Systems",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "deep-pattern-builder",
+    "name": "KWANT Pattern Builder",
+    "category": "KWANT Systems",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  },
+  {
+    "id": "deep-m-effort-nq",
+    "name": "Big Blocks",
+    "category": "KWANT Systems",
+    "status": "dedicated-runtime-review-required",
+    "errors": [],
+    "counts": {
+      "dedicated-runtime-required": 2846,
+      "unsupported-chart-interval": 554
+    }
+  }
+]

@@ -15,6 +15,7 @@ type IndicatorNumericSliderProps = {
   max: number;
   step?: number;
   disabled?: boolean;
+  disabledReason?: string;
   className?: string;
   onChange: (value: number) => void;
 };
@@ -25,10 +26,12 @@ export default function IndicatorNumericSlider({
   min,
   max,
   step = 1,
-  disabled = false,
+  disabled: requestedDisabled = false,
+  disabledReason,
   className = "",
   onChange,
 }: IndicatorNumericSliderProps) {
+  const disabled = requestedDisabled || Boolean(disabledReason);
   const model = indicatorSliderModel(value, min, max, step);
   const format = useCallback(
     (next: number) => formatIndicatorNumericValue(next, model.precision),
@@ -50,7 +53,7 @@ export default function IndicatorNumericSlider({
   };
 
   return (
-    <div className={`kwant-indicator-numeric ${disabled ? "opacity-40" : ""} ${className}`.trim()}>
+    <div title={disabledReason} className={`kwant-indicator-numeric ${disabled ? "opacity-40" : ""} ${className}`.trim()}>
       <div className="mb-1.5 flex items-center justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-muted">
         <span>{label}</span>
         <input
@@ -75,6 +78,7 @@ export default function IndicatorNumericSlider({
           className="kwant-indicator-number h-7 w-24 border border-border bg-background px-2 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/60 disabled:cursor-not-allowed"
         />
       </div>
+      {disabledReason ? <p className="mb-1.5 text-[9px] leading-4 text-muted">{disabledReason}</p> : null}
       <input
         type="range"
         min={model.railMin}

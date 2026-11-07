@@ -2456,7 +2456,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     customName: "Cumulative Delta Histogram",
     deltaAskColor: theme?.upColor ?? "#22C55E",
     deltaBidColor: theme?.downColor ?? "#EF4444",
-    lineColor: theme?.borderUpColor ?? theme?.upColor ?? "#60A5FA",
     zeroLineColor: theme?.gridColor ?? "#52525B",
     cumulativeHistogramSettingsVersion: 1,
   } : {}),

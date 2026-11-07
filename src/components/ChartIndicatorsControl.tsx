@@ -44,6 +44,8 @@ import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS, profileSessionEnabled } from 
 import type { ChartSettings } from "@/lib/chartSettings";
 import { domProColumnToggleValue, patchDomProColumnToggle } from "@/lib/domPro";
 import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
+import { indicatorSettingDisabledReason } from "@/lib/indicatorSettingAvailability";
+import { INDICATOR_DEDICATED_CONTROL_KEYS } from "@/lib/indicatorDedicatedControlKeys";
 import { supportsPalette as indicatorSupportsPalette } from "@/lib/indicatorPaletteRegistry";
 import { CANDLE_STYLES, CANDLE_SETTING_KEYS, OPEN_CANDLE_SETTINGS_EVENT, candleSettingsUseThemeColors, resolveCandleStyle } from "@/lib/candleStyle";
 import {
@@ -1025,14 +1027,15 @@ function divergenceMarketPair(instrument: string) {
  * The strip only appears when a dialog actually has more than one section.
  */
 function IndicatorSettingsSections({ children }: { children: ReactNode }) {
-  const collectEntries = (nodes: ReactNode): Array<{ section: string; node: ReactNode }> =>
-    Children.toArray(nodes).flatMap((child) => {
+  const collectEntries = (nodes: ReactNode, parentKey = "settings"): Array<{ section: string; node: ReactNode }> =>
+    Children.toArray(nodes).flatMap((child, index) => {
       if (!isValidElement(child)) return [];
+      const entryKey = `${parentKey}/${child.key ?? index}`;
       if (child.type === Fragment) {
-        return collectEntries((child.props as { children?: ReactNode }).children);
+        return collectEntries((child.props as { children?: ReactNode }).children, entryKey);
       }
       const props = child.props as { "data-settings-section"?: string };
-      return [{ section: props["data-settings-section"] ?? "General", node: child }];
+      return [{ section: props["data-settings-section"] ?? "General", node: <Fragment key={entryKey}>{child}</Fragment> }];
     });
   const entries = collectEntries(children);
   const sections: string[] = [];
@@ -3016,7 +3019,7 @@ export default function ChartIndicatorsControl({
                   ] as const).map(([label, key, themeValue]) => (
                     <div key={key} className="flex min-h-10 items-center justify-between gap-2 border border-border bg-background px-3 text-[9px] text-muted">
                       <span>{label}</span>
-                      <ChartColorField
+                      <ChartColorField disabled={isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)}
                         ariaLabel={label}
                         value={settingsInstance.settings?.useThemeColors !== false
                           ? themeValue
@@ -5365,7 +5368,7 @@ export default function ChartIndicatorsControl({
                     })}
                   </div>
                   <label className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-background/55 px-3 text-[9px] uppercase tracking-[0.12em] text-muted">
-                    <input
+                    <input disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, "useThemeColors", settingsInstance.settings))} title={indicatorSettingDisabledReason(settingsDefinition.id, "useThemeColors", settingsInstance.settings)}
                       type="checkbox"
                       className="accent-primary"
                       checked={settingsInstance.settings?.useThemeColors !== false}
@@ -5571,7 +5574,6 @@ export default function ChartIndicatorsControl({
                       ["Split TPO", "splitMode", [["none", "None"], ["last", "Last"], ["all", "All"]]],
                       ["Data fidelity", "visitSource", [["automatic", "Automatic"], ["exact-trades", "Exact trades"], ["bar-range", "Bar range"]]],
                       ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
-                      ["Width mode", "widthMode", [["automatic", "Automatic"], ["period-percent", "Period percent"], ["window-percent", "Window percent"], ["fixed-bars", "Fixed bars"]]],
                       ["Length unit", "lengthUnit", [["minute", "Minutes"], ["day", "Days"], ["week", "Weeks"], ["month", "Months"]]],
                       ["Daily end", "dailyEndMode", [["next-daily-start", "Next daily start"], ["explicit-time", "Explicit time"]]],
                       ["Weekly end", "weekEndMode", [["next-week-start", "Next week start"], ["explicit-day-time", "Explicit day/time"]]],
@@ -6388,7 +6390,7 @@ export default function ChartIndicatorsControl({
                     }))}
                   />
                   <label className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
-                    <input
+                    <input disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, "useThemeColors", settingsInstance.settings))} title={indicatorSettingDisabledReason(settingsDefinition.id, "useThemeColors", settingsInstance.settings)}
                       type="checkbox"
                       checked={settingsInstance.settings?.useThemeColors !== false}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
@@ -6403,7 +6405,7 @@ export default function ChartIndicatorsControl({
                     <>
                       <div className="flex items-center justify-between gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
                         <span>Positive gamma</span>
-                        <ChartColorField
+                        <ChartColorField disabled={isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)}
                           ariaLabel="Positive gamma colour"
                           value={String(settingsInstance.settings?.positiveColor ?? "#22C55E")}
                           onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
@@ -6414,7 +6416,7 @@ export default function ChartIndicatorsControl({
                       </div>
                       <div className="flex items-center justify-between gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
                         <span>Negative gamma</span>
-                        <ChartColorField
+                        <ChartColorField disabled={isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)}
                           ariaLabel="Negative gamma colour"
                           value={String(settingsInstance.settings?.negativeColor ?? "#EF4444")}
                           onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
@@ -6501,7 +6503,7 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <label className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
-                    <input
+                    <input disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, "useThemeColors", settingsInstance.settings))} title={indicatorSettingDisabledReason(settingsDefinition.id, "useThemeColors", settingsInstance.settings)}
                       type="checkbox"
                       checked={settingsInstance.settings?.useThemeColors === true}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
@@ -6544,7 +6546,7 @@ export default function ChartIndicatorsControl({
                       ].map(([key, label, fallback]) => (
                         <div key={key} className="flex items-center justify-between gap-2 text-[8px] uppercase tracking-[0.1em] text-muted sm:block sm:space-y-1">
                           <span>{label}</span>
-                          <ChartColorField
+                          <ChartColorField disabled={isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)}
                             ariaLabel={`${label} VIX regime colour`}
                             value={String(settingsInstance.settings?.[key] ?? fallback)}
                             onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
@@ -6669,7 +6671,7 @@ export default function ChartIndicatorsControl({
                   <div data-settings-section="Zig Zag settings" className="space-y-3">
                     <label className="block space-y-1 text-[10px] text-muted">
                       <span>Zig Zag mode</span>
-                      <KwantSelect value={String(settingsInstance.settings?.zigZagMode ?? "tick-reversal")}
+                      <KwantSelect disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, "zigZagMode", settingsInstance.settings))} title={indicatorSettingDisabledReason(settingsDefinition.id, "zigZagMode", settingsInstance.settings)} value={String(settingsInstance.settings?.zigZagMode ?? "tick-reversal")}
                         onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                           ...current, settings: { ...(current.settings ?? {}), zigZagMode: event.target.value },
                         }))} menuLabel="Regression channel Zig Zag mode"
@@ -6892,7 +6894,7 @@ export default function ChartIndicatorsControl({
                 <div data-settings-section="Zig Zag settings" className="grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-1 text-[10px] text-muted">
                     <span>Mode</span>
-                    <KwantSelect value={String(settingsInstance.settings?.zigZagMode ?? "highest-lowest")}
+                    <KwantSelect disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, "zigZagMode", settingsInstance.settings))} title={indicatorSettingDisabledReason(settingsDefinition.id, "zigZagMode", settingsInstance.settings)} value={String(settingsInstance.settings?.zigZagMode ?? "highest-lowest")}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                         ...current, settings: { ...(current.settings ?? {}), zigZagMode: event.target.value },
                       }))} menuLabel="Zig Zag mode"
@@ -7239,7 +7241,7 @@ export default function ChartIndicatorsControl({
                       </label>
                       <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                         <span>Average type</span>
-                        <KwantSelect
+                        <KwantSelect disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, "averageType", settingsInstance.settings))} title={indicatorSettingDisabledReason(settingsDefinition.id, "averageType", settingsInstance.settings)}
                           value={String(settingsInstance.settings?.averageType ?? "simple")}
                           onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
@@ -8075,7 +8077,7 @@ export default function ChartIndicatorsControl({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Input data</span><KwantSelect value={String(settingsInstance.settings?.inputData ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), inputData: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Volume Delta Sprint input"><option value="volume">Executed volume</option><option value="trades">Executed trades</option></KwantSelect></label>
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Delta colour mode</span><KwantSelect value={String(settingsInstance.settings?.deltaColorMode ?? "fading")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), deltaColorMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Volume Delta Sprint colour mode"><option value="fading">Fading</option><option value="fixed">Fixed</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Smoothing average</span><KwantSelect value={String(settingsInstance.settings?.smoothingType ?? "simple")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), smoothingType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Volume Delta Sprint smoothing"><option value="simple">Simple</option><option value="exponential">Exponential</option><option value="triangular">Triangular</option><option value="weighted">Weighted</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Smoothing average</span><KwantSelect disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, "smoothingType", settingsInstance.settings))} title={indicatorSettingDisabledReason(settingsDefinition.id, "smoothingType", settingsInstance.settings)} value={String(settingsInstance.settings?.smoothingType ?? "simple")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), smoothingType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Volume Delta Sprint smoothing"><option value="simple">Simple</option><option value="exponential">Exponential</option><option value="triangular">Triangular</option><option value="weighted">Weighted</option></KwantSelect></label>
                     <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Short name</span><input value={String(settingsInstance.settings?.shortName ?? "Volume/Delta Sprint")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), shortName: event.target.value } }))} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/45" /></label>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -8155,6 +8157,7 @@ export default function ChartIndicatorsControl({
                 <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : undefined}>
                   <IndicatorPaletteSection
                     indicatorId={settingsDefinition.id}
+                    showIndividualColors={false}
                     settings={settingsInstance.settings ?? {}}
                     theme={{
                       up: chartSettings.upColor,
@@ -8183,6 +8186,7 @@ export default function ChartIndicatorsControl({
                 const numericSettings = (VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
                   ? []
                   : INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
+                  .filter((setting) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(setting.key))
                   .filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent"))
                   .filter((setting) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(setting.key));
                 const bySection = new Map<string, typeof numericSettings>();
@@ -8198,6 +8202,7 @@ export default function ChartIndicatorsControl({
                   <IndicatorNumericSlider
                     key={setting.key}
                     label={setting.label}
+                    disabledReason={indicatorSettingDisabledReason(settingsDefinition.id, setting.key, settingsInstance.settings)}
                     min={setting.min}
                     max={setting.max}
                     step={setting.step ?? 1}
@@ -8220,7 +8225,9 @@ export default function ChartIndicatorsControl({
               {(() => {
                 const entries = Object.entries(settingsInstance.settings ?? {})
                   .filter(([key]) => !["showSource", "stableFootprintRows", "sessionSelectionArmed"].includes(key))
+                  .filter(([key]) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
+                  .filter(([key]) => !(settingsDefinition.id === "delta-cumulative-histogram" && key === "lineColor"))
                   .filter(([key]) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(key))
                   .filter(([key, value]) =>
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
@@ -8260,15 +8267,15 @@ export default function ChartIndicatorsControl({
                 const themeColours = themeColourMapFor(settingsDefinition.id, chartSettings);
                 // A gradient scheme replaces every profile body colour, so the
                 // pickers would silently do nothing while one is selected.
-                const gradientLocked = (
-                  VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
-                  || isTpoIndicator(settingsDefinition.id)
-                ) && isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset);
+                const gradientLocked = indicatorSupportsPalette(settingsDefinition.id)
+                  && isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset);
                 const control = ([key, value]: readonly [string, unknown, string]) => (
                     typeof value === "boolean" ? (
                       <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
                         <input
                           type="checkbox"
+                          disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, key, settingsInstance.settings))}
+                          title={indicatorSettingDisabledReason(settingsDefinition.id, key, settingsInstance.settings)}
                           checked={settingsDefinition.id === "depth-of-market" ? domProColumnToggleValue(settingsInstance.settings, key) ?? value === true : value === true}
                           onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
@@ -8285,10 +8292,10 @@ export default function ChartIndicatorsControl({
                         <span className="truncate">{titleFromKey(key, settingsDefinition.id)}</span>
                         <ChartColorField
                           ariaLabel={`${titleFromKey(key, settingsDefinition.id)} colour`}
-                          disabled={gradientLocked}
+                          disabled={gradientLocked || Boolean(indicatorSettingDisabledReason(settingsDefinition.id, key, settingsInstance.settings))}
                           title={gradientLocked
                             ? "The gradient scheme owns this colour. Set the scheme to Off to pick colours individually."
-                            : undefined}
+                            : indicatorSettingDisabledReason(settingsDefinition.id, key, settingsInstance.settings)}
                           value={themeColours && settingsInstance.settings?.useThemeColors !== false
                             ? String(themeColours[key] ?? value)
                             : String(value)}
@@ -8321,11 +8328,11 @@ export default function ChartIndicatorsControl({
                   </div>
                 ));
               })()}
-              <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : settingsDefinition.id === "volume" ? "General" : "Style"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
-                {settingsDefinition.id === "bounce-levels" ? (
+              <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : "General"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
+                {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
                   <>Linked Bounce Levels uses the GEX Map colour scale. Open <span className="text-foreground">GEX Map view, nodes &amp; colours</span> above to change the shared palette.</>
                 ) : (
-                  <>Theme colours remain linked by default. Turn off <span className="text-foreground">Use Theme Colors</span> before setting custom study colours.</>
+                  <>Choosing a custom colour turns off theme colours for this indicator. An active colour scheme owns its colours until switched Off.</>
                 )}
               </div>
             </IndicatorSettingsSections>

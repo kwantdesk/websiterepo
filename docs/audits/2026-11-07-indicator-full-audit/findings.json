@@ -1,0 +1,56 @@
+[
+  {
+    "id": "F01",
+    "status": "fixed",
+    "problem": "A dedicated editor was followed by a second generated editor for the same setting, including repeated profile and order-flow toggles.",
+    "fix": "Dedicated setting ownership suppresses only the repeated generated controls. Slider plus matching numeric input remain one logical control. Catalogue IDs and legacy aliases are unique."
+  },
+  {
+    "id": "F02",
+    "status": "fixed",
+    "problem": "Shared palette colour changes could save while useThemeColors continued to override them.",
+    "fix": "Selecting a custom colour disables theme mode and seeds sibling theme colours; the main editor uses one set of individual controls. Schemes disable individual controls and the theme toggle while they own the colours."
+  },
+  {
+    "id": "F03",
+    "status": "fixed",
+    "problem": "Cumulative Delta Histogram exposed lineColor even though the later plot-colour pass overrode it.",
+    "fix": "Removed the redundant default/UI field. The main plot colour controls the line; bars/candles keep their separate Ask/Bid colours. Existing stored compatibility data is retained."
+  },
+  {
+    "id": "F04",
+    "status": "fixed",
+    "problem": "Filtered-CVD, average/deviation, smoothing, regression and reversal inputs looked usable when their parent calculation was disabled.",
+    "fix": "Inactive controls show their actual dependency and disable until that mode/plot is active. Gated fixtures prove enabled filter/average/smoothing settings alter their intended output."
+  },
+  {
+    "id": "F05",
+    "status": "fixed",
+    "problem": "Flattened settings fragments reused React child key .0, risking reused, omitted or duplicated controls across tab updates.",
+    "fix": "Section entries now retain unique hierarchical React identities. All 124 final rendered dialogs have zero console errors."
+  },
+  {
+    "id": "D01",
+    "status": "unresolved input capability",
+    "problem": "The configured owned cash quote path supplies no traded volume or aggressor-side executions. All ten stock/ETF recordings captured in the preceding Volume audit contained volume 0; cash indices have no traded underlying volume. VXN is not on the configured live path. Price-only studies can use supplied OHLC. Volume, delta, footprint, tape and depth cannot be manufactured from quotes.",
+    "fix": "No replacement feed purchased, polling added, or missing data invented."
+  },
+  {
+    "id": "V01",
+    "status": "unverified",
+    "problem": "Closed market: no live exchange session was observed for this audit.",
+    "fix": "Delivery hooks and execution coalescing were exercised with controlled events. This does not establish current exchange latency or continuous recording completeness."
+  },
+  {
+    "id": "H01",
+    "status": "not established for every indicator",
+    "problem": "Owned minute aggregates do not reconstruct subminute execution paths, exact footprint rows or depth. Some generic calculations use a bounded lightweight history window.",
+    "fix": "All supported interval builders were tested with synthetic execution inputs; recorded OHLCV was checked separately. No provider history backfill or false completeness claim."
+  },
+  {
+    "id": "T01",
+    "status": "pre-existing test debt",
+    "problem": "22 of 123 dedicated suites fail; all 22 reproduce on untouched HEAD. Three additional support-suite failures also reproduce there.",
+    "fix": "Documented exact results and reasons; did not alter functionality to satisfy obsolete source-string/theme/default assertions. The 8 ms computation budget failure remains a performance concern, not a waiver."
+  }
+]

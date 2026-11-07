@@ -1,0 +1,20 @@
+[
+  {
+    "key": "test:indicator-templates",
+    "exitCode": 1,
+    "baselineExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:indicator-visibility",
+    "exitCode": 1,
+    "baselineExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:no-native-controls",
+    "exitCode": 1,
+    "baselineExitCode": 1,
+    "preexisting": true
+  }
+]

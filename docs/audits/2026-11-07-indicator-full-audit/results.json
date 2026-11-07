@@ -1,0 +1,3030 @@
+{
+  "generatedAt": "2026-11-07T11:11:02.234Z",
+  "scope": "Charts indicator audit; isolated component interactions and synthetic/owned-aggregate calculations are not live-market verification.",
+  "totals": {
+    "catalogueEntries": 124,
+    "defaultSettings": 4313,
+    "dialogEntries": 124,
+    "dialogControlActions": 9588,
+    "dropdownChoices": 2007,
+    "dialogInteractionErrors": 0,
+    "renderedCatalogueEntries": 124,
+    "renderConsoleErrors": 0,
+    "syntheticMatrix": {
+      "dedicated-runtime-required": 219142,
+      "unsupported-chart-interval": 68696,
+      "calculation-and-replay-safety-pass": 125522,
+      "requires-executions-unavailable-on-current-quote-feed": 1568,
+      "no-series-on-this-fixture": 6672
+    },
+    "ownedFutures": 53,
+    "ownedOhlcvChecks": 34874,
+    "ownedNonemptyCalculations": 27110,
+    "semanticSettingChecks": 571,
+    "observedSettingEffects": 541,
+    "dedicatedSuitesPassed": 101,
+    "dedicatedSuitesFailed": 22,
+    "baselineReproducedFailures": 22,
+    "liveSessionVerified": false
+  },
+  "perTool": [
+    {
+      "id": "big-blocks-options",
+      "name": "Big Blocks (Options)",
+      "category": "Options Flow",
+      "settings": 17,
+      "interactionChecks": 46,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "gamma-environment",
+      "name": "Gamma Environment",
+      "category": "Options Flow",
+      "settings": 8,
+      "interactionChecks": 29,
+      "interactionErrors": 0,
+      "dropdownChoices": 12,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "zero-gamma-line",
+      "name": "Zero Gamma Line",
+      "category": "Options Flow",
+      "settings": 10,
+      "interactionChecks": 35,
+      "interactionErrors": 0,
+      "dropdownChoices": 8,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "options-delta",
+      "name": "Options Delta",
+      "category": "Options Flow",
+      "settings": 4,
+      "interactionChecks": 26,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "zero-gamma-bars",
+      "name": "Zero Gamma Bars",
+      "category": "Options Flow",
+      "settings": 4,
+      "interactionChecks": 26,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "gamma-heatmap",
+      "name": "Gamma Heatmap",
+      "category": "Options Flow",
+      "settings": 19,
+      "interactionChecks": 44,
+      "interactionErrors": 0,
+      "dropdownChoices": 24,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "net-gamma-exposure-by-strike",
+      "name": "Net Gamma Exposure By Strike",
+      "category": "Options Flow",
+      "settings": 68,
+      "interactionChecks": 113,
+      "interactionErrors": 0,
+      "dropdownChoices": 44,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "gex-interval-map",
+      "name": "GEX Interval Map",
+      "category": "Options Flow",
+      "settings": 79,
+      "interactionChecks": 134,
+      "interactionErrors": 0,
+      "dropdownChoices": 65,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "bounce-levels",
+      "name": "Bounce Levels",
+      "category": "Options Flow",
+      "settings": 109,
+      "interactionChecks": 175,
+      "interactionErrors": 0,
+      "dropdownChoices": 36,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "dark-pool-map",
+      "name": "Dark Pool Map",
+      "category": "Options Flow",
+      "settings": 66,
+      "interactionChecks": 131,
+      "interactionErrors": 0,
+      "dropdownChoices": 32,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "dark-pool-gex",
+      "name": "Dark Pool (GEX)",
+      "category": "Options Flow",
+      "settings": 103,
+      "interactionChecks": 168,
+      "interactionErrors": 0,
+      "dropdownChoices": 60,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "implied-volatility-rank",
+      "name": "Implied Volatility Rank",
+      "category": "Options Flow",
+      "settings": 38,
+      "interactionChecks": 69,
+      "interactionErrors": 0,
+      "dropdownChoices": 23,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "cumulative-volume-delta",
+      "name": "Cumulative Volume Delta",
+      "category": "Order Flow",
+      "settings": 26,
+      "interactionChecks": 51,
+      "interactionErrors": 0,
+      "dropdownChoices": 11,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "requires-executions-unavailable-on-current-quote-feed": 196
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "periodValue",
+        "lineWidth",
+        "filterMinVolume",
+        "filterMaxVolume",
+        "zeroLineWidth",
+        "useThemeColors",
+        "showValue",
+        "showBidAskVolumes",
+        "filteredEnabled",
+        "filteredSeparateAxis",
+        "showZeroLine",
+        "deltaAskColor",
+        "deltaBidColor",
+        "volumeAskColor",
+        "volumeBidColor",
+        "filteredAskColor",
+        "filteredBidColor",
+        "zeroLineColor"
+      ],
+      "settingEffectsNotObserved": [
+        "showName"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "cvd-divergence",
+      "name": "CVD Divergence",
+      "category": "Order Flow",
+      "settings": 7,
+      "interactionChecks": 31,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "requires-executions-unavailable-on-current-quote-feed": 196
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "bullishColor",
+        "bearishColor",
+        "useThemeColors",
+        "pivotStrength",
+        "lookbackBars",
+        "lineWidth"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "pulling-stacking",
+      "name": "Pulling & Stacking",
+      "category": "Order Flow",
+      "settings": 87,
+      "interactionChecks": 163,
+      "interactionErrors": 0,
+      "dropdownChoices": 21,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "delta-bar",
+      "name": "Delta Bar",
+      "category": "Order Flow",
+      "settings": 12,
+      "interactionChecks": 40,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "requires-executions-unavailable-on-current-quote-feed": 196
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "useThemeColors"
+      ],
+      "settingEffectsNotObserved": [
+        "ladderWidthPx",
+        "ladderEdgeGapPx",
+        "ladderLevelSpacingPx",
+        "ladderOpacity",
+        "ladderFontSize",
+        "showLadderValues",
+        "buyColor",
+        "sellColor",
+        "spineColor"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "delta-highlight",
+      "name": "Delta % Highlight",
+      "category": "Order Flow",
+      "settings": 13,
+      "interactionChecks": 35,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "delta-cumulative-candlestick",
+      "name": "Delta Cumulative Candlestick",
+      "category": "Order Flow",
+      "settings": 27,
+      "interactionChecks": 55,
+      "interactionErrors": 0,
+      "dropdownChoices": 11,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "requires-executions-unavailable-on-current-quote-feed": 196
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "filterMinVolume",
+        "filterMaxVolume",
+        "sessionStartHour",
+        "lineWidth",
+        "averageLength",
+        "averageLineWidth",
+        "averageDeviation",
+        "zeroLineWidth",
+        "resetToSession",
+        "showAverage",
+        "showAverageDeviations",
+        "showZeroLine",
+        "showValue",
+        "useThemeColors",
+        "deltaAskColor",
+        "deltaBidColor",
+        "averageColor",
+        "deviationColor",
+        "zeroLineColor"
+      ],
+      "settingEffectsNotObserved": [
+        "showName"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "delta-cumulative-histogram",
+      "name": "Delta Cumulative Histogram",
+      "category": "Order Flow",
+      "settings": 19,
+      "interactionChecks": 44,
+      "interactionErrors": 0,
+      "dropdownChoices": 7,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "requires-executions-unavailable-on-current-quote-feed": 196
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "filterMinVolume",
+        "filterMaxVolume",
+        "sessionStartHour",
+        "lineWidth",
+        "zeroLineWidth",
+        "resetToSession",
+        "showValue",
+        "showZeroLine",
+        "useThemeColors",
+        "deltaAskColor",
+        "deltaBidColor",
+        "zeroLineColor"
+      ],
+      "settingEffectsNotObserved": [
+        "showName"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "imbalance-tracker",
+      "name": "Imbalance Tracker",
+      "category": "Order Flow",
+      "settings": 26,
+      "interactionChecks": 57,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "imbalance-rejector",
+      "name": "Imbalance Rejector",
+      "category": "Order Flow",
+      "settings": 14,
+      "interactionChecks": 40,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "unfinished-auction",
+      "name": "Unfinished Auction",
+      "category": "Order Flow",
+      "settings": 17,
+      "interactionChecks": 43,
+      "interactionErrors": 0,
+      "dropdownChoices": 10,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "bar-poc-indicator",
+      "name": "Bar POC Indicator",
+      "category": "Order Flow",
+      "settings": 30,
+      "interactionChecks": 62,
+      "interactionErrors": 0,
+      "dropdownChoices": 12,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "dynamic-poc",
+      "name": "Dynamic POC",
+      "category": "Order Flow",
+      "settings": 18,
+      "interactionChecks": 44,
+      "interactionErrors": 0,
+      "dropdownChoices": 8,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "speed-of-tape",
+      "name": "Speed of Tape",
+      "category": "Order Flow",
+      "settings": 12,
+      "interactionChecks": 37,
+      "interactionErrors": 0,
+      "dropdownChoices": 3,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "speed-of-tape-instant",
+      "name": "Speed of Tape (Instant)",
+      "category": "Order Flow",
+      "settings": 20,
+      "interactionChecks": 48,
+      "interactionErrors": 0,
+      "dropdownChoices": 7,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "volume-delta-sprint",
+      "name": "Volume/Delta Sprint",
+      "category": "Order Flow",
+      "settings": 18,
+      "interactionChecks": 44,
+      "interactionErrors": 0,
+      "dropdownChoices": 9,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "requires-executions-unavailable-on-current-quote-feed": 196
+      },
+      "settingEffectsObserved": [
+        "filterMin",
+        "filterMax",
+        "length",
+        "smoothingEnabled",
+        "smoothingLength",
+        "showDelta",
+        "showBid",
+        "showAsk",
+        "useThemeColors",
+        "positiveColor",
+        "negativeColor",
+        "bidColor",
+        "askColor",
+        "lineWidth"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "tape-speed-order-flow-burst",
+      "name": "Tape Speed & Order-Flow Burst",
+      "category": "Order Flow",
+      "settings": 54,
+      "interactionChecks": 101,
+      "interactionErrors": 0,
+      "dropdownChoices": 18,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "big-trades",
+      "name": "Big Contracts",
+      "category": "Order Flow",
+      "settings": 47,
+      "interactionChecks": 78,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "ratio-highlight",
+      "name": "Ratio Highlight",
+      "category": "Order Flow",
+      "settings": 8,
+      "interactionChecks": 31,
+      "interactionErrors": 0,
+      "dropdownChoices": 4,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "stop-spotter",
+      "name": "Stop Spotter",
+      "category": "Order Flow",
+      "settings": 38,
+      "interactionChecks": 72,
+      "interactionErrors": 0,
+      "dropdownChoices": 19,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "auction-gap-tracker",
+      "name": "Auction Gap Tracker",
+      "category": "Order Flow",
+      "settings": 26,
+      "interactionChecks": 51,
+      "interactionErrors": 0,
+      "dropdownChoices": 19,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "session-imbalance",
+      "name": "Session Imbalance",
+      "category": "Order Flow",
+      "settings": 30,
+      "interactionChecks": 55,
+      "interactionErrors": 0,
+      "dropdownChoices": 8,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "absorption-detector",
+      "name": "Absorption Detector",
+      "category": "Order Flow",
+      "settings": 129,
+      "interactionChecks": 153,
+      "interactionErrors": 0,
+      "dropdownChoices": 28,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "stacked-imbalance-suite",
+      "name": "Stacked Imbalance Suite",
+      "category": "Order Flow",
+      "settings": 53,
+      "interactionChecks": 87,
+      "interactionErrors": 0,
+      "dropdownChoices": 22,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "iceberg-refresh-detector",
+      "name": "Iceberg / Refresh Detector",
+      "category": "Order Flow",
+      "settings": 93,
+      "interactionChecks": 107,
+      "interactionErrors": 0,
+      "dropdownChoices": 15,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "liquidity-stop-sweep-detector",
+      "name": "Liquidity Sweep / Stop Sweep Detector",
+      "category": "Order Flow",
+      "settings": 75,
+      "interactionChecks": 97,
+      "interactionErrors": 0,
+      "dropdownChoices": 12,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "poc-auction-suite",
+      "name": "POC & Auction Suite",
+      "category": "Order Flow",
+      "settings": 97,
+      "interactionChecks": 117,
+      "interactionErrors": 0,
+      "dropdownChoices": 28,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "cumulative-iceberg-stop",
+      "name": "Cumulative Iceberg/Stop",
+      "category": "Order Flow",
+      "settings": 22,
+      "interactionChecks": 49,
+      "interactionErrors": 0,
+      "dropdownChoices": 6,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "book-speed",
+      "name": "Book Speed",
+      "category": "Order Flow",
+      "settings": 17,
+      "interactionChecks": 43,
+      "interactionErrors": 0,
+      "dropdownChoices": 3,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "depth-of-market",
+      "name": "DOM Pro",
+      "category": "Order Flow",
+      "settings": 24,
+      "interactionChecks": 50,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "mini-dom",
+      "name": "Mini DOM",
+      "category": "Order Flow",
+      "settings": 13,
+      "interactionChecks": 40,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-print-footprint",
+      "name": "Footprint",
+      "category": "Order Flow",
+      "settings": 112,
+      "interactionChecks": 190,
+      "interactionErrors": 0,
+      "dropdownChoices": 43,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-delta",
+      "name": "KWANT Delta",
+      "category": "Order Flow",
+      "settings": 43,
+      "interactionChecks": 84,
+      "interactionErrors": 0,
+      "dropdownChoices": 11,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "requires-executions-unavailable-on-current-quote-feed": 196
+      },
+      "settingEffectsObserved": [
+        "positiveColor",
+        "negativeColor",
+        "range1AskColor",
+        "range1BidColor",
+        "range2AskColor",
+        "range2BidColor",
+        "range3AskColor",
+        "range3BidColor",
+        "range4AskColor",
+        "range4BidColor",
+        "maximumPositiveColor",
+        "minimumNegativeColor",
+        "level1Color",
+        "level2Color",
+        "markerColor",
+        "barGrouping",
+        "range1Minimum",
+        "range1Maximum",
+        "range2Minimum",
+        "range2Maximum",
+        "range3Minimum",
+        "range3Maximum",
+        "range4Minimum",
+        "range4Maximum",
+        "level1Value",
+        "level1LineWidth",
+        "level2Value",
+        "level2LineWidth",
+        "markerMinimumDelta",
+        "lineWidth",
+        "range1Enabled",
+        "range2Enabled",
+        "range3Enabled",
+        "range4Enabled",
+        "level1Enabled",
+        "level2Enabled",
+        "markerEnabled",
+        "useThemeColors"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-wall",
+      "name": "KWANT Wall",
+      "category": "Order Flow",
+      "settings": 19,
+      "interactionChecks": 49,
+      "interactionErrors": 0,
+      "dropdownChoices": 7,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-v-tracker",
+      "name": "KWANT V-Tracker",
+      "category": "Order Flow",
+      "settings": 26,
+      "interactionChecks": 51,
+      "interactionErrors": 0,
+      "dropdownChoices": 19,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "volume",
+      "name": "Volume",
+      "category": "Volume & Profiles",
+      "settings": 3,
+      "interactionChecks": 12,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "no-series-on-this-fixture": 196
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "minimumTotalVolume",
+        "useThemeColors"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "kwant-profile",
+      "name": "Daily Volume Profile",
+      "category": "Volume & Profiles",
+      "settings": 97,
+      "interactionChecks": 318,
+      "interactionErrors": 0,
+      "dropdownChoices": 63,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "tpo-chart",
+      "name": "TPO Daily",
+      "category": "Volume & Profiles",
+      "settings": 181,
+      "interactionChecks": 256,
+      "interactionErrors": 0,
+      "dropdownChoices": 84,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "weekly-tpo",
+      "name": "TPO Weekly",
+      "category": "Volume & Profiles",
+      "settings": 181,
+      "interactionChecks": 256,
+      "interactionErrors": 0,
+      "dropdownChoices": 84,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "weekly-volume-profile",
+      "name": "Weekly Volume Profile",
+      "category": "Volume & Profiles",
+      "settings": 99,
+      "interactionChecks": 316,
+      "interactionErrors": 0,
+      "dropdownChoices": 63,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "monthly-volume-profile",
+      "name": "Monthly Volume Profile",
+      "category": "Volume & Profiles",
+      "settings": 97,
+      "interactionChecks": 316,
+      "interactionErrors": 0,
+      "dropdownChoices": 63,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "session-volume-profile",
+      "name": "Session Volume Profile",
+      "category": "Volume & Profiles",
+      "settings": 97,
+      "interactionChecks": 318,
+      "interactionErrors": 0,
+      "dropdownChoices": 63,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "composite-volume-profile",
+      "name": "Composite Volume Profile",
+      "category": "Volume & Profiles",
+      "settings": 102,
+      "interactionChecks": 320,
+      "interactionErrors": 0,
+      "dropdownChoices": 70,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "visible-range-volume-profile",
+      "name": "Visible Range Volume Profile",
+      "category": "Volume & Profiles",
+      "settings": 97,
+      "interactionChecks": 318,
+      "interactionErrors": 0,
+      "dropdownChoices": 63,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "custom-draw-on-volume-profile",
+      "name": "Custom Draw-On Volume Profile",
+      "category": "Volume & Profiles",
+      "settings": 97,
+      "interactionChecks": 315,
+      "interactionErrors": 0,
+      "dropdownChoices": 63,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "ask-bid-volume-profile",
+      "name": "Ask/Bid Volume Profile",
+      "category": "Volume & Profiles",
+      "settings": 97,
+      "interactionChecks": 318,
+      "interactionErrors": 0,
+      "dropdownChoices": 63,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "delta-profile",
+      "name": "Delta Profile",
+      "category": "Volume & Profiles",
+      "settings": 97,
+      "interactionChecks": 316,
+      "interactionErrors": 0,
+      "dropdownChoices": 63,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-profile-swing",
+      "name": "KWANT Profile Swing",
+      "category": "Volume & Profiles",
+      "settings": 41,
+      "interactionChecks": 81,
+      "interactionErrors": 0,
+      "dropdownChoices": 22,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-profile-values",
+      "name": "KWANT Profile Values",
+      "category": "Volume & Profiles",
+      "settings": 63,
+      "interactionChecks": 104,
+      "interactionErrors": 0,
+      "dropdownChoices": 46,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "tpo-levels",
+      "name": "TPO Levels",
+      "category": "Volume & Profiles",
+      "settings": 26,
+      "interactionChecks": 66,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "vwap",
+      "name": "VWAP",
+      "category": "Volume & Profiles",
+      "settings": 33,
+      "interactionChecks": 62,
+      "interactionErrors": 0,
+      "dropdownChoices": 17,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "no-series-on-this-fixture": 196
+      },
+      "settingEffectsObserved": [
+        "mainColor",
+        "upper1Color",
+        "lower1Color",
+        "upper2Color",
+        "lower2Color",
+        "upper3Color",
+        "lower3Color",
+        "upper4Color",
+        "lower4Color",
+        "upper5Color",
+        "lower5Color",
+        "periodValue",
+        "sessionStartHour",
+        "lineWidth",
+        "bandLineWidth",
+        "band1",
+        "band2",
+        "band3",
+        "band4",
+        "band5",
+        "band1Enabled",
+        "band2Enabled",
+        "band3Enabled",
+        "band4Enabled",
+        "band5Enabled",
+        "showCurrentValue",
+        "useThemeColors"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "vwap-envelopes",
+      "name": "VWAP Envelopes",
+      "category": "Volume & Profiles",
+      "settings": 32,
+      "interactionChecks": 60,
+      "interactionErrors": 0,
+      "dropdownChoices": 15,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "no-series-on-this-fixture": 196
+      },
+      "settingEffectsObserved": [
+        "mainColor",
+        "upper1Color",
+        "lower1Color",
+        "upper2Color",
+        "lower2Color",
+        "upper3Color",
+        "lower3Color",
+        "upper4Color",
+        "lower4Color",
+        "upper5Color",
+        "lower5Color",
+        "periodValue",
+        "lineWidth",
+        "bandLineWidth",
+        "band1",
+        "band2",
+        "band3",
+        "band4",
+        "band5",
+        "band1Enabled",
+        "band2Enabled",
+        "band3Enabled",
+        "band4Enabled",
+        "band5Enabled",
+        "showCurrentValue",
+        "useThemeColors"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "rolling-vwap",
+      "name": "Rolling VWAP",
+      "category": "Volume & Profiles",
+      "settings": 32,
+      "interactionChecks": 60,
+      "interactionErrors": 0,
+      "dropdownChoices": 16,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "no-series-on-this-fixture": 196
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "upper1Color",
+        "lower1Color",
+        "upper2Color",
+        "lower2Color",
+        "upper3Color",
+        "lower3Color",
+        "upper4Color",
+        "lower4Color",
+        "upper5Color",
+        "lower5Color",
+        "periodValue",
+        "lineWidth",
+        "bandLineWidth",
+        "band1",
+        "band2",
+        "band3",
+        "band4",
+        "band5",
+        "band1Enabled",
+        "band2Enabled",
+        "band3Enabled",
+        "band4Enabled",
+        "band5Enabled",
+        "showCurrentValue",
+        "useThemeColors"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "market-statistics",
+      "name": "Market Statistics",
+      "category": "Volume & Profiles",
+      "settings": 20,
+      "interactionChecks": 50,
+      "interactionErrors": 0,
+      "dropdownChoices": 5,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "on-candle-stats",
+      "name": "On Candle Stats",
+      "category": "Volume & Profiles",
+      "settings": 40,
+      "interactionChecks": 66,
+      "interactionErrors": 0,
+      "dropdownChoices": 9,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "important-levels",
+      "name": "Important Levels",
+      "category": "Market Structure",
+      "settings": 45,
+      "interactionChecks": 67,
+      "interactionErrors": 0,
+      "dropdownChoices": 12,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "requires-executions-unavailable-on-current-quote-feed": 196
+      },
+      "settingEffectsObserved": [
+        "days",
+        "weeks",
+        "months",
+        "skipLast",
+        "fontSize",
+        "lineWidth",
+        "dailyAverage",
+        "dailyLow",
+        "dailyHigh",
+        "dailyOpen",
+        "dailyClose",
+        "dailyVwap",
+        "weeklyAverage",
+        "weeklyLow",
+        "weeklyHigh",
+        "weeklyOpen",
+        "weeklyClose",
+        "weeklyVwap",
+        "monthlyAverage",
+        "monthlyLow",
+        "monthlyHigh",
+        "monthlyOpen",
+        "monthlyClose",
+        "monthlyVwap",
+        "useThemeColors",
+        "lowColor",
+        "highColor",
+        "openColor",
+        "closeColor",
+        "midColor",
+        "vwapColor"
+      ],
+      "settingEffectsNotObserved": [
+        "dailyPoc",
+        "dailyValueArea",
+        "weeklyPoc",
+        "weeklyValueArea",
+        "monthlyPoc",
+        "monthlyValueArea",
+        "pocColor",
+        "valueAreaColor"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "absolute-levels",
+      "name": "Absolute Levels",
+      "category": "Market Structure",
+      "settings": 9,
+      "interactionChecks": 34,
+      "interactionErrors": 0,
+      "dropdownChoices": 7,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "firstValue",
+        "secondValue",
+        "firstLineWidth",
+        "secondLineWidth",
+        "useThemeColors",
+        "firstLineColor",
+        "secondLineColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "pivot-points",
+      "name": "Pivot Points",
+      "category": "Market Structure",
+      "settings": 17,
+      "interactionChecks": 42,
+      "interactionErrors": 0,
+      "dropdownChoices": 6,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "fontSize",
+        "lineWidth",
+        "periodsToShow",
+        "customReferenceEnabled",
+        "referenceValue",
+        "useThemeColors",
+        "pivotPointColor",
+        "r1Color",
+        "r2Color",
+        "s1Color",
+        "s2Color"
+      ],
+      "settingEffectsNotObserved": [
+        "customSessionEnabled"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "price-movement-levels",
+      "name": "Price Movement Levels",
+      "category": "Market Structure",
+      "settings": 20,
+      "interactionChecks": 52,
+      "interactionErrors": 0,
+      "dropdownChoices": 14,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "daysToLoad",
+        "stepValue",
+        "fontSize",
+        "minimumLevels",
+        "supportLineWidth",
+        "resistanceLineWidth",
+        "zeroLineWidth",
+        "useThemeColors",
+        "textColor",
+        "supportLineColor",
+        "resistanceLineColor",
+        "zeroLineColor"
+      ],
+      "settingEffectsNotObserved": [
+        "customTimeEnabled"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "fvg-identifier",
+      "name": "FVG Identifier",
+      "category": "Market Structure",
+      "settings": 11,
+      "interactionChecks": 36,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "no-series-on-this-fixture": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "minNumTicks",
+        "lineWidth",
+        "backgroundOpacity",
+        "useThemeColors",
+        "upColor",
+        "downColor"
+      ],
+      "settingEffectsNotObserved": [
+        "maxNumTicks",
+        "resetStartDay",
+        "removeOnShadowTriggered",
+        "maxBarsExtension",
+        "breakoutPercent"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "gap-detector",
+      "name": "Gap Detector",
+      "category": "Market Structure",
+      "settings": 9,
+      "interactionChecks": 31,
+      "interactionErrors": 0,
+      "dropdownChoices": 5,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "no-series-on-this-fixture": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "backgroundOpacity",
+        "useThemeColors",
+        "upColor",
+        "downColor"
+      ],
+      "settingEffectsNotObserved": [
+        "percentValue",
+        "tickValue",
+        "triggerWholeBar"
+      ],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "divergence-detector",
+      "name": "Divergence Detector",
+      "category": "Market Structure",
+      "settings": 20,
+      "interactionChecks": 48,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "confluence-identifier",
+      "name": "Confluence Identifier",
+      "category": "Market Structure",
+      "settings": 80,
+      "interactionChecks": 114,
+      "interactionErrors": 0,
+      "dropdownChoices": 21,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "swing-point",
+      "name": "Swing Point",
+      "category": "Market Structure",
+      "settings": 13,
+      "interactionChecks": 40,
+      "interactionErrors": 0,
+      "dropdownChoices": 9,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "leftBars",
+        "rightBars",
+        "filterSwing",
+        "lineWidth",
+        "textTickOffset",
+        "textSize",
+        "useThemeColors",
+        "highColor",
+        "lowColor",
+        "highTextColor",
+        "lowTextColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "average-daily-range-target",
+      "name": "Average Daily Range Target",
+      "category": "Market Structure",
+      "settings": 7,
+      "interactionChecks": 30,
+      "interactionErrors": 0,
+      "dropdownChoices": 6,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "length",
+        "fontSize",
+        "useThemeColors",
+        "backgroundColor",
+        "textColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "sessions",
+      "name": "Sessions",
+      "category": "Market Structure",
+      "settings": 39,
+      "interactionChecks": 52,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "session-highs-lows",
+      "name": "Session Highs & Lows",
+      "category": "Market Structure",
+      "settings": 30,
+      "interactionChecks": 30,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "ib-levels",
+      "name": "IB Levels",
+      "category": "Market Structure",
+      "settings": 43,
+      "interactionChecks": 53,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "gamma-levels",
+      "name": "Kwant Levels",
+      "category": "Market Structure",
+      "settings": 13,
+      "interactionChecks": 35,
+      "interactionErrors": 0,
+      "dropdownChoices": 8,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "classic-gex-profile",
+      "name": "Classic GEX Profile",
+      "category": "Market Structure",
+      "settings": 25,
+      "interactionChecks": 50,
+      "interactionErrors": 0,
+      "dropdownChoices": 12,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "session-marker",
+      "name": "Session Marker",
+      "category": "Market Structure",
+      "settings": 64,
+      "interactionChecks": 91,
+      "interactionErrors": 0,
+      "dropdownChoices": 6,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "shift-candle",
+      "name": "Shift Candle",
+      "category": "Market Structure",
+      "settings": 26,
+      "interactionChecks": 57,
+      "interactionErrors": 0,
+      "dropdownChoices": 8,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "moving-average",
+      "name": "Moving Average",
+      "category": "Trend",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "ichimoku-indicator",
+      "name": "Ichimoku Indicator",
+      "category": "Trend",
+      "settings": 39,
+      "interactionChecks": 67,
+      "interactionErrors": 0,
+      "dropdownChoices": 13,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "baseLinePeriod",
+        "laggingSpanPeriod",
+        "tenkanLineWidth",
+        "kijunLineWidth",
+        "chikouLineWidth",
+        "senkouLineWidth",
+        "tenkanNameLabel",
+        "tenkanValueLabel",
+        "kijunNameLabel",
+        "kijunValueLabel",
+        "chikouNameLabel",
+        "chikouValueLabel",
+        "senkouNameLabel",
+        "senkouValueLabel",
+        "tenkanIncludeOnAutoCenter",
+        "kijunIncludeOnAutoCenter",
+        "chikouIncludeOnAutoCenter",
+        "senkouIncludeOnAutoCenter",
+        "showCloud",
+        "cloudOpacity",
+        "useSecondaryAxis",
+        "useThemeColors",
+        "tenkanColor",
+        "kijunColor",
+        "chikouColor",
+        "senkouColor",
+        "senkouSecondaryColor",
+        "bullishCloudColor",
+        "bearishCloudColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "parabolic-sar",
+      "name": "Parabolic SAR",
+      "category": "Trend",
+      "settings": 10,
+      "interactionChecks": 34,
+      "interactionErrors": 0,
+      "dropdownChoices": 7,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "accelerationStep",
+        "accelerationMaximum",
+        "lineWidth",
+        "secondaryColorEnabled",
+        "useSecondaryAxis",
+        "useThemeColors",
+        "plotColor",
+        "secondaryColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "linear-regression",
+      "name": "Linear Regression",
+      "category": "Trend",
+      "settings": 10,
+      "interactionChecks": 33,
+      "interactionErrors": 0,
+      "dropdownChoices": 12,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "length",
+        "lineWidth",
+        "secondaryColorEnabled",
+        "useSecondaryAxis",
+        "useThemeColors",
+        "plotColor",
+        "secondaryColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "regression-channel",
+      "name": "Regression Channel",
+      "category": "Trend",
+      "settings": 22,
+      "interactionChecks": 54,
+      "interactionErrors": 0,
+      "dropdownChoices": 14,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "bars",
+        "standardDeviationValue",
+        "zigZagAbsoluteReversal",
+        "zigZagReversalValue",
+        "midLineWidth",
+        "upperLineWidth",
+        "lowerLineWidth",
+        "useThemeColors",
+        "midColor",
+        "midUpColor",
+        "midDownColor",
+        "upperColor",
+        "upperUpColor",
+        "upperDownColor",
+        "lowerColor",
+        "lowerUpColor",
+        "lowerDownColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "super-trend",
+      "name": "Super Trend",
+      "category": "Trend",
+      "settings": 21,
+      "interactionChecks": 45,
+      "interactionErrors": 0,
+      "dropdownChoices": 12,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "length",
+        "multiplier",
+        "lineWidth",
+        "useThemeColors",
+        "useSecondaryAxis",
+        "includeOnAutoCenter",
+        "valueLabel",
+        "nameLabel",
+        "nameBackground",
+        "valueBackground",
+        "chartColorForMarker",
+        "alertSoundEnabled",
+        "messagePopupEnabled",
+        "plotColor",
+        "secondaryColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "super-trend-difference",
+      "name": "Super Trend Difference",
+      "category": "Trend",
+      "settings": 16,
+      "interactionChecks": 39,
+      "interactionErrors": 0,
+      "dropdownChoices": 6,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "length",
+        "multiplier",
+        "lineWidth",
+        "useThemeColors",
+        "includeOnAutoCenter",
+        "valueLabel",
+        "nameLabel",
+        "nameBackground",
+        "valueBackground",
+        "chartColorForMarker",
+        "plotColor",
+        "secondaryColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "keltner-channel",
+      "name": "Keltner Channel",
+      "category": "Trend",
+      "settings": 6,
+      "interactionChecks": 30,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "middleColor",
+        "upperColor",
+        "lowerColor",
+        "length",
+        "atrLength",
+        "multiplier"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "bollinger-bands",
+      "name": "Bollinger Bands",
+      "category": "Trend",
+      "settings": 5,
+      "interactionChecks": 28,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "middleColor",
+        "upperColor",
+        "lowerColor",
+        "length",
+        "multiplier"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "donchian-channel",
+      "name": "Donchian Channel",
+      "category": "Trend",
+      "settings": 4,
+      "interactionChecks": 26,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "upperColor",
+        "middleColor",
+        "lowerColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "tillson-t3",
+      "name": "Tillson T3",
+      "category": "Trend",
+      "settings": 12,
+      "interactionChecks": 36,
+      "interactionErrors": 0,
+      "dropdownChoices": 14,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "length",
+        "volumeFactor",
+        "lineWidth",
+        "useSecondaryAxis",
+        "useThemeColors",
+        "plotColor",
+        "secondaryColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "zig-zag",
+      "name": "Zig Zag",
+      "category": "Trend",
+      "settings": 19,
+      "interactionChecks": 45,
+      "interactionErrors": 0,
+      "dropdownChoices": 7,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "absoluteReversalPercent",
+        "tickReversalOrLookback",
+        "lineWidth",
+        "useThemeColors",
+        "upColor",
+        "downColor",
+        "retracementBackgroundColor",
+        "retracementFontSize",
+        "retracementTextColor",
+        "retracementLineWidth",
+        "retracementLineColor",
+        "showRetracement38",
+        "showRetracement50",
+        "showRetracement62",
+        "showRetracement75",
+        "extendRight"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "relative-strength-index-rsi",
+      "name": "Relative Strength Index (RSI)",
+      "category": "Momentum",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "rate-of-change-roc",
+      "name": "Rate of Change (ROC)",
+      "category": "Momentum",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "macd-indicator",
+      "name": "MACD Indicator",
+      "category": "Momentum",
+      "settings": 6,
+      "interactionChecks": 30,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "macdColor",
+        "signalColor",
+        "histogramColor",
+        "fastLength",
+        "slowLength",
+        "signalLength"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "momentum-indicator",
+      "name": "Momentum Indicator",
+      "category": "Momentum",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "commodity-channel-index-cci",
+      "name": "Commodity Channel Index (CCI)",
+      "category": "Momentum",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "know-sure-thing-kst",
+      "name": "Know Sure Thing (KST)",
+      "category": "Momentum",
+      "settings": 44,
+      "interactionChecks": 78,
+      "interactionErrors": 0,
+      "dropdownChoices": 21,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "roc1",
+        "roc2",
+        "roc3",
+        "roc4",
+        "average1",
+        "average2",
+        "average3",
+        "average4",
+        "signalPeriod",
+        "usePercent",
+        "middleLevel",
+        "middleLineWidth",
+        "showMiddle",
+        "showKst",
+        "showSignal",
+        "kstLineWidth",
+        "signalLineWidth",
+        "kstNameLabel",
+        "signalNameLabel",
+        "kstValueLabel",
+        "signalValueLabel",
+        "kstNameBackground",
+        "signalNameBackground",
+        "kstValueBackground",
+        "signalValueBackground",
+        "kstChartMarker",
+        "signalChartMarker",
+        "kstAutoCenter",
+        "signalAutoCenter",
+        "useThemeColors",
+        "kstColor",
+        "kstSecondaryColor",
+        "signalColor",
+        "signalSecondaryColor",
+        "middleColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "inverse-cyber-cycle",
+      "name": "Inverse Cyber Cycle",
+      "category": "Momentum",
+      "settings": 31,
+      "interactionChecks": 60,
+      "interactionErrors": 0,
+      "dropdownChoices": 13,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "smoothingAlpha",
+        "cycleALength",
+        "cycleBLength",
+        "middleLevel",
+        "lowLevel",
+        "highLevel",
+        "levelWidth",
+        "cycleALineWidth",
+        "cycleBLineWidth",
+        "cycleANameLabel",
+        "cycleAValueLabel",
+        "cycleAIncludeOnAutoCenter",
+        "cycleBNameLabel",
+        "cycleBValueLabel",
+        "cycleBIncludeOnAutoCenter",
+        "useSecondaryAxis",
+        "useThemeColors",
+        "cycleAColor",
+        "cycleASecondaryColor",
+        "cycleBColor",
+        "cycleBSecondaryColor",
+        "middleLevelColor",
+        "lowLevelColor",
+        "highLevelColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "aroon-up-down",
+      "name": "Aroon Up/Down",
+      "category": "Momentum",
+      "settings": 3,
+      "interactionChecks": 25,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "upColor",
+        "downColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "aroon-oscillator",
+      "name": "Aroon Oscillator",
+      "category": "Momentum",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "awesome-oscillator",
+      "name": "Awesome Oscillator",
+      "category": "Momentum",
+      "settings": 3,
+      "interactionChecks": 26,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "fastLength",
+        "slowLength"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "stochastic-oscillator",
+      "name": "Stochastic Oscillator",
+      "category": "Momentum",
+      "settings": 4,
+      "interactionChecks": 27,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "kColor",
+        "dColor",
+        "length",
+        "smooth"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "williams-r",
+      "name": "Williams %R",
+      "category": "Momentum",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "chaikin-accumulation-distribution",
+      "name": "Chaikin Accumulation/Distribution",
+      "category": "Momentum",
+      "settings": 1,
+      "interactionChecks": 22,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2650,
+        "unsupported-chart-interval": 554,
+        "no-series-on-this-fixture": 196
+      },
+      "settingEffectsObserved": [
+        "plotColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "average-directional-index-adx",
+      "name": "Average Directional Index (ADX)",
+      "category": "Momentum",
+      "settings": 9,
+      "interactionChecks": 32,
+      "interactionErrors": 0,
+      "dropdownChoices": 4,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "period",
+        "lineWidth",
+        "showPlusDi",
+        "showMinusDi",
+        "useThemeColors",
+        "adxColor",
+        "plusDiColor",
+        "minusDiColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "vix-environment",
+      "name": "VIX Environment",
+      "category": "Volatility",
+      "settings": 19,
+      "interactionChecks": 44,
+      "interactionErrors": 0,
+      "dropdownChoices": 10,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "standard-deviation",
+      "name": "Standard Deviation",
+      "category": "Volatility",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "average-true-range-atr",
+      "name": "Average True Range (ATR)",
+      "category": "Volatility",
+      "settings": 2,
+      "interactionChecks": 24,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "plotColor",
+        "length"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "expected-move",
+      "name": "Expected Move",
+      "category": "Volatility",
+      "settings": 10,
+      "interactionChecks": 32,
+      "interactionErrors": 0,
+      "dropdownChoices": 5,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "overlay-chart",
+      "name": "Overlay Chart",
+      "category": "Overlays",
+      "settings": 17,
+      "interactionChecks": 41,
+      "interactionErrors": 0,
+      "dropdownChoices": 6,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "overlay-symbol",
+      "name": "Overlay Symbol",
+      "category": "Overlays",
+      "settings": 17,
+      "interactionChecks": 40,
+      "interactionErrors": 0,
+      "dropdownChoices": 6,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "overlay-timeframe-candlestick",
+      "name": "Overlay Timeframe Candlestick",
+      "category": "Overlays",
+      "settings": 11,
+      "interactionChecks": 33,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "overlay-timeframe-highlight",
+      "name": "Overlay Timeframe Highlight",
+      "category": "Overlays",
+      "settings": 30,
+      "interactionChecks": 60,
+      "interactionErrors": 0,
+      "dropdownChoices": 9,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "parameter1",
+        "colorBasedOnDelta",
+        "standardDeviation",
+        "enabled",
+        "borderWidth",
+        "bodyOpacity",
+        "shadowOpacity",
+        "showBackground",
+        "targetEnabled",
+        "targetLineWidth",
+        "extendLineLeft",
+        "showTargetText",
+        "textSize",
+        "summaryEnabled",
+        "volumeSummary",
+        "tradeSummary",
+        "summaryTextSize",
+        "summaryToView",
+        "useThemeColors",
+        "upColor",
+        "downColor",
+        "highColor",
+        "lowColor",
+        "textColor",
+        "summaryTextColor",
+        "askColor",
+        "bidColor"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "text-on-chart",
+      "name": "Text on Chart",
+      "category": "Overlays",
+      "settings": 5,
+      "interactionChecks": 27,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "calculation-matrix-checked",
+      "calculationMatrixCounts": {
+        "calculation-and-replay-safety-pass": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [
+        "fontSize",
+        "textColor",
+        "backgroundColor",
+        "useThemeColors"
+      ],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "source-code-indicator",
+      "name": "Source Code Indicator",
+      "category": "Overlays",
+      "settings": 0,
+      "interactionChecks": 8,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "kwant-stats",
+      "name": "KWANT Stats",
+      "category": "KWANT Systems",
+      "settings": 37,
+      "interactionChecks": 90,
+      "interactionErrors": 0,
+      "dropdownChoices": 32,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "hedge-levels",
+      "name": "Hedge Levels",
+      "category": "KWANT Systems",
+      "settings": 5,
+      "interactionChecks": 14,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-m-ivb",
+      "name": "KWANT-M IVB",
+      "category": "KWANT Systems",
+      "settings": 17,
+      "interactionChecks": 41,
+      "interactionErrors": 0,
+      "dropdownChoices": 4,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-pattern-builder",
+      "name": "KWANT Pattern Builder",
+      "category": "KWANT Systems",
+      "settings": 34,
+      "interactionChecks": 66,
+      "interactionErrors": 0,
+      "dropdownChoices": 121,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    },
+    {
+      "id": "deep-m-effort-nq",
+      "name": "Big Blocks",
+      "category": "KWANT Systems",
+      "settings": 28,
+      "interactionChecks": 54,
+      "interactionErrors": 0,
+      "dropdownChoices": 1,
+      "dispatchInventoried": true,
+      "calculationStatus": "dedicated-runtime-review-required",
+      "calculationMatrixCounts": {
+        "dedicated-runtime-required": 2846,
+        "unsupported-chart-interval": 554
+      },
+      "settingEffectsObserved": [],
+      "settingEffectsNotObserved": [],
+      "liveStatus": "not verified during a live exchange session",
+      "fullyVerified": false
+    }
+  ]
+}

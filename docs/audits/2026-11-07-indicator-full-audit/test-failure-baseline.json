@@ -1,0 +1,134 @@
+[
+  {
+    "key": "test:speed-of-tape-instant",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:vwap-family",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:delta-ladder",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:indicator-history-depth",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:fixed-range-volume-profile-levels",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:volume-profile-split",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:volume-profile-grouping",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:volume-profile-gradients",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:volume-profile-labels",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:initial-balance-timeframe",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:profile-indicator-parity",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:tpo-default-visuals",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:volume-profile-session-filter",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:indicator-settings-save",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:indicator-opacity",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:indicator-colour-controls",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:cvd-candle-direction",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:indicator-both-sides",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:value-area-rows",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:volume-profile-count",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:indicator-side-colours",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  },
+  {
+    "key": "test:value-area-percent",
+    "baselineExitCode": 1,
+    "workingExitCode": 1,
+    "preexisting": true
+  }
+]

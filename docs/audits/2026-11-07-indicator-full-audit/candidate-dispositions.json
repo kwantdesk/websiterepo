@@ -1,0 +1,778 @@
+[
+  {
+    "indicator": "Daily Volume Profile",
+    "id": "kwant-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "Weekly Volume Profile",
+    "id": "weekly-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "Monthly Volume Profile",
+    "id": "monthly-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "Session Volume Profile",
+    "id": "session-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "Composite Volume Profile",
+    "id": "composite-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "Visible Range Volume Profile",
+    "id": "visible-range-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "Custom Draw-On Volume Profile",
+    "id": "custom-draw-on-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "Ask/Bid Volume Profile",
+    "id": "ask-bid-volume-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "Delta Profile",
+    "id": "delta-profile",
+    "key": "sessionSelectionArmed",
+    "value": false,
+    "status": "private compatibility metadata; not a displayed input",
+    "consumer": "src/lib/chartIndicatorConfig.ts"
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band1",
+    "value": 1,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band2",
+    "value": 2,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band3",
+    "value": 3,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band4",
+    "value": 4,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP",
+    "id": "vwap",
+    "key": "band5",
+    "value": 5,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band1",
+    "value": 1,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band2",
+    "value": 2,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band3",
+    "value": 3,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band4",
+    "value": 4,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "VWAP Envelopes",
+    "id": "vwap-envelopes",
+    "key": "band5",
+    "value": 5,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band1",
+    "value": 1,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band2",
+    "value": 2,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band3",
+    "value": 3,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band4",
+    "value": 4,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "Rolling VWAP",
+    "id": "rolling-vwap",
+    "key": "band5",
+    "value": 5,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/chartIndicatorEngine.ts"
+  },
+  {
+    "indicator": "Sessions",
+    "id": "sessions",
+    "key": "tokyoTimezone",
+    "value": "America/New_York",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Sessions",
+    "id": "sessions",
+    "key": "londonTimezone",
+    "value": "America/New_York",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Sessions",
+    "id": "sessions",
+    "key": "newYorkTimezone",
+    "value": "America/New_York",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "globexLabel",
+    "value": "Globex",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "globexTimezone",
+    "value": "America/Chicago",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "tokyoTimezone",
+    "value": "America/Chicago",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "londonTimezone",
+    "value": "America/Chicago",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "newYorkTimezone",
+    "value": "America/Chicago",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "globexStart",
+    "value": "17:00",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Session Highs & Lows",
+    "id": "session-highs-lows",
+    "key": "globexEnd",
+    "value": "16:00",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "ibDuration15",
+    "value": false,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "ibDuration30",
+    "value": false,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "ibDuration45",
+    "value": false,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "ibDuration60",
+    "value": false,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "globexLabel",
+    "value": "Globex",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "globexStart",
+    "value": "18:00",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "globexEnd",
+    "value": "17:00",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "IB Levels",
+    "id": "ib-levels",
+    "key": "globexColor",
+    "value": "#A461BB",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/marketSessions.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianHighColor",
+    "value": "#22C55E",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianLowColor",
+    "value": "#EF4444",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianImbalanceHighColor",
+    "value": "#4ADE80",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianImbalanceLowColor",
+    "value": "#F87171",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianOpenColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianCloseColor",
+    "value": "#94A3B8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianSessionRangeColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianImbalanceRangeColor",
+    "value": "#94A3B8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianMidColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "asianVwapColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeHighColor",
+    "value": "#22C55E",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeLowColor",
+    "value": "#EF4444",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeImbalanceHighColor",
+    "value": "#4ADE80",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeImbalanceLowColor",
+    "value": "#F87171",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeOpenColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeCloseColor",
+    "value": "#94A3B8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeSessionRangeColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeImbalanceRangeColor",
+    "value": "#94A3B8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeMidColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "europeVwapColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaHighColor",
+    "value": "#22C55E",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaLowColor",
+    "value": "#EF4444",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaImbalanceHighColor",
+    "value": "#4ADE80",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaImbalanceLowColor",
+    "value": "#F87171",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaOpenColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaCloseColor",
+    "value": "#94A3B8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaSessionRangeColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaImbalanceRangeColor",
+    "value": "#94A3B8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaMidColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Session Marker",
+    "id": "session-marker",
+    "key": "usaVwapColor",
+    "value": "#38BDF8",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/sessionMarker.ts"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "midUpColor",
+    "value": "#22C55E",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/indicatorPlotColors.ts"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "midDownColor",
+    "value": "#EF4444",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/indicatorPlotColors.ts"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "upperUpColor",
+    "value": "#22C55E",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/indicatorPlotColors.ts"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "upperDownColor",
+    "value": "#EF4444",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/indicatorPlotColors.ts"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "lowerUpColor",
+    "value": "#22C55E",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/indicatorPlotColors.ts"
+  },
+  {
+    "indicator": "Regression Channel",
+    "id": "regression-channel",
+    "key": "lowerDownColor",
+    "value": "#EF4444",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/indicatorPlotColors.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1Enabled",
+    "value": true,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1ASource",
+    "value": "close",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1AOffset",
+    "value": 0,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1AValue",
+    "value": 0,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1BSource",
+    "value": "unused",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1BOffset",
+    "value": 0,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1BValue",
+    "value": 0,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1LeftMath",
+    "value": "+",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1Comparator",
+    "value": ">",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1CSource",
+    "value": "open",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1COffset",
+    "value": 0,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1CValue",
+    "value": 0,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1DSource",
+    "value": "unused",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1DOffset",
+    "value": 0,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1DValue",
+    "value": 0,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition1RightMath",
+    "value": "+",
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition2Enabled",
+    "value": false,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition3Enabled",
+    "value": false,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  },
+  {
+    "indicator": "KWANT Pattern Builder",
+    "id": "deep-pattern-builder",
+    "key": "condition4Enabled",
+    "value": false,
+    "status": "dynamic runtime key; literal-reference search is not a dead-setting test",
+    "consumer": "src/lib/deepPatternBuilder.ts"
+  }
+]

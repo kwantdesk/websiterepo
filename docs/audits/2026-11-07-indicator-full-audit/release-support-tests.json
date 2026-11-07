@@ -1,0 +1,26 @@
+[
+  {
+    "key": "test:indicator-templates",
+    "exitCode": 1
+  },
+  {
+    "key": "test:indicator-library-favorites",
+    "exitCode": 0
+  },
+  {
+    "key": "test:indicator-visibility",
+    "exitCode": 1
+  },
+  {
+    "key": "test:no-native-controls",
+    "exitCode": 1
+  },
+  {
+    "key": "test:indicator-numeric-sliders",
+    "exitCode": 0
+  },
+  {
+    "key": "test:volume-profile-settings-live",
+    "exitCode": 0
+  }
+]
