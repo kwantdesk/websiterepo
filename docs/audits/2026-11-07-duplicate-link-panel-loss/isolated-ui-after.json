@@ -1,0 +1,145 @@
+{
+  "snapshots": [
+    {
+      "label": "initial",
+      "visible": [
+        "source-nq"
+      ],
+      "stored": [
+        {
+          "id": "source-nq",
+          "timeframe": "5m"
+        }
+      ],
+      "tree": {
+        "type": "pane",
+        "paneId": "source-nq"
+      }
+    },
+    {
+      "label": "duplicate",
+      "visible": [
+        "source-nq",
+        "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53"
+      ],
+      "stored": [
+        {
+          "id": "source-nq",
+          "timeframe": "5m"
+        },
+        {
+          "id": "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53",
+          "timeframe": "5m"
+        }
+      ],
+      "tree": {
+        "type": "split",
+        "id": "split-34538b86-913c-4291-ad9f-3720452f6b97",
+        "axis": "x",
+        "ratio": 50,
+        "first": {
+          "type": "pane",
+          "paneId": "source-nq"
+        },
+        "second": {
+          "type": "pane",
+          "paneId": "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53"
+        }
+      }
+    },
+    {
+      "label": "one-minute",
+      "visible": [
+        "source-nq",
+        "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53"
+      ],
+      "stored": [
+        {
+          "id": "source-nq",
+          "timeframe": "5m"
+        },
+        {
+          "id": "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53",
+          "timeframe": "1m"
+        }
+      ],
+      "tree": {
+        "type": "split",
+        "id": "split-34538b86-913c-4291-ad9f-3720452f6b97",
+        "axis": "x",
+        "ratio": 50,
+        "first": {
+          "type": "pane",
+          "paneId": "source-nq"
+        },
+        "second": {
+          "type": "pane",
+          "paneId": "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53"
+        }
+      }
+    },
+    {
+      "label": "linked",
+      "visible": [
+        "source-nq",
+        "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53"
+      ],
+      "stored": [
+        {
+          "id": "source-nq",
+          "timeframe": "1m"
+        },
+        {
+          "id": "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53",
+          "timeframe": "1m"
+        }
+      ],
+      "tree": {
+        "type": "split",
+        "id": "split-34538b86-913c-4291-ad9f-3720452f6b97",
+        "axis": "x",
+        "ratio": 50,
+        "first": {
+          "type": "pane",
+          "paneId": "source-nq"
+        },
+        "second": {
+          "type": "pane",
+          "paneId": "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53"
+        }
+      }
+    },
+    {
+      "label": "peer-sync",
+      "visible": [
+        "source-nq",
+        "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53"
+      ],
+      "stored": [
+        {
+          "id": "source-nq",
+          "timeframe": "1m"
+        },
+        {
+          "id": "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53",
+          "timeframe": "1m"
+        }
+      ],
+      "tree": {
+        "type": "split",
+        "id": "split-34538b86-913c-4291-ad9f-3720452f6b97",
+        "axis": "x",
+        "ratio": 50,
+        "first": {
+          "type": "pane",
+          "paneId": "source-nq"
+        },
+        "second": {
+          "type": "pane",
+          "paneId": "charts-pane-d83a8ffd-fde9-442c-a857-a960cfd62a53"
+        }
+      }
+    }
+  ],
+  "errors": []
+}

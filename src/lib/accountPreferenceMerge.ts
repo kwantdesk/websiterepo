@@ -1,3 +1,4 @@
+import { mergeWorkspacePanePreferences } from "./workspacePanePreferences.ts";
 import { CHART_SETTINGS_STORAGE_KEY, mergeChartSettingsChanges } from './chartSettings.ts';
 import { workspaceScopeStorageKey } from './chartWorkspaceScope.ts';
 import { reconcileThemeChoice } from './themeChoice.ts';
@@ -238,5 +239,6 @@ export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, loca
   values = reconcileThemeChoice(values, remote.values, base.values, local.values);
   values = mergeDrawingClearBarriers(local.values, remote.values, values);
   values = mergeWorkspacePresetPreferences(base.values, local.values, remote.values, values);
+  values = mergeWorkspacePanePreferences(base.values, local.values, remote.values, values);
   return { version: 1, complete: true, updatedAt: same(values, remote.values) ? remote.updatedAt : new Date().toISOString(), values };
 }
