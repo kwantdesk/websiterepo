@@ -6,7 +6,6 @@ export type ChartIndicatorCategory =
   | "Trend"
   | "Momentum"
   | "Volatility"
-  | "Overlays"
   | "KWANT Systems";
 
 export type ChartIndicatorDefinition = {
@@ -63,7 +62,6 @@ export const CHART_INDICATOR_CATEGORIES: ChartIndicatorCategory[] = [
   "Trend",
   "Momentum",
   "Volatility",
-  "Overlays",
   "KWANT Systems",
 ];
 
@@ -193,12 +191,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Average True Range (ATR)", "Volatility", "Average true trading range."),
   indicator("Expected Move", "Volatility", "The options market's priced one-sigma travel for the session - a top and bottom rail from ATM implied volatility, anchored at the session open.", false, "Kwantify"),
 
-  indicator("Overlay Chart", "Overlays", "Independent-symbol and independent-timeframe comparison with a secondary price axis.", false, "Kwantify"),
-  indicator("Overlay Symbol", "Overlays", "A second Rithmic instrument kept on the active chart timeframe.", false, "Kwantify"),
-  indicator("Overlay Timeframe Candlestick", "Overlays", "Live higher-timeframe candles aggregated over the active chart with optional close boundaries.", false, "Kwantify"),
-  indicator("Overlay Timeframe Highlight", "Overlays", "Highlights higher-timeframe candle boundaries."),
-  indicator("Text on Chart", "Overlays", "Data-driven text labels on the chart."),
-  indicator("Source Code Indicator", "Overlays", "A sandboxed Pine Script v5/v6 compatibility indicator authored or imported in Kwant Desk.", false, "Kwantify"),
 
   indicator("KWANT Stats", "KWANT Systems", "Per-bar bid/ask volume, delta, trade pace, exhaustion and effort statistics.", true, "Kwantify"),
   indicator("Big Blocks", "KWANT Systems", "Instrument-adaptive futures effort blocks anchored behind price.", true, "Reference", "Deep M Effort NQ"),
