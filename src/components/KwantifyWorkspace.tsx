@@ -2492,7 +2492,8 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     symbol: pane.symbol ?? fallback.symbol,
     broker,
     timeframe,
-    period: pane.period ?? "5D",
+    // Load-range selection is coming soon; saved ranges use five sessions.
+    period: "5D",
     watchlistKey: pane.watchlistKey ?? makeWatchlistKey(pane.symbol ?? fallback.symbol, pane.broker ?? fallback.broker),
     // Existing saved workspaces predate mixed panels and are chart panes.
     content: pane.content === null || isWorkspacePanelKind(pane.content) ? pane.content : "charts",
@@ -10883,7 +10884,7 @@ export default function KwantifyWorkspace({
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [selectedWatchlistKey, setSelectedWatchlistKey] = useState<string>(initialWorkspacePane.watchlistKey);
   const [selectedTimeframe, setSelectedTimeframe] = useState(initialWorkspacePane.timeframe);
-  const [selectedPeriod, setSelectedPeriod] = useState(initialWorkspacePane.period);
+  const [selectedPeriod, setSelectedPeriod] = useState("5D");
   const [chartLoadingMessage, setChartLoadingMessage] = useState("");
   const [feedErrorByBroker, setFeedErrorByBroker] = useState<Record<string, string>>({});
   const [streamHealthyByBroker, setStreamHealthyByBroker] = useState<Record<string, boolean>>({});
@@ -13811,7 +13812,7 @@ export default function KwantifyWorkspace({
     if (!nextPane) return;
     if (selectedInstrument !== nextPane.symbol) setSelectedInstrument(nextPane.symbol);
     if (selectedTimeframe !== nextPane.timeframe) setSelectedTimeframe(nextPane.timeframe);
-    if (selectedPeriod !== nextPane.period) setSelectedPeriod(nextPane.period);
+    if (selectedPeriod !== "5D") setSelectedPeriod("5D");
     if (connectedBroker !== nextPane.broker) setConnectedBroker(nextPane.broker);
     if (selectedWatchlistKey !== nextPane.watchlistKey) setSelectedWatchlistKey(nextPane.watchlistKey);
   }, [preferencesReady, activeWorkspacePane, connectedBroker, selectedInstrument, selectedPeriod, selectedTimeframe, selectedWatchlistKey]);
@@ -18835,6 +18836,7 @@ export default function KwantifyWorkspace({
   };
 
   const handleChartPeriod = (paneId: string, period: string) => {
+    if (period !== "5D") return;
     clearBacktest();
     updateWorkspacePane(paneId, { period });
     if (paneId === activePaneId) {
@@ -19692,7 +19694,7 @@ export default function KwantifyWorkspace({
         chartInstanceId={workspaceChartInstanceId(chartWorkspaceScope, pane.id)}
         active={activePaneId === pane.id}
         embedded
-        period={pane.period}
+        period="5D"
         settings={chartSettings}
         crosshairLinked={linkedCrosshairPaneIds.has(pane.id)}
         candlesVisible={!candlesHiddenPaneIds.has(pane.id)}
@@ -20692,16 +20694,18 @@ export default function KwantifyWorkspace({
                 <div className="max-h-[560px] overflow-y-auto p-2">
                   <div className="mb-1 flex flex-wrap items-center gap-2 border-b border-border/60 px-2 pb-2.5">
                     <div>
-                      <div className="text-[11px] font-medium text-foreground">Load range</div>
-                      <div className="text-[9px] text-muted">How much history loads into this chart · standard is 5D</div>
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-foreground">Load range<span className="rounded-md border border-border px-1.5 py-0.5 text-[9px] font-normal text-muted">Coming soon</span></div>
+                      <div className="text-[9px] text-muted">Automatically loads five trading days</div>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center gap-1">
                       {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
                         <button
                           key={range}
                           type="button"
-                          onClick={() => handleChartPeriod(activePaneId, range)}
-                          className={`rounded-lg border px-2 py-1.5 font-mono text-[10px] transition-colors ${selectedPeriod === range ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-foreground hover:border-border hover:bg-surface"}`}
+                          disabled
+                          aria-pressed={range === "5D"}
+                          title="Load range selection is coming soon. Charts automatically load five trading days."
+                          className={`cursor-default rounded-lg border px-2 py-1.5 font-mono text-[10px] ${range === "5D" ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-muted opacity-40"}`}
                         >
                           {range}
                         </button>
