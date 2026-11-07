@@ -1,6 +1,7 @@
 "use client";
 
 import { isInsideKwantDatePicker } from "@/components/ui/KwantDatePicker";
+import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
 import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import SuperTrendIndicatorSettings from "@/components/SuperTrendIndicatorSettings";
 import { GAMMA_ENVIRONMENT_SOURCES } from "@/lib/chartGammaConversion";
@@ -2236,6 +2237,25 @@ export default function ChartIndicatorsControl({
               </div>
             </div>
             <IndicatorSettingsSections key={settingsDefinition.id}>
+              {MOMENTUM_INDICATOR_IDS.has(settingsDefinition.id) ? (
+                <div data-settings-section="General" className="space-y-2 rounded-xl border border-border bg-surface/40 px-4 py-3">
+                  <span className="block text-[11px] font-medium text-foreground">Chart area</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[["pane", "Bottom indicator"], ["chart", "On candle chart"]].map(([value, label]) => (
+                      <button key={value} type="button"
+                        aria-pressed={(settingsInstance.settings?.chartArea === "chart" ? "chart" : "pane") === value}
+                        onClick={() => replace(settingsInstance.instanceId, current => ({ ...current,
+                          settings: { ...current.settings, chartArea: value },
+                        }))}
+                        className={`h-9 rounded-xl border px-3 text-[11px] transition-colors ${(settingsInstance.settings?.chartArea === "chart" ? "chart" : "pane") === value
+                          ? "border-primary/40 bg-primary/10 text-foreground" : "border-border bg-background text-muted hover:text-foreground"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="block text-[9px] text-muted">On-chart momentum uses its own scale, separate from candle prices.</span>
+                </div>
+              ) : null}
               <label className="flex items-center justify-between rounded-xl border border-border bg-surface/40 px-4 py-3">
                 <span>
                   <span className="block text-[11px] font-medium text-foreground">Visible</span>

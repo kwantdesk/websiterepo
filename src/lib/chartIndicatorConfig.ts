@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
 import { normalizeGammaEnvironmentSource } from "@/lib/chartGammaConversion";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 import { BIG_BLOCKS_OPTIONS_DEFAULTS } from "@/lib/bigBlocksOptions";
@@ -1669,6 +1670,7 @@ export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSe
   indicatorSettingsFromTheme(indicatorId, sidedTheme(rawTheme));
 
 const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
+  ...(MOMENTUM_INDICATOR_IDS.has(indicatorId) ? { chartArea: "pane" } : {}),
   ...(indicatorId === "big-blocks-options" ? { ...BIG_BLOCKS_OPTIONS_DEFAULTS,
     callColor: theme?.upColor ?? BIG_BLOCKS_OPTIONS_DEFAULTS.callColor,
     putColor: theme?.downColor ?? BIG_BLOCKS_OPTIONS_DEFAULTS.putColor } : {}),
@@ -4591,7 +4593,10 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
 // intentionally whitelist their own inputs, so keep this validated shared key
 // outside those whitelists rather than silently dropping it on Save/restore.
 export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): ChartIndicatorInstance => {
-  const normalized = normalizeStoredIndicatorCore(instance);
+  let normalized = normalizeStoredIndicatorCore(instance);
+  if (MOMENTUM_INDICATOR_IDS.has(normalized.indicatorId)) normalized = {
+    ...normalized, settings: { ...normalized.settings, chartArea: instance.settings?.chartArea === "chart" ? "chart" : "pane" },
+  };
   const requested = instance.settings?.gradientPreset;
   if (requested === undefined) return normalized;
   const gradientPreset = requested === VOLUME_PROFILE_GRADIENT_OFF

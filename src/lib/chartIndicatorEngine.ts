@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { applyMomentumPlacement } from "@/lib/momentumPlacement";
 import { candleDeltaPath } from "@/lib/candleDeltaPath";
 import { clipReplayIndicatorSeries, replayCausalCandles, replaySafeIndicators } from "@/lib/replayIndicatorSafety";
 import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
@@ -362,8 +363,8 @@ export function calculateIndicatorSeries(
   const safeContext = clock == null ? context : { ...context,
     footprintBars: context.footprintBars?.filter(bar => bar.timestamp <= clock),
   };
-  return clipReplayIndicatorSeries(calculateUnclippedIndicatorSeries(safeInstance,
-    replayCausalCandles(candles, clock), theme, safeContext), clock);
+  return applyMomentumPlacement(safeInstance, clipReplayIndicatorSeries(calculateUnclippedIndicatorSeries(safeInstance,
+    replayCausalCandles(candles, clock), theme, safeContext), clock));
 }
 
 function calculateUnclippedIndicatorSeries(

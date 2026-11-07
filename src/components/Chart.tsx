@@ -184,6 +184,7 @@ import {
   type IvRankResourceState,
 } from "@/lib/impliedVolatilityRankClient";
 import { legibleOn, readableTextOn } from "@/lib/readableContrast";
+import { momentumOnChart, momentumScaleMargins } from "@/lib/momentumPlacement";
 import ChartIndicatorPanes, {
   type IndicatorPaneDock,
   type IndicatorPaneGroup,
@@ -8615,6 +8616,7 @@ function Chart({
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
+      if (momentumOnChart(instance)) return [];
       if (instance.indicatorId === "speed-of-tape") {
         const source = normalizeSimpleSpeedOfTapeSettings(instance.settings);
         const visible = visibleIndicatorTheme(settings);
@@ -18061,11 +18063,13 @@ function Chart({
       const options = kind === "histogram"
         ? {
             color: definition.color,
+            priceScaleId: definition.priceScaleId ?? "right",
             lastValueVisible: false,
             priceLineVisible: false,
           }
         : {
             color: definition.color,
+            priceScaleId: definition.priceScaleId ?? "right",
             lineWidth: definition.lineWidth ?? 2,
             lineStyle: definition.lineStyle === "dashed"
               ? LineStyle.Dashed
@@ -18207,6 +18211,8 @@ function Chart({
     });
   }, [calculatedIndicatorSeries, chartReadyRevision, settings.backgroundColor, priceFormat.precision]);
 
+  const momentumOverlayScaleIds = [...new Set(calculatedIndicatorSeries.flatMap(definition =>
+    definition.priceScaleId?.startsWith("momentum-") ? [definition.priceScaleId] : []))].join("\0");
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
@@ -18223,7 +18229,12 @@ function Chart({
         bottom: desiredBottomMargin * marginScale,
       },
     });
-  }, [chartReadyRevision, indicatorPaneHeight, overlaySize.height, topIndicatorPaneHeight]);
+    for (const id of momentumOverlayScaleIds.split("\0").filter(Boolean)) chartRef.current?.priceScale(id).applyOptions({
+      autoScale: true,
+      visible: false,
+      scaleMargins: momentumScaleMargins(desiredTopMargin * marginScale, desiredBottomMargin * marginScale),
+    });
+  }, [momentumOverlayScaleIds, chartReadyRevision, indicatorPaneHeight, overlaySize.height, topIndicatorPaneHeight]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
