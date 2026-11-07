@@ -225,7 +225,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "overlay-chart",
   "overlay-symbol",
   "overlay-timeframe-candlestick",
-  "deep-m-ivb",
   "classic-gex-profile",
   "tpo-levels",
   "expected-move",

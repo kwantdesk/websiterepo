@@ -201,7 +201,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Source Code Indicator", "Overlays", "A sandboxed Pine Script v5/v6 compatibility indicator authored or imported in Kwant Desk.", false, "Kwantify"),
 
   indicator("KWANT Stats", "KWANT Systems", "Per-bar bid/ask volume, delta, trade pace, exhaustion and effort statistics.", true, "Kwantify"),
-  indicator("KWANT-M IVB", "KWANT Systems", "RTH opening-range environment with empirical protection, average and deviation projections.", false, "Kwantify", "Deep-M IVB"),
   indicator("Big Blocks", "KWANT Systems", "Instrument-adaptive futures effort blocks anchored behind price.", true, "Reference", "Deep M Effort NQ"),
 ];
 
