@@ -128,7 +128,7 @@ test('actual viewport callback rejects old timeline transforms and coalesces one
     renderedTimelineRef: { current: 1 }, projectionRevisionRef: { current: () => 2 },
     timelineRedrawPendingRef: { current: false },
     viewportProjectionRef: { current: { toX: t => t * 100, toY: p => p * 100 } },
-    forceRedraw: () => redraws++, settle() {},
+    forceRedraw: () => redraws++, settle() {}, alignFixedMarkers() {}, alignFixedMarkers() {},
   };
   vm.createContext(sandbox);
   vm.runInContext(callback + '\nglobalThis.paint = onViewport;', sandbox);
@@ -150,7 +150,7 @@ test('ordinary pan/zoom still uses synchronous affine compensation without React
     drawingsGroupRef: { current: { setAttribute: (k,v) => attributes.set(k,v), removeAttribute: k => attributes.delete(k) } },
     renderedTimelineRef: { current: 1 }, projectionRevisionRef: { current: () => 1 }, timelineRedrawPendingRef: { current: false },
     viewportProjectionRef: { current: { toX: t => t * 20 + 7, toY: p => (105 - p) * 20 + 3 } },
-    forceRedraw: () => redraws++, settle() {},
+    forceRedraw: () => redraws++, settle() {}, alignFixedMarkers() {},
   };
   vm.createContext(sandbox); vm.runInContext(callback + '\nglobalThis.paint = onViewport;', sandbox); sandbox.paint();
   assert.equal(attributes.get('transform'), 'translate(7 3) scale(2 2)');

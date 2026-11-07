@@ -540,6 +540,7 @@ export default function ChartDrawLayer({
   const projectionBasisRef = useRef<{
     timeA: number; timeB: number; priceA: number; priceB: number;
     xA: number; xB: number; yA: number; yB: number;
+    positionAnchors?: Array<{ time: number; price: number; x: number; y: number }>;
   } | null>(null);
   const drawingsGroupRef = useRef<SVGGElement | null>(null);
   const renderedTimelineRef = useRef<number | undefined>(undefined);
@@ -568,8 +569,16 @@ export default function ChartDrawLayer({
     const yA = toY(priceA);
     const yB = toY(priceB);
     if (xA == null || xB == null || yA == null || yB == null || xA === xB || yA === yB) return null;
-    return { timeA, timeB, priceA, priceB, xA, xB, yA, yB };
-  }, [candles, toX, toY]);
+    const positionAnchors = drawings
+      .filter(drawing => drawing.tool === "longPosition" || drawing.tool === "shortPosition")
+      .flatMap(drawing => drawing.points)
+      .flatMap(point => {
+        const x = toX(point.time), y = toY(point.price);
+        return x != null && y != null && Number.isFinite(x) && Number.isFinite(y)
+          ? [{ time: point.time, price: point.price, x, y }] : [];
+      });
+    return { timeA, timeB, priceA, priceB, xA, xB, yA, yB, positionAnchors };
+  }, [candles, drawings, toX, toY]);
 
   // BEFORE paint, not after.
   //
@@ -671,6 +680,25 @@ export default function ChartDrawLayer({
       }
       const dx = xA - scaleX * basis.xA;
       const dy = yA - scaleY * basis.yA;
+      // The full chart timeline includes other series and compressed gaps.
+      // Its endpoints can move without the calculator's interval changing by
+      // the same scale. Check its actual anchors before stretching the SVG;
+      // otherwise a bounded box can be expanded across the entire viewport.
+      for (const anchor of basis.positionAnchors ?? []) {
+        const x = projection.toX(anchor.time), y = projection.toY(anchor.price);
+        if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)
+          || Math.abs(x - (dx + scaleX * anchor.x)) > 0.75
+          || Math.abs(y - (dy + scaleY * anchor.y)) > 0.75) {
+          group.removeAttribute("transform");
+          group.setAttribute("visibility", "hidden");
+          alignFixedMarkers();
+          if (!timelineRedrawPendingRef.current) {
+            timelineRedrawPendingRef.current = true;
+            forceRedraw((value) => value + 1);
+          }
+          return;
+        }
+      }
       if (dx === 0 && dy === 0 && scaleX === 1 && scaleY === 1) {
         group.removeAttribute("transform");
         alignFixedMarkers();
