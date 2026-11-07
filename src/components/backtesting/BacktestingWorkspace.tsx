@@ -1971,9 +1971,6 @@ export default function BacktestingWorkspace({
                       );
                     })}
                   </div>
-                  <div className="border-t border-border px-4 py-2.5 text-[10px] leading-4 text-muted">
-                    Range and Renko use the contract tick size. Volume, trade and delta bars use native historical CME executions.
-                  </div>
                 </div>
               ) : null}
             </div>

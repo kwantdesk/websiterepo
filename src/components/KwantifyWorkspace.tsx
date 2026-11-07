@@ -20796,11 +20796,6 @@ export default function KwantifyWorkspace({
                     );
                   })}
                 </div>
-                {activeChartBrokerLabel === "Databento" ? (
-                  <div className="border-t border-border px-4 py-2.5 text-[10px] leading-4 text-muted">
-                    Range and Renko use the contract&apos;s tick size. Volume, trade and delta bars use native CME executions.
-                  </div>
-                ) : null}
               </div>,
               document.body,
             ) : null}
