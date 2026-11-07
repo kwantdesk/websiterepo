@@ -220,7 +220,7 @@ export function createOrderflowModel(){
 export function renderOrderflow(ctx, width, height, options = {}) {
   const data = options.model ? options.model(options) : makeOrderflowSeries(options);
   const settings = options.settings || {}, view = options.view || {};
-  const axisColor = themeInk(false,settings.lightMode?'#353535':'#b9b9b9');
+  const axisColor = themeInk(true,settings.lightMode?'#353535':'#b9b9b9');
   const gridColor = settings.lightMode ? themePaint("#dddddd") : themePaint("#303030");
   const spotColor = orderflowThemeColor(settings.spotColor ?? themePaint("white"), themePaint("white"), settings.lightMode, settings.spotIsCustomized);
   const profilesVisible = (options.profileSlots || []).some(slot => slot.show === true);
@@ -276,7 +276,7 @@ export function renderOrderflow(ctx, width, height, options = {}) {
   };
   ctx.save();
   ctx.fillStyle = settings.background || (settings.lightMode ? themePaint("#ffffff") : themePaint("#111111")); ctx.fillRect(0, 0, width, height);
-  ctx.font = '12px Aleph, sans-serif, sans-serif'; ctx.lineWidth = 1;
+  ctx.font = '11px Aleph, sans-serif'; ctx.lineWidth = 1;
   for (let tick = 0; tick <= 4; tick++) {
     const fraction = tick / 4, y = bottom - fraction * (bottom - top);
     if (settings.showGrid !== false) { ctx.strokeStyle = gridColor;ctx.lineWidth=.2;ctx.setLineDash([2,2]); ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();ctx.setLineDash([]);ctx.lineWidth=1; }

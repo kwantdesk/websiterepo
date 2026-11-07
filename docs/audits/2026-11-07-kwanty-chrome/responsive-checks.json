@@ -1,0 +1,261 @@
+{
+  "checks": [
+    {
+      "width": 1920,
+      "height": 86,
+      "buttons": [
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28
+      ],
+      "overflow": false,
+      "groups": [
+        {
+          "x": 849.5625,
+          "y": 8,
+          "width": 220.859375,
+          "height": 28,
+          "scroll": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "width": 833.5625,
+          "height": 44,
+          "scroll": false
+        },
+        {
+          "x": 1078.421875,
+          "y": 0,
+          "width": 833.578125,
+          "height": 44,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 86,
+      "buttons": [
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28
+      ],
+      "overflow": false,
+      "groups": [
+        {
+          "x": 609.5625,
+          "y": 8,
+          "width": 220.859375,
+          "height": 28,
+          "scroll": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "width": 593.5625,
+          "height": 44,
+          "scroll": false
+        },
+        {
+          "x": 838.421875,
+          "y": 0,
+          "width": 593.578125,
+          "height": 44,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 86,
+      "buttons": [
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28
+      ],
+      "overflow": false,
+      "groups": [
+        {
+          "x": 529.5625,
+          "y": 8,
+          "width": 220.859375,
+          "height": 28,
+          "scroll": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "width": 513.5625,
+          "height": 44,
+          "scroll": false
+        },
+        {
+          "x": 758.421875,
+          "y": 0,
+          "width": 513.578125,
+          "height": 44,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 130,
+      "buttons": [
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28
+      ],
+      "overflow": false,
+      "groups": [
+        {
+          "x": 795.140625,
+          "y": 8,
+          "width": 220.859375,
+          "height": 28,
+          "scroll": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "width": 779.140625,
+          "height": 44,
+          "scroll": false
+        },
+        {
+          "x": 8,
+          "y": 44,
+          "width": 1008,
+          "height": 44,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 130,
+      "buttons": [
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28,
+        28
+      ],
+      "overflow": false,
+      "groups": [
+        {
+          "x": 539.140625,
+          "y": 8,
+          "width": 220.859375,
+          "height": 28,
+          "scroll": false
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "width": 523.140625,
+          "height": 44,
+          "scroll": false
+        },
+        {
+          "x": 8,
+          "y": 44,
+          "width": 752,
+          "height": 44,
+          "scroll": false
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "externalNetworkBlocked": true
+}

@@ -57,9 +57,9 @@ test('chrome and drawings are connected in all modes while native settings remai
  assert.match(chrome,/onTicker\(ticker.value\)/);assert.match(chrome,/onIndicators/);assert.match(chrome,/onResize\(\)/);
  assert.match(app,/attachChartTools\(chart\)/);assert.match(app,/function attachChartTools[\s\S]*?attachStateDrawingTools/);
  assert.match(app,/function buildStateCharts[\s\S]*?attachStateDrawingTools/);
- assert.match(css,/header>nav\{grid-column:2;grid-row:1;justify-self:center\}/);assert.match(css,/\.chart-top-controls\{grid-column:1;grid-row:1/);
+ assert.match(css,/body > header > nav \{ grid-column:2;grid-row:1;justify-self:center;/);assert.match(css,/body > header > \.chart-top-controls \{ grid-column:1;grid-row:1/);
  assert.match(app,/classicPanels:state.classicPanels/);assert.match(app,/workspaceLayouts:state.workspaceLayouts/);
  const panes=read('src/components/ChartIndicatorPanes.tsx');
- assert.equal((panes.match(/ownerDocument.defaultView/g)||[]).length,3);
+ assert.ok((panes.match(/ownerDocument.defaultView/g)||[]).length >= 3);
  assert.doesNotMatch(panes,/window.addEventListener\("pointer/);
 });

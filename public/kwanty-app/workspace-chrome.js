@@ -1,6 +1,14 @@
 export function mountWorkspaceChrome({onTicker,onAdd,onLayout,onIndicators,layout}){
  const header=document.querySelector('header'),controls=document.querySelector('.chart-top-controls'),sidebar=document.querySelector('#ticker');
  const actions=document.createElement('div');actions.className='workspace-header-actions';header.append(actions);
+ // Keep selectors in the primary row; quick picks get their own wrapping lane.
+ // They must never squeeze the centered mode tabs or action buttons off-screen.
+ const shortcuts=document.createElement('div');shortcuts.className='chart-quick-controls';shortcuts.setAttribute('role','toolbar');shortcuts.setAttribute('aria-label','Quick chart selections');
+ const quickGroup=document.createElement('div');quickGroup.className='chart-quick-picks';
+ for(const selector of ['.timeframe-buttons','#tickerFavourites']){const group=controls.querySelector(selector);if(group)quickGroup.append(group);}
+ shortcuts.append(quickGroup);header.append(shortcuts);
+ const phone=matchMedia('(max-width:767px), (max-height:500px) and (pointer:coarse)');
+ const placeShortcuts=()=>{(phone.matches?controls:header).append(shortcuts);};placeShortcuts();phone.addEventListener('change',placeShortcuts);
  const ticker=document.createElement('select');ticker.id='workspaceInstrument';ticker.className='instrument-trigger';ticker.setAttribute('aria-label','Chart instrument');controls.prepend(ticker);
  ticker.addEventListener('change',()=>onTicker(ticker.value));
  const sync=()=>{if(ticker.options.length!==sidebar.options.length||ticker.options[0]?.value!==sidebar.options[0]?.value){ticker.replaceChildren(...[...sidebar.options].map(option=>option.cloneNode(true)));}ticker.value=sidebar.value;};
@@ -17,10 +25,19 @@ export function mountWorkspaceChrome({onTicker,onAdd,onLayout,onIndicators,layou
  actions.append(utilities);
  const select=document.createElement('select');select.id='workspaceLayout';select.setAttribute('aria-label','Chart layout');
  for(const [value,label]of [['stack','Stack'],['columns','Side by side'],['grid','Grid']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
- select.value=layout;select.onchange=()=>onLayout(select.value);controls.append(select);
+ select.value=layout;select.onchange=()=>onLayout(select.value);shortcuts.append(select);
  const indicators=document.createElement('button');indicators.type='button';indicators.className='kwanty-command';
  indicators.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18M8 16v-3m5 3V8m5 8v-5"/></svg><span>Indicators</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';indicators.setAttribute('aria-label','Chart indicators');indicators.onclick=onIndicators;actions.prepend(indicators);
- return {sync,dispose:()=>observer.disconnect(),layout:value=>select.value=value};
+ const panels=document.querySelector('#chartPanels');
+ const paintHeaderIcons=()=>{for(const button of panels.querySelectorAll('.panel-tools button,.panel-drag-handle')){
+  if(button.dataset.chromeIcon)continue;
+  const label=button.getAttribute('aria-label')||'';
+  const path=label==='Reset chart scaling'?'M3 12a9 9 0 0 1 15-6l3 3M21 3v6h-6M21 12a9 9 0 0 1-15 6l-3-3M3 21v-6h6':label.startsWith('Close ')?'m18 6-12 12M6 6l12 12':label.startsWith('Settings for ')?'M4 6h4m4 0h8M4 12h10m4 0h2M4 18h2m4 0h10M8 3v6m6 0v6M6 15v6':label.startsWith('Open profile overlay')?'M3 3h18v18H3zM9 3v18M3 9h18':null;
+  if(!path)continue;
+  button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+path+'"/></svg>';button.dataset.chromeIcon='true';
+ }};
+ const panelObserver=new MutationObserver(paintHeaderIcons);panelObserver.observe(panels,{childList:true});paintHeaderIcons();
+ return {sync,dispose:()=>{observer.disconnect();panelObserver.disconnect();phone.removeEventListener('change',placeShortcuts);},layout:value=>select.value=value};
 }
 
 export function arrangeWorkspacePanels(container,panels,layout,onReorder,onResize=()=>{}){

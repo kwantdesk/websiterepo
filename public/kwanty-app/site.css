@@ -1,10 +1,9 @@
 *{font-family:Aleph,sans-serif!important;scrollbar-color:var(--site-muted) var(--site-background);scrollbar-width:thin}
 :root,body,body.light{--bg:var(--site-background);--panel:var(--site-panel);--border:var(--site-border);--text:var(--site-foreground);--muted:var(--site-muted);background:var(--site-background);color:var(--site-foreground)}
-header{height:38px;min-height:38px;background:var(--site-panel);border-color:var(--site-border)}
-header,body.light header{background:var(--site-panel)!important;color:var(--site-foreground)!important}.panel-title,body.light .panel-title{color:var(--site-muted)!important}
-body{height:100vh;overflow:hidden}main{height:calc(100vh - 38px)}
+.panel-title{color:var(--site-muted)!important}
+body{height:100dvh;overflow:hidden}
 #charts,aside{height:100%;min-height:0}.panel-title{left:112px}
-button,select,input,dialog{border-radius:3px!important;background:var(--site-surface)!important;color:var(--site-foreground)!important;border-color:var(--site-border)!important}
+button,select,input,dialog{border-radius:8px!important;background:var(--site-surface)!important;color:var(--site-foreground)!important;border-color:var(--site-border)!important}
 button.selected,button[aria-pressed=true]{color:var(--site-primary)!important;border-color:var(--site-primary)!important}
 aside,dialog,.dialog-head,.side-heading{background:var(--site-panel)!important;color:var(--site-foreground)!important}
 #themeToggle{display:none!important}[data-kwanty-diagnostic]{display:none!important}
@@ -24,11 +23,9 @@ body[data-phone-workspace=kwanty] #workspaceReplay[aria-pressed=true] { color:va
 body[data-phone-workspace=kwanty] .template-overflow-menu button { justify-content:flex-start;text-align:left; }
 .bot-template-actions{display:flex;gap:5px;margin-left:auto}.bot-template-actions button{font-size:11px}
 #chartEmpty{inset:0;top:0;width:100%;height:100%;padding:0}
-@media(max-width:700px){header{flex-wrap:nowrap;gap:4px;padding:4px}header nav{gap:3px}.bot-template-actions{overflow:auto;min-width:0}}
 
-.workspace-header-actions .bot-template-actions{overflow:visible;flex-shrink:0}.template-overflow{position:relative}.template-overflow summary{cursor:pointer;list-style:none;padding:7px 8px;font-size:10px;font-weight:600;text-transform:uppercase}.template-overflow-menu{position:absolute;right:0;top:100%;min-width:156px;z-index:100;display:flex;flex-direction:column;padding:4px;background:var(--site-panel);border:1px solid var(--site-border);border-radius:8px}
 
-.state-chart-content{position:absolute;inset:32px 0 0;min-height:0}
+.state-chart-content{position:absolute;inset:40px 0 0;min-height:0}
 .state-chart-content canvas{margin-left:36px;width:calc(100% - 36px);height:100%}
 .state-drawing-host{position:absolute;inset:0;pointer-events:none;z-index:24}
 .state-draw-rail{position:absolute;inset:0 auto 0 0;width:36px;display:flex;flex-direction:column;align-items:center;gap:2px;overflow-y:auto;scrollbar-width:none;border-right:1px solid var(--site-border);background:var(--site-background);pointer-events:auto;padding:3px 0}
@@ -43,44 +40,11 @@ body[data-phone-workspace=kwanty] .template-overflow-menu button { justify-conte
 .state-profile-status{position:absolute;pointer-events:none;font-size:10px;color:var(--site-muted);background:var(--site-background);max-width:220px;padding:2px 4px}
 .state-draw-text{position:absolute;left:45px;top:15px;z-index:55;pointer-events:auto;background:var(--site-panel);padding:10px;border:1px solid var(--site-border)}
 .state-draw-text label{display:flex;gap:8px}.state-draw-text button{padding:4px 8px;margin-top:6px;font-size:11px}
-/* Normal-chart-sized controls, centered in the same row as the mode tabs. */
-header{display:grid;grid-template-columns:minmax(180px,1fr) auto minmax(180px,1fr);gap:8px;padding:0 10px;background:var(--site-background)!important}
-header>nav{justify-self:start;min-width:0}header>nav button{height:28px;padding:0 10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.075em;background:transparent!important}
-header>.header-links{display:none}.bot-template-actions{grid-column:3;justify-self:end;margin:0;gap:5px}.bot-template-actions button{height:28px;padding:0 9px;font-size:10px;text-transform:uppercase;letter-spacing:.075em;background:transparent!important}
-.chart-top-controls{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;grid-column:2;grid-row:1}
-.chart-top-controls button,.chart-top-controls select,.chart-top-controls .kwant-choice-trigger{height:28px;min-height:28px;padding:0 7px;font-size:10px;font-weight:600;background:transparent!important;border:1px solid var(--site-border)}
-.chart-top-controls select{width:auto}.chart-top-controls .kwant-choice-trigger{min-width:44px;max-width:100px}.chart-top-controls .timeframe-buttons{display:flex;gap:2px;align-items:center}
-.timeframe-buttons button{border-color:transparent;padding:0 8px}.timeframe-buttons button.selected{background:var(--site-surface)!important;border-color:var(--site-border)!important;color:var(--site-primary)!important}
-.active-chart-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-.ticker-favourites{display:flex;gap:2px;align-items:center;min-width:0;max-width:220px;overflow-x:auto;flex:0 1 auto;scrollbar-width:thin}
-.ticker-favourites[hidden]{display:none}.ticker-favourites button{flex:0 0 auto;white-space:nowrap}
-.ticker-favourites button[aria-pressed=true]{background:var(--site-surface)!important}
-.chart-panel{display:flex;flex-direction:column;min-height:130px;outline:none;border:1px solid transparent}
-.chart-panel.active-chart{border-color:color-mix(in srgb,var(--site-primary) 55%,var(--site-border))}.chart-panel:focus-visible{outline:1px solid var(--site-primary);outline-offset:-2px}
-.chart-panel{position:relative}.panel-source-status{position:absolute;inset:30px 0 0;display:grid;place-items:center;pointer-events:none;color:var(--site-muted);font-size:12px}.panel-source-status[hidden]{display:none}
-.panel-header{height:30px;min-height:30px;display:flex;align-items:center;gap:8px;padding:0 8px;border-bottom:1px solid var(--site-border);background:var(--site-background)}
-.panel-header .panel-title{position:static;left:auto;top:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.05em;flex:1;color:var(--site-foreground)!important}
-.panel-interval{color:var(--site-muted);font-size:10px}.panel-header .panel-tools,.chart-panel:first-child .panel-tools{position:static;margin-left:auto;right:auto;top:auto;display:flex;gap:3px}
-.panel-tools button{width:24px;height:24px;padding:2px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;background:transparent!important;color:var(--site-muted)!important}.panel-tools button:hover{border-color:var(--site-border);color:var(--site-primary)!important}
-.panel-tools button[aria-pressed=true]{border-color:var(--site-primary);color:var(--site-primary)!important;background:var(--site-surface)!important}.panel-tools svg{width:14px;height:14px}
-.chart-panel canvas{height:calc(100% - 30px);min-height:0;flex:1}main{min-height:0}
-@media(max-width:1000px){header{height:72px;min-height:72px;grid-template-columns:1fr 1fr;grid-template-rows:34px 34px;gap:0 6px}header>nav{grid-column:1;grid-row:1}.bot-template-actions{grid-column:2;grid-row:1}.chart-top-controls{grid-column:1/-1;grid-row:2;overflow-x:auto;justify-content:center}main{height:calc(100vh - 72px)}}
-@media(max-width:550px){.timeframe-buttons{display:none!important}.chart-top-controls{justify-content:center}.bot-template-actions button{padding:0 5px;font-size:9px}header>nav button{padding:0 6px;font-size:9px}}
 #chartPanels.state-multi-panels{overflow-y:auto;overscroll-behavior:contain}
 #chartPanels.state-multi-panels .chart-panel{min-height:220px;flex-shrink:0}
 .state-panel-control{padding:8px 0;border-bottom:1px solid var(--site-border)}
 .state-panel-control>button,.state-panel-control>select{width:100%;margin:3px 0;text-align:left}
 .state-panel-control>button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#addStateChart{flex-shrink:0}
-/* Shared Charts chrome: instrument/timeframes left, modes truly centered. */
-header>nav{grid-column:2;grid-row:1;justify-self:center}
-.chart-top-controls{grid-column:1;grid-row:1;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
-.chart-top-controls>*{flex-shrink:0}
-.chart-top-controls .instrument-trigger{min-width:76px;max-width:140px}
-.workspace-header-actions{grid-column:3;grid-row:1;display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
-.workspace-header-actions .bot-template-actions{display:flex;grid-column:auto;overflow-x:auto;min-width:0}
-.workspace-header-actions button{height:28px;padding:0 8px;font-size:10px;font-weight:600;letter-spacing:.075em;text-transform:uppercase;background:transparent!important;border-color:transparent!important}
-#workspaceLayout{width:70px}
 #addStateChart{display:none!important}
 .kwanty-indicator-panes{position:absolute;left:36px;right:0;bottom:0;height:0;overflow:hidden;pointer-events:auto;z-index:25;background:var(--site-background)}
 #chartPanels{overflow:auto;overscroll-behavior:contain}
@@ -93,66 +57,109 @@ header>nav{grid-column:2;grid-row:1;justify-self:center}
 #chartPanels[data-layout=columns]>.panel-divider,#chartPanels[data-layout=grid]>.panel-divider{display:none}
 #chartPanels[data-layout=columns]>.chart-panel,#chartPanels[data-layout=grid]>.chart-panel{min-width:0;min-height:220px}
 .panel-drag-handle{cursor:grab;touch-action:none}.chart-panel[data-drag-over=true]{outline:2px solid var(--site-primary);outline-offset:-2px}
-@media(max-width:1200px){header{height:72px;min-height:72px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-rows:34px 34px;gap:0 6px}header>nav{grid-column:2;grid-row:1}.workspace-header-actions{grid-column:3;grid-row:1}.chart-top-controls{grid-column:1/-1;grid-row:2;justify-content:flex-start;overflow-x:auto}main{height:calc(100vh - 72px)}}
-@media(max-width:600px){header{grid-template-columns:auto minmax(0,1fr)}header>nav{grid-column:1;justify-self:start}.workspace-header-actions{grid-column:2}.workspace-header-actions .bot-template-actions{display:none}.chart-top-controls{grid-column:1/-1}.timeframe-buttons{display:flex!important}#chartPanels[data-layout=grid]{grid-template-columns:minmax(240px,1fr)}}
 
-/* Match the Charts command deck: 44px rows, 28px controls and themed panels.
-   Phone controls keep their dedicated drawer in phone-workspace.css. */
-@media (min-width:768px) {
-  body { --kwanty-command-row:var(--kwant-workspace-command-row); --kwanty-command-height:var(--kwant-workspace-command-height); }
+/* One command layout. Quick picks wrap below it instead of creating scrollbars. */
+header { background:var(--site-panel)!important;color:var(--site-foreground)!important; }
+header > .header-links,.active-chart-label { display:none; }
+.chart-top-controls,.workspace-header-actions,.chart-quick-controls,.chart-quick-picks,
+.timeframe-buttons,.ticker-favourites,.bot-template-actions { display:flex;align-items:center;gap:6px;min-width:0; }
+.chart-top-controls,.workspace-header-actions { flex-wrap:wrap; }
+.chart-quick-controls { flex-wrap:wrap;justify-content:space-between; }
+.chart-quick-picks { flex:1;flex-wrap:wrap;gap:12px; }
+.timeframe-buttons,.ticker-favourites { flex-wrap:wrap;gap:2px; }
+.ticker-favourites[hidden] { display:none; }
+.timeframe-buttons { padding-right:10px;border-right:1px solid var(--site-border); }
+.workspace-header-actions .kwanty-command,.bot-template-actions .kwanty-command,
+header nav button,.chart-quick-controls button {
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:28px;min-height:28px;padding:0 10px;box-sizing:border-box;
+  font:600 10px/1 Aleph,sans-serif;letter-spacing:.075em;text-transform:uppercase;
+  white-space:nowrap;border:1px solid transparent!important;border-radius:8px!important;
+  color:var(--site-muted)!important;background:transparent!important;
+}
+.workspace-header-actions button:hover,header nav button:hover,.chart-quick-controls button:hover,
+header button.selected,header button[aria-pressed=true],header button[aria-expanded=true] {
+  color:var(--site-foreground)!important;background:var(--site-surface)!important;
+}
+header button.selected,header button[aria-pressed=true] { border-color:var(--site-border)!important; }
+.chart-top-controls :is(select,.kwant-choice-trigger),.chart-quick-controls :is(select,.kwant-choice-trigger) {
+  height:28px;min-height:28px;width:auto;max-width:145px;padding:0 10px;
+  border:1px solid var(--site-border);font-size:11px;font-weight:500;white-space:nowrap;
+}
+.chart-quick-controls .kwant-choice-trigger { background:var(--site-surface)!important;border:1px solid var(--site-border)!important;letter-spacing:0;text-transform:none;color:var(--site-foreground)!important; }
+.chart-top-controls #workspaceInstrument + .kwant-choice-trigger { min-width:76px; }
+.bot-template-actions { flex-shrink:0;margin:0; }
+.template-overflow { position:relative; }
+.template-overflow > summary { list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;color:var(--site-muted); }
+.template-overflow > summary::-webkit-details-marker { display:none; }
+.template-overflow > summary:hover,.template-overflow[open] > summary { color:var(--site-foreground);background:var(--site-surface); }
+.template-overflow-menu,.kwanty-workspace-menu {
+  position:fixed;z-index:13000;display:flex;flex-direction:column;gap:4px;width:260px;
+  max-width:calc(100vw - 16px);max-height:min(480px,70dvh);overflow:auto;
+  padding:8px;background:var(--site-panel);color:var(--site-foreground);
+  border:1px solid var(--site-border);border-radius:12px;box-shadow:0 12px 32px #0003;
+}
+.template-overflow:not([open]) > .template-overflow-menu,.kwanty-workspace-menu[hidden] { display:none; }
+.kwanty-workspace-menu button,.template-overflow-menu button {
+  display:flex;align-items:center;gap:8px;justify-content:flex-start;text-align:left;
+  padding:9px 10px;min-height:32px;height:auto;border:0!important;border-radius:8px!important;
+  background:transparent!important;color:var(--site-foreground)!important;font-size:12px;letter-spacing:0;text-transform:none;
+}
+.kwanty-workspace-menu button:hover,.template-overflow-menu button:hover { background:var(--site-surface)!important; }
+.kwanty-workspace-menu .workspace-menu-heading { padding:6px 10px;color:var(--site-muted);font-size:10px;letter-spacing:.1em;text-transform:uppercase; }
+.kwanty-workspace-menu .workspace-menu-divider { height:1px;margin:4px 0;background:var(--site-border); }
+.kwanty-command-utilities { margin:0;padding:0;border:0; }
+.kwanty-workspace-dialog { position:fixed;inset:0;margin:auto;width:min(420px,calc(100vw - 24px));height:max-content;padding:20px;border-radius:16px!important; }
+.kwanty-workspace-dialog h2 { font-size:18px;margin:0 0 16px; }
+.kwanty-workspace-dialog input { width:100%;padding:10px 12px;border:1px solid var(--site-border);outline:none; }
+.kwanty-workspace-dialog .workspace-dialog-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:16px; }
+.kwanty-workspace-dialog::backdrop { background:#0006; }
+
+/* The same compact, readable pane chrome in Classic, State and Order Flow. */
+#charts { min-height:0; }
+.chart-panel { border:1px solid var(--site-border);border-radius:8px;min-width:0;isolation:isolate; }
+.chart-panel.active-chart { border-color:var(--site-border); }
+.panel-header { position:relative;z-index:26;display:flex;align-items:center;gap:8px;flex:0 0 40px;height:40px;min-height:40px;padding:0 8px;background:var(--site-panel);border-bottom:1px solid var(--site-border); }
+.panel-header .panel-title { position:static;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--site-foreground)!important; }
+.panel-header .panel-interval { font-size:11px;color:var(--site-muted); }
+.panel-header .panel-tools,.chart-panel:first-child .panel-tools { position:static;display:flex;gap:3px;flex-shrink:0;margin-left:auto; }
+.panel-tools button { display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:4px;border:0;background:transparent!important;color:var(--site-muted)!important; }
+.panel-tools button:hover,.panel-tools button[aria-pressed=true] { background:var(--site-surface)!important;color:var(--site-foreground)!important; }
+.panel-tools svg { width:16px;height:16px; }
+.panel-drag-handle { flex-shrink:0;width:20px;height:28px;padding:0;border:0;font-size:14px;color:var(--site-muted)!important;background:transparent!important; }
+.chart-panel canvas { min-height:0;flex:1;height:calc(100% - 40px); }
+.state-chart-content { inset:40px 0 0; }
+.state-chart-content > canvas { height:100%;flex:none; }
+.panel-source-status { position:absolute;inset:40px 0 0;display:grid;place-items:center;pointer-events:none;font-size:12px;color:var(--site-muted); }
+.panel-source-status[hidden] { display:none; }
+.state-draw-rail { padding:4px 0;gap:4px; }
+.state-draw-rail button { height:30px;width:30px;border-color:var(--site-border)!important; }
+.panel-divider { background:var(--site-background);height:5px;flex-basis:5px; }
+.panel-divider:hover { background:var(--site-surface); }
+
+@media(min-width:768px) {
+  body { display:flex;flex-direction:column; }
   body > header {
     display:grid;grid-template-columns:minmax(0,1fr) max-content minmax(0,1fr);
-    grid-template-rows:var(--kwanty-command-row);gap:0;padding:0;
-    height:var(--kwanty-command-height);min-height:var(--kwanty-command-height);
-    box-sizing:border-box;border-bottom:1px solid var(--site-border);
-    background:var(--site-panel)!important;
+    grid-template-rows:auto auto;gap:0 8px;height:auto;min-height:0;padding:0 8px;
+    flex-shrink:0;white-space:normal;border-bottom:1px solid var(--site-border);
   }
-  body > main { height:calc(100dvh - var(--kwanty-command-height)); }
-  body > header > :is(.chart-top-controls,nav,.workspace-header-actions) {
-    min-width:0;height:var(--kwanty-command-row);min-height:var(--kwanty-command-row);
-    box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 var(--kwant-workspace-command-inset);
-  }
-  body > header > .chart-top-controls {
-    grid-column:1;grid-row:1;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;
-    scrollbar-width:thin;
-  }
-  body > header > nav { grid-column:2;grid-row:1;justify-self:center;gap:4px; }
-  body > header > .workspace-header-actions {
-    grid-column:3;grid-row:1;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
-  }
-  body > header > .workspace-header-actions > :first-child { margin-inline-start:auto; }
-  body > header :is(button,select,.kwant-choice-trigger) {
-    flex-shrink:0;box-sizing:border-box;height:var(--kwant-workspace-command-control);min-height:var(--kwant-workspace-command-control);max-height:var(--kwant-workspace-command-control);
-    padding:0 10px;font-size:10px;font-weight:600;letter-spacing:.075em;line-height:1;
-    border-radius:var(--kwant-control-radius)!important;white-space:nowrap;
-  }
-  body > header :is(nav,.workspace-header-actions) button,
-  body > header .timeframe-buttons button,body > header .ticker-favourites button {
-    border:1px solid transparent!important;background:transparent!important;color:var(--site-muted)!important;
-  }
-  body > header :is(button:hover,button.selected,button[aria-pressed=true],button[aria-expanded=true]) {
-    color:var(--site-foreground)!important;background:var(--site-surface)!important;
-  }
-  body > header :is(button.selected,button[aria-pressed=true]) { border-color:var(--site-border)!important; }
-  body > header :is(.timeframe-buttons,.ticker-favourites) { gap:2px;flex-shrink:0; }
-  body > header .ticker-favourites { max-width:none;overflow:visible; }
-  body > header .timeframe-buttons { padding-right:8px;border-right:1px solid var(--site-border); }
-  body > header .kwant-choice-trigger { width:auto;min-width:58px;max-width:160px; }
-  body > header #workspaceInstrument + .kwant-choice-trigger { min-width:76px; }
-  body > header #workspaceLayout + .kwant-choice-trigger { min-width:108px; }
-  body > header .bot-template-actions { flex-shrink:0;gap:2px;overflow:visible; }
-  body > header .template-overflow-menu { position:fixed;top:var(--kwanty-command-height);right:12px; }
-  body > header .template-overflow summary {
-    padding:0 10px;height:28px;display:flex;align-items:center;font-size:10px;
-    color:var(--site-muted);border-radius:var(--kwant-control-radius);
-  }
-  body > header .template-overflow summary:hover,
-  body > header .template-overflow[open] summary { color:var(--site-foreground);background:var(--site-surface); }
+  body > header > .chart-top-controls { grid-column:1;grid-row:1;min-height:44px;padding:6px 0; }
+  body > header > nav { grid-column:2;grid-row:1;justify-self:center;align-self:center;gap:2px; }
+  body > header > .workspace-header-actions { grid-column:3;grid-row:1;justify-content:flex-end;min-height:44px;padding:6px 0; }
+  body > header > .chart-quick-controls { grid-column:1 / -1;grid-row:2;min-height:40px;padding:6px 0;border-top:1px solid var(--site-border); }
+  body > main { flex:1;min-height:0;height:0; }
+  #charts,aside { height:100%;min-height:0; }
+  #workspaceLayout { width:auto; }
 }
-@media (min-width:768px) and (max-width:1279px) {
-  body { --kwanty-command-height:calc(2 * var(--kwanty-command-row) + 1px); }
-  body > header { grid-template-columns:minmax(0,1fr) max-content;grid-template-rows:repeat(2,var(--kwanty-command-row)); }
-  body > header > .chart-top-controls { grid-column:1 / -1;grid-row:1; }
-  body > header > nav { grid-column:1;grid-row:2;justify-self:center; }
-  body > header > .workspace-header-actions { grid-column:2;grid-row:2; }
+@media(min-width:768px) and (max-width:1199px) {
+  body > header { grid-template-columns:minmax(0,1fr) auto; }
+  body > header > nav { grid-column:2;grid-row:1; }
+  body > header > .workspace-header-actions { grid-column:1 / -1;grid-row:2;border-top:1px solid var(--site-border); }
+  body > header > .chart-quick-controls { grid-row:3; }
+}
+@media(max-width:767px) {
+  .chart-quick-controls { width:100%;padding-bottom:8px; }
+  .chart-quick-picks { width:100%;flex-basis:100%; }
+  .kwant-embed-phone-drawer > :is(.chart-top-controls,.workspace-header-actions,#sidebar) { flex:0 0 auto!important; }
 }
