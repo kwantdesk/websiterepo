@@ -1259,9 +1259,7 @@ export default function GammaWorkspace() {
               </div>
             </Panel>
 
-            <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-panel px-4 py-3 text-[10px] leading-5 text-muted sm:flex-row sm:items-center sm:justify-between">
-              <span>GEX is raw call + dealer-signed put exposure. Gamma strength is normalized for the selected asset as |net GEX| / gross GEX: weak &lt;5%, moderate &lt;15%, strong &lt;30%, and extreme ≥30%; below 0.5% is neutral/balanced. Walls, magnet, centre and put-support candidates are transparent Kwantify rankings inside a ±3% near-the-money band; support candidates are concentrations, not guaranteed price floors. 0DTE uses expiration {data.session.sessionDate}. Open interest can lag the session open. {data.marketData.mode === "FUTURES" ? `${data.marketData.symbol} ticks independently; options levels use the last sane concurrent futures/source ratio, recalibrated every 10 minutes and immediately on a contract roll.` : "Chart and option strikes share the cash-underlying scale; price ticks do not reposition published levels."}</span>
-            </div>
+
             </>
           </div>
         )}
