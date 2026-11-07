@@ -230,7 +230,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "classic-gex-profile",
   "tpo-levels",
   "expected-move",
-  "hedge-levels",
   "divergence-detector",
   "source-code-indicator",
 ]);
