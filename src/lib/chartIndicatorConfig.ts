@@ -221,7 +221,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "on-candle-stats",
   "gamma-levels",
   "classic-gex-profile",
-  "tpo-levels",
   "expected-move",
   "divergence-detector",
 ]);

@@ -133,7 +133,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Delta Profile", "Volume & Profiles", "Net aggressive volume distributed by price.", true, "Kwantify"),
   indicator("KWANT Profile Swing", "Volume & Profiles", "Automatically anchors profiles to price swings.", true, "Reference", "Deep Profile Swing"),
   indicator("KWANT Profile Values", "Volume & Profiles", "POC, value area, VWAP, peaks and valleys without profile bars.", true, "Reference", "Deep Profile Values"),
-  indicator("TPO Levels", "Volume & Profiles", "Automated TPO rejection zones - tails, single prints, ledges, failed auctions, profile edges and low-time seams from completed RTH sessions.", false, "Kwantify"),
   indicator("VWAP", "Volume & Profiles", "Session volume-weighted average price.", false, "Kwantify"),
   indicator("VWAP Envelopes", "Volume & Profiles", "VWAP with configurable standard-deviation envelopes."),
   indicator("Rolling VWAP", "Volume & Profiles", "Continuous rolling-period VWAP.", false, "Kwantify"),
