@@ -30,6 +30,11 @@ feed.kwantdesk.com {
 		reverse_proxy support-desk:8797
 	}
 
+	# Read-only recorded option contracts, isolated from the live feed.
+	handle /v1/market-data/options-vwap {
+		reverse_proxy heat-cell-history:8798
+	}
+
 	handle {
 		reverse_proxy gateway:8793 {
 			# Server-sent events must not be buffered or the chart stream

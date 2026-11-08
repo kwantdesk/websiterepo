@@ -3,16 +3,16 @@ import type { GexFlowPayload } from "./gexFlow";
 type Listener = (payload: GexFlowPayload | null, error: string | null) => void;
 /** One bounded snapshot request per ticker across panes, never per candle/tick. */
 export function createBigOptionsFeed(fetcher: typeof fetch = fetch) {
-  const feeds = new Map<string, { listeners: Set<Listener>; stop: () => void; latest: GexFlowPayload | null }>();
+  const feeds = new Map<string, { listeners: Set<Listener>; stop: () => void; latest: GexFlowPayload | null; rates: Map<Listener, number> }>();
   return {
-    subscribe(symbol: string, listener: Listener) {
+    subscribe(symbol: string, listener: Listener, options: { refreshMs?: number } = {}) {
       let feed = feeds.get(symbol);
       if (!feed) {
         const listeners = new Set<Listener>();
         let stopped = false, failures = 0;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const controller = new AbortController();
-        const entry = { listeners, latest: null as GexFlowPayload | null, stop() { stopped = true; clearTimeout(timer); controller.abort(); } };
+        const entry = { listeners, rates: new Map<Listener, number>(), latest: null as GexFlowPayload | null, stop() { stopped = true; clearTimeout(timer); controller.abort(); } };
         feed = entry;
         feeds.set(symbol, entry);
         const load = async () => {
@@ -32,7 +32,7 @@ export function createBigOptionsFeed(fetcher: typeof fetch = fetch) {
             entry.latest = payload;
             failures = 0;
             for (const callback of listeners) callback(payload, null);
-            delay = payload.marketOpen ? Math.max(3000, Math.min(30000, payload.refreshAfterMs || 3000)) : 60000;
+            delay = payload.marketOpen ? Math.max(Math.min(...entry.rates.values(), 30000), Math.min(30000, payload.refreshAfterMs || 3000)) : 60000;
           } catch (error) {
             if (stopped) return;
             failures++;
@@ -47,12 +47,14 @@ export function createBigOptionsFeed(fetcher: typeof fetch = fetch) {
       }
       const active = feed;
       active.listeners.add(listener);
+      active.rates.set(listener, Math.max(3000, Math.min(30000, options.refreshMs ?? 3000)));
       if (active.latest) listener(active.latest, null);
       let released = false;
       return () => {
         if (released) return;
         released = true;
         active.listeners.delete(listener);
+        active.rates.delete(listener);
         if (!active.listeners.size) { active.stop(); feeds.delete(symbol); }
       };
     },

@@ -289,6 +289,8 @@ import {
   NativeVolumeProfilePrimitive,
   type NativeVolumeProfileModel,
 } from "@/lib/nativeVolumeProfilePrimitive";
+import { useOptionsVwapHistory } from "@/components/useOptionsVwapHistory";
+import { calculateOptionsVwap } from "@/lib/optionsVwap";
 import { buildTpoProfiles } from "@/lib/tpo/engine";
 import { requestTpoProfileBuild, cancelTpoProfileBuild } from "@/lib/tpo/workerClient";
 import { tpoCalculationSettingsKey, validateTpoSettings } from "@/lib/tpo/settings";
@@ -8335,8 +8337,21 @@ function Chart({
       });
     } });
 
+  const optionsVwapState = useOptionsVwapHistory(indicators.some(item=>item.enabled && item.indicatorId === "options-vwap"), instrument,
+    sampledIndicatorCandles[0]?.timestamp ?? NaN, sampledIndicatorCandles.at(-1)?.timestamp ?? NaN,replayTimestampMs !== null);
+  const optionsVwapHistory = optionsVwapState.payload;
   const baseCalculatedIndicatorSeries = useMemo(
-    () => indicators.flatMap((instance) => {
+    () => indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
+      if (instance.indicatorId === "options-vwap") {
+        if (!instance.enabled || !optionsVwapHistory || optionsVwapHistory.symbol !== instrument) return [];
+        const config=instance.settings ?? {};
+        return [{key:instance.instanceId+"-options-vwap",groupKey:instance.instanceId,label:"Options VWAP · observed contracts",kind:"line",placement:"overlay",
+          color:config.useThemeColors !== false ? visibleIndicatorTheme(settings).primary : String(config.plotColor ?? config.lineColor ?? "#22D3EE"),
+          lineWidth:Math.max(1,Math.min(4,Number(config.lineWidth)||2)) as 1|2|3|4,
+          lineStyle:config.lineStyle === "dashed" ? "dashed" : config.lineStyle === "dotted" ? "dotted" : "solid",
+          lastValueVisible:config.showCurrentValue === true,
+          data:calculateOptionsVwap(optionsVwapHistory.events,sampledIndicatorCandles,config,replayTimestampMs,(sampledIndicatorCandles.at(-1)?.timestamp ?? 0)+(timeframeToMs(timeframe) ?? inferCandleIntervalMs(sampledIndicatorCandles) ?? 60000))}];
+      }
       if (instance.indicatorId === "standard-deviation" || instance.indicatorId === "average-true-range-atr") return [];
       if (
         !orderFlowSeriesReady
@@ -8364,6 +8379,8 @@ function Chart({
       indicatorCandlesLite,
       indicatorSignature,
       sampledIndicatorCandles,
+      optionsVwapHistory,
+      timeframe,
       replayTimestampMs,
       indicators,
       instrument,
@@ -19667,6 +19684,11 @@ function Chart({
           <span>POC {pocAuctionFrame?.activePocs.length ?? 0}</span>
           <span>UA {pocAuctionFrame?.auctions.filter((item) => item.completionState === "unfinished").length ?? 0}</span>
           <span>EXCESS {pocAuctionFrame?.auctions.filter((item) => item.completionState === "excess").length ?? 0}</span>
+        </ChartIndicatorStatusBadge>
+      ) : null}
+      {indicators.some(item=>item.enabled && item.indicatorId === "options-vwap") && (optionsVwapHistory || optionsVwapState.error) ? (
+        <ChartIndicatorStatusBadge className="rounded-lg border border-border bg-panel px-2 py-1 text-[9px] text-muted" title="Recorded option executions only. Sampled coverage is not a full-market VWAP.">
+          Options VWAP · {optionsVwapHistory ? optionsVwapHistory.events.length ? "sampled contracts" : "no recorded trades in this range" : "recorded options data unavailable"}
         </ChartIndicatorStatusBadge>
       ) : null}
       {unfinishedAuctionIndicator ? (

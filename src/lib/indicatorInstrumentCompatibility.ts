@@ -76,7 +76,11 @@ export function indicatorCompatibility(
 ): IndicatorCompatibility {
   const kind = indicatorInstrumentKind(instrument, broker);
   const normalizedInstrument = instrument.trim().toUpperCase().replace(/[^A-Z0-9].*$/, "");
-  if (definition.id === "big-blocks-options" && kind === "futures") return {
+  if (definition.id === "options-vwap" && getMarketIndexDefinition(instrument)?.group !== "Options Underlyings") return {
+    status:"unavailable",kind,label:"Options underlying required",canAdd:false,
+    reason:"Options VWAP uses the selected options underlying's own recorded option executions, without futures or equity-volume substitution.",
+  };
+  if (["big-blocks-options", "options-vwap"].includes(definition.id) && kind === "futures") return {
     status: "unavailable", kind, label: "Options underlying required", canAdd: false,
     reason: "Use an options underlying chart such as SPX, NDX, SPY or QQQ. No unverified options-to-futures price substitution is used.",
   };

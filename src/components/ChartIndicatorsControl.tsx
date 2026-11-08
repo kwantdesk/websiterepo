@@ -524,6 +524,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "zero-gamma-bars",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
+  "options-vwap",
   "big-blocks-options",
   "gex-interval-map",
   "bounce-levels",
@@ -4093,6 +4094,13 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "options-vwap" ? (
+                <div className="grid gap-3 border border-border p-3 text-[10px] sm:grid-cols-2">
+                  <label className="space-y-2"><span>Options volume</span><KwantSelect value={String(settingsInstance.settings?.side ?? "both")} onChange={event=>replace(settingsInstance.instanceId,current=>({...current,settings:{...current.settings,side:event.target.value}}))} menuLabel="Options VWAP volume"><option value="both">Calls + puts</option><option value="calls">Calls only</option><option value="puts">Puts only</option></KwantSelect></label>
+                  <label className="space-y-2"><span>Reset</span><KwantSelect value={String(settingsInstance.settings?.reset ?? "session")} onChange={event=>replace(settingsInstance.instanceId,current=>({...current,settings:{...current.settings,reset:event.target.value}}))} menuLabel="Options VWAP reset"><option value="session">New York session</option><option value="week">New York week</option></KwantSelect></label>
+                  <div className="text-muted leading-5 sm:col-span-2">Weights the underlying price reported with each recorded option execution by its contract size. This archive contains sampled options flow, not a complete market tape. Only available recordings are shown; missing history is not filled with futures or equity volume. Replay uses observations already received at that time.</div>
+                </div>
+              ) : null}
               {settingsDefinition.id === "big-blocks-options" ? (
                 <div className="border border-border bg-surface/30 p-3 text-[10px] leading-5 text-muted">
                   Executed options trades, not resting orders or open positions. Calls and puts accumulate separately at the underlying price reported with each print; enable Use Strike Price to group by strike instead. Size By Premium changes both bar lengths and values to dollars. Thresholds apply to each order before grouping. Multi-leg trades are excluded unless enabled. The feed supplies the latest 100 consolidated prints per refresh; this is observed flow, not complete session history. Refreshes are shared across panes, pause in hidden tabs, and slow down when markets close. No futures price substitution or live-data replay.

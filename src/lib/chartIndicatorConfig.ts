@@ -2,6 +2,7 @@ import type { ChartSettings } from "@/lib/chartSettings";
 import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
 import { normalizeGammaEnvironmentSource } from "@/lib/chartGammaConversion";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
+import { OPTIONS_VWAP_DEFAULTS } from "@/lib/optionsVwap";
 import { BIG_BLOCKS_OPTIONS_DEFAULTS } from "@/lib/bigBlocksOptions";
 import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors, normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
@@ -139,6 +140,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zero-gamma-bars",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
+  "options-vwap",
   "big-blocks-options",
   "gex-interval-map",
   "bounce-levels",
@@ -271,6 +273,7 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "options-vwap": [{ key:"lineWidth", label:"Line width", defaultValue:2, min:1, max:4, step:1 }],
   "big-blocks-options": [
     { key: "minContracts", label: "Minimum contracts per executed order", defaultValue: 100, min: 0, max: 1000000, step: 1 },
     { key: "minPremium", label: "Minimum premium per executed order ($)", defaultValue: 0, min: 0, max: 1000000000, step: 1000 },
@@ -1801,6 +1804,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     useThemeColors: true,
     vwapSettingsVersion: 2,
   } : {}),
+  ...(indicatorId === "options-vwap" ? { ...OPTIONS_VWAP_DEFAULTS, lineColor:theme?.borderUpColor ?? theme?.upColor ?? "#22D3EE" } : {}),
   ...(indicatorId === "gamma-environment" ? {
     position: "top-right",
     sourceSymbol: "SPX",
