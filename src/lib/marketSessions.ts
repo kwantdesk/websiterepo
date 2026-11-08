@@ -1,3 +1,4 @@
+import { exchangeClockParts } from "./exchangeClock";
 import type { Candle } from "@/lib/backtester";
 
 export type MarketSessionDefinition = {
@@ -54,30 +55,12 @@ export const DEFAULT_MARKET_SESSIONS: MarketSessionDefinition[] = [
 ];
 
 type SessionSettings = Record<string, number | string | boolean>;
-const zonedFormatters = new Map<string, Intl.DateTimeFormat>();
-
 function zonedParts(timestamp: number, timezone: string) {
-  let formatter = zonedFormatters.get(timezone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    });
-    zonedFormatters.set(timezone, formatter);
-  }
-  const parts = Object.fromEntries(
-    formatter.formatToParts(timestamp).map((part) => [part.type, part.value]),
-  );
+  const parts = exchangeClockParts(timestamp, timezone);
   return {
-    weekday: parts.weekday,
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    minute: Number(parts.hour) * 60 + Number(parts.minute),
+    weekday: ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][parts.weekday],
+    date: `${parts.year}-${String(parts.month).padStart(2,"0")}-${String(parts.day).padStart(2,"0")}`,
+    minute: parts.hour * 60 + parts.minute,
   };
 }
 

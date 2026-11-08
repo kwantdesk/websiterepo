@@ -918,9 +918,17 @@ export function buildTpoProfiles({
     orderedPeriods = dailySessionPeriods(populated, settings);
   } else {
     const periods = new Map<string, PeriodBoundary>();
+    // Each print inside a non-overlapping period has the same boundary. Reuse
+    // that result rather than rebuilding timezone/session dates per execution.
+    // Multi-week profiles overlap, so their original weekly lookup stays exact.
+    const reusableBoundary = settings.scheduleKind !== "weekly" || settings.weekLength === 1;
+    let previousPeriod: PeriodBoundary | null = null;
     timestamps.forEach((timestamp) => {
       if (windows && !isInsideSession(timestamp, settings, windows)) return;
-      const period = periodBoundaryForTime(timestamp, settings);
+      const period = reusableBoundary && previousPeriod
+        && timestamp >= previousPeriod.startMs && timestamp < previousPeriod.endMs
+        ? previousPeriod : periodBoundaryForTime(timestamp, settings);
+      previousPeriod = period;
       if (period && !periods.has(period.id)) periods.set(period.id, period);
     });
     orderedPeriods = [...periods.values()].sort((a, b) => a.startMs - b.startMs).slice(-settings.profileCount);

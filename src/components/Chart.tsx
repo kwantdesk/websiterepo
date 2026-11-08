@@ -35,7 +35,7 @@ import { useExactFootprintHistory } from "@/components/useExactFootprintHistory"
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
 
-import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useId, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import ChartCornerBadges, { ChartIndicatorStatusBadge, ChartIndicatorStatusProvider } from "@/components/ChartCornerBadges";
 import CandleCountdownBadge from "@/components/CandleCountdownBadge";
@@ -290,6 +290,7 @@ import {
   type NativeVolumeProfileModel,
 } from "@/lib/nativeVolumeProfilePrimitive";
 import { buildTpoProfiles } from "@/lib/tpo/engine";
+import { requestTpoProfileBuild, cancelTpoProfileBuild } from "@/lib/tpo/workerClient";
 import { tpoCalculationSettingsKey, validateTpoSettings } from "@/lib/tpo/settings";
 import { TpoProfilePrimitive, type TpoPrimitiveModel } from "@/lib/tpo/primitive";
 import type { TpoBar, TpoMergeRecord, TpoProfileModel, TpoTrade } from "@/lib/tpo/types";
@@ -3707,6 +3708,12 @@ function Chart({
     anchorProfileId: string;
   } | null>(null);
   const [tpoDataStatus, setTpoDataStatus] = useState<string | null>(null);
+  const tpoWorkerId = useId();
+  const tpoWorkerOwnersRef = useRef(new Set<string>());
+  useEffect(() => {
+    const owners = tpoWorkerOwnersRef.current;
+    return () => { for (const owner of owners) cancelTpoProfileBuild(owner); owners.clear(); };
+  }, []);
   const tpoProfileCacheRef = useRef(new Map<string, {
     trades: TpoTrade[];
     bars: TpoBar[];
@@ -17753,6 +17760,8 @@ function Chart({
     const instances = indicators.filter((instance) =>
       instance.enabled && (instance.indicatorId === "tpo-chart" || instance.indicatorId === "weekly-tpo"));
     if (!instances.length) {
+      for (const owner of tpoWorkerOwnersRef.current) cancelTpoProfileBuild(owner);
+      tpoWorkerOwnersRef.current.clear();
       primitive.setModels([]);
       tpoModelsSignatureRef.current = "";
       setTpoDataStatus(null);
@@ -17795,7 +17804,10 @@ function Chart({
     const settledInstances = new Map(settledTpoIndicators.map((instance) => [instance.instanceId, instance]));
     const activeInstanceIds = new Set(instances.map((instance) => instance.instanceId));
     for (const cachedInstanceId of tpoProfileCacheRef.current.keys()) {
-      if (!activeInstanceIds.has(cachedInstanceId)) tpoProfileCacheRef.current.delete(cachedInstanceId);
+      if (!activeInstanceIds.has(cachedInstanceId)) {
+        tpoProfileCacheRef.current.delete(cachedInstanceId);
+        const owner=tpoWorkerId+":"+cachedInstanceId;cancelTpoProfileBuild(owner);tpoWorkerOwnersRef.current.delete(owner);
+      }
     }
     // A developing TPO is market data, not a five-second snapshot. A complete
     // exact-trade rebuild can be expensive, so live changes refresh only the
@@ -17804,12 +17816,16 @@ function Chart({
     const rebuildThrottleMs = 250;
     const now = Date.now();
     let earliestStaleBuiltAt: number | null = null;
+    let backgroundBuildPending = false;
+    for (const owner of tpoWorkerOwnersRef.current) {
+      if (!activeInstanceIds.has(owner.slice(tpoWorkerId.length + 1))) { cancelTpoProfileBuild(owner); tpoWorkerOwnersRef.current.delete(owner); }
+    }
     const baseModels = instances.flatMap((instance): TpoPrimitiveModel[] => {
       const variant = instance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
       const renderSettings = validateTpoSettings(instance.settings, variant, settings, instrument);
       const calculationSource = settledInstances.get(instance.instanceId) ?? instance;
       const calculationSettings = validateTpoSettings(calculationSource.settings, variant, undefined, instrument);
-      const calculationKey = tpoCalculationSettingsKey(calculationSettings);
+      const calculationKey = `${instrument}|${contractSymbol}|${timeframe}|${tpoCalculationSettingsKey(calculationSettings)}`;
       const cached = tpoProfileCacheRef.current.get(instance.instanceId);
       const exactHit = cached
         && cached.trades === sourceTrades
@@ -17827,6 +17843,7 @@ function Chart({
           : Math.min(earliestStaleBuiltAt, cached.builtAt);
       }
       let profiles: TpoProfileModel[];
+      let backgroundBuild = false;
       if (exactHit || throttledHit) {
         profiles = cached.profiles;
       } else {
@@ -17839,7 +17856,28 @@ function Chart({
           && !calculationSettings.quickSessions.includes(",")
           && !(calculationSettings.filterTime && calculationSettings.filterMode !== "none"),
         );
-        if (canRefreshDevelopingOnly && developing) {
+        if (replayTimestampMs == null) {
+          backgroundBuild = true;
+          backgroundBuildPending = true;
+          const owner = tpoWorkerId + ":" + instance.instanceId;
+          tpoWorkerOwnersRef.current.add(owner);
+          requestTpoProfileBuild({owner,scope:calculationKey,
+            input:canRefreshDevelopingOnly && developing ? {
+              nowMs:Date.now(),trades:sourceTrades.filter(trade=>trade.timestampMs>=developing.startTimeMs),
+              bars:sourceBars.filter(bar=>bar.endTimeMs>developing.startTimeMs),
+              settings:{...calculationSettings,profileCount:1},
+            } : {trades:sourceTrades,bars:sourceBars,settings:calculationSettings,nowMs:Date.now()},
+            done:result=>{
+              const refreshed=canRefreshDevelopingOnly && developing
+                ? result.find(profile=>profile.id===developing.id)??result.at(-1) : null;
+              const next=canRefreshDevelopingOnly && developing
+                ? refreshed?[...cached!.profiles.slice(0,-1),refreshed]:cached!.profiles : result;
+              tpoProfileCacheRef.current.set(instance.instanceId,{trades:sourceTrades,bars:sourceBars,calculationKey,profiles:next,builtAt:Date.now()});
+              setTpoRebuildNonce(value=>value+1);
+            },fail:()=>setTpoDataStatus("TPO · CALCULATION UNAVAILABLE"),
+          });
+          profiles = cached?.calculationKey===calculationKey ? cached.profiles : [];
+        } else if (canRefreshDevelopingOnly && developing) {
           const liveProfiles = buildTpoProfiles({
             nowMs: replayTimestampMs ?? Date.now(),
             trades: sourceTrades.filter((trade) => trade.timestampMs >= developing.startTimeMs),
@@ -17855,7 +17893,7 @@ function Chart({
           profiles = buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: calculationSettings, nowMs: replayTimestampMs ?? Date.now() });
         }
       }
-      if (profiles !== cached?.profiles) {
+      if (!backgroundBuild && profiles !== cached?.profiles) {
         tpoProfileCacheRef.current.set(instance.instanceId, {
           trades: sourceTrades,
           bars: sourceBars,
@@ -17958,7 +17996,7 @@ function Chart({
       tpoModelsSignatureRef.current = modelsSignature;
       primitive.setModels(levelledModels);
     }
-    setTpoDataStatus(levelledModels.length ? null : "TPO · NO PROFILE IN THE SELECTED RANGE");
+    setTpoDataStatus(levelledModels.length || backgroundBuildPending ? null : "TPO · NO PROFILE IN THE SELECTED RANGE");
     // Trailing rebuild: when the run above served a throttled grid, re-enter
     // once the throttle window closes so the active profile catches the tape.
     if (earliestStaleBuiltAt !== null && tpoRebuildTimerRef.current === null) {
@@ -17977,6 +18015,9 @@ function Chart({
   }, [
     candleIntervalMs,
     chartReadyRevision,
+    contractSymbol,
+    timeframe,
+    tpoWorkerId,
     indicators,
     instrument,
     settledTpoIndicators,

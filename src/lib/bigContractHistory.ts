@@ -35,6 +35,15 @@ export function bigContractHistoryWindows(days: number, toMs: number) {
 // Archived candidates have different IDs from the live stream. Keep the
 // maximum observed multiplicity of an execution, not two copies of it.
 export function mergeBigContractHistory(history: InstitutionalTrade[], live: InstitutionalTrade[]) {
+  if (!history.length) {
+    const result = live.filter(trade => !trade.flowOnly);
+    // The live tape is normally already ordered. Avoid rebuilding string keys
+    // and sorting it just to merge an empty history during a new pane mount.
+    const ordered = result.every((trade,index) => index === 0
+      || trade.timestamp > result[index-1].timestamp
+      || trade.timestamp === result[index-1].timestamp && !(trade.recordIndex < result[index-1].recordIndex));
+    return ordered ? result : result.sort((a,b)=>a.timestamp-b.timestamp || a.recordIndex-b.recordIndex);
+  }
   const key = (trade: InstitutionalTrade) => `${trade.timestamp}:${trade.close}:${trade.volume}:${trade.delta}`;
   const remaining = new Map<string, number>();
   const result = history.filter((trade) => !trade.flowOnly);
