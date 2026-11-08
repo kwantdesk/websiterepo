@@ -81,6 +81,11 @@
       const attempts = new Map();
       const retryTimers = new Map();
 
+      const usableStyle = (link) => {
+        try { return !!link && !link.disabled && !!link.sheet && link.sheet.cssRules.length > 0; }
+        catch { return false; }
+      };
+
       const notifyParent = (ready) => {
         try {
           window.parent.postMessage(
@@ -118,6 +123,8 @@
       };
 
       window.__kwantLiquidityStyleLoaded = (key) => {
+        const link = document.querySelector(`link[data-liquidity-style="${key}"]`);
+        if (!usableStyle(link)) { if (link) retry(key, link); return; }
         loaded.add(key);
         attempts.set(key, 0);
         updateReadiness();
@@ -127,7 +134,7 @@
       window.setInterval(() => {
         for (const key of required) {
           const link = document.querySelector(`link[data-liquidity-style="${key}"]`);
-          if (!link || link.disabled || !link.sheet) {
+          if (!usableStyle(link)) {
             if (link) retry(key, link);
             continue;
           }

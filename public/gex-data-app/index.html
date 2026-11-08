@@ -1,6 +1,40 @@
 <!doctype html>
 <html lang="en">
 <head>
+<style id="workspace-style-guard">html:not([data-workspace-styles-ready="true"]) body{visibility:hidden!important}</style>
+<script>
+// Runs inline before external assets: failed styles must never expose raw controls.
+(()=>{
+  const root=document.documentElement, states=new Map();let parsed=false;
+  const usable=link=>{try{return !link.disabled&&link.sheet&&link.sheet.cssRules.length>0;}catch{return false;}};
+  const update=()=>{const ready=parsed&&[...states.keys()].every(usable);root.toggleAttribute('data-workspace-styles-ready',ready);if(ready)root.setAttribute('data-workspace-styles-ready','true');};
+  const check=link=>{
+    const state=states.get(link);if(!state)return;
+    if(usable(link)){clearTimeout(state.timer);state.pending=false;update();return;}
+    update();if(state.pending||state.attempt>=5)return;
+    clearTimeout(state.timer);state.pending=true;
+    state.timer=setTimeout(()=>{
+      state.pending=false;state.attempt++;
+      const url=new URL(state.href,location.href);url.searchParams.set('styleRetry',String(state.attempt));
+      link.href=url.href;
+      state.timer=setTimeout(()=>check(link),4000);
+    },Math.min(4000,250*2**state.attempt));
+  };
+  const register=link=>{
+    if(link.tagName!=='LINK'||link.rel!=='stylesheet'||states.has(link))return;
+    states.set(link,{href:link.href,attempt:0,pending:false,timer:setTimeout(()=>check(link),4000)});
+  };
+  const observer=new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node.nodeType===1){register(node);node.querySelectorAll?.('link[rel="stylesheet"]').forEach(register);}});
+  observer.observe(document.documentElement,{subtree:true,childList:true});
+  document.addEventListener('load',event=>{if(states.has(event.target))check(event.target);},true);
+  document.addEventListener('error',event=>{if(states.has(event.target))check(event.target);},true);
+  document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('link[rel="stylesheet"]').forEach(register);observer.disconnect();parsed=true;for(const link of states.keys())check(link);update();},{once:true});
+  const recover=()=>{for(const[link,state]of states)if(!usable(link)){state.attempt=0;check(link);}};
+  window.addEventListener('online',recover);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)recover();});
+})();
+</script>
+
 <link rel="stylesheet" href="/gex-data-app/dropdown-trigger.css?v=20261108">
 <link rel="stylesheet" href="/gex-data-app/range-input.css?v=20261102">
 <link rel="stylesheet" href="/gex-data-app/number-input.css?v=20261107">
