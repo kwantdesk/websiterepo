@@ -29,7 +29,6 @@ export class OptionsVwapArchiveReader{
   if(!info)return null;const identity=`${info.size}|${info.mtimeMs}`,cached=this.files.get(file);
   if(cached?.identity===identity)return cached;
   const rows=new Map(),cancelled=new Set();let truncated=false,readError=null,bytes=0,skipped=0;
-  if(info.size>32*1024*1024)return {rows,cancelled,truncated:true,readError:'compressed-size-limit',skipped};
   const source=createReadStream(file),gzip=createGunzip(),lines=createInterface({input:source.pipe(gzip),crlfDelay:Infinity});
   source.on('error',e=>{readError=e;lines.close();});gzip.on('error',e=>{readError=e;lines.close();});
   try{for await(const line of lines){bytes+=Buffer.byteLength(line);if(bytes>64*1024*1024){truncated=true;break;}
@@ -71,7 +70,7 @@ export class OptionsVwapArchiveReader{
   }
   for(let t=Date.parse(from+'T12:00:00Z');t<=Date.parse(to+'T12:00:00Z');t+=DAY){const d=new Date(t);if(d.getUTCDay()!==0&&d.getUTCDay()!==6&&!dates.has(d.toISOString().slice(0,10)))missing.push(d.toISOString().slice(0,10));}
   const ordered=[...records.entries()].sort((a,b)=>a[1][0]-b[1][0]);
-  return {schemaVersion:1,ids:ordered.map(([id])=>id.slice(symbol.length+1)),symbol,from,to,asOf:new Date(this.now()).toISOString(),events:ordered.map(([,event])=>event),coverage:{kind:'observed-options-contracts',complete:false,sessions:[...dates].sort(),missing,truncated,readErrors,skippedRecords:skipped},refreshAfterMs:15000};
+  return {schemaVersion:1,cancelledIds:[...removed].filter(id=>id.startsWith(symbol+':')).map(id=>id.slice(symbol.length+1)),ids:ordered.map(([id])=>id.slice(symbol.length+1)),symbol,from,to,asOf:new Date(this.now()).toISOString(),events:ordered.map(([,event])=>event),coverage:{kind:'observed-options-contracts',complete:false,sessions:[...dates].sort(),missing,truncated,readErrors,skippedRecords:skipped},refreshAfterMs:15000};
  }
 }
 

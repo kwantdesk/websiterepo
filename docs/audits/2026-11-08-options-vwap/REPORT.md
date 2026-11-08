@@ -4,7 +4,7 @@
 
 Options VWAP is implemented as an underlying-price line weighted by captured option contracts. It is explicitly an observed-contracts study. The original requirement for a complete market VWAP and complete week of history is NOT established by the present sampled source. Do not remove the coverage disclosure or describe this as complete OPRA coverage.
 
-No premium-weighted/futures-volume/equity-volume proxy is used. The owner was asked whether the intended plot was underlying-price or individual option-premium VWAP; no answer arrived during implementation. The stated working assumption is underlying price weighted by option contracts, on options-underlying charts.
+No premium-weighted/futures-volume/equity-volume proxy is used. The owner confirmed this is a VWAP overlay on options-underlying charts, using underlying price weighted by option contracts.
 
 ## Calculation and controls
 
@@ -39,3 +39,16 @@ Cold first-symbol read measured21.3seconds before adding the nonblocking prepara
 Actual isolated Chart browser fixture: two options charts, one archive request,18 canvases, no page errors; historical fixtures make no vendor calls. Scoped helper lint passed. Full production webpack build and exact production commit/route activation must be confirmed in the release receipt. Tests do not certify full-market data coverage.
 
 Operator routing: Caddy forwards only /v1/market-data/options-vwap to heat-cell-history:8798. The auxiliary service alone was restarted; the live market gateway and provider subscriptions were untouched. Pre-change Caddy/server copies remain on the VPS with before-options-vwap-20261108 names.
+
+
+## Live-first follow-up — 8 November 2026
+
+The owner explicitly requested live functionality without waiting for complete history. The previous implementation subscribed to live flow but withheld publication until the history response completed. It also tied the live session to the host's last candle, so a chart still displaying the previous session could fail to subscribe at the open. Both are corrected: current New York session drives live mode, and observed live trades publish independently of archive preparation or failure. History merges when available without overwriting newer corrections. Wrong-session live snapshots are ignored.
+
+A shared ledger deduplicates trade IDs and preserves exact contract-weighted sufficient statistics in one-second/side/receipt groups. It retains corrections and cancellation tombstones; it does not stop accepting new trades after 100000 records. Source cadence remains the existing shared 15-second subscription when this is its only consumer, or the faster existing subscriber cadence. This change does not claim millisecond or complete-market execution delivery.
+
+The history reader no longer rejects a file solely for exceeding 32MiB compressed. Its decoded scan/record budgets remain bounded and coverage stays explicitly partial. Cancellation IDs are delivered to the client and included in conditional response identity.
+
+Verification: 36 focused tests pass, including history202/503/pending while live trades arrive, late history after a live correction, 100005 unique prints, contract/notional conservation, side filters and cancellation/deduplication. Scoped ESLint passes; full isolated webpack production build passes. Two real Chart components in isolated headless Chrome use one shared live request and display Options VWAP while every history request returns202; no page errors. Screenshot: live-with-history-pending.png (local evidence, synthetic prices).
+
+Read-only VPS health returned200: exposure recorder enabled, consolidated-flow captures present, no dropped counts, last archived at2026-11-08T07:29:19.222Z. Consolidated-flow files exist for every November2–6 storage folder (15.6MB,17.0MB,3.2MB,53.9MB,0.4MB respectively). File existence is not complete execution coverage. The auxiliary history service alone was restarted to activate the bounded-reader changes. Main gateway start time remained2026-11-07T09:43:25.024779303Z. Live market testing remains unverified because this is Sunday.

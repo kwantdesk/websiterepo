@@ -18,7 +18,7 @@ export function createHeatCellHistoryServer({token,reader,vwapReader=null,now=Da
    if(!vwapReader)return send(503,{error:'Options archive not configured.'});
    try{let timer;const data=await Promise.race([vwapReader.read(query),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),1500)})]).finally(()=>clearTimeout(timer));
     if(!data)return send(202,{status:'PREPARING_RECORDED_OPTIONS',retryAfterMs:2000});
-    const etag='"'+createHash('sha256').update(JSON.stringify([data.symbol,data.ids,data.events,data.coverage])).digest('hex')+'"';
+    const etag='"'+createHash('sha256').update(JSON.stringify([data.symbol,data.ids,data.events,data.cancelledIds,data.coverage])).digest('hex')+'"';
     if(req.headers['if-none-match']===etag){res.writeHead(304,{'ETag':etag,'Cache-Control':'private, no-store'});return res.end();}
     res.writeHead(200,{'Content-Type':'application/json','ETag':etag,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});return res.end(JSON.stringify(data));
    }catch{return send(429,{error:'Recorded options history is preparing. Retry shortly.'})}
