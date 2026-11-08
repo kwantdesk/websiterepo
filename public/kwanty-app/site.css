@@ -26,7 +26,7 @@ body[data-phone-workspace=kwanty] .template-overflow-menu button { justify-conte
 
 
 .state-chart-content{position:absolute;inset:40px 0 0;min-height:0}
-.state-chart-content canvas{margin-left:36px;width:calc(100% - 36px);height:100%}
+.state-chart-content canvas{margin-left:0;width:100%;height:100%}
 .state-drawing-host{position:absolute;inset:0;pointer-events:none;z-index:24}
 .state-draw-rail{position:absolute;inset:0 auto 0 0;width:36px;display:flex;flex-direction:column;align-items:center;gap:2px;overflow-y:auto;scrollbar-width:none;border-right:1px solid var(--site-border);background:var(--site-background);pointer-events:auto;padding:3px 0}
 .state-draw-rail button{width:28px;height:28px;padding:4px;font-size:8px;flex-shrink:0;background:transparent!important}
@@ -35,7 +35,7 @@ body[data-phone-workspace=kwanty] .template-overflow-menu button { justify-conte
 .state-draw-menu{position:absolute;left:38px;top:2px;z-index:50;width:220px;max-height:calc(100% - 4px);overflow:auto;background:var(--site-panel);border:1px solid var(--site-border);pointer-events:auto;padding:4px}
 .state-draw-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px;font-size:11px;background:transparent!important;border:0}
 .state-draw-menu button:hover{background:var(--site-surface)!important}
-.state-draw-overlay{position:absolute;inset:0 0 0 36px;pointer-events:none}
+.state-draw-overlay{position:absolute;inset:0;pointer-events:none}
 .state-draw-overlay>svg{position:absolute;inset:0}
 .state-profile-status{position:absolute;pointer-events:none;font-size:10px;color:var(--site-muted);background:var(--site-background);max-width:220px;padding:2px 4px}
 .state-draw-text{position:absolute;left:45px;top:15px;z-index:55;pointer-events:auto;background:var(--site-panel);padding:10px;border:1px solid var(--site-border)}
@@ -46,7 +46,7 @@ body[data-phone-workspace=kwanty] .template-overflow-menu button { justify-conte
 .state-panel-control>button,.state-panel-control>select{width:100%;margin:3px 0;text-align:left}
 .state-panel-control>button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #addStateChart{display:none!important}
-.kwanty-indicator-panes{position:absolute;left:36px;right:0;bottom:0;height:0;overflow:hidden;pointer-events:auto;z-index:25;background:var(--site-background)}
+.kwanty-indicator-panes{position:absolute;left:0;right:0;bottom:0;height:0;overflow:hidden;pointer-events:auto;z-index:25;background:var(--site-background)}
 #chartPanels{overflow:auto;overscroll-behavior:contain}
 .state-chart-content>canvas{height:100%;flex:none}
 .panel-column-resize{position:absolute;right:-2px;top:30px;bottom:0;width:6px;z-index:28;cursor:col-resize;touch-action:none}

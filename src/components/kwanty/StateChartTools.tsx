@@ -24,6 +24,9 @@ const noData = (ticker: string) => ["SPX", "SPXW", "NDX", "VIX", "DJX", "RUT"].i
   ? "Cash index: no traded volume. Use a traded underlying."
   : "Exact volume-at-price is unavailable for this instrument.";
 
+// Kwanty uses its top-bar controls; do not mount the left drawing sidebar.
+const SHOW_DRAWING_SIDEBAR = false;
+
 function StateTools({ session }: { session: Session }) {
   const { api, frame } = session;
   const [tool, setTool] = useState<DrawToolId>("cursor"), [selected, setSelected] = useState<string | null>(null);
@@ -135,7 +138,7 @@ function StateTools({ session }: { session: Session }) {
   const panelWindow = session.element.ownerDocument.defaultView!;
   return <>
     <KwantyIndicators element={session.element} api={api} getFrame={() => session.frame} subscribe={subscribe} />
-    <div className="state-draw-rail" role="toolbar" aria-label={"Drawing tools for " + frame.ticker}>
+    {SHOW_DRAWING_SIDEBAR && <div className="state-draw-rail" role="toolbar" aria-label={"Drawing tools for " + frame.ticker}>
       {DRAW_TOOL_GROUPS.map(entry => {
         const tools = DRAW_TOOL_LIST.filter(spec => spec.group === entry.id);
         const chosen = tools.find(spec => spec.id === tool) ?? tools[0];
@@ -152,8 +155,8 @@ function StateTools({ session }: { session: Session }) {
       <button title="Undo drawing edit" disabled={!history.length} onClick={undo}>↶</button>
       <button title="Redo drawing edit" disabled={!future.length} onClick={redo}>↷</button>
       <button title="Clear drawings on this panel and ticker" disabled={!drawings.length} onClick={() => { commit([]); setSelected(null); }}>CLR</button>
-    </div>
-    {group && <div className="state-draw-menu" role="menu" aria-label={group + " drawing tools"}>
+    </div>}
+    {SHOW_DRAWING_SIDEBAR && group && <div className="state-draw-menu" role="menu" aria-label={group + " drawing tools"}>
       {DRAW_TOOL_LIST.filter(spec => spec.group === group).map(spec => <button role="menuitem" key={spec.id}
         disabled={spec.id === "anchoredVwap" && !candles.some(candle => candle.volume > 0)}
         title={spec.id === "anchoredVwap" && !candles.some(candle => candle.volume > 0) ? "Requires reported traded bar volume; not supplied by a cash index." : spec.label}
