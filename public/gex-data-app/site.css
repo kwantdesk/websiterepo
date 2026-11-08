@@ -93,7 +93,7 @@ body[data-phone-workspace="gex-data"] .tool-controls :is(.kwant-choice-trigger,.
   border-radius:var(--kwant-control-radius,8px)!important;
   font:500 11px/1 Aleph,sans-serif!important;letter-spacing:0!important;
   display:inline-flex!important;align-items:center!important;gap:8px!important;
-  color:var(--site-foreground)!important;box-shadow:none!important;
+  box-shadow:none!important;
 }
 body[data-phone-workspace="gex-data"] .tool-controls .choice-dropdown {
   height:28px!important;border:0!important;flex:0 0 auto;
