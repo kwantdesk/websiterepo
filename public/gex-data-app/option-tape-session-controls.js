@@ -6,7 +6,7 @@ const adjacent=(month,offset)=>{const [year,index]=month.split('-').map(Number);
 export function mountOptionTapeSessionControls({host,popup,getScope,onChange,validateSelection=()=>{},monthsVisible=1,commitOnSelect=false,clearLabel='Current session',emptyHint='',businessDayEndpoints=false,toggleSameDay=false,continueSingleDayRange=false,closeCompletedRange=false,singleLineTrigger=false}){
   const document=host.ownerDocument,node=(tag,className='',text)=>{const result=document.createElement(tag);result.className=className;if(text!==undefined)result.textContent=text;return result;};
   const button=(text,action)=>{const result=node('button','',text);result.type='button';result.addEventListener('click',action);return result;};
-  const root=node('div','control'),trigger=button('Session Date Range ⌄',open);trigger.className='kwant-choice-trigger'+(singleLineTrigger?' session-range-trigger-nowrap':'');trigger.setAttribute('aria-label','Session Date Range');trigger.setAttribute('aria-haspopup','dialog');root.append(trigger);host.append(root);
+  const root=node('div','control'),trigger=button('Session Date Range',open);trigger.className='kwant-choice-trigger'+(singleLineTrigger?' session-range-trigger-nowrap':'');trigger.setAttribute('aria-label','Session Date Range');trigger.setAttribute('aria-haspopup','dialog');root.append(trigger);host.append(root);
   let destroyed=false,active=null,lastKey='',committing=false;
   const close=()=>{active?.remove();active=null;};
   function scope(){const raw=getScope()||{};return {...raw,startDate:validDate(raw.startDate)?raw.startDate:'',endDate:validDate(raw.endDate)?raw.endDate:''};}
@@ -14,7 +14,7 @@ export function mountOptionTapeSessionControls({host,popup,getScope,onChange,val
     if(destroyed)return;const current=scope(),key=JSON.stringify(current);if(key!==lastKey&&!committing)close();lastKey=key;
     const start=current.startDate||current.endDate,end=current.endDate||current.startDate;
     root.className='control'+(singleLineTrigger&&start&&end!==start?' session-range-single-line':'');
-    trigger.textContent=(start?label(start)+(end!==start?' – '+label(end):''):'Session Date Range')+' ⌄';trigger.disabled=!!current.disabled;
+    trigger.textContent=(start?label(start)+(end!==start?' – '+label(end):''):'Session Date Range')+'';trigger.disabled=!!current.disabled;
     trigger.title=current.disabled?'Session date is controlled by page or global filters':start?'Selected session dates':'Current session';
   }
   function open(){

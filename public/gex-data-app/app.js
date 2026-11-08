@@ -1,3 +1,4 @@
+import {numericControlChoices} from './numeric-control-options.js?v=20261108';
 import {marketShareTooltipRows,marketShareFormatValue} from './market-share-interaction-model.js?v=20261104';
 import {createIntervalMapTooltipSelection,intervalMapTooltipRows} from './interval-map-interaction-model.js?v=20261104';
 import {gainersIndustryChoices} from './gainers-industry-controls.js?v=20261104';
@@ -717,7 +718,12 @@ await boot();
     const wrap = element("div", "control");
     const labelNode = element("label", "", label); labelNode.htmlFor = `control-${id}`;
     let input;
-    if(id==='tickerOptional'&&activeTool?.id==='exchange-notifications'){
+    const numericChoices=numericControlChoices(id);
+    if(numericChoices){
+      input=document.createElement('select');
+      for(const[value,text]of numericChoices)input.add(new Option(text,value));
+      input.setAttribute('aria-label',label);
+    }else if(id==='tickerOptional'&&activeTool?.id==='exchange-notifications'){
       input=multiChoiceDropdown({choices:instrumentChoices(),label:'Instrument',emptyLabel:'All instruments',searchable:true,allowCustomSymbol:true,document});
       input.title='Search available instruments or enter a symbol.';
     }else if(id==='industry'&&activeTool?.id==='gainers-losers'){
@@ -863,10 +869,10 @@ await boot();
     if(tool.id==='gainers-losers'){const columns=element('span','qtable-compact-column-controls');columns.id='gainersColumnControls';holder.append(columns);}
     if(tool.id==='exchange-notifications'){const columns=element('span','qtable-compact-column-controls');columns.id='notificationColumnControls';holder.append(columns);}
     if(tool.view==='volatilitySkew')for(const [kind,label] of [['expiry','Expiration'],['contractType','Contract type']]){
-      const wrap=element('div','control'),button=element('button','kwant-choice-trigger',label+' ⌄');button.type='button';button.dataset.skewSelection=kind;button.disabled=!toolPayload;button.setAttribute('aria-label',label);button.setAttribute('aria-haspopup','dialog');button.addEventListener('click',()=>showSkewSelection(button,kind));wrap.append(button);holder.append(wrap);
+      const wrap=element('div','control'),button=element('button','kwant-choice-trigger',label+'');button.type='button';button.dataset.skewSelection=kind;button.disabled=!toolPayload;button.setAttribute('aria-label',label);button.setAttribute('aria-haspopup','dialog');button.addEventListener('click',()=>showSkewSelection(button,kind));wrap.append(button);holder.append(wrap);
     }
     if(tool.view==='termStructure'){
-      for(const [kind,label] of [['expiration','Expiration'],['strike','Strike Price'],['delta',`Delta (${getControl('deltaMin')||0} to ${getControl('deltaMax')||1})`]]){const wrap=element('div','control'),button=element('button','kwant-choice-trigger',label+' ⌄');button.type='button';button.dataset.termSelection=kind;button.setAttribute('aria-label',kind==='delta'?'Delta range':label);button.disabled=kind!=='delta'&&!toolPayload;button.addEventListener('click',()=>showTermSelection(button,kind));wrap.append(button);holder.append(wrap);}
+      for(const [kind,label] of [['expiration','Expiration'],['strike','Strike Price'],['delta',`Delta (${getControl('deltaMin')||0} to ${getControl('deltaMax')||1})`]]){const wrap=element('div','control'),button=element('button','kwant-choice-trigger',label+'');button.type='button';button.dataset.termSelection=kind;button.setAttribute('aria-label',kind==='delta'?'Delta range':label);button.disabled=kind!=='delta'&&!toolPayload;button.addEventListener('click',()=>showTermSelection(button,kind));wrap.append(button);holder.append(wrap);}
       for(const wrap of [q('[data-control="ticker"]',holder)?.closest('.control'),...qa('[data-term-selection]',holder).map(button=>button.closest('.control')),q('[data-control="date"]',holder)?.closest('.control'),q('[data-control="moneyType"]',holder)?.closest('.control')].filter(Boolean))holder.append(wrap);
     }
     if(tool.id==='max-pain'){
@@ -1003,7 +1009,7 @@ await boot();
     popup(anchor,kind==='expiration'?'Expiration':kind==='strike'?'Strike Price':'Delta range',panel=>{
       panel.classList.add('surface-selection-menu');
       if(kind==='delta'){
-        for(const [id,label] of [['deltaMin','Minimum delta'],['deltaMax','Maximum delta']]){const row=element('label','control',label),number=document.createElement('input'),range=document.createElement('input');number.type='number';range.type='range';for(const input of [number,range]){input.min='0';input.max='1';input.step='.01';input.value=getControl(id);input.setAttribute('aria-label',label+(input===range?' slider':''));input.addEventListener('input',()=>{const value=Math.max(0,Math.min(1,Number(input.value))),other=Number(getControl(id==='deltaMin'?'deltaMax':'deltaMin')),bounded=id==='deltaMin'?Math.min(value,other):Math.max(value,other);number.value=range.value=String(bounded);setControl(id,String(bounded));anchor.textContent=`Delta (${getControl('deltaMin')} to ${getControl('deltaMax')}) ⌄`;onControlsChanged({target:q(`[data-control="${id}"]`,q('#toolControls'))});});}row.append(number,range);panel.append(row);}return;
+        for(const [id,label] of [['deltaMin','Minimum delta'],['deltaMax','Maximum delta']]){const row=element('label','control',label),number=document.createElement('select'),range=document.createElement('input');for(const[value,text]of numericControlChoices(id))number.add(new Option(text,value));range.type='range';for(const input of [number,range]){input.min='0';input.max='1';input.step='.01';input.value=getControl(id);input.setAttribute('aria-label',label+(input===range?' slider':''));input.addEventListener('input',()=>{const value=Math.max(0,Math.min(1,Number(input.value))),other=Number(getControl(id==='deltaMin'?'deltaMax':'deltaMin')),bounded=id==='deltaMin'?Math.min(value,other):Math.max(value,other);number.value=range.value=String(bounded);setControl(id,String(bounded));anchor.textContent=`Delta (${getControl('deltaMin')} to ${getControl('deltaMax')})`;onControlsChanged({target:q(`[data-control="${id}"]`,q('#toolControls'))});});}row.append(number,range);panel.append(row);}return;
       }
       let search='';
       const draw=()=>{panel.replaceChildren();const state=termSelectionState(toolPayload,savedToolControls[activeTool.id]||{}),items=kind==='expiration'?state.expirations:state.strikes,key=kind==='expiration'?'termExpirations':'termStrikes',chosen=kind==='expiration'?state.selectedExpirations:state.selectedStrikes;

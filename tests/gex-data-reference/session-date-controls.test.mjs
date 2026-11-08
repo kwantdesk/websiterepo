@@ -25,13 +25,13 @@ function harness(initial={}){
 }
 
 test('single calendar opens themed with Current, no native date input and no commit on navigation',()=>{
-  const h=harness();assert.equal(byLabel(h.host,'Session Date').textContent,'Current ⌄');h.open();assert.equal(h.menu.isConnected,true);assert.ok(byText(h.menu,'November 2026'));assert.equal(descendants(h.menu).some(node=>node.tagName==='input'),false);
+  const h=harness();assert.equal(byLabel(h.host,'Session Date').textContent,'Current');h.open();assert.equal(h.menu.isConnected,true);assert.ok(byText(h.menu,'November 2026'));assert.equal(descendants(h.menu).some(node=>node.tagName==='input'),false);
   byLabel(h.menu,'Previous month').fire('click');assert.ok(byText(h.menu,'October 2026'));assert.deepEqual(h.changes,[]);assert.equal(byLabel(h.host,'Session Date').attributes['aria-expanded'],'true');
 });
 
 test('day selection immediately commits one ISO string, highlights selected day and Clear restores Current',()=>{
   const h=harness({date:'2026-10-16'});h.open();assert.equal(byLabel(h.menu,'Oct 16, 2026').attributes['aria-pressed'],'true');byLabel(h.menu,'Oct 19, 2026').fire('click');
-  assert.deepEqual(h.changes,['2026-10-19']);assert.equal(h.menu.isConnected,false);assert.equal(byLabel(h.host,'Session Date').textContent,'Oct 19, 2026 ⌄');h.open();byText(h.menu,'Clear').fire('click');assert.deepEqual(h.changes,['2026-10-19','']);assert.equal(byLabel(h.host,'Session Date').textContent,'Current ⌄');
+  assert.deepEqual(h.changes,['2026-10-19']);assert.equal(h.menu.isConnected,false);assert.equal(byLabel(h.host,'Session Date').textContent,'Oct 19, 2026');h.open();byText(h.menu,'Clear').fire('click');assert.deepEqual(h.changes,['2026-10-19','']);assert.equal(byLabel(h.host,'Session Date').textContent,'Current');
 });
 
 test('future cutoff only follows explicit valid currentDate, never machine time',()=>{

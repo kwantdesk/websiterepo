@@ -9,11 +9,11 @@ const adjacent=(month,offset)=>{const [year,index]=month.split('-').map(Number);
 export function mountSessionDateControls({host,popup,getScope,onChange,label:fieldLabel='Session Date',emptyLabel='Current'}){
   const document=host.ownerDocument,node=(tag,className='',text)=>{const result=document.createElement(tag);result.className=className;if(text!==undefined)result.textContent=text;return result;};
   const button=(text,action)=>{const result=node('button','',text);result.type='button';result.addEventListener('click',action);return result;};
-  const root=node('div','control'),trigger=button(emptyLabel+' ⌄',open);trigger.className='kwant-choice-trigger';trigger.setAttribute('aria-label',fieldLabel);trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-expanded','false');root.append(trigger);host.append(root);
+  const root=node('div','control'),trigger=button(emptyLabel+'',open);trigger.className='kwant-choice-trigger';trigger.setAttribute('aria-label',fieldLabel);trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-expanded','false');root.append(trigger);host.append(root);
   let destroyed=false,active=null,lastKey='';
   function close(){const previous=active;active=null;if(previous){releaseMenu(document,previous);if(previous.ownerDocument!==document)releaseMenu(previous.ownerDocument,previous);previous.remove();}trigger.setAttribute('aria-expanded','false');}
   function scope(){const raw=getScope()||{};return {date:validDate(raw.date)?raw.date:'',currentDate:validDate(raw.currentDate)?raw.currentDate:'',minDate:validDate(raw.minDate)?raw.minDate:'',disabled:!!raw.disabled};}
-  function sync(){if(destroyed)return;const current=scope(),key=JSON.stringify(current);if(key!==lastKey)close();lastKey=key;trigger.textContent=(current.date?label(current.date):emptyLabel)+' ⌄';trigger.disabled=current.disabled;trigger.title=current.disabled?'Session date is controlled by page or global filters':current.date?'Selected session date':'Current session';}
+  function sync(){if(destroyed)return;const current=scope(),key=JSON.stringify(current);if(key!==lastKey)close();lastKey=key;trigger.textContent=(current.date?label(current.date):emptyLabel)+'';trigger.disabled=current.disabled;trigger.title=current.disabled?'Session date is controlled by page or global filters':current.date?'Selected session date':'Current session';}
   function open(){
     if(destroyed)return;sync();const current=scope();if(current.disabled)return;if(active){close();return;}
     let month=(current.date||current.currentDate||new Date().toISOString().slice(0,10)).slice(0,7),content;

@@ -83,3 +83,29 @@ html[data-chart-palette="custom"] thead th{color:var(--site-chartHeader,var(--si
 html[data-chart-palette="custom"] td[data-column-id="strikePrice"],html[data-chart-palette="custom"] td[data-column-id="strike"]{color:var(--site-chartStrike,var(--site-foreground))!important}
 
 .embedded-actions button[data-drift-display][aria-pressed="true"]{background:var(--site-primary)!important;color:var(--site-on-primary)!important;border-color:var(--site-primary)!important}
+/* One filter-row geometry for single/multi selects, calendars and contract pickers. */
+body[data-phone-workspace="gex-data"] .tool-controls {
+  align-items:center!important;gap:6px!important;
+}
+body[data-phone-workspace="gex-data"] .tool-controls :is(.kwant-choice-trigger,.choice-dropdown>summary,.embedded-actions>button) {
+  box-sizing:border-box!important;height:28px!important;min-height:28px!important;
+  margin:0!important;padding:0 9px!important;border:1px solid var(--site-border)!important;
+  border-radius:var(--kwant-control-radius,8px)!important;
+  font:500 11px/1 Aleph,sans-serif!important;letter-spacing:0!important;
+  display:inline-flex!important;align-items:center!important;gap:8px!important;
+  color:var(--site-foreground)!important;box-shadow:none!important;
+}
+body[data-phone-workspace="gex-data"] .tool-controls .choice-dropdown {
+  height:28px!important;border:0!important;flex:0 0 auto;
+}
+body[data-phone-workspace="gex-data"] .tool-controls .choice-dropdown>summary {
+  list-style:none;white-space:nowrap;justify-content:space-between;
+}
+body[data-phone-workspace="gex-data"] .tool-controls .choice-dropdown>summary::-webkit-details-marker{display:none}
+body[data-phone-workspace="gex-data"] .tool-controls .kwant-choice-trigger>span[aria-hidden="true"]{display:none}
+body[data-phone-workspace="gex-data"] .tool-controls :is(.kwant-choice-trigger,.choice-dropdown>summary)::after {
+  content:'';display:block;flex:0 0 5px;width:5px;height:5px;margin-left:3px;margin-top:-3px;
+  border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(45deg);opacity:.7;
+}
+body[data-phone-workspace="gex-data"] .tool-controls :is(.kwant-choice-trigger[aria-expanded="true"],.choice-dropdown[open]>summary)::after{transform:rotate(225deg);margin-top:3px}
+body[data-phone-workspace="gex-data"] .tool-controls .embedded-actions>button{min-width:28px!important;padding:0 7px!important;justify-content:center!important}

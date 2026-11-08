@@ -60,8 +60,8 @@ function mountContractControls({ host, popup, getScope, loadChoices, onExpiryCha
   let destroyed = false, generation = 0, active = null, lastScopeKey, refreshSelection = null;
   const strikeLabel=value=>currencyStrikes?'$'+value.toLocaleString('en-US',{minimumFractionDigits:Number.isInteger(value)?0:2,maximumFractionDigits:2}):String(value);
   const close = () => { generation++; active?.remove(); active = null; refreshSelection = null; };
-  const expiryButton = button('Expiration ⌄', () => open('expiry'), 'kwant-choice-trigger');
-  const strikesButton = button('Strike Price ⌄', () => open('strikes'), 'kwant-choice-trigger');
+  const expiryButton = button('Expiration', () => open('expiry'), 'kwant-choice-trigger');
+  const strikesButton = button('Strike Price', () => open('strikes'), 'kwant-choice-trigger');
   expiryButton.setAttribute('aria-label', 'Expiration'); strikesButton.setAttribute('aria-label', 'Strike Price');
   for (const element of [expiryButton, strikesButton]) element.setAttribute('aria-haspopup', 'dialog');
   expiryWrap.append(expiryButton); strikesWrap.append(strikesButton); root.append(stylesheet()); if (withExpiry) root.append(expiryWrap); if(withStrikes)root.append(strikesWrap); host.append(root);
@@ -71,10 +71,10 @@ function mountContractControls({ host, popup, getScope, loadChoices, onExpiryCha
     const scope = getScope(), key = keyForScope(scope);
     if (lastScopeKey !== undefined && key !== lastScopeKey) close();
     lastScopeKey = key;
-    expiryButton.textContent = `${scope.expiry ? readableDate(scope.expiry) : 'Expiration'} ⌄`;
+    expiryButton.textContent = `${scope.expiry ? readableDate(scope.expiry) : 'Expiration'}`;
     if(!withStrikes)expiryButton.title=!scope.ticker?'Select an instrument first':scope.expiryDisabled?'Expiration controlled by a filter override':clearable?'Select expiration':'Select one expiration';
     const selected = numbers(scope.strikes);
-    strikesButton.textContent = `${selected.length ? countSummary?strikeLabel(selected[0])+(selected.length>1?` + ${selected.length-1}`:''):selected.map(strikeLabel).join(', ') : 'Strike Price'} ⌄`;
+    strikesButton.textContent = `${selected.length ? countSummary?strikeLabel(selected[0])+(selected.length>1?` + ${selected.length-1}`:''):selected.map(strikeLabel).join(', ') : 'Strike Price'}`;
     strikesButton.title = selected.length ? selected.map(strikeLabel).join(', ') : clearable?'All strikes':'Select one strike';
     strikesWrap.hidden = withExpiry && !scope.expiry;
     expiryButton.disabled = !!scope.disabled || !!scope.expiryDisabled || singleStrike&&!scope.ticker; strikesButton.disabled = !!scope.disabled || singleStrike&&!scope.ticker || withExpiry && !scope.expiry;

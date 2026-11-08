@@ -31,9 +31,9 @@ test('opt-in Dark Pool two-month shell commits first day immediately, keeps rang
   assert.ok(byText(menu,'November 2026'));assert.ok(byText(menu,'December 2026'));assert.ok(byText(menu,'Leave blank for current session'));
   assert.equal(byText(menu,'Clear').disabled,true);assert.equal(byText(menu,'Apply'),undefined);
   byLabel(menu,'Previous month').fire('click');assert.ok(byText(menu,'October 2026'));assert.ok(byText(menu,'November 2026'));
-  byLabel(menu,'Oct 16, 2026').fire('click');assert.deepEqual(changes,[{startDate:'2026-10-16',endDate:'2026-10-16'}]);assert.equal(menu.isConnected,true);assert.equal(byLabel(host,'Session Date Range').textContent,'Oct 16, 2026 ⌄');assert.equal(byText(menu,'Clear').disabled,false);
+  byLabel(menu,'Oct 16, 2026').fire('click');assert.deepEqual(changes,[{startDate:'2026-10-16',endDate:'2026-10-16'}]);assert.equal(menu.isConnected,true);assert.equal(byLabel(host,'Session Date Range').textContent,'Oct 16, 2026');assert.equal(byText(menu,'Clear').disabled,false);
   byLabel(menu,'Oct 20, 2026').fire('click');assert.deepEqual(changes.at(-1),{startDate:'2026-10-16',endDate:'2026-10-20'});assert.equal(menu.isConnected,true);
-  byText(menu,'Clear').fire('click');assert.deepEqual(changes.at(-1),{startDate:'',endDate:''});assert.equal(menu.isConnected,false);assert.equal(byLabel(host,'Session Date Range').textContent,'Session Date Range ⌄');
+  byText(menu,'Clear').fire('click');assert.deepEqual(changes.at(-1),{startDate:'',endDate:''});assert.equal(menu.isConnected,false);assert.equal(byLabel(host,'Session Date Range').textContent,'Session Date Range');
   byLabel(host,'Session Date Range').fire('click');assert.equal(byText(menu,'Clear').disabled,true);api.destroy();
 });
 
@@ -42,7 +42,7 @@ test('Dark Pool business-day endpoint opt-in disables observed weekend dates wit
   const scope={currentDate:'2026-11-03',startDate:'2026-10-17',endDate:'2026-10-18'},changes=[];let menu,api;
   api=mountOptionTapeSessionControls({host,getScope:()=>scope,monthsVisible:2,commitOnSelect:true,businessDayEndpoints:true,clearLabel:'Clear',validateSelection:optionTapeSessionRange,
     popup:(_anchor,_title,build)=>{menu=document.createElement('section');document.body.append(menu);build(menu);return menu;},onChange:next=>{changes.push({...next});Object.assign(scope,next);api.sync();}});
-  assert.equal(byLabel(host,'Session Date Range').textContent,'Oct 17, 2026 – Oct 18, 2026 ⌄','explicit legacy weekend endpoints are preserved');
+  assert.equal(byLabel(host,'Session Date Range').textContent,'Oct 17, 2026 – Oct 18, 2026','explicit legacy weekend endpoints are preserved');
   byLabel(host,'Session Date Range').fire('click');
   for(const day of [3,4,10,11,17,18,24,25,31]){const endpoint=byLabel(menu,`Oct ${day}, 2026`);assert.equal(endpoint.disabled,true);endpoint.fire('click');}
   assert.equal(byLabel(menu,'Nov 1, 2026').disabled,true);byLabel(menu,'Nov 1, 2026').fire('click');assert.deepEqual(changes,[]);
@@ -60,7 +60,7 @@ test('Equity date opt-in commits a single selected day then selecting the same d
   const scope={currentDate:'2026-10-20',startDate:'',endDate:''},changes=[];let menu,api;
   api=mountOptionTapeSessionControls({host,getScope:()=>scope,commitOnSelect:true,toggleSameDay:true,clearLabel:'Clear',popup:(_anchor,_title,build)=>{menu=document.createElement('section');document.body.append(menu);build(menu);return menu;},onChange:selection=>{changes.push(selection);Object.assign(scope,selection);api.sync();}});
   byLabel(host,'Session Date Range').fire('click');byLabel(menu,'Oct 16, 2026').fire('click');assert.deepEqual(changes.at(-1),{startDate:'2026-10-16',endDate:'2026-10-16'});
-  byLabel(menu,'Oct 16, 2026').fire('click');assert.deepEqual(changes.at(-1),{startDate:'',endDate:''});assert.equal(byLabel(host,'Session Date Range').textContent,'Session Date Range ⌄');api.destroy();
+  byLabel(menu,'Oct 16, 2026').fire('click');assert.deepEqual(changes.at(-1),{startDate:'',endDate:''});assert.equal(byLabel(host,'Session Date Range').textContent,'Session Date Range');api.destroy();
 });
 test('current-session picker opens immediately with themed calendar buttons and no native date input',()=>{
   const h=harness();h.open();assert.equal(h.menu.isConnected,true);assert.ok(byText(h.menu,'November 2026'));assert.equal(descendants(h.menu).some(node=>node.tagName==='input'),false);
@@ -68,11 +68,11 @@ test('current-session picker opens immediately with themed calendar buttons and 
 });
 test('single selected date applies as a single session and closes without changing until Apply',()=>{
   const h=harness();h.open();byLabel(h.menu,'Nov 2, 2026').fire('click');assert.deepEqual(h.changes,[]);assert.equal(h.scope.startDate,'');byText(h.menu,'Apply').fire('click');
-  assert.deepEqual(h.changes,[{startDate:'2026-11-02',endDate:'2026-11-02'}]);assert.equal(h.menu.isConnected,false);assert.equal(byLabel(h.host,'Session Date Range').textContent,'Nov 2, 2026 ⌄');
+  assert.deepEqual(h.changes,[{startDate:'2026-11-02',endDate:'2026-11-02'}]);assert.equal(h.menu.isConnected,false);assert.equal(byLabel(h.host,'Session Date Range').textContent,'Nov 2, 2026');
 });
 test('range selection spans calendar months in either direction and current-session reset is explicit',()=>{
   const h=harness();h.open();byLabel(h.menu,'Nov 2, 2026').fire('click');byLabel(h.menu,'Previous month').fire('click');byLabel(h.menu,'Oct 30, 2026').fire('click');byText(h.menu,'Apply').fire('click');
-  assert.deepEqual(h.changes,[{startDate:'2026-10-30',endDate:'2026-11-02'}]);assert.equal(byLabel(h.host,'Session Date Range').textContent,'Oct 30, 2026 – Nov 2, 2026 ⌄');
+  assert.deepEqual(h.changes,[{startDate:'2026-10-30',endDate:'2026-11-02'}]);assert.equal(byLabel(h.host,'Session Date Range').textContent,'Oct 30, 2026 – Nov 2, 2026');
   h.open();byText(h.menu,'Current session').fire('click');assert.deepEqual(h.changes[1],{startDate:'',endDate:''});assert.equal(byLabel(h.host,'Session Date Range').title,'Current session');
 });
 test('page/global date override disables the calendar and stale or destroyed popup callbacks cannot commit',()=>{

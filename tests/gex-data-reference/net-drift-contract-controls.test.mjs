@@ -66,7 +66,7 @@ test('expiry-only required picker waits for a ticker, has no strike UI, and sele
   assert.equal(find(h.menu,node=>node.attributes['aria-label']==='Oct 24, 2026').disabled,true);
   find(h.menu,node=>node.attributes['aria-label']==='Oct 23, 2026').fire('click');
   assert.deepEqual(h.expiryChanges,['2026-10-23']);assert.equal(h.menu.isConnected,false);
-  assert.equal(trigger.textContent,'Oct 23, 2026 ⌄');assert.deepEqual(h.strikeChanges,[]);h.api.destroy();
+  assert.equal(trigger.textContent,'Oct 23, 2026');assert.deepEqual(h.strikeChanges,[]);h.api.destroy();
 });
 
 test('expiry-only override disables acquisition, clearability is explicit, and empty inventory never selects a date',async()=>{
@@ -106,7 +106,7 @@ test('actual Max Pain picker preserves restored selection and override ownership
     loadNetDriftContractChoices:async scope=>{loads.push(scope);return choices;},popup:(anchor,title,build)=>{menu?.remove();menu=document.createElement('section');document.body.append(menu);build(menu);return menu;}};
   vm.runInNewContext(app.slice(start,end),env);
   const trigger=find(holder,node=>node.attributes['aria-label']==='Expiration');
-  assert.equal(trigger.textContent,'Oct 23, 2026 ⌄');assert.deepEqual(changes,[]);assert.equal(values.expiry,'2026-10-23');
+  assert.equal(trigger.textContent,'Oct 23, 2026');assert.deepEqual(changes,[]);assert.equal(values.expiry,'2026-10-23');
   assert.equal(nodes.get('ticker').dataset.maxPainTicker,'SPY');assert.equal(nodes.get('expiry').closest().hidden,true);
   assert.equal(nodes.get('painCalls').closest().hidden,true);assert.equal(nodes.get('painPuts').closest().hidden,true);
   assert.equal(find(holder,node=>node.attributes['aria-label']==='Strike Price'),undefined);
@@ -181,10 +181,10 @@ test(`Actual ${toolId} optional calendar and multi-strike wiring preserves filte
   values.tickerOptional='SPY';env.netDriftContractControls.sync();assert.equal(nodes.get('strike').type,'hidden');assert.equal(expiry.parent.parent.parent.hidden,false);assert.equal(expiry.disabled,false);
   nodes.get('expiry').disabled=true;env.netDriftContractControls.sync();assert.equal(expiry.disabled,true);assert.equal(strike.disabled,false);
   strike.fire('click');await flush();const boxes=descendants(menu).filter(node=>node.type==='checkbox');assert.deepEqual(boxes.map(node=>node.value),['700','705.5','710']);assert.equal(descendants(menu).some(node=>node.type==='radio'),false);
-  assert.deepEqual(boxes.map(box=>box.parent.children[1].textContent),['$700','$705.50','$710']);assert.equal(strike.textContent,'$700 + 1 ⌄');
+  assert.deepEqual(boxes.map(box=>box.parent.children[1].textContent),['$700','$705.50','$710']);assert.equal(strike.textContent,'$700 + 1');
   const search=find(menu,node=>node.type==='search');search.value='$705.50';search.fire('input');assert.deepEqual(descendants(menu).filter(node=>node.type==='checkbox').map(node=>node.value),['705.5']);
-  const fractional=find(menu,node=>node.type==='checkbox'&&node.value==='705.5');fractional.checked=true;fractional.fire('change');assert.equal(values.strike,'700,705.5,999');assert.deepEqual(changes,['strike']);assert.equal(menu.isConnected,true);assert.equal(strike.textContent,'$700 + 2 ⌄');assert.equal(strike.title,'$700, $705.50, $999');assert.equal(search.value,'');assert.deepEqual(descendants(menu).filter(node=>node.type==='checkbox').map(node=>[node.value,node.checked]),[['700',true],['705.5',true],['710',false]]);
-  search.value='705';search.fire('input');const selected=find(menu,node=>node.type==='checkbox');selected.checked=false;selected.fire('change');assert.equal(search.value,'');assert.equal(values.strike,'700,999');assert.equal(strike.textContent,'$700 + 1 ⌄');
+  const fractional=find(menu,node=>node.type==='checkbox'&&node.value==='705.5');fractional.checked=true;fractional.fire('change');assert.equal(values.strike,'700,705.5,999');assert.deepEqual(changes,['strike']);assert.equal(menu.isConnected,true);assert.equal(strike.textContent,'$700 + 2');assert.equal(strike.title,'$700, $705.50, $999');assert.equal(search.value,'');assert.deepEqual(descendants(menu).filter(node=>node.type==='checkbox').map(node=>[node.value,node.checked]),[['700',true],['705.5',true],['710',false]]);
+  search.value='705';search.fire('input');const selected=find(menu,node=>node.type==='checkbox');selected.checked=false;selected.fire('change');assert.equal(search.value,'');assert.equal(values.strike,'700,999');assert.equal(strike.textContent,'$700 + 1');
   find(menu,node=>node.textContent==='Clear all').fire('click');assert.equal(values.strike,'');
   nodes.get('expiry').disabled=false;env.netDriftContractControls.sync();expiry.fire('click');await flush();assert.ok(find(menu,node=>node.textContent==='Clear expiration'));
   overrides.global.tickers=['SPY','QQQ'];env.netDriftContractControls.sync();assert.equal(expiry.disabled,true);assert.equal(expiry.parent.parent.parent.hidden,true);assert.equal(nodes.get('expiry').closest().hidden,false);assert.equal(nodes.get('strike').type,'text');const before=loads;expiry.fire('click');await flush();assert.equal(loads,before);
