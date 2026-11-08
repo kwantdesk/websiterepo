@@ -417,10 +417,13 @@ export default function ChartDrawLayer({
     if (!staysArmed) onToolConsumed();
   };
 
-  // Choosing Cursor finishes the clicked path without adding the hover point.
+  // All variable-length tools finish their clicked vertices when switching tools.
+  // Use the specification rather than a tool name so future polylines inherit it.
   useEffect(() => {
-    if (!pending || pending.tool !== "path" || activeTool === "path") return;
-    if (!readOnly && pending.points.length >= 2) onCommit(createDrawing("path", pending.points));
+    if (!pending || activeTool === pending.tool) return;
+    if (!readOnly && DRAW_TOOL_SPECS[pending.tool].points === "poly" && pending.points.length >= 2) {
+      onCommit(createDrawing(pending.tool, pending.points));
+    }
     setPending(null);
     setCursor(null);
   }, [activeTool, pending, readOnly, onCommit]);
@@ -1124,7 +1127,7 @@ export default function ChartDrawLayer({
         if (!current || current.tool !== activeTool) return { tool: activeTool, points: [point] };
         const last = current.points[current.points.length - 1];
         // A double-click finishes the path; its second press is not a new vertex.
-        if (activeTool === "path" && last.time === point.time && last.price === point.price) return current;
+        if (last.time === point.time && last.price === point.price) return current;
         return { ...current, points: [...current.points, point] };
       });
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -1875,7 +1878,7 @@ export default function ChartDrawLayer({
 
   // A clicked path already has placed segments. Leaving the plot for Cursor
   // removes only its unplaced hover leg, not those segments awaiting commit.
-  const previewDrawing: Drawing | null = pending && (cursor || pending.tool === "path")
+  const previewDrawing: Drawing | null = pending && (cursor || pending.points.length > 0)
     ? { id: "__preview__", tool: pending.tool, points: freehandRef.current || !cursor ? pending.points : [...pending.points, cursor], style: previewStyle(pending.tool), text: pending.tool === "emoji" ? emoji : undefined }
     : null;
 
