@@ -1524,7 +1524,7 @@ function displayCmeSymbol(symbol: string) {
 const pinnedCmeSymbols = ["ES.v.0", "MES.v.0", "NQ.v.0", "MNQ.v.0"];
 const cmeFuturesPickerCategories = [
   {
-    category: "CME Futures · Pinned",
+    category: "Popular",
     instruments: pinnedCmeSymbols.flatMap((symbol) => {
       const instrument = DATABENTO_FUTURES.find((future) => future.symbol === symbol);
       return instrument ? [instrument] : [];
