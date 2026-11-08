@@ -1494,15 +1494,27 @@ export default function ChartDrawLayer({
         case "emoji": {
           if (a.x == null || a.y == null) return null;
           const size = emojiScreenSize(drawing, a.x, a.y);
-          return <text
+          const tintId = `${plotClipId}-emoji-${drawing.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+          const tint = style.emojiOriginalColors === false;
+          return <g>
+            {tint ? <defs><filter id={tintId} x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB">
+              <feFlood floodColor={stroke} />
+              <feComposite in2="SourceAlpha" operator="in" result="tint" />
+              {/* Colour blend preserves the glyph's shading and facial details. */}
+              <feBlend in="tint" in2="SourceGraphic" mode="color" />
+              <feComposite in2="SourceAlpha" operator="in" />
+            </filter></defs> : null}
+          <text
             x={a.x}
             y={a.y}
             textAnchor="middle"
             dominantBaseline="central"
             fontSize={size}
             fontFamily={'"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'}
+            fill={stroke}
+            filter={tint ? `url(#${tintId})` : undefined}
             style={{ userSelect: "none" }}
-          >{drawing.text || "🙂"}</text>;
+          >{drawing.text || "🙂"}</text></g>;
         }
         case "entryArrow":
         case "exitArrow": {

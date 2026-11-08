@@ -114,9 +114,13 @@ export default function ChartDrawSettings({
           {tab === "style" ? (
             <>
               {isEmoji ? (
-                <Row label={`Size · ${Math.round(drawing.style.fontSize ?? 36)}px`}>
-                  <input type="range" min={16} max={160} step={1} value={drawing.style.fontSize ?? 36} onChange={(event) => patchStyle({ fontSize: Number(event.target.value) })} className="w-48 accent-primary" />
-                </Row>
+                <>
+                  <Row label="Colour"><ChartColorField ariaLabel="Emoji colour" value={resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ color: hex, useThemeColor: false, emojiOriginalColors: false })} /></Row>
+                  <Row label="Original emoji colours"><input type="checkbox" checked={drawing.style.emojiOriginalColors !== false} onChange={event => patchStyle({ emojiOriginalColors: event.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  <Row label={`Size · ${Math.round(drawing.style.fontSize ?? 36)}px`}>
+                    <input type="range" min={16} max={160} step={1} value={drawing.style.fontSize ?? 36} onChange={(event) => patchStyle({ fontSize: Number(event.target.value) })} className="w-48 accent-primary" />
+                  </Row>
+                </>
               ) : (
                 <>
                   <Row label="Colour"><ChartColorField ariaLabel="Drawing colour" value={resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ color: hex, useThemeColor: false })} /></Row>

@@ -155,6 +155,8 @@ export type DrawStyle = {
    */
   horizontalExtension?: DrawHorizontalExtension;
   fontSize?: number;    // text tools
+  /** Native multicolour emoji unless a custom colour has been chosen. */
+  emojiOriginalColors?: boolean;
   /** Half-width in chart time units; makes an emoji respond to time zoom. */
   emojiTimeRadius?: number;
   /** Half-height in chart price units; makes an emoji respond to price zoom. */
@@ -524,7 +526,7 @@ export const PAPER_FILL_SELL_COLOR = "#ff3b5c";
 
 const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   if (tool === "emoji") {
-    return { ...DEFAULT_DRAW_STYLE, useThemeColor: false, fontSize: 36, showLabels: false };
+    return { ...DEFAULT_DRAW_STYLE, fontSize: 36, showLabels: false };
   }
   if (tool === "fixedRangeVolumeProfile" || tool === "anchoredVolumeProfile") {
     return { ...DEFAULT_DRAW_STYLE, profileOpacity: 100 };
