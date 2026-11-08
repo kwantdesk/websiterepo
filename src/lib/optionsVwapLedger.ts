@@ -1,6 +1,6 @@
 import type { OptionsVwapEvent } from './optionsVwap';
 
-type Group = { members: Map<string, OptionsVwapEvent>; notional: number; contracts: number; latest: number; side: number; received: number };
+type Group = { members: Map<string, OptionsVwapEvent>; notional: number; mean: number; m2: number; contracts: number; latest: number; side: number; received: number };
 const valid = (event: OptionsVwapEvent) => event.length === 5 && event.every(Number.isFinite)
   && event[0] >= 1e12 && event[1] > 0 && Number.isInteger(event[2]) && event[2] > 0 && Math.abs(event[3]) === 1;
 const sameTrade = (a: OptionsVwapEvent, b: OptionsVwapEvent) => a.slice(0, 4).every((value, index) => value === b[index]);
@@ -24,7 +24,9 @@ export class OptionsVwapLedger {
     if (!previous) return false;
     const group = this.groups.get(previous.key)!;
     group.members.delete(id);
-    group.contracts -= previous.event[2];
+    const remaining=group.contracts-previous.event[2];
+    if(remaining>0){const nextMean=(group.notional-previous.event[1]*previous.event[2])/remaining;group.m2=Math.max(0,group.m2-previous.event[2]*(previous.event[1]-group.mean)*(previous.event[1]-nextMean));group.mean=nextMean;}
+    group.contracts = remaining;
     group.notional -= previous.event[1] * previous.event[2];
     if (!group.members.size) this.groups.delete(previous.key);
     else if (group.latest === previous.event[0]) {
@@ -43,15 +45,18 @@ export class OptionsVwapLedger {
     if (previous) {
       if (sameTrade(previous, event)) {
         if (previous[4] <= event[4]) return false;
-        event = [...event.slice(0, 4), Math.min(previous[4], event[4])] as OptionsVwapEvent;
+        event = [event[0],event[1],event[2],event[3],Math.min(previous[4],event[4])];
       } else if (event[4] < previous[4]) return false;
       this.remove(id);
     }
     const key = `${Math.floor(event[0] / 1000)}|${event[3]}|${event[4]}`;
     let group = this.groups.get(key);
-    if (!group) { group = { members: new Map(), notional: 0, contracts: 0, latest: event[0], side: event[3], received: event[4] }; this.groups.set(key, group); }
+    if (!group) { group = { members: new Map(), notional: 0, mean: 0, m2: 0, contracts: 0, latest: event[0], side: event[3], received: event[4] }; this.groups.set(key, group); }
     group.members.set(id, event);
-    group.contracts += event[2];
+    const nextWeight=group.contracts+event[2],delta=event[1]-group.mean;
+    group.mean+=delta*event[2]/nextWeight;
+    group.m2+=event[2]*delta*(event[1]-group.mean);
+    group.contracts=nextWeight;
     group.notional += event[1] * event[2];
     group.latest = Math.max(group.latest, event[0]);
     this.records.set(id, { event, key });
@@ -61,7 +66,7 @@ export class OptionsVwapLedger {
   snapshot() {
     if (this.outputRevision === this.revision) return this.output;
     const rows = [...this.groups.entries()].sort((a, b) => a[1].latest - b[1].latest);
-    this.output = { ids: rows.map(([key]) => `second:${key}`), events: rows.map(([, group]): OptionsVwapEvent => [group.latest, group.notional / group.contracts, group.contracts, group.side, group.received]) };
+    this.output = { ids: rows.map(([key]) => `second:${key}`), events: rows.map(([, group]): OptionsVwapEvent => [group.latest, group.notional / group.contracts, group.contracts, group.side, group.received, Math.max(0,group.m2/group.contracts)]) };
     this.outputRevision = this.revision;
     return this.output;
   }

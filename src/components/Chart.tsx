@@ -8345,12 +8345,24 @@ function Chart({
       if (instance.indicatorId === "options-vwap") {
         if (!instance.enabled || !optionsVwapHistory || optionsVwapHistory.symbol !== instrument) return [];
         const config=instance.settings ?? {};
-        return [{key:instance.instanceId+"-options-vwap",groupKey:instance.instanceId,label:"Options VWAP · observed contracts",kind:"line",placement:"overlay",
-          color:config.useThemeColors !== false ? visibleIndicatorTheme(settings).primary : String(config.plotColor ?? config.lineColor ?? "#22D3EE"),
-          lineWidth:Math.max(1,Math.min(4,Number(config.lineWidth)||2)) as 1|2|3|4,
-          lineStyle:config.lineStyle === "dashed" ? "dashed" : config.lineStyle === "dotted" ? "dotted" : "solid",
-          lastValueVisible:config.showCurrentValue === true,
-          data:calculateOptionsVwap(optionsVwapHistory.events,sampledIndicatorCandles,config,replayTimestampMs,(sampledIndicatorCandles.at(-1)?.timestamp ?? 0)+(timeframeToMs(timeframe) ?? inferCandleIntervalMs(sampledIndicatorCandles) ?? 60000))}];
+        const theme=visibleIndicatorTheme(settings);
+        const points=calculateOptionsVwap(optionsVwapHistory.events,sampledIndicatorCandles,config,replayTimestampMs,(sampledIndicatorCandles.at(-1)?.timestamp ?? 0)+(timeframeToMs(timeframe) ?? inferCandleIntervalMs(sampledIndicatorCandles) ?? 60000));
+        const style=(value:unknown): "solid"|"dashed"|"dotted"=>value==="dashed"||value==="dotted"?value:"solid";
+        const width=(value:unknown,fallback:number)=>Math.max(1,Math.min(4,Number(value)||fallback)) as 1|2|3|4;
+        const lines:CalculatedIndicatorSeries[]=[{key:instance.instanceId+"-options-vwap",groupKey:instance.instanceId,label:"Options VWAP · observed contracts",kind:"line",placement:"overlay",
+          color:config.useThemeColors !== false ? theme.primary : String(config.plotColor ?? config.lineColor ?? "#22D3EE"),
+          lineWidth:width(config.lineWidth,2),lineStyle:style(config.lineStyle),lastValueVisible:config.showCurrentValue === true,data:points}];
+        for(let i=1;i<=5;i++){
+          if(config['band'+i+'Enabled']!==true)continue;
+          const multiplier=Math.max(.1,Math.min(10,Number(config['band'+i])||i));
+          for(const direction of [1,-1]){
+            const colourKey=(direction===1?'upper':'lower')+i+'Color';
+            lines.push({key:instance.instanceId+'-options-vwap-'+colourKey,groupKey:instance.instanceId,label:'Options VWAP '+(direction===1?'+':'−')+multiplier+(config.envelopeMode==='price-percentage'?'%':'σ'),kind:'line',placement:'overlay',
+              color:config.useThemeColors!==false?theme.secondary:String(config[colourKey]??theme.secondary),lineWidth:width(config.bandLineWidth,1),lineStyle:style(config.bandLineStyle??'dotted'),lastValueVisible:config.showCurrentValue===true,
+              data:points.map(point=>({...point,value:point.value+direction*multiplier*(config.envelopeMode==='price-percentage'?point.value/100:point.deviation)}))});
+          }
+        }
+        return lines;
       }
       if (instance.indicatorId === "standard-deviation" || instance.indicatorId === "average-true-range-atr") return [];
       if (

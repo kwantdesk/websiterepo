@@ -273,7 +273,11 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
-  "options-vwap": [{ key:"lineWidth", label:"Line width", defaultValue:2, min:1, max:4, step:1 }],
+  "options-vwap": [
+    { key:"lineWidth", label:"VWAP line width", defaultValue:2, min:1, max:4, step:1 },
+    { key:"bandLineWidth", label:"Envelope line width", defaultValue:1, min:1, max:4, step:1 },
+    ...[1,2,3,4,5].map(i=>({key:'band'+i,label:'Band '+i,defaultValue:i,min:0.1,max:10,step:0.1})),
+  ],
   "big-blocks-options": [
     { key: "minContracts", label: "Minimum contracts per executed order", defaultValue: 100, min: 0, max: 1000000, step: 1 },
     { key: "minPremium", label: "Minimum premium per executed order ($)", defaultValue: 0, min: 0, max: 1000000000, step: 1000 },

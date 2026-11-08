@@ -52,3 +52,14 @@ The history reader no longer rejects a file solely for exceeding 32MiB compresse
 Verification: 36 focused tests pass, including history202/503/pending while live trades arrive, late history after a live correction, 100005 unique prints, contract/notional conservation, side filters and cancellation/deduplication. Scoped ESLint passes; full isolated webpack production build passes. Two real Chart components in isolated headless Chrome use one shared live request and display Options VWAP while every history request returns202; no page errors. Screenshot: live-with-history-pending.png (local evidence, synthetic prices).
 
 Read-only VPS health returned200: exposure recorder enabled, consolidated-flow captures present, no dropped counts, last archived at2026-11-08T07:29:19.222Z. Consolidated-flow files exist for every November2–6 storage folder (15.6MB,17.0MB,3.2MB,53.9MB,0.4MB respectively). File existence is not complete execution coverage. The auxiliary history service alone was restarted to activate the bounded-reader changes. Main gateway start time remained2026-11-07T09:43:25.024779303Z. Live market testing remains unverified because this is Sunday.
+
+
+## Standard deviation bands — 8 November 2026
+
+Owner requested the normal VWAP band behaviour. Options VWAP now offers five independently enabled upper/lower band pairs, defaulting to1σ/2σ/3σ enabled and4/5 disabled, multipliers0.1–10, population standard deviation or price-percentage envelopes, band width1–4, solid/dashed/dotted styles, per-side band colours, theme colours and current values. Existing calls/puts scope and session/week reset apply to the centre and every band. No equity/futures volume is used.
+
+Deviation uses the contract-weighted second central moment of observed underlying execution prices. The shared live ledger retains within-second variance in its compact groups, so grouping does not collapse or understate the envelopes; corrections and cancellations update both mean and variance. Archived raw5-field events remain compatible. The optional sixth internal event field carries within-group variance only.
+
+39 focused tests pass, including hand-calculated weighted deviation, compact/raw equivalence, correction/cancellation, reset, replay cutoff and settings persistence. Isolated Chrome screenshot live-standard-deviation-bands.png shows three upper/lower pairs and centre line in both real Chart panes with one live subscription while archive is pending. No main gateway or auxiliary service restart is needed for this frontend-only extension. Market-session behaviour is not independently observed on Sunday.
+
+The actual settings popup was also exercised in isolated Chrome: Style shows all five band switches; unchecking and rechecking Band1 updates the active indicator settings correctly. Scoped lint and the final isolated production build pass.

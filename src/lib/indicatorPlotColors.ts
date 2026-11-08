@@ -31,7 +31,7 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
-  "options-vwap": [{key:"lineColor",role:"primary"}],
+  "options-vwap": [{key:"lineColor",role:"primary"}, ...[1,2,3,4,5].flatMap(i=>[{key:`upper${i}Color`,role:"secondary" as const},{key:`lower${i}Color`,role:"secondary" as const}])],
   "super-trend": [
     { key: "plotColor", role: "positive" },
     { key: "secondaryColor", role: "negative" },

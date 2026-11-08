@@ -46,3 +46,21 @@ for(const status of [202,503,'pending'])test('live line publishes without waitin
  const count=seen.length;emit({sessionDate:'2026-11-05',asOf:new Date(now).toISOString(),rows:[]},null);assert.equal(seen.length,count);
  }finally{stop?.();bigOptionsFeed.subscribe=originalSubscribe;globalThis.fetch=originalFetch;Date.now=originalNow;}
 });
+
+test('options-weighted deviation is exact and grouping preserves within-second dispersion',()=>{
+ const rows=[event(1,100,1,1,start+1000),event(2,200,3,1,start+1000)];const ledger=new OptionsVwapLedger();rows.forEach((e,i)=>ledger.upsert(String(i),e));
+ const raw=calculateOptionsVwap(rows,[bar(start)],{},null,start+60000)[0],grouped=calculateOptionsVwap(ledger.snapshot().events,[bar(start)],{},null,start+60000)[0];
+ assert.equal(raw.value,175);assert.ok(Math.abs(raw.deviation-Math.sqrt(1875))<1e-10);assert.equal(grouped.value,raw.value);assert.ok(Math.abs(grouped.deviation-raw.deviation)<1e-10);
+ ledger.upsert('1',event(2,300,3,1,start+2000));const corrected=calculateOptionsVwap(ledger.snapshot().events,[bar(start)],{},null,start+60000)[0];assert.equal(corrected.value,250);assert.ok(Math.abs(corrected.deviation-Math.sqrt(7500))<1e-10);
+ ledger.cancel('1');assert.equal(calculateOptionsVwap(ledger.snapshot().events,[bar(start)],{},null,start+60000)[0].deviation,0);
+});
+test('deviation resets with the chosen session and excludes future replay observations',()=>{
+ const next=start+3*86400000,rows=[event(1,100,1),event(2,200,1),[next,300,2,1,next]];
+ const session=calculateOptionsVwap(rows,[bar(start),bar(next)]);assert.equal(session[0].deviation,50);assert.equal(session[1].deviation,0);
+ assert.equal(calculateOptionsVwap(rows,[bar(start)],{},start+1)[0].deviation,0);
+});
+test('band switches, multipliers, colour, widths and styles persist in saved studies',()=>{
+ const settings={...defaultIndicatorSettings('options-vwap'),band1Enabled:false,band5Enabled:true,band5:2.5,bandLineWidth:3,bandLineStyle:'dashed',envelopeMode:'price-percentage',upper5Color:'#ff3300',lower5Color:'#00ff00'};
+ const restored=normalizeStoredIndicator({instanceId:'bands',indicatorId:'options-vwap',enabled:true,settings});
+ for(const key of ['band1Enabled','band5Enabled','band5','bandLineWidth','bandLineStyle','envelopeMode','upper5Color','lower5Color'])assert.equal(restored.settings[key],settings[key]);
+});

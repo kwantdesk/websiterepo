@@ -4098,6 +4098,11 @@ export default function ChartIndicatorsControl({
                 <div className="grid gap-3 border border-border p-3 text-[10px] sm:grid-cols-2">
                   <label className="space-y-2"><span>Options volume</span><KwantSelect value={String(settingsInstance.settings?.side ?? "both")} onChange={event=>replace(settingsInstance.instanceId,current=>({...current,settings:{...current.settings,side:event.target.value}}))} menuLabel="Options VWAP volume"><option value="both">Calls + puts</option><option value="calls">Calls only</option><option value="puts">Puts only</option></KwantSelect></label>
                   <label className="space-y-2"><span>Reset</span><KwantSelect value={String(settingsInstance.settings?.reset ?? "session")} onChange={event=>replace(settingsInstance.instanceId,current=>({...current,settings:{...current.settings,reset:event.target.value}}))} menuLabel="Options VWAP reset"><option value="session">New York session</option><option value="week">New York week</option></KwantSelect></label>
+                  {[['envelopeMode','Envelope calculation'],['lineStyle','VWAP line'],['bandLineStyle','Envelope lines']].map(([key,label])=>(
+                    <label key={key} className="space-y-2"><span>{label}</span><KwantSelect value={String(settingsInstance.settings?.[key]??(key==='envelopeMode'?'standard-deviation':key==='bandLineStyle'?'dotted':'solid'))} onChange={event=>replace(settingsInstance.instanceId,current=>({...current,settings:{...current.settings,[key]:event.target.value}}))} menuLabel={'Options VWAP '+label}>
+                      {key==='envelopeMode'?<><option value="standard-deviation">Standard deviation</option><option value="price-percentage">Price percentage</option></>:<><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></>}
+                    </KwantSelect></label>
+                  ))}
                   <div className="text-muted leading-5 sm:col-span-2">Weights the underlying price reported with each recorded option execution by its contract size. This archive contains sampled options flow, not a complete market tape. Only available recordings are shown; missing history is not filled with futures or equity volume. Replay uses observations already received at that time.</div>
                 </div>
               ) : null}
