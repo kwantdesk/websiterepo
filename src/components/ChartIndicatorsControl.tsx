@@ -1722,6 +1722,7 @@ export default function ChartIndicatorsControl({
         <button
           type="button"
           aria-label="Chart indicators"
+          aria-haspopup="dialog"
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
           className={`kwant-chart-row-control flex h-7 items-center gap-1.5 rounded-[3px] border border-transparent px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${

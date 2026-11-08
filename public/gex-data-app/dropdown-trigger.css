@@ -1,0 +1,12 @@
+/* Dropdowns indicate open state with their chevron, not a filled/glowing tile.
+   Pressed controls are toggles (Lock/Link/favourites), not menu triggers. */
+html body button[aria-haspopup][aria-expanded]:not([aria-pressed]),
+html body button[data-kwant-dropdown-trigger]:not([aria-pressed]),
+html body button[role="combobox"]:not([aria-pressed]),
+html body .topbar .top-action[aria-expanded]:not([aria-pressed]),
+html body .kwant-select-trigger[aria-expanded]:not([aria-pressed]) {
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transition-property: color, border-color !important;
+}

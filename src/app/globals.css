@@ -2,6 +2,7 @@
 @import "../../public/gex-data-app/number-input.css";
 @import "../../public/gex-data-app/range-input.css";
 @import "../../public/gex-data-app/workspace-chrome.css";
+@import "../../public/gex-data-app/dropdown-trigger.css";
 
 :root {
   /* The CHARTS workspace header is the shell's vertical rhythm reference. */

@@ -256,6 +256,7 @@ export default function ChartDrawToolbar({
                 onClick={() => (openGroup === group.id ? setOpenGroup(null) : openFlyout(group.id))}
                 className="kwant-draw-expand absolute right-0 bottom-0 flex h-3 w-2.5 items-center justify-center rounded-[2px] text-muted hover:text-foreground"
                 aria-label={`${group.label} tools`}
+                aria-haspopup="dialog"
                 aria-expanded={openGroup === group.id}
               >
                 <ChevronDown className="h-2.5 w-2.5 -rotate-90" />
@@ -293,6 +294,7 @@ export default function ChartDrawToolbar({
           }}
           className={`${textChip} border-border text-foreground hover:bg-surface`}
           aria-label="Magnet strength"
+          aria-haspopup="menu"
           aria-expanded={magnetMenuOpen}
           title={`Magnet strength: ${magnetStrength}`}
         >

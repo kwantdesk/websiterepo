@@ -1770,13 +1770,15 @@ function PaneHeaderDropdown({
         type="button"
         title={title}
         aria-label={title}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();
           setOpen((current) => !current);
         }}
         className={`hidden h-5 shrink-0 items-center gap-0.5 rounded-[3px] px-1 font-mono text-[8px] font-normal transition-colors sm:flex ${
-          open ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"
+          open ? "text-foreground" : "text-muted hover:text-foreground"
         }`}
       >
         <span className="truncate">{label}</span>
@@ -19620,6 +19622,8 @@ export default function KwantifyWorkspace({
                 setWorkspacePanelPickerPaneId(pane.id);
               }}
               className={`flex h-7 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${paneMoveLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+              aria-haspopup="dialog"
+              aria-expanded={workspacePanelPickerPaneId === pane.id}
               title={paneMoveLocked ? "This panel is locked in place" : "Drag to dock this panel, or click to change it"}
             >
               <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -19793,6 +19797,8 @@ export default function KwantifyWorkspace({
                 setWorkspacePanelPickerPaneId(pane.id);
               }}
               className={`flex h-7 min-w-0 shrink items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${paneMoveLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+              aria-haspopup="dialog"
+              aria-expanded={workspacePanelPickerPaneId === pane.id}
               title={paneMoveLocked ? "This chart is locked in place" : "Drag to dock this chart, or click to change it"}
             >
               <ChartPanelIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
