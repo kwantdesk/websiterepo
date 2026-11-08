@@ -1,4 +1,5 @@
 "use client";
+import { installPriceScaleDoubleClickToggle } from "@/lib/priceScaleDoubleClickToggle";
 import { useChartDrawingUndo } from "@/components/useChartDrawingUndo";
 import { recordChartTickPaint } from "@/lib/chartTickAudit";
 import { commitChartDrawingProjection, drawingPriceBasis, projectChartDrawing } from "@/lib/chartDrawingInstrument";
@@ -16101,6 +16102,7 @@ function Chart({
     prevDataRef.current = lastCandle ? `${lastCandle.timestamp}-${lastCandle.close}` : "";
 
     const container = chartContainerRef.current;
+    const disposePriceScaleDoubleClickToggle = installPriceScaleDoubleClickToggle(container, chart);
     const claimNativeCrosshairPointer = () => {
       if (nativeCrosshairPointerActive) return;
       nativeCrosshairPointerActive = true;
@@ -16439,6 +16441,7 @@ function Chart({
       drawingUnsubscribers.forEach((unsubscribe) => unsubscribe());
       drawingManager.detach();
       if (professionalDrawingManagerRef.current === drawingManager) professionalDrawingManagerRef.current = null;
+      disposePriceScaleDoubleClickToggle();
       container.removeEventListener("pointermove", claimNativeCrosshairPointer, true);
       container.removeEventListener("pointerleave", releaseNativeCrosshairPointer);
       container.removeEventListener("mousemove", handleMouseMove);
