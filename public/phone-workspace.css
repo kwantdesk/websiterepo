@@ -35,3 +35,6 @@
   html[data-embed=true] body[data-phone-workspace=heatmap] .workspace { grid-row: 2; min-width: 0; }
   body[data-phone-workspace=heatmap] .instrument-tabs { min-width: 0 !important; }
 }
+
+/* Docked GEX tools keep their own top controls, with no extra phone bar. */
+html.embedded body[data-phone-workspace="gex-data"] #toolView { height:100dvh; }

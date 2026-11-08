@@ -2,6 +2,9 @@
 function mountPhoneWorkspace() {
   const app = document.body.dataset.phoneWorkspace;
   if (!app) return;
+  // Docked GEX tools already expose their filters above the chart. A narrow
+  // panel is not a second phone workspace and must not create another drawer.
+  if (app === 'gex-data' && new URLSearchParams(location.search).get('embed') === '1') return;
   const phone = matchMedia('(max-width: 767px), (max-height: 500px) and (pointer: coarse)');
   const host = document.querySelector(app === 'gex-data' ? '.app-shell' : app === 'heatmap' ? '.app-bar' : 'body > header');
   if (!host) return;
