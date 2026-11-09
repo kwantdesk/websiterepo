@@ -79,6 +79,7 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import BounceGexMapSettings, { isBounceMirrorPresentationKey } from "@/components/gex-map/BounceGexMapSettings";
 import { commitBounceGexMapPreview, getBounceGexMapDraft, setBounceGexMapDraft, clearBounceGexMapDraft } from "@/lib/bounceGexMapPreview";
 import { defaultTpoSettings, tpoSettingsToRecord } from "@/lib/tpo/settings";
+import { DAILY_TPO_SESSION_PRESETS, selectedTpoQuickSessions, toggleTpoQuickSession } from "@/lib/tpo/quickSessions";
 import KstIndicatorSettings from "@/components/KstIndicatorSettings";
 import {
   FOOTPRINT_CHART_TYPES,
@@ -3091,7 +3092,7 @@ export default function ChartIndicatorsControl({
                 return (
                 // Volume Profile already has its own tab strip. A second outer
                 // section hides these controls while leaving its old footer visible.
-                <div data-settings-section={tpo ? "Filter / split time" : "General"} className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                <div data-settings-section={tpo ? "Filter/split time" : "General"} className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Filter / split time</div>
                   {([
                     /* Weekly defaults to a rolling five-session calculation. */
@@ -3288,8 +3289,10 @@ export default function ChartIndicatorsControl({
                   ) : null}
                   <button
                     type="button"
-                    disabled={String(sessionSettings.filterTime ?? "rth") !== "custom"}
-                    onClick={() => replaceSession(settingsInstance.instanceId, (current) => ({
+                    disabled={legacyTpo
+                      ? values.filterMode !== "filter" || values.sessionPreset !== "custom"
+                      : String(sessionSettings.filterTime ?? "rth") !== "custom"}
+                    onClick={() => (legacyTpo ? replace : replaceSession)(settingsInstance.instanceId, (current) => ({
                       ...current,
                       settings: {
                         ...(current.settings ?? {}),
@@ -5794,6 +5797,54 @@ export default function ChartIndicatorsControl({
                 );
                 return (
                   <>
+                    {page("Filter/split time", (
+                      <div className="space-y-3">
+                        {settingsDefinition.id === "tpo-chart" ? (
+                          <div>
+                            <div className="mb-2 text-[9px] uppercase tracking-[0.12em] text-muted">Quick sessions</div>
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                              {DAILY_TPO_SESSION_PRESETS.map(preset => {
+                                const active = !settingsInstance.settings?.filterTime && selectedTpoQuickSessions(settingsInstance.settings).includes(preset.id);
+                                return <button key={preset.id} type="button" aria-pressed={active}
+                                  onClick={() => replace(settingsInstance.instanceId, current => {
+                                    const quickSessions = current.settings?.filterTime
+                                      ? preset.id
+                                      : toggleTpoQuickSession(current.settings, preset.id);
+                                    const defaults = tpoSettingsToRecord(defaultTpoSettings("daily-tpo", chartSettings, instrument));
+                                    const first = DAILY_TPO_SESSION_PRESETS.find(candidate => quickSessions.split(",").includes(candidate.id));
+                                    const session = first?.settings ?? Object.fromEntries(Object.keys(preset.settings).map(key => [key, defaults[key]]));
+                                    return { ...current, settings: { ...current.settings, scheduleKind: "daily", periodMode: "multiple-profiles",
+                                      filterMode: "none", filterTime: "", customStartMs: 0, customEndMs: 0, customEndFollowsLatest: false,
+                                      ...session, quickSessions } };
+                                  })}
+                                  className={`min-h-12 rounded-lg border px-2 py-1.5 text-left ${active ? "border-primary/60 bg-primary/10 text-primary" : "border-border bg-background text-muted"}`}>
+                                  <span className="block text-[9px] font-medium">{preset.label}</span>
+                                  <span className="mt-1 block text-[8px] leading-3 opacity-75">{preset.description}</span>
+                                </button>;
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                        <button type="button" role="switch" aria-label="Use scheduled TPO sessions" aria-checked={!settingsInstance.settings?.filterTime}
+                          onClick={() => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...current.settings,
+                            filterTime: current.settings?.filterTime ? "" : "rth", filterMode: "none", quickSessions: "" } }))}
+                          className="h-9 rounded-lg border border-border bg-background px-3 text-[10px] text-foreground">
+                          Scheduled TPO sessions · {!settingsInstance.settings?.filterTime ? "ON" : "OFF"}
+                        </button>
+                        {!settingsInstance.settings?.filterTime ? <div className="grid gap-3 sm:grid-cols-2">
+                          {dropdown("Session action", "filterMode", [["none", "No filter"], ["filter", "Filter"], ["split-two", "Split two"], ["split-three", "Split three"]])}
+                          {dropdown("Session filter", "sessionPreset", [["eth", "ETH"], ["rth", "RTH"], ["custom", "Custom"]])}
+                          {settingsInstance.settings?.sessionPreset === "custom" ? (["customSessionStart", "customSessionEnd"] as const).map(key => (
+                            <label key={key} className="space-y-1.5 text-[9px] text-muted">
+                              <span>{key === "customSessionStart" ? "Custom session start" : "Custom session end"}</span>
+                              <KwantDateTimeInput type="time" step="1" aria-label={key === "customSessionStart" ? "Custom session start" : "Custom session end"}
+                                value={pick(key, key === "customSessionStart" ? "17:00:00" : "16:00:00")} onValueChange={value => setValue(key, value)}
+                                className="h-9 w-full" />
+                            </label>
+                          )) : null}
+                        </div> : null}
+                      </div>
+                    ))}
                     {page("Background/Text", (
                       <div className="space-y-3">
                         {toggle("Show text", "showText", false, "Draw each TPO letter independently of Blocks or Profile mode.")}
