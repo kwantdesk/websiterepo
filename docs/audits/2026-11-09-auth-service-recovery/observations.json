@@ -1,0 +1,66 @@
+{
+  "project": "wmkqvoeqeplnutkmrgim",
+  "observedDate": "2026-11-09",
+  "before": {
+    "local": {
+      "healthTimeoutMs": 25015,
+      "jwksTimeoutMs": 25007
+    },
+    "vps": {
+      "jwksTimeoutSeconds": 15,
+      "dnsSeconds": 0.006974,
+      "tlsCompletedSeconds": 0.036884,
+      "firstByte": false
+    },
+    "dashboardAuthLastHour": {
+      "user504AverageMs": 93955,
+      "refresh504AverageMs": 76787.5,
+      "successfulRefreshAverageMs": 30501.33
+    },
+    "database": {
+      "lockTargetOid": 112306,
+      "lockTarget": "pg_toast.pg_toast_112300",
+      "parentTable": "public.user_preferences",
+      "lockOwnerPid": 245260,
+      "waitingPids": [
+        245266,
+        245264,
+        245263,
+        245268,
+        245265
+      ],
+      "liveBlockersAtLaterSnapshot": 0,
+      "queryTimeouts": true
+    }
+  },
+  "action": "Owner-authorized Supabase full project restart; no VPS/terminal/provider restart, upgrade or data reset",
+  "after": {
+    "dashboardStatus": "Healthy",
+    "local": {
+      "healthHttp": 200,
+      "healthMs": 707,
+      "jwksHttp": 200,
+      "jwksMs": 680,
+      "algorithm": "ES256",
+      "anonymousPreferencesHttp": 401
+    },
+    "vps": {
+      "jwksHttp": 200,
+      "totalSeconds": 0.532224
+    },
+    "googleFlow": {
+      "websiteHttp": 303,
+      "websiteMs": 427,
+      "supabaseAuthorizeHttp": 302,
+      "supabaseAuthorizeMs": 521,
+      "destination": "accounts.google.com",
+      "interactiveGoogleConsentNotCompleted": true
+    }
+  },
+  "limits": [
+    "Exact SQL held by former lock-owner PID was not captured before restart.",
+    "Lock waits and database/Auth stalls are verified; a permanent underlying provider/node cause is not established.",
+    "Nano compute and RAM/CPU point observations are not proof an upgrade is required.",
+    "No user workspace, account, journal or order rows were modified."
+  ]
+}

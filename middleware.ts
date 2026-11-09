@@ -167,6 +167,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=configuration", request.url));
   }
 
+  // These exact GET handlers independently verify their actor before reading
+  // any private data. Repeating getUser here doubled remote Auth work for
+  // polling clients and could stall them before their handler even ran.
+  // Keep configuration/site-access checks above and all write checks below.
+  if (request.method === "GET" && [
+    "/api/socials", "/api/socials/notifications", "/api/journal",
+  ].includes(pathname)) return response;
+
   const activeAuthCookie = supabaseAuthCookieName(url);
   const authBudget = createMiddlewareAuthBudget();
   const supabase = createServerClient(url, key, {

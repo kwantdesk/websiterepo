@@ -114,3 +114,28 @@ test('the actual SDK verifies ES256 signature/expiry and reuses public keys acro
     assert.equal(keys,1);assert.equal(other,0);
   }finally{globalThis.fetch=original;}
 });
+
+
+test('independently authenticated Socials and Journal reads do not duplicate remote Auth checks',async()=>{
+ const h=harness({user:()=>new Promise(()=>{})});
+ for(const path of ['/api/socials','/api/socials/notifications','/api/journal'])assert.equal((await h.run(path)).next,true);
+ assert.deepEqual(h.counts,{claimsCalls:0,userCalls:0});
+ for(const path of ['/api/socials/export','/api/journal/export'])assert.equal((await h.run(path)).status,503);
+ for(const path of ['/api/socials','/api/socials/notifications','/api/journal'])assert.equal((await h.run(path,'POST')).status,503);
+ const denied=harness({granted:false});assert.equal((await denied.run('/api/journal')).status,401);
+});
+
+test('each delegated GET handler rejects anonymous access before opening a database client',async()=>{
+ for(const [file,client,actor]of [
+  ['src/app/api/socials/route.ts','socialClient','getSocialsRouteActor'],
+  ['src/app/api/socials/notifications/route.ts','notificationClient','getRouteActor'],
+  ['src/app/api/journal/route.ts','journalClient','getJournalRouteActor'],
+ ]){
+  const text=readFileSync(file,'utf8'),tree=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,true);
+  const functions=tree.statements.filter(n=>ts.isFunctionDeclaration(n)&&[client,'GET'].includes(n.name?.text)).map(n=>n.getText(tree));
+  assert.equal(functions.length,2);let verifications=0,databaseOpens=0;const exports={};
+  const compiled=ts.transpileModule(functions.join('\n'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+  vm.runInNewContext(compiled,{exports,[actor]:async()=>{verifications++;return null;},createSupabaseServerClient:async()=>{databaseOpens++;throw Error('must not read');},NextResponse:{json:(body,options)=>({body,...options})}});
+  assert.equal((await exports.GET({})).status,401,file);assert.equal(verifications,1);assert.equal(databaseOpens,0);
+ }
+});
