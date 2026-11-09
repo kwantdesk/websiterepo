@@ -739,7 +739,7 @@ await boot();
       input.title='Industries observed in fetched Market Map data; saved selections are retained.';
     }else if(type==='select'&&(['moneyType','tradeSide','notificationType','tradeType','sector','newsTopic','newsSentiment'].includes(id)||id==='contractTypeOptional'&&activeTool?.id==='iv-rank')){
       const ivRankContracts=id==='contractTypeOptional'&&activeTool?.id==='iv-rank',options=ivRankContracts?[['CALL','Call'],['PUT','Put']]:[...(inlineOptions||CONTROL_OPTIONS[id]||[]),...(id==='sector'?[['UNKNOWN','Unknown']]:[])];
-      input=multiChoiceDropdown({choices:options.filter(([value])=>value),label:ivRankContracts?'Contract Type':label,emptyLabel:ivRankContracts?'Contract Type':options.find(([value])=>!value)?.[1]||'All',searchable:id==='moneyType'||id==='tradeSide'||id==='newsTopic',compactSummary:id==='moneyType',summaryLabels:id==='tradeSide'?{ABOVE_ASK:'AA',ASK:'A',MID_MARKET:'M',BID:'B',BELOW_BID:'BB'}:{}});
+      input=multiChoiceDropdown({choices:options.filter(([value])=>value),label:ivRankContracts?'Contract Type':label,emptyLabel:ivRankContracts?'Contract Type':options.find(([value])=>!value)?.[1]||'All',searchable:id==='moneyType'||id==='tradeSide'||id==='newsTopic',compactSummary:id==='moneyType',countSummary:id==='moneyType'&&['contract-statistics','contract-trade-side-statistics'].includes(activeTool?.id),summaryLabels:id==='tradeSide'?{ABOVE_ASK:'AA',ASK:'A',MID_MARKET:'M',BID:'B',BELOW_BID:'BB'}:{}});
     }else if (type === "select") {
       input = document.createElement("select");
       const available = inlineOptions || CONTROL_OPTIONS[id] || [];

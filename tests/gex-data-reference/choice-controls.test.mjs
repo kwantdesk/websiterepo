@@ -114,6 +114,15 @@ test('compact moneyness and side summaries retain exact selected order while ful
  }finally{globalThis.document=previous;}
 });
 
+test('count summaries preserve all moneyness request values and reversible selections',()=>{
+ const doc={createElement:tag=>new Element(tag,doc)};
+ const picker=multiChoiceDropdown({document:doc,choices:[['ITM','In the Money'],['ATM','At the Money'],['OTM','Out of the Money']],values:['ITM','ATM','OTM'],label:'Moneyness',compactSummary:true,countSummary:true});
+ assert.equal(picker.children[0].textContent,'ITM + 2');assert.equal(picker.value,'ITM, ATM, OTM');
+ picker.value='ATM';assert.equal(picker.children[0].textContent,'ATM');
+ picker.value='OTM, ITM';assert.equal(picker.children[0].textContent,'OTM + 1');assert.equal(picker.value,'OTM, ITM');
+ picker.value='';assert.equal(picker.children[0].textContent,'All instruments');
+});
+
 test('independently loaded tool-frame coordinators share one parent-document menu and listener set',async()=>{
  const other=await import('../../public/gex-data-app/menu-coordination.js?independent-frame');
  const listeners=new Map(),doc={addEventListener(type,listener){const rows=listeners.get(type)??[];rows.push(listener);listeners.set(type,rows);}};

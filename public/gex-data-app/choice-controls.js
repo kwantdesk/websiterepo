@@ -50,7 +50,7 @@ export function setChoiceValue(select,value) {
   select.value=next;
 }
 /** A real dropdown with checkboxes; multi-value OR filters never collapse to one ticker. */
-export function multiChoiceDropdown({choices,values=[],label='Instruments',emptyLabel='All instruments',searchable=false,compactSummary=false,summaryLabels={},allowCustomSymbol=false,customSymbolPattern=/^[A-Z0-9./^_-]{1,16}$/,document:ownerDocument=globalThis.document}) {
+export function multiChoiceDropdown({choices,values=[],label='Instruments',emptyLabel='All instruments',searchable=false,compactSummary=false,countSummary=false,summaryLabels={},allowCustomSymbol=false,customSymbolPattern=/^[A-Z0-9./^_-]{1,16}$/,document:ownerDocument=globalThis.document}) {
   const document=ownerDocument,root=document.createElement('details'),summary=document.createElement('summary'),list=document.createElement('div');
   root.className='choice-dropdown';summary.setAttribute('aria-label',label);list.className='choice-dropdown-options';list.setAttribute('role','group');list.setAttribute('aria-label',label+' options');
   let selected=new Set(values.map(String));
@@ -66,7 +66,7 @@ export function multiChoiceDropdown({choices,values=[],label='Instruments',empty
     search.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();}});
     list.append(search,clear,results);
   }
-  const update=()=>{summary.textContent=selected.size?[...selected].map(value=>Object.hasOwn(summaryLabels,value)?summaryLabels[value]:compactSummary?({AT_THE_MONEY:'ATM',IN_THE_MONEY:'ITM',OUT_OF_THE_MONEY:'OTM'}[value]||value):labels.get(value)||value).join(', '):emptyLabel;};
+  const update=()=>{const names=[...selected].map(value=>Object.hasOwn(summaryLabels,value)?summaryLabels[value]:compactSummary?({AT_THE_MONEY:'ATM',IN_THE_MONEY:'ITM',OUT_OF_THE_MONEY:'OTM'}[value]||value):labels.get(value)||value);summary.textContent=names.length?countSummary&&names.length>1?`${names[0]} + ${names.length-1}`:names.join(', '):emptyLabel;};
   const render=()=>{
     results.replaceChildren();if(!search)list.append(clear);
     const query=String(search?.value??'').trim().toLowerCase(),matches=choicesWithSaved(choices,[...selected]).filter(([value,name])=>!query||`${value} ${name}`.toLowerCase().includes(query));
