@@ -1,4 +1,5 @@
 "use client";
+import { lineTextGeometry } from "@/lib/chartLineText";
 
 import { chartSvgHitTargets, chartSvgBodyHit } from "@/lib/chartSvgHitTargets";
 import { DRAWING_HANDLE_HIT_RADIUS } from "@/lib/drawingPaintedHit";
@@ -1253,6 +1254,7 @@ export default function ChartDrawLayer({
       <text x={x} y={y} fill={color} fontSize={10} fontFamily="Aleph, monospace">{text}</text>;
 
     const a = coords[0]; const b = coords[1]; const c = coords[2];
+    let lineTextPoints = coords;
     const isPositionTool = drawing.tool === "longPosition" || drawing.tool === "shortPosition";
     const positionGeometry = isPositionTool ? positionToolScreenGeometry(coords) : null;
     const body: ReactElement | null = (() => {
@@ -1591,6 +1593,7 @@ export default function ChartDrawLayer({
           if (sx0 == null || sx1 == null) return null;
           const py = (price: number) => toY(price);
           const cy0 = py(startPrice); const cy1 = py(endPrice);
+          if (cy0 != null && cy1 != null) lineTextPoints = [{ x: sx0, y: cy0 }, { x: sx1, y: cy1 }];
           const u0 = py(startPrice + 2 * sd); const u1 = py(endPrice + 2 * sd);
           const l0 = py(startPrice - 2 * sd); const l1 = py(endPrice - 2 * sd);
           return <g>
@@ -1781,6 +1784,7 @@ export default function ChartDrawLayer({
     })();
 
     if (!body) return null;
+    const lineText = style.showLabels === false ? null : lineTextGeometry(drawing.tool, lineTextPoints, drawing.text);
     const bodyMovable = drawing.tool !== "anchoredVolumeProfile";
     const valid = coords.filter((p) => p.x != null && p.y != null) as { x: number; y: number }[];
     const allowBodyFills = ["longPosition", "shortPosition", "entryArrow", "exitArrow", "fixedRangeVolumeProfile", "anchoredVolumeProfile"].includes(drawing.tool);
@@ -1871,6 +1875,10 @@ export default function ChartDrawLayer({
         onDoubleClick={interactive ? () => onOpenSettings(drawing.id) : undefined}
       >
         <g style={{ pointerEvents: "none" }}>{body}</g>
+        {lineText ? <text data-drawing-line-label="" x={lineText.x} y={lineText.y}
+          transform={`rotate(${lineText.angle} ${lineText.x} ${lineText.y})`}
+          textAnchor={lineText.textAnchor} fill={stroke} fontSize={10} fontFamily="var(--font-ui), Aleph, sans-serif"
+          style={{ pointerEvents: "none" }}>{lineText.text}</text> : null}
         {hit}
         {handles}
       </g>

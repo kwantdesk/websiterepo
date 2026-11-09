@@ -18,6 +18,7 @@ import {
   type Drawing,
 } from "@/lib/chartDrawTools";
 import { deleteDrawTemplate, loadDrawTemplates, saveDrawTemplate, type DrawTemplateStore } from "@/lib/chartDrawTemplates";
+import { LINE_TEXT_TOOLS } from "@/lib/chartLineText";
 
 // Tabbed settings dialog for a charting drawing — Style, Text, Coordinates and
 // Visibility — with save/load style templates per tool type. Clean-room UI; the
@@ -71,6 +72,7 @@ export default function ChartDrawSettings({
   const spec = DRAW_TOOL_SPECS[drawing.tool];
   const isShape = SHAPE_TOOLS.includes(drawing.tool);
   const isText = TEXT_TOOLS.includes(drawing.tool);
+  const isLineText = LINE_TEXT_TOOLS.has(drawing.tool);
   const isEmoji = drawing.tool === "emoji";
   const isProfile = PROFILE_TOOLS.includes(drawing.tool);
   const fixedProfile = drawing.tool === "fixedRangeVolumeProfile";
@@ -87,7 +89,7 @@ export default function ChartDrawSettings({
 
   const tabs: { key: typeof tab; label: string; show: boolean }[] = [
     { key: "style", label: "Style", show: true },
-    { key: "text", label: isEmoji ? "Emoji" : "Text", show: isText || isEmoji },
+    { key: "text", label: isEmoji ? "Emoji" : "Text", show: isText || isEmoji || isLineText },
     { key: "coordinates", label: "Coordinates", show: true },
     { key: "visibility", label: "Visibility", show: true },
   ];
@@ -276,11 +278,13 @@ export default function ChartDrawSettings({
             <>
               <label className="block">
                 <span className="mb-1 block text-[11px] text-muted">{isEmoji ? "Emoji" : "Text"}</span>
-                {isEmoji
+                {isLineText
+                  ? <input aria-label="Line text" value={drawing.text ?? ""} onChange={event => onChange({ ...drawing, text: event.target.value })} placeholder="Add text to this line" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] outline-none" />
+                  : isEmoji
                   ? <input value={drawing.text ?? ""} onChange={(event) => onChange({ ...drawing, text: event.target.value })} className="h-12 w-full rounded-lg border border-border bg-background px-3 text-center text-2xl outline-none focus:border-primary/40" />
                   : <textarea value={drawing.text ?? ""} onChange={(e) => onChange({ ...drawing, text: e.target.value })} rows={3} className="w-full rounded-lg border border-border bg-background p-2 text-[12px] outline-none focus:border-primary/40" />}
               </label>
-              {isEmoji
+              {isLineText ? null : isEmoji
                 ? <Row label={`Size · ${Math.round(drawing.style.fontSize ?? 36)}px`}><input type="range" min={16} max={160} step={1} value={drawing.style.fontSize ?? 36} onChange={(event) => patchStyle({ fontSize: Number(event.target.value) })} className="w-48 accent-primary" /></Row>
                 : <Row label="Font size"><Select value={String(drawing.style.fontSize)} onChange={(v) => patchStyle({ fontSize: Number(v) })} options={[["10", "10"], ["11", "11"], ["12", "12"], ["13", "13"], ["14", "14"], ["16", "16"], ["18", "18"], ["22", "22"]]} /></Row>}
             </>

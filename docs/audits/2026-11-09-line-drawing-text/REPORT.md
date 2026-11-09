@@ -1,0 +1,9 @@
+# Line drawing text
+
+Double-click any current line drawing, choose Text and enter its label. Supported tools: Trend Line, Ray, Extended Line, Trend Angle, Info Line, Horizontal Line, Horizontal Ray, Vertical Line, Cross Line, Parallel Channel, Flat Channel, Regression Trend, Forecast, Polyline, Arrow Path, Brush and Highlighter.
+
+The existing drawing.text field persists through the normal drawing document, normalization and copying. No new storage namespace or migration. Labels are plain React SVG text, normalize whitespace to one line, remain 10 screen pixels and inherit the line's resolved theme/custom colour. Each label sits beside the actual first anchor and follows the first segment's angle, with leftward text kept upright; vertical lines use vertical text. Regression labels use the actual fitted central line geometry. Off-screen starts are not pinned to the viewport edge. Existing Show labels and visibility switches apply, and clearing text removes the label. The label adds no new hit target or dragging region. Other annotations, drawing geometry, market data, accounts and live trading are unchanged.
+
+52 focused calculation/persistence/geometry/clipboard/lock tests pass. Actual isolated ChartDrawLayer and ChartDrawSettings browser checks pass for all 17 tools: double-click the rendered line, open Text, type, close, verify label, pan by 50px, zoom by 1.5 with fixed font size and correct anchor displacement, reload, hide/show, clear and reload without resurrection. Zero browser errors. Scoped ESLint passes; complete isolated production build verified before release. Screenshots and browser results accompany this note.
+
+Release uses only the existing main-to-websiterepo-yfmi integration and is verified against the public diagnostics commit. Receipt kept local after verification to avoid another build. No owner browser interaction, feed/terminal/VPS restart or account/order/workspace mutation.

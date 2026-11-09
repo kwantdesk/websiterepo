@@ -1,0 +1,268 @@
+(node:12348) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartDrawingClipboard.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every placed sidebar tool clones its full settings and offsets anchors without changing risk prices (9.1588ms)
+✔ actual clipboard hook routes Ctrl/Command copy-paste to one focused pane and preserves text editing (122.6729ms)
+✔ an older transparent drawing hit wins over another layer blank-space Paste menu (30.6037ms)
+✔ right-click selects the hit drawing and blank space offers paste, while right-drag remains a ruler (13.4495ms)
+✔ every precision tool copies its price/time anchors and freehand path consistently (3.3826ms)
+✔ actual legacy position and professional paste functions preserve prices and create independent copies (256.0996ms)
+✔ normal charts retain their complete menu and receive drawing actions additively (25.3629ms)
+(node:25160) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartDrawTools.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ horizontal bounds extend to exactly the requested plot edges (2.0374ms)
+✔ existing drawings remain unextended and new choices survive persistence (0.8228ms)
+✔ only tools with meaningful horizontal geometry expose extension controls (1.4551ms)
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChartDrawLayer`. See https://react.dev/link/warning-keys for more information.
+(node:32648) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/vendor/lightweight-charts-drawing/core/drawing-manager.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every SVG tool keeps its drawing visible but exposes no grab handles or placement surface while locked (700.4188ms)
+✔ native drawings stop capturing gestures and pending geometry updates, without changing individual locks (0.5359ms)
+✔ each pane toggles its own saved drawing lock and normalization preserves it (208.5531ms)
+✔ the live chart rail preserves the legacy actions inside the reconstructed 93-tool catalog (3.7696ms)
+✔ all 41 actions resolve through the authoritative canvas registry (0.7611ms)
+✔ drawings are isolated by chart pane and migrated from the legacy key (0.5648ms)
+✔ drawing controls include history, clipboard, templates, magnet and keep mode (0.6872ms)
+✔ the dead rail's menu rows are gone with the rail (1.0067ms)
+✔ completed line tools open their style and template editor on double-click (1.4426ms)
+✔ fib retracement honours the magnet and has persistent Kwant Fib settings (3.2083ms)
+✔ the full visible body of every drawing is selectable, movable and deletable (0.2488ms)
+✔ control-drag marquee selects, moves and deletes drawing groups without chart panning (0.5467ms)
+✔ horizontal and vertical lines use exact native axis labels (0.3047ms)
+✔ clear all drawings removes every chart-scoped drawing layer and persisted state (1.0459ms)
+✔ drawing drags stay pointer-locked and can enter future chart whitespace (0.1742ms)
+✔ analytical drawings consume real volume and classified bid-ask data (0.1621ms)
+✔ fixed market profile uses native value-area math and faces forward (0.3293ms)
+✔ dragging a drawing translates it in pixels, not in time (1.6091ms)
+✔ drawings track a zoom in the same frame, not a frame behind it (0.8914ms)
+✔ a freehand stroke offers two handles, not one per sample (0.9579ms)
+✔ drawings end where the candles end, not over the price scale (4.2004ms)
+✔ drawing projection follows the native paint without an extra animation frame (1.1783ms)
+(node:32960) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartLineText.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ trendLine labels survive save/copy and stay at the starting anchor (3.4831ms)
+✔ ray labels survive save/copy and stay at the starting anchor (0.1499ms)
+✔ extendedLine labels survive save/copy and stay at the starting anchor (0.1277ms)
+✔ trendAngle labels survive save/copy and stay at the starting anchor (0.1219ms)
+✔ infoLine labels survive save/copy and stay at the starting anchor (0.152ms)
+✔ horizontalLine labels survive save/copy and stay at the starting anchor (0.1523ms)
+✔ horizontalRay labels survive save/copy and stay at the starting anchor (0.1336ms)
+✔ verticalLine labels survive save/copy and stay at the starting anchor (0.1051ms)
+✔ crossLine labels survive save/copy and stay at the starting anchor (0.1701ms)
+✔ parallelChannel labels survive save/copy and stay at the starting anchor (0.1942ms)
+✔ flatChannel labels survive save/copy and stay at the starting anchor (0.1421ms)
+✔ regressionTrend labels survive save/copy and stay at the starting anchor (0.0956ms)
+✔ forecast labels survive save/copy and stay at the starting anchor (0.0823ms)
+✔ polyline labels survive save/copy and stay at the starting anchor (0.0669ms)
+✔ path labels survive save/copy and stay at the starting anchor (0.1185ms)
+✔ brush labels survive save/copy and stay at the starting anchor (0.1236ms)
+✔ highlighter labels survive save/copy and stay at the starting anchor (0.0882ms)
+✔ leftward lines stay readable and grow toward the line direction (0.1195ms)
+✔ horizontal and vertical labels follow the line geometry (0.1143ms)
+✔ labels never wrap, edge-pin, or appear for invalid/missing text and anchors (0.1778ms)
+ℹ tests 52
+ℹ suites 0
+ℹ pass 52
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1404.5729
