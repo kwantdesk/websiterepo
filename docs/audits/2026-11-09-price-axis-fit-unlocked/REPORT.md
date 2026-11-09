@@ -1,0 +1,5 @@
+# Right price-axis double click: fit without locking
+
+The previous helper intentionally toggled persistent autoscale. Owner now requests recentering only. Every right-price-axis double click enables autoscale for one library render, then retains that fitted range with autoscale disabled. An immediate pointer/mouse/wheel interaction cancels the pending fit and restores manual control; cleanup cancels callbacks and restores the original native double-click setting. Chart plot and time-axis/corner double clicks remain excluded.
+
+Actual Lightweight Charts headless Chrome: three cycles each verify fit, unlocked scale, immediate manual vertical drag, and repeat fit back to the same price geometry. Plot/corner exclusions, manual drag and disposal/native-reset restoration pass with zero browser errors. Scoped helper ESLint and isolated incremental TypeScript check pass. No feed/provider/history/account changes. Shared Chart installs the helper once per actual chart lifecycle, across instruments and intervals.

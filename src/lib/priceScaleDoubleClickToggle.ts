@@ -1,6 +1,6 @@
 import type { IChartApi } from "./lightweightChartsCompat";
 
-/** A second right-axis double click releases the auto-fit selected by the first. */
+/** Fit the visible candles once, then immediately return to manual price panning. */
 export function installPriceScaleDoubleClickToggle(container: HTMLElement, chart: IChartApi): () => void {
   const handleScale = chart.options().handleScale;
   if (handleScale === false) return () => {};
@@ -8,25 +8,42 @@ export function installPriceScaleDoubleClickToggle(container: HTMLElement, chart
   const original = typeof setting === "boolean" ? setting : { ...setting };
   const timeReset = typeof original === "boolean" ? original : original.time;
   // The engine recognises double clicks during mousedown, before DOM dblclick.
-  // Disable only that native price reset so it cannot re-lock our second click.
+  // Disable only that native price reset: its persistent autoscale locks panning.
   chart.applyOptions({ handleScale: { axisDoubleClickReset: { price: false, time: timeReset } } });
-  let locked = false;
+  const view = container.ownerDocument.defaultView!;
+  let fitFrame: number | null = null;
+  const releaseFit = () => {
+    if (fitFrame === null) return;
+    view.cancelAnimationFrame(fitFrame);
+    fitFrame = null;
+    chart.priceScale("right").applyOptions({ autoScale: false });
+  };
   const toggle = (event: MouseEvent) => {
     if (event.button !== 0) return;
     const rect = chart.chartElement().getBoundingClientRect();
     const scale = chart.priceScale("right");
     const x = event.clientX - rect.left, y = event.clientY - rect.top;
     if (scale.width() <= 0 || x < rect.width - scale.width() || x >= rect.width || y < 0 || y >= rect.height - chart.timeScale().height()) return;
-    // A manual reset/viewport operation may have released a previous lock.
-    const unlock = locked && scale.options().autoScale;
-    locked = !unlock;
-    scale.applyOptions({ autoScale: locked });
+    releaseFit();
+    scale.applyOptions({ autoScale: true });
+    // The library calculates its fitted range during its own render. Let that
+    // paint land before retaining the fitted range with autoscale disabled.
+    fitFrame = view.requestAnimationFrame(() => {
+      fitFrame = view.requestAnimationFrame(releaseFit);
+    });
     event.preventDefault();
     event.stopPropagation();
   };
   container.addEventListener("dblclick", toggle, true);
+  container.addEventListener("pointerdown", releaseFit, true);
+  container.addEventListener("mousedown", releaseFit, true);
+  container.addEventListener("wheel", releaseFit, true);
   return () => {
+    releaseFit();
     container.removeEventListener("dblclick", toggle, true);
+    container.removeEventListener("pointerdown", releaseFit, true);
+    container.removeEventListener("mousedown", releaseFit, true);
+    container.removeEventListener("wheel", releaseFit, true);
     chart.applyOptions({ handleScale: { axisDoubleClickReset: original } });
   };
 }

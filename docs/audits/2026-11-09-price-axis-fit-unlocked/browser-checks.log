@@ -1,0 +1,4 @@
+PASS three fit-and-drag cycles; repeated double click always fits without locking
+PASS chart and corner excluded
+PASS manual vertical drag after unlock
+PASS cleanup/native reset, zero browser errors
