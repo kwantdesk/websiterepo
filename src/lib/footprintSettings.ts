@@ -59,6 +59,7 @@ export type FootprintSettings = {
   barWidth: number;
   candleSpacing: number;
   fontSize: number;
+  footprintTextSizeVersion: number;
   fontWeight: number;
   borderWidth: number;
   minimumWidthToShowText: number;
@@ -172,7 +173,8 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   perBarProfilePocColor: "#E4BF5A",
   barWidth: 92,
   candleSpacing: 6,
-  fontSize: 11,
+  fontSize: 13,
+  footprintTextSizeVersion: 1,
   fontWeight: 500,
   borderWidth: 1,
   minimumWidthToShowText: 32,
@@ -519,7 +521,9 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     perBarProfilePocSize: clamp(source.perBarProfilePocSize, 2, 12, 5),
     barWidth: clamp(source.barWidth, 28, 180, 92),
     candleSpacing: clamp(source.candleSpacing, 1, 24, 6),
-    fontSize: clamp(source.fontSize, 9, 15, 11),
+    fontSize: clamp(Number(source.footprintTextSizeVersion ?? 0) < 1 && Number(source.fontSize) === 11
+      ? 13 : source.fontSize, 9, 15, 13),
+    footprintTextSizeVersion: 1,
     fontWeight: clamp(source.fontWeight, 400, 800, 500),
     borderWidth: clamp(source.borderWidth, 0.5, 4, 1),
     minimumWidthToShowText: clamp(

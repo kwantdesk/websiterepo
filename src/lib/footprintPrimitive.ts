@@ -158,7 +158,7 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   gradientExponent: 0.72,
   visibleRegionPercentile: 0.95,
   fixedMaximum: 0,
-  fontSize: 11,
+  fontSize: 13,
   fontWeight: 500,
   minimumWidthToShowText: 32,
   showCellText: true,
@@ -816,7 +816,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
 
           if (micro) continue;
           const fontSize = options.dynamicTextSize
-            ? clamp(Math.min(rowHeight * (0.62 + options.dynamicTextIncrease * 0.08), options.fontSize), 7, 15)
+            ? clamp(Math.min(rowHeight * (0.74 + options.dynamicTextIncrease * 0.08), options.fontSize), 8, 15)
             : clamp(options.fontSize, 7, 15);
           context.save();
           context.globalAlpha = 0.97;
@@ -836,7 +836,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             ? values.delta
             : values.total;
           const compactText = `${compactMetric > 0 && ["delta", "delta-histogram"].includes(contentMode) ? "+" : ""}${formatFootprintValue(compactMetric, format)}`;
-          const compactFontSize = clamp(Math.min(fontSize, rowHeight * 0.58, 9), 7, 9);
+          const compactFontSize = clamp(Math.min(fontSize, rowHeight * 0.7, 10), 8, 10);
           context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'Aleph', ui-monospace, monospace`;
           // Bid × Ask is a pair. Replacing it with an unlabelled total as the
           // candle narrows changes the meaning of the number under the

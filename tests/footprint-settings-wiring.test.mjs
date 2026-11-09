@@ -18,7 +18,7 @@ test("every footprint setting has a default and a live runtime consumer", () => 
   const runtime = `${chart}\n${primitive}\n${build}`;
   for (const key of settingsKeys) {
     assert.match(settings, new RegExp(`\\b${key}:`), `${key} has a validated default`);
-    if (["footprintSettingsVersion", "chartType", "chartVariant"].includes(key)) continue;
+    if (["footprintSettingsVersion", "footprintTextSizeVersion", "chartType", "chartVariant"].includes(key)) continue;
     assert.match(runtime, new RegExp(`\\b${key}\\b`), `${key} reaches aggregation or rendering`);
   }
 });

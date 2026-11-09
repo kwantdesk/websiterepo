@@ -7224,7 +7224,7 @@ function Chart({
       gradientExponent: clamp(Number(footprintSettings.gradientExponent ?? 0.72), 0.1, 3),
       visibleRegionPercentile: clamp(Number(footprintSettings.visibleRegionPercentile ?? 0.95), 0.5, 1),
       fixedMaximum: Math.max(0, Number(footprintSettings.fixedMaximum ?? 0)),
-      fontSize: clamp(Number(footprintSettings.fontSize ?? 10), 6, 16),
+      fontSize: clamp(Number(footprintSettings.fontSize ?? 13), 6, 16),
       fontWeight: clamp(Number(footprintSettings.fontWeight ?? 500), 400, 800),
       minimumWidthToShowText: clamp(Number(footprintSettings.minimumWidthToShowText ?? 32), 18, 180),
       showCellText: footprintSettings.showCellText !== false,
