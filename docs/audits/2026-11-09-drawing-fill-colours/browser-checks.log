@@ -1,0 +1,3 @@
+PASS entry: actual fill default, red/green quick picks, custom colour, restored custom choice, theme independence
+PASS exit: actual fill default, red/green quick picks, custom colour, restored custom choice, theme independence
+PASS zero browser errors

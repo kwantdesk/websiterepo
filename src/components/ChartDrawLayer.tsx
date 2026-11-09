@@ -17,6 +17,8 @@ import {
   DEFAULT_POSITION_PROFIT_COLOR,
   DEFAULT_POSITION_FILL_OPACITY,
   DEFAULT_POSITION_LOSS_COLOR,
+  PAPER_FILL_BUY_COLOR,
+  PAPER_FILL_SELL_COLOR,
   FIB_CIRCLE_COEFFS,
   FIB_LEVELS,
   FIB_RETRACEMENT_LEVELS,
@@ -1993,6 +1995,10 @@ export default function ChartDrawLayer({
 
 function previewStyle(tool: DrawToolId) {
   const base = { color: "#2962FF", width: 2, lineStyle: "solid" as DrawLineStyle, fillOpacity: 0.12, showLabels: true };
+  if (tool === "entryArrow" || tool === "exitArrow") {
+    return { ...base, color: tool === "entryArrow" ? PAPER_FILL_BUY_COLOR : PAPER_FILL_SELL_COLOR,
+      useThemeColor: false, width: 1, showLabels: false };
+  }
   if (tool === "highlighter") return { ...base, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
   // Matches defaultStyleFor: the calculators are placed without their readout.
   if (tool === "longPosition" || tool === "shortPosition") {
