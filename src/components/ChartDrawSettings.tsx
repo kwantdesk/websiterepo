@@ -132,19 +132,9 @@ export default function ChartDrawSettings({
                 </>
               ) : (
                 <>
-                  <Row label="Colour"><ChartColorField ariaLabel="Drawing colour" value={resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ color: hex, useThemeColor: false })} /></Row>
-                  {isFillArrow ? <Row label="Fill colours">
-                    <div className="flex gap-2" role="group" aria-label="Trade fill colours">
-                      {([["Green", PAPER_FILL_BUY_COLOR], ["Red", PAPER_FILL_SELL_COLOR]] as const).map(([label, color]) => (
-                        <button key={label} type="button" aria-label={`${label} fill colour`}
-                          aria-pressed={resolveDrawColor(drawing.style, themeColor).toLowerCase() === color.toLowerCase()}
-                          onClick={() => patchStyle({ color, useThemeColor: false })}
-                          className="flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs text-foreground hover:bg-surface">
-                          <span aria-hidden="true" className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />{label}
-                        </button>
-                      ))}
-                    </div>
-                  </Row> : null}
+                  <Row label="Colour"><ChartColorField ariaLabel="Drawing colour" value={resolveDrawColor(drawing.style, themeColor)}
+                    pinnedColors={isFillArrow ? [{ label: "Green", value: PAPER_FILL_BUY_COLOR }, { label: "Red", value: PAPER_FILL_SELL_COLOR }] : undefined}
+                    onChange={(hex) => patchStyle({ color: hex, useThemeColor: false })} /></Row>
                   <Row label="Line width"><Select value={String(drawing.style.width)} onChange={(v) => patchStyle({ width: Number(v) })} options={[["0.5", "0.5px"], ["1", "1px"], ["2", "2px"], ["3", "3px"], ["4", "4px"]]} /></Row>
                   <Row label="Line style"><Select value={drawing.style.lineStyle} onChange={(v) => patchStyle({ lineStyle: v as DrawLineStyle })} options={[["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]} /></Row>
                 </>

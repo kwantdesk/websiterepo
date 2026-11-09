@@ -1,0 +1,7 @@
+# Pin fill colours inside the arrow picker — 9 November 2026
+
+Owner screenshot showed the colour picker itself, with only Recent swatches. The prior implementation put named red/green buttons outside the picker in the drawing Style dialog. Moved these choices INSIDE the Entry Arrow / Exit Arrow colour picker, in a permanent Fill colours row above Recent; removed the duplicate external row. Both use the real fill constants #22e887 and #ff3b5c. Custom picker, hex entry and recents remain available. Other tools' colour pickers have no added row.
+
+ChartColorField accepts optional pinned colours; these are independent of recent history and update via the same colour application path. Popup opening reserves additional vertical room for that row. All selected states compare case-insensitively because the custom picker normalizes hex values to uppercase.
+
+Actual ChartDrawSettings + ChartColorField browser checks with shipped CSS: both arrow defaults, both buttons located inside the picker dialog, custom hex colour, restore/normalization and theme independence. First picker has empty recents, second has populated recents; permanent controls remain available. Zero browser errors; scoped picker/settings lint passes. Screenshot picker.png is an isolated actual-component fixture with no live account data. Full isolated Next.js webpack production build, TypeScript and static page generation pass.

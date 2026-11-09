@@ -101,12 +101,14 @@ export default function ChartColorField({
   disabled = false,
   ariaLabel,
   title,
+  pinnedColors,
 }: {
   value: string;
   onChange: (hex: string) => void;
   disabled?: boolean;
   ariaLabel: string;
   title?: string;
+  pinnedColors?: readonly { label: string; value: string }[];
 }) {
   const normalizedValue = normalizeHexColor(value) ?? "#FFFFFF";
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -151,7 +153,7 @@ export default function ChartColorField({
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const left = Math.max(8, Math.min(rect.right - POPOVER_WIDTH, window.innerWidth - POPOVER_WIDTH - 8));
-    const top = Math.min(rect.bottom + 6, window.innerHeight - 286);
+    const top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 286 - (pinnedColors?.length ? 42 : 0)));
     setPosition({ left, top });
     setHsv(hexToHsv(normalizedValue));
     setHexDraft(normalizedValue.replace("#", ""));
@@ -318,6 +320,21 @@ export default function ChartColorField({
                 {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               </button>
             </label>
+            {pinnedColors?.length ? (
+              <div className="mt-2" role="group" aria-label="Trade fill colours">
+                <div className="mb-1 text-[7px] font-semibold uppercase tracking-[0.16em] text-muted">Fill colours</div>
+                <div className="flex gap-1.5">
+                  {pinnedColors.map(({ label, value: color }) => (
+                    <button key={color} type="button" aria-label={`${label} fill colour`}
+                      aria-pressed={normalizedValue.toLowerCase() === color.toLowerCase()}
+                      onClick={() => { setHsv(hexToHsv(color)); applyColor(color); }}
+                      className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface text-[10px] text-foreground hover:border-primary/50">
+                      <span aria-hidden="true" className="h-3 w-3 rounded-[3px]" style={{ backgroundColor: color }} />{label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {recentColors.length ? (
               <div className="mt-2">
                 <div className="mb-1 text-[7px] font-semibold uppercase tracking-[0.16em] text-muted">Recent</div>

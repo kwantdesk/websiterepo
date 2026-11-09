@@ -1,0 +1,3 @@
+PASS entry: actual fill default, pinned red/green INSIDE picker, custom colour, restored custom choice, theme independence
+PASS exit: actual fill default, pinned red/green INSIDE picker, custom colour, restored custom choice, theme independence
+PASS zero browser errors
