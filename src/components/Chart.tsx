@@ -2122,8 +2122,8 @@ function paperProtectionSizeLabel(positionSide: "buy" | "sell", quantity: number
  * Everything below derives from one scale so the box and its controls can only
  * move together.
  */
-// Reduce the previous 1.5-scale controls by 25%, including their hit targets.
-const PAPER_LABEL_SCALE = 1.125;
+// Increase the compact controls and their hit targets together by 10%.
+const PAPER_LABEL_SCALE = 1.125 * 1.1;
 const PAPER_LABEL_HEIGHT = 16 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_FONT_PX = 8 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_PAD_X = 7 * PAPER_LABEL_SCALE;
@@ -2147,7 +2147,7 @@ const PAPER_LABEL_ICON_PX = 10 * PAPER_LABEL_SCALE;
  * call measureText.
  */
 const PAPER_LABEL_CHAR_PX = PAPER_LABEL_FONT_PX * 0.6;
-const PAPER_LABEL_MIN_WIDTH = 164 * PAPER_LABEL_SCALE;
+const PAPER_LABEL_MIN_WIDTH = 110 * PAPER_LABEL_SCALE;
 // 240 is not arbitrary: a full working order - side, size, type, price and
 // state - is 33 characters, which needs a 457px box. Capping below that would
 // trim the price off the one label that most needs it. A narrower pane still
@@ -3659,7 +3659,8 @@ function Chart({
     const series = candleSeriesRef.current;
     if (!series) return;
     for (const [id, node] of paperOverlayNodesRef.current) {
-      const price = paperActiveDragRef.current?.id === id ? paperActiveDragRef.current.price : Number(node.dataset.paperPrice);
+      const levelId = node.dataset.paperLevelId ?? id;
+      const price = paperActiveDragRef.current?.id === levelId ? paperActiveDragRef.current.price : Number(node.dataset.paperPrice);
       if (!Number.isFinite(price)) continue;
       const y = series.priceToCoordinate(price);
       if (y == null) {
@@ -3670,6 +3671,9 @@ function Chart({
       }
       node.style.visibility = "";
       node.style.top = `${y}px`;
+      if (node.dataset.paperAxisPrecision !== undefined) {
+        node.textContent = price.toFixed(Number(node.dataset.paperAxisPrecision));
+      }
     }
   }, []);
   const footprintActiveRef = useRef(false);
@@ -18701,7 +18705,7 @@ function Chart({
         id: `${order.id}-order`,
         kind: "entry" as const,
         price: anchor.entryPrice,
-        label: `${order.side === "buy" ? "BUY" : "SELL"} ${order.quantity} ${order.type.toUpperCase()} · ${anchor.entryPrice.toFixed(priceFormat.precision)} · working`,
+        label: `${order.side === "buy" ? "BUY" : "SELL"} ${order.quantity} ${order.type.toUpperCase()} · working`,
         color: order.side === "buy" ? paperUpInk : paperDownInk,
         position: anchor,
         targetId: null as string | null,
@@ -18720,7 +18724,7 @@ function Chart({
          * all - so the figure is exact rather than an estimate, and it moves
          * with the handle as the limit or the stop is dragged.
          */
-        label: `SL · ${order.quantity} · ${order.stopLoss.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+        label: `SL · ${order.quantity} · ${formatPaperMoney(paperProjectedPnl(
           order.symbol,
           order.side,
           anchor.entryPrice,
@@ -18735,7 +18739,7 @@ function Chart({
         id: `${order.id}-order-tp-${index}`,
         kind: "take_profit" as const,
         price: target.price,
-        label: `TP${order.takeProfits.length > 1 ? index + 1 : ""} · ${target.quantity} · ${target.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+        label: `TP${order.takeProfits.length > 1 ? index + 1 : ""} · ${target.quantity} · ${formatPaperMoney(paperProjectedPnl(
           order.symbol,
           order.side,
           anchor.entryPrice,
@@ -18763,7 +18767,7 @@ function Chart({
       id: `${position.id}-sl`,
       kind: "stop_loss" as const,
       price: position.stopLoss,
-      label: `SL · ${paperProtectionSizeLabel(position.side, position.remainingQuantity)} · ${position.stopLoss.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+      label: `SL · ${paperProtectionSizeLabel(position.side, position.remainingQuantity)} · ${formatPaperMoney(paperProjectedPnl(
         position.symbol,
         position.side,
         position.entryPrice,
@@ -18780,7 +18784,7 @@ function Chart({
         id: `${position.id}-${target.id}`,
         kind: "take_profit" as const,
         price: target.price,
-        label: `TP${position.takeProfits.length > 1 ? index + 1 : ""} · ${paperProtectionSizeLabel(position.side, target.quantity - target.filledQuantity)} · ${target.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+        label: `TP${position.takeProfits.length > 1 ? index + 1 : ""} · ${paperProtectionSizeLabel(position.side, target.quantity - target.filledQuantity)} · ${formatPaperMoney(paperProjectedPnl(
           position.symbol,
           position.side,
           position.entryPrice,
@@ -18832,11 +18836,11 @@ function Chart({
     ...level,
     price: displayPrice,
     label: showsDraggedFigures && level.kind !== "entry"
-      ? `${level.kind === "stop_loss" ? "SL" : "TP"} · ${paperProtectionSizeLabel(level.position.side, protectedQuantity)} · ${displayPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`
+      ? `${level.kind === "stop_loss" ? "SL" : "TP"} · ${paperProtectionSizeLabel(level.position.side, protectedQuantity)} · ${formatPaperMoney(projectedPnl)}`
       : paperDragPreview?.id === level.id && level.resting
       // A resting entry names its own new price as it moves; it has no open
       // P&L to show, because there is no position yet.
-      ? `${level.position.side === "buy" ? "BUY" : "SELL"} ${level.position.quantity} · ${displayPrice.toFixed(priceFormat.precision)} · working`
+      ? `${level.position.side === "buy" ? "BUY" : "SELL"} ${level.position.quantity} · working`
       : level.label,
     y: candleSeriesRef.current?.priceToCoordinate(displayPrice) ?? null,
     };
@@ -18856,7 +18860,7 @@ function Chart({
           ...paperDraftProtection,
           y,
           color: paperDraftProtection.kind === "stop_loss" ? settings.downColor : settings.upColor,
-          label: `${paperDraftProtection.kind === "stop_loss" ? "SL" : "TP"} · ${paperProtectionSizeLabel(paperDraftProtection.position.side, paperDraftProtection.position.remainingQuantity)} · ${paperDraftProtection.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`,
+          label: `${paperDraftProtection.kind === "stop_loss" ? "SL" : "TP"} · ${paperProtectionSizeLabel(paperDraftProtection.position.side, paperDraftProtection.position.remainingQuantity)} · ${formatPaperMoney(projectedPnl)}`,
         };
       })()
     : null;
@@ -18940,7 +18944,7 @@ function Chart({
     ...(armedOrder && armedOrderPrice !== null ? [{
       id: "armed-order",
       price: armedOrderPrice,
-      label: `${armedOrder.side === "buy" ? "BUY" : "SELL"} ${armedOrder.quantity} ${armedOrder.type.toUpperCase()} · ${armedOrderPrice.toFixed(priceFormat.precision)} · click to place`,
+      label: `${armedOrder.side === "buy" ? "BUY" : "SELL"} ${armedOrder.quantity} ${armedOrder.type.toUpperCase()} · click to place`,
       color: armedOrder.side === "buy" ? paperUpInk : paperDownInk,
       kind: "entry" as const,
       y: candleSeriesRef.current?.priceToCoordinate(armedOrderPrice) ?? null,
@@ -20592,19 +20596,29 @@ function Chart({
           </div>
         </div>
       ))}
-      {paperOverlayLevels.filter((level) => level.kind === "entry").map((level) => (
+      {[...paperOverlayLevels, ...paperOverlayPreviewLevels].map((level) => (
         <div
           key={`${level.id}-price-scale`}
-          className="pointer-events-none absolute right-0 z-[32] flex h-5 -translate-y-1/2 items-center justify-center font-mono text-[9px] font-bold tabular-nums"
+          ref={(node) => {
+            const id = `${level.id}:price-scale`;
+            if (node) paperOverlayNodesRef.current.set(id, node);
+            else paperOverlayNodesRef.current.delete(id);
+          }}
+          data-paper-level-id={level.id}
+          data-paper-price={level.price}
+          data-paper-axis-precision={priceFormat.precision}
+          className="paper-order-axis-price pointer-events-none absolute right-0 z-[32] flex -translate-y-1/2 items-center justify-center font-mono font-bold tabular-nums"
           style={{
             top: level.y,
             width: nativePriceScaleWidth,
+            height: PAPER_LABEL_HEIGHT,
+            fontSize: PAPER_LABEL_FONT_PX,
             backgroundColor: level.color,
-            color: settings.backgroundColor,
+            color: readableTextOn(level.color),
           }}
-          aria-label={`Entry price ${level.position.entryPrice.toFixed(priceFormat.precision)}`}
+          aria-label={`${level.kind === "entry" ? "Entry / order" : level.kind === "stop_loss" ? "Stop loss" : "Take profit"} price ${level.price.toFixed(priceFormat.precision)}`}
         >
-          {level.position.entryPrice.toFixed(priceFormat.precision)}
+          {level.price.toFixed(priceFormat.precision)}
         </div>
       ))}
       {gammaLevelsEnabled && gammaLevelsLoading ? (

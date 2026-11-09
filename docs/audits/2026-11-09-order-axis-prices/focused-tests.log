@@ -1,0 +1,51 @@
+✔ order line and axis price follow the same active drag without waiting for React (76.7246ms)
+✔ axis prices stay anchored on pan and hide when price has no chart coordinate (6.6796ms)
+✔ instrument-specific whole and fractional prices retain the correct precision (7.1241ms)
+(node:25272) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperAccounts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ buy take_profit: a one-print wick fills exactly, despite immediate reversal (19.1103ms)
+✔ buy stop_loss: a one-print wick fills exactly, despite immediate reversal (1.2622ms)
+✔ sell take_profit: a one-print wick fills exactly, despite immediate reversal (0.5565ms)
+✔ sell stop_loss: a one-print wick fills exactly, despite immediate reversal (0.4853ms)
+✔ actual arrival order wins when both exits are hit: 24010 then 23990 (1.1326ms)
+✔ actual arrival order wins when both exits are hit: 23990 then 24010 (0.4042ms)
+✔ partial targets followed by stop in one batch keep exact quantities and ticks (0.6212ms)
+✔ display quote cannot preempt a slightly later arriving exact tape batch (0.4766ms)
+✔ a gap still fills the stored NQ quarter-tick target, not the overshoot price (0.5876ms)
+✔ pre-entry, aggregate, summary, invalid and wrong-symbol records cannot fill (0.7866ms)
+✔ suspended protection stays suspended, then resumes on subsequent actual crossing (0.9315ms)
+✔ buy take_profit: a working level already on its watermark fills on the next touch or overshoot (0.8762ms)
+✔ buy stop_loss: a working level already on its watermark fills on the next touch or overshoot (0.5138ms)
+✔ sell take_profit: a working level already on its watermark fills on the next touch or overshoot (1.0137ms)
+✔ sell stop_loss: a working level already on its watermark fills on the next touch or overshoot (0.8861ms)
+✔ buy breakeven stop fills at the exact entry tick without needing a prior recross (0.7483ms)
+✔ sell breakeven stop fills at the exact entry tick without needing a prior recross (0.3985ms)
+✔ a delayed print before a resting order existed cannot create an entry (0.4277ms)
+✔ disconnect flushes admitted executions rather than deduplicating them away forever (20.1387ms)
+✔ workspace owns exact protection outside chart sampling and seeds (6.7211ms)
+(node:23604) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperProtectionDrag.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ chart pan, wheel, touch and nested axis settings restore after release with the real library merge (78.3131ms)
+✔ chart pan, wheel, touch and nested axis settings restore after cancel with the real library merge (19.451ms)
+✔ stop_loss at 0.75x: no grab jump, final pointerup wins, and chart gestures restore (13.3907ms)
+✔ stop_loss at 1x: no grab jump, final pointerup wins, and chart gestures restore (9.6141ms)
+✔ stop_loss at 2x: no grab jump, final pointerup wins, and chart gestures restore (13.7004ms)
+✔ take_profit at 0.75x: no grab jump, final pointerup wins, and chart gestures restore (13.4472ms)
+✔ take_profit at 1x: no grab jump, final pointerup wins, and chart gestures restore (14.2441ms)
+✔ take_profit at 2x: no grab jump, final pointerup wins, and chart gestures restore (13.2657ms)
+✔ new protection handles use the same stable projection and commit final release (9.4897ms)
+✔ pointer cancellation, capture loss, blur and source cleanup never commit (43.003ms)
+✔ unrelated pointers cannot release another pointer's protection (9.3744ms)
+✔ release stores the chosen tick instead of silently moving the stop to a later quote (5.8497ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 765.9276
