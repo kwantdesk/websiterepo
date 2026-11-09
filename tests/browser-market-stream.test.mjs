@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+test('only the exact presentation script bypasses auth routing; lease APIs remain protected', () => {
+  const code=fs.readFileSync('middleware.ts','utf8');
+  const matcher=JSON.parse(code.match(/matcher:\s*(\["[^\n]+"\])/)[1])[0];
+  const routed=new RegExp('^'+matcher+'$');
+  assert.equal(routed.test('/browser-market-stream.js'),false);
+  for(const path of ['/browser-market-stream.js/other','/api/databento/live','/api/institutional-market-data/v1/heatmap/stream','/api/institutional-market-data/v1/market-data/index-stream']) assert.equal(routed.test(path),true,path);
+});
+
 function harness(overrides = {}) {
   const timers = new Map(), requests = [], sockets = []; let id = 0;
   class Socket extends EventTarget {
