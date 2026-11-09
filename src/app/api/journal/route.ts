@@ -882,13 +882,33 @@ export async function POST(request: NextRequest) {
     const destinationState = accountStates.get(`journal-account-state:${destinationId}`);
     if (destinationState?.archivedAt) return NextResponse.json({ error: "Restore the destination journal before importing." }, { status: 409 });
 
+    const fingerprints = [...new Set(sources.map(row => row.payload?.fingerprint).filter((value): value is string => Boolean(value)))];
+    const presentFingerprints = new Set<string>();
+    // A file import can represent the same outcome under a different row ID.
+    // Recheck the destination on the server as well as in the picker.
+    for (let offset = 0; fingerprints.length; offset += 1000) {
+      const { data, error } = await supabase.from("journal_trades").select("payload")
+        .eq("user_id", actor.userId).eq("account_id", destinationId)
+        .in("payload->>fingerprint", fingerprints).order("id").range(offset, offset + 999);
+      if (error) return NextResponse.json({ error: "Existing journal trades could not be checked." }, { status: 502 });
+      for (const { payload } of (data ?? []) as Array<{ payload: JournalTrade }>) {
+        if (wasDeleted(payload)) continue;
+        const timestamp = payload.journalCopy?.importedAt ?? payload.recordedAt ?? payload.closedAt ?? payload.openedAt;
+        if (destinationState?.resetAt && !(Date.parse(timestamp ?? "") > Date.parse(destinationState.resetAt))) continue;
+        presentFingerprints.add(payload.fingerprint);
+      }
+      if (!data || data.length < 1000) break;
+      if (offset >= 19000) return NextResponse.json({ error: "The duplicate check could not finish. No trades were imported." }, { status: 503 });
+    }
     const copies = new Map<string, JournalTrade>();
+    let duplicateCandidates = 0;
     for (const { account_id: sourceId, payload: trade } of sources) {
       if (trade && wasDeleted(trade)) continue;
       const source = accounts.get(sourceId);
       if (!source || !trade?.id || sourceId === destinationId || isZyonJournalAccountName(source) || trade.sourceImportId?.startsWith("zyon:")) continue;
       const resetAt = accountStates.get(`journal-account-state:${sourceId}`)?.resetAt;
       if (resetAt && Date.parse(trade.journalCopy?.importedAt ?? trade.closedAt ?? trade.openedAt) <= Date.parse(resetAt)) continue;
+      if (trade.fingerprint && presentFingerprints.has(trade.fingerprint)) { duplicateCandidates++; continue; }
       const originalTradeId = trade.journalCopy?.originalTradeId ?? trade.id;
       const hash = createHash("sha256").update(JSON.stringify([destinationId, destinationState?.resetAt ?? null, originalTradeId])).digest("hex");
       const id = JOURNAL_COPY_PREFIX + hash;
@@ -899,9 +919,12 @@ export async function POST(request: NextRequest) {
         sourceImportId: id,
         journalCopy: { originalTradeId, sourceJournal: trade.journalCopy?.sourceJournal ?? source, importedAt },
       });
+      if (trade.fingerprint) presentFingerprints.add(trade.fingerprint);
     }
 
-    if (!copies.size) return NextResponse.json({ error: "The selected trades are no longer available to import. Reload Journal and try again." }, { status: 409 });
+    if (!copies.size) return duplicateCandidates
+      ? NextResponse.json({ cloud: true, trades: [], skipped: ids.length })
+      : NextResponse.json({ error: "The selected trades are no longer available to import. Reload Journal and try again." }, { status: 409 });
     const { data: inserted, error } = await supabase.from("journal_trades")
       .upsert([...copies.values()].map((trade) => ({
         user_id: actor.userId, id: trade.id, account_id: destinationId, source_import_id: trade.sourceImportId,

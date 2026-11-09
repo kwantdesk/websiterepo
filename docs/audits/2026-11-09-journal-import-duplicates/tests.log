@@ -1,0 +1,46 @@
+(node:29676) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journalImportCandidates.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ picker excludes canonical copies and matching file imports already in the destination (1.4939ms)
+✔ duplicate outcomes across source journals are offered once, but other destinations remain independent (0.4755ms)
+✔ legacy empty fingerprints do not collapse unrelated trades, and source records stay unchanged (0.3345ms)
+✔ receiving an import while the picker is open removes its eligible selection immediately (0.3558ms)
+(node:29232) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a three-trade CSV imports into one existing journal with complete economics (13.3605ms)
+✔ an updated export skips existing rows and adds only genuinely new trades (4.7569ms)
+✔ duplicate detection is scoped to the selected journal account (1.6197ms)
+✔ an execution CSV pairs fills into editable closed trades (2.5899ms)
+✔ a semicolon-delimited Deep Charts closed-trade export imports signed quantities (1.9502ms)
+✔ a Claude CSV with separate entry and exit date/time columns imports cleanly (0.9598ms)
+✔ a compact generated trade list preserves Entry/Exit points and infers exit time from Hold (1.7636ms)
+✔ a Claude CSV with qualified date-time headers imports cleanly (0.9229ms)
+✔ a generated CSV can include prose, a code fence, and common alternate headers (0.9414ms)
+✔ rejected CSV rows explain the fields that were actually missing (0.821ms)
+✔ source-agnostic inference imports unfamiliar closed-trade column wording (0.8017ms)
+✔ generic broker fill logs pair B/S executions into a closed trade (0.639ms)
+✔ nested JSON collections and row objects import without a platform adapter (0.9644ms)
+Journal load failed { code: 'TEST', message: 'offline' }
+(node:29256) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ real create/read API durably returns a backdated manual outcome in its journal and Overall (25.5022ms)
+✔ copy API skips an outcome already file-imported under a different destination row ID (1.915ms)
+✔ copy duplicate check respects journal reset visibility and owner isolation (4.4086ms)
+✔ real delete API hides original and all copies, retains recoverable rows and blocks stale upload revival (16.9917ms)
+✔ stale recovery synchronization cannot overwrite a saved review or move its trade date (1.4382ms)
+✔ failed deletion acknowledgement retains the trade instead of claiming it was removed (1.6335ms)
+✔ deletion-history read failure is a failed load, never an empty authoritative journal (1.7776ms)
+✔ legacy backdated manual entries recover their real database receipt time (1.3377ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 580.0353

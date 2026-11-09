@@ -67,6 +67,7 @@ import { formatTradeHoldDuration, journalTradeDetails } from "@/lib/journalTrade
 import { deleteJournalSelection } from "@/lib/journalBulkDelete";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import { mergeJournalHydration, mergeJournalSnapshots } from "@/lib/journalStateMerge";
+import { journalImportableTrades } from "@/lib/journalImportCandidates";
 import {
   applyJournalAccountResets,
   removeJournalTradeEverywhere,
@@ -1427,16 +1428,20 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
     [archivedAccountNames, state.trades, zyonTrades],
   );
   const overallTrades = useMemo(() => uniqueJournalOutcomes(allTrades), [allTrades]);
-  const journalImportCandidates = useMemo(() => {
+  const journalImportAvailable = useMemo(() => {
     if (!showImport || accountCreationMode !== "journal") return [];
-    const present = new Set(state.trades.filter((trade) => trade.account === importAccount).map((trade) => trade.journalCopy?.originalTradeId ?? trade.id));
+    return journalImportableTrades(state.trades, importAccount);
+  }, [accountCreationMode, importAccount, showImport, state.trades]);
+  useEffect(() => {
+    const available = new Set(journalImportAvailable.map(trade => trade.id));
+    setJournalImportSelection(current => current.every(id => available.has(id))
+      ? current : current.filter(id => available.has(id)));
+  }, [journalImportAvailable]);
+  const journalImportCandidates = useMemo(() => {
     const search = journalImportQuery.trim().toLowerCase();
-    return uniqueJournalOutcomes(state.trades.filter((trade) => (
-      trade.account !== importAccount && !isZyonJournalAccountName(trade.account) && !trade.sourceImportId.startsWith("zyon:")
-      && !present.has(trade.journalCopy?.originalTradeId ?? trade.id)
-    ))).filter((trade) => !search || `${trade.account} ${trade.symbol} ${trade.side} ${trade.setup}`.toLowerCase().includes(search))
+    return journalImportAvailable.filter((trade) => !search || `${trade.account} ${trade.symbol} ${trade.side} ${trade.setup}`.toLowerCase().includes(search))
       .sort((a, b) => Date.parse(b.closedAt ?? b.openedAt) - Date.parse(a.closedAt ?? a.openedAt));
-  }, [accountCreationMode, importAccount, journalImportQuery, showImport, state.trades]);
+  }, [journalImportAvailable, journalImportQuery]);
   const accountViews = useMemo(() => [
     {
       id: "all",
@@ -1827,14 +1832,16 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
 
   const importJournalTrades = async () => {
     const destination = accountRecord.get(importAccount);
-    if (!destination || !journalImportSelection.length || importing) return;
+    const available = new Set(journalImportAvailable.map(trade => trade.id));
+    const tradeIds = journalImportSelection.filter(id => available.has(id));
+    if (!destination || !tradeIds.length || importing) return;
     setImporting(true);
     setImportMessage("");
     const owner = resolvedAccountKey;
     try {
       const response = await fetch("/api/journal", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "copy-trades", accountId: destination.id, tradeIds: journalImportSelection }),
+        body: JSON.stringify({ action: "copy-trades", accountId: destination.id, tradeIds }),
       });
       const result = await response.json() as { cloud?: boolean; trades?: JournalTrade[]; skipped?: number; error?: string };
       if (!response.ok || !result.cloud || !result.trades) throw new Error(result.error || "The selected trades could not be imported.");

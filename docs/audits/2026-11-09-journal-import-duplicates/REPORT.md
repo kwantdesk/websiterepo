@@ -1,0 +1,9 @@
+# Journal import duplicate exclusion
+
+The recorded-trade picker previously excluded canonical IDs already in the destination, but not an equivalent file import with a different row ID. The existing file-import deduplication fingerprint is now checked alongside canonical original/copy identity. Duplicate source representations are offered once. Eligibility is destination-specific and independent of search, so searching retains valid selections. State changes prune stale selections; submission rechecks the current available IDs.
+
+The copy API also rechecks destination fingerprints using authenticated owner/account filters before writing. It pages through matching rows rather than assuming the first page is complete, fails closed on database errors or a too-large duplicate scan, respects reset/deletion visibility, and skips already-present outcomes without rewriting their existing records. Existing deterministic IDs and ignoreDuplicates upsert remain. No existing trades are deleted or modified by this repair; no schema change is required. The new fingerprint check is a pre-write guard, not a new database uniqueness constraint.
+
+25 focused tests passed, including existing file imports, copied lineage, source deduplication, destination independence, empty legacy fingerprints, selection eligibility, server ownership/reset boundaries, deletion durability and existing file imports. Scoped ESLint passed. An isolated browser mounted the real JournalWorkspace with mocked account transport and verified that an existing different-ID trade was not offered, a new one remained selectable across searches, importing it removed the candidate after reopen/reload, and an empty picker disabled submission. No page errors. Full isolated Next production build checked before release; exact deployed commit is recorded locally in the release receipt.
+
+The owner's browser, journals, trades, orders and provider processes were not operated or mutated during testing.

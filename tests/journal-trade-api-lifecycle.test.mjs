@@ -30,6 +30,28 @@ function fixture(){
  return {db,api:exports,request,failWrite:()=>failedDeletionWrite=true,failRead:()=>failedDeletionRead=true,seed(t,owner=user){db.journal_trades.push({user_id:owner,id:t.id,account_id:'flow',source_import_id:t.sourceImportId,opened_at:t.openedAt,closed_at:t.closedAt,payload:structuredClone(t)})}};
 }
 test('real create/read API durably returns a backdated manual outcome in its journal and Overall',async()=>{const h=fixture();const r=await h.api.POST(h.request('POST',undefined,{action:'create-trade',account:account.name,accountId:'flow',trade:trade('saved')}));assert.equal(r.status,200);const saved=await r.json();assert.ok(saved.trade.recordedAt);const state=await(await h.api.GET(h.request('GET'))).json();assert.equal(state.trades.length,1);assert.equal(journal.uniqueJournalOutcomes(state.trades).length,1);assert.equal(state.trades[0].account,account.name)});
+
+test('copy API skips an outcome already file-imported under a different destination row ID',async()=>{
+ const h=fixture();h.db.journal_accounts.push({...account,id:'review',name:'Review'});
+ h.seed(trade('source',{fingerprint:'same-outcome'}));
+ h.seed(trade('separate-file-id',{account:'Review',fingerprint:'same-outcome'}));h.db.journal_trades.at(-1).account_id='review';
+ const before=JSON.stringify(h.db.journal_trades);
+ const r=await h.api.POST(h.request('POST',undefined,{action:'copy-trades',accountId:'review',tradeIds:['source']}));
+ assert.equal(r.status,200);const body=await r.json();assert.deepEqual(body.trades,[]);assert.equal(body.skipped,1);
+ assert.equal(JSON.stringify(h.db.journal_trades),before,'existing records and reviews are untouched');
+});
+
+test('copy duplicate check respects journal reset visibility and owner isolation',async()=>{
+ for(const reset of [false,true]){
+  const h=fixture();h.db.journal_accounts.push({...account,id:'review',name:'Review'});
+  h.seed(trade('source',{fingerprint:'same-outcome'}));
+  h.seed(trade('old-import',{account:'Review',fingerprint:'same-outcome'}),reset?user:other);h.db.journal_trades.at(-1).account_id='review';
+  if(reset)h.db.social_objects.push({user_id:user,id:'journal-account-state:review',payload:{resetAt:'2026-11-07T00:00:00Z'}});
+  const before=h.db.journal_trades.length;
+  const r=await h.api.POST(h.request('POST',undefined,{action:'copy-trades',accountId:'review',tradeIds:['source']}));
+  assert.equal(r.status,200);assert.equal(h.db.journal_trades.length,before+1);
+ }
+});
 test('real delete API hides original and all copies, retains recoverable rows and blocks stale upload revival',async()=>{const h=fixture(),original=trade('original'),copy=trade('journal-copy:one',{journalCopy:{originalTradeId:'original',sourceJournal:account.name,importedAt:new Date().toISOString()}});h.seed(original);h.seed(copy);h.seed(trade('keep'));h.seed(trade('original'),other);h.db.social_objects.push({user_id:user,id:'post',object_type:'post',payload:{kind:'TRADE',trade:{journalTradeId:copy.id}}});const response=await h.api.DELETE(h.request('DELETE','/api/journal?tradeId='+encodeURIComponent(copy.id)));assert.equal(response.status,200);const deleted=await response.json();assert.ok(deleted.deletedTradeIds.includes('original'));assert.equal(deleted.linkedPostsDeleted,1);assert.equal(h.db.journal_trades.length,4,'source rows remain recoverable');let visible=await(await h.api.GET(h.request('GET'))).json();assert.deepEqual(visible.trades.map(t=>t.id),['keep']);const stale=await h.api.POST(h.request('POST',undefined,{action:'sync',account:account.name,accountId:'flow',trades:[original,copy]}));assert.equal(stale.status,200);visible=await(await h.api.GET(h.request('GET'))).json();assert.deepEqual(visible.trades.map(t=>t.id),['keep']);assert.equal((await(await h.api.GET(h.request('GET',undefined,undefined,other))).json()).trades.length,1)});
 test('stale recovery synchronization cannot overwrite a saved review or move its trade date',async()=>{const h=fixture();const latest=trade('original',{notes:'reviewed',netPnl:500,recordedAt:'2026-11-09T00:00:00Z'});h.seed(latest);await h.api.POST(h.request('POST',undefined,{action:'sync',account:account.name,accountId:'flow',trades:[trade('original',{notes:'old',netPnl:0})]}));assert.equal(h.db.journal_trades[0].payload.notes,'reviewed');assert.equal(h.db.journal_trades[0].payload.netPnl,500);assert.equal(h.db.journal_trades[0].payload.recordedAt,latest.recordedAt)});
 test('failed deletion acknowledgement retains the trade instead of claiming it was removed',async()=>{const h=fixture();h.seed(trade('original'));h.failWrite();const r=await h.api.DELETE(h.request('DELETE','/api/journal?tradeId=original'));assert.equal(r.status,502);assert.equal((await(await h.api.GET(h.request('GET'))).json()).trades.length,1)});
