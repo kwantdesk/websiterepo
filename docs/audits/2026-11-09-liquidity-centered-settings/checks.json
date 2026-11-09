@@ -1,0 +1,50 @@
+{
+  "checks": [
+    {
+      "name": "standalone",
+      "x": 260,
+      "y": 16,
+      "width": 680,
+      "height": 788,
+      "centered": true,
+      "closeWorks": true
+    },
+    {
+      "name": "charts-wide",
+      "x": 260,
+      "y": 16,
+      "width": 680,
+      "height": 788,
+      "centered": true,
+      "closeWorks": true
+    },
+    {
+      "name": "charts-narrow",
+      "x": 16,
+      "y": 16,
+      "width": 568,
+      "height": 568,
+      "centered": true,
+      "closeWorks": true
+    },
+    {
+      "name": "charts-phone",
+      "x": 16,
+      "y": 16,
+      "width": 358,
+      "height": 788,
+      "centered": true,
+      "closeWorks": true
+    },
+    {
+      "name": "charts-short",
+      "x": 16,
+      "y": 16,
+      "width": 568,
+      "height": 268,
+      "centered": true,
+      "closeWorks": true
+    }
+  ],
+  "errors": []
+}

@@ -9,11 +9,28 @@ html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-embed-phone-
 }
 html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-embed-phone-drawer:not([hidden]) {
   display: flex; flex-direction: column; gap: 20px; position: fixed;
-  z-index: 200; inset: 8px 8px 8px auto; width: min(420px, calc(100% - 16px)); max-width: none;
-  height: calc(100dvh - 16px); overflow: auto; overscroll-behavior: contain;
+  z-index: 200; inset: 50% auto auto 50%; transform: translate(-50%, -50%);
+  width: min(680px, calc(100% - 32px)); max-width: none; margin: 0;
+  height: auto; max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain;
   padding: 0 16px 24px; box-sizing: border-box;
   border: 1px solid var(--ui-line); border-radius: 16px;
   background: var(--ui-panel); color: var(--ui-text); font: 12px var(--font-ui);
+}
+/* Both entry points use a centered settings surface, never a right rail. */
+html[data-embed="true"] body[data-phone-workspace="heatmap"] dialog.inspector {
+  position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%);
+  margin: 0; width: min(680px, calc(100vw - 32px)); max-width: none;
+  height: auto; max-height: calc(100dvh - 32px); padding: 0;
+  box-sizing: border-box; overflow: auto; overscroll-behavior: contain;
+  clip-path: none; border: 1px solid var(--ui-line); border-radius: 16px;
+  background: var(--ui-panel); color: var(--ui-text);
+  box-shadow: 0 20px 60px #0005;
+}
+html[data-embed="true"] body[data-phone-workspace="heatmap"] dialog.inspector::backdrop { background: #0005; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .inspector-header {
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 2; background: var(--ui-panel);
+  border-bottom: 1px solid var(--ui-line);
 }
 html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-embed-phone-heading {
   display: flex; align-items: center; justify-content: space-between;

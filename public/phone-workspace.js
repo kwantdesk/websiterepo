@@ -18,9 +18,10 @@ function mountPhoneWorkspace() {
   const bar = document.createElement('div'); bar.className = 'kwant-embed-phone-bar';
   if (app === 'gex-data') { bar.append(toggle); host.prepend(bar); } else host.append(toggle);
   const shade = document.createElement('button'); shade.type = 'button'; shade.className = 'kwant-embed-phone-shade'; shade.setAttribute('aria-label', 'Close chart controls'); shade.tabIndex = -1; shade.hidden = true;
-  const drawer = document.createElement('section'); drawer.className = 'kwant-embed-phone-drawer'; drawer.hidden = true; drawer.setAttribute('aria-label', 'Chart controls');
+  const drawer = document.createElement('section'); drawer.className = 'kwant-embed-phone-drawer'; drawer.hidden = true; drawer.setAttribute('aria-label', app === 'heatmap' ? 'Liquidity Map settings' : 'Chart controls');
+  if (app === 'heatmap') { drawer.setAttribute('role', 'dialog'); drawer.setAttribute('aria-modal', 'true'); }
   const heading = document.createElement('div'); heading.className = 'kwant-embed-phone-heading';
-  const title = document.createElement('strong'); title.textContent = 'Chart controls';
+  const title = document.createElement('strong'); title.textContent = app === 'heatmap' ? 'Liquidity Map settings' : 'Chart controls';
   const close = document.createElement('button'); close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label', 'Close chart controls');
   heading.append(title, close); drawer.append(heading); document.body.append(shade, drawer);
   const moved = new Map();
