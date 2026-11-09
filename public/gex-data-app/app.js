@@ -888,7 +888,7 @@ await boot();
       const contracts=element('div','net-drift-contract-host');contracts.style.display='contents';holder.insertBefore(contracts,expiry.closest('.control'));
       netDriftContractControls=mountObservedExpiryControl({host:contracts,popup,clearable:false,getScope:()=>({ticker:getControl('ticker'),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,expiry:getControl('expiry'),expiryDisabled:expiry.disabled}),loadChoices:scope=>loadNetDriftContractChoices({...scope,expiry:''}),onExpiryChange:value=>{setControl('expiry',value);onControlsChanged({target:expiry});}});
     }
-    if(tool.id==='exposure-by-strike'){
+    if(['exposure-by-strike','interval-map'].includes(tool.id)){
       const expiry=q('[data-control="expiry"]',holder);expiry.closest('.control').hidden=true;
       const contracts=element('div','net-drift-contract-host');contracts.style.display='contents';holder.insertBefore(contracts,expiry.closest('.control'));
       netDriftContractControls=mountObservedExpiryControl({host:contracts,popup,getScope:()=>({ticker:getControl('ticker'),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,expiry:getControl('expiry'),expiryDisabled:expiry.disabled}),loadChoices:scope=>loadNetDriftContractChoices({...scope,expiry:''}),onExpiryChange:value=>{setControl('expiry',value);onControlsChanged({target:expiry});}});
