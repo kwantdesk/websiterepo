@@ -40,6 +40,7 @@ import {mountNetDriftContractControls,mountObservedStrikeControl,mountObservedEx
 import {optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows} from './option-tape-interaction-model.js?v=20261103';
 import {toolControlDefault} from './tool-control-defaults.js?v=20261103';
 import {equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor} from './equity-print-interaction-model.js?v=20261103';
+import {mergeEquityLivePage} from './equity-live-page.js';
 import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor} from './exchange-notification-interaction-model.js?v=20261104';
 import {mountDarkPoolLevelLimit} from './dark-pool-level-controls.js?v=20261103';
 import {mountOptionTapeSessionControls} from './option-tape-session-controls.js?v=20261103';
@@ -1241,7 +1242,7 @@ await boot();
   }
 
   function updateInitialToolLoading(busy){const target=q('#initialToolLoading');target.hidden=!busy;if(busy)showWorkspaceLoading(target,'Loading '+(activeTool?.title||'GEX DATA'));}
-  async function loadActiveTool({append=false,retainSortPage=false,retainEquityEditor=false}={}) {
+  async function loadActiveTool({append=false,retainSortPage=false,retainEquityEditor=false,liveFrame=false}={}) {
     if(!activeTool||window.__gexDataActive===false||!frameVisible)return;
     if(masterReplay){
       if(!['heat-map','exposure-by-strike','exposure-by-expiration','market-map','volatility-skew','term-structure'].includes(activeTool.id))return;
@@ -1249,7 +1250,7 @@ await boot();
       // containing the clock (which would expose the following 60 seconds).
       snapshotSelections.set(snapshotKey(activeTool),Math.floor(masterReplay.timestampMs/60000)*60000-60000);
     }
-    const tool=activeTool,requestId=++toolRequestId;
+    const tool=activeTool,requestId=++toolRequestId,previousCursor=toolCursor;
     if(!append)toolCursor=null;
     clearTimeout(pollTimer);pollTimer=null;activeController?.abort();activeController=new AbortController();
     toolRequestInFlight=true;
@@ -1286,13 +1287,16 @@ await boot();
         // from the currently loaded subset or remove its header.
         if(toolPayload?.statistics!=null&&(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)||payload.statistics==null))payload.statistics=toolPayload.statistics;
       }
-      const nextCursor=tool.id==='equity-prints'?equityPrintCursor(payload):tool.id==='exchange-notifications'?notificationCursor(payload):['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)?optionTapeCursor(payload):payload.nextSearchAfter||null;
-      if(['equity-prints','exchange-notifications'].includes(tool.id)&&!append)equityPageGeneration++;
+      let nextCursor=tool.id==='equity-prints'?equityPrintCursor(payload):tool.id==='exchange-notifications'?notificationCursor(payload):['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)?optionTapeCursor(payload):payload.nextSearchAfter||null;
+      const retainedLiveEquity=liveFrame&&!append&&tool.id==='equity-prints'&&toolPayloadQuery===query&&Array.isArray(payload.data)&&tableRows.length>0;
+      if(retainedLiveEquity){payload.data=mergeEquityLivePage(tableRows,payload.data);nextCursor=previousCursor;}
+      if(['equity-prints','exchange-notifications'].includes(tool.id)&&!append&&!retainedLiveEquity)equityPageGeneration++;
       toolPayload=payload;toolPayloadQuery=query;toolCursor=nextCursor;renderToolPayload(tool,payload,{refresh:true,append});renderSnapshotControl(payload);
       lastToolSuccessAt=Date.now();
       updateToolTimestamp(tool,payload);
       saveToolControls();updateLiveState();
     }catch(error){
+      if(liveFrame&&tool.id==='equity-prints'&&requestId===toolRequestId&&activeTool===tool&&toolPayload)toolCursor=previousCursor;
       if(!requestPrepared&&requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){
         toolPayload=null;toolPayloadQuery=null;toolCursor=null;resetStage();q('#toolUpdated').textContent='';
       }
@@ -1322,7 +1326,7 @@ await boot();
     if (!activeTool || !frameVisible || window.__gexDataActive===false || document.hidden || getControl("mode") === "historical" || (requestedDate&&currentDate&&requestedDate<currentDate) || snapshotSelections.has(snapshotKey(activeTool)) || !toolMarketOpen()) {clearTimeout(pollTimer);pollTimer=null;return;}
     if(toolRequestInFlight&&!activeController?.signal.aborted)return;
     if(pollTimer!==null)return;
-    pollTimer = setTimeout(() => {pollTimer=null;loadActiveTool();}, Math.max(30000,activeTool.liveMs));
+    pollTimer = setTimeout(() => {pollTimer=null;loadActiveTool({liveFrame:activeTool?.id==='equity-prints'});}, Math.max(30000,activeTool.liveMs));
   }
   function refreshResumedTool() {
     if(!activeTool||!frameVisible||window.__gexDataActive===false||document.hidden)return;
@@ -2258,7 +2262,7 @@ await boot();
   const statusTimer=setInterval(refreshMarketStatus, 60000); renderToolNav();
   const activityChanged=()=>{if(window.__gexDataActive===false||document.hidden){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}else{refreshMarketStatus();refreshResumedTool();}};
   window.addEventListener('gex-data-activity',activityChanged);document.addEventListener('visibilitychange',activityChanged);
-  window.addEventListener('gex-data-live-frame',()=>{if(!toolRequestInFlight&&activeTool&&frameVisible&&!document.hidden&&window.__gexDataActive!==false)loadActiveTool();});
+  window.addEventListener('gex-data-live-frame',()=>{if(!toolRequestInFlight&&activeTool&&frameVisible&&!document.hidden&&window.__gexDataActive!==false)loadActiveTool({liveFrame:true});});
   window.addEventListener('pagehide',()=>{clearInterval(statusTimer);clearTimeout(pollTimer);activeController?.abort();activeChartDispose?.();tableRuntime?.destroy();});
   window.addEventListener('gex-data-timezone',refreshTimeZonePresentation);
   const preferenceFilterSignature=()=>JSON.stringify({overrides:getFilterOverrides(),groups:getFilterGroups().map(group=>({id:group.id,expression:group.expression}))});

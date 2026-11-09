@@ -50,3 +50,14 @@ test('feed refusal does not silently relabel old data as live; verified unchange
   sources[0].dispatchEvent(new Event('verified'));
   assert.equal((await (await client.request(url, options({}), 'a')).json()).data, 5); client.dispose();
 });
+
+test('latest-first Equity shares changed frames while older REST pages preserve its channel',async()=>{
+ const {client,sources,changes}=fixture(),url='/api/gex-data/equity-prints';
+ const body={sort:{field:'TRADE_TIME',direction:'DESCENDING'},size:100,filter:{tickers:['SPY']}};
+ const initial=client.request(url,options(body),'equity');sources[0].frame('first',1000,[{id:'a'}]);await initial;
+ assert.equal(client.request(url,options({...body,searchAfter:['a']}),'equity'),null);assert.equal(sources[0].closed,false);
+ sources[0].frame('next',2000,[{id:'b'}]);assert.equal(changes.length,1);
+ assert.equal((await (await client.request(url,options(body),'equity')).json()).data[0].id,'b');
+ assert.equal(client.request(url,options({...body,sort:{field:'SIZE',direction:'DESCENDING'}}),'equity'),null);assert.equal(sources[0].closed,true);
+ client.dispose();
+});

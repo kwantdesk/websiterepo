@@ -20,6 +20,7 @@ import {formatTableValue,createTableView} from '../../public/gex-data-app/table-
 import {CONSOLIDATED_COLUMNS,flowStatisticsModel,GAINERS_COLUMNS,gainersModel,MARKET_SHARE_COLUMNS,marketShareTableModel} from '../../public/gex-data-app/options-models.js';
 import {UNCONSOLIDATED_COLUMNS} from '../../public/gex-data-app/option-trade-detail-model.js';
 import {validateGexDataRequest} from '../../src/lib/gexDataPolicy.ts';
+import {mergeEquityLivePage} from '../../public/gex-data-app/equity-live-page.js';
 
 const source=readFileSync(new URL('../../public/gex-data-app/app.js',import.meta.url),'utf8'),plain=value=>JSON.parse(JSON.stringify(value));
 const definitions=vm.runInNewContext(source.slice(source.indexOf('const TOOL_DEFINITIONS = [')+'const TOOL_DEFINITIONS = '.length,source.indexOf('\n  ];',source.indexOf('const TOOL_DEFINITIONS = ['))+5));
@@ -137,6 +138,20 @@ test('actual Equity automatic append failure retains its cursor/data and exposes
   const h=harness({toolId:'equity-prints'}),first=h.load();h.requests[0].resolve({data:[{id:'one',size:7}],nextSearchAfter:['opaque',0]});await first;
   const retry=h.load({append:true});h.requests[1].reject(Error('temporary page failure'));await retry;assert.equal(h.nodes.get('#loadMore').hidden,false);assert.deepEqual(Array.from(h.env.toolCursor),['opaque',0]);assert.equal(h.env.tableRows[0].id,'one');assert.equal(h.nodes.get('#toolError').hidden,false);
   const success=h.load({append:true});assert.deepEqual(h.requests[2].body.searchAfter,['opaque',0]);h.requests[2].resolve({data:[{id:'one',size:8},{id:'two',size:9}],nextSearchAfter:null});await success;assert.equal(h.nodes.get('#loadMore').hidden,true);assert.deepEqual(Array.from(h.env.tableRows,row=>[row.id,row.size]),[['one',8],['two',9]]);
+});
+
+test('actual live Equity refresh preserves older loaded pages, deepest cursor and scope isolation',async()=>{
+ const h=harness({toolId:'equity-prints'}),first=h.load();
+ h.requests[0].resolve({data:[{id:'one',tradeTime:30}],nextSearchAfter:['older',30]});await first;
+ const older=h.load({append:true});h.requests[1].resolve({data:[{id:'two',tradeTime:20}],nextSearchAfter:['deepest',20]});await older;
+ const generation=h.env.equityPageGeneration;
+ const live=h.load({liveFrame:true});h.requests[2].resolve({data:[{id:'new',tradeTime:40},{id:'one',tradeTime:30,size:2}],nextSearchAfter:['first-page',30]});await live;
+ assert.deepEqual(Array.from(h.env.tableRows,r=>r.id),['new','one','two']);assert.equal(h.env.tableRows[1].size,2);
+ assert.deepEqual(Array.from(h.env.toolCursor),['deepest',20]);assert.equal(h.env.equityPageGeneration,generation);
+ const failed=h.load({liveFrame:true});h.requests[3].reject(Error('temporary live failure'));await failed;
+ assert.deepEqual(Array.from(h.env.toolCursor),['deepest',20]);assert.deepEqual(Array.from(h.env.tableRows,r=>r.id),['new','one','two']);
+ h.set('ticker','QQQ');const switched=h.load({liveFrame:true});h.requests[4].resolve({data:[{id:'qqq',tradeTime:50}],nextSearchAfter:['qqq',50]});await switched;
+ assert.deepEqual(Array.from(h.env.tableRows,r=>r.id),['qqq']);assert.deepEqual(Array.from(h.env.toolCursor),['qqq',50]);
 });
 
 test('actual load/render/reset pipeline with the REAL TableView keeps the focused Equity editor through a 100-to-14 response',async()=>{
@@ -330,7 +345,7 @@ function harness({toolId='order-flow-consolidated',saved,copied,page={},global={
     clearTimeout(){},setTimeout:(callback,delay)=>{timers.push({callback,delay});return timers.length;},
     snapshotSelections:new Map(),snapshotKey:()=>tool.id,toolCursor:null,toolPayload:null,toolPayloadQuery:null,equityPageGeneration:0,
     optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows,additionalToolRequest,dataRequestIdentity,
-    equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor,EQUITY_PRINT_COLUMNS,EXCHANGE_NOTIFICATION_COLUMNS,equitySideColorToken,equityPrintColorToken,notificationColorToken,
+    equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor,mergeEquityLivePage,EQUITY_PRINT_COLUMNS,EXCHANGE_NOTIFICATION_COLUMNS,equitySideColorToken,equityPrintColorToken,notificationColorToken,
     notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,
     mountSessionDateControls,mountDarkPoolLevelLimit,matchesCurrentPayload:()=>false,popup(_anchor,_title,build){const menu=document.createElement('section');document.body.append(menu);build(menu);env.menu=menu;return menu;},mountOptionTapeSessionControls:configuration=>{env.session=configuration;env.sessionSyncs=0;return realCalendar?mountOptionTapeSessionControls(configuration):{sync(){env.sessionSyncs++;},destroy(){}};},
     GAINERS_COLUMNS,gainersModel,MARKET_SHARE_COLUMNS,marketShareTableModel,tableColumns:null,tableRows:[],tableRuntime:null,instanceKey:'test',CONSOLIDATED_COLUMNS,UNCONSOLIDATED_COLUMNS,flowStatisticsModel,
