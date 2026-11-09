@@ -729,7 +729,7 @@ await boot();
       for(const[value,text]of numericChoices)input.add(new Option(text,value));
       input.setAttribute('aria-label',label);
     }else if(id==='tickerOptional'&&activeTool?.id==='exchange-notifications'){
-      input=multiChoiceDropdown({choices:instrumentChoices(),label:'Instrument',emptyLabel:'All instruments',searchable:true,allowCustomSymbol:true,document});
+      input=multiChoiceDropdown({choices:instrumentChoices(),label:'Instrument',emptyLabel:'All instruments',searchable:true,allowCustomSymbol:true,customSymbolPattern:/^[A-Z0-9./^_+-]{1,16}$/,document});
       input.title='Search available instruments or enter a symbol.';
     }else if(id==='industry'&&activeTool?.id==='gainers-losers'){
       input=multiChoiceDropdown({choices:gainersIndustryChoices(getControl('sector')),label:'Industry',emptyLabel:'All industries',searchable:true,document});

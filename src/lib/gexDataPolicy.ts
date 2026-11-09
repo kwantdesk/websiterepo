@@ -92,7 +92,8 @@ export function validateGexDataRequest(tool: string, input: unknown) {
   if(timeRange){const start=Date.parse(String(timeRange.startTime)),end=Date.parse(String(timeRange.endTime));if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start||end-start>93*86_400_000)throw new Error("Invalid time range.");}
   const filter = body.filter as Record<string, unknown> | undefined;
   const tickers = [filter?.ticker, ...(Array.isArray(filter?.tickers) ? filter.tickers : [])].filter(Boolean);
-  if (tickers.length > 50 || tickers.some(ticker => !/^[A-Z0-9./^_-]{1,16}$/i.test(String(ticker)))) throw new Error("Invalid ticker filter.");
+  const tickerPattern=tool==='exchange-notifications'?/^[A-Z0-9./^_+-]{1,16}$/i:/^[A-Z0-9./^_-]{1,16}$/i;
+  if (tickers.length > 50 || tickers.some(ticker => !tickerPattern.test(String(ticker)))) throw new Error("Invalid ticker filter.");
   if (tool === "iv-rank" && (body.sessionDate || body.snapshotTime)) throw new Error("IV Rank supports its rolling series, not a historical session snapshot.");
   validateAdditionalToolRequest(tool, body);
   if (tool === "news-articles") validateNewsFeedRequest(body);

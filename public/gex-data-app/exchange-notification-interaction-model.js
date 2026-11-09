@@ -32,7 +32,7 @@ export function notificationFilterExpression(filters=[]){
     const values=(Array.isArray(input)?input:typeof input==='string'?input.split(','):[input]).map(value=>{
       if(typeof value!=='string'||!value.trim())throw Error('Enter a valid '+field.label+'.');
       const result=value.trim().toUpperCase();
-      if(field.key==='ticker'?!/^[A-Z0-9./^_-]{1,16}$/.test(result):!field.choices.includes(result))throw Error('Enter a valid '+field.label+'.');
+      if(field.key==='ticker'?!/^[A-Z0-9./^_+-]{1,16}$/.test(result):!field.choices.includes(result))throw Error('Enter a valid '+field.label+'.');
       return result;
     });
     // Public terminal values are OR alternatives. Excluding several codes

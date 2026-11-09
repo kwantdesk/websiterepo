@@ -13,6 +13,14 @@ test('notification headers use documented public singular sorts and the source s
   for(const sort of [[{field:'TYPE',direction:'DESCENDING'}],{field:'PRICE',direction:'ASCENDING'},{field:'TYPE',direction:'DESCENDING',extra:1}])assert.throws(()=>validateGexDataRequest('exchange-notifications',{sort}),/supported/);
 });
 
+test('real exchange notification plus-suffix tickers survive both picker request and header validation',()=>{
+  const body={sessionDate:'2026-11-09',filter:{tickers:['DSX+']}};
+  assert.doesNotThrow(()=>validateGexDataRequest('exchange-notifications',body));
+  assert.deepEqual(notificationFilterExpression([{field:'TICKER',operator:'EQUALS',value:'DSX+'}]).filters[0].values,['DSX+']);
+  assert.throws(()=>validateGexDataRequest('net-drift',body),/ticker/);
+  assert.throws(()=>notificationFilterExpression([{field:'TICKER',operator:'EQUALS',value:'DSX+<script>'}]),/valid/);
+});
+
 test('positive notification values are OR alternatives; multiple exclusions are scalar inequalities joined by AND',()=>{
   const type=notificationColumnFields('type')[0];assert.equal(type.type,'enum');assert.equal(type.rawChoiceLabels,true);assert.ok(type.choices.includes('REG_SHO'));assert.deepEqual(type.operatorLabels,{EQUALS:'is',DOES_NOT_EQUAL:'is not'});
   const positive=notificationFilterExpression([{field:'TYPE',operator:'EQUALS',value:['LUDP','REG_SHO']}]);

@@ -23,6 +23,16 @@ class Element extends EventTarget {
   setAttribute(name,value){this.attributes[name]=value;}
   contains(target){return target===this||this.children.some(child=>child.contains?.(target));}
 }
+
+test('notification symbol grammar permits real plus-suffix symbols without broadening other pickers',()=>{
+ const doc={createElement:tag=>new Element(tag,doc)};
+ for(const allowPlus of [false,true]){
+  const picker=multiChoiceDropdown({choices:[],searchable:true,allowCustomSymbol:true,...(allowPlus?{customSymbolPattern:/^[A-Z0-9./^_+-]{1,16}$/}:{}),document:doc});
+  const [search,,results]=picker.children[1].children;search.value='DSX+';search.dispatchEvent(new Event('input'));
+  const use=results.children.find(node=>node.tagName==='BUTTON');assert.equal(!!use,allowPlus);
+  if(use){use.dispatchEvent(new Event('click'));assert.equal(picker.value,'DSX+');}
+ }
+});
 test('multi-choice dropdown preserves OR selections, checkbox changes and clearing without typed CSV',()=>{
   const previous=globalThis.document;const doc={createElement:tag=>new Element(tag,doc)};globalThis.document=doc;
   try{

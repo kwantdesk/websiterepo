@@ -42,7 +42,7 @@ export function setChoiceValue(select,value) {
   select.value=next;
 }
 /** A real dropdown with checkboxes; multi-value OR filters never collapse to one ticker. */
-export function multiChoiceDropdown({choices,values=[],label='Instruments',emptyLabel='All instruments',searchable=false,compactSummary=false,summaryLabels={},allowCustomSymbol=false,document:ownerDocument=globalThis.document}) {
+export function multiChoiceDropdown({choices,values=[],label='Instruments',emptyLabel='All instruments',searchable=false,compactSummary=false,summaryLabels={},allowCustomSymbol=false,customSymbolPattern=/^[A-Z0-9./^_-]{1,16}$/,document:ownerDocument=globalThis.document}) {
   const document=ownerDocument,root=document.createElement('details'),summary=document.createElement('summary'),list=document.createElement('div');
   root.className='choice-dropdown';summary.setAttribute('aria-label',label);list.className='choice-dropdown-options';list.setAttribute('role','group');list.setAttribute('aria-label',label+' options');
   let selected=new Set(values.map(String));
@@ -66,7 +66,7 @@ export function multiChoiceDropdown({choices,values=[],label='Instruments',empty
       const field=document.createElement('label'),input=document.createElement('input'),text=document.createElement('span');input.type='checkbox';input.value=value;input.checked=selected.has(value);text.textContent=name;
       input.addEventListener('change',event=>{event.stopPropagation();if(input.checked)selected.add(value);else selected.delete(value);update();root.dispatchEvent(new Event('change',{bubbles:true}));});field.append(input,text);results.append(field);
     }
-    if(allowCustomSymbol&&search){const value=query.toUpperCase();if(/^[A-Z0-9./^_-]{1,16}$/.test(value)&&!choicesWithSaved(choices,[...selected]).some(([key])=>key.toUpperCase()===value)){const use=document.createElement('button');use.type='button';use.textContent=`Use ${value}`;use.addEventListener('click',event=>{event.stopPropagation();selected.add(value);search.value='';render();root.dispatchEvent(new Event('change',{bubbles:true}));});results.append(use);}}
+    if(allowCustomSymbol&&search){const value=query.toUpperCase();if(customSymbolPattern.test(value)&&!choicesWithSaved(choices,[...selected]).some(([key])=>key.toUpperCase()===value)){const use=document.createElement('button');use.type='button';use.textContent=`Use ${value}`;use.addEventListener('click',event=>{event.stopPropagation();selected.add(value);search.value='';render();root.dispatchEvent(new Event('change',{bubbles:true}));});results.append(use);}}
     if(search&&!matches.length){const empty=document.createElement('p');empty.textContent='No matching options.';results.append(empty);}
     update();
   };
