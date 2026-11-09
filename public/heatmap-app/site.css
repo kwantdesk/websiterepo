@@ -1,5 +1,68 @@
 /* LIQ MAP uses the GEX DATA / KWANTY command-rail contract. Data colours and
    canvas geometry are intentionally outside this presentation-only sheet. */
+
+/* A filtered list must not resize/recenter its dialog while someone types. */
+#instrumentPicker[open] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  position: fixed;
+  inset: max(12px, calc((100dvh - 600px) / 2)) 0 auto;
+  margin: 0 auto;
+  width: min(520px, calc(100vw - 24px));
+  height: min(600px, calc(100dvh - 24px));
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  background: var(--ui-panel);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--kwant-dialog-radius, 16px);
+}
+#instrumentPicker .modal-header { min-height: 52px; padding: 12px 16px; box-sizing: border-box; }
+#instrumentPicker .modal-header small { display: none; }
+#instrumentPicker .modal-header strong { font: 500 13px/1.4 var(--font-ui); letter-spacing: 0; text-transform: none; }
+#instrumentPicker .modal-header button { width: 28px; height: 28px; padding: 0; background: transparent; border: 0; color: var(--ui-muted); }
+#instrumentPicker .instrument-search-wrap {
+  height: 42px; min-height: 42px; margin: 12px 14px 10px;
+  padding: 0 12px; gap: 8px; box-sizing: border-box;
+  border: 1px solid var(--ui-line); border-radius: var(--kwant-control-radius, 8px);
+  background: var(--ui-bg); box-shadow: none;
+}
+#instrumentPicker .instrument-search-wrap:focus-within { border-color: var(--ui-line); box-shadow: none; }
+#instrumentPicker .instrument-search-wrap kbd { background: transparent; color: var(--ui-muted); border-color: var(--ui-line); }
+#instrumentPicker #instrumentSearch,
+#instrumentPicker #instrumentSearch:is(:focus, :focus-visible) {
+  display: block; width: 100%; min-width: 0; height: 40px; min-height: 0;
+  margin: 0; padding: 0; border: 0; outline: none; outline-offset: 0;
+  border-radius: 0 !important; box-shadow: none; background: transparent;
+  color: var(--ui-text); font: 400 12px/20px var(--font-ui);
+  appearance: none;
+}
+#instrumentPicker .instrument-picker-copy { padding: 2px 16px 10px; }
+#instrumentPicker .instrument-picker-copy span { font: 500 9px/1.4 var(--font-ui); letter-spacing: .08em; }
+#instrumentPicker .instrument-picker-copy small { display: none; }
+#instrumentPicker .instrument-results {
+  grid-area: 4 / 1; min-height: 0; max-height: none; align-content: start;
+  gap: 2px; padding: 0 8px 8px; overflow-y: auto; scrollbar-gutter: stable;
+}
+#instrumentPicker .instrument-result {
+  display: grid; grid-template-columns: 60px minmax(0, 1fr) 24px;
+  width: 100%; min-height: 52px; padding: 9px 10px; gap: 10px;
+  border: 0; border-radius: var(--kwant-control-radius, 8px);
+  background: transparent; color: var(--ui-text); box-shadow: none;
+}
+#instrumentPicker .instrument-result:is(:hover, :focus-visible, .is-open) { background: var(--ui-surface); outline: none; box-shadow: none; }
+#instrumentPicker .instrument-result-symbol { color: var(--ui-text); font: 500 12px/1.4 var(--font-ui); }
+#instrumentPicker .instrument-result-copy { gap: 3px; min-width: 0; }
+#instrumentPicker .instrument-result-copy strong { font: 400 12px/1.4 var(--font-ui); }
+#instrumentPicker .instrument-result-copy small { font: 400 9px/1.4 var(--font-ui); letter-spacing: .03em; }
+#instrumentPicker .instrument-result .instrument-result-action {
+  width: 24px; height: 24px; padding: 0; border: 0; background: transparent;
+  color: var(--ui-muted); font-size: 18px;
+}
+#instrumentPicker .instrument-empty { grid-area: 4 / 1; align-self: start; padding: 32px 16px; pointer-events: none; }
+
 html[data-embed="true"] .terminal-shell { grid-template-rows: 38px 38px minmax(0, 1fr); }
 html[data-embed="true"] .app-bar {
   grid-template-columns: minmax(0, 1fr) auto;
