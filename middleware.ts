@@ -146,7 +146,7 @@ export async function middleware(request: NextRequest) {
   // These POSTs are read-only tool queries. Their handlers still verify the
   // account before any data call. Avoid a second remote lookup in middleware.
   if (siteAccessConfigured && siteAccessGranted && (
-    request.method === "GET" && pathname === "/api/gex-data/status"
+    request.method === "GET" && (pathname === "/api/gex-data/status" || pathname === "/api/gex-data/stream")
     || request.method === "POST" && /^\/api\/gex-data\/[a-z-]+$/.test(pathname)
   )) return response;
 

@@ -4,7 +4,7 @@ import {pathToFileURL} from 'node:url';
 
 const ORIGINS=new Set(['https://www.kwantdesk.com','https://kwantdesk.com']);
 const REPLAY_PATHS=new Set(['/v1/heatmap/replay','/v1/heatmap/replay/chunk']);
-const PATHS=new Set(['/v1/market-data/quotes','/v1/market-data/trades','/v1/market-data/index-stream','/v1/heatmap/stream',...REPLAY_PATHS]);
+const PATHS=new Set(['/v1/market-data/quotes','/v1/market-data/trades','/v1/market-data/index-stream','/v1/market-data/gex-data-stream','/v1/heatmap/stream',...REPLAY_PATHS]);
 export function verifyBrowserStreamTicket(ticket,key,origin,now=Date.now()) {
  if(!key||!ORIGINS.has(origin)||typeof ticket!=='string'||ticket.length>8192)throw Error('Invalid lease');
  const parts=ticket.split('.');

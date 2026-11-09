@@ -291,11 +291,24 @@ export class VendorDataEdge {
     if (request.method !== "POST") throw Object.assign(new Error("Method not allowed."), { status: 405 });
     const path = gatewayPath(url.pathname, "/v1/vendors/quantdata", SAFE_QUANTDATA_PATH);
     const body = await requestBody(request);
+    const entry = await this.quantDataSnapshot(path, body, request.headers);
+    return sendBufferedResponse(request, response, entry);
+  }
+
+  /** Internal demand fan-out shares the existing cache, in-flight ownership,
+   * account quota and archive writer with ordinary authenticated REST reads.
+   * maxAgeMs may shorten a SUCCESS cache age; it can never bypass a refusal.
+   */
+  async quantDataSnapshot(path, body, requestHeaders = {}, { maxAgeMs = Infinity, beforeFetch } = {}) {
+    if (!this.config.quantDataApiKey) throw Object.assign(new Error("KwantData is not configured on the market-data gateway."), { status: 503 });
+    const canonical = canonicalQuantDataRequest(path, body);
+    body = Buffer.from(canonical.body);
     const cacheKey = quantDataCacheKey(path, body);
     const cached = this.quantDataCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
+    if (cached && cached.expiresAt > Date.now()
+      && (cached.status === 429 || maxAgeMs === Infinity || Date.now() - cached.retrievedAt <= Math.max(0, maxAgeMs))) {
       this.metrics.quantDataCacheHits += 1;
-      return sendBufferedResponse(request, response, cached);
+      return cached;
     }
 
     /*
@@ -313,14 +326,14 @@ export class VendorDataEdge {
      */
     let pending = this.quantDataInFlight.get(cacheKey);
     if (!pending) {
-      pending = this.#fetchBufferedQuantData(path, request.headers, body, cacheKey)
+      beforeFetch?.();
+      pending = this.#fetchBufferedQuantData(path, requestHeaders, body, cacheKey)
         .finally(() => this.quantDataInFlight.delete(cacheKey));
       this.quantDataInFlight.set(cacheKey, pending);
     } else {
       this.metrics.quantDataCoalescedRequests += 1;
     }
-    const entry = await pending;
-    return sendBufferedResponse(request, response, entry);
+    return pending;
   }
 
   async #fetchBufferedQuantData(path, requestHeaders, body, cacheKey) {
@@ -351,6 +364,7 @@ export class VendorDataEdge {
       clearTimeout(timeout);
     }
     const payload = Buffer.from(await upstream.arrayBuffer());
+    const retrievedAt = Date.now();
     this.metrics.quantDataRequests += 1;
     this.metrics.lastQuantDataAt = new Date().toISOString();
     const headers = {
@@ -369,6 +383,7 @@ export class VendorDataEdge {
       // the archiver would only have to discard it again.
       this.exposureArchiver?.archive({ path, requestBody: body, payload });
       this.quantDataCache.set(cacheKey, {
+        retrievedAt,
         expiresAt: Date.now() + quantDataResponseCacheMs(body, this.config.quantDataCacheMs),
         status: upstream.status,
         headers,
@@ -388,6 +403,7 @@ export class VendorDataEdge {
        * retry-after cannot strand the surface.
        */
       this.quantDataCache.set(cacheKey, {
+        retrievedAt,
         expiresAt: Date.now() + quantDataRefusalHoldMs(upstream.headers),
         status: upstream.status,
         headers,
@@ -395,7 +411,7 @@ export class VendorDataEdge {
       });
       this.#pruneQuantDataCache();
     }
-    return { status: upstream.status, headers, body: payload };
+    return { status: upstream.status, headers, body: payload, retrievedAt };
   }
 
   #pruneQuantDataCache() {

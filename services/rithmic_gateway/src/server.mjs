@@ -48,6 +48,8 @@ import { ExposureArchiver } from "./exposure-archiver.mjs";
 import { archiveStorageHealth } from "./archive-storage-health.mjs";
 import { EventLoopLoadGuard, isDeferrableDuringOverload } from "./event-loop-load-guard.mjs";
 import { VendorDataEdge } from "./vendor-data-edge.mjs";
+import { QuantDataToolLivePool } from "./quantdata-tool-live-pool.mjs";
+import { attachGexToolStream } from "./gex-tool-stream.mjs";
 import { createNativePositioningEdge } from "./native-positioning-edge.mjs";
 import { FinancialInfoService } from "./financial-info-service.mjs";
 import { ZyonServiceProxy, zyonServiceProblem } from "./zyon-service-proxy.mjs";
@@ -157,6 +159,25 @@ const quantDataFetch = createQuantDataBudgetFetch(quantDataRequestBudget);
 // Record live quotes on the VPS; chart history never downloads vendor history.
 const recordedCashHistory = new RecordedCashHistory({ dir: config.recordDir });
 const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver, quantDataFetch);
+const gexToolLivePool = new QuantDataToolLivePool({ load: async ({ path, body }) => {
+  const entry = await vendorDataEdge.quantDataSnapshot(path, body, { 'content-type': 'application/json' }, {
+    maxAgeMs: 1000,
+    beforeFetch: () => {
+      const budget = quantDataRequestBudget?.status();
+      // Retain queue and rate headroom for existing quotes/maps. This pool
+      // can contribute at most two queued/in-flight requests; the one shared
+      // account scheduler still owns every start. Cache joins spend no call.
+      if (!budget || budget.closed || budget.queued >= 24 || budget.startsInMinute >= budget.limitPerMinute - 20
+        || budget.blockedUntil > Date.now()) throw Object.assign(new Error('Shared data budget is busy.'), {
+        retryAfterMs: Math.max(2000, (budget?.blockedUntil || 0) - Date.now()),
+      });
+    },
+  });
+  if (entry.status !== 200) throw Object.assign(new Error('Live snapshot unavailable.'), {
+    status: entry.status, retryAfterMs: Math.max(1000, Number(entry.headers['retry-after']) * 1000 || 0),
+  });
+  return { text: entry.body.toString('utf8'), retrievedAt: entry.retrievedAt };
+} });
 const nativePositioningEdge = await createNativePositioningEdge();
 const financialInfo = new FinancialInfoService({
   token: process.env.APIFY_API_TOKEN || "",
@@ -1266,6 +1287,7 @@ const server = createServer(async (request, response) => {
       exposure: exposureArchiver.status(),
       quantDataArchive: exposureArchiver.status(),
       quantDataRequestBudget: quantDataRequestBudget?.status() ?? { configured: false },
+      gexDataLive: gexToolLivePool.health(),
       vendorData: vendorDataEdge.health(),
       chartHistory: { ...chartHistory.status(), sourcePolicy: "recorded-live-only" },
       recordedCashHistory: recordedCashHistory.status(),
@@ -1359,6 +1381,11 @@ const server = createServer(async (request, response) => {
     }
     if (nativePositioningEdge.canHandle(url.pathname)) {
       await nativePositioningEdge.handle(request, response, url);
+      return;
+    }
+    if (url.pathname === "/v1/market-data/gex-data-stream") {
+      if (request.method !== "GET") return json(response, 405, { error: "Method not allowed." });
+      attachGexToolStream(request, response, url, gexToolLivePool);
       return;
     }
     if (vendorDataEdge.canHandle(url.pathname)) {
@@ -2949,6 +2976,7 @@ async function shutdown() {
   // the budget aborts held requests and rejects new work without spending quota.
   quantDataMarketSnapshots.stop();
   quantDataSurfaces.stop();
+  gexToolLivePool.dispose();
   await recordedCashHistory.close();
   quantDataRequestBudget?.close();
   try { await exposureArchiver.stop(); } catch { /* ignore */ }

@@ -1,5 +1,7 @@
 "use client";
 import { revalidatePrivateTool } from "@/lib/privateToolRevalidation";
+import { createLeasedMarketSource } from "../../../public/browser-market-stream.js";
+import { createGexDataLiveClient } from "../../../public/gex-data-live-client.js";
 
 import { useEffect, useRef, useState } from "react";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
@@ -26,7 +28,8 @@ type SiteHost = {
   timezone: () => string;
   openPalette: () => void;
   instruments: () => Array<[string, string]>;
-  request: (url: string, options?: RequestInit) => Promise<Response>;
+  request: (url: string, options?: RequestInit, consumer?: string) => Promise<Response>;
+  releaseDataConsumer: (consumer: string) => void;
   snapshot: () => Record<string, string>;
   restore: (values: Record<string, string>) => void;
 };
@@ -57,6 +60,8 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   useEffect(() => {
     if (!accountKey) return;
     let disposed = false;
+    const live = createGexDataLiveClient({ createSource: createLeasedMarketSource,
+      onFrame: detail => broadcast(frame.current?.contentWindow ?? null, "gex-data-live-frame", detail) });
     const controllers = new Set<AbortController>();
     const pending = new Map<string, Promise<{ text: string; status: number; headers: [string, string][]; until: number }>>();
     const cache = new Map<string, { text: string; status: number; headers: [string, string][]; until: number }>();
@@ -124,9 +129,12 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
         syncTimeZone();
         syncPalette();
       },
-      request: async (url, options = {}) => {
+      releaseDataConsumer: consumer => live.release(consumer),
+      request: async (url, options = {}, consumer) => {
         if (disposed || !activeRef.current) throw new Error("This workspace is paused.");
         if (!/^\/api\/gex-data\/[a-z-]+$/.test(url)) throw new Error("Unsupported data request.");
+        const streamed = live.request(url, options, consumer);
+        if (streamed) return streamed;
         const key = `${url}:${options.body ?? ""}`;
         let entry = cache.get(key);
         if (!entry || entry.until < Date.now()) {
@@ -180,7 +188,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       host.active = false;
       broadcast(frame.current?.contentWindow ?? lastFrameWindow.current, "gex-data-site-activity", { active: false });
       lastFrameWindow.current = null;
-      disposed = true; setReady(false); controllers.forEach(controller => controller.abort());
+      disposed = true; live.dispose(); setReady(false); controllers.forEach(controller => controller.abort());
       waiting.splice(0).forEach(resolve => resolve()); cache.clear(); pending.clear(); observer.disconnect();
       window.removeEventListener("kwantdesk:theme-change", themeChanged);
       window.removeEventListener("olisa-theme-change", themeChanged);

@@ -4,6 +4,7 @@ import { getRouteActor } from "@/lib/serverAuth";
 import { vendorMarketDataFetch } from "@/lib/vendorMarketData.server";
 import { fetchInstitutionalMarketData } from "@/lib/institutionalMarketData.server";
 import { conditionalJson } from "@/lib/conditionalJson";
+import { executionStreamLeaseResponse } from "@/lib/executionStreamLease.server";
 import { GEX_DATA_TOOLS, gexDataClock, validateGexDataRequest } from "@/lib/gexDataPolicy";
 
 export const runtime = "nodejs";
@@ -19,6 +20,23 @@ export async function GET(request: NextRequest, context: Context) {
   catch { return NextResponse.json({ error: "Session verification is temporarily unavailable.", code: "AUTH_SERVICE_UNAVAILABLE" }, { status: 503, headers: { "Cache-Control": "private, no-store", "Retry-After": "2" } }); }
   if (!actor || (process.env.VERCEL && actor.mode === "local-dev")) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const { tool } = await context.params;
+  if (tool === "stream") {
+    try {
+      const params = request.nextUrl.searchParams;
+      if (params.get("streamLease") !== "1" || [...params.keys()].some(key => !["tool", "request", "streamLease"].includes(key))
+        || ["tool", "request", "streamLease"].some(key => params.getAll(key).length !== 1)) throw Error("Invalid stream selection.");
+      const selectedTool = params.get("tool") || "", encoded = params.get("request") || "";
+      if (!/^[A-Za-z0-9_-]+$/.test(encoded) || encoded.length > 4000) throw Error("Invalid stream selection.");
+      const raw = Buffer.from(encoded, "base64url");
+      if (raw.toString("base64url") !== encoded || raw.length > 3000) throw Error("Invalid stream selection.");
+      const body = validateGexDataRequest(selectedTool, JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)));
+      const search = new URLSearchParams({ tool: selectedTool, request: Buffer.from(JSON.stringify(body)).toString("base64url"), streamLease: "1" });
+      return executionStreamLeaseResponse(request, "/v1/market-data/gex-data-stream", "?" + search.toString())
+        ?? NextResponse.json({ error: "Live delivery unavailable." }, { status: 503 });
+    } catch {
+      return NextResponse.json({ error: "Invalid live data selection." }, { status: 400 });
+    }
+  }
   if (tool !== "status") return NextResponse.json({ error: "Unsupported request." }, { status: 404 });
   let connected = false;
   try { const response = await fetchInstitutionalMarketData("health", { method: "GET" }, 5000); connected = Boolean(response?.ok); }

@@ -1,0 +1,322 @@
+{
+  "summary": {
+    "durationMs": 45007,
+    "changedFrames": 21,
+    "receipts": 23,
+    "medianMs": 2025,
+    "maximumMs": 4296,
+    "firstFrameMs": 462,
+    "wrongOriginStatus": 401
+  },
+  "observations": [
+    {
+      "status": 200,
+      "elapsedMs": 45007,
+      "acquisitionReceipts": 23,
+      "frames": [
+        {
+          "atMs": 462,
+          "bytes": 46369,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:29.449Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "2a9e17410f2d9351126144d93cebaf75eb5adb1a4122183996d8509ab2678e5e",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 2357,
+          "bytes": 46369,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:31.346Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "99c02742fe20428cbe780634de2fbf95e504e1a5e3b7d2f67ac5918d4dd76f1b",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 4460,
+          "bytes": 46369,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:33.448Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "407a9e32e0d69b8f619be6e66b6c54753c28c4d956b287c86dd712420ef4da18",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 6644,
+          "bytes": 46369,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:35.633Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "351e7375eb1cda5c784a98ef390ec6d49734a9746d356d926ed85a70bbe87278",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 8398,
+          "bytes": 46369,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:37.378Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "f21e4dc779a5ec463b808896b46e1ffbb1148c95192d0f2ea91dbe055e1ef9dd",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 12694,
+          "bytes": 46367,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:41.680Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "672a4c1e86acf65535f7fe76b8e92ce243211a74c868f05dd2ea93c543348191",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 15005,
+          "bytes": 46370,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:43.992Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "126b044e5aa74c3ab78dc2e34124e96aa93841135f7df2b704e4e9806365ea70",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 16777,
+          "bytes": 46370,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:45.759Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "3e8b2bba956a31a11d3b3994e0e04ea7ba403c4a5d48857b3f2e2d9019da5d5b",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 18762,
+          "bytes": 46370,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:47.749Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "263e04140ee8088d05ddf53db091db2b0911d3bb3754f65efe634fe6c3d1e39f",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 21050,
+          "bytes": 46371,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:50.040Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "943f233d35390f76fdd02e69625e637f79e4982ab303e584ae8f5b21d341b8bf",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 22758,
+          "bytes": 46371,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:51.748Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "0d51142dad08c9a3ba89666718b5bfb80cbbff2273a0e2acfacf1f22ef587134",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 24783,
+          "bytes": 46371,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:53.769Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "2f52e515712541cc96a5379dc6ee7a4aa7df48062201ffd2631b687416ef08a5",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 26775,
+          "bytes": 46371,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:55.761Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "5c89b60f33569402922be6a4c0f23607b7ac105a11964343c6ea60c8cd7f4806",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 28761,
+          "bytes": 46372,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:48:57.748Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "090a9b130b985fd501434ea9247d73daf0acfc6070539114a10b035dd695e2d4",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 32611,
+          "bytes": 46546,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:49:01.586Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "644f0f5f99f4ab3a6f8febf7f25bc7119bba1f8a1a84430a520d9776bedaf0ad",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 34767,
+          "bytes": 46549,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:49:03.758Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "a3d970f820ff33900cb395005f712055284e7430aa1e7f52a6c48026617efc73",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 36953,
+          "bytes": 46551,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:49:05.942Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "d8615f62368aa522eadbbeaf70d524a33d85d1d643b024051b65e63649c33e56",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 38786,
+          "bytes": 46548,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:49:07.776Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "dfd5d62d7f0c975bd7cf4903e80dd87ca8c6bb7275657383f2597b82aa917c3a",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 40815,
+          "bytes": 46549,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:49:09.805Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "b58efe6868c9de5a160f28bc6bc17c4f64ce778d1a4ee3209b7a474bf8737db3",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 42805,
+          "bytes": 46550,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:49:11.795Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "41551daf8f4b10e47cccf81007338aaa7aebdf92f273c52730e8fbfc982e71cb",
+            "sourceTimestamp": null
+          }
+        },
+        {
+          "atMs": 44789,
+          "bytes": 46551,
+          "meta": {
+            "gatewayFetchedAt": "2026-11-09T16:49:13.778Z",
+            "requestedSessionDate": "2026-11-09",
+            "liveVerified": false,
+            "delivery": "shared-vps-snapshot",
+            "revision": "0da1dcf5e8c310d907851cb8bbd20e58352a9696ca2ffc74d75dd56ab8d1773e",
+            "sourceTimestamp": null
+          }
+        }
+      ],
+      "wrongOriginStatus": 401
+    },
+    {
+      "ok": true,
+      "gexDataLive": {
+        "channels": 0,
+        "subscribers": 0,
+        "running": 0,
+        "retainedBytes": 0,
+        "minStartSpacingMs": 1000,
+        "upstreamTransport": "budgeted-rest-snapshots"
+      },
+      "budget": {
+        "closed": false,
+        "pending": 5,
+        "queued": 5,
+        "running": 0,
+        "retainedRequestBytes": 619,
+        "waiters": 5,
+        "startsInMinute": 87,
+        "limitPerMinute": 180,
+        "blockedUntil": null
+      },
+      "eventLoop": {
+        "overloaded": false,
+        "lastLagMs": 0,
+        "maxLagMs": 1488,
+        "tripCount": 1,
+        "recoveryMsRemaining": 0
+      },
+      "archive": {
+        "enabled": true,
+        "dir": "/recordings/exposure",
+        "compress": true,
+        "tradingDate": "2026-11-08",
+        "startedAt": "2026-11-09T16:48:00.097Z",
+        "lastArchivedAt": "2026-11-09T16:49:20.462Z",
+        "archived": {
+          "equities-tool-market-map": 23,
+          "equities-tool-stock-price-over-time": 34,
+          "options-tool-exposure-by-strike": 15,
+          "options-tool-interval-map": 12,
+          "options-tool-net-drift": 22
+        },
+        "skipped": {
+          "equities-tool-stock-price-over-time": 3
+        },
+        "dropped": {},
+        "lastError": null
+      }
+    }
+  ]
+}

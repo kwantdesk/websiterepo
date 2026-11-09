@@ -4,7 +4,7 @@ import {createIntervalMapTooltipSelection,intervalMapTooltipRows} from './interv
 import {gainersIndustryChoices} from './gainers-industry-controls.js?v=20261104';
 import {themePaint,actionForeground} from './site-theme.js?v=1';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
-import {gexStorage,gexTimeZone,gexFetch as fetch,gexWorkspaceReplay} from './site-runtime.js?v=1';
+import {gexStorage,gexTimeZone,gexFetch as fetch,gexWorkspaceReplay,releaseGexDataConsumer} from './site-runtime.js?v=1';
 import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, precedingIntervalSpot, averagedIvRank, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=2";
 import { PRICE_CHART_TYPES, parsePriceRows, priceChartPresentation, priceChartBounds, drawPriceCandles, drawOptionVolume, drawDarkFlowArea, prepareDarkPoolLevels, DARK_POOL_LEVEL_COLUMNS, EQUITY_PRINT_COLUMNS, EXCHANGE_NOTIFICATION_COLUMNS, NOTIFICATION_TYPES, equitySideColorToken, equityPrintColorToken, notificationColorToken } from "./equity-renderers.js?v=3";
 import { MARKET_SHARE_MODES, marketShareModel, drawMarketSharePie, drawMarketShareBars, drawProportionChart, contractStatisticsRows, contractSideStatisticsRows, GAINERS_COLUMNS, MARKET_SHARE_COLUMNS, CONSOLIDATED_COLUMNS, gainersModel, marketShareTableModel, netDriftRows, flowStatisticsModel, exchangeColor, exchangeLabel, EXCHANGE_GROUP_COLORS } from "./options-models.js?v=2";
@@ -1070,6 +1070,7 @@ await boot();
   }
 
   function showBoard() {
+    releaseGexDataConsumer();
     clearTimeout(onControlsChanged.timer);
     activeTool = null; clearTimeout(pollTimer); activeController?.abort();
     toolView.hidden = true; dashboard.hidden = false; location.hash = ""; openLibrary(false); renderToolNav(q("#toolSearch").value);
@@ -1078,6 +1079,7 @@ await boot();
 
   async function showTool(id) {
     const tool = toolMap.get(id); if (!tool) return;
+    releaseGexDataConsumer();
     clearTimeout(onControlsChanged.timer);
     activeTool = tool; toolPayload = null; toolCursor = null; tableRows = [];resetStage();
     workspaceController?.visibility(false);
@@ -2250,6 +2252,7 @@ await boot();
   const statusTimer=setInterval(refreshMarketStatus, 60000); renderToolNav();
   const activityChanged=()=>{if(window.__gexDataActive===false||document.hidden){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}else{refreshMarketStatus();refreshResumedTool();}};
   window.addEventListener('gex-data-activity',activityChanged);document.addEventListener('visibilitychange',activityChanged);
+  window.addEventListener('gex-data-live-frame',()=>{if(!toolRequestInFlight&&activeTool&&frameVisible&&!document.hidden&&window.__gexDataActive!==false)loadActiveTool();});
   window.addEventListener('pagehide',()=>{clearInterval(statusTimer);clearTimeout(pollTimer);activeController?.abort();activeChartDispose?.();tableRuntime?.destroy();});
   window.addEventListener('gex-data-timezone',refreshTimeZonePresentation);
   const preferenceFilterSignature=()=>JSON.stringify({overrides:getFilterOverrides(),groups:getFilterGroups().map(group=>({id:group.id,expression:group.expression}))});

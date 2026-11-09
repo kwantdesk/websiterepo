@@ -2,6 +2,7 @@
 // the VPS. Never use a cross-origin redirect (it can turn Origin into null).
 export function createLeasedMarketSource(endpoint) {
   const allowed = ['/api/databento/live',
+    '/api/gex-data/stream',
     '/api/institutional-market-data/v1/market-data/index-stream',
     '/api/institutional-market-data/v1/heatmap/stream'];
   const request = new URL(endpoint, 'https://www.kwantdesk.com');
@@ -64,7 +65,7 @@ export function createLeasedMarketSource(endpoint) {
       };
       // Preserve named events and the wire payload; no per-tick proxy, parsing,
       // sampling or additional provider request is introduced here.
-      for (const type of ['message', 'status', 'depth', 'history', 'cvd-history', 'ready', 'heartbeat', 'tick', 'rotate', 'feed-error', 'error-info']) {
+      for (const type of ['message', 'snapshot', 'verified', 'status', 'depth', 'history', 'cvd-history', 'ready', 'heartbeat', 'tick', 'rotate', 'feed-error', 'error-info']) {
         next.addEventListener(type, event => { if (valid()) emit(type, event); });
       }
       next.onerror = event => {
