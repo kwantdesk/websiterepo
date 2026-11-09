@@ -160,6 +160,7 @@ export function GexMapDropdown<T extends string>({
 export default function GexMapSettingsDialog({
   open,
   embedded = false,
+  section = "all",
   settings,
   palette,
   paletteDirty,
@@ -172,6 +173,7 @@ export default function GexMapSettingsDialog({
 }: {
   open: boolean;
   embedded?: boolean;
+  section?: "all" | "colours" | "settings";
   settings: GexMapStarSettings;
   palette: GexMapPalette;
   paletteDirty?: boolean;
@@ -466,8 +468,8 @@ export default function GexMapSettingsDialog({
           <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label="Close Star view settings"><X className="h-3.5 w-3.5" /></button>
         </header> : null}
         <div className="px-4 pb-4">
-          {embedded ? <>{colourControls}<h3 className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">View and nodes</h3>{viewControls}</> : <>{viewControls}{colourControls}</>}
-          <button type="button" onClick={() => onChange({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS })} className="mt-4 h-8 border border-primary/40 px-3 text-[9px] font-semibold text-primary hover:bg-primary/10">RESET RECOMMENDED DEFAULTS</button>
+          {section === "colours" ? colourControls : section === "settings" ? viewControls : embedded ? <>{colourControls}<h3 className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">View and nodes</h3>{viewControls}</> : <>{viewControls}{colourControls}</>}
+          {section !== "colours" ? <button type="button" onClick={() => onChange({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS })} className="mt-4 h-8 border border-primary/40 px-3 text-[9px] font-semibold text-primary hover:bg-primary/10">RESET RECOMMENDED DEFAULTS</button> : null}
         </div>
         {!embedded ? <footer className="sticky bottom-0 z-10 flex h-12 items-center justify-between gap-3 border-t border-border bg-panel px-4">
           <span className="text-[8px] text-muted">

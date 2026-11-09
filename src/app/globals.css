@@ -2017,6 +2017,28 @@ body [data-indicator-settings-tabs] > button {
   padding: 16px 20px;
 }
 
+/* All indicator dialogs follow the Weekly Volume Profile layout. */
+body [data-indicator-settings-layout] .kwant-indicator-settings-tabs {
+  padding: 8px 0;
+}
+body [data-indicator-settings-layout] [data-indicator-settings-tabs] > button {
+  min-height: 30px;
+  padding: 5px 10px;
+  border-radius: var(--kwant-control-radius);
+  font-size: 12px;
+  font-weight: 600;
+}
+body [data-indicator-settings-layout] [data-indicator-settings-content] > .border,
+body [data-indicator-settings-colours] > .border {
+  border-radius: var(--kwant-card-radius);
+}
+body [data-indicator-settings-layout] input:not([type="checkbox"]):not([type="range"]):not([type="color"]):not([type="file"]),
+body [data-indicator-settings-layout] button[aria-haspopup="listbox"] {
+  min-height: 36px;
+  border-radius: var(--kwant-control-radius);
+  font-size: 11px;
+}
+
 .kwant-indicator-settings-body > :where(.border) {
   border-radius: var(--kwant-card-radius);
 }

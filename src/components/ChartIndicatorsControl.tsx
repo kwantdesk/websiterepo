@@ -10,7 +10,7 @@ import { GAMMA_ENVIRONMENT_SOURCES } from "@/lib/chartGammaConversion";
 import AuctionGapIndicatorSettings from "@/components/AuctionGapIndicatorSettings";
 import { auctionGapSettingsSection, auctionGapThemeColors } from "@/lib/auctionGapSettings";
 
-import { Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   BarChart3,
@@ -46,6 +46,7 @@ import {
 import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS, profileSessionEnabled } from "@/lib/volumeProfileSessions";
 import type { ChartSettings } from "@/lib/chartSettings";
 import { domProColumnToggleValue, patchDomProColumnToggle } from "@/lib/domPro";
+import IndicatorSettingsLayout from "@/components/indicators/IndicatorSettingsLayout";
 import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
 import { indicatorSettingDisabledReason } from "@/lib/indicatorSettingAvailability";
 import { INDICATOR_DEDICATED_CONTROL_KEYS } from "@/lib/indicatorDedicatedControlKeys";
@@ -1024,59 +1025,6 @@ function divergenceMarketPair(instrument: string) {
   if (/^M?NQ/.test(normalized)) return { primary: "NQ", comparison: "ES" };
   if (/^M?ES/.test(normalized)) return { primary: "ES", comparison: "NQ" };
   return null;
-}
-
-/**
- * Groups a settings dialog's blocks into clickable pages instead of one long
- * dump. Each child declares `data-settings-section`; children without one fall
- * into "General", so blocks that have not been categorised yet still render.
- * The strip only appears when a dialog actually has more than one section.
- */
-function IndicatorSettingsSections({ children }: { children: ReactNode }) {
-  const collectEntries = (nodes: ReactNode, parentKey = "settings"): Array<{ section: string; node: ReactNode }> =>
-    Children.toArray(nodes).flatMap((child, index) => {
-      if (!isValidElement(child)) return [];
-      const entryKey = `${parentKey}/${child.key ?? index}`;
-      if (child.type === Fragment) {
-        return collectEntries((child.props as { children?: ReactNode }).children, entryKey);
-      }
-      const props = child.props as { "data-settings-section"?: string };
-      return [{ section: props["data-settings-section"] ?? "General", node: <Fragment key={entryKey}>{child}</Fragment> }];
-    });
-  const entries = collectEntries(children);
-  const sections: string[] = [];
-  for (const entry of entries) if (!sections.includes(entry.section)) sections.push(entry.section);
-  const [active, setActive] = useState(sections[0] ?? "General");
-  // A dialog opened on a different indicator can have entirely different
-  // sections; fall back to the first rather than rendering an empty page.
-  const current = sections.includes(active) ? active : sections[0] ?? "General";
-  if (sections.length <= 1) {
-    return <div className="kwant-indicator-settings-body min-h-0 flex-1 space-y-4 overflow-y-auto">{children}</div>;
-  }
-  return (
-    <>
-      <div data-indicator-settings-tabs="sections" className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {sections.map((section) => (
-          <button
-            key={section}
-            type="button"
-            aria-pressed={section === current}
-            onClick={() => setActive(section)}
-            className={`shrink-0 whitespace-nowrap transition-colors ${
-              section === current
-                ? "bg-primary/10 text-primary"
-                : "text-muted hover:bg-surface hover:text-foreground"
-            }`}
-          >
-            {section}
-          </button>
-        ))}
-      </div>
-      <div className="kwant-indicator-settings-body min-h-0 flex-1 space-y-4 overflow-y-auto">
-        {entries.filter((entry) => entry.section === current).map((entry) => entry.node)}
-      </div>
-    </>
-  );
 }
 
 /**
@@ -2247,7 +2195,7 @@ export default function ChartIndicatorsControl({
                 </button>
               </div>
             </div>
-            <IndicatorSettingsSections key={settingsDefinition.id}>
+            <IndicatorSettingsLayout key={settingsDefinition.id}>
               {MOMENTUM_INDICATOR_IDS.has(settingsDefinition.id) ? (
                 <div data-settings-section="General" className="space-y-2 rounded-xl border border-border bg-surface/40 px-4 py-3">
                   <span className="block text-[11px] font-medium text-foreground">Chart area</span>
@@ -2267,23 +2215,24 @@ export default function ChartIndicatorsControl({
                   <span className="block text-[9px] text-muted">On-chart momentum uses its own scale, separate from candle prices.</span>
                 </div>
               ) : null}
-              <label className="flex items-center justify-between rounded-xl border border-border bg-surface/40 px-4 py-3">
+              <label data-settings-header="visibility" className="flex items-center justify-between rounded-xl border border-border bg-surface/40 px-4 py-3">
                 <span>
                   <span className="block text-[11px] font-medium text-foreground">Visible</span>
                   <span className="mt-0.5 block text-[9px] text-muted">Show this indicator on the active chart</span>
                 </span>
                 <button
                   type="button"
+                  role="switch" aria-label="Visible" aria-checked={settingsInstance.enabled}
                   onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, enabled: !current.enabled }))}
                   className={`relative h-6 w-11 rounded-full transition-colors ${settingsInstance.enabled ? "bg-primary" : "bg-surface"}`}
                 >
-                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${settingsInstance.enabled ? "left-6" : "left-1"}`} />
+                  <span className={`absolute top-1 h-4 w-4 rounded-full transition-all ${settingsInstance.enabled ? "left-6 bg-on-primary" : "left-1 bg-foreground"}`} />
                 </button>
               </label>
 
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
                 || isTpoIndicator(settingsDefinition.id) ? (
-                <div className="space-y-2 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                <div data-settings-header="colours" className="space-y-2 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div>
                     <span className="block text-[11px] font-medium text-foreground">Gradient scheme</span>
                     <span className="mt-0.5 block text-[9px] leading-4 text-muted">
@@ -2339,7 +2288,7 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
-                <div data-indicator-settings-tabs="profile" className="flex gap-1 overflow-x-auto border-b border-border pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div data-settings-header="navigation" data-indicator-settings-tabs="profile" className="flex gap-1 overflow-x-auto border-b border-border pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {VOLUME_PROFILE_SETTINGS_TABS.map((tab) => (
                     <button
                       key={tab.id}
@@ -4223,13 +4172,24 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
-                <BounceGexMapSettings instrument={instrument} settings={settingsInstance.settings ?? {}}
+                <>
+                  <div data-settings-header="colours">
+                <BounceGexMapSettings section="colours" instrument={instrument} settings={settingsInstance.settings ?? {}}
                   onChange={(patch) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...patch } }))}
                   draft={getBounceGexMapDraft(bounceDraftOwner)}
                   onDraftChange={(patch) => {
                     setBounceGexMapDraft(bounceDraftOwner, patch);
                     refreshSettingsSaveState((revision) => revision + 1);
                   }} />
+                  </div>
+                <BounceGexMapSettings section="settings" instrument={instrument} settings={settingsInstance.settings ?? {}}
+                  onChange={(patch) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...patch } }))}
+                  draft={getBounceGexMapDraft(bounceDraftOwner)}
+                  onDraftChange={(patch) => {
+                    setBounceGexMapDraft(bounceDraftOwner, patch);
+                    refreshSettingsSaveState((revision) => revision + 1);
+                  }} />
+                </>
               ) : null}
 
               {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror === false ? (
@@ -5080,7 +5040,7 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "deep-print-footprint" ? (
                 /* One block PER SECTION, so each becomes its own tab. A
                    data-settings-section on a nested element does nothing:
-                   IndicatorSettingsSections reads only its direct children, and
+                   IndicatorSettingsLayout reads only its direct children, and
                    a Fragment would collapse the lot into a single child. */
                 groupFootprintSettingRows([
                     ["Scale", "scaleMode", [["visible-region", "Visible region"], ["per-bar", "Per bar"], ["all-loaded", "All loaded"], ["fixed-maximum", "Fixed maximum"]]],
@@ -5307,7 +5267,8 @@ export default function ChartIndicatorsControl({
                   * generated dropdown group, so the two render together under one
                   * Colours tab rather than splitting into two.
                   */
-                <div data-settings-section="Colours" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                <>
+                <div data-settings-header="colours" data-settings-section="Colours" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Palette</div>
                     <p className="mt-1 text-[9px] leading-4 text-muted">
@@ -5367,6 +5328,8 @@ export default function ChartIndicatorsControl({
                       );
                     })}
                   </div>
+                </div>
+                <div data-settings-section="Colours" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <label className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-background/55 px-3 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <input disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, "useThemeColors", settingsInstance.settings))} title={indicatorSettingDisabledReason(settingsDefinition.id, "useThemeColors", settingsInstance.settings)}
                       type="checkbox"
@@ -5442,6 +5405,7 @@ export default function ChartIndicatorsControl({
                     ))}
                   </div>
                 </div>
+                </>
               ) : null}
 
 
@@ -7452,7 +7416,7 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {settingsDefinition.id === "kwant-stats" ? (
-                <div className="space-y-2 rounded-lg border border-border bg-surface/30 p-2.5">
+                <div data-settings-section="Colours" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Colour scheme</div>
                   <KwantSelect
                     value={String(settingsInstance.settings?.statsPaletteId ?? "")}
@@ -8202,7 +8166,7 @@ export default function ChartIndicatorsControl({
               {indicatorSupportsPalette(settingsDefinition.id) && settingsDefinition.id !== "volume"
                 && !(settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false)
                 && !hasOwnPaletteSection(settingsDefinition.id) ? (
-                <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : undefined}>
+                <div data-settings-header="colours">
                   <IndicatorPaletteSection
                     indicatorId={settingsDefinition.id}
                     showIndividualColors={false}
@@ -8316,6 +8280,7 @@ export default function ChartIndicatorsControl({
                 // A gradient scheme replaces every profile body colour, so the
                 // pickers would silently do nothing while one is selected.
                 const gradientLocked = indicatorSupportsPalette(settingsDefinition.id)
+                  && settingsDefinition.id !== "volume"
                   && isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset);
                 const control = ([key, value]: readonly [string, unknown, string]) => (
                     typeof value === "boolean" ? (
@@ -8370,11 +8335,18 @@ export default function ChartIndicatorsControl({
                       </div>
                     )
                 );
-                return [...bySection.entries()].map(([section, group]) => (
-                  <div key={section} data-settings-section={section} className="grid gap-2 sm:grid-cols-2">
-                    {group.map(control)}
-                  </div>
-                ));
+                return [...bySection.entries()].flatMap(([section, group]) => {
+                  // Volume has a single real plot-colour control; its engine
+                  // deliberately ignores gradient schemes. Keep that control
+                  // in the common colours position without adding a dead picker.
+                  const colours = settingsDefinition.id === "volume"
+                    ? group.filter(([key, value]) => isColourSetting(key, value) || key === "useThemeColors") : [];
+                  const settings = group.filter(entry => !colours.includes(entry));
+                  return [
+                    colours.length ? <div key={section + "-colours"} data-settings-header="colours" className="grid gap-2 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">{colours.map(control)}</div> : null,
+                    settings.length ? <div key={section} data-settings-section={section} className="grid gap-2 sm:grid-cols-2">{settings.map(control)}</div> : null,
+                  ];
+                });
               })()}
               <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : "General"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
                 {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
@@ -8383,9 +8355,9 @@ export default function ChartIndicatorsControl({
                   <>Choosing a custom colour turns off theme colours for this indicator. An active colour scheme owns its colours until switched Off.</>
                 )}
               </div>
-            </IndicatorSettingsSections>
+
             {settingsDefinition.id === "deep-print-footprint" ? (
-              <div className="border-t border-border bg-panel px-5 py-3">
+              <div data-settings-section="General" className="rounded-xl border border-border bg-panel p-3">
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input
                     type="text"
@@ -8427,6 +8399,7 @@ export default function ChartIndicatorsControl({
                 ) : null}
               </div>
             ) : null}
+            </IndicatorSettingsLayout>
           </div>
 
         </div>,

@@ -24,9 +24,10 @@ export function isBounceMirrorPresentationKey(key: string) {
     || key.startsWith("alert") || key.endsWith("Notifications");
 }
 
-export default function BounceGexMapSettings({ instrument = "", settings, onChange, draft, onDraftChange }: {
+export default function BounceGexMapSettings({ instrument = "", settings, onChange, draft, onDraftChange, section = "all" }: {
   instrument?: string; settings: Settings; onChange: (patch: Settings) => void;
   draft: BounceGexMapDraft | null; onDraftChange: (patch: BounceGexMapDraft) => void;
+  section?: "all" | "colours" | "settings";
 }) {
   const shared = useLinkedGexMapSettings();
   const linked = settings.linkGexMapSettings !== false;
@@ -70,6 +71,11 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
       </KwantSelect>
     </label>
   );
+  const mapControls = <GexMapSettingsDialog embedded open section={section} settings={profile.starSettings} palette={draft?.palette ?? savedPalette}
+    viewMode={profile.viewMode}
+    onViewModeChange={(viewMode) => update({ viewMode })} onChange={(starSettings) => update({ starSettings })}
+    onPaletteChange={(next) => onDraftChange({ palette: gexMapPalettesEqual(next, savedPalette) ? undefined : next })} />;
+  if (section === "colours") return mapControls;
   return (
     <div className="space-y-3 rounded-xl border border-border bg-background p-3" data-bounce-gex-settings>
       <button type="button" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-primary/40 bg-primary/15 px-4 py-3 text-sm font-semibold text-foreground hover:bg-primary/25"
@@ -139,10 +145,7 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
       {profile.exposureModel === "DEALER_INVENTORY" && metric !== "AUTO" && metric !== "GAMMA" ? (
         <p className="text-[11px] leading-5 text-muted">Dealer inventory applies to Gamma. {metric} uses Structural OI, matching GEX Map.</p>
       ) : null}
-      <GexMapSettingsDialog embedded open settings={profile.starSettings} palette={draft?.palette ?? savedPalette}
-        viewMode={profile.viewMode}
-        onViewModeChange={(viewMode) => update({ viewMode })} onChange={(starSettings) => update({ starSettings })}
-        onPaletteChange={(next) => onDraftChange({ palette: gexMapPalettesEqual(next, savedPalette) ? undefined : next })} />
+      {mapControls}
     </div>
   );
 }

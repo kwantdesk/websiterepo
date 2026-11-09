@@ -1,0 +1,1812 @@
+{
+  "checkedAt": "2026-11-09T01:05:14.079Z",
+  "checks": [
+    {
+      "id": "options-vwap",
+      "name": "Options VWAP",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "big-blocks-options",
+      "name": "Big Blocks (Options)",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "gamma-environment",
+      "name": "Gamma Environment",
+      "tabs": [
+        "General",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "vix-environment",
+      "name": "VIX Environment",
+      "tabs": [
+        "General"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "zero-gamma-line",
+      "name": "Zero Gamma Line",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "options-delta",
+      "name": "Options Delta",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "zero-gamma-bars",
+      "name": "Zero Gamma Bars",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "gamma-heatmap",
+      "name": "Gamma Heatmap",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "net-gamma-exposure-by-strike",
+      "name": "Net Gamma Exposure By Strike",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "gex-interval-map",
+      "name": "GEX Interval Map",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "bounce-levels",
+      "name": "Bounce Levels",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "dark-pool-map",
+      "name": "Dark Pool Map",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "dark-pool-gex",
+      "name": "Dark Pool (GEX)",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "implied-volatility-rank",
+      "name": "Implied Volatility Rank",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "cumulative-volume-delta",
+      "name": "Cumulative Volume Delta",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "cvd-divergence",
+      "name": "CVD Divergence",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "pulling-stacking",
+      "name": "Pulling & Stacking",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "delta-bar",
+      "name": "Delta Bar",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "delta-highlight",
+      "name": "Delta % Highlight",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "delta-cumulative-candlestick",
+      "name": "Delta Cumulative Candlestick",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "delta-cumulative-histogram",
+      "name": "Delta Cumulative Histogram",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "imbalance-tracker",
+      "name": "Imbalance Tracker",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Plot settings",
+        "Alerts",
+        "Filter time",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "imbalance-rejector",
+      "name": "Imbalance Rejector",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "unfinished-auction",
+      "name": "Unfinished Auction",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "dynamic-poc",
+      "name": "Dynamic POC",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "speed-of-tape",
+      "name": "Speed of Tape",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "speed-of-tape-instant",
+      "name": "Speed of Tape (Instant)",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "volume-delta-sprint",
+      "name": "Volume/Delta Sprint",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "tape-speed-order-flow-burst",
+      "name": "Tape Speed & Order-Flow Burst",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "big-trades",
+      "name": "Big Contracts",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "ratio-highlight",
+      "name": "Ratio Highlight",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "stop-spotter",
+      "name": "Stop Spotter",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "session-imbalance",
+      "name": "Session Imbalance",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "stacked-imbalance-suite",
+      "name": "Stacked Imbalance Suite",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "iceberg-refresh-detector",
+      "name": "Iceberg / Refresh Detector",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "liquidity-stop-sweep-detector",
+      "name": "Liquidity Sweep / Stop Sweep Detector",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "poc-auction-suite",
+      "name": "POC & Auction Suite",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "cumulative-iceberg-stop",
+      "name": "Cumulative Iceberg/Stop",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "book-speed",
+      "name": "Book Speed",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "depth-of-market",
+      "name": "DOM Pro",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "mini-dom",
+      "name": "Mini DOM",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "deep-print-footprint",
+      "name": "Footprint",
+      "tabs": [
+        "General",
+        "View",
+        "Scale",
+        "Grouping",
+        "Cells",
+        "Colours",
+        "Imbalance",
+        "Performance",
+        "Profile",
+        "Bar",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "deep-delta",
+      "name": "KWANT Delta",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "deep-wall",
+      "name": "KWANT Wall",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "deep-v-tracker",
+      "name": "KWANT V-Tracker",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "volume",
+      "name": "Volume",
+      "tabs": [
+        "General"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "kwant-profile",
+      "name": "Daily Volume Profile",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "VWAP",
+        "Summary",
+        "Filter / split time",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "tpo-chart",
+      "name": "TPO Daily",
+      "tabs": [
+        "General",
+        "Filter/split time",
+        "Background/Text",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "Single prints",
+        "Summary"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "weekly-tpo",
+      "name": "TPO Weekly",
+      "tabs": [
+        "General",
+        "Filter/split time",
+        "Background/Text",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "Single prints",
+        "Summary"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "weekly-volume-profile",
+      "name": "Weekly Volume Profile",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "VWAP",
+        "Summary",
+        "Filter / split time",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "monthly-volume-profile",
+      "name": "Monthly Volume Profile",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "VWAP",
+        "Summary",
+        "Filter / split time",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "composite-volume-profile",
+      "name": "Composite Volume Profile",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "VWAP",
+        "Summary",
+        "Filter / split time",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "custom-draw-on-volume-profile",
+      "name": "Custom Draw-On Volume Profile",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "VWAP",
+        "Summary",
+        "Filter / split time",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "ask-bid-volume-profile",
+      "name": "Ask/Bid Volume Profile",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "VWAP",
+        "Summary",
+        "Filter / split time",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "delta-profile",
+      "name": "Delta Profile",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Plot settings",
+        "Point of control",
+        "Value area",
+        "Peak and valley",
+        "VWAP",
+        "Summary",
+        "Filter / split time",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "vwap",
+      "name": "VWAP",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "vwap-envelopes",
+      "name": "VWAP Envelopes",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "rolling-vwap",
+      "name": "Rolling VWAP",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "market-statistics",
+      "name": "Market Statistics",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "on-candle-stats",
+      "name": "On Candle Stats",
+      "tabs": [
+        "General",
+        "Data settings",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "important-levels",
+      "name": "Important Levels",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "absolute-levels",
+      "name": "Absolute Levels",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "pivot-points",
+      "name": "Pivot Points",
+      "tabs": [
+        "General",
+        "Plot settings",
+        "Custom reference",
+        "Custom time session"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "price-movement-levels",
+      "name": "Price Movement Levels",
+      "tabs": [
+        "General",
+        "Support Line",
+        "Resistance Line",
+        "Zero Line",
+        "Custom Time Session"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "fvg-identifier",
+      "name": "FVG Identifier",
+      "tabs": [
+        "General",
+        "Plot settings",
+        "Extension"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "gap-detector",
+      "name": "Gap Detector",
+      "tabs": [
+        "General",
+        "Color settings"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "divergence-detector",
+      "name": "Divergence Detector",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "confluence-identifier",
+      "name": "Confluence Identifier",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "swing-point",
+      "name": "Swing Point",
+      "tabs": [
+        "General",
+        "Plot settings"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "average-daily-range-target",
+      "name": "Average Daily Range Target",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "sessions",
+      "name": "Sessions",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "session-highs-lows",
+      "name": "Session Highs & Lows",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "ib-levels",
+      "name": "IB Levels",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "gamma-levels",
+      "name": "Kwant Levels",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "classic-gex-profile",
+      "name": "Classic GEX Profile",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "session-marker",
+      "name": "Session Marker",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "shift-candle",
+      "name": "Shift Candle",
+      "tabs": [
+        "General",
+        "Signal",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "moving-average",
+      "name": "Moving Average",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "ichimoku-indicator",
+      "name": "Ichimoku Indicator",
+      "tabs": [
+        "General",
+        "Subgraphs",
+        "Parameters",
+        "Cloud"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "parabolic-sar",
+      "name": "Parabolic SAR",
+      "tabs": [
+        "General",
+        "Style",
+        "Inputs"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "linear-regression",
+      "name": "Linear Regression",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "regression-channel",
+      "name": "Regression Channel",
+      "tabs": [
+        "General",
+        "Zig Zag settings",
+        "MID plot settings",
+        "UP plot settings",
+        "DN plot settings"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "super-trend",
+      "name": "Super Trend",
+      "tabs": [
+        "General",
+        "Style",
+        "Inputs"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "super-trend-difference",
+      "name": "Super Trend Difference",
+      "tabs": [
+        "General",
+        "Style",
+        "Inputs"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "keltner-channel",
+      "name": "Keltner Channel",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "bollinger-bands",
+      "name": "Bollinger Bands",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "donchian-channel",
+      "name": "Donchian Channel",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "tillson-t3",
+      "name": "Tillson T3",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "zig-zag",
+      "name": "Zig Zag",
+      "tabs": [
+        "General",
+        "Zig Zag settings",
+        "Retracement settings"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "relative-strength-index-rsi",
+      "name": "Relative Strength Index (RSI)",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "rate-of-change-roc",
+      "name": "Rate of Change (ROC)",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "macd-indicator",
+      "name": "MACD Indicator",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "momentum-indicator",
+      "name": "Momentum Indicator",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "commodity-channel-index-cci",
+      "name": "Commodity Channel Index (CCI)",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "know-sure-thing-kst",
+      "name": "Know Sure Thing (KST)",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "inverse-cyber-cycle",
+      "name": "Inverse Cyber Cycle",
+      "tabs": [
+        "General",
+        "Subgraphs",
+        "Parameters",
+        "Cycle A",
+        "Cycle B",
+        "Level settings"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "aroon-up-down",
+      "name": "Aroon Up/Down",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "aroon-oscillator",
+      "name": "Aroon Oscillator",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "awesome-oscillator",
+      "name": "Awesome Oscillator",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "stochastic-oscillator",
+      "name": "Stochastic Oscillator",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "williams-r",
+      "name": "Williams %R",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "chaikin-accumulation-distribution",
+      "name": "Chaikin Accumulation/Distribution",
+      "tabs": [
+        "General",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "average-directional-index-adx",
+      "name": "Average Directional Index (ADX)",
+      "tabs": [
+        "General",
+        "Style",
+        "Inputs"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "standard-deviation",
+      "name": "Standard Deviation",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "average-true-range-atr",
+      "name": "Average True Range (ATR)",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "expected-move",
+      "name": "Expected Move",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "kwant-stats",
+      "name": "KWANT Stats",
+      "tabs": [
+        "General",
+        "Colours",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    },
+    {
+      "id": "deep-m-effort-nq",
+      "name": "Big Blocks",
+      "tabs": [
+        "General",
+        "Inputs",
+        "Style"
+      ],
+      "order": [
+        "visible",
+        "colours",
+        "menu",
+        "content"
+      ],
+      "visibilityToggle": true
+    }
+  ],
+  "errors": []
+}
