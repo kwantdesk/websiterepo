@@ -1701,9 +1701,9 @@ await boot();
       }};activeChartInstance=chart;return chart;
   }
 
-  function drawAxisLabels(ctx,{left,top,right,bottom,min,max,money=false,rightSide=false,steps=5,label="",formatter=null}){
+  function drawAxisLabels(ctx,{left,top,right,bottom,min,max,money=false,rightSide=false,steps=5,ticks=null,label="",formatter=null}){
     ctx.save();ctx.fillStyle=themePaint("#FFFFFF");ctx.font="700 13px Aleph, sans-serif";ctx.textAlign=rightSide?"left":"right";
-    for(const value of niceTicks(min,max,steps)){const y=bottom-(value-min)/Math.max(1e-9,max-min)*(bottom-top);ctx.fillText(formatter?formatter(value):money?compact(value,true):compact(value),rightSide?right+7:left-8,y+4);}
+    for(const value of ticks||niceTicks(min,max,steps)){const y=bottom-(value-min)/Math.max(1e-9,max-min)*(bottom-top);ctx.fillText(formatter?formatter(value):money?compact(value,true):compact(value),rightSide?right+7:left-8,y+4);}
     if(label&&!toolConfiguration.hideAxisTitles){ctx.translate(rightSide?right+66:18,(top+bottom)/2);ctx.rotate(rightSide?Math.PI/2:-Math.PI/2);ctx.textAlign="center";ctx.fillText(label,0,0);}ctx.restore();
   }
 
@@ -1833,7 +1833,7 @@ await boot();
       tooltipRows:row=>darkFlowTooltipRows(rows,row,{timeZone:gexTimeZone()}),
       draw:(ctx,w,h,state)=>{
         const left=88,right=w-78,top=12,bottom=h-34,visible=rows.slice(state.start,state.end+1),notionals=visible.map(row=>row.notional).filter(Number.isFinite);
-        const {min:nmin,max:nmax}=niceValueDomain(notionals.length?Math.min(...notionals):0,notionals.length?Math.max(...notionals):1),prices=visible.map(row=>row.spot).filter(Number.isFinite),{min:smin,max:smax}=niceValueDomain(prices.length?Math.min(...prices):0,prices.length?Math.max(...prices):1);
+        const {min:nmin,max:nmax}=niceValueDomain(notionals.length?Math.min(...notionals):0,notionals.length?Math.max(...notionals):1),prices=visible.map(row=>row.spot).filter(Number.isFinite),{min:smin,max:smax,ticks:spotTicks}=niceValueDomain(prices.length?Math.min(...prices):0,prices.length?Math.max(...prices):1);
         const domain=timeDomain(rows,state.rawStart??state.start,state.rawEnd??state.end),x=index=>timeX(visible[index]?.time,domain,left,right),ny=value=>bottom-(value-nmin)/(nmax-nmin)*(bottom-top),sy=value=>bottom-(value-smin)/(smax-smin)*(bottom-top);
         drawHorizontalTicks(ctx,left,right,top,bottom,nmin,nmax,value=>compact(value,true));
         ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
@@ -1842,7 +1842,7 @@ await boot();
         if(showUnderlying)quantLine(ctx,visible.map((row,index)=>[x(index),sy(row.spot)]).filter(point=>Number.isFinite(point[1])),CHART_COLORS.price,2);
         ctx.restore();
         drawAxisLabels(ctx,{left,top,right,bottom,min:nmin,max:nmax,money:true,formatter:value=>currencyAbbreviated(value),label:"Notional Value"});
-        if(showUnderlying)drawAxisLabels(ctx,{left,top,right,bottom,min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
+        if(showUnderlying)drawAxisLabels(ctx,{left,top,right,bottom,min:smin,max:smax,ticks:spotTicks,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
         drawTimeLabels(ctx,rows,state.rawStart??state.start,state.rawEnd??state.end,left,right,bottom);drawChartCrosshair(ctx,state,left,right,top,bottom);
       }
     });
@@ -1859,7 +1859,7 @@ await boot();
     const limit=Math.max(1,Math.floor(Number(getControl("topLevels"))||50));
     const all=Object.entries(payload.data||{}).map(([price,row])=>({price:Number(price),notionalValue:number(row.notionalValue),tradeCount:number(row.tradeCount),volume:number(row.size)})).filter(row=>Number.isFinite(row.price)).sort((a,b)=>b.notionalValue-a.notionalValue);
     const rows=all.slice(0,limit).map((row,index)=>({rank:index+1,...row}));const sortKey='price';
-    rows.sort((a,b)=>b[sortKey]-a[sortKey]);showTable(prepareDarkPoolLevels(payload,{limit,sortKey}),DARK_POOL_LEVEL_COLUMNS.map(column=>({...column,menuReorder:column.key!=='rank',type:column.key==="price"||column.key==="notionalValue"?"money":column.key==="rank"?"text":"abbreviated",...(column.key==="rank"?{sortable:false,canHide:false,columnMenu:false,resizable:false,reorderable:false}:{}),...(column.key==="price"?{autoCurrency:true}:{}),...(column.key==="notionalValue"?{bar:"primary",fractionField:"notionalFraction"}:column.key==="tradeCount"?{percentField:"tradeFraction"}:column.key==="volume"?{percentField:"volumeFraction"}:{})})),null,{sortKey,inlineFilters:false});
+    rows.sort((a,b)=>b[sortKey]-a[sortKey]);showTable(prepareDarkPoolLevels(payload,{limit,sortKey}),DARK_POOL_LEVEL_COLUMNS.map(column=>({...column,menuReorder:column.key!=='rank',type:column.key==="price"||column.key==="notionalValue"?"money":column.key==="rank"?"text":"abbreviated",...(column.key==="rank"?{sortable:false,canHide:false,columnMenu:false,resizable:false,reorderable:false}:{}),...(column.key==="price"?{autoCurrency:true}:{}),...(column.key==="notionalValue"?{bar:"primary",fractionField:"notionalFraction"}:column.key==="tradeCount"?{percentField:"tradeFraction"}:column.key==="volume"?{percentField:"volumeFraction"}:{})})),null,{sortKey,inlineFilters:false,fillLastColumn:true});
     setSummary([["Top levels",rows.length],["Available levels",all.length.toLocaleString()],["Leading price",formatPrice(all[0]?.price)],["Underlying",formatPrice(payload.latestStockPrice)]]);
     netDriftContractControls?.sync();
   }

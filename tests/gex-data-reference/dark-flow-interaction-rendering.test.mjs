@@ -7,6 +7,7 @@ import {darkFlowInitialWindow} from '../../public/gex-data-app/equity-window-mod
 import {niceValueDomain} from '../../public/gex-data-app/exposure-models.js';
 import {timeDomain,timeX} from '../../public/gex-data-app/time-axis.js';
 import {currencyAbbreviated,currencyAuto} from '../../public/gex-data-app/number-format.js';
+import {niceTicks} from '../../public/gex-data-app/chart-primitives.js';
 
 const source=readFileSync(new URL('../../public/gex-data-app/app.js',import.meta.url),'utf8');
 function actual(name){const start=source.indexOf('  function '+name+'('),end=source.indexOf('\n  function ',start+1);assert.ok(start>=0&&end>start);return source.slice(start,end);}
@@ -68,6 +69,14 @@ test('Actual renderer uses visible positive notional bounds instead of a forced 
   h.draw({start:1,end:2});assert.ok(h.axes[0].min>0);assert.equal(h.specs[0].items.length,3);
   assert.match(h.specs[0].tooltipRows(h.specs[0].items[2]).at(-1),/2\.00%/);
   assert.equal(h.specs[0].legend[1].value,'$102');assert.equal(h.specs[0].legend[0].onClick,undefined);
+});
+
+test('Dark Flow paints the original nice-domain price ticks instead of coarsening them after outward rounding',()=>{
+  const h=rendererHarness();h.env.render({data:{[T]:row(735.2,10),[T+60000]:row(752.4,147000000)}});h.draw();
+  const axis=h.axes.find(axis=>axis.rightSide),labels=[],env={themePaint:value=>value,niceTicks,toolConfiguration:{hideAxisTitles:true},compact:String};
+  vm.runInNewContext(actual('drawAxisLabels')+'\nthis.draw=drawAxisLabels;',env);
+  env.draw({save(){},restore(){},fillText:text=>labels.push(text)},axis);
+  assert.deepEqual(labels,['735','737.5','740','742.5','745','747.5','750','752.5']);
 });
 
 test('Compatible actual refresh retains chart instance/history/navigation while updating header, tooltip and current rows',()=>{
