@@ -118,6 +118,25 @@ test('actual Max Pain picker preserves restored selection and override ownership
   env.netDriftContractControls.destroy();
 });
 
+test('actual Exposure by Strike uses observed expirations, disables invalid days and preserves override ownership',async()=>{
+  const app=readFileSync(new URL('../../public/gex-data-app/app.js',import.meta.url),'utf8'),start=app.indexOf("    if(tool.id==='exposure-by-strike'){",app.indexOf('  function renderControls(')),end=app.indexOf("\n    if(",start+5);
+  assert.ok(start>0&&end>start);
+  const document={createElement:tag=>new Element(tag,document)};document.body=new Element('body',document);
+  const holder=document.createElement('div');holder.insertBefore=node=>holder.append(node);document.body.append(holder);
+  const wrap=document.createElement('div'),expiry=document.createElement('input');expiry.dataset={control:'expiry'};expiry.closest=()=>wrap;wrap.append(expiry);holder.append(wrap);
+  const values={ticker:'SPY',mode:'historical',date:'2026-10-16',expiry:'2026-10-23'},loads=[],changes=[];let menu;
+  const env={holder,tool:{id:'exposure-by-strike'},netDriftContractControls:null,mountObservedExpiryControl,
+    element:tag=>{const el=document.createElement(tag);el.style={};return el;},q:()=>expiry,getControl:id=>values[id]??'',setControl:(id,value)=>{values[id]=value;},onControlsChanged:event=>changes.push(event.target.dataset.control),apiStatus:{market:{}},
+    loadNetDriftContractChoices:async scope=>{loads.push(scope);return choices;},popup:(anchor,title,build)=>{menu?.remove();menu=document.createElement('section');document.body.append(menu);build(menu);return menu;}};
+  vm.runInNewContext(app.slice(start,end),env);const trigger=find(holder,node=>node.attributes['aria-label']==='Expiration');
+  assert.equal(trigger.textContent,'Oct 23, 2026');assert.equal(wrap.hidden,true);assert.equal(loads.length,0);
+  expiry.disabled=true;env.netDriftContractControls.sync();trigger.fire('click');await flush();assert.equal(loads.length,0);
+  expiry.disabled=false;env.netDriftContractControls.sync();trigger.fire('click');await flush();assert.equal(loads[0].ticker,'SPY');assert.equal(loads[0].sessionDate,'2026-10-16');assert.equal(loads[0].expiry,'');
+  assert.equal(find(menu,node=>node.attributes['aria-label']==='Oct 17, 2026').disabled,true);
+  find(menu,node=>node.attributes['aria-label']==='Oct 16, 2026').fire('click');assert.equal(values.expiry,'2026-10-16');assert.deepEqual(changes,['expiry']);
+  trigger.fire('click');await flush();find(menu,node=>node.textContent==='Clear expiration').fire('click');assert.equal(values.expiry,'');assert.deepEqual(changes,['expiry','expiry']);env.netDriftContractControls.destroy();
+});
+
 test('required single-contract calendar has no clear action, requires ticker and excludes observed dates before session',async()=>{
   const h=harness({singleStrike:true,clearable:false,initial:{ticker:''}});
   assert.equal(find(h.host,node=>node.attributes['aria-label']==='Expiration').disabled,true);

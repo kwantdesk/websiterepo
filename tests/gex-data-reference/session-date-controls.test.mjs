@@ -4,7 +4,7 @@ import {mountSessionDateControls} from '../../public/gex-data-app/session-date-c
 import {claimMenu,releaseMenu} from '../../public/gex-data-app/menu-coordination.js';
 
 class Element{
-  constructor(tag,document){this.tagName=tag;this.ownerDocument=document;this.children=[];this.attributes={};this.events={};this.parent=null;this.classList={add:()=>{}};}
+  constructor(tag,document){this.tagName=tag;this.ownerDocument=document;this.children=[];this.attributes={};this.events={};this.parent=null;const classes=new Set();this.classList={add:(...names)=>names.forEach(name=>classes.add(name)),contains:name=>classes.has(name)};}
   append(...children){for(const child of children){child.parent=this;this.children.push(child);}}
   replaceChildren(...children){this.children.forEach(child=>{child.parent=null;});this.children=[];this.append(...children);}
   setAttribute(key,value){this.attributes[key]=value;}
@@ -12,6 +12,7 @@ class Element{
   fire(event){if(!this.disabled)for(const callback of this.events[event]||[])callback({target:this});}
   contains(other){return this===other||this.children.some(child=>child.contains(other));}
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(child=>child!==this);this.parent=null;}
+  focus(){this.ownerDocument.activeElement=this;}
   get isConnected(){return this===this.ownerDocument.body||!!this.parent?.isConnected;}
 }
 const descendants=node=>[node,...node.children.flatMap(descendants)];
@@ -23,6 +24,13 @@ function harness(initial={}){
   const api=mountSessionDateControls({host,getScope:()=>scope,popup:(_anchor,_title,build)=>{menu?.remove();menu=document.createElement('section');document.body.append(menu);build(menu);return menu;},onChange:next=>{changes.push(next);scope.date=next;}});
   return {api,host,scope,changes,document,events,fire(type,event){for(const handler of events[type]||[])handler(event);},get menu(){return menu;},open(){byLabel(host,'Session Date').fire('click');}};
 }
+
+test('exchange-session mode blocks weekends and published holidays without restricting generic date pickers',()=>{
+  const h=harness({currentDate:'2026-11-30',weekdaysOnly:true,closedDates:['2026-11-26']});h.open();
+  for(const label of ['Nov 7, 2026','Nov 8, 2026','Nov 26, 2026']){const day=byLabel(h.menu,label);assert.equal(day.disabled,true,label);day.fire('click');assert.deepEqual(h.changes,[]);}
+  assert.equal(byLabel(h.menu,'Nov 6, 2026').disabled,false);byLabel(h.menu,'Nov 6, 2026').fire('click');assert.deepEqual(h.changes,['2026-11-06']);
+  const generic=harness({currentDate:'2026-11-30'});generic.open();assert.equal(byLabel(generic.menu,'Nov 7, 2026').disabled,false);
+});
 
 test('single calendar opens themed with Current, no native date input and no commit on navigation',()=>{
   const h=harness();assert.equal(byLabel(h.host,'Session Date').textContent,'Current');h.open();assert.equal(h.menu.isConnected,true);assert.ok(byText(h.menu,'November 2026'));assert.equal(descendants(h.menu).some(node=>node.tagName==='input'),false);

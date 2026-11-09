@@ -852,7 +852,7 @@ await boot();
       // Only their presentation is replaced; range and expiration inputs stay intact.
       mode.closest('.control').hidden=true;date.hidden=true;for(const label of qa('label',wrap))label.hidden=true;
       const calendar=element('div');calendar.style.display='contents';wrap.append(calendar);
-      commonSessionDateControls=mountSessionDateControls({host:calendar,popup,getScope:()=>({date:getControl('mode')==='historical'?getControl('date'):'',currentDate:apiStatus.market?.optionsSessionDate,disabled:!!date.disabled||!!mode.disabled}),onChange:value=>{
+      commonSessionDateControls=mountSessionDateControls({host:calendar,popup,getScope:()=>({date:getControl('mode')==='historical'?getControl('date'):'',currentDate:apiStatus.market?.optionsSessionDate,disabled:!!date.disabled||!!mode.disabled,weekdaysOnly:true,closedDates:Object.entries(apiStatus.market?.calendar?.holidays||{}).flatMap(([year,days])=>days.map(day=>`${year}-${day}`))}),onChange:value=>{
         setControl('mode',value?'historical':'latest');setControl('date',value);onControlsChanged({target:date});
       }});syncDateControl();
     }
@@ -884,6 +884,11 @@ await boot();
       expiry.closest('.control').hidden=true;ticker.dataset.maxPainTicker=getControl('ticker');
       const contracts=element('div','net-drift-contract-host');contracts.style.display='contents';holder.insertBefore(contracts,expiry.closest('.control'));
       netDriftContractControls=mountObservedExpiryControl({host:contracts,popup,clearable:false,getScope:()=>({ticker:getControl('ticker'),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,expiry:getControl('expiry'),expiryDisabled:expiry.disabled}),loadChoices:scope=>loadNetDriftContractChoices({...scope,expiry:''}),onExpiryChange:value=>{setControl('expiry',value);onControlsChanged({target:expiry});}});
+    }
+    if(tool.id==='exposure-by-strike'){
+      const expiry=q('[data-control="expiry"]',holder);expiry.closest('.control').hidden=true;
+      const contracts=element('div','net-drift-contract-host');contracts.style.display='contents';holder.insertBefore(contracts,expiry.closest('.control'));
+      netDriftContractControls=mountObservedExpiryControl({host:contracts,popup,getScope:()=>({ticker:getControl('ticker'),sessionDate:getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate,expiry:getControl('expiry'),expiryDisabled:expiry.disabled}),loadChoices:scope=>loadNetDriftContractChoices({...scope,expiry:''}),onExpiryChange:value=>{setControl('expiry',value);onControlsChanged({target:expiry});}});
     }
     if(tool.id==='net-drift'){
       for(const id of ['expiry','strike','driftCalls','driftPuts','driftNet','driftBands','driftUnderlying'])q('[data-control="'+id+'"]',holder).closest('.control').hidden=true;
@@ -1049,6 +1054,7 @@ await boot();
     if(['order-flow-consolidated','order-flow-unconsolidated'].includes(activeTool?.id)){toolCursor=null;q('#loadMore').hidden=true;}
     if(event?.target?.dataset.control==='sector'){setControl('industry','');if(activeTool?.id==='gainers-losers')q('[data-control="industry"]',q('#toolControls'))?.setChoices?.(gainersIndustryChoices(getControl('sector')));if(activeTool?.id==='market-map')q('[data-control="industry"]',q('#toolControls'))?.setChoices?.(marketMapIndustryChoices(marketMapIndustryInventory,getControl('sector')));}
     if(activeTool?.id==='exposure-by-expiration'&&event?.target?.dataset.control==='ticker'){setControl('strike','');snapshotSelections.delete(snapshotKey(activeTool));}
+    if(activeTool?.id==='exposure-by-strike'&&event?.target?.dataset.control==='ticker'){setControl('expiry','');snapshotSelections.delete(snapshotKey(activeTool));}
     if(activeTool?.id==='net-drift'){const key=event?.target?.dataset.control;if(key==='ticker'){setControl('expiry','');setControl('strike','');}else if(key==='expiry')setControl('strike','');}
     if(['contract-statistics','contract-trade-side-statistics'].includes(activeTool?.id)&&event?.target?.dataset.control==='expiry')setControl('strike','');
     if(activeTool?.id==='option-price-over-time'){

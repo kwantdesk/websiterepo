@@ -1,4 +1,5 @@
 import {gainersIndustryChoices} from '../../public/gex-data-app/gainers-industry-controls.js';
+import {numericControlChoices} from '../../public/gex-data-app/numeric-control-options.js';
 import test from 'node:test';
 import {mountSessionDateControls} from '../../public/gex-data-app/session-date-controls.js';
 import {mountDarkPoolLevelLimit} from '../../public/gex-data-app/dark-pool-level-controls.js';
@@ -24,7 +25,7 @@ const source=readFileSync(new URL('../../public/gex-data-app/app.js',import.meta
 const definitions=vm.runInNewContext(source.slice(source.indexOf('const TOOL_DEFINITIONS = [')+'const TOOL_DEFINITIONS = '.length,source.indexOf('\n  ];',source.indexOf('const TOOL_DEFINITIONS = ['))+5));
 function actual(name){const start=new RegExp(`^  (?:async )?function ${name}\\(`,'m').exec(source);assert.ok(start,name);const tail=source.slice(start.index+start[0].length),end=/^  (?:async )?function /m.exec(tail);assert.ok(end);return source.slice(start.index,start.index+start[0].length+end.index);}
 class Node{
-  constructor(tag='div',document){this.tagName=tag.toUpperCase();this.ownerDocument=document;this.dataset={};this.children=[];this.options=[];this._value='';this._type='';this.style={};this.attributes={};this.events={};this.classList={add(){},remove(){},toggle(){}};this.textContent='';}
+  constructor(tag='div',document){this.tagName=tag.toUpperCase();this.ownerDocument=document;this.dataset={};this.children=[];this.options=[];this._value='';this._type='';this.style={};this.attributes={};this.events={};this.classList={add(){},remove(){},toggle(){},contains:name=>String(this.className||'').split(/\s+/).includes(name)};this.textContent='';}
   get value(){return this._value;}set value(value){const text=String(value);this._value=this._type==='number'&&text!==''&&(!/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)||!Number.isFinite(Number(text)))?'':text;}
   get type(){return this._type;}set type(value){this._type=value;this.value=this._value;}
   append(...children){for(const child of children){child.remove?.();child.parent=this;this.children.push(child);}}
@@ -210,16 +211,22 @@ test('actual Gainers ranges retain own saved values under page/global date overr
 });
 test('actual non-tape render replaces only legacy mode/date presentation; a day commits saved and request state once',()=>{
   const h=harness({toolId:'net-flow',saved:{ticker:'SPY',mode:'latest',date:'2026-10-16'}}),trigger=byLabel(h.holder,'Session Date');
-  assert.ok(trigger);assert.equal(trigger.textContent,'Current ⌄');assert.equal(h.input('mode').closest().hidden,true);assert.equal(h.input('date').hidden,true);assert.equal(h.input('date').closest().hidden,false);assert.equal(h.input('date').closest().children.find(node=>node.tagName==='LABEL').hidden,true);
+  assert.ok(trigger);assert.equal(trigger.textContent,'Current');assert.equal(h.input('mode').closest().hidden,true);assert.equal(h.input('date').hidden,true);assert.equal(h.input('date').closest().hidden,false);assert.equal(h.input('date').closest().children.find(node=>node.tagName==='LABEL').hidden,true);
   trigger.fire('click');assert.equal(h.loads.length,0);assert.equal(h.timers.length,0);byLabel(h.env.menu,'Previous month').fire('click');assert.equal(h.timers.length,0);byLabel(h.env.menu,'Oct 16, 2026').fire('click');
   assert.equal(h.get('mode'),'historical');assert.equal(h.get('date'),'2026-10-16');assert.equal(h.request().sessionDate,'2026-10-16');assert.equal(h.timers.length,1);assert.equal(h.writes.at(-1)['net-flow'].date,'2026-10-16');assert.equal(h.writes.at(-1)['net-flow'].mode,'historical');
-  trigger.fire('click');byText(h.env.menu,'Clear').fire('click');assert.equal(h.get('mode'),'latest');assert.equal(h.get('date'),'');assert.equal(h.request().sessionDate,'2026-11-02');assert.equal(trigger.textContent,'Current ⌄');
+  trigger.fire('click');byText(h.env.menu,'Clear').fire('click');assert.equal(h.get('mode'),'latest');assert.equal(h.get('date'),'');assert.equal(h.request().sessionDate,'2026-11-02');assert.equal(trigger.textContent,'Current');
 });
 
 test('actual saved/copied dates and page/global overrides stay distinct and restore own choices',()=>{
   const h=harness({toolId:'net-flow',copied:{c_mode:'historical',c_date:'2026-10-16',c_ticker:'SPY'},global:{sessionDate:'2026-10-19'}}),trigger=byLabel(h.holder,'Session Date');
-  assert.equal(trigger.textContent,'Oct 19, 2026 ⌄');assert.equal(trigger.disabled,true);assert.equal(h.input('date').dataset.overrideOwn,'2026-10-16');assert.equal(h.request().sessionDate,'2026-10-19');h.env.api.saveToolControls();assert.equal(h.writes.at(-1)['net-flow'].date,'2026-10-16');
-  h.page.sessionDate='2026-10-20';h.env.api.reflectFilterOverrides();assert.equal(trigger.textContent,'Oct 20, 2026 ⌄');delete h.page.sessionDate;delete h.global.sessionDate;h.env.api.reflectFilterOverrides();assert.equal(trigger.disabled,false);assert.equal(trigger.textContent,'Oct 16, 2026 ⌄');assert.equal(h.get('mode'),'historical');assert.equal(h.request().sessionDate,'2026-10-16');
+  assert.equal(trigger.textContent,'Oct 19, 2026');assert.equal(trigger.disabled,true);assert.equal(h.input('date').dataset.overrideOwn,'2026-10-16');assert.equal(h.request().sessionDate,'2026-10-19');h.env.api.saveToolControls();assert.equal(h.writes.at(-1)['net-flow'].date,'2026-10-16');
+  h.page.sessionDate='2026-10-20';h.env.api.reflectFilterOverrides();assert.equal(trigger.textContent,'Oct 20, 2026');delete h.page.sessionDate;delete h.global.sessionDate;h.env.api.reflectFilterOverrides();assert.equal(trigger.disabled,false);assert.equal(trigger.textContent,'Oct 16, 2026');assert.equal(h.get('mode'),'historical');assert.equal(h.request().sessionDate,'2026-10-16');
+});
+
+test('Exposure ticker change clears prior-contract expiry and replay snapshot while retaining units',()=>{
+  const h=harness({toolId:'exposure-by-strike',saved:{ticker:'SPY',expiry:'2026-10-23',mode:'historical',date:'2026-10-16',greek:'GAMMA',representation:'PER_ONE_PERCENT_MOVE'}});
+  h.env.snapshotSelections.set('exposure-by-strike',123);h.set('ticker','QQQ');h.env.api.onControlsChanged({target:h.input('ticker')});
+  assert.equal(h.get('expiry'),'');assert.equal(h.env.snapshotSelections.size,0);assert.equal(h.request().filter.ticker,'QQQ');assert.equal(h.request().filter.expirationDates,undefined);assert.equal(h.request().representationMode,'PER_ONE_PERCENT_MOVE');
 });
 
 test('actual rerender destroys prior calendar and rejects retained date clicks without loading',()=>{
@@ -310,7 +317,7 @@ function harness({toolId='order-flow-consolidated',saved,copied,page={},global={
       }else nodes.set(key,document.createElement('div'));
     }return nodes.get(key);
   };
-  const env={document,console,structuredClone,AbortController,Date,toolControlDefault,activeTool:tool,CONTROL_OPTIONS:{printType:[['','Lit + dark'],['DARK_POOL','Dark pool'],['LIT_POOL','Lit pool']]},commonSessionDateControls:null, netDriftContractControls:null,masterReplay:null,
+  const env={document,console,structuredClone,AbortController,Date,toolControlDefault,numericControlChoices,activeTool:tool,CONTROL_OPTIONS:{printType:[['','Lit + dark'],['DARK_POOL','Dark pool'],['LIT_POOL','Lit pool']]},commonSessionDateControls:null, netDriftContractControls:null,masterReplay:null,
     gainersIndustryChoices,instrumentChoices:()=>[['SPY','SPY'],['QQQ','QQQ']],Option:function(text,value){this.text=text;this.value=value;this.children=[];},
     element:(tag,className='',text='')=>{const node=document.createElement(tag);node.className=className;node.textContent=String(text);return node;},
     q:(selector,root)=>selector==='label'?descendants(root||holder).find(node=>node.tagName==='LABEL'):selector.startsWith('#')?getNode(selector):selector==='.flow-statistics'?getNode('#toolTableWrap').children.find(child=>child.className==='flow-statistics'):descendants(root||holder).find(node=>node.dataset?.control===/data-control="([^"]+)"/.exec(selector)?.[1]),
