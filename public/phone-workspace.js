@@ -5,6 +5,7 @@ function mountPhoneWorkspace() {
   // Docked GEX tools already expose their filters above the chart. A narrow
   // panel is not a second phone workspace and must not create another drawer.
   if (app === 'gex-data' && new URLSearchParams(location.search).get('embed') === '1') return;
+  const workspacePane = app === 'heatmap' && new URLSearchParams(location.search).get('workspacePane') === '1';
   const phone = matchMedia('(max-width: 767px), (max-height: 500px) and (pointer: coarse)');
   const host = document.querySelector(app === 'gex-data' ? '.app-shell' : app === 'heatmap' ? '.app-bar' : 'body > header');
   if (!host) return;
@@ -59,10 +60,15 @@ function mountPhoneWorkspace() {
   }
   function show(open) { drawer.hidden = shade.hidden = !open; toggle.setAttribute('aria-expanded', String(open)); if (open) close.focus(); else toggle.focus(); }
   toggle.addEventListener('click', () => show(drawer.hidden)); close.addEventListener('click', () => show(false)); shade.addEventListener('click', () => show(false));
+  if (workspacePane) window.addEventListener('message', event => {
+    if (event.origin !== location.origin || event.source !== window.parent || event.data?.type !== 'kwantdesk:liquidity-map-panel-command') return;
+    if (event.data.action === 'controls') show(true);
+    if (event.data.action === 'instrument') document.querySelector('#newTab')?.click();
+  });
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !drawer.hidden && !event.defaultPrevented) show(false); });
   const selectors = app === 'kwanty' ? ['.chart-top-controls', '.workspace-header-actions', '#sidebar'] : app === 'heatmap' ? ['#topDeck', '.app-actions'] : ['.topbar', '#toolControls'];
   function moveControls() {
-    if (!phone.matches) {
+    if (!phone.matches && !workspacePane) {
       organizeHeatmapControls(false);
       for (const [element, placeholder] of moved) { if (placeholder.parentNode) placeholder.replaceWith(element); }
       moved.clear(); drawer.hidden = shade.hidden = true; toggle.setAttribute('aria-expanded', 'false');
@@ -101,7 +107,7 @@ function mountPhoneWorkspace() {
   const observer = new MutationObserver(refresh);
   function observePhone() {
     observer.disconnect();
-    if (!phone.matches) return;
+    if (!phone.matches && !workspacePane) return;
     observer.observe(host, { childList: true, subtree: true });
     if (panelRoot) observer.observe(panelRoot, { childList: true, subtree: true });
   }

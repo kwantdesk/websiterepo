@@ -14,6 +14,7 @@
   <script>
     (() => {
       if (new URLSearchParams(location.search).has("shellToolbar")) document.documentElement.dataset.shellToolbar = "";
+      if (new URLSearchParams(location.search).get("workspacePane") === "1") document.documentElement.dataset.workspacePane = "";
       const defaults = {
         background: '#09090b',
         foreground: '#fafafa',
@@ -77,6 +78,7 @@
   <script>
     (() => {
       const required = new Set(['base', 'embed', 'site']);
+      if ('workspacePane' in document.documentElement.dataset) required.add('pane');
       const loaded = new Set();
       const attempts = new Map();
       const retryTimers = new Map();
@@ -172,7 +174,8 @@
 <link rel="stylesheet" href="/gex-data-app/themed-select.css?v=20261106">
 <style>body[data-phone-workspace=heatmap]{--site-panel:var(--ui-panel);--site-surface:var(--ui-panel-alt);--site-border:var(--ui-line);--site-foreground:var(--ui-text);--site-muted:var(--ui-muted);--site-primary:var(--ui-accent)}</style>
 <script type="module" src="/gex-data-app/themed-select.js?v=20261106"></script>
-<link rel="stylesheet" href="/phone-workspace.css?v=20261109-named-controls"><script defer src="/phone-workspace.js?v=20261109-named-controls"></script></head>
+<link rel="stylesheet" href="/phone-workspace.css?v=20261109-named-controls"><script defer src="/phone-workspace.js?v=20261109-panel-chrome"></script>
+<link rel="stylesheet" href="/heatmap-app/workspace-pane.css?v=20261109-panel-chrome" data-source="/heatmap-app/workspace-pane.css?v=20261109-panel-chrome" data-liquidity-style="pane" onload="window.__kwantLiquidityStyleLoaded('pane')" onerror="window.__kwantLiquidityStyleFailed('pane', this)"></head>
 <body data-phone-workspace="heatmap">
   <div class="terminal-shell" id="terminalShell">
     <header class="app-bar">

@@ -23,6 +23,7 @@ type LiquidityMapWorkspaceProps = {
   onInstrumentChange?: (instrument: string) => void;
   onActivate?: () => void;
   embedded?: boolean;
+  panelCommand?: { action: "controls" | "instrument"; id: number };
   active?: boolean;
   // GEX Vue session replay: when set, the map leaves the live stream and
   // renders the collector's archived book for this session up to this clock.
@@ -40,10 +41,17 @@ function LiquidityMapWorkspace({
   onInstrumentChange,
   onActivate,
   embedded = false,
+  panelCommand,
   active = true,
   replay = null,
 }: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const syncPanelCommand = useCallback(() => {
+    if (panelCommand) iframeRef.current?.contentWindow?.postMessage(
+      { type: "kwantdesk:liquidity-map-panel-command", action: panelCommand.action }, window.location.origin,
+    );
+  }, [panelCommand]);
+  useEffect(syncPanelCommand, [syncPanelCommand]);
   const paneRef = useRef<HTMLDivElement>(null);
   const [paneSize, setPaneSize] = useState({ width: 0, height: 0 });
   /*
@@ -338,7 +346,7 @@ function LiquidityMapWorkspace({
       <iframe
         ref={iframeRef}
         className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
-        src={`/heatmap-app/index.html?v=workspace-command-row${embedded ? "" : "&shellToolbar=1"}`}
+        src={`/heatmap-app/index.html?v=20261109-panel-chrome${embedded ? "&workspacePane=1" : "&shellToolbar=1"}`}
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
           iframeRef.current?.contentDocument?.documentElement.setAttribute(
@@ -351,6 +359,7 @@ function LiquidityMapWorkspace({
           syncReadyState();
           syncTheme();
           syncPerformancePriority();
+          syncPanelCommand();
         }}
       />
       {trading ? <div className={inspectorOpen ? "hidden" : undefined}><LiquidityMapTrading iframeRef={iframeRef} instrument={instrument} active={active && !inspectorOpen} replay={Boolean(replay)} trading={trading} onActivate={onActivate} /></div> : null}
@@ -424,6 +433,7 @@ export default memo(
     && previous.trading === next.trading
     && previous.onActivate === next.onActivate
     && previous.embedded === next.embedded
+    && previous.panelCommand === next.panelCommand
     && previous.active === next.active
     && previous.onInstrumentChange === next.onInstrumentChange
     && previous.replay?.tradingDate === next.replay?.tradingDate

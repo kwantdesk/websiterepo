@@ -1,0 +1,42 @@
+{
+  "checks": [
+    {
+      "check": "Normal and embedded panel header geometry matches",
+      "normal": {
+        "x": 1,
+        "y": 126,
+        "width": 553,
+        "height": 44
+      },
+      "map": {
+        "x": 562,
+        "y": 126,
+        "width": 553,
+        "height": 44
+      }
+    },
+    {
+      "check": "Map plot starts directly below shared chart header, with no duplicate instrument or toolbar rows"
+    },
+    {
+      "check": "Header Controls opens original named map controls with handlers retained"
+    },
+    {
+      "check": "Instrument selector opens the original supported map instrument picker"
+    },
+    {
+      "check": "Standard chart trade button opens and closes inline order ticket"
+    },
+    {
+      "check": "Close action stays inside a narrow embedded panel"
+    },
+    {
+      "check": "Floating map uses one shared header and working controls"
+    },
+    {
+      "check": "Standalone map retains its native app bar outside workspace-pane mode"
+    }
+  ],
+  "errors": [],
+  "method": "Actual Workspace, LiquidityMapWorkspace, map HTML/CSS and compact controls in isolated headless Chrome; market renderer/data and account transport stubbed."
+}

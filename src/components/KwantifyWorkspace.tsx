@@ -10565,6 +10565,7 @@ export default function KwantifyWorkspace({
     const saved = window.localStorage.getItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY) || "NQ.v.0";
     return liquidityMapInstrument(saved) || "NQ.v.0";
   });
+  const [liquidityPanelCommand, setLiquidityPanelCommand] = useState<{ paneId: string; action: "controls" | "instrument"; id: number } | null>(null);
   const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(initialChartWorkspaceRuntime.layout);
   const [workspaceLocked, setWorkspaceLocked] = useState<boolean>(initialChartWorkspaceRuntime.locked);
   const [workspaceSplitRatio, setWorkspaceSplitRatio] = useState<number>(initialChartWorkspaceRuntime.splitRatio);
@@ -19066,6 +19067,7 @@ export default function KwantifyWorkspace({
               onInstrumentChange={setSelectedLiquidityMapInstrument}
               onActivate={() => activateWorkspacePane(pane.id)}
               embedded
+              panelCommand={liquidityPanelCommand?.paneId === pane.id ? liquidityPanelCommand : undefined}
               active={activePaneId === pane.id}
               // During GEX Vue replay the map renders the collector's own
               // archived L3 for the session, following the shared replay
@@ -19237,6 +19239,22 @@ export default function KwantifyWorkspace({
         <BarChart3 className="h-3.5 w-3.5" />
       </button>
     );
+  }
+
+  function renderLiquidityPanelControl(pane: WorkspacePane, action: "controls" | "instrument") {
+    return <button type="button"
+      title={action === "instrument" ? "Change this chart's instrument" : "Liquidity map controls"}
+      aria-label={action === "instrument" ? "Change liquidity map instrument" : "Open liquidity map controls"}
+      onPointerDown={event => event.stopPropagation()}
+      onClick={() => {
+        activateWorkspacePane(pane.id);
+        setLiquidityPanelCommand(previous => ({ paneId: pane.id, action, id: (previous?.id ?? 0) + 1 }));
+      }}
+      className={action === "instrument"
+        ? "flex h-7 shrink-0 items-center gap-1 rounded-lg px-1.5 text-[9px] font-normal text-muted hover:text-foreground"
+        : "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary"}>
+      {action === "instrument" ? <>{displayCmeSymbol(selectedLiquidityMapInstrument)}<ChevronDown className="h-3 w-3" /></> : <Settings2 className="h-3.5 w-3.5" />}
+    </button>;
   }
 
   function renderChartDrawingLockButton(pane: WorkspacePane) {
@@ -19589,11 +19607,14 @@ export default function KwantifyWorkspace({
     const paneMoveLocked = workspaceLocked;
     if (pane.content === null) return renderWorkspacePanelPicker(pane);
     if (!isWorkspaceChartKind(pane.content)) {
+      if (floating) return pane.content === "liqmap"
+        ? renderChartWithOrderTicket(pane, renderEmbeddedWorkspace(pane)) : renderEmbeddedWorkspace(pane);
       const option = ALL_WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
       const Icon = option?.icon ?? Layers3;
       return (
-        <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
+        <div data-embedded-workspace-pane={pane.content} className="kwant-chart-pane-scrollport relative flex h-full min-h-0 flex-col rounded-2xl border border-border bg-panel">
           <div className="kwant-workspace-pane-header flex shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
+            <div className="flex h-7 min-w-0 flex-1 items-center justify-start gap-0.5">
             <button
               type="button"
               onPointerDown={(event) => beginWorkspacePaneDrag(pane.id, event)}
@@ -19604,7 +19625,7 @@ export default function KwantifyWorkspace({
                 }
                 setWorkspacePanelPickerPaneId(pane.id);
               }}
-              className={`flex h-7 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${paneMoveLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+              className={`flex h-7 min-w-0 shrink items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${paneMoveLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
               aria-haspopup="dialog"
               aria-expanded={workspacePanelPickerPaneId === pane.id}
               title={paneMoveLocked ? "This panel is locked in place" : "Drag to dock this panel, or click to change it"}
@@ -19613,8 +19634,11 @@ export default function KwantifyWorkspace({
               <span className="truncate">{option?.label ?? "Workspace"}</span>
               <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
             </button>
+            {pane.content === "liqmap" ? renderLiquidityPanelControl(pane, "instrument") : null}
+            </div>
             {!floating ? (
               <div className="flex items-center gap-1">
+                {pane.content === "liqmap" ? <>{renderChartTradeButton(pane)}{renderLiquidityPanelControl(pane, "controls")}</> : null}
                 {hasStandaloneWorkspaceSettings(pane) ? (
                   <button
                     type="button"
@@ -19639,14 +19663,14 @@ export default function KwantifyWorkspace({
                 <button type="button" onClick={() => detachWorkspacePane(pane.id)} disabled={workspaceLocked} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30" title="Detach into a floating window" aria-label={`Detach ${option?.label ?? "workspace"} panel`}>
                   <PictureInPicture2 className="h-3.5 w-3.5" />
                 </button>
-                <button type="button" onClick={() => closeWorkspacePane(pane.id)} disabled={workspaceLocked || workspacePanes.length <= 1} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-danger disabled:opacity-30" aria-label={`Close ${option?.label ?? "workspace"} panel`}>
-                  <X className="h-3.5 w-3.5" />
-                </button>
               </div>
             ) : null}
+                {!floating ? <button type="button" onClick={() => closeWorkspacePane(pane.id)} disabled={workspaceLocked || workspacePanes.length <= 1} className="kwant-chart-close-control flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-danger disabled:opacity-30" aria-label={`Close ${option?.label ?? "workspace"} panel`}>
+                  <X className="h-3.5 w-3.5" />
+                </button> : null}
           </div>
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-            <div className="relative h-full min-h-0 min-w-0 overflow-hidden">{renderEmbeddedWorkspace(pane)}</div>
+            <div className="kwant-chart-pane-content relative h-full min-h-0 min-w-0 overflow-hidden">{pane.content === "liqmap" ? renderChartWithOrderTicket(pane, renderEmbeddedWorkspace(pane)) : renderEmbeddedWorkspace(pane)}</div>
           </div>
           {workspacePanelPickerPaneId === pane.id ? renderWorkspacePanelPicker(pane, true) : null}
         </div>
@@ -19951,7 +19975,7 @@ export default function KwantifyWorkspace({
           contain: "layout paint size",
         }}
       >
-        <div className={isWorkspaceChartKind(pane.content) ? "kwant-chart-pane-scrollport kwant-floating-chart-surface flex min-h-0 flex-col" : "flex h-full min-h-0 flex-col"}>
+        <div className="kwant-chart-pane-scrollport kwant-floating-chart-surface flex min-h-0 flex-col">
         <div
           onPointerDown={(event) => startFloatingWorkspaceMove(floating.paneId, event)}
           className={`kwant-workspace-pane-header flex shrink-0 touch-none items-center border-b border-border bg-background/95 px-2 ${
@@ -19989,7 +20013,7 @@ export default function KwantifyWorkspace({
                   onSelect={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
                 />
               </>
-            ) : (
+            ) : pane.content === "liqmap" ? renderLiquidityPanelControl(pane, "instrument") : (
               <span className="hidden truncate font-mono text-[8px] text-muted sm:inline">FLOATING WINDOW</span>
             )}
           </div>
@@ -20008,7 +20032,8 @@ export default function KwantifyWorkspace({
             >
               {floating.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
             </button>
-            {isWorkspaceChartKind(pane.content) ? renderChartTradeButton(pane) : null}
+            {isWorkspaceChartKind(pane.content) || pane.content === "liqmap" ? renderChartTradeButton(pane) : null}
+            {pane.content === "liqmap" ? renderLiquidityPanelControl(pane, "controls") : null}
             {isWorkspaceChartKind(pane.content) ? renderChartDrawingLockButton(pane) : null}
             {isWorkspaceChartKind(pane.content) ? (
               <button

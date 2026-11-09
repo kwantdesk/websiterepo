@@ -1,0 +1,43 @@
+{
+  "related": {
+    "tests": 43,
+    "pass": 37,
+    "fail": 6,
+    "baseline": {
+      "pass": 36,
+      "fail": 7
+    },
+    "failures": [
+      "✖ GEX map polling reuses its shared cache and respects provider refresh timing",
+      "✖ docked duplication above12 preserves independent settings and valid tree identities",
+      "✖ embedded GEX map follows the pane market and keeps last-good panel frames",
+      "✖ floating duplication and JSON restore retain more than12 valid windows",
+      "✖ larger layout trees round-trip without dropping docked panes or settings",
+      "✖ mixed-workspace picker and selected headers use uppercase product labels"
+    ],
+    "newFailures": []
+  },
+  "broader": {
+    "tests": 38,
+    "pass": 23,
+    "fail": 15,
+    "sameFailuresAsBaseline": true,
+    "failures": [
+      "✖ CVD is labelled and horizontally synchronized with the liquidity map",
+      "✖ SL/TP edits immediately mirror the normal-chart ledger and real quote triggers the moved target",
+      "✖ auto-center keeps live price as the true viewport target",
+      "✖ auto-center keeps the marker fixed while the price plane follows smoothly",
+      "✖ display settings stay inside the viewport and scroll independently",
+      "✖ dragging and zooming cannot break an enabled auto-center lock",
+      "✖ embedded liquidity map uses the restored horizontal toolbar",
+      "✖ inspector uses one toolbar navigation and themed custom dropdowns",
+      "✖ instrument changes show staged loading progress until the first new frame paints",
+      "✖ liquidity-map display and bubble settings follow the signed-in account",
+      "✖ new users and reset share the canonical account-backed display defaults",
+      "✖ refresh and drag always snap an enabled auto-center back to live price",
+      "✖ restores the full Kwant Desk liquidity-map control surface",
+      "✖ signals and display inspector closes when the user clicks away",
+      "✖ toolbar DOM control sits between heatmap and trades and removes the full rail"
+    ]
+  }
+}
