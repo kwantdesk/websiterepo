@@ -11,6 +11,9 @@ function mountPhoneWorkspace() {
   if (!host) return;
   const toggle = document.createElement('button');
   toggle.type = 'button'; toggle.className = 'kwant-embed-phone-toggle'; toggle.textContent = 'Controls';
+  // Charts already owns the top settings button, which opens this same drawer.
+  // Keep its command handler but do not add a second visible launcher.
+  if (workspacePane) toggle.style.display = 'none';
   toggle.setAttribute('aria-label', 'Open chart controls'); toggle.setAttribute('aria-expanded', 'false');
   const bar = document.createElement('div'); bar.className = 'kwant-embed-phone-bar';
   if (app === 'gex-data') { bar.append(toggle); host.prepend(bar); } else host.append(toggle);

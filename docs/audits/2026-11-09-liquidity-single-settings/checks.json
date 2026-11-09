@@ -1,0 +1,25 @@
+{
+  "checks": [
+    {
+      "name": "standalone-phone",
+      "controlsVisible": true,
+      "settingsCommandWorks": false
+    },
+    {
+      "name": "charts-panel",
+      "controlsVisible": false,
+      "settingsCommandWorks": true
+    },
+    {
+      "name": "charts-phone",
+      "controlsVisible": false,
+      "settingsCommandWorks": true
+    },
+    {
+      "name": "charts-wide",
+      "controlsVisible": false,
+      "settingsCommandWorks": true
+    }
+  ],
+  "errors": []
+}
