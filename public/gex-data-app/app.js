@@ -1889,22 +1889,26 @@ await boot();
       draw:(ctx,w,h,state)=>{
         const left=78,right=w-(hasUnderlying?78:30),top=12,bottom=h-34,visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1);
         const paneHeight=hasVolume?Math.min(100,h*.15):0,volumeTop=bottom-paneHeight,mainBottom=hasVolume?volumeTop-Math.min(20,h*.1):bottom;
-        const bounds=priceChartBounds(visible,chartType),{min:pmin,max:pmax,ticks:priceTicks}=niceValueDomain(bounds.min,bounds.max),vmax=niceValueDomain(0,Math.max(1,...visible.map(row=>row.volume||0))).max;
+        const bounds=priceChartBounds(visible,chartType),{min:pmin,max:pmax,ticks:priceTicks}=niceValueDomain(bounds.min,bounds.max),volumeDomain=niceValueDomain(0,Math.max(1,...visible.map(row=>row.volume||0)),4),vmax=volumeDomain.max;
         const domain=timeDomain(rows,state.rawStart??state.start,state.rawEnd??state.end,{padBars:chartType==="candles"||hasVolume}),x=index=>timeX(visible[index]?.time,domain,left,right),py=value=>mainBottom-(value-pmin)/(pmax-pmin)*(mainBottom-top),slot=visible.length>1?(right-left)*(visible.at(-1).time-visible[0].time)/Math.max(1,domain.max-domain.min)/(visible.length-1):(right-left);
         drawHorizontalTicks(ctx,left,right,top,mainBottom,pmin,pmax,chartStrikeLabel,priceTicks);
         ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,mainBottom-top);ctx.clip();
         if(chartType==="candles")drawPriceCandles(ctx,visible,x,py,slot);
         else if(presentation.lineColor)quantLine(ctx,visible.filter(row=>Number.isFinite(row.close)).map(row=>[x(visible.indexOf(row)),py(row.close)]),presentation.lineColor,2);
-        const spotValues=visible.map(row=>row.spot).filter(Number.isFinite),{min:smin,max:smax}=spotValues.length?niceValueDomain(Math.min(...spotValues),Math.max(...spotValues)):{min:0,max:1},sy=value=>mainBottom-(value-smin)/(smax-smin)*(mainBottom-top);
+        const spotValues=visible.map(row=>row.spot).filter(Number.isFinite),{min:smin,max:smax,ticks:spotTicks}=spotValues.length?niceValueDomain(Math.min(...spotValues),Math.max(...spotValues)):{min:0,max:1,ticks:[]},sy=value=>mainBottom-(value-smin)/(smax-smin)*(mainBottom-top);
         if(hasUnderlying)quantLine(ctx,visible.map((row,index)=>[x(index),Number.isFinite(row.spot)?sy(row.spot):NaN]).filter(point=>Number.isFinite(point[1])),CHART_COLORS.price,2);
         ctx.restore();
         if(hasVolume){
           drawOptionVolume(ctx,visible,x,value=>bottom-value/vmax*(bottom-volumeTop),slot,contractType);
-          drawHorizontalTicks(ctx,left,right,volumeTop,bottom,0,vmax);
-          drawAxisLabels(ctx,{left,top:volumeTop,right,bottom,min:0,max:vmax,label:"Option Volume",steps:4,formatter:abbreviatedTick});
+          // Native renderer502083 uses one four-step domain and suppresses
+          // labels closer than its13px font plus4px. Never re-round the domain.
+          let previousY=Infinity;
+          const volumeTicks=volumeDomain.ticks.filter(value=>{const y=bottom-value/vmax*(bottom-volumeTop);if(previousY-y<17)return false;previousY=y;return true;});
+          drawHorizontalTicks(ctx,left,right,volumeTop,bottom,0,vmax,null,volumeTicks);
+          drawAxisLabels(ctx,{left,top:volumeTop,right,bottom,min:0,max:vmax,ticks:volumeTicks,label:"Option Volume",formatter:abbreviatedTick});
         }
         drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:pmin,max:pmax,ticks:priceTicks,formatter:chartStrikeLabel,label:presentation.leftAxisName});
-        if(hasUnderlying)drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
+        if(hasUnderlying)drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:smin,max:smax,ticks:spotTicks,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
         drawTimeLabels(ctx,rows,state.rawStart??state.start,state.rawEnd??state.end,left,right,bottom,domain);drawChartCrosshair(ctx,state,left,right,top,bottom);
         // Source502083 exposes the hovered clock on the axis, outside the OHLC
         // tooltip. Keep that exact minute readable when the tooltip omits time.

@@ -90,8 +90,14 @@ test('Actual Stock renderer keeps untrimmed header close, genuine RTH candle wic
 test('Actual Contract renderer uses Contract legend, includes full contract tooltip, and retains missing underlying as absent',()=>{
   const h=harness({},'optionOhlc');h.render({data:{[T]:{...point(2,3),volume:1235},[T+60000]:{...point(3,4),volume:2345}}});
   assert.deepEqual(Array.from(h.specs[0].legend,item=>item.label),['Contract']);assert.equal(h.specs[0].legend[0].value,'$4');
-  assert.equal(texts(h.specs[0].tooltipRows(h.specs[0].items[0]))[1],'October 16, 2026 $760 Call');h.draw({start:0,end:1});
+  assert.deepEqual(texts(h.specs[0].tooltipRows(h.specs[0].items[0])).slice(0,4),['SPY','9:30 AM','Oct 16, 2026','October 16, 2026 $760 Call']);h.draw({start:0,end:1});
   assert.equal(h.axes.some(axis=>axis.rightSide),false);assert.equal(h.axes.find(axis=>axis.label==='Option Volume').formatter(12350),'12.35 K');assert.equal(h.axes.find(axis=>axis.label==='Option Volume').formatter(1250),'1.25 K');
+});
+
+test('Contract volume axis retains native four-step domain and skips crowded labels without re-rounding',()=>{
+  const h=harness({},'optionOhlc');h.render({data:{[T]:{...point(2,3),volume:8700},[T+60000]:{...point(3,4),volume:1000}}});h.draw({start:0,end:1});
+  const volume=h.axes.find(axis=>axis.label==='Option Volume');assert.equal(volume.max,10000);assert.deepEqual(Array.from(volume.ticks),[0,4000,8000]);
+  assert.deepEqual(texts(priceChartTooltipRows({time:Date.parse('2026-11-09T17:17:00Z'),open:1.43,close:1.45,low:1.43,high:1.54,spot:752.42,volume:563},{option:true,ticker:'SPY',expirationDate:'2026-11-09',strikePrice:753,contractType:'PUT',timeZone:'Australia/Brisbane'})).slice(0,4),['SPY','3:17 AM','Nov 10, 2026','November 9, 2026 $753 Put']);
 });
 
 test('OHLC axis time badge respects crosshair visibility and exact finite plot bounds, including the volume pane',()=>{

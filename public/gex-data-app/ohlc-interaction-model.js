@@ -42,13 +42,13 @@ export function priceContractSelection({ticker,osi='',expirationDate,strikePrice
   return match?{ticker:match[1],expirationDate:`20${match[2]}-${match[3]}-${match[4]}`,strikePrice:Number(match[6])/1000,contractType:match[5]==='C'?'CALL':'PUT'}:{ticker,expirationDate,strikePrice,contractType};
 }
 
-/** Current Stock tooltip includes the hovered exchange instant in the display timezone. */
+/** Stock and contract tooltips include the observed instant in the display timezone. */
 export function priceChartTooltipRows(row,{option=false,ticker,expirationDate,strikePrice,contractType,timeZone='America/New_York'}={}){
   if(!row)return [];
   const tone=finite(row.open)&&finite(row.close)?row.close>row.open?'bullish':row.close<row.open?'bearish':null:null;
   const metric=(label,value,color)=>({parts:[{text:label+': '},{text:currencyAuto(value),tone:color}]});
   const rows=[String(ticker||'')];
-  if(!option&&finite(row.time)){
+  if(finite(row.time)){
     const date=new Date(row.time);
     if(Number.isFinite(date.getTime()))rows.push(date.toLocaleTimeString('en-US',{timeZone,hour:'numeric',minute:'2-digit',hour12:true}),date.toLocaleDateString('en-US',{timeZone,month:'short',day:'numeric',year:'numeric'}));
   }
