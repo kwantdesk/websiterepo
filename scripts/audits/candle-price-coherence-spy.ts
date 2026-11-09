@@ -9,7 +9,7 @@ export function createChart(...args:Parameters<typeof original>){
   chart.addCandlestickSeries=(options)=>{
     const series=add(options),create=series.createPriceLine.bind(series),update=series.update.bind(series),setData=series.setData.bind(series);
     const container=args[0] as HTMLElement,key=container.closest('[data-chart-instance-id]')?.getAttribute('data-chart-instance-id')||'';
-    series.update=(...params)=>{target.candleWrites++;(window as any).candlePaints??=[];(window as any).candlePaints.push({key,...params[0],at:performance.now()});return update(...params);};
+    series.update=(...params)=>{target.candleWrites++;(window as any).candlePaints??=[];(window as any).candlePaints.push({key,...params[0],at:performance.now()});const result=update(...params);if(!params[1]&&series.options().priceLineVisible){const tail=series.data().at(-1) as any;target.pricePaints.push({key,price:tail.close,at:performance.now()});}return result;};
     series.setData=(...params)=>{target.candleWrites++;return setData(...params);};
     series.createPriceLine=options=>{
       const line=create(options),apply=line.applyOptions.bind(line);

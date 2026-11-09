@@ -7165,11 +7165,16 @@ function Chart({
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series || !liveCandleEventKey || replayTimestampMs != null && replayTimestampMs > 0) return;
-    const marker = createLiveQuotePriceLine(series, livePriceLineColor);
+    // Ordinary candles already own a native last-price line. A second custom
+    // line has independent state and can stay ahead of a later series redraw.
+    // Keep one display authority: series.update paints both candle and line.
+    // Heikin Ashi alone needs a raw-price marker beside its derived close.
+    const marker = isHeikinAshiStyle(candleStyle)
+      ? createLiveQuotePriceLine(series, livePriceLineColor) : null;
     priceAxisLiveQuoteRef.current = null;
     const paintPrice = (price: number, sourceTimestampMs: number) => {
       priceAxisLiveQuoteRef.current = price;
-      marker.update({ key: liveCandleEventKey, symbol: instrument, contractSymbol: contractSymbol || undefined,
+      marker?.update({ key: liveCandleEventKey, symbol: instrument, contractSymbol: contractSymbol || undefined,
         price, sourceTimestampMs, receivedAt: Date.now() });
     };
     // Candle and last-trade line are submitted to the chart in the same turn.
@@ -7189,14 +7194,14 @@ function Chart({
           }));
           return;
         }
-        // Legacy/unclassified observations retain their existing display path.
-        paintPrice(quote.price, quote.sourceTimestampMs);
+        // Unclassified prices cannot move a separate line ahead of the candle.
+        // Current production publishers classify trade/index observations.
       });
     return () => {
       if (liveCandlePricePaintRef.current === paintCandlePrice) liveCandlePricePaintRef.current = null;
-      priceAxisLiveQuoteRef.current = null; unsubscribe(); marker.dispose();
+      priceAxisLiveQuoteRef.current = null; unsubscribe(); marker?.dispose();
     };
-  }, [candleSourceIdentity, chartReadyRevision, contractSymbol, instrument, liveCandleEventKey, livePriceLineColor, replayTimestampMs, timeframe]);
+  }, [candleSourceIdentity, candleStyle, chartReadyRevision, contractSymbol, instrument, liveCandleEventKey, livePriceLineColor, replayTimestampMs, timeframe]);
 
   const indicatorPaletteTheme = useMemo(() => ({
     up: settings.upColor,
