@@ -3089,7 +3089,9 @@ export default function ChartIndicatorsControl({
                     });
                   });
                 return (
-                <div data-settings-section="Filter / split time" className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                // Volume Profile already has its own tab strip. A second outer
+                // section hides these controls while leaving its old footer visible.
+                <div data-settings-section={tpo ? "Filter / split time" : "General"} className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Filter / split time</div>
                   {([
                     /* Weekly defaults to a rolling five-session calculation. */
@@ -3511,14 +3513,6 @@ export default function ChartIndicatorsControl({
                     Developing traces both value-area edges as they widened through the session, dashed or solid.
                     It is recorded minute by minute while the session runs, so a day that finished before the chart
                     was open has no trail to draw and the setting honestly shows nothing on it.
-                  </div>
-                </div>
-              ) : null}
-
-              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "sessions" ? (
-                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
-                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Filter keeps only the executions inside the chosen window. Triple splits the day into Asia, London and New York. A custom window may run past midnight — set an end earlier than the start. Use end session as start day attributes an overnight window to the date it finished on, which is what puts an Asia profile on the right trading day.
                   </div>
                 </div>
               ) : null}
