@@ -39,7 +39,7 @@ function mountPhoneWorkspace() {
     if (heatmapSections.length) return;
     const groups = [
       ['Navigate', [['[data-tool="crosshair"]', 'Crosshair'], ['[data-tool="pan"]', 'Pan chart'], ['[data-tool="measure"]', 'Measure'], ['#zoomIn', 'Zoom in'], ['#zoomOut', 'Zoom out'], ['#resetView', 'Reset view']]],
-      ['Chart layers', [['#toggleHeatmap', 'Heat map'], ['#toggleDom', 'Order book'], ['#toggleTrades', 'Trade bubbles'], ['#toggleProfile', 'Volume profile'], ['#toggleCvd', 'Cumulative delta']]],
+      ['Chart layers', [['#toggleHeatmap', 'Heat map'], ['#toggleDom', 'Order book'], ['#toggleTrades', 'Trade bubbles'], ['#toggleProfile', 'Volume profile'], ['#toggleVolume', 'Volume bars'], ['#toggleCvd', 'Cumulative delta']]],
       ['Trading & settings', [['#mapTradeButton', 'Trade'], ['[data-panel-shortcut="depth"]', 'Depth settings'], ['[data-panel-shortcut="signals"]', 'Signals'], ['[data-panel-shortcut="settings"]', 'Display settings'], ['#fullscreenButton', 'Full screen'], ['#helpButton', 'Keyboard shortcuts']]],
     ];
     for (const [name, controls] of groups) {

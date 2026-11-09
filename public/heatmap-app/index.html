@@ -174,7 +174,7 @@
 <link rel="stylesheet" href="/gex-data-app/themed-select.css?v=20261106">
 <style>body[data-phone-workspace=heatmap]{--site-panel:var(--ui-panel);--site-surface:var(--ui-panel-alt);--site-border:var(--ui-line);--site-foreground:var(--ui-text);--site-muted:var(--ui-muted);--site-primary:var(--ui-accent)}</style>
 <script type="module" src="/gex-data-app/themed-select.js?v=20261106"></script>
-<link rel="stylesheet" href="/phone-workspace.css?v=20261109-named-controls"><script defer src="/phone-workspace.js?v=20261109-instrument-dropdown"></script>
+<link rel="stylesheet" href="/phone-workspace.css?v=20261109-named-controls"><script defer src="/phone-workspace.js?v=20261109-volume-toggle"></script>
 <link rel="stylesheet" href="/heatmap-app/workspace-pane.css?v=20261109-toolbar-parity" data-source="/heatmap-app/workspace-pane.css?v=20261109-toolbar-parity" data-liquidity-style="pane" onload="window.__kwantLiquidityStyleLoaded('pane')" onerror="window.__kwantLiquidityStyleFailed('pane', this)"></head>
 <body data-phone-workspace="heatmap">
   <div class="terminal-shell" id="terminalShell">
@@ -208,6 +208,7 @@
         <button class="rail-button active-toggle labelled-control" id="toggleDom" title="Toggle full depth of market (D)" aria-label="Toggle full depth of market"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M20 4v16M8 7h4M8 12h8M8 17h6"></path><path d="M16 7h-2M16 17h2" opacity=".55"></path></svg><span>DOM</span></button>
         <button class="rail-button active-toggle labelled-control" id="toggleTrades" title="Toggle volume dots (T)" aria-label="Toggle trade bubbles"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle></svg><span>Trades</span></button>
         <button class="rail-button active-toggle labelled-control" id="toggleProfile" title="Toggle volume profile (P)" aria-label="Toggle volume profile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M5 7h6M5 11h11M5 15h8M5 19h4"></path></svg><span>Profile</span></button>
+        <button class="rail-button active-toggle labelled-control" id="toggleVolume" title="Toggle bottom volume bars" aria-label="Toggle bottom volume bars" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M6 17v-5M12 17V4M18 17V8"></path></svg><span>Volume</span></button>
         <button class="rail-button active-toggle labelled-control" id="toggleCvd" title="Toggle CVD subchart (C)" aria-label="Toggle cumulative volume delta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c3-8 5 4 8-3s5-1 10-7"></path><path d="M3 20h18" opacity=".45"></path></svg><span>CVD</span></button>
         <button class="rail-button" id="zoomIn" title="Zoom in price and time" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5 21 21M10.5 7.5v6M7.5 10.5h6"></path></svg></button>
         <button class="rail-button" id="zoomOut" title="Zoom out price and time" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5 21 21M7.5 10.5h6"></path></svg></button>
@@ -421,6 +422,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=20261109-remove-duplicate-palette"></script>
+  <script type="module" src="src/main.js?v=20261109-volume-toggle"></script>
 </body>
 </html>

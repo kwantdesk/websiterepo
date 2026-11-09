@@ -13,9 +13,9 @@ test('saved false controls and toolbar lights agree, including disabled CVD and 
   if(tag.startsWith('<select')){const options=html.slice(html.indexOf(tag),html.indexOf('</select>',html.indexOf(tag))).matchAll(/<option value="([^"]*)"/g);control.options=[...options].map(m=>({value:m[1]}));}
   controls[id]=control;defaults[key]=control.type==='checkbox'?true:control.options?control.options[0].value:Number(attr('value')||attr('min'));
  }
- const classes={};for(const id of ['toggleHeatmap','toggleDom','toggleTrades','toggleProfile','toggleCvd'])controls[id]={classList:{toggle:(name,value)=>{classes[id]=value;}},setAttribute:(name,value)=>{controls[id][name]=value;}};
- const settings={...defaults,minimumTradeSize:0,minimumPixelVolume:0,trails:false,grid:false,trades:false,heatmap:false,profile:false,domVisible:false,cvdEnabled:false,cvdPanel:true};
- synchronizeSettingsControls(settings,{...defaults,trades:true,heatmap:true,profile:true,cvdPanel:true},id=>controls[id]);
+ const classes={};for(const id of ['toggleHeatmap','toggleDom','toggleTrades','toggleProfile','toggleVolume','toggleCvd'])controls[id]={classList:{toggle:(name,value)=>{classes[id]=value;}},setAttribute:(name,value)=>{controls[id][name]=value;}};
+ const settings={...defaults,minimumTradeSize:0,minimumPixelVolume:0,trails:false,grid:false,trades:false,heatmap:false,profile:false,volumeBars:false,domVisible:false,cvdEnabled:false,cvdPanel:true};
+ synchronizeSettingsControls(settings,{...defaults,trades:true,heatmap:true,profile:true,volumeBars:true,cvdPanel:true},id=>controls[id]);
  assert.equal(controls.minimumTradeSizeRange.value,'0');assert.equal(controls.minimumVolumeRange.value,'0');assert.equal(controls.showTrails.checked,false);assert.equal(controls.showGrid.checked,false);
- assert.deepEqual(Object.values(classes),[false,false,false,false,false]);assert.equal(controls.toggleTrades['aria-pressed'],'false');
+ assert.deepEqual(Object.values(classes),[false,false,false,false,false,false]);assert.equal(controls.toggleTrades['aria-pressed'],'false');assert.equal(controls.toggleVolume['aria-pressed'],'false');
 });

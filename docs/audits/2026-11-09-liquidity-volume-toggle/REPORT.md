@@ -1,0 +1,7 @@
+# Liquidity-map bottom volume toggle
+
+Added a Volume toolbar button beside Profile/CVD and a Volume bars entry in the existing compact/phone Chart layers controls. Default remains on. The volumeBars display setting persists with map preferences, restores its active/aria state, and resets to on with display defaults. Renderer skips only the bottom-volume drawing pass when off; trades, DOM, profiles, CVD, heat, execution ingestion and recordings are unchanged. Versioned main/renderer/settings-control and phone helper asset references updated.
+
+Actual standalone, embedded Charts-pane and phone-size app checks pass: inject deterministic offline book/execution frames, observe changed canvas pixels after the real toggle handler, verify unrelated trade/profile flags, persist off, reload off, toggle on. All external connections blocked. Seven existing settings/DOM checks pass, and changed JS syntax checks pass. The settings test fixture now includes the added toolbar button. Static public-asset change only; no React/TypeScript or provider code changes and no feed/service restart. Existing unrelated depth-engine working-tree changes excluded from the browser fixture and release.
+
+Deployment uses the existing main-only Git integration. This push also carries the earlier committed operator recording-monitor documentation/module/tests; that monitor was already activated separately on the VPS, without a gateway restart.

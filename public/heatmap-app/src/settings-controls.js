@@ -44,7 +44,7 @@ export function synchronizeSettingsControls(settings, defaults, find) {
     else control.value = String(value);
   }
   for (const [id, key] of Object.entries({
-    toggleHeatmap: 'heatmap', toggleDom: 'domVisible', toggleTrades: 'trades', toggleProfile: 'profile', toggleCvd: 'cvdPanel',
+    toggleHeatmap: 'heatmap', toggleDom: 'domVisible', toggleTrades: 'trades', toggleProfile: 'profile', toggleVolume: 'volumeBars', toggleCvd: 'cvdPanel',
   })) {
     settings[key] = normalizeControlValue({ type: 'checkbox' }, settings[key], defaults[key]);
     const visible = key === 'cvdPanel' ? settings.cvdPanel && settings.cvdEnabled : settings[key];

@@ -1,12 +1,12 @@
 import { openInstrumentDropdown } from './instrument-dropdown.js';
-import { normalizeControlValue, synchronizeSettingsControls } from './settings-controls.js?v=20261030-settings-contracts';
+import { normalizeControlValue, synchronizeSettingsControls } from './settings-controls.js?v=20261109-volume-toggle';
 import { normalizeCvdStyle } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261029-depth-clear-scale';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=grouped-depth-scale';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261109-remove-duplicate-palette';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261109-volume-toggle';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -79,6 +79,7 @@ const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   heatmap: true,
   trades: true,
   profile: true,
+  volumeBars: true,
 });
 
 const $ = id => document.getElementById(id);
@@ -243,6 +244,7 @@ class DepthForgeApp {
     this.#bindToggle('toggleDom', 'domVisible');
     this.#bindToggle('toggleTrades', 'trades');
     this.#bindToggle('toggleProfile', 'profile');
+    this.#bindToggle('toggleVolume', 'volumeBars');
     this.#bindToggle('toggleCvd', 'cvdPanel');
 
     all('[data-aggregation]').forEach(button => button.addEventListener('click', () => {
@@ -497,6 +499,7 @@ class DepthForgeApp {
       event.currentTarget.setAttribute('aria-pressed', String(this.settings[setting]));
       if (setting === 'cvdPanel') this.#syncIndicatorLayout();
       if (setting === 'domVisible') this.#syncDomVisibilityControls(true);
+      if (setting === 'volumeBars') this.#saveSettings();
       this.requestRender();
     });
   }

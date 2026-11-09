@@ -459,7 +459,7 @@ export class DepthRenderer {
     // stay painted. Hiding them on pointer-down made a harmless grab look like
     // the live trade feed and resting book had disappeared.
     if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
-    this.#drawBottomVolume(ctx, history, accents);
+    if (settings.volumeBars !== false) this.#drawBottomVolume(ctx, history, accents);
     if (volumeRatioWidth > 0) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
     }

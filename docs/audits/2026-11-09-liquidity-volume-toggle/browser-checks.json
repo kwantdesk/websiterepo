@@ -1,0 +1,23 @@
+{
+  "checks": [
+    {
+      "name": "standalone",
+      "realCanvasChanged": true,
+      "savedAndRestored": true,
+      "independentOfTradesAndProfile": true
+    },
+    {
+      "name": "embedded",
+      "realCanvasChanged": true,
+      "savedAndRestored": true,
+      "independentOfTradesAndProfile": true
+    },
+    {
+      "name": "phone",
+      "realCanvasChanged": true,
+      "savedAndRestored": true,
+      "independentOfTradesAndProfile": true
+    }
+  ],
+  "errors": []
+}
