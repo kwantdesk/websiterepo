@@ -1,0 +1,5 @@
+# Kwanty page removal — 9 November 2026
+
+Kwanty is archived as a website workspace page using the existing reversible archive registry. Shared navigation filters remove it from desktop / mobile menus, the Home launcher and workspace-page choices; existing archive guards prevent stale saved page choices from mounting it. The /kwanty route redirects to /charts and its code warmup is removed. Implementation files, APIs, saved settings and independently embedded options-flow tools are retained. No backend collector, chart execution, order or account changes.
+
+Six archive/navigation checks pass, including actual AppSidebar rendering in both desktop orientations and the filtered mobile-menu item input, safe route fallback, preserved implementation files and warmup removal. Existing archive tests were refreshed for the current mobile navigation component and current activePath route guard. Scoped ESLint passes. Full isolated webpack production build passes, including TypeScript and 87 pages. Only this page-removal scope is staged; unrelated dirty files remain untouched.

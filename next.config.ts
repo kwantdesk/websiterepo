@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   ...(deploymentId ? { deploymentId } : {}),
   async redirects() {
     return [
+      { source: "/kwanty", destination: "/charts", permanent: false },
       { source: "/gex-box", destination: "/gex-data", permanent: true },
       { source: "/gex-box/:surface", destination: "/gex-data", permanent: true },
       { source: "/gexbot", destination: "/gex-data", permanent: true },

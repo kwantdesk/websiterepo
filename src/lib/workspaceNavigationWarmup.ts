@@ -6,7 +6,6 @@ const workspaceCode: Record<string, () => Promise<unknown>> = {
   "/charts": () => import("@/components/Chart"),
   "/gamvue": () => import("@/components/Chart"),
   "/gex-data": () => import("@/components/gex-data/GexDataWorkspace"),
-  "/kwanty": () => import("@/components/kwanty/KwantyWorkspace"),
   "/gamma": () => import("@/components/options-flow/GammaWorkspace"),
   "/gexmap": () => import("@/components/gex-map/GexMapWorkspace"),
   "/liqmap": () => import("@/components/liquidity-map/LiquidityMapWorkspace"),

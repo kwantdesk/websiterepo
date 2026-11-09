@@ -2,7 +2,7 @@
 // remove launch surfaces and prevent restored panels from starting archived UI.
 // To restore a feature, remove its ID here and rerun the archive tests.
 export const ARCHIVED_WORKSPACE_FEATURES: ReadonlySet<string> = new Set([
-  "gameplan", "zyon", "optionstape",
+  "gameplan", "zyon", "optionstape", "kwanty",
 ]);
 
 export function isWorkspaceFeatureArchived(id: unknown): boolean {
