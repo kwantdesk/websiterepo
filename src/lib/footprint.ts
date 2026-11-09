@@ -320,6 +320,7 @@ export function buildFootprintBars(
 }
 
 export type FootprintBuildCache = {
+  pendingExecutionTimes?: Set<number>;
   exactHistoryHead?: InstitutionalTrade;
   key: string;
   bars: FootprintBar[];
@@ -433,6 +434,7 @@ export function buildFootprintBarsCached(
   candlesInput: Candle[],
   records: InstitutionalTrade[],
   settings: FootprintBuildSettings,
+  changedExecutionTimes: Iterable<number> = [],
 ): FootprintBar[] {
   if (!candlesInput.length) return [];
   const lastCandle = candlesInput[candlesInput.length - 1];
@@ -470,6 +472,18 @@ export function buildFootprintBarsCached(
     // The forming bar owns all new executions and is the only mandatory live
     // rebuild. It stays independent from the background correction cursor.
     ranges.push([candlesInput.length - 1, candlesInput.length]);
+    // A delivered batch can belong to a just-closed bar, especially when
+    // price crosses several event-bar boundaries before the next paint.
+    // Rebuild its actual source buckets now, not on the slow repair cursor.
+    const touchedBars = new Set<number>();
+    for (const times of [changedExecutionTimes, entry.pendingExecutionTimes ?? []]) {
+      for (const timestamp of times) {
+        if (!Number.isFinite(timestamp)) continue;
+        const index = lowerBoundCandle(candlesInput, timestamp);
+        if (index >= 0) touchedBars.add(index);
+      }
+    }
+    for (const index of touchedBars) ranges.push([index, index + 1]);
 
     let reconcileCursor = entry.reconcileCursor;
     let nextReconcileAt = entry.nextReconcileAt;
@@ -489,6 +503,7 @@ export function buildFootprintBarsCached(
     if (bars.every((bar): bar is FootprintBar => bar !== null)) {
       cache.current = {
         ...entry,
+        pendingExecutionTimes: undefined,
         bars,
         lastBarTimestamp: lastCandle.timestamp,
         nextReconcileAt,

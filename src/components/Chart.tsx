@@ -4879,6 +4879,7 @@ function Chart({
   useEffect(() => {
     if (!liveCandleEventKey) return;
     const footprintWorkKey = `footprint:${chartFrameWorkKey}`;
+    const pendingExecutionTimes = new Set<number>();
     const lowerBound = (records: InstitutionalTrade[], timestamp: number) => {
       let low = 0;
       let high = records.length;
@@ -4914,7 +4915,7 @@ function Chart({
       const unifiedTape = mergeFootprintHistoryRecords(
         exactHistory.active ? exactHistory.records : [], visibleTape, sourceCandles, clockIntervalMs,
       );
-      const bars = buildFootprintBarsCached(liveFootprintBaseBuildCacheRef, sourceCandles, unifiedTape, buildSettings);
+      const bars = buildFootprintBarsCached(liveFootprintBaseBuildCacheRef, sourceCandles, unifiedTape, buildSettings, pendingExecutionTimes);
       const profileGroupTicks = liveFootprintProfileGroupTicksRef.current;
       const needsSeparateProfile = (
         primitiveOptions.showPerBarVolumeProfile || primitiveOptions.showPerBarDeltaProfile
@@ -4923,7 +4924,7 @@ function Chart({
         ? new Map(buildFootprintBarsCached(liveFootprintProfileBuildCacheRef, sourceCandles, unifiedTape, {
             ...buildSettings,
             groupTicks: profileGroupTicks,
-          }).map((bar) => [bar.timestamp, bar.rows]))
+          }, pendingExecutionTimes).map((bar) => [bar.timestamp, bar.rows]))
         : null;
       const nextBars = retainLiveFootprintRows(
         bars.map((bar) => ({
@@ -4942,6 +4943,7 @@ function Chart({
         bars: nextBars,
       };
       primitive.update(nextBars, primitiveOptions);
+      pendingExecutionTimes.clear();
     };
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
@@ -4950,6 +4952,26 @@ function Chart({
       // The tape is the shared canonical reference; assigning it is O(1).
       // Only the visible bars are rebuilt, directly into the canvas primitive.
       liveFootprintTapeRef.current = detail.tape;
+      // Several packets can coalesce before this pane gets its paint slot.
+      // Retain every affected source bucket, not just the latest packet.
+      for (const record of detail.records) pendingExecutionTimes.add(record.timestamp);
+      // The later React refresh owns independent caches. Mark those too so
+      // it cannot replace freshly painted cells with its older closed bars.
+      for (const cache of [footprintBarsBuildCacheRef, footprintProfileBuildCacheRef]) {
+        if (!cache.current) continue;
+        const times = cache.current.pendingExecutionTimes ??= new Set<number>();
+        const bars = cache.current.bars;
+        for (const record of detail.records) {
+          let low = 0, high = bars.length;
+          while (low < high) {
+            const middle = (low + high) >>> 1;
+            if (bars[middle].timestamp <= record.timestamp) low = middle + 1;
+            else high = middle;
+          }
+          // Retain one marker per affected bar, not every tick until React runs.
+          if (low > 0) times.add(bars[low - 1].timestamp);
+        }
+      }
       // The workspace has already losslessly coalesced execution packets.
       // A second timer here used to add another 80 ms before the cell values
       // and POC followed the candle. The shared frame queue is itself the

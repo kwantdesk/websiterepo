@@ -1,0 +1,50 @@
+(node:31872) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/compactFootprintHistory.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ compact history exactly matches raw executions, filters, grouping, trade counts and delta wicks (16.3344ms)
+✔ normal views exceeding the raw 100k limit retain every execution in compact price levels (50.8956ms)
+✔ wrong contract, candle coverage and malformed totals fail closed (0.6212ms)
+✔ initial exact history hydrates all closed bars immediately, not through the slow correction cursor (0.8058ms)
+✔ an unrecorded edge cannot suppress verified neighbouring candles (0.4054ms)
+✔ partial decoding still rejects corrupt levels, totals and identity (0.4563ms)
+(node:24860) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprint.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ POC, value area, maxima and VWAP use the selected footprint input (6.5637ms)
+✔ the incremental footprint cache invalidates when input data changes (0.9491ms)
+✔ every named footprint view survives settings validation (1.9884ms)
+✔ live footprint packets go straight to the shared frame queue (9.6104ms)
+(node:6612) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprint.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ initial footprint keeps available execution rows while exact history is loading (3.4124ms)
+✔ new candle cannot drop the just-closed footprint before exact history returns (0.2933ms)
+✔ exact closed rows survive every live update without being replaced by compacted tape (0.6503ms)
+✔ late exact rows replace only their own bucket once, with no double counting (0.283ms)
+✔ actual footprint cache preserves exact price rows across repeated live/history paints and candle rollover (8.7492ms)
+✔ actual cold-open loading gate runs once and stays off at later candle boundaries (71.7935ms)
+(node:2716) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprint.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ closed footprint cells reflect a delivered burst immediately without waiting for the repair timer (39.4912ms)
+✔ coalesced bursts across several event bars update both main cells and separate profile grouping (1.4137ms)
+✔ a later React cache refresh cannot replace delivered closed-bar numbers with stale cells (0.41ms)
+(node:19192) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprintTradeAdapter.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ same-millisecond numeric execution order matches the former collation rules exactly (3.2361ms)
+✔ same-millisecond buy/sell path retains true numeric-sequence delta extrema (2.5499ms)
+✔ busy repeated cached folds preserve all rows, totals and delta excursions (36.9542ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 668.1027
