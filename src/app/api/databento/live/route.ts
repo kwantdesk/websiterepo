@@ -3,6 +3,7 @@ import {
   marketDataGatewayUrlCandidatesForPath,
 } from "@/lib/marketDataGatewayEnv";
 import { directBrowserStreamResponse } from "@/lib/browserStreamRedirect.server";
+import { executionStreamLeaseResponse } from "@/lib/executionStreamLease.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,6 +20,11 @@ export async function GET(request: Request) {
   const search = new URLSearchParams();
   search.set("symbols", incoming.searchParams.get("symbols") || "");
   search.set("priority", incoming.searchParams.get("priority") || "");
+  if (incoming.searchParams.get("streamLease") === "1") {
+    search.set("streamLease", "1");
+    return executionStreamLeaseResponse(request, "/v1/market-data/quotes", `?${search}`)
+      ?? Response.json({ error: "The live market stream is unavailable." }, { status: 503 });
+  }
   const direct = directBrowserStreamResponse(request, "/v1/market-data/quotes", `?${search}`);
   if (direct) return direct;
   let lastStatus = 503;

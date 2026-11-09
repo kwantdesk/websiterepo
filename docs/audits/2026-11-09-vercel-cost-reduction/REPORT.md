@@ -1,0 +1,30 @@
+# Vercel cost reduction implementation — 9 November 2026
+
+## Scope and diagnosis
+
+The invoice review identified $101.13 in transfer, provisioned memory and active CPU (74.2% of listed gross infrastructure charges), not a guaranteed removable amount. Quotes, cash indices and live liquidity depth were acquired on the VPS but their continuous response bodies still traversed Vercel. The older global redirect flag remains disabled after a previous browser-origin failure. Execution trades and liquidity replay already use direct leases; those contracts remain intact.
+
+## Implemented
+
+- Extend the existing exact-request, five-minute signed lease negotiation to quotes, index-stream and heatmap/stream. Quote negotiation preserves symbols and priority; depth/index negotiation preserves the original query. Authentication remains on the existing same-origin route. The private gateway signing key is never sent to the browser.
+- A shared browser adapter opens the signed VPS URL explicitly, avoiding cross-origin redirects and their null-Origin issue. It forwards raw named events, including CVD history, ticks, rotate and feed errors. It introduces no sampling, polling delay or provider acquisition. Lease renewal keeps the existing connection delivering until the replacement opens; close cancels outstanding negotiation, drops stale callbacks and releases sockets. Failed direct negotiation never silently falls back to a continuous Vercel proxy.
+- Wire the adapter into shared index and liquidity subscriptions, the normal chart/watchlist quote paths and the native liquidity-map browser feed. Existing FX/cTrader streams and execution-tape transport are unchanged. Old clients retain their previous server transport for compatibility; already-open trading tabs are not forcibly refreshed.
+- GEX Data validators now use the exact upstream content hash, computed once per fresh response, instead of gateway fetch time. Existing account-local, bounded/coalesced request caches revalidate their retained body with If-None-Match. An upstream refresh still happens on the existing TTL; only unchanged response bodies are omitted. Changed data returns normally. Filters, auth, refresh cadence, cache limits and owned-history semantics are preserved. No extra per-frame response cache or localStorage is added.
+
+## Verification
+
+64 focused tests pass. Coverage includes exact lease scope, wrong origin/signature/expiry denial, edge capacity/socket release, unchanged raw SSE bytes, renewal while live data continues, stale callback rejection, cancellation, malformed/denied leases, account isolation, concurrent request coalescing, actual GEX route revalidation across TTL expiry, changed content, auth denial, map feed continuity/CVD/reconnect and index first paint. Scoped lint passes with no errors; the existing large workspace file reports 20 pre-existing hook/disable warnings. Full isolated webpack production build passed (compile45s, TypeScript72s,87 generated pages). Live activation is recorded in production-release.json when verified.
+
+An isolated headless Chrome browser at an intercepted www.kwantdesk.com fixture negotiated against test responses containing genuine short-lived tickets minted inside the existing VPS edge container. The real HTTPS/CORS VPS requests received actual payloads and reopened successfully for all three streams. Initial+renewal observations: quotes 7 data events/1,283 bytes/1,572ms; indices 1 data event/288 bytes/810ms; depth 2 data events/435,593 bytes/1,364ms. Browser renewal scheduling was accelerated to exercise replacement without a five-minute wait; server signature/expiry behavior is tested independently. This establishes browser edge delivery/reopening, not a multi-hour production soak or market cadence benchmark. Evidence: live-edge-browser.json. No ticket, signing key or licensed data values are saved in that evidence.
+
+The shared adapter is tested separately from the authenticated production lease issuer; after deployment the exact live commit/assets and anonymous denial must also be checked. A successful headless signed-edge check is not proof of an interactive owner's Google login/session callback.
+
+## Remaining cost controls and limits
+
+- Existing main-only Git deployment and source-path ignored-build guards remain enabled. This task batches all source changes into one deployment, with local tests/build first. No duplicate project or alternate deploy path is enabled.
+- No Vercel Analytics/Speed Insights/OTel SDK was found in package.json/root layout. That does not establish that paid platform Observability Plus collection is off. The account's build-machine and paid collection settings remain unverified because authenticated Vercel account access is unavailable. No error monitoring, retention, billing plan or spend-limit setting was disabled speculatively.
+- Vercel remains the website/auth/lease control plane and still serves finite API responses. This is not migration of all website hosting or every finite history endpoint. Old open tabs keep the old code until their normal reload; their existing transfer will not disappear immediately.
+- Direct stream response bytes now go from the existing VPS edge to the browser for updated clients. The short lease requests still consume Vercel auth/function work. Other API bodies, builds and observability can still incur charges. No measured dollar saving or next-invoice promise is made; the historical bill is unchanged. Comparable authenticated route-level usage before/after is still needed for dollar attribution.
+- No gateway/terminal/provider restart, subscription reset, new service purchase, infrastructure upgrade, account/order change or owner trading-tab refresh was performed.
+
+Official account-setting references checked: https://vercel.com/docs/observability and https://vercel.com/docs/builds/managing-builds. Settings were not changed through either page.

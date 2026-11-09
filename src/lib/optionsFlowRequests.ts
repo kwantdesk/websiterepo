@@ -1,3 +1,5 @@
+import { revalidatePrivateTool } from "./privateToolRevalidation";
+
 /** Account-isolated, bounded request sharing for embedded analytical tools.
  * No polling timer: original tools own cadence and visibility. */
 export function createOptionsFlowRequestPool(fetcher: typeof fetch = fetch) {
@@ -24,7 +26,7 @@ export function createOptionsFlowRequestPool(fetcher: typeof fetch = fetch) {
           const timeout = setTimeout(() => controller.abort(), 35_000);
           try {
             if (disposed) throw new Error("This workspace is closed.");
-            const response = await fetcher(url, { ...options, credentials: "same-origin", signal: controller.signal });
+            const response = await revalidatePrivateTool(fetcher, url, { ...options, credentials: "same-origin", signal: controller.signal }, entry);
             const text = await response.text();
             if (text.length > 12_000_000) throw new Error("Data response too large. Narrow the range.");
             const maxAge = Number(response.headers.get("Cache-Control")?.match(/max-age=(\d+)/)?.[1] ?? 0) * 1000;

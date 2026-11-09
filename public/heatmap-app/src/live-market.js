@@ -1,3 +1,5 @@
+import { createLeasedMarketSource } from '../../browser-market-stream.js';
+
 // The rendered viewport normally exposes roughly 100-180 price rows. Asking
 // the proxy for 1,000 rows per frame flooded a browser with more than 1 MB/s
 // and a 9 MB synchronous history event. Keep a generous off-screen buffer
@@ -356,7 +358,7 @@ export class DepthMarketFeed {
     this.onPresentationTick = onPresentationTick;
     this.onStatus = onStatus;
     this.onCvdHistory = onCvdHistory;
-    this.eventSourceFactory = eventSourceFactory || (url => new EventSource(url));
+    this.eventSourceFactory = eventSourceFactory || createLeasedMarketSource;
     this.stream = null;
     this.watchdogTimer = null;
     this.reconnectTimer = null;

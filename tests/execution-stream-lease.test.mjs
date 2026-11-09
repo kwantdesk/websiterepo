@@ -22,8 +22,17 @@ test('authenticated lease negotiation returns a finite exact-scope URL, never a 
  const lease=await response.json(),url=new URL(lease.url),scope=verifyBrowserStreamTicket(url.searchParams.get('ticket'),key,origin);
  assert.equal(scope.path,'/v1/market-data/trades');assert.equal(scope.search,'?exchange=COMEX&symbol=MGC&contractSymbol=MGCZ6&seedLimit=128');assert(!lease.url.includes(key));assert.equal(scope.exp*1000,lease.expiresAt);
  assert.equal(issue(new Request(origin),'/v1/market-data/trades','?symbol=NQ'),null,'old clients retain their existing transport');
- assert.equal(issue(new Request(origin),'/v1/market-data/quotes','?streamLease=1'),null,'other feeds are not silently migrated');
+ assert.equal(issue(new Request(origin),'/v1/market-data/quotes','?symbols=NQ'),null,'old callers are not silently migrated');
  assert.equal(issue(new Request('https://attacker.example'),'/v1/market-data/trades','?streamLease=1').status,503);
+});
+test('quotes, cash indices and liquidity lease the exact live request without the old redirect flag',async()=>{
+ for(const path of ['/v1/market-data/quotes','/v1/market-data/index-stream','/v1/heatmap/stream']){
+  const response=issuer()(new Request(origin+'/api/example'),path,'?symbols=NQ,SPX&afterTimestamp=123&streamLease=1');
+  assert.equal(response.status,200);assert.equal(response.headers.get('location'),null);
+  const lease=await response.json(),url=new URL(lease.url),scope=verifyBrowserStreamTicket(url.searchParams.get('ticket'),key,origin);
+  assert.equal(scope.path,path);assert.equal(scope.search,'?symbols=NQ%2CSPX&afterTimestamp=123');
+ }
+ assert.equal(issuer()(new Request(origin),'/v1/orders','?streamLease=1'),null);
 });
 test('client leases retain venue/root/contract and reject unexpected hosts, credentials, scope and expiry',async()=>{
  const old=globalThis.fetch;const valid={url:'https://feed.kwantdesk.com/browser-stream?ticket=test',expiresAt:Date.now()+300000,transport:'direct-vps'};let lease=valid,seen;

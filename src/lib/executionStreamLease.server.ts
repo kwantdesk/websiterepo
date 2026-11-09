@@ -8,7 +8,9 @@ export function executionStreamLeaseResponse(request: Request, path: string, sea
   const query = new URLSearchParams(search);
   const history = query.get("historyLease") === "1"
     && (path === "/v1/heatmap/replay" || path === "/v1/heatmap/replay/chunk");
-  if (!history && (query.get("streamLease") !== "1" || path !== "/v1/market-data/trades")) return null;
+  const live = ["/v1/market-data/trades", "/v1/market-data/quotes",
+    "/v1/market-data/index-stream", "/v1/heatmap/stream"].includes(path);
+  if (!history && (query.get("streamLease") !== "1" || !live)) return null;
   const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
   try {
     if (history && typeof process !== "undefined" && process.env.KWANTDESK_BROWSER_REPLAY_DIRECT === "false") throw Error("History edge disabled");

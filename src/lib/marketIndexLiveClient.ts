@@ -1,3 +1,5 @@
+import { createLeasedMarketSource } from "../../public/browser-market-stream.js";
+
 export type MarketIndexLiveSnapshot = {
   symbol: string;
   lastPrice: number;
@@ -123,7 +125,7 @@ function restartIndexStream() {
   streamConnected = false;
   if (!key) return;
 
-  const source = new EventSource(
+  const source = createLeasedMarketSource(
     `/api/institutional-market-data/v1/market-data/index-stream?symbols=${encodeURIComponent(key)}`,
   );
   indexEventSource = source;

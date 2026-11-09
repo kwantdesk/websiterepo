@@ -1,4 +1,5 @@
 "use client";
+import { createLeasedMarketSource } from "../../public/browser-market-stream.js";
 
 import type {
   RithmicLiquiditySnapshot,
@@ -388,7 +389,7 @@ function connectStream(stream: SharedPoll) {
     includeOrderEvents: "1",
   });
   if (stream.contractSymbol) query.set("contractSymbol", stream.contractSymbol);
-  const source = new EventSource(`/api/institutional-market-data/v1/heatmap/stream?${query}`);
+  const source = createLeasedMarketSource(`/api/institutional-market-data/v1/heatmap/stream?${query}`);
   stream.eventSource = source;
   markStreamActivity(stream);
   source.addEventListener("depth", (event) => {

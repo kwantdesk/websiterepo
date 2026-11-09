@@ -1,4 +1,5 @@
 "use client";
+import { revalidatePrivateTool } from "@/lib/privateToolRevalidation";
 
 import { useEffect, useRef, useState } from "react";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
@@ -136,7 +137,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
               const timeout = window.setTimeout(() => controller.abort(), 35_000);
               try {
                 if (disposed || !activeRef.current) throw new Error("This workspace is paused.");
-                const response = await fetch(url, { ...options, signal: controller.signal, credentials: "same-origin" });
+                const response = await revalidatePrivateTool(fetch, url, { ...options, signal: controller.signal, credentials: "same-origin" }, entry);
                 const text = await response.text();
                 if (text.length > 12_000_000) throw new Error("The data response is too large. Narrow the selected range.");
                 const maxAge = Number(response.headers.get("Cache-Control")?.match(/max-age=(\d+)/)?.[1] ?? 0) * 1000;

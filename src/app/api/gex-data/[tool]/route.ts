@@ -9,7 +9,7 @@ import { GEX_DATA_TOOLS, gexDataClock, validateGexDataRequest } from "@/lib/gexD
 export const runtime = "nodejs";
 export const maxDuration = 45;
 type Context = { params: Promise<{ tool: string }> };
-type Entry = { payload: unknown; until: number; asOf: string; bytes: number };
+type Entry = { payload: unknown; until: number; asOf: string; bytes: number; version: string };
 const cache = new Map<string, Entry>();
 const pending = new Map<string, Promise<Entry>>();
 
@@ -53,7 +53,8 @@ export async function POST(request: NextRequest, context: Context) {
           if (!response.ok) throw Object.assign(new Error(response.status === 429 ? "The data provider is rate-limited. Wait before retrying." : "This data is unavailable from the connected feed."), { status: response.status });
           const text = await response.text();
           if (text.length > 12_000_000) throw new Error("Choose a narrower data range.");
-          const value = { payload: JSON.parse(text), until: Date.now() + ttl, asOf: new Date().toISOString(), bytes: text.length };
+          const value = { payload: JSON.parse(text), until: Date.now() + ttl, asOf: new Date().toISOString(), bytes: text.length,
+            version: createHash("sha256").update(text).digest("hex") };
           cache.delete(key); cache.set(key, value);
           let bytes = [...cache.values()].reduce((sum, item) => sum + item.bytes, 0);
           while (cache.size > 32 || bytes > 32_000_000) { const oldest = cache.keys().next().value!; bytes -= cache.get(oldest)!.bytes; cache.delete(oldest); }
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest, context: Context) {
       entry = await job;
     }
     const payload = entry.payload && typeof entry.payload === "object" ? { ...entry.payload, _gexData: { gatewayFetchedAt: entry.asOf, requestedSessionDate: body.sessionDate ?? null, liveVerified: false } } : entry.payload;
-    return conditionalJson(request, payload, { identity: key + entry.asOf, maxAgeMs: Math.max(0, entry.until - Date.now()) });
+    return conditionalJson(request, payload, { identity: key + entry.version, maxAgeMs: Math.max(0, entry.until - Date.now()) });
   } catch (error) {
     const status = Number((error as { status?: number })?.status) || 502;
     return NextResponse.json({ error: "The selected market data could not be loaded. Try again shortly." }, { status: status >= 400 && status <= 599 ? status : 502, headers: { "Cache-Control": "private, no-store" } });

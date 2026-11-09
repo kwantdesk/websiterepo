@@ -1,0 +1,37 @@
+{
+  "time": "2026-11-09T05:46:04.850Z",
+  "isolatedBrowser": true,
+  "leaseMint": "existing VPS signing key retained server-side; exact website origin",
+  "checks": [
+    {
+      "name": "quotes",
+      "received": true,
+      "renewed": true,
+      "opened": true,
+      "opens": 2,
+      "dataEvents": 7,
+      "receivedBytes": 1283,
+      "ms": 1572
+    },
+    {
+      "name": "indices",
+      "received": true,
+      "renewed": true,
+      "opened": true,
+      "opens": 2,
+      "dataEvents": 1,
+      "receivedBytes": 288,
+      "ms": 810
+    },
+    {
+      "name": "depth",
+      "received": true,
+      "renewed": true,
+      "opened": true,
+      "opens": 2,
+      "dataEvents": 2,
+      "receivedBytes": 435593,
+      "ms": 1364
+    }
+  ]
+}

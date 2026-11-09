@@ -1,4 +1,5 @@
 "use client";
+import { createLeasedMarketSource } from "../../public/browser-market-stream.js";
 import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import { readWorkspacePreferenceValue, recordConfirmedWorkspacePreference } from "@/lib/workspacePreferenceFallback";
 
@@ -11845,7 +11846,7 @@ export default function KwantifyWorkspace({
     // The main live stream only runs for the active broker; this bounded
     // companion stream keeps CME watchlist rows ticking while every pane is
     // on the index feed. One EventSource per workspace, closed on cleanup.
-    const source = new EventSource(`/api/databento/live?symbols=${encodeURIComponent(databentoWatchlistSymbolsCsv)}`);
+    const source = createLeasedMarketSource(`/api/databento/live?symbols=${encodeURIComponent(databentoWatchlistSymbolsCsv)}`);
     const onMessage = (event: MessageEvent) => {
       try {
         const price = JSON.parse(event.data) as LiveFeedPrice & { openPrice?: number };
@@ -14323,7 +14324,7 @@ export default function KwantifyWorkspace({
 
     function openEventSource(warming: boolean) {
       if (disposed || reconnecting) return;
-      const source = new EventSource(streamUrl);
+      const source = usingDatabentoFeed ? createLeasedMarketSource(streamUrl) : new EventSource(streamUrl);
       if (warming) {
         warmingEventSource?.close();
         warmingEventSource = source;
