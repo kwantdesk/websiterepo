@@ -154,6 +154,7 @@ import {
 import { mergeHistoricalAndLiveCandle, retainFormingCandleExtrema } from "@/lib/liveCandleAuthority";
 import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw, clockCandleTimelineChanged } from "@/lib/observedCandleHistory";
 import { CLOSED_CHART_HISTORY_EVENT, type ClosedChartHistoryDetail } from "@/lib/chartLiveEvents";
+import { createLiveQuotePriceLine, subscribeChartLivePrice } from "@/lib/liveChartPrice";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   CHART_INDICATOR_BY_ID,
@@ -7118,6 +7119,15 @@ function Chart({
     () => legibleOn(settings.upColor, settings.backgroundColor, 4.5),
     [settings.backgroundColor, settings.upColor],
   );
+
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series || !liveCandleEventKey || replayTimestampMs != null && replayTimestampMs > 0) return;
+    const marker = createLiveQuotePriceLine(series, livePriceLineColor);
+    const unsubscribe = subscribeChartLivePrice(liveCandleEventKey, instrument, contractSymbol || undefined,
+      quote => { if (!liveReplayActiveRef.current) marker.update(quote); });
+    return () => { unsubscribe(); marker.dispose(); };
+  }, [chartReadyRevision, contractSymbol, instrument, liveCandleEventKey, livePriceLineColor, replayTimestampMs]);
 
   const indicatorPaletteTheme = useMemo(() => ({
     up: settings.upColor,

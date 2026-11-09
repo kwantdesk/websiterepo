@@ -1,0 +1,75 @@
+import type {ISeriesApi} from "lightweight-charts";
+
+/** The live quote marker is independent of execution-built OHLC and studies.
+ * No interpolation, candle mutation, network calls or React commits. */
+export type ChartLivePrice = {
+  key: string; symbol: string; contractSymbol?: string;
+  price: number; sourceTimestampMs: number; receivedAt: number;
+};
+type Listener = { symbol: string; contractSymbol?: string; receive: (quote: ChartLivePrice) => void };
+const latest = new Map<string, ChartLivePrice>();
+const listeners = new Map<string, Set<Listener>>();
+const matches = (listener: Pick<Listener, "symbol" | "contractSymbol">, quote: ChartLivePrice) =>
+  listener.symbol === quote.symbol && (!listener.contractSymbol || listener.contractSymbol === quote.contractSymbol);
+
+export function publishChartLivePrice(quote: ChartLivePrice) {
+  if (!quote.key || !quote.symbol || !Number.isFinite(quote.price) || quote.price <= 0
+    || !Number.isFinite(quote.sourceTimestampMs) || quote.sourceTimestampMs <= 0
+    || !Number.isFinite(quote.receivedAt)) return;
+  const previous = latest.get(quote.key);
+  if (previous && previous.symbol === quote.symbol && previous.contractSymbol === quote.contractSymbol
+    && quote.sourceTimestampMs < previous.sourceTimestampMs) return;
+  latest.delete(quote.key); latest.set(quote.key, quote);
+  while (latest.size > 256) latest.delete(latest.keys().next().value!);
+  listeners.get(quote.key)?.forEach(listener => {
+    if (matches(listener, quote)) { try { listener.receive(quote); } catch { /* Isolate a chart being disposed. */ } }
+  });
+}
+
+export function subscribeChartLivePrice(
+  key: string, symbol: string, contractSymbol: string | undefined,
+  receive: Listener["receive"],
+) {
+  const listener = { symbol, contractSymbol, receive };
+  const set = listeners.get(key) ?? new Set<Listener>(); set.add(listener); listeners.set(key, set);
+  const retained = latest.get(key);
+  if (retained && Date.now() - retained.receivedAt < 10_000 && matches(listener, retained)) {
+    try { receive(retained); } catch { /* A later quote can retry after chart setup. */ }
+  }
+  return () => { set.delete(listener); if (!set.size) listeners.delete(key); };
+}
+
+type PriceSeries = Pick<ISeriesApi<"Candlestick">, "options" | "applyOptions" | "createPriceLine" | "removePriceLine">;
+type PriceLine = ReturnType<PriceSeries["createPriceLine"]>;
+
+export function createLiveQuotePriceLine(series: PriceSeries, color: string) {
+  const options = series.options();
+  const original = {...options, ...(options.priceFormat ? {priceFormat: {...options.priceFormat}} : {})};
+  let line: PriceLine | null = null, closed = false;
+  return {
+    update(quote: ChartLivePrice) {
+      if (closed) return;
+      if (!line) {
+        line = series.createPriceLine({price: quote.price, color, title: "",
+          lineStyle: original.priceLineStyle, lineWidth: original.priceLineWidth,
+          lineVisible: original.priceLineVisible, axisLabelVisible: original.lastValueVisible});
+        // Real bid/ask midpoints can fall between execution ticks. Preserve the
+        // contract's axis increment, but format the quote to its displayed
+        // precision instead of snapping its label onto a different trade tick.
+        const format = original.priceFormat;
+        series.applyOptions({priceLineVisible: false, lastValueVisible: false,
+          ...(format && format.type !== "custom" ? {priceFormat: {type: "custom", minMove: format.minMove,
+            formatter: (price: number) => price.toFixed(("precision" in format ? format.precision : 2))}} : {})});
+      } else line.applyOptions({price: quote.price});
+    },
+    dispose() {
+      closed = true;
+      try {
+        if (line) series.removePriceLine(line);
+        series.applyOptions({priceLineVisible: original.priceLineVisible, lastValueVisible: original.lastValueVisible,
+          ...(original.priceFormat ? {priceFormat: original.priceFormat} : {})});
+      } catch { /* The chart lifecycle may already have removed this series. */ }
+      line = null;
+    },
+  };
+}

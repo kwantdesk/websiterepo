@@ -1,5 +1,6 @@
 "use client";
 import { createLeasedMarketSource } from "../../public/browser-market-stream.js";
+import { publishChartLivePrice } from "@/lib/liveChartPrice";
 import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import { readWorkspacePreferenceValue, recordConfirmedWorkspacePreference } from "@/lib/workspacePreferenceFallback";
 
@@ -6628,6 +6629,16 @@ function WorkspaceChartPaneComponent({
     document.addEventListener('visibilitychange', executionVisibilityChanged);
     const queueExecutionUpdate = (records: InstitutionalTrade[]) => {
       if (!records.length) return;
+      // Publish the newest real execution before tape/history/profile work.
+      // This also keeps the marker live if the separate quote channel stalls.
+      let print: InstitutionalTrade | undefined;
+      for (let i = records.length - 1; i >= 0; i--) {
+        const record = records[i];
+        if (!record.flowOnly && Number.isFinite(record.close) && record.close > 0) { print = record; break; }
+      }
+      if (print) publishChartLivePrice({ key: pane.id, symbol: displayCmeSymbol(pane.symbol),
+        contractSymbol: resolvedContractSymbol ?? undefined, price: print.close,
+        sourceTimestampMs: print.timestamp, receivedAt: Date.now() });
       appendLosslessPaneRecords(pendingExecutionRecords, records);
       executionPaintScheduler.schedule();
     };
@@ -8586,6 +8597,9 @@ function WorkspaceChartPaneComponent({
       // These coalesced quotes still mark the trading UI above. Futures OHLC
       // comes only from the lossless execution subscriber: even trade quotes
       // omit intermediate prints and cannot supply a bar's true extrema/open.
+      if (!price.cached) publishChartLivePrice({ key: pane.id, symbol: displayCmeSymbol(pane.symbol),
+        contractSymbol: usingDatabentoPaneFeed ? price.contractSymbol ?? resolvedContractSymbol ?? undefined : undefined,
+        price: Number(price.mid), sourceTimestampMs: tickTimestamp, receivedAt: Date.now() });
       if (usingDatabentoPaneFeed) {
         if (!price.cached) markMarketActive(chartSourceTimestamp(price.timestamp));
         if (price.contractSymbol) witnessRithmicExecution({
@@ -8857,6 +8871,9 @@ function WorkspaceChartPaneComponent({
           const nextFrame = { timestamp: tickTimestamp, lastPrice: snapshot.lastPrice };
           if (!shouldAcceptMarketIndexFrame(latestMarketIndexFrameRef.current, nextFrame)) return;
           latestMarketIndexFrameRef.current = nextFrame;
+          publishChartLivePrice({ key: pane.id, symbol: displayCmeSymbol(pane.symbol),
+            contractSymbol: resolvedContractSymbol ?? undefined, price: snapshot.lastPrice,
+            sourceTimestampMs: tickTimestamp, receivedAt: Date.now() });
           liveTailStartTimestampRef.current = liveTailStartTimestampRef.current === null
             ? tickTimestamp
             : Math.min(liveTailStartTimestampRef.current, tickTimestamp);
