@@ -1,0 +1,59 @@
+(node:22160) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/executionTape.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every visible ES/NQ/gold pane flushes at the next frame without a selection throttle (1.462ms)
+✔ hidden batches resume on the next frame without losing executions or duplicate flushes (1.227ms)
+✔ actual execution worker engine publishes at 8ms with ordered lossless deduplication (104.61ms)
+(node:32664) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/executionPaintScheduler.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ profile checkpoints never block or throttle the candle frame and retain every print (2.6939ms)
+✔ foreground resume accelerates a pending background checkpoint and cancellation clears it (0.5851ms)
+✔ coalesced profile folds equal per-frame folds for totals, delta, POC, VA and VWAP (82.4152ms)
+✔ workspace keeps deferred profile work separate from exact price and protection paths (5.2924ms)
+✔ a coalesced batch preserves every minute checkpoint and arrival order (0.3146ms)
+(node:32048) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/browserStreamTicket.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ history negotiation signs the selected clock and immutable generation for its isolated VPS route (60.5577ms)
+✔ authenticated lease negotiation returns a finite exact-scope URL, never a cross-origin redirect (11.8303ms)
+✔ client leases retain venue/root/contract and reject unexpected hosts, credentials, scope and expiry (1.1095ms)
+✔ planned renewal has no outage backoff and reconnect seed dedup retains new actual prints (41.199ms)
+✔ a delayed renewal lease must not stop admitted live prints or status (22.5867ms)
+✔ a failed renewal cannot replace or interrupt the wrong stream (16.202ms)
+✔ a stopped renewal cannot replace or interrupt the wrong stream (14.7667ms)
+(node:31024) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperAccounts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ buy take_profit: a one-print wick fills exactly, despite immediate reversal (11.7563ms)
+✔ buy stop_loss: a one-print wick fills exactly, despite immediate reversal (1.3617ms)
+✔ sell take_profit: a one-print wick fills exactly, despite immediate reversal (0.4707ms)
+✔ sell stop_loss: a one-print wick fills exactly, despite immediate reversal (0.4159ms)
+✔ actual arrival order wins when both exits are hit: 24010 then 23990 (1.3296ms)
+✔ actual arrival order wins when both exits are hit: 23990 then 24010 (0.783ms)
+✔ partial targets followed by stop in one batch keep exact quantities and ticks (1.3169ms)
+✔ display quote cannot preempt a slightly later arriving exact tape batch (0.6048ms)
+✔ a gap still fills the stored NQ quarter-tick target, not the overshoot price (0.7489ms)
+✔ pre-entry, aggregate, summary, invalid and wrong-symbol records cannot fill (0.7529ms)
+✔ suspended protection stays suspended, then resumes on subsequent actual crossing (0.5148ms)
+✔ buy take_profit: a working level already on its watermark fills on the next touch or overshoot (0.7016ms)
+✔ buy stop_loss: a working level already on its watermark fills on the next touch or overshoot (0.5521ms)
+✔ sell take_profit: a working level already on its watermark fills on the next touch or overshoot (0.5328ms)
+✔ sell stop_loss: a working level already on its watermark fills on the next touch or overshoot (0.6063ms)
+✔ buy breakeven stop fills at the exact entry tick without needing a prior recross (0.7688ms)
+✔ sell breakeven stop fills at the exact entry tick without needing a prior recross (0.4563ms)
+✔ a delayed print before a resting order existed cannot create an entry (0.4439ms)
+✔ disconnect flushes admitted executions rather than deduplicating them away forever (13.2535ms)
+✔ workspace owns exact protection outside chart sampling and seeds (5.4934ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 617.3291

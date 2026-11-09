@@ -18,7 +18,7 @@ import { mergePaperTradingLedgerUpdate } from "@/lib/accountPreferenceMerge";
 import { WORKSPACE_PRESET_DELETIONS_KEY, isWorkspacePresetDeleted, markWorkspacePresetDeleted, mergeWorkspacePresetPreferences } from "@/lib/workspacePresetPreferences";
 
 import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
-import { createExecutionPaintScheduler } from '@/lib/executionPaintScheduler';
+import { createExecutionPaintScheduler, createExecutionStudyScheduler } from '@/lib/executionPaintScheduler';
 import { hasUsableOrderFlowHistory } from '@/lib/orderFlowHistoryReadiness';
 
 import { freshPaperExecutionQuote, paperOrderReceipt, paperTradeExecutionQuote } from "@/lib/paperOrderReceipt";
@@ -604,13 +604,6 @@ const SocialNotificationsPanel = dynamic(() => import("@/components/socials/Soci
   loading: () => workspaceLoader("Opening activity", "Restoring social notifications."),
 });
 
-// Hidden panes do not need to repaint a developing profile at trading cadence.
-// The active pane is deliberately different: its execution batch is committed
-// in the same flush as its candle below, so the histogram cannot visibly trail
-// price behind a second timer. The execution worker already losslessly
-// coalesces prints into 40ms batches and the pane folds those in 40-120ms
-// batches, which bounds React work without withholding live profile data.
-const PROFILE_COMMIT_INTERVAL_BACKGROUND_MS = 3_000;
 const OPTIONS_EXECUTION_WARNING = "Options trading execution coming soon";
 
 function appendLosslessPaneRecords(
@@ -6405,9 +6398,7 @@ function WorkspaceChartPaneComponent({
       return;
     }
 
-    let pendingProfileRecords: InstitutionalTrade[] = [];
     let pendingExecutionRecords: InstitutionalTrade[] = [];
-    let profileSyncTimer: number | null = null;
 
     let marketTradeStateSyncTimer: number | null = null;
     let lastFlowReconcileAt = 0;
@@ -6480,31 +6471,21 @@ function WorkspaceChartPaneComponent({
         setMarketTradesVersion((current) => current + 1);
       }, delay);
     };
-    const flushProfileRecords = () => {
-      profileSyncTimer = null;
-      if (!pendingProfileRecords.length) return;
-      const batch = pendingProfileRecords;
-      pendingProfileRecords = [];
-      setVolumeProfiles((current) => current.length
+    // Histograms fold every execution, but their React/model rebuild must not
+    // run before each candle paint. A busy tape previously rebuilt all active
+    // profiles at display-frame cadence, starving the very price frame it shared.
+    const profileScheduler = createExecutionStudyScheduler<InstitutionalTrade>((batch) => {
+      startTransition(() => setVolumeProfiles((current) => current.length
         ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, batch))
-        : current);
-    };
+        : current));
+    }, {
+      active: () => activeRef.current && document.visibilityState !== 'hidden',
+      checkpoint: record => Math.floor(record.timestamp / 60_000),
+      delay: (callback, milliseconds) => window.setTimeout(callback, milliseconds),
+      cancelDelay: handle => window.clearTimeout(handle),
+    });
     const queueProfileUpdate = (records: InstitutionalTrade[]) => {
-      if (!needsLiveVolumeProfiles || !records.length) return;
-      appendLosslessPaneRecords(pendingProfileRecords, records);
-      // The active candle and its volume profile are two views of the same
-      // Rithmic executions. Commit them together. Waiting another full second
-      // here made the histogram appear frozen while the candle was trading.
-      if (activeRef.current) {
-        if (profileSyncTimer !== null) window.clearTimeout(profileSyncTimer);
-        flushProfileRecords();
-        return;
-      }
-      if (profileSyncTimer !== null) return;
-      profileSyncTimer = window.setTimeout(
-        flushProfileRecords,
-        PROFILE_COMMIT_INTERVAL_BACKGROUND_MS,
-      );
+      if (needsLiveVolumeProfiles) profileScheduler.push(records);
     };
 
     const flushExecutionRecords = () => {
@@ -6639,7 +6620,10 @@ function WorkspaceChartPaneComponent({
       delay: (callback, milliseconds) => window.setTimeout(callback, milliseconds),
       cancelDelay: handle => window.clearTimeout(handle),
     });
-    const executionVisibilityChanged = () => executionPaintScheduler.visibilityChanged();
+    const executionVisibilityChanged = () => {
+      executionPaintScheduler.visibilityChanged();
+      profileScheduler.visibilityChanged();
+    };
     document.addEventListener('visibilitychange', executionVisibilityChanged);
     const queueExecutionUpdate = (records: InstitutionalTrade[]) => {
       if (!records.length) return;
@@ -6742,11 +6726,10 @@ function WorkspaceChartPaneComponent({
     });
     return () => {
       unsubscribe();
-      if (profileSyncTimer !== null) window.clearTimeout(profileSyncTimer);
+      profileScheduler.cancel();
       executionPaintScheduler.cancel();
       document.removeEventListener('visibilitychange', executionVisibilityChanged);
       if (marketTradeStateSyncTimer !== null) window.clearTimeout(marketTradeStateSyncTimer);
-      pendingProfileRecords = [];
       pendingExecutionRecords = [];
       eventHistorySeedRef.current = [];
     };

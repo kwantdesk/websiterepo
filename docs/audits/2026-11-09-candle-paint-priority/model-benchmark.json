@@ -1,0 +1,9 @@
+{
+  "frameBatches": 120,
+  "checkpointBatches": 18,
+  "exactExecutionRecords": 2400,
+  "unbatchedModelMs": 54.67360000000002,
+  "batchedModelMs": 9.158500000000004,
+  "totalsMatch": true,
+  "levelsMatch": true
+}

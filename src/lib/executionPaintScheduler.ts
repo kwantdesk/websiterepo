@@ -28,3 +28,58 @@ export function createExecutionPaintScheduler(flush: () => void, env: PaintEnvir
     cancel() { clear(); pending = false; },
   };
 }
+
+/** Lossless model checkpoints run outside the candle's animation-frame work.
+ * Never use this queue for prices, orders, executions or footprint prints. */
+export function createExecutionStudyScheduler<T>(
+  commit: (records: T[]) => void,
+  env: Pick<PaintEnvironment, "delay" | "cancelDelay"> & {
+    active: () => boolean;
+    checkpoint?: (record: T) => number;
+  },
+) {
+  let pending: T[] = [];
+  let timer: number | null = null;
+  let scheduledDelay = Infinity;
+  const run = () => {
+    timer = null;
+    scheduledDelay = Infinity;
+    const batch = pending;
+    pending = [];
+    if (!batch.length) return;
+    // Preserve a completed minute's developing POC/VA/VWAP checkpoint when
+    // a deferred batch straddles its boundary. The final partial run follows.
+    if (!env.checkpoint) { commit(batch); return; }
+    let start = 0;
+    let checkpoint = env.checkpoint(batch[0]);
+    for (let index = 1; index < batch.length; index++) {
+      const next = env.checkpoint(batch[index]);
+      if (next === checkpoint) continue;
+      commit(batch.slice(start, index));
+      start = index;
+      checkpoint = next;
+    }
+    commit(start ? batch.slice(start) : batch);
+  };
+  const schedule = () => {
+    if (!pending.length) return;
+    const delay = env.active() ? 100 : 3_000;
+    if (timer !== null && delay >= scheduledDelay) return;
+    if (timer !== null) env.cancelDelay(timer);
+    scheduledDelay = delay;
+    timer = env.delay(run, delay);
+  };
+  return {
+    push(records: T[]) {
+      for (const record of records) pending.push(record);
+      schedule();
+    },
+    visibilityChanged: schedule,
+    cancel() {
+      if (timer !== null) env.cancelDelay(timer);
+      timer = null;
+      pending = [];
+      scheduledDelay = Infinity;
+    },
+  };
+}
