@@ -164,6 +164,18 @@ test('actual live notification refresh retains pages/cursor and never mixes a ne
  assert.deepEqual(Array.from(h.env.tableRows,r=>r.type),['REG_SHO']);assert.equal(h.env.toolCursor,null);
 });
 
+test('actual consolidated live refresh keeps older trades, deepest cursor and new provider statistics',async()=>{
+ const h=harness({toolId:'order-flow-consolidated'}),initial=h.load(),statistics={CALL:{ASK:{premium:100,volume:2}},PUT:{BID:{premium:50,volume:1}}};
+ h.requests[0].resolve({data:[{id:'a',tradeTime:30}],statistics,nextSearchAfter:['30']});await initial;assert.equal(h.nodes.get('#toolError').hidden,true,h.nodes.get('#toolError').textContent);
+ const page=h.load({append:true});h.requests[1].resolve({data:[{id:'b',tradeTime:20}],nextSearchAfter:['20']});await page;assert.equal(h.nodes.get('#toolError').hidden,true,h.nodes.get('#toolError').textContent);
+ const nextStatistics={CALL:{ASK:{premium:200,volume:3}},PUT:{BID:{premium:70,volume:2}}};
+ const live=h.load({liveFrame:true});h.requests[2].resolve({data:[{id:'c',tradeTime:40},{id:'a',tradeTime:30,size:7}],statistics:nextStatistics,nextSearchAfter:['30']});await live;
+ assert.deepEqual(Array.from(h.env.tableRows,r=>r.id),['c','a','b']);assert.equal(h.env.tableRows[1].size,7);assert.deepEqual(Array.from(h.env.toolCursor),['20']);
+ assert.deepEqual(h.env.toolPayload.statistics,nextStatistics);assert.equal(h.nodes.get('#toolTableWrap').children.filter(n=>n.className==='flow-statistics').length,1);
+ h.set('ticker','QQQ');const changed=h.load({liveFrame:true});h.requests[3].resolve({data:[{id:'qqq',tradeTime:50}],nextSearchAfter:null});await changed;
+ assert.deepEqual(Array.from(h.env.tableRows,r=>r.id),['qqq']);assert.equal(h.env.toolCursor,null);
+});
+
 test('a changed live frame arriving during pagination is consumed immediately after that page finishes',async()=>{
  const h=harness({toolId:'equity-prints'}),initial=h.load();h.requests[0].resolve({data:[{id:'one',tradeTime:30}],nextSearchAfter:['old',30]});await initial;
  const older=h.load({append:true}),before=h.loads.length;h.env.api.receiveLiveToolFrame();assert.equal(h.env.pendingLiveFrame,true);assert.equal(h.loads.length,before);

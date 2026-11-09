@@ -1289,7 +1289,7 @@ await boot();
         if(toolPayload?.statistics!=null&&(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)||payload.statistics==null))payload.statistics=toolPayload.statistics;
       }
       let nextCursor=tool.id==='equity-prints'?equityPrintCursor(payload):tool.id==='exchange-notifications'?notificationCursor(payload):['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)?optionTapeCursor(payload):payload.nextSearchAfter||null;
-      const retainedLiveTape=liveFrame&&!append&&['equity-prints','exchange-notifications'].includes(tool.id)&&toolPayloadQuery===query&&Array.isArray(payload.data)&&tableRows.length>0;
+      const retainedLiveTape=liveFrame&&!append&&['equity-prints','exchange-notifications','order-flow-consolidated'].includes(tool.id)&&toolPayloadQuery===query&&Array.isArray(payload.data)&&tableRows.length>0;
       if(retainedLiveTape){payload.data=mergeLiveTapePage(tableRows,payload.data,{timeField:tool.id==='exchange-notifications'?'createdTime':'tradeTime'});nextCursor=previousCursor;}
       if(['equity-prints','exchange-notifications'].includes(tool.id)&&!append&&!retainedLiveTape)equityPageGeneration++;
       toolPayload=payload;toolPayloadQuery=query;toolCursor=nextCursor;renderToolPayload(tool,payload,{refresh:true,append});renderSnapshotControl(payload);
@@ -1297,7 +1297,7 @@ await boot();
       updateToolTimestamp(tool,payload);
       saveToolControls();updateLiveState();
     }catch(error){
-      if(liveFrame&&['equity-prints','exchange-notifications'].includes(tool.id)&&requestId===toolRequestId&&activeTool===tool&&toolPayload)toolCursor=previousCursor;
+      if(liveFrame&&['equity-prints','exchange-notifications','order-flow-consolidated'].includes(tool.id)&&requestId===toolRequestId&&activeTool===tool&&toolPayload)toolCursor=previousCursor;
       if(!requestPrepared&&requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){
         toolPayload=null;toolPayloadQuery=null;toolCursor=null;resetStage();q('#toolUpdated').textContent='';
       }
@@ -2042,7 +2042,7 @@ await boot();
   }
 
   function renderFlowStatistics(statistics){
-    if(!statistics)return;const model=flowStatisticsModel(statistics),holder=element("div","flow-statistics"),circumference=2*Math.PI*40;
+    if(!statistics)return;q('.flow-statistics',q('#toolTableWrap'))?.remove();const model=flowStatisticsModel(statistics),holder=element("div","flow-statistics"),circumference=2*Math.PI*40;
     for(const ring of model.rings){const item=element("div","flow-statistic"),svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("viewBox","0 0 100 100");svg.setAttribute("aria-hidden","true");const circle=(color,length,offset=0)=>{const node=document.createElementNS("http://www.w3.org/2000/svg","circle");for(const [key,value] of Object.entries({cx:50,cy:50,r:40,fill:"none",stroke:color,"stroke-width":20,"stroke-dasharray":`${length} ${circumference}`,"stroke-dashoffset":-offset,"stroke-linecap":"round",transform:"rotate(90 50 50)"}))node.setAttribute(key,value);svg.append(node);};circle(themePaint("#e6e6e6"),circumference);let offset=0;for(const segment of ring.segments){if(segment.value>0)circle(segment.color,circumference*segment.value/100,offset);offset+=circumference*segment.value/100;}const text=element("span");text.append(element("small","",ring.title),element("b","",ring.label??(ring.percentage!=null?ring.percentage.toFixed(2)+"%":`${compact(ring.put,ring.id==="premium")} / ${compact(ring.call,ring.id==="premium")}`)));item.append(svg,text);holder.append(item);}
     q("#toolTableWrap").prepend(holder);
   }
@@ -2167,7 +2167,7 @@ await boot();
     if(refresh&&tool.view==='netDrift'&&activeChartUpdate?.(payload))return;
     if(refresh&&tool.view==='marketMap'&&activeChartUpdate?.(payload))return;
     const reusable=refresh&&activeChartInstance&&['netDrift','darkFlow','ohlc','optionOhlc','ivRank','maxPainTime','contractStats','sideStats','marketShare','exposureStrike','exposureExpiration','maxPain','heatMap','intervalMap','netFlow','volatilityDrift','volatilitySkew','termStructure','oiStrike','oiExpiration','oiTime'].includes(tool.view);
-    const reusableEquityTable=refresh&&['equity-prints','exchange-notifications'].includes(tool.id)&&tool.view==='table'&&tableRuntime&&tableColumnHost===q(tool.id==='equity-prints'?'#equityPrintColumnControls':'#notificationColumnControls');
+    const reusableEquityTable=refresh&&['equity-prints','exchange-notifications','order-flow-consolidated'].includes(tool.id)&&tool.view==='table'&&tableRuntime&&tableColumnHost===q(tool.id==='equity-prints'?'#equityPrintColumnControls':tool.id==='exchange-notifications'?'#notificationColumnControls':'#tableColumnControls');
     if(!reusable&&!reusableEquityTable)resetStage();else if(reusable)refreshingCanvas=activeChartInstance;
     try{const data = payload.data || {};
     if(tool.view==='newsFeed'){

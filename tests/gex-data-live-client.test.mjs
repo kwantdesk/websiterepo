@@ -68,3 +68,12 @@ test('chronological notifications share changed frames but ticker-ranked selecti
  sources[0].frame('b',2000,[{id:'two'}]);assert.equal(changes.length,1);
  assert.equal(client.request(url,options({...body,sort:{field:'TICKER',direction:'DESCENDING'}}),'notifications'),null);assert.equal(sources[0].closed,true);client.dispose();
 });
+
+test('latest consolidated flow shares acquisition and preserves its live channel during older-page reads',async()=>{
+ const {client,sources,changes}=fixture(),url='/api/gex-data/order-flow-consolidated',body={sessionDate:'2026-11-09',size:100,includeStatistics:true,includeComprisingTrades:true,sort:{field:'TRADE_TIME',direction:'DESCENDING'}};
+ const first=client.request(url,options(body),'flow');sources[0].frame('a',1000,[{id:'one',tradeTime:10}]);await first;
+ assert.equal(client.request(url,options({...body,searchAfter:['older']}),'flow'),null);assert.equal(sources[0].closed,false);
+ sources[0].frame('b',2000,[{id:'two',tradeTime:20}]);assert.equal(changes.length,1);
+ assert.equal((await(await client.request(url,options(body),'flow')).json()).data[0].id,'two');
+ assert.equal(client.request(url,options({...body,sort:{field:'PREMIUM',direction:'DESCENDING'}}),'flow'),null);assert.equal(sources[0].closed,true);client.dispose();
+});
