@@ -16,6 +16,9 @@ test('only current-day notification windows containing now refresh; past/future 
   for(const [now,start,end] of [['2026-10-30T15:00:00Z','2026-10-30T13:30:00Z','2026-10-31T04:00:00Z'],['2026-11-09T16:00:00Z','2026-11-09T14:30:00Z','2026-11-10T05:00:00Z']]){
     const body={timeRange:{startTime:start,endTime:end}},at=Date.parse(now);
     assert.equal(gexToolStreamSelection(selection(body,'exchange-notifications'),at).once,false);
+    assert.equal(gexToolStreamSelection(selection(body,'order-flow-consolidated'),at).once,false);
+    assert.equal(gexToolStreamSelection(selection(body,'order-flow-consolidated'),Date.parse(end)).once,true);
+    assert.equal(gexToolStreamSelection(selection(body,'order-flow-unconsolidated'),at).once,true);
     assert.equal(gexToolStreamSelection(selection({...body,snapshotTime:now},'exchange-notifications'),at).once,true);
     assert.equal(gexToolStreamSelection(selection(body,'net-drift'),at).once,true);
     assert.equal(gexToolStreamSelection(selection(body,'exchange-notifications'),Date.parse(start)-1).once,true);

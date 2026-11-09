@@ -1173,7 +1173,12 @@ await boot();
     }
     if(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)){
       if(!masterReplay&&dateOverride.type==='NONE'&&(getControl('tapeSessionStart')||getControl('tapeSessionEnd'))){delete body.sessionDate;delete body.timeRange;Object.assign(body,optionTapeSessionRange({startDate:getControl('tapeSessionStart'),endDate:getControl('tapeSessionEnd')}));}
-      return additionalToolRequest(tool.id,controls,optionTapeRequest(tool.id,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:optionTapeHeaderFilters(tool)},body));
+      // Observed source current Consolidated tape starts09:30NewYork. Public
+      // sessionDate also counts pre-open trades, inflating its summary totals.
+      // Historical sessions and explicit ranges retain their exact scope until
+      // separately verified; Unconsolidated has not established this boundary.
+      const flowBody=tool.id==='order-flow-consolidated'&&body.sessionDate===apiStatus.market?.optionsSessionDate?notificationReferenceSession(body):body;
+      return additionalToolRequest(tool.id,controls,optionTapeRequest(tool.id,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:optionTapeHeaderFilters(tool)},flowBody));
     }
     if(tool.id==='equity-prints')return equityPrintRequest(body,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:equityPrintHeaderFilters()});
     if(tool.id==='exchange-notifications')return notificationRequest(notificationReferenceSession(body),{sort:{field:getControl('tapeSortField')||'CREATED_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:notificationHeaderFilters(),preserveTickerFilter:tickerOverride.type!=='NONE'});

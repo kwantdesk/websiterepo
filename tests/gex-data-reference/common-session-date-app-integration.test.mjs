@@ -164,6 +164,13 @@ test('actual live notification refresh retains pages/cursor and never mixes a ne
  assert.deepEqual(Array.from(h.env.tableRows,r=>r.type),['REG_SHO']);assert.equal(h.env.toolCursor,null);
 });
 
+test('current Consolidated session excludes pre-open totals without changing historical or explicit scopes',()=>{
+ const h=harness({toolId:'order-flow-consolidated'});
+ assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});assert.equal(h.request().sessionDate,undefined);
+ h.set('mode','historical');h.set('date','2026-10-16');assert.equal(h.request().sessionDate,'2026-10-16');assert.equal(h.request().timeRange,undefined);
+ const raw=harness({toolId:'order-flow-unconsolidated'});assert.equal(raw.request().sessionDate,'2026-11-02');assert.equal(raw.request().timeRange,undefined);
+});
+
 test('actual consolidated live refresh keeps older trades, deepest cursor and new provider statistics',async()=>{
  const h=harness({toolId:'order-flow-consolidated'}),initial=h.load(),statistics={CALL:{ASK:{premium:100,volume:2}},PUT:{BID:{premium:50,volume:1}}};
  h.requests[0].resolve({data:[{id:'a',tradeTime:30}],statistics,nextSearchAfter:['30']});await initial;assert.equal(h.nodes.get('#toolError').hidden,true,h.nodes.get('#toolError').textContent);
