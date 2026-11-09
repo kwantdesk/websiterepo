@@ -29,7 +29,7 @@ export function gexToolStreamSelection(search, now = Date.now()) {
   // Notification and Consolidated UIs use an observed09:30ET lower boundary. Only a bounded
   // current-market-day window containing now remains live; past/future and
   // other tools' historical ranges retain their one-acquisition behavior.
-  const liveCashSessionRange=['exchange-notifications','order-flow-consolidated'].includes(tool)&&Number.isFinite(rangeStart)&&Number.isFinite(rangeEnd)
+  const liveCashSessionRange=['exchange-notifications','order-flow-consolidated','gainers-losers'].includes(tool)&&Number.isFinite(rangeStart)&&Number.isFinite(rangeEnd)
     &&rangeStart<=now&&rangeEnd>now&&marketDate.format(rangeStart)===date&&marketDate.format(rangeEnd-1)===date;
   const once = Boolean(body.snapshotTime || body.timeRange&&!liveCashSessionRange || selectedDate && selectedDate < date);
   const pollMs = tool.startsWith('open-interest') || tool === 'iv-rank' ? 60000 : tool === 'news-articles' ? 30000 : 2000;

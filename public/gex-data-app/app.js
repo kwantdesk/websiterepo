@@ -1177,11 +1177,14 @@ await boot();
       // sessionDate also counts pre-open trades, inflating its summary totals.
       // Historical sessions and explicit ranges retain their exact scope until
       // separately verified; Unconsolidated has not established this boundary.
-      const flowBody=tool.id==='order-flow-consolidated'&&body.sessionDate===apiStatus.market?.optionsSessionDate?notificationReferenceSession(body):body;
+      const flowBody=tool.id==='order-flow-consolidated'&&!getControl('tapeSessionStart')&&!getControl('tapeSessionEnd')&&body.sessionDate===apiStatus.market?.optionsSessionDate?notificationReferenceSession(body):body;
       return additionalToolRequest(tool.id,controls,optionTapeRequest(tool.id,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:optionTapeHeaderFilters(tool)},flowBody));
     }
     if(tool.id==='equity-prints')return equityPrintRequest(body,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:equityPrintHeaderFilters()});
     if(tool.id==='exchange-notifications')return notificationRequest(notificationReferenceSession(body),{sort:{field:getControl('tapeSortField')||'CREATED_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:notificationHeaderFilters(),preserveTickerFilter:tickerOverride.type!=='NONE'});
+    // Current Gainers/Losers source excludes pre-open flow. Preserve explicit
+    // ranges and historical scopes until their boundaries are independently checked.
+    if(tool.id==='gainers-losers'&&!getControl('tapeSessionStart')&&!getControl('tapeSessionEnd')&&body.sessionDate===apiStatus.market?.optionsSessionDate)return additionalToolRequest(tool.id,controls,notificationReferenceSession(body));
     if(tool.id==='news-articles')return newsFeedRequest({...controls,...(dateOverride.type!=='NONE'?{mode:'historical'}:{})},body,{timeZone:gexTimeZone()});
     // Keep the complete chain for the reference's local, reversible expiry,
     // strike, moneyness and signed-delta selections. Never hide valid choices

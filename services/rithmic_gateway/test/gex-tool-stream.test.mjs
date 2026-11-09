@@ -17,6 +17,8 @@ test('only current-day notification windows containing now refresh; past/future 
     const body={timeRange:{startTime:start,endTime:end}},at=Date.parse(now);
     assert.equal(gexToolStreamSelection(selection(body,'exchange-notifications'),at).once,false);
     assert.equal(gexToolStreamSelection(selection(body,'order-flow-consolidated'),at).once,false);
+    assert.equal(gexToolStreamSelection(selection(body,'gainers-losers'),at).once,false);
+    assert.equal(gexToolStreamSelection(selection(body,'gainers-losers'),Date.parse(end)).once,true);
     assert.equal(gexToolStreamSelection(selection(body,'order-flow-consolidated'),Date.parse(end)).once,true);
     assert.equal(gexToolStreamSelection(selection(body,'order-flow-unconsolidated'),at).once,true);
     assert.equal(gexToolStreamSelection(selection({...body,snapshotTime:now},'exchange-notifications'),at).once,true);

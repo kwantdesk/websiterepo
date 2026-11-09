@@ -171,6 +171,13 @@ test('current Consolidated session excludes pre-open totals without changing his
  const raw=harness({toolId:'order-flow-unconsolidated'});assert.equal(raw.request().sessionDate,'2026-11-02');assert.equal(raw.request().timeRange,undefined);
 });
 
+test('current Gainers/Losers excludes pre-open flow while preserving historical and explicit range scopes',()=>{
+ const h=harness({toolId:'gainers-losers'});
+ assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});assert.equal(h.request().sessionDate,undefined);
+ h.set('mode','historical');h.set('date','2026-10-16');assert.equal(h.request().sessionDate,'2026-10-16');assert.equal(h.request().timeRange,undefined);
+ h.env.session.onChange({startDate:'2026-11-02',endDate:'2026-11-02'});assert.equal(h.request().sessionDate,'2026-11-02');assert.equal(h.request().timeRange,undefined);
+});
+
 test('actual consolidated live refresh keeps older trades, deepest cursor and new provider statistics',async()=>{
  const h=harness({toolId:'order-flow-consolidated'}),initial=h.load(),statistics={CALL:{ASK:{premium:100,volume:2}},PUT:{BID:{premium:50,volume:1}}};
  h.requests[0].resolve({data:[{id:'a',tradeTime:30}],statistics,nextSearchAfter:['30']});await initial;assert.equal(h.nodes.get('#toolError').hidden,true,h.nodes.get('#toolError').textContent);
@@ -247,7 +254,7 @@ test('actual Gainers multi-session requests use inclusive New York days and excl
   assert.deepEqual(h.request().timeRange,{startTime:'2026-10-31T04:00:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});
   assert.equal(h.writes.at(-1)['gainers-losers'].tapeSessionEnd,'2026-11-02');
   validateGexDataRequest('gainers-losers',h.request());
-  h.env.session.onChange({startDate:'',endDate:''});assert.equal(h.get('mode'),'latest');assert.equal(h.request().timeRange,undefined);assert.equal(h.request().sessionDate,'2026-11-02');
+  h.env.session.onChange({startDate:'',endDate:''});assert.equal(h.get('mode'),'latest');assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});assert.equal(h.request().sessionDate,undefined);
 });
 
 test('actual Gainers ranges retain own saved values under page/global date overrides',()=>{
