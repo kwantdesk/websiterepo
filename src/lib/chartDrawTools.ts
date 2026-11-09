@@ -157,6 +157,8 @@ export type DrawStyle = {
   fontSize?: number;    // text tools
   /** Native multicolour emoji unless a custom colour has been chosen. */
   emojiOriginalColors?: boolean;
+  /** Clockwise screen rotation; independent of chart pan and axis zoom. */
+  emojiRotation?: number;
   /** Half-width in chart time units; makes an emoji respond to time zoom. */
   emojiTimeRadius?: number;
   /** Half-height in chart price units; makes an emoji respond to price zoom. */

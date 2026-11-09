@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { emojiRotation } from "@/lib/chartEmojiTransform";
 import type { DrawingProfileTheme } from "@/lib/drawingVolumeProfileStyle";
 import { VOLUME_PROFILE_GRADIENTS, isVolumeProfileGradientActive } from "@/lib/volumeProfileGradients";
 import ChartColorField from "@/components/ChartColorField";
@@ -121,6 +122,9 @@ export default function ChartDrawSettings({
                   <Row label="Original emoji colours"><input type="checkbox" checked={drawing.style.emojiOriginalColors !== false} onChange={event => patchStyle({ emojiOriginalColors: event.target.checked })} className="h-4 w-4 accent-primary" /></Row>
                   <Row label={`Size · ${Math.round(drawing.style.fontSize ?? 36)}px`}>
                     <input type="range" min={16} max={160} step={1} value={drawing.style.fontSize ?? 36} onChange={(event) => patchStyle({ fontSize: Number(event.target.value) })} className="w-48 accent-primary" />
+                  </Row>
+                  <Row label={`Rotation · ${Math.round(emojiRotation(drawing.style.emojiRotation))}°`}>
+                    <input type="range" aria-label="Emoji rotation" min={0} max={360} step={1} value={emojiRotation(drawing.style.emojiRotation)} onChange={(event) => patchStyle({ emojiRotation: Number(event.target.value) })} className="w-48 accent-primary" />
                   </Row>
                 </>
               ) : (

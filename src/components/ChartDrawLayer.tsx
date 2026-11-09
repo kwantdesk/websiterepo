@@ -39,6 +39,7 @@ import ChartDrawingVolumeProfile from "@/components/ChartDrawingVolumeProfile";
 import type { DrawingProfileTheme } from "@/lib/drawingVolumeProfileStyle";
 import { exactCustomDrawVolumeProfile } from "@/lib/customDrawVolumeProfile";
 import { chartAnchoredEmojiScreenSize } from "@/lib/chartEmojiScale";
+import { emojiRotation, emojiTransformHandle, transformEmojiFromDrag } from "@/lib/chartEmojiTransform";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
 // point placement (fixed-count, poly-click and freehand-drag), live preview,
@@ -889,25 +890,25 @@ export default function ChartDrawLayer({
     eventWindow().addEventListener("pointercancel", cleanup);
   };
 
-  /** Resize the emoji in screen pixels without moving its chart anchor. */
+  /** Rotate and resize around the emoji's unchanged chart anchor. */
   const beginEmojiResize = (drawing: Drawing, event: ReactPointerEvent) => {
     event.stopPropagation();
+    event.preventDefault();
     onSelect(drawing.id);
     const anchor = drawing.points[0];
     const anchorX = anchor ? toX(anchor.time) : null;
     const anchorY = anchor ? toY(anchor.price) : null;
     if (anchorX == null || anchorY == null) return;
-    const currentScreenSize = emojiScreenSize(drawing, anchorX, anchorY);
     const currentNominalSize = Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36)));
-    const screenPixelsPerNominalPixel = Math.max(0.01, currentScreenSize / currentNominalSize);
+    const initialRect = svgRef.current?.getBoundingClientRect();
+    if (!initialRect) return;
+    const start = { x: event.clientX - initialRect.left - anchorX, y: event.clientY - initialRect.top - anchorY };
     const onMove = (moveEvent: PointerEvent) => {
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const dx = Math.abs(moveEvent.clientX - rect.left - anchorX);
-      const dy = Math.abs(moveEvent.clientY - rect.top - anchorY);
-      const targetScreenSize = Math.max(dx, dy) * 2;
-      const fontSize = Math.round(Math.max(16, Math.min(160, targetScreenSize / screenPixelsPerNominalPixel)));
-      onUpdate({ ...drawing, style: { ...drawing.style, fontSize } });
+      const current = { x: moveEvent.clientX - rect.left - anchorX, y: moveEvent.clientY - rect.top - anchorY };
+      const transformed = transformEmojiFromDrag(currentNominalSize, drawing.style.emojiRotation, start, current);
+      onUpdate({ ...drawing, style: { ...drawing.style, ...transformed } });
     };
     const cleanup = () => {
       eventWindow().removeEventListener("pointermove", onMove);
@@ -1513,6 +1514,7 @@ export default function ChartDrawLayer({
           <text
             x={a.x}
             y={a.y}
+            transform={`rotate(${emojiRotation(style.emojiRotation)} ${a.x} ${a.y})`}
             textAnchor="middle"
             dominantBaseline="central"
             fontSize={size}
@@ -1801,7 +1803,7 @@ export default function ChartDrawLayer({
       ? emojiScreenSize(drawing, a.x, a.y)
       : null;
     const emojiResizeHandle = emojiSize != null && a.x != null && a.y != null
-      ? { x: a.x + emojiSize / 2, y: a.y + emojiSize / 2 }
+      ? emojiTransformHandle(a.x, a.y, emojiSize, style.emojiRotation)
       : null;
     // Handles use their visible dot plus a small CSS-pixel allowance.
     const grabHandle = (
@@ -1828,13 +1830,13 @@ export default function ChartDrawLayer({
         (event) => beginFillMarkerResize(drawing, event),
       )
       : emojiResizeHandle
-        ? grabHandle(
+        ? <g data-emoji-transform-handle=""><title>Drag around to rotate · drag outward to resize</title>{grabHandle(
           "emoji-size",
           emojiResizeHandle.x,
           emojiResizeHandle.y,
-          "nwse-resize",
+          "grab",
           (event) => beginEmojiResize(drawing, event),
-        )
+        )}</g>
       : positionCorners
         ? [...positionCorners].sort((a, b) => Number(a.edge === "stop") - Number(b.edge === "stop")).map((corner) => grabHandle(
           `c${corner.id}`,
@@ -1902,7 +1904,7 @@ export default function ChartDrawLayer({
       height={height}
       data-viewport={viewportVersion}
       data-draw-read-only={readOnly}
-      style={{ pointerEvents: "none" }}
+      style={{ pointerEvents: "none", touchAction: "none" }}
     >
       {/*
         * The chart's right edge. Drawings are chart content, so they end
