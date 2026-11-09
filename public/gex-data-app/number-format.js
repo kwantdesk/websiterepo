@@ -7,6 +7,10 @@ export function abbreviate(value, decimalPlaces=2) {
   // Source886167 formats the positive magnitude first: JS Math.round on a
   // negative half would otherwise round toward zero instead of matching it.
   if(number<0)return '-'+abbreviate(-number,decimalPlaces);
+  // Source886167 checks the original unscaled fractional part below1000;
+  // a fractional ratio rounding to1 still displays1.00. Scaled suffixes use
+  // their rounded magnitude to decide whether decimals are necessary.
+  if(number<1000)return Number.isInteger(number)?String(number):number.toFixed(decimalPlaces);
   const absolute=Math.abs(number),entry=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']].find(([divisor])=>absolute>=divisor),divisor=entry?.[0]||1;
   const scaled=number/divisor,factor=10**decimalPlaces,rounded=Math.round((scaled+Number.EPSILON)*factor)/factor;
   return (Number.isInteger(rounded)?String(rounded):rounded.toFixed(decimalPlaces))+(entry?' '+entry[1]:'');

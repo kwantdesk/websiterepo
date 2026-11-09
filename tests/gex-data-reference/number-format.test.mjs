@@ -20,3 +20,10 @@ test('negative zero remains unsigned and invalid inputs remain unavailable',()=>
   assert.equal(currencyAbbreviated(-0,2),'$0');
   for(const value of [null,undefined,'',NaN,Infinity,-Infinity,'not-a-number'])assert.equal(abbreviate(value),'—');
 });
+
+test('unscaled fractional values rounding to an integer retain source precision',()=>{
+  assert.equal(abbreviate(1.0004,2),'1.00');assert.equal(abbreviate(.9996,2),'1.00');
+  assert.equal(abbreviate(-.9996,2),'-1.00');assert.equal(abbreviate(1,2),'1');
+  assert.equal(abbreviate(999.999,2),'1000.00');assert.equal(abbreviate(1000.4,2),'1 K');
+  assert.equal(currencyAbbreviated(9.999,2),'$10.00');
+});

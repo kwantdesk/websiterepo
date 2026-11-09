@@ -71,3 +71,12 @@ export function notificationReferenceSession(body){
   const day=Date.parse(date+'T00:00:00Z'),result=structuredClone(body);delete result.sessionDate;
   result.timeRange={startTime:resolve(day+570*60000),endTime:resolve(day+86400000)};return result;
 }
+
+// Matched completed-session Gainers/Losers includes the options extension
+// through16:15NewYork. Multi-session explicit timestamp ranges stay exact.
+export function gainersReferenceSession(body){
+  if(!body?.sessionDate||body.timeRange)return structuredClone(body);
+  const result=notificationReferenceSession(body);
+  result.timeRange.endTime=new Date(Date.parse(result.timeRange.startTime)+405*60000).toISOString();
+  return result;
+}

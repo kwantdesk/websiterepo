@@ -14,7 +14,7 @@ import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} fr
 import {restoreSurfaceSelections,persistSurfaceSelections} from '../../public/gex-data-app/surface-selection-storage.js';
 import {dataRequestIdentity} from '../../public/gex-data-app/live-chart-model.js';
 import {equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor} from '../../public/gex-data-app/equity-print-interaction-model.js';
-import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,notificationReferenceSession} from '../../public/gex-data-app/exchange-notification-interaction-model.js';
+import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,notificationReferenceSession,gainersReferenceSession} from '../../public/gex-data-app/exchange-notification-interaction-model.js';
 import {EQUITY_PRINT_COLUMNS,EXCHANGE_NOTIFICATION_COLUMNS,equitySideColorToken,equityPrintColorToken,notificationColorToken} from '../../public/gex-data-app/equity-renderers.js';
 import {formatTableValue,createTableView} from '../../public/gex-data-app/table-view.js';
 import {CONSOLIDATED_COLUMNS,flowStatisticsModel,GAINERS_COLUMNS,gainersModel,MARKET_SHARE_COLUMNS,marketShareTableModel} from '../../public/gex-data-app/options-models.js';
@@ -171,11 +171,11 @@ test('current Consolidated session excludes pre-open totals without changing his
  const raw=harness({toolId:'order-flow-unconsolidated'});assert.equal(raw.request().sessionDate,'2026-11-02');assert.equal(raw.request().timeRange,undefined);
 });
 
-test('current Gainers/Losers excludes pre-open flow while preserving historical and explicit range scopes',()=>{
+test('Gainers/Losers uses09:30–16:15for single sessions and preserves explicit multi-session ranges',()=>{
  const h=harness({toolId:'gainers-losers'});
- assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});assert.equal(h.request().sessionDate,undefined);
- h.set('mode','historical');h.set('date','2026-10-16');assert.equal(h.request().sessionDate,'2026-10-16');assert.equal(h.request().timeRange,undefined);
- h.env.session.onChange({startDate:'2026-11-02',endDate:'2026-11-02'});assert.equal(h.request().sessionDate,'2026-11-02');assert.equal(h.request().timeRange,undefined);
+ assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-02T21:15:00.000Z'});assert.equal(h.request().sessionDate,undefined);
+ h.set('mode','historical');h.set('date','2026-10-16');assert.deepEqual(h.request().timeRange,{startTime:'2026-10-16T13:30:00.000Z',endTime:'2026-10-16T20:15:00.000Z'});
+ h.env.session.onChange({startDate:'2026-11-02',endDate:'2026-11-02'});assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-02T21:15:00.000Z'});
 });
 
 test('actual consolidated live refresh keeps older trades, deepest cursor and new provider statistics',async()=>{
@@ -241,7 +241,7 @@ test('actual Gainers range presentation migrates historical saved/copied day wit
     const h=harness({toolId:'gainers-losers',...input});
     assert.equal(byLabel(h.holder,'Session Date'),undefined);assert.equal(h.input('mode').closest().hidden,true);assert.equal(h.input('date').closest().hidden,true);
     assert.equal(h.get('tapeSessionStart'),'2026-10-16');assert.equal(h.get('tapeSessionEnd'),'2026-10-16');
-    assert.deepEqual(h.request(),{sessionDate:'2026-10-16',filter:{tickers:['SPY']}});
+    assert.deepEqual(h.request(),{timeRange:{startTime:'2026-10-16T13:30:00.000Z',endTime:'2026-10-16T20:15:00.000Z'},filter:{tickers:['SPY']}});
     h.env.api.saveToolControls();assert.equal(h.writes.at(-1)['gainers-losers'].tapeSessionStart,'2026-10-16');
   }
 });
@@ -254,13 +254,13 @@ test('actual Gainers multi-session requests use inclusive New York days and excl
   assert.deepEqual(h.request().timeRange,{startTime:'2026-10-31T04:00:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});
   assert.equal(h.writes.at(-1)['gainers-losers'].tapeSessionEnd,'2026-11-02');
   validateGexDataRequest('gainers-losers',h.request());
-  h.env.session.onChange({startDate:'',endDate:''});assert.equal(h.get('mode'),'latest');assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});assert.equal(h.request().sessionDate,undefined);
+  h.env.session.onChange({startDate:'',endDate:''});assert.equal(h.get('mode'),'latest');assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-02T21:15:00.000Z'});assert.equal(h.request().sessionDate,undefined);
 });
 
 test('actual Gainers ranges retain own saved values under page/global date overrides',()=>{
   const h=harness({toolId:'gainers-losers',saved:{mode:'historical',date:'2026-10-16',tapeSessionStart:'2026-10-15',tapeSessionEnd:'2026-10-16'},global:{sessionDate:'2026-10-19'}});
-  assert.equal(h.env.session.getScope().disabled,true);assert.equal(h.request().sessionDate,'2026-10-19');assert.equal(h.request().timeRange,undefined);
-  h.page.sessionDate='2026-10-20';h.env.api.reflectFilterOverrides();assert.equal(h.request().sessionDate,'2026-10-20');
+  assert.equal(h.env.session.getScope().disabled,true);assert.deepEqual(h.request().timeRange,{startTime:'2026-10-19T13:30:00.000Z',endTime:'2026-10-19T20:15:00.000Z'});
+  h.page.sessionDate='2026-10-20';h.env.api.reflectFilterOverrides();assert.deepEqual(h.request().timeRange,{startTime:'2026-10-20T13:30:00.000Z',endTime:'2026-10-20T20:15:00.000Z'});
   h.env.api.saveToolControls();assert.equal(h.writes.at(-1)['gainers-losers'].tapeSessionStart,'2026-10-15');assert.equal(h.writes.at(-1)['gainers-losers'].tapeSessionEnd,'2026-10-16');
   delete h.page.sessionDate;delete h.global.sessionDate;h.env.api.reflectFilterOverrides();
   assert.deepEqual(h.request().timeRange,{startTime:'2026-10-15T04:00:00.000Z',endTime:'2026-10-17T04:00:00.000Z'});
@@ -389,7 +389,7 @@ function harness({toolId='order-flow-consolidated',saved,copied,page={},global={
     snapshotSelections:new Map(),snapshotKey:()=>tool.id,toolCursor:null,toolPayload:null,toolPayloadQuery:null,equityPageGeneration:0,
     optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows,additionalToolRequest,dataRequestIdentity,
     equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor,mergeEquityLivePage,mergeLiveTapePage,EQUITY_PRINT_COLUMNS,EXCHANGE_NOTIFICATION_COLUMNS,equitySideColorToken,equityPrintColorToken,notificationColorToken,
-    notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,notificationReferenceSession,
+    notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,notificationReferenceSession,gainersReferenceSession,
     mountSessionDateControls,mountDarkPoolLevelLimit,matchesCurrentPayload:()=>false,popup(_anchor,_title,build){const menu=document.createElement('section');document.body.append(menu);build(menu);env.menu=menu;return menu;},mountOptionTapeSessionControls:configuration=>{env.session=configuration;env.sessionSyncs=0;return realCalendar?mountOptionTapeSessionControls(configuration):{sync(){env.sessionSyncs++;},destroy(){}};},
     GAINERS_COLUMNS,gainersModel,MARKET_SHARE_COLUMNS,marketShareTableModel,tableColumns:null,tableRows:[],tableRuntime:null,instanceKey:'test',CONSOLIDATED_COLUMNS,UNCONSOLIDATED_COLUMNS,flowStatisticsModel,
     themePaint:value=>value,compact:(value,money)=>String(money?'$':'')+value,
