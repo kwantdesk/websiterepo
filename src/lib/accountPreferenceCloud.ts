@@ -5,6 +5,23 @@ import { accountPreferenceReadUnavailable, isMissingPreferenceStore } from './ac
 
 const empty = (): UserPreferenceSnapshot => ({ version: 1, complete: true, updatedAt: new Date(0).toISOString(), values: {} });
 
+/** A missed websocket hint must not strand an open trade on another device.
+ * Read only the revision here, not the potentially large workspace/ledger. */
+export async function readAccountPreferenceRevision(client: SupabaseClient, userId: string,
+  signal = AbortSignal.timeout(8_000)): Promise<string | null> {
+  for (const table of ['user_preferences', 'social_objects'] as const) {
+    let query = client.from(table).select('updated_at').eq('user_id', userId);
+    if (table === 'social_objects') query = query.eq('id', 'account-preferences');
+    const result = await query.abortSignal(signal).maybeSingle();
+    if (result.error) {
+      if (isMissingPreferenceStore(result.error)) continue;
+      throw accountPreferenceReadUnavailable();
+    }
+    if (result.data) return result.data.updated_at;
+  }
+  return null;
+}
+
 /** Compare-and-swap prevents a stale phone from replacing a newer desktop row. */
 export async function exchangeAccountPreferences(client: SupabaseClient, userId: string,
   base: UserPreferenceSnapshot, local: UserPreferenceSnapshot, write: boolean, signal = AbortSignal.timeout(8_000)) {
@@ -19,6 +36,7 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
       }
       const row = result.data as unknown as { preferences?: unknown; payload?: { preferences?: unknown }; updated_at: string } | null;
       const raw = table === 'user_preferences' ? row?.preferences : row?.payload?.preferences;
+      let revision = row?.updated_at ?? null;
       let remote = normalizeSnapshot(raw, row?.updated_at);
       if (row && !remote) throw accountPreferenceReadUnavailable();
       if (!row && table === 'user_preferences') {
@@ -26,11 +44,12 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
           .eq('user_id', userId).eq('id', 'account-preferences').abortSignal(signal).maybeSingle();
         if (legacy.error && !isMissingPreferenceStore(legacy.error)) throw accountPreferenceReadUnavailable();
         remote = normalizeSnapshot(legacy.data?.payload?.preferences, legacy.data?.updated_at);
+        revision = legacy.data?.updated_at ?? null;
         if (legacy.data && !remote) throw accountPreferenceReadUnavailable();
       }
       remote ??= row ? empty() : base;
       const snapshot = mergeAccountPreferenceChanges(base, local, remote);
-      if (!write) return { remote, snapshot };
+      if (!write) return { remote, snapshot, revision };
       // Monotonic revision even if two devices' clocks disagree.
       snapshot.updatedAt = new Date(Math.max(Date.now(), (Date.parse(row?.updated_at ?? '') || 0) + 1)).toISOString();
       const fields = table === 'user_preferences'
@@ -57,7 +76,7 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
         }
         if (saved.error) throw accountPreferenceReadUnavailable();
       }
-      return { remote: snapshot, snapshot };
+      return { remote: snapshot, snapshot, revision: snapshot.updatedAt };
     }
   }
   throw new Error('Account sync is unavailable; local changes have been retained.');

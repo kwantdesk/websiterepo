@@ -3,6 +3,7 @@ import {
   type PaperTradingAccountRecord,
 } from "./paperAccounts.ts";
 import { writeProtectedItem, type StorageWriteResult } from "./browserStorageQuota.ts";
+import { readWorkspacePreferenceValue, recordConfirmedWorkspacePreference } from "./workspacePreferenceFallback.ts";
 import { cmeSessionDateKey } from "./chartHistoryWindow.ts";
 
 export type PaperOrderSide = "buy" | "sell";
@@ -747,7 +748,7 @@ export function normalizePaperTradingLedger(value: unknown): PaperTradingLedger 
 export function loadPaperTradingLedger(): PaperTradingLedger {
   if (typeof window === "undefined") return emptyPaperTradingLedger();
   try {
-    return normalizePaperTradingLedger(JSON.parse(window.localStorage.getItem(PAPER_TRADING_LEDGER_STORAGE_KEY) ?? "null"));
+    return normalizePaperTradingLedger(JSON.parse(readWorkspacePreferenceValue(PAPER_TRADING_LEDGER_STORAGE_KEY) ?? "null"));
   } catch {
     return emptyPaperTradingLedger();
   }
@@ -773,7 +774,10 @@ export function savePaperTradingLedger(ledger: PaperTradingLedger): StorageWrite
   if (typeof window === "undefined") return { ok: false, reclaimedBytes: 0, evicted: 0 };
   let result: StorageWriteResult;
   try {
-    result = writeProtectedItem(PAPER_TRADING_LEDGER_STORAGE_KEY, JSON.stringify(ledger));
+    const value = JSON.stringify(ledger);
+    result = writeProtectedItem(PAPER_TRADING_LEDGER_STORAGE_KEY, value);
+    const owner = window.localStorage.getItem("kwantdesk:active-preferences-owner:v1");
+    if (owner) recordConfirmedWorkspacePreference(owner, PAPER_TRADING_LEDGER_STORAGE_KEY, value, result.ok);
   } catch {
     // Serialisation itself failed; the in-memory ledger is still authoritative.
     result = { ok: false, reclaimedBytes: 0, evicted: 0 };

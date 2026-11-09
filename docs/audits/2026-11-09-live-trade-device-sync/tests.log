@@ -1,0 +1,99 @@
+(node:19440) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/accountPreferenceMerge.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a stale phone changes only its edited keys, preserving desktop layout and deletions (3.9379ms)
+✔ live quote marks do not dirty account sync or resurrect a peer-closed trade (8.0557ms)
+✔ a concurrent stop edit cannot undo a completed exit or its P&L (1.5859ms)
+✔ two devices seeing the same partial target produce one fill and preserve the filled target (1.8248ms)
+✔ shared resting orders open the same position and targets on both devices (1.3725ms)
+✔ independent new orders from two devices are both retained (2.6093ms)
+✔ deleted demo accounts are not recreated by stale marking state (1.2154ms)
+✔ a deliberate reset survives a concurrent stale protection edit without losing journal evidence (1.7805ms)
+✔ database compare-and-swap rebases a competing write without discarding it (2.5512ms)
+✔ read-only catchup never writes the database (0.6754ms)
+(node:32608) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/accountPreferenceCloud.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ lightweight recovery reads only the signed-in account revision, never the ledger (2.105ms)
+✔ legacy revision fallback stays private and uses the same account preferences object (0.3541ms)
+✔ missing rows return null and database errors do not masquerade as empty account state (0.5551ms)
+(node:12112) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartSettings.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ live account receiver applies peer revisions and edits made locally do not echo forever (129.2075ms)
+✔ a fresh phone recovering from failed hydration reads desktop state before uploading defaults (29.4196ms)
+✔ one hundred unchanged local preference events cause no account reads or writes (20.552ms)
+✔ focus catches up after a missed realtime notification (18.327ms)
+✔ a visible phone recovers open trades, protection edits and exits without a broadcast or refocus (34.7177ms)
+✔ revision heartbeats do not download or apply unchanged account payloads (18.0477ms)
+✔ cache storage storms cause no preference scans and local bursts debounce before scanning (16.2582ms)
+✔ continuous trading events retain the first bounded save deadline (20.5979ms)
+✔ foreground recovery replaces an already pending timer (19.4678ms)
+✔ an open phone changing chart settings cannot restore its stale desktop palette (38.5454ms)
+(node:31644) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/accountPreferenceCloud.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a stalled account request aborts the whole CAS attempt without writing or discarding local state (29.4666ms)
+(node:27692) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperTrading.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a moved buy stop is durable before a following tick can skip React persistence (78.4ms)
+✔ a moved sell stop is durable before a following tick can skip React persistence (12.8219ms)
+✔ resting order protection is durable before entry transfers it to a position (9.3051ms)
+✔ storage refusal keeps in-memory protection but reports that saving failed (8.111ms)
+✔ moved take-profit is durable and old target cannot execute after restoration (8.4945ms)
+✔ explicit stop removal saves synchronously and invalid edits never overwrite saved protection (16.3105ms)
+✔ short target drag cannot replay a quote or a queued pre-edit trade (6.7874ms)
+✔ editing a target does not disarm the existing stop (7.6965ms)
+✔ replay amendments use the replay clock and wait for a later replay trade (6.9269ms)
+(node:7108) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperAccounts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ actual workspace protection precedes failing chart/quote consumers and keeps a one-print touch at its exact tick (512.5774ms)
+(node:8152) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/accountPreferenceMerge.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a new working stop survives a concurrent target edit, direction false (16.0732ms)
+✔ a new stop survives a concurrent partial target fill, direction false (3.5261ms)
+✔ explicit stop removal is retained across an unrelated target edit, direction false (1.2542ms)
+✔ a new working stop survives a concurrent target edit, direction true (0.8671ms)
+✔ a new stop survives a concurrent partial target fill, direction true (1.3334ms)
+✔ explicit stop removal is retained across an unrelated target edit, direction true (1.432ms)
+✔ an independently added target survives an edit of the existing stop (1.1963ms)
+✔ an existing stop move survives a stale partial fill and remains executable, direction false (1.4399ms)
+✔ explicit target removal survives a concurrent stop edit, direction false (2.043ms)
+✔ an existing stop move survives a stale partial fill and remains executable, direction true (1.3061ms)
+✔ explicit target removal survives a concurrent stop edit, direction true (0.722ms)
+✔ a stale peer cannot restore an earlier target revision (0.7187ms)
+(node:33052) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperAccounts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ quota-refused active trades remain available to account upload and remote hydration (21.054ms)
+(node:30776) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/preferenceCachePacking.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ large acknowledged caches pack losslessly including emoji and Unicode, with bounded decode (30.678ms)
+✔ a full origin makes room by compacting the duplicate account cache without deleting work (20.7343ms)
+✔ failed compaction retains the original cache unchanged (4.0218ms)
+✔ scoped cache loader accepts both legacy JSON and packed snapshots (10.4183ms)
+✔ full local workspace quota cannot veto a confirmed account save or let stale local values undo it (17.0578ms)
+✔ an offline account never yields false success or publishes a failed save (1.9581ms)
+✔ account-backed delete survives a stale peer even when both local deletion writes are blocked (2.9353ms)
+✔ a newer successful write from another local tab replaces the confirmed fallback instead of being shadowed (4.2199ms)
+ℹ tests 55
+ℹ suites 0
+ℹ pass 55
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1360.3619

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { captureBrowserPreferences, isTrackedStorageKey, readScopedPreferences, receiveAccountPreferences } from "@/lib/userPreferences";
 import { accountPreferenceFingerprint, mergeAccountPreferenceChanges } from "@/lib/accountPreferenceMerge";
-import { exchangeAccountPreferences } from "@/lib/accountPreferenceCloud";
+import { exchangeAccountPreferences, readAccountPreferenceRevision } from "@/lib/accountPreferenceCloud";
 
 export function useAccountPreferenceSync({ supabase, userId, enabled }: {
   supabase: SupabaseClient | null; userId: string; enabled: boolean;
@@ -16,6 +16,8 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
     let active = true, busy = false, queued = false, failures = 0;
     let retryAfter = 0, timer: number | undefined;
     let refreshScheduled = false;
+    let revisionBusy = false;
+    let knownRevision: string | null | undefined;
     const acknowledged = readScopedPreferences(userId);
     let needsInitialRead = !acknowledged;
     let base = acknowledged ?? captureBrowserPreferences();
@@ -46,6 +48,7 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
           applied.values[ledgerKey] = latest.values[ledgerKey];
         }
         base = result.remote;
+        knownRevision = result.revision;
         needsInitialRead = false;
         receiveAccountPreferences(userId, applied, result.remote);
         failures = 0; retryAfter = 0;
@@ -101,9 +104,22 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
           void channel.send({ type: 'broadcast', event: 'changed', payload: {} });
         }
       });
-    // Missed notifications / suspended mobile tabs recover on focus and online.
-    // This is bounded account-state traffic directly to storage, never tick data.
-    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void synchronize(); }, 30000);
+    // Broadcasts are transient, not durable delivery. A visible phone can miss
+    // the trade hint without ever regaining focus (and previously waited 30s).
+    // Check just the private row revision; fetch/merge its payload only when it
+    // changed. Never download the whole workspace every five seconds.
+    const checkRevision = async () => {
+      if (!active || document.visibilityState !== 'visible' || busy || revisionBusy || Date.now() < retryAfter) return;
+      revisionBusy = true;
+      try {
+        const revision = await readAccountPreferenceRevision(supabase, userId);
+        if (active && revision !== knownRevision) schedule();
+      } catch {
+        // The normal synchronizer owns bounded retries and retains local edits.
+        if (active) schedule();
+      } finally { revisionBusy = false; }
+    };
+    const interval = window.setInterval(() => void checkRevision(), 5000);
     window.addEventListener('kwantdesk:preferences-changed', onLocalChange);
     window.addEventListener('storage', onLocalChange);
     window.addEventListener('focus', reconnect);

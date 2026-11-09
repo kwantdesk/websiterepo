@@ -1,10 +1,11 @@
 const library = "kwantdesk-chart-workspace-presets";
 const keys = new Set([library, "kwantdesk:gamma-charting:" + library, "kwantdesk:algo-charting:" + library, "kwantdesk:workspace-preset-deletions:v1"]);
+const accountStateKeys = new Set([...keys, "kwantify-paper-trading-accounts", "kwantify-paper-trading-ledger-v1"]);
 type ConfirmedValue = { value: string; blockedLocalValue: string | null };
 const confirmed = new Map<string, Map<string, ConfirmedValue>>();
 export const isWorkspaceLibraryPreference = (key: string) => keys.has(key);
 export function recordConfirmedWorkspacePreference(userId: string, key: string, value: string | undefined, locallyStored: boolean) {
-  if (!isWorkspaceLibraryPreference(key)) return;
+  if (!accountStateKeys.has(key)) return;
   if (locallyStored || value === undefined) { confirmed.get(userId)?.delete(key); return; }
   let values = confirmed.get(userId);
   if (!values) { values = new Map(); confirmed.set(userId, values); }

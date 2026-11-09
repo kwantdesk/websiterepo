@@ -1,4 +1,5 @@
 import { writeProtectedItem, type StorageWriteResult } from "./browserStorageQuota.ts";
+import { readWorkspacePreferenceValue, recordConfirmedWorkspacePreference } from "./workspacePreferenceFallback.ts";
 
 export type PaperTradingAccountRecord = {
   id: string;
@@ -34,7 +35,7 @@ export function loadPaperTradingAccounts(): PaperTradingAccountRecord[] {
 export function readPaperTradingAccounts(): { ok: boolean; accounts: PaperTradingAccountRecord[] } {
   if (typeof window === "undefined") return { ok: false, accounts: [] };
   try {
-    const raw = window.localStorage.getItem(PAPER_TRADING_ACCOUNTS_STORAGE_KEY);
+    const raw = readWorkspacePreferenceValue(PAPER_TRADING_ACCOUNTS_STORAGE_KEY);
     if (!raw) return { ok: true, accounts: [] };
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return { ok: false, accounts: [] };
@@ -88,7 +89,10 @@ export function savePaperTradingAccounts(accounts: PaperTradingAccountRecord[]):
   if (typeof window === "undefined") return { ok: false, reclaimedBytes: 0, evicted: 0 };
   let result: StorageWriteResult;
   try {
-    result = writeProtectedItem(PAPER_TRADING_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+    const value = JSON.stringify(accounts);
+    result = writeProtectedItem(PAPER_TRADING_ACCOUNTS_STORAGE_KEY, value);
+    const owner = window.localStorage.getItem("kwantdesk:active-preferences-owner:v1");
+    if (owner) recordConfirmedWorkspacePreference(owner, PAPER_TRADING_ACCOUNTS_STORAGE_KEY, value, result.ok);
   } catch {
     result = { ok: false, reclaimedBytes: 0, evicted: 0 };
   }

@@ -1,0 +1,22 @@
+{
+  "checks": [
+    {
+      "check": "Actual phone chart displays entry/SL/TP",
+      "ms": 654,
+      "levels": 3
+    },
+    {
+      "check": "New phone login restores already-open position as rendered chart levels",
+      "levels": 3
+    },
+    {
+      "check": "Phone protection edit renders on desktop without realtime hints"
+    },
+    {
+      "check": "Desktop exit removes phone open-position chart levels"
+    }
+  ],
+  "errors": [],
+  "writes": 7,
+  "method": "Separate isolated browser stores; real workspace, engine, account sync and chart rendering. Database transport mocked; DROP_TRADE_HINTS selects notification loss or normal delivery."
+}
