@@ -5,13 +5,10 @@ for(const tool of ['trendLine','rectangle','horizontalLine','verticalLine','poly
  // Click the first painted hit target at its SVG coordinate rather than selecting via fixture state.
  const target=p.locator('[data-draw-hit="body"]').first();
  const point=await target.evaluate(el=>{const child=el.querySelector('[data-painted-hit]');const m=child.getScreenCTM();for(let i=1;i<2000;i++){const point=child.getPointAtLength(child.getTotalLength()*i/2000).matrixTransform(m);if(point.x>100&&point.x<520&&point.y>100&&point.y<380)return {x:point.x,y:point.y};}throw Error('No visible hit geometry')});
- await p.mouse.click(point.x,point.y);const input=p.getByRole('textbox',{name:'Drawing text'});await input.waitFor();
- await input.fill('My '+tool);await input.press('Enter');assert.equal(JSON.parse(await p.locator('output').textContent())[0].text,'My '+tool);assert.equal(await p.locator('[data-drawing-line-label]').textContent(),'My '+tool);
- await input.fill('discard');await input.press('Escape');assert.equal(await input.inputValue(),'My '+tool);
- await input.fill('Blur '+tool);await p.mouse.click(620,440);assert.equal(JSON.parse(await p.locator('output').textContent())[0].text,'Blur '+tool);assert.equal(await p.locator('[data-drawing-text-editor]').count(),0);
- console.log('PASS '+tool+' single-click editor, Enter, Escape, click-away persistence');
+ await p.mouse.click(point.x,point.y);assert.equal(await p.locator('[data-drawing-text-editor]').count(),0,'single click must not mount floating text editor');
+ await p.mouse.dblclick(point.x,point.y);await p.getByRole('button',{name:'Text',exact:true}).click();const input=p.getByRole('textbox',{name:'Line text',exact:true});await input.waitFor();
+ await input.fill('My '+tool);assert.equal(JSON.parse(await p.locator('output').textContent())[0].text,'My '+tool);await p.getByRole('button',{name:'Close',exact:true}).click();assert.equal(await p.locator('[data-drawing-line-label]').textContent(),'My '+tool);assert.equal(await p.locator('[data-drawing-text-editor]').count(),0);
+ console.log('PASS '+tool+' no floating editor on selection; double-click settings text editing and saved label preserved');
 }
-await p.getByRole('combobox',{name:'Tool'}).selectOption('trendLine');await p.mouse.click(310,302);await p.getByRole('textbox',{name:'Drawing text'}).waitFor();const before=await p.locator('[data-drawing-text-editor]').boundingBox();await p.getByRole('button',{name:'Pan',exact:true}).click();
-// Pan button intentionally keeps selection (outside chart).
-const after=await p.locator('[data-drawing-text-editor]').boundingBox();assert.equal(Math.round(after.x-before.x),30);await p.getByRole('button',{name:'Lock',exact:true}).click();assert.equal(await p.locator('[data-drawing-text-editor]').count(),0);assert.deepEqual(errors,[]);console.log('PASS viewport movement, locked drawing guard, zero browser errors');
+assert.deepEqual(errors,[]);console.log('PASS zero browser errors');
 }finally{await b.close();server.closeAllConnections();server.close();}})().catch(e=>{console.error(e);process.exitCode=1});

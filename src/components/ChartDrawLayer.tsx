@@ -1,6 +1,5 @@
 "use client";
 import { lineTextGeometry } from "@/lib/chartLineText";
-import ChartDrawingTextEditor from "@/components/ChartDrawingTextEditor";
 
 import { chartSvgHitTargets, chartSvgBodyHit } from "@/lib/chartSvgHitTargets";
 import { DRAWING_HANDLE_HIT_RADIUS } from "@/lib/drawingPaintedHit";
@@ -1899,8 +1898,6 @@ export default function ChartDrawLayer({
     : null;
 
   const captureActive = !readOnly && (active || activeTool === "eraser");
-  const textEditorDrawing = !readOnly && activeTool === "cursor"
-    ? drawings.find(drawing => drawing.id === selectedId && drawing.tool !== "emoji") : undefined;
   return (
     <><svg
       ref={svgRef}
@@ -1987,9 +1984,7 @@ export default function ChartDrawLayer({
           {drawings.filter((drawing) => drawing.tool === "fixedRangeVolumeProfile" || drawing.tool === "anchoredVolumeProfile").map((drawing) => renderDrawing(drawing))}
         </g>
       </g>
-    </svg>{textEditorDrawing ? <ChartDrawingTextEditor key={textEditorDrawing.id} drawing={textEditorDrawing}
-      width={Math.max(0, width - priceScaleWidth)} height={height} top={plotTopInset} bottom={plotBottomInset}
-      toX={toX} toY={toY} subscribeViewport={subscribeViewport} onUpdate={onUpdate} /> : null}{clipboardMenu}</>
+    </svg>{clipboardMenu}</>
   );
 }
 

@@ -1,10 +1,12 @@
 import React, { useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
+import ChartDrawSettings from "@/components/ChartDrawSettings";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
 import { createDrawing, type Drawing, type DrawToolId } from "@/lib/chartDrawTools";
 
 function App() {
   const [drawings, setDrawings] = useState<Drawing[]>(() => [createDrawing("trendLine", [{time:200,price:250},{time:420,price:310}])]);
+  const [settingsId, openSettings] = useState<string|null>(null);
   const [selected, select] = useState<string|null>(null);
   const [locked, lock] = useState(false);
   const [offset, pan] = useState(0);
@@ -18,7 +20,7 @@ function App() {
       readOnly={locked} drawings={drawings} selectedId={selected} toX={time=>time+offset} toY={price=>price}
       fromXY={(x,y)=>({time:x-offset,price:y})} candles={[]} magnet={false} magnetStrength="weak"
       viewportVersion={offset} chartReady={1} subscribeViewport={subscribe} onCommit={drawing=>setDrawings([...drawings,drawing])}
-      onUpdate={update} onDelete={()=>{}} onSelect={select} onToolConsumed={()=>{}} onRequestText={()=>{}} onOpenSettings={()=>{}} />
-  </div><output>{JSON.stringify(drawings)}</output></>;
+      onUpdate={update} onDelete={()=>{}} onSelect={select} onToolConsumed={()=>{}} onRequestText={()=>{}} onOpenSettings={openSettings} />
+  </div><ChartDrawSettings drawing={drawings.find(d=>d.id===settingsId)??null} onChange={update} onClose={()=>openSettings(null)} /><output>{JSON.stringify(drawings)}</output></>;
 }
 createRoot(document.getElementById("root")!).render(<App/>);
