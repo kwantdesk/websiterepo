@@ -1,3 +1,4 @@
+import {surfaceForeground} from '../../public/gex-data-app/site-theme.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -15,7 +16,7 @@ function factory(invert=false,spot,{strikeLabel=value=>'$'+value,mode='NET_GAMMA
   const env={heatMapCellPoint,heatMapTooltipRows,heatMetricFor,heatMapInitialWindow,showVisual(){},
     activeTool:{id:'heat-map'},toolConfiguration:{},buildRequest:()=>({sessionDate:'2026-10-16',dataMode:mode,filter:{ticker:'SPY'}}),
     getControl:key=>({ticker:'SPY',heatMetric:mode,heatAxes:invert?'INVERTED':'NORMAL'})[key],
-    q:()=>{throw Error('Heat Map must not read an unmeasured holder width.');},themePaint:value=>value,CHART_COLORS:{primary:'#700FEC'},
+    q:()=>{throw Error('Heat Map must not read an unmeasured holder width.');},themePaint:value=>value,surfaceForeground,CHART_COLORS:{primary:'#700FEC'},
     chartStrikeLabel:strikeLabel,formatPrice:value=>'$'+value,compact:(value,money)=>money?currencyAbbreviated(value,2):abbreviate(value,2),heatCellColor:()=> '#700FEC',
     quantCanvas:value=>{spec=value;},setSummary(){},
   };

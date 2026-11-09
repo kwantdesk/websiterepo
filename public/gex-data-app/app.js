@@ -2,7 +2,7 @@ import {numericControlChoices} from './numeric-control-options.js?v=20261108';
 import {marketShareTooltipRows,marketShareFormatValue} from './market-share-interaction-model.js?v=20261104';
 import {createIntervalMapTooltipSelection,intervalMapTooltipRows} from './interval-map-interaction-model.js?v=20261104';
 import {gainersIndustryChoices} from './gainers-industry-controls.js?v=20261104';
-import {themePaint,actionForeground} from './site-theme.js?v=1';
+import {themePaint,actionForeground,surfaceForeground} from './site-theme.js?v=1';
 import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
 import {gexStorage,gexTimeZone,gexFetch as fetch,gexWorkspaceReplay,releaseGexDataConsumer} from './site-runtime.js?v=1';
 import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, precedingIntervalSpot, averagedIvRank, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=2";
@@ -2111,7 +2111,7 @@ await boot();
         // into the cell minus4px and keeps the6px minimum readable font.
         const columns=Math.max(1,xmax-xmin),rows=Math.max(1,ymax-ymin),configuredSize=Math.max(11,Math.min(22,Math.round(.3*Math.min(w/columns,h/rows)))),baseSize=Math.floor(Math.min(configuredSize,ch-4)),showCellLabels=columns*rows<3000&&baseSize>=6,baseFont=`700 ${baseSize}px Aleph, sans-serif`;
         ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();ctx.textAlign="center";ctx.textBaseline="middle";
-        for(let xi=state.start;xi<=state.end;xi++)for(let yi=Math.floor(ymin);yi<=Math.min(vertical.length-1,Math.ceil(ymax));yi++){const expiry=invert?vertical[yi]:horizontal[xi],strike=invert?horizontal[xi]:vertical[yi],cell=matrix.get(expiry)?.get(strike);if(!observedCell(cell))continue;ctx.fillStyle=heatCellColor(cell.value,mode,positiveMax,negativeMin,cell===mvc);ctx.fillRect(x(xi),y(yi+1),cw,ch);if(showCellLabels){const text=formatValue(cell.value);ctx.font=baseFont;const width=ctx.measureText(text).width,size=width>cw-4?Math.floor(baseSize*(cw-4)/width):baseSize;if(size>=6){ctx.font=`700 ${size}px Aleph, sans-serif`;ctx.fillStyle=themePaint("#fff");ctx.fillText(text,x(xi)+cw/2,y(yi+.5));}}}
+        for(let xi=state.start;xi<=state.end;xi++)for(let yi=Math.floor(ymin);yi<=Math.min(vertical.length-1,Math.ceil(ymax));yi++){const expiry=invert?vertical[yi]:horizontal[xi],strike=invert?horizontal[xi]:vertical[yi],cell=matrix.get(expiry)?.get(strike);if(!observedCell(cell))continue;const cellColor=heatCellColor(cell.value,mode,positiveMax,negativeMin,cell===mvc);ctx.fillStyle=cellColor;ctx.fillRect(x(xi),y(yi+1),cw,ch);if(showCellLabels){const text=formatValue(cell.value);ctx.font=baseFont;const width=ctx.measureText(text).width,size=width>cw-4?Math.floor(baseSize*(cw-4)/width):baseSize;if(size>=6){ctx.font=`700 ${size}px Aleph, sans-serif`;ctx.fillStyle=surfaceForeground(cellColor);ctx.fillText(text,x(xi)+cw/2,y(yi+.5));}}}
         ctx.restore();ctx.fillStyle=themePaint("#fff");ctx.font="700 13px Aleph, sans-serif";ctx.textBaseline="middle";ctx.textAlign="right";const everyY=Math.max(1,Math.ceil(23/ch));for(let yi=Math.ceil(ymin);yi<=Math.min(vertical.length-1,Math.floor(ymax));yi+=everyY)ctx.fillText(invert?formatExpiry(vertical[yi]):chartStrikeLabel(vertical[yi]),left-8,y(yi+.5));
         ctx.textAlign="center";const horizontalLabel=index=>invert?chartStrikeLabel(horizontal[index]):formatExpiry(horizontal[index]);let maxLabelWidth=24;
         // Native Heat Map782984 measures visible labels (minimum24px) and

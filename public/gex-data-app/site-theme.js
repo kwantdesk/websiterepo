@@ -13,6 +13,12 @@ export function actionForeground(color){
   const luminance=rgb.slice(0,3).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
   return(luminance+.05)/.05>=1.05/(luminance+.05)?'#000000':'#FFFFFF';
 }
+export function surfaceForeground(color,background=palette.background){
+  const fg=channels(color),bg=channels(background)||[0,0,0];
+  if(!fg)return palette.foreground;
+  const alpha=Math.max(0,Math.min(1,fg[3]??1));
+  return actionForeground(`rgb(${fg.slice(0,3).map((value,index)=>value*alpha+bg[index]*(1-alpha)).join(',')})`);
+}
 export function themeRole(color){
   const rgb=channels(color);if(!rgb)return'primary';const[r,g,b]=rgb,max=Math.max(r,g,b),min=Math.min(r,g,b),light=(max+min)/510;
   if(light<.045)return'background';if(light<.085)return'panel';if(light<.13)return'surface';if(light<.23)return'border';

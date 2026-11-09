@@ -1,3 +1,4 @@
+import {surfaceForeground} from '../../public/gex-data-app/site-theme.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -49,21 +50,21 @@ test('explicit source value wins over paired derivation without suppressing supp
 // hit geometry and tooltip callback. A disconnected helper cannot satisfy this.
 const app=readFileSync(new URL('../../public/gex-data-app/app.js',import.meta.url),'utf8');
 const renderer=app.slice(app.indexOf('  function renderHeatMap(payload)'),app.indexOf('  function renderMarketMap(payload)'));
-function renderHeatMap(data,mode='NET_GAMMA_EXPOSURE',{inverted=false,hideAxisTitles=false}={}){
+function renderHeatMap(data,mode='NET_GAMMA_EXPOSURE',{inverted=false,hideAxisTitles=false,cellColor='#700FEC'}={}){
   let spec,summary;const details=[],drawCalls=[];
   const env={heatMapCellPoint,heatMapTooltipRows,heatMetricFor,heatMapInitialWindow,
     toolConfiguration:{hideAxisTitles},
     showVisual(){},getControl:key=>({ticker:'SPY',heatMetric:mode,heatAxes:inverted?'INVERTED':'NORMAL'})[key],
-    q:()=>({clientWidth:900}),themePaint:color=>color,CHART_COLORS:{primary:'#700FEC'},
+    q:()=>({clientWidth:900}),themePaint:color=>color,surfaceForeground,CHART_COLORS:{primary:'#700FEC'},
     chartStrikeLabel:value=>'$'+value,formatPrice:value=>'$'+value,
     compact:(value,money)=>money?currencyAbbreviated(value,2):abbreviate(value,2),
-    heatCellColor:()=> '#700FEC',quantCanvas:value=>{spec=value;},setSummary:value=>{summary=value;},
+    heatCellColor:()=>cellColor,quantCanvas:value=>{spec=value;},setSummary:value=>{summary=value;},
     activeTool:{id:'heat-map'},buildRequest:()=>({sessionDate:'2026-10-16',dataMode:mode,filter:{ticker:'SPY'},filterExpression:{field:'PREMIUM',operation:'GREATER_THAN',values:[1000]}}),
     heatCellSelection,heatCellTradeRequest,openTradeDetail:detail=>details.push(detail),
   };
   vm.runInNewContext(renderer+'\nthis.render=renderHeatMap;',env);
   env.render({data:{'2026-10-16':data},_spot:763});
-  const ctx=new Proxy({measureText:text=>({width:String(text).length*7})},{get:(target,key)=>target[key]??((...args)=>drawCalls.push({method:key,args})),set:(target,key,value)=>{target[key]=value;return true;}});
+  const ctx=new Proxy({measureText:text=>({width:String(text).length*7})},{get:(target,key)=>target[key]??((...args)=>drawCalls.push({method:key,args,fillStyle:target.fillStyle})),set:(target,key,value)=>{target[key]=value;return true;}});
   spec.draw(ctx,900,540,{start:0,end:0,yWindow:[0,1]});
   const count=Object.keys(data).length,span=Math.max(1,count-1)+1;
   const pointer=index=>({pointerX:469,pointerY:506-(index+.5)*496/span});
@@ -79,6 +80,14 @@ test('actual renderHeatMap factory suppresses zero net but retains supplied zero
   assert.equal(h.summary.find(row=>row[0]==='Active cells')[1],'1');
   assert.match(h.spec.legend[0].label,/MVC \(\$763/);
   assert.deepEqual(raw,before);
+});
+
+test('actual heat renderer paints a readable MVC label on a white monochrome cell',()=>{
+ const h=renderHeatMap({'736':{value:-4630000000}},'NET_GAMMA_EXPOSURE',{cellColor:'#FFFFFF'});
+ const label=h.drawCalls.find(call=>call.method==='fillText'&&call.args[0]==='-4.63 B');
+ assert.ok(label,'MVC value must remain painted');assert.equal(label.fillStyle,'#000000');
+ const faint=renderHeatMap({'736':{value:-4630000000}},'NET_GAMMA_EXPOSURE',{cellColor:'#FFFFFF33'});
+ assert.equal(faint.drawCalls.find(call=>call.method==='fillText'&&call.args[0]==='-4.63 B').fillStyle,'#FFFFFF');
 });
 
 test('actual renderer does not expose incomplete, zero, cancelling, null or nonfinite cells as grid points or MVC',()=>{
