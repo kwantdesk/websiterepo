@@ -1,0 +1,4 @@
+PASS dark: all six open/working entry, SL and TP price labels match grab handles
+PASS light: all six open/working entry, SL and TP price labels match grab handles
+PASS purple: all six open/working entry, SL and TP price labels match grab handles
+PASS zero browser errors

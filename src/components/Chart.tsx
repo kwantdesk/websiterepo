@@ -20660,8 +20660,8 @@ function Chart({
             width: nativePriceScaleWidth,
             height: PAPER_LABEL_HEIGHT,
             fontSize: PAPER_LABEL_FONT_PX,
-            backgroundColor: level.color,
-            color: readableTextOn(level.color),
+            backgroundColor: paperLabelInk,
+            color: paperLabelText,
           }}
           aria-label={`${level.kind === "entry" ? "Entry / order" : level.kind === "stop_loss" ? "Stop loss" : "Take profit"} price ${level.price.toFixed(priceFormat.precision)}`}
         >
