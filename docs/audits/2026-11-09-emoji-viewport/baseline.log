@@ -1,0 +1,10 @@
+AssertionError [ERR_ASSERTION]: before settle glyph width
+    at verify (C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\scripts\audits\emoji-viewport-browser.cjs:20:185)
+    at C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\scripts\audits\emoji-viewport-browser.cjs:21:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

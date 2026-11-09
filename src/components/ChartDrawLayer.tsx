@@ -1861,8 +1861,10 @@ export default function ChartDrawLayer({
       <g
         key={drawing.id}
         data-chart-drawing-id={preview ? undefined : drawing.id}
-        data-fixed-marker-x={fillMarkerHandle ? a.x ?? undefined : undefined}
-        data-fixed-marker-y={fillMarkerHandle ? a.y ?? undefined : undefined}
+        // Pixel-sized glyphs need the same inverse viewport scale as arrows,
+        // including their hit area and resize handle, before the next paint.
+        data-fixed-marker-x={fillMarkerHandle || emojiSize != null ? a.x ?? undefined : undefined}
+        data-fixed-marker-y={fillMarkerHandle || emojiSize != null ? a.y ?? undefined : undefined}
         data-draw-hit={interactive ? "drawing" : undefined}
         opacity={preview ? 0.75 : 1}
         style={interactive ? { pointerEvents: "auto", cursor: bodyMovable ? "move" : "pointer" } : { pointerEvents: "none" }}
