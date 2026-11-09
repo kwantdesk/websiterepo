@@ -15,6 +15,7 @@ import {
 } from "@/lib/chartSettings";
 import { GEX_DATA_TIME_ZONE_CHANGE_EVENT, normalizeTimeZone } from "@/lib/timeZones";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
+import { economicEventLabel } from "@/lib/economicEventLabels";
 
 const REFRESH_MS = 5 * 60_000;
 const HOUR_MS = 60 * 60_000;
@@ -48,7 +49,7 @@ function highImpactEvents(rows: unknown[]): NewsEvent[] {
     if (!Number.isFinite(timeMs)) continue;
     // Keep the notification minimized even if a refresh switches calendar providers.
     const key = JSON.stringify([row.currency, row.name, timeMs]);
-    events.set(key, { key, name: row.name, currency: row.currency, timeMs, status: row.status === "released" ? "released" : "scheduled" });
+    events.set(key, { key, name: economicEventLabel(row.name, row.currency), currency: row.currency, timeMs, status: row.status === "released" ? "released" : "scheduled" });
   }
   return [...events.values()].sort((a, b) => a.timeMs - b.timeMs);
 }

@@ -30,6 +30,7 @@ import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { MacroNewsView } from "@/components/news/MacroWorkspace";
 import { economicCalendarDateKey as dateKey } from "@/lib/economicCalendarFormatting";
+import { economicEventLabel } from "@/lib/economicEventLabels";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
@@ -114,7 +115,7 @@ function sanitizeCalendarEvent(value: unknown): EconomicCalendarEvent | null {
     currency,
     country: text("country") || CURRENCY_COUNTRY[currency],
     impact,
-    name: candidate.name,
+    name: economicEventLabel(candidate.name, currency),
     category: text("category"),
     forecast: text("forecast"),
     previous: text("previous"),
