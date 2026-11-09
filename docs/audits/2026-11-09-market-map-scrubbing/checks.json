@@ -1,0 +1,13 @@
+{
+  "noLoadingOverlay": true,
+  "heldSliderRetained": true,
+  "chartRetained": true,
+  "changedHistoricalPixels": true,
+  "visitedFrameNoRefetch": true,
+  "mapRequests": [
+    "latest",
+    "2026-11-06T14:32:00.000Z",
+    "2026-11-06T14:33:00.000Z"
+  ],
+  "errors": []
+}

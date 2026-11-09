@@ -18,6 +18,7 @@ import {instrumentChoices,setChoiceValue,snapshotTimeOptions,multiChoiceDropdown
 import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} from './preferences-model.js?v=1';
 import {normalizeWheelDelta,wheelZoomWindow,panZoomWindow,heatMapPlainWheel,cursorTooltipPlacement,sliderBarWindow,sliderHandleWindow,sliderTrackClick,lerpZoomStep} from './chart-interaction-model.js?v=1';
 import {bindZoomNavigator,navigatorPreviewDomain} from './navigator-ui.js?v=3';
+import {sameSnapshotScope,createSnapshotFrameCache} from './snapshot-frame-cache.js';
 import {liveChartWindow,compatibleLiveTimeline,dataRequestIdentity} from './live-chart-model.js?v=2';
 import {OPTION_TRADE_DETAIL_ENDPOINT,UNCONSOLIDATED_COLUMNS,optionTradeDetailRequest,optionTradeDetailTableSort,unconsolidatedTradeRows} from './option-trade-detail-model.js?v=1';
 import {additionalToolRequest} from './additional-tool-requests.js?v=20261103';
@@ -632,6 +633,8 @@ await boot();
   const contractChoiceCache=new Map();
   let toolPayload = null;
   let toolPayloadQuery = null;
+  const marketMapFrames=createSnapshotFrameCache();
+  let snapshotScrubbing=false;
   let equityPageGeneration = 0;
   let tableRows = [];
   let tableColumns = null;
@@ -1257,14 +1260,17 @@ await boot();
       const query=dataRequestIdentity(tool.id,identityRequest,snapshot);
       requestPrepared=true;
       // Retain a table only for a sort-only request of the SAME data selection.
-      // A ticker, filter, session or snapshot change must clear the old view.
+      // Ticker, filter and session changes clear the old view; map time scrubs may retain it.
       let sortOnlyRefresh=false;
       if(retainSortPage&&(tool.view==='oiChange'||['order-flow-consolidated','order-flow-unconsolidated','exchange-notifications'].includes(tool.id))&&toolPayloadQuery){try{const [id,previous,pin]=JSON.parse(toolPayloadQuery),next={...request};delete previous.sort;delete next.sort;if(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)){delete previous.includeStatistics;delete next.includeStatistics;}sortOnlyRefresh=id===tool.id&&dataRequestIdentity(id,previous,pin)===dataRequestIdentity(tool.id,next,snapshot);}catch{}}
       // Refreshes keep the SAME instrument/session visible. A failed new
       // selection must never leave another ticker's chart beneath its controls.
-      if(!append&&toolPayloadQuery!==query&&!sortOnlyRefresh&&!(retainEquityEditor&&['equity-prints','exchange-notifications'].includes(tool.id))){toolPayload=null;toolPayloadQuery=null;resetStage();q('#toolUpdated').textContent='';updateInitialToolLoading(true);}
-      const payload=await loadToolPayload(tool);
+      const scrubbingSameMap=tool.id==='market-map'&&toolPayload&&sameSnapshotScope(toolPayloadQuery,query);
+      if(!append&&toolPayloadQuery!==query&&!sortOnlyRefresh&&!scrubbingSameMap&&!(retainEquityEditor&&['equity-prints','exchange-notifications'].includes(tool.id))){toolPayload=null;toolPayloadQuery=null;resetStage();q('#toolUpdated').textContent='';updateInitialToolLoading(true);}
+      const cachedFrame=tool.id==='market-map'&&snapshot!=null?marketMapFrames.get(query):null;
+      const payload=cachedFrame||await loadToolPayload(tool);
       if(requestId!==toolRequestId||activeTool!==tool)return;
+      if(tool.id==='market-map'&&snapshot!=null&&!cachedFrame)marketMapFrames.put(query,payload);
       if(append&&Array.isArray(payload.data)){
         payload.data=['order-flow-consolidated','order-flow-unconsolidated','equity-prints','exchange-notifications'].includes(tool.id)?mergeOptionTapeRows(tableRows,payload.data):[...tableRows,...payload.data];
         // The licensed flow endpoint only includes aggregate statistics on page1.
@@ -1323,16 +1329,34 @@ await boot();
   function toolMarketOpen(){return activeTool?.group==='News'||Boolean(activeTool?.group==='Equities'?apiStatus.market?.equitiesOpen:apiStatus.market?.optionsOpen??apiStatus.market?.open);}
 
   function renderSnapshotControl(payload){
-    q('.snapshot-control',q('#toolVisual'))?.remove();
-    const timeline=payload._timeline;if(!timeline?.length)return;
+    const existing=q('.snapshot-control',q('#toolVisual')),timeline=payload._timeline;
+    if(snapshotScrubbing&&existing)return;
+    const selectedIndex=timeline?.findIndex(time=>time===(snapshotSelections.get(snapshotKey(activeTool))??timeline.at(-1))),selectedValue=String(selectedIndex>=0?selectedIndex:Math.max(0,(timeline?.length||1)-1));
+    const timelineKey=JSON.stringify(timeline);
+    if(existing&&existing.dataset.timeline===timelineKey){existing.querySelector('input[type=range]').value=selectedValue;existing.querySelector('select').value=selectedValue;const existingOutput=existing.querySelector('output');if(existingOutput)existingOutput.textContent=displayChartTime(timeline[Number(selectedValue)]);return;}
+    existing?.remove();if(!timeline?.length)return;
     const holder=element("div","snapshot-control"),label=element("b","","Time"),range=document.createElement("input"),output=element("output"),timeSelect=document.createElement('select');timeSelect.className='snapshot-time-select';timeSelect.setAttribute('aria-label','Snapshot time');for(const [value,text]of snapshotTimeOptions(timeline,displayChartTime))timeSelect.add(new Option(text,value));range.type="range";range.min="0";range.max=String(timeline.length-1);range.step="1";range.setAttribute("aria-label","One-minute exposure snapshot");
     range.setAttribute('aria-label','One-minute session snapshot');let selected=timeline.findIndex(time=>time===payload._snapshotTime);if(selected<0)selected=timeline.length-1;range.value=timeSelect.value=String(selected);output.textContent=displayChartTime(timeline[selected]);
-    const start=element("span","",displayChartTime(timeline[0])),end=element("span","",displayChartTime(timeline.at(-1))),latest=element("button","","Latest");latest.type="button";latest.addEventListener("click",()=>{snapshotSelections.delete(snapshotKey(activeTool));if(EMBEDDED)parent.postMessage({type:'gex-data-minute',minute:null},location.origin);loadActiveTool();});
-    let timer;const select=()=>{timeSelect.value=range.value;output.textContent=displayChartTime(timeline[Number(range.value)]);if(EMBEDDED)parent.postMessage({type:'gex-data-minute',minute:Number(range.value)===timeline.length-1?null:timeline[Number(range.value)]},location.origin);clearTimeout(timer);const tool=activeTool,key=snapshotKey(tool);timer=setTimeout(()=>{if(activeTool!==tool)return;if(Number(range.value)===timeline.length-1)snapshotSelections.delete(key);else snapshotSelections.set(key,timeline[Number(range.value)]);loadActiveTool();},220);};range.addEventListener("input",select);range.addEventListener("change",select);timeSelect.addEventListener('change',()=>{range.value=timeSelect.value;select();});
+    holder.dataset.timeline=timelineKey;
+    const endScrub=()=>{snapshotScrubbing=false;if(toolPayload)renderSnapshotControl(toolPayload);};range.addEventListener('pointerdown',()=>{snapshotScrubbing=true;});range.addEventListener('pointerup',endScrub);range.addEventListener('pointercancel',endScrub);
+    const start=element("span","",displayChartTime(timeline[0])),end=element("span","",displayChartTime(timeline.at(-1))),latest=element("button","","Latest");latest.type="button";latest.addEventListener("click",()=>{clearTimeout(timer);snapshotSelections.delete(snapshotKey(activeTool));if(EMBEDDED)parent.postMessage({type:'gex-data-minute',minute:null},location.origin);loadActiveTool();});
+    let timer;const select=()=>{
+      timeSelect.value=range.value;output.textContent=displayChartTime(timeline[Number(range.value)]);
+      if(EMBEDDED)parent.postMessage({type:'gex-data-minute',minute:Number(range.value)===timeline.length-1?null:timeline[Number(range.value)]},location.origin);
+      clearTimeout(timer);const tool=activeTool,key=snapshotKey(tool);
+      if(Number(range.value)===timeline.length-1)snapshotSelections.delete(key);else snapshotSelections.set(key,timeline[Number(range.value)]);
+      if(tool.id==='market-map'){
+        activeController?.abort();toolRequestId++;
+        const query=dataRequestIdentity(tool.id,buildRequest(tool),snapshotSelections.get(key)??null);
+        if(snapshotSelections.has(key)&&marketMapFrames.get(query)){loadActiveTool();return;}
+      }
+      timer=setTimeout(()=>{if(activeTool===tool)loadActiveTool();},220);
+    };range.addEventListener("input",select);range.addEventListener("change",select);timeSelect.addEventListener('change',()=>{range.value=timeSelect.value;select();});
     holder.append(label,range,timeSelect,latest);const ends=element("div","snapshot-labels");ends.append(start,end);holder.append(ends);q("#toolVisual").append(holder);
   }
 
   function resetStage() {
+    snapshotScrubbing=false;
     tableRuntime?.closeAutoFilter?.();
     activeChartUpdate=null;
     activeChartInstance=null;refreshingCanvas=null;
@@ -2058,16 +2082,23 @@ await boot();
   function renderMarketMap(payload) {
     const industrySession=getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate||todayOffset(0);
     if(industrySession!==marketMapIndustrySession){marketMapIndustryInventory=new Map();marketMapIndustrySession=industrySession;}
-    marketMapIndustryInventory=observeMarketMapIndustries(marketMapIndustryInventory,payload.data);
-    q('[data-control="industry"]',q('#toolControls'))?.setChoices?.(marketMapIndustryChoices(marketMapIndustryInventory,getControl('sector')));
-    const entries=Object.entries(payload.data||{}).map(([ticker,row])=>({ticker,...row,weight:number(row.size),change:number(row.previousValue)?(number(row.currentValue)/number(row.previousValue)-1)*100:0})).filter(row=>row.weight>0);
-    const grouping=getControl("mapGroup")||"SECTOR",groups=new Map();for(const row of entries){const sector=grouping==="NONE"?"Market":grouping==="INDUSTRY"?row.industry||"Other":row.sector||"Other";if(!groups.has(sector))groups.set(sector,[]);groups.get(sector).push(row);}
-    const sectors=[...groups.entries()].map(([name,rows])=>({name,rows,weight:rows.reduce((sum,row)=>sum+row.weight,0)}));let hits=[],headers=[],mapDrag=null,measuredSize=null,camera={...MARKET_MAP_CAMERA_IDENTITY},mapWidth=1,mapHeight=1,maxZoom=50,horizontalNavigation,verticalNavigation;
+    const entries=[],sectors=[],grouping=getControl("mapGroup")||"SECTOR";
+    function updateObservations(next){
+      marketMapIndustryInventory=observeMarketMapIndustries(marketMapIndustryInventory,next.data);
+      q('[data-control="industry"]',q('#toolControls'))?.setChoices?.(marketMapIndustryChoices(marketMapIndustryInventory,getControl('sector')));
+      // Keep the chart's item array and event handlers; replace only observations.
+      entries.length=0;
+      for(const [ticker,row]of Object.entries(next.data||{})){const item={ticker,...row,weight:number(row.size),change:number(row.previousValue)?(number(row.currentValue)/number(row.previousValue)-1)*100:0};if(item.weight>0)entries.push(item);}
+      const groups=new Map();for(const row of entries){const sector=grouping==="NONE"?"Market":grouping==="INDUSTRY"?row.industry||"Other":row.sector||"Other";if(!groups.has(sector))groups.set(sector,[]);groups.get(sector).push(row);}
+      sectors.length=0;for(const [name,rows]of groups)sectors.push({name,rows,weight:rows.reduce((sum,row)=>sum+row.weight,0)});
+    }
+    updateObservations(payload);
+    let hits=[],headers=[],mapDrag=null,hoveredTicker=null,measuredSize=null,camera={...MARKET_MAP_CAMERA_IDENTITY},mapWidth=1,mapHeight=1,maxZoom=50,horizontalNavigation,verticalNavigation;
     try{const saved=JSON.parse(gexStorage.getItem(`gex-data-market-map-camera:${instanceKey}`));if(saved&&['zoomX','zoomY','offsetX','offsetY'].every(key=>Number.isFinite(saved[key])))camera=saved;}catch{}
     const saveCamera=()=>{try{gexStorage.setItem(`gex-data-market-map-camera:${instanceKey}`,JSON.stringify(camera));}catch{}};
     const chart=quantCanvas({
       title:"Market Map",items:entries,zoom:false,height:620,legend:[],
-      tooltipRows:(_,index,state)=>{if(mapDrag?.panning)return [];const {x:px,y:py}=marketMapWorldPoint(camera,state.pointerX,state.pointerY),header=headers.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);if(header)return marketMapHeaderTooltipRows(header.item.name,grouping);const hit=hits.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);return marketMapTooltipRows(hit?.item,{formatMarketCap:value=>compact(value,true)});},
+      tooltipRows:(_,index,state)=>{if(mapDrag?.panning)return [];const {x:px,y:py}=marketMapWorldPoint(camera,state.pointerX,state.pointerY),header=headers.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);if(header){hoveredTicker=null;return marketMapHeaderTooltipRows(header.item.name,grouping);}const hit=hits.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);hoveredTicker=hit?.item?.ticker??null;return marketMapTooltipRows(hit?.item,{formatMarketCap:value=>compact(value,true)});},
       draw:(ctx,w,h)=>{
         if(w<=0||h<=0)return;
         if(measuredSize&&(measuredSize.width!==w||measuredSize.height!==h)){camera={...MARKET_MAP_CAMERA_IDENTITY};saveCamera();}
@@ -2087,7 +2118,14 @@ await boot();
     chart.canvas.addEventListener('pointermove',event=>{if(!mapDrag)return;if(!mapDrag.panning){if(Math.abs(event.clientX-mapDrag.x)+Math.abs(event.clientY-mapDrag.y)<=3||camera.zoomX<=1&&camera.zoomY<=1)return;mapDrag.panning=true;mapDrag.x=event.clientX;mapDrag.y=event.clientY;chart.shell.querySelector?.('.chart-tooltip')?.setAttribute('hidden','');chart.canvas.style.cursor='grabbing';return;}camera=panMarketMapCamera(mapDrag.camera,event.clientX-mapDrag.x,event.clientY-mapDrag.y,mapWidth,mapHeight,maxZoom);saveCamera();chart.shell.querySelector?.('.chart-tooltip')?.setAttribute('hidden','');chart.redraw();});
     chart.canvas.addEventListener('pointerup',event=>{if(mapDrag&&!mapDrag.panning&&grouping!=='NONE'){const rect=chart.canvas.getBoundingClientRect(),{x:px,y:py}=marketMapWorldPoint(camera,event.clientX-rect.left,event.clientY-rect.top),hit=headers.find(header=>px>=header.x&&px<=header.x+header.width&&py>=header.y&&py<=header.y+header.height);if(hit){setControl(grouping==='SECTOR'?'sector':'industry',hit.item.name.toUpperCase().replaceAll(' ','_'));if(grouping==='SECTOR')setControl('industry','');onControlsChanged();}}mapDrag=null;});
     chart.canvas.addEventListener('pointercancel',()=>{mapDrag=null;});chart.canvas.addEventListener('pointerleave',()=>{mapDrag=null;});chart.redraw();
-    const up=entries.filter(row=>row.change>0).length;setSummary([["Symbols",entries.length.toLocaleString()],["Advancing",up.toLocaleString(),"positive"],["Declining",(entries.length-up).toLocaleString(),"negative"],["Sectors",sectors.length]]);
+    const updateSummary=()=>{const up=entries.filter(row=>row.change>0).length;setSummary([["Symbols",entries.length.toLocaleString()],["Advancing",up.toLocaleString(),"positive"],["Declining",(entries.length-up).toLocaleString(),"negative"],["Sectors",sectors.length]]);};
+    updateSummary();
+    activeChartUpdate=next=>{
+      if((getControl('mapGroup')||'SECTOR')!==grouping||!next||!next.data||typeof next.data!=='object'||Array.isArray(next.data))return false;
+      updateObservations(next);
+      if(hoveredTicker&&!entries.some(item=>item.ticker===hoveredTicker)){chart.shell.querySelector?.('.chart-tooltip')?.setAttribute('hidden','');hoveredTicker=null;}
+      chart.redraw();updateSummary();return true;
+    };
   }
 
   function aggregateExposureTool(payload) {
@@ -2108,6 +2146,7 @@ await boot();
   function renderToolPayload(tool, payload, {refresh=false,append=false}={}) {
     if(refresh&&tool.view==='newsFeed'&&activeChartUpdate?.(payload,{refresh:!append,append}))return;
     if(refresh&&tool.view==='netDrift'&&activeChartUpdate?.(payload))return;
+    if(refresh&&tool.view==='marketMap'&&activeChartUpdate?.(payload))return;
     const reusable=refresh&&activeChartInstance&&['netDrift','darkFlow','ohlc','optionOhlc','ivRank','maxPainTime','contractStats','sideStats','marketShare','exposureStrike','exposureExpiration','maxPain','heatMap','intervalMap','netFlow','volatilityDrift','volatilitySkew','termStructure','oiStrike','oiExpiration','oiTime'].includes(tool.view);
     const reusableEquityTable=refresh&&['equity-prints','exchange-notifications'].includes(tool.id)&&tool.view==='table'&&tableRuntime&&tableColumnHost===q(tool.id==='equity-prints'?'#equityPrintColumnControls':'#notificationColumnControls');
     if(!reusable&&!reusableEquityTable)resetStage();else if(reusable)refreshingCanvas=activeChartInstance;
@@ -2233,7 +2272,7 @@ await boot();
     const key=next?`${next.sessionDate}:${Math.floor(next.timestampMs/60000)}`:null;
     masterReplay=next;if(key===masterSnapshotKey)return;masterSnapshotKey=key;
     clearTimeout(masterReplayTimer);clearTimeout(pollTimer);activeController?.abort();toolRequestId++;
-    if(activeTool){snapshotSelections.delete(snapshotKey(activeTool));toolPayload=null;resetStage();masterReplayTimer=setTimeout(()=>loadActiveTool(),100);}
+    if(activeTool){snapshotSelections.delete(snapshotKey(activeTool));if(activeTool.id!=='market-map'){toolPayload=null;resetStage();}masterReplayTimer=setTimeout(()=>loadActiveTool(),100);}
   });
   window.addEventListener('pagehide',()=>clearTimeout(masterReplayTimer));
   window.addEventListener('message',event=>{if(!EMBEDDED||event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='gex-data-preferences')preferencesChanged();if(event.data?.type==='gex-data-refresh')loadActiveTool();if(event.data?.type==='gex-data-save-state')saveToolControls();if(event.data?.type==='gex-data-visibility'){const wasVisible=frameVisible;frameVisible=event.data.visible===true;if(frameVisible&&!wasVisible)refreshResumedTool();else if(!frameVisible){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}}});
