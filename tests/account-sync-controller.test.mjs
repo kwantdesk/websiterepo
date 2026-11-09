@@ -5,9 +5,9 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import {defaultChartSettings} from '../src/lib/chartSettings.ts';
 import {serializeThemeChoice,THEME_CHOICE_KEY} from '../src/lib/themeChoice.ts';
-import {accountPreferenceFingerprint,mergeAccountPreferenceChanges} from '../src/lib/accountPreferenceMerge.ts';
+import {accountPreferenceFingerprint,mergeAccountPreferenceChanges,mergePaperTradingLedgerUpdate,paperValuationFingerprint} from '../src/lib/accountPreferenceMerge.ts';
 import {createPaperTradingAccount} from '../src/lib/paperAccounts.ts';
-import {emptyPaperTradingLedger,placePaperOrder,updatePaperProtection,closePaperPosition} from '../src/lib/paperTrading.ts';
+import {emptyPaperTradingLedger,placePaperOrder,updatePaperProtection,closePaperPosition,normalizePaperTradingLedger,processPaperQuote} from '../src/lib/paperTrading.ts';
 
 const snapshot=values=>({version:1,complete:true,updatedAt:'2026-10-27T00:00:00Z',values});
 function controller(acknowledged = true, account = { cloud: snapshot({'olisa-theme':'desktop'}) }){
@@ -23,14 +23,15 @@ function controller(acknowledged = true, account = { cloud: snapshot({'olisa-the
  const require=id=>{
   if(id==='react')return {useEffect:fn=>{effect=fn}};
   if(id.includes('userPreferences'))return {isTrackedStorageKey:key=>key==='olisa-theme',captureBrowserPreferences:()=>{captures++;return structuredClone(state)},readScopedPreferences:()=>acknowledged ? structuredClone(account.cloud) : null,receiveAccountPreferences(_owner,next){state=next;applied++;}};
-  if(id.includes('accountPreferenceMerge'))return {accountPreferenceFingerprint,mergeAccountPreferenceChanges};
+  if(id.includes('accountPreferenceMerge'))return {accountPreferenceFingerprint,mergeAccountPreferenceChanges,mergePaperTradingLedgerUpdate,paperValuationFingerprint};
+  if(id.includes('paperTrading'))return {normalizePaperTradingLedger};
   if(id.includes('accountPreferenceCloud'))return {async readAccountPreferenceRevision(){revisions++;return accountPreferenceFingerprint(account.cloud)},async exchangeAccountPreferences(_client,owner,base,local,write){assert.equal(owner,'owner');calls++;const merged=mergeAccountPreferenceChanges(base,local,account.cloud);if(write){writes++;account.cloud=merged;}return {remote:structuredClone(account.cloud),snapshot:merged,revision:accountPreferenceFingerprint(account.cloud)};}};
   throw Error(id);
  };
  vm.runInNewContext(code,{exports,require,window,document,CustomEvent:class {constructor(type,options){this.type=type;this.detail=options?.detail}},Date,console});
  exports.useAccountPreferenceSync({supabase:client,userId:'owner',enabled:true});const cleanup=effect();
  return {get revisions(){return revisions},async heartbeat(){for(const fn of intervals.values())await fn();await new Promise(resolve=>setImmediate(resolve));},get captures(){return captures},get state(){return state},get calls(){return calls},get writes(){return writes},get applied(){return applied},get removed(){return removed},get timers(){return timeouts.size+intervals.size},get scheduled(){return [...timeouts.keys()]},
-  setState(next){state=next},setCloud(next){account.cloud=next},emit:(type,key)=>window.dispatchEvent({type,key}),notify:()=>notifications.broadcast(),cleanup,
+  setState(next){state=next},setCloud(next){account.cloud=next},emit:(type,key)=>window.dispatchEvent({type,key}),notify:(payload)=>notifications.broadcast({payload}),cleanup,
   async flush(){const queued=[...timeouts.values()];timeouts.clear();for(const fn of queued)fn();await new Promise(resolve=>setImmediate(resolve));},
  };
 }
@@ -145,4 +146,24 @@ test('an open phone changing chart settings cannot restore its stale desktop pal
   desktop.cleanup();
   phone.cleanup();
  }
+});
+
+test('a second device requests the latest overnight valuation without enabling per-tick uploads',async()=>{
+ const record=createPaperTradingAccount({name:'Overnight handoff',balance:50000,leverage:'1:30',instrument:'NQ'});
+ const at=Date.parse('2026-11-09T20:00Z'),key='kwantify-paper-trading-ledger-v1';
+ const q=price=>({bid:price,ask:price,timestamp:at});
+ const opened=placePaperOrder(emptyPaperTradingLedger(),[record],{accountId:record.id,symbol:'NQ',side:'buy',type:'market',quantity:1,price:null,stopLoss:29990,takeProfits:[]},q(30000)).ledger;
+ const shared={cloud:snapshot({[key]:JSON.stringify(opened)})};
+ const desktop=controller(true,shared);await desktop.flush();
+ const marked=processPaperQuote(opened,[record],'NQ',{...q(30010),timestamp:at+1000},{executionAuthorized:true});
+ desktop.setState(snapshot({[key]:JSON.stringify(marked)}));desktop.emit('kwantdesk:preferences-changed');await desktop.flush();
+ assert.equal(desktop.writes,0,'ordinary ticks remain local');
+ const phone=controller(false,shared);await phone.flush();
+ assert.equal(JSON.parse(phone.state.values[key]).accounts[record.id].positions.length,1);
+ desktop.notify({requestMarks:true});await desktop.flush();assert.equal(desktop.writes,1);
+ phone.notify();await phone.flush();
+ const received=JSON.parse(phone.state.values[key]).accounts[record.id].positions[0];
+ assert.equal(received.markPrice,30010);assert.equal(received.unrealizedPnl,200);
+ desktop.emit('kwantdesk:preferences-changed');await desktop.flush();assert.equal(desktop.writes,1);
+ desktop.cleanup();phone.cleanup();
 });

@@ -73,6 +73,8 @@ export type PaperPosition = {
   entryPrice: number;
   openedAt: number;
   markPrice: number;
+  /** Source time of the displayed valuation, independent of execution protection. */
+  markQuoteAt?: number;
   /** Last executable price from the authoritative stream used for protection crossing checks. */
   protectionMarkPrice: number;
   /** Timestamp of the last authoritative protection quote. */
@@ -579,7 +581,7 @@ export const PAPER_MARK_QUOTE_EVENT = "kwantdesk:paper-mark-quote";
  * same side-aware mark rather than the candle close or midpoint.
  */
 export function paperPositionMarkPrice(
-  position: Pick<PaperPosition, "symbol" | "side" | "markPrice">,
+  position: Pick<PaperPosition, "symbol" | "side" | "markPrice" | "markQuoteAt">,
   quote?: PaperMarkQuote | null,
   now = Date.now(),
   maximumQuoteAgeMs = 5_000,
@@ -591,6 +593,8 @@ export function paperPositionMarkPrice(
     && quote.bid > 0
     && quote.ask > 0
     && quote.bid <= quote.ask
+    && quote.timestamp >= (position.markQuoteAt ?? 0)
+    && quote.timestamp <= now + 1_000
     && now - quote.timestamp <= maximumQuoteAgeMs;
   if (quoteMatches) return position.side === "buy" ? quote.bid : quote.ask;
   return finite(position.markPrice);
@@ -670,9 +674,11 @@ function normalizePosition(value: Partial<PaperPosition>): PaperPosition | null 
     entryPrice,
     openedAt,
     markPrice,
+    markQuoteAt: positive(value.markQuoteAt, positive(value.protectionQuoteAt, openedAt)),
     protectionMarkPrice: positive(value.protectionMarkPrice, entryPrice),
     protectionQuoteAt: positive(value.protectionQuoteAt, openedAt),
-    unrealizedPnl: finite(value.unrealizedPnl),
+    unrealizedPnl: remainingQuantity > 0 && value.status !== "closed"
+      ? paperProjectedPnl(value.symbol, value.side, entryPrice, markPrice, remainingQuantity) : 0,
     marginUsed: Math.max(0, finite(value.marginUsed)),
     leverage: positive(value.leverage),
     stopLoss: value.stopLoss == null ? null : positive(value.stopLoss),
@@ -930,6 +936,7 @@ function createEntryPosition(
     entryPrice: fillPrice,
     openedAt: timestamp,
     markPrice: fillPrice,
+    markQuoteAt: timestamp,
     protectionMarkPrice: fillPrice,
     protectionQuoteAt: timestamp,
     unrealizedPnl: 0,
@@ -1178,6 +1185,7 @@ function closePositionQuantity(
     ...position,
     remainingQuantity,
     markPrice: price,
+    markQuoteAt: timestamp,
     unrealizedPnl: remainingQuantity > 0 ? calculatePnl(position, price, remainingQuantity) : 0,
     status: remainingQuantity > 0 ? "open" : "closed",
     closedAt: remainingQuantity > 0 ? undefined : timestamp,
@@ -1259,8 +1267,11 @@ export function processPaperQuote(
 
       const markPrice = position.side === "buy" ? quote.bid : quote.ask;
       const unrealizedPnl = calculatePnl(position, markPrice, position.remainingQuantity);
-      if (position.markPrice !== markPrice || position.unrealizedPnl !== unrealizedPnl) {
-        position = { ...position, markPrice, unrealizedPnl };
+      const markQuoteAt = position.markQuoteAt ?? position.protectionQuoteAt;
+      const newerMark = quote.timestamp > markQuoteAt
+        || (executionAuthorized && quote.timestamp === markQuoteAt);
+      if (newerMark && (position.markPrice !== markPrice || position.unrealizedPnl !== unrealizedPnl || position.markQuoteAt !== quote.timestamp)) {
+        position = { ...position, markPrice, markQuoteAt: quote.timestamp, unrealizedPnl };
         account = {
           ...account,
           positions: account.positions.map((candidate) => candidate.id === position.id ? position : candidate),

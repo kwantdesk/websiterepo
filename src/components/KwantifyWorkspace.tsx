@@ -701,7 +701,7 @@ type WatchlistItem = {
 type LiveWatchlistSnapshot = Pick<
   WatchlistItem,
   "lastPrice" | "openPrice" | "bid" | "ask" | "mid" | "change" | "changePercent" | "flash"
->;
+> & { sourceTimestamp?: number };
 type LiveFeedPrice = {
   error?: string;
   instrument: string;
@@ -937,6 +937,7 @@ function publishLiveWatchlistQuote(
   const openPrice = previous?.openPrice || fallbackOpenPrice || mid;
   const change = mid - openPrice;
   liveWatchlistSnapshots.set(key, {
+    sourceTimestamp: Number.isFinite(timestamp) ? timestamp : undefined,
     lastPrice: mid,
     openPrice,
     bid: Number.isFinite(Number(quote.bid)) ? Number(quote.bid) : mid,
@@ -13463,7 +13464,7 @@ export default function KwantifyWorkspace({
     // threw. The save now reports instead of throwing, and the trader is told
     // when a filled order will not survive a refresh rather than being shown a
     // green confirmation for something that was never stored.
-    if (paperLedger !== paperLedgerRef.current) return;
+    if (!preferencesReady || !paperAccountsHydrated || paperLedger !== paperLedgerRef.current) return;
     const saved = savePaperTradingLedger(paperLedger);
     // An empty ledger failing to save is not worth interrupting anyone over;
     // one holding real fills is.
@@ -13472,7 +13473,7 @@ export default function KwantifyWorkspace({
       tone: "error",
       text: "Browser storage is full — trades are live in this session but will not survive a refresh. Clear site data to restore saving.",
     });
-  }, [paperLedger]);
+  }, [paperLedger, preferencesReady, paperAccountsHydrated]);
 
   useEffect(() => () => {
     if (paperLedgerUiTimerRef.current !== null) {
@@ -13480,6 +13481,16 @@ export default function KwantifyWorkspace({
       paperLedgerUiTimerRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    const handoff = () => {
+      if (document.visibilityState === "hidden" && preferencesReady && paperAccountsHydrated) {
+        savePaperTradingLedger(paperLedgerRef.current);
+      }
+    };
+    document.addEventListener("visibilitychange", handoff);
+    return () => document.removeEventListener("visibilitychange", handoff);
+  }, [preferencesReady, paperAccountsHydrated]);
 
   useEffect(() => {
     writeProtectedItem(
@@ -13497,12 +13508,15 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (!paperTradingAccounts.length) return;
-    const timestamp = Date.now();
     const current = paperLedgerRef.current;
     let next = current;
     const activeQuote = activeChartExecutionQuoteRef.current;
     for (const item of watchlist) {
-      if (!(item.bid > 0 && item.ask > 0)) continue;
+      // React watchlist rows may be old at the close or on an idle phone.
+      // Never stamp those prices with wall time and overwrite a newer mark.
+      const observed = liveWatchlistSnapshots.get(item.key);
+      const timestamp = observed?.sourceTimestamp;
+      if (!observed || !Number.isFinite(timestamp) || !(observed.bid > 0 && observed.ask > 0)) continue;
       const activeStreamOwnsSymbol = activeQuote
         && Date.now() - activeQuote.timestamp <= 5_000
         && normalizePaperSymbol(activeQuote.symbol) === normalizePaperSymbol(item.symbol);
@@ -13511,7 +13525,7 @@ export default function KwantifyWorkspace({
         next,
         paperTradingAccounts,
         item.symbol,
-        { bid: item.bid, ask: item.ask, timestamp },
+        { bid: observed.bid, ask: observed.ask, timestamp: timestamp! },
         {
           executionAuthorized: false,
           suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,

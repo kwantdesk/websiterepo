@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { captureBrowserPreferences, isTrackedStorageKey, readScopedPreferences, receiveAccountPreferences } from "@/lib/userPreferences";
-import { accountPreferenceFingerprint, mergeAccountPreferenceChanges } from "@/lib/accountPreferenceMerge";
+import { accountPreferenceFingerprint, mergeAccountPreferenceChanges, mergePaperTradingLedgerUpdate, paperValuationFingerprint } from "@/lib/accountPreferenceMerge";
+import { normalizePaperTradingLedger } from "@/lib/paperTrading";
 import { exchangeAccountPreferences, readAccountPreferenceRevision } from "@/lib/accountPreferenceCloud";
 
 export function useAccountPreferenceSync({ supabase, userId, enabled }: {
@@ -18,6 +19,7 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
     let refreshScheduled = false;
     let revisionBusy = false;
     let knownRevision: string | null | undefined;
+    let publishMarks = false;
     const acknowledged = readScopedPreferences(userId);
     let needsInitialRead = !acknowledged;
     let base = acknowledged ?? captureBrowserPreferences();
@@ -31,7 +33,9 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
       busy = true;
       const sent = captureBrowserPreferences();
       const dirty = accountPreferenceFingerprint(sent) !== accountPreferenceFingerprint(base);
-      const write = !needsInitialRead && dirty;
+      const markHandoff = publishMarks;
+      const write = !needsInitialRead && (dirty || (markHandoff
+        && paperValuationFingerprint(sent) !== paperValuationFingerprint(base)));
       try {
         // Following failed initial hydration, this browser's defaults are not
         // an acknowledged account revision. Read the real account first; only
@@ -45,16 +49,21 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
         const ledgerKey = 'kwantify-paper-trading-ledger-v1';
         if (latest.values[ledgerKey] && accountPreferenceFingerprint({ ...latest, values: { [ledgerKey]: latest.values[ledgerKey] } })
           === accountPreferenceFingerprint({ ...applied, values: { [ledgerKey]: applied.values[ledgerKey] } })) {
-          applied.values[ledgerKey] = latest.values[ledgerKey];
+          applied.values[ledgerKey] = JSON.stringify(mergePaperTradingLedgerUpdate(
+            normalizePaperTradingLedger(JSON.parse(latest.values[ledgerKey])),
+            normalizePaperTradingLedger(JSON.parse(applied.values[ledgerKey])),
+          ));
         }
         base = result.remote;
         knownRevision = result.revision;
         needsInitialRead = false;
+        if (write) publishMarks = false;
         receiveAccountPreferences(userId, applied, result.remote);
         failures = 0; retryAfter = 0;
         window.dispatchEvent(new CustomEvent('kwantdesk:account-sync-status', { detail: { state: 'saved', userId } }));
         if (write && channelReady) void channel.send({ type: 'broadcast', event: 'changed', payload: {} });
         if (accountPreferenceFingerprint(applied) !== accountPreferenceFingerprint(base)) queued = true;
+        if (publishMarks && paperValuationFingerprint(applied) !== paperValuationFingerprint(base)) queued = true;
       } catch {
         failures++;
         retryAfter = Date.now() + Math.min(60000, 2000 * 2 ** Math.min(failures - 1, 5));
@@ -95,13 +104,16 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
       schedule();
     };
     const onVisible = () => { if (document.visibilityState === 'visible') reconnect(); };
-    const onHidden = () => { if (document.visibilityState === 'hidden') void synchronize(); };
-    channel.on('broadcast', { event: 'changed' }, () => schedule())
+    const onHidden = () => { if (document.visibilityState === 'hidden') { publishMarks = true; schedule(); } };
+    channel.on('broadcast', { event: 'changed' }, (message) => {
+      if (message?.payload?.requestMarks === true) publishMarks = true;
+      schedule();
+    })
       .subscribe(status => {
         channelReady = status === 'SUBSCRIBED';
         if (channelReady) {
           schedule();
-          void channel.send({ type: 'broadcast', event: 'changed', payload: {} });
+          void channel.send({ type: 'broadcast', event: 'changed', payload: { requestMarks: true } });
         }
       });
     // Broadcasts are transient, not durable delivery. A visible phone can miss

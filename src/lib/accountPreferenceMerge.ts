@@ -6,7 +6,7 @@ import { mergeDrawingClearBarriers } from './drawingClearBarriers';
 import { mergeWorkspacePresetPreferences } from './workspacePresetPreferences';
 import type { UserPreferenceSnapshot } from './userPreferences';
 import { CHART_DRAWING_PREFERENCE_KEY, mergeChartDrawingPreferences } from './chartDrawingPreferences';
-import { normalizePaperTradingLedger, paperAccountJournalFills, type PaperAccountLedger, type PaperPosition, type PaperTradeFill, type PaperTradingLedger } from './paperTrading';
+import { normalizePaperTradingLedger, paperAccountJournalFills, paperProjectedPnl, type PaperAccountLedger, type PaperPosition, type PaperTradeFill, type PaperTradingLedger } from './paperTrading';
 
 export const PAPER_LEDGER_KEY = 'kwantify-paper-trading-ledger-v1';
 const PAPER_ACCOUNTS_KEY = 'kwantify-paper-trading-accounts';
@@ -20,7 +20,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const parse = (text?: string) => { try { return JSON.parse(text ?? 'null'); } catch { return null; } };
 
 function executionPosition(position: PaperPosition) {
-  const { markPrice: _mark, unrealizedPnl: _pnl, protectionMarkPrice: _protection,
+  const { markPrice: _mark, markQuoteAt: _markAt, unrealizedPnl: _pnl, protectionMarkPrice: _protection,
     protectionQuoteAt: _clock, bestPrice: _best, worstPrice: _worst, ...intent } = position;
   return intent;
 }
@@ -40,6 +40,14 @@ export function preferenceValueFingerprint(key: string, value?: string) {
 }
 export function accountPreferenceFingerprint(snapshot: UserPreferenceSnapshot) {
   return JSON.stringify(Object.keys(snapshot.values).sort().map(key => [key, preferenceValueFingerprint(key, snapshot.values[key])]));
+}
+
+/** Valuations are published on handoff/peer request, never on every price tick. */
+export function paperValuationFingerprint(snapshot: UserPreferenceSnapshot) {
+  const ledger = normalizePaperTradingLedger(parse(snapshot.values[PAPER_LEDGER_KEY]));
+  return JSON.stringify(Object.entries(ledger.accounts).sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, account]) => [id, account.positions.filter(p => p.status === 'open')
+      .map(p => [p.id, p.markPrice, p.markQuoteAt ?? p.protectionQuoteAt]).sort(([a], [b]) => String(a).localeCompare(String(b)))]));
 }
 
 function mergeById<T extends { id: string }>(base: T[], local: T[], remote: T[], choose?: (a: T, b: T) => T) {
@@ -93,8 +101,21 @@ function executionConflict(known: PaperAccountLedger, incoming: PaperAccountLedg
 function mergeTradingAccount(base: PaperAccountLedger | undefined, local: PaperAccountLedger, remote: PaperAccountLedger): PaperAccountLedger {
   const clearedFillIds = [...new Set([...(local.clearedFillIds ?? []), ...(remote.clearedFillIds ?? [])])].sort();
   const cleared = new Set(clearedFillIds);
-  const finish = (account: PaperAccountLedger): PaperAccountLedger => clearedFillIds.length
-    ? { ...account, clearedFillIds, fills: account.fills.filter(fill => !cleared.has(fill.id)) } : account;
+  const finish = (account: PaperAccountLedger): PaperAccountLedger => ({ ...account,
+    ...(clearedFillIds.length ? { clearedFillIds, fills: account.fills.filter(fill => !cleared.has(fill.id)) } : {}),
+    positions: account.positions.map(position => {
+      if (position.status !== 'open') return position;
+      let latest = position;
+      for (const candidate of [local.positions.find(p => p.id === position.id), remote.positions.find(p => p.id === position.id)]) {
+        if (candidate?.status === 'open' && (candidate.markQuoteAt ?? candidate.protectionQuoteAt)
+          > (latest.markQuoteAt ?? latest.protectionQuoteAt)) latest = candidate;
+      }
+      // A newer stop/target edit can carry an old valuation. Merge price by
+      // its source clock, then value the chosen remaining size, not stale P&L.
+      return { ...position, markPrice: latest.markPrice, markQuoteAt: latest.markQuoteAt ?? latest.protectionQuoteAt,
+        unrealizedPnl: paperProjectedPnl(position.symbol, position.side, position.entryPrice, latest.markPrice, position.remainingQuantity) };
+    }),
+  });
   const localChanged = !same(base && executionAccount(base), executionAccount(local));
   const remoteChanged = !same(base && executionAccount(base), executionAccount(remote));
   const conflict = executionConflict(local, remote) || executionConflict(remote, local);

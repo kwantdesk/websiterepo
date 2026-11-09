@@ -3647,7 +3647,7 @@ function Chart({
   const paperMarkQuoteRef = useRef<PaperMarkQuote | null>(null);
   const paperPnlNodesRef = useRef(new Map<string, HTMLElement>());
   const paperLivePositionsRef = useRef(new Map<string, {
-    position: Pick<PaperPosition, "symbol" | "side" | "entryPrice" | "markPrice" | "remainingQuantity">;
+    position: Pick<PaperPosition, "symbol" | "side" | "entryPrice" | "markPrice" | "markQuoteAt" | "remainingQuantity">;
     sizeLabel: string;
   }>());
   const refreshPaperLivePnl = useCallback(() => {
@@ -19069,7 +19069,7 @@ function Chart({
    */
   useEffect(() => {
     const live = new Map<string, {
-      position: Pick<PaperPosition, "symbol" | "side" | "entryPrice" | "markPrice" | "remainingQuantity">;
+      position: Pick<PaperPosition, "symbol" | "side" | "entryPrice" | "markPrice" | "markQuoteAt" | "remainingQuantity">;
       sizeLabel: string;
     }>();
     for (const level of paperOverlayLevels) {
@@ -19080,6 +19080,7 @@ function Chart({
           side: level.position.side,
           entryPrice: level.position.entryPrice,
           markPrice: level.position.markPrice,
+          markQuoteAt: level.position.markQuoteAt,
           remainingQuantity: level.position.remainingQuantity,
         },
         sizeLabel: paperPositionSizeLabel(level.position.side, level.position.remainingQuantity),
