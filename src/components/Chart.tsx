@@ -3406,6 +3406,8 @@ function Chart({
   const chartRef = useRef<IChartApi | null>(null);
   const drawingTimelineRevisionRef = useRef(0);
   const candleSeriesRef = useRef<ReturnType<IChartApi["addCandlestickSeries"]> | null>(null);
+  const priceAxisCenterInsetsRef = useRef({ topInset: 0, bottomInset: 0 });
+  const priceAxisLiveQuoteRef = useRef<number | null>(null);
   const overlayChartSeriesRef = useRef(new Map<string,
     | { kind: "line"; series: ReturnType<IChartApi["addLineSeries"]> }
     | { kind: "candlestick"; series: ReturnType<IChartApi["addCandlestickSeries"]>; volumeWidth: OverlayVolumeWidthPrimitive }
@@ -7146,10 +7148,11 @@ function Chart({
     const series = candleSeriesRef.current;
     if (!series || !liveCandleEventKey || replayTimestampMs != null && replayTimestampMs > 0) return;
     const marker = createLiveQuotePriceLine(series, livePriceLineColor);
+    priceAxisLiveQuoteRef.current = null;
     const unsubscribe = subscribeChartDisplayPrice(liveCandleEventKey, instrument, contractSymbol || undefined,
       candleSourceIdentity?.split(":")[0],
-      quote => { if (!liveReplayActiveRef.current) marker.update(quote); });
-    return () => { unsubscribe(); marker.dispose(); };
+      quote => { if (!liveReplayActiveRef.current) { priceAxisLiveQuoteRef.current = quote.price; marker.update(quote); } });
+    return () => { priceAxisLiveQuoteRef.current = null; unsubscribe(); marker.dispose(); };
   }, [candleSourceIdentity, chartReadyRevision, contractSymbol, instrument, liveCandleEventKey, livePriceLineColor, replayTimestampMs]);
 
   const indicatorPaletteTheme = useMemo(() => ({
@@ -9242,6 +9245,7 @@ function Chart({
     [paneStackHeight],
   );
   const topIndicatorPaneHeight = useMemo(() => paneStackHeight("top"), [paneStackHeight]);
+  priceAxisCenterInsetsRef.current = { topInset: topIndicatorPaneHeight, bottomInset: indicatorPaneHeight };
   useEffect(() => {
     onIndicatorPaneHeightChange?.(indicatorPaneHeight);
   }, [indicatorPaneHeight, onIndicatorPaneHeightChange]);
@@ -16189,7 +16193,12 @@ function Chart({
     prevDataRef.current = lastCandle ? `${lastCandle.timestamp}-${lastCandle.close}` : "";
 
     const container = chartContainerRef.current;
-    const disposePriceScaleDoubleClickToggle = installPriceScaleDoubleClickToggle(container, chart);
+    const disposePriceScaleDoubleClickToggle = installPriceScaleDoubleClickToggle(container, chart, () => {
+      if (!liveFootprintEnabledRef.current) return null;
+      const price = (!liveReplayActiveRef.current ? priceAxisLiveQuoteRef.current : null) ?? latestCandleRef.current?.close;
+      return price == null ? null : { price, ...priceAxisCenterInsetsRef.current,
+        coordinateToPrice: y => candleSeries.coordinateToPrice(y) };
+    });
     const claimNativeCrosshairPointer = () => {
       if (nativeCrosshairPointerActive) return;
       nativeCrosshairPointerActive = true;

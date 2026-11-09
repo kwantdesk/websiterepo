@@ -1,7 +1,12 @@
 import type { IChartApi } from "./lightweightChartsCompat";
 
 /** Fit the visible candles once, then immediately return to manual price panning. */
-export function installPriceScaleDoubleClickToggle(container: HTMLElement, chart: IChartApi): () => void {
+export function installPriceScaleDoubleClickToggle(container: HTMLElement, chart: IChartApi, centerPrice?: () => {
+  price: number;
+  topInset: number;
+  bottomInset: number;
+  coordinateToPrice: (y: number) => number | null;
+} | null): () => void {
   const handleScale = chart.options().handleScale;
   if (handleScale === false) return () => {};
   const setting = handleScale === true ? true : handleScale.axisDoubleClickReset;
@@ -29,7 +34,25 @@ export function installPriceScaleDoubleClickToggle(container: HTMLElement, chart
     // The library calculates its fitted range during its own render. Let that
     // paint land before retaining the fitted range with autoscale disabled.
     fitFrame = view.requestAnimationFrame(() => {
-      fitFrame = view.requestAnimationFrame(releaseFit);
+      fitFrame = view.requestAnimationFrame(() => {
+        releaseFit();
+        const anchor = centerPrice?.();
+        const range = scale.getVisibleRange();
+        if (!anchor || !range || !Number.isFinite(anchor.price)) return;
+        // Use the current price-pane geometry, not the full chart element:
+        // the time axis and docked studies are not part of the footprint.
+        const plotBottom = chart.paneSize().height - anchor.bottomInset;
+        if (plotBottom <= anchor.topInset) return;
+        const middlePrice = anchor.coordinateToPrice((anchor.topInset + plotBottom) / 2);
+        if (middlePrice === null || !Number.isFinite(middlePrice)) return;
+        const delta = anchor.price - middlePrice;
+        const logarithmic = scale.options().mode === 1;
+        const ratio = anchor.price / middlePrice;
+        if (logarithmic && (!(ratio > 0) || !Number.isFinite(ratio))) return;
+        scale.setVisibleRange(logarithmic
+          ? { from: range.from * ratio, to: range.to * ratio }
+          : { from: range.from + delta, to: range.to + delta });
+      });
     });
     event.preventDefault();
     event.stopPropagation();

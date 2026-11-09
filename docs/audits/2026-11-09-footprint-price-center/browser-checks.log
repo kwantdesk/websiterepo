@@ -1,0 +1,6 @@
+PASS 800x650 top=0 bottom=0 inverted=false: latest price centered, repeated reset, manual drag
+PASS 350x200 top=0 bottom=0 inverted=false: latest price centered, repeated reset, manual drag
+PASS 350x220 top=12 bottom=60 inverted=false: latest price centered, repeated reset, manual drag
+PASS 600x300 top=40 bottom=80 inverted=false: latest price centered, repeated reset, manual drag
+PASS 350x220 top=12 bottom=60 inverted=true: latest price centered, repeated reset, manual drag
+PASS zero browser errors
