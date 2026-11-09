@@ -2,8 +2,17 @@ import {NEWS_TOPIC_CHOICES} from '../../public/gex-data-app/news-feed-model.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {choicesWithSaved,instrumentChoices,setChoiceValue,snapshotTimeOptions,multiChoiceDropdown} from '../../public/gex-data-app/choice-controls.js';
+import {choicesWithSaved,instrumentChoices,setChoiceValue,snapshotTimeOptions,multiChoiceDropdown,createGexDataSelectPreferences} from '../../public/gex-data-app/choice-controls.js';
 import {claimMenu} from '../../public/gex-data-app/menu-coordination.js';
+
+test('GEX duration directory follows provider interval order without losing explicit recents or favourites',()=>{
+ let saved=null;const preferences=createGexDataSelectPreferences({getItem:()=>saved,setItem:(_key,value)=>{saved=value;}}),group=preferences.keyFor({id:'control-period'});
+ const options=[['1m','1 Min'],['2m','2 Minutes'],['5m','5 Minutes'],['1h','1 Hour'],['4h','4 Hours']].map(([value,label])=>({value,label}));
+ preferences.update(group,{showRecents:false});assert.deepEqual(preferences.sections(options,preferences.get(group),'',{group})[0].options.map(o=>o.value),options.map(o=>o.value));
+ preferences.toggleFavourite(group,'1h');preferences.toggleFavourite(group,'2m');preferences.update(group,{favouritesOnly:true});assert.deepEqual(preferences.sections(options,preferences.get(group),'',{group})[0].options.map(o=>o.value),['2m','1h']);
+ preferences.update(group,{favouritesOnly:false,showRecents:true});preferences.select(group,'4h');preferences.select(group,'5m');assert.deepEqual(preferences.sections(options,preferences.get(group),'',{group})[0].options.map(o=>o.value),['5m','4h']);
+ assert.deepEqual(preferences.sections(options,preferences.get(group),'Hour',{group}).flatMap(s=>s.options.map(o=>o.value)),['4h','1h']);
+});
 
 test('instrument list and saved choices preserve valid selections without duplicate or HTML insertion',()=>{
   assert.ok(instrumentChoices().some(([value])=>value==='QQQ'));

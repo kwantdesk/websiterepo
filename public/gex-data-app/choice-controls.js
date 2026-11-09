@@ -1,8 +1,16 @@
 // Shared UI choices only: no provider requests or inferred source availability.
-import {createSelectPreferences} from '../kwanty-app/select-preferences.js?v=3';
+import {createSelectPreferences,choiceSections} from '../kwanty-app/select-preferences.js?v=3';
 import {claimMenu,releaseMenu} from './menu-coordination.js';
 export const GEX_SELECT_PREFERENCES_KEY='gex-data:select-preferences:v1';
 const manualSymbolControl=metadata=>['control-ticker','control-tickerOptional'].includes(metadata?.id);
+// Numeric inventories already arrive in their canonical duration order. Keep
+// that order within the directory/favourites while preserving chosen recents.
+export function gexChoiceSections(options,preferences,query='',context={}){
+  const sections=choiceSections(options,preferences,query,context);
+  if(!['control:control-period','control:control-lookback','control:control-maturity'].includes(context.group))return sections;
+  const order=new Map(options.map((option,index)=>[option.value,index]));
+  return sections.map(section=>section.label==='Recent'?section:{...section,options:[...section.options].sort((a,b)=>(order.get(a.value)??Infinity)-(order.get(b.value)??Infinity))});
+}
 export function gexManualSymbolChoice(metadata,query){
   if(!manualSymbolControl(metadata))return null;
   const value=String(query??'').trim().toUpperCase();
@@ -12,7 +20,7 @@ export function gexManualSymbolChoice(metadata,query){
 export function createGexDataSelectPreferences(storage){
   const preferences=createSelectPreferences({getItem:()=>storage.getItem(GEX_SELECT_PREFERENCES_KEY),setItem:(_key,value)=>storage.setItem(GEX_SELECT_PREFERENCES_KEY,value)});
   const savedSymbols=()=>[...new Set([...preferences.get('instruments').recent,...preferences.get('instruments').favourites])].filter(value=>/^[A-Z0-9./^_-]{1,16}$/.test(value));
-  return {...preferences,keyFor:metadata=>['control-ticker','control-tickerOptional'].includes(metadata.id)?'instruments':preferences.keyFor(metadata),
+  return {...preferences,sections:gexChoiceSections,keyFor:metadata=>['control-ticker','control-tickerOptional'].includes(metadata.id)?'instruments':preferences.keyFor(metadata),
     savedSymbols,savedOptionsFor:group=>group==='instruments'?savedSymbols().map(value=>({value,label:`${value} — saved selection`})) : [],customOptionFor:gexManualSymbolChoice,isManualSymbolControl:manualSymbolControl};
 }
 const FALLBACK = ['SPX','NDX','SPY','QQQ','IWM','VIX','AAPL','NVDA','TSLA','MSFT','AMZN','META','AMD'];

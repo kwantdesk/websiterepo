@@ -109,6 +109,13 @@ test('real canvas updater retains nodes, revised rows, drag state and growing na
   context.buildRequest=()=>({sessionDate:'2026-10-20',filter:{tickers:['SPY']}});
   const inserted=make([{time:1},{time:1.5},{time:2},{time:3}]);
   assert.equal(inserted.state.start,0,'a revised historical timeline cannot inherit incompatible indices');
+  context.toolConfiguration={hideTooltips:false};context.chartTooltipRow=value=>Object.assign(new Node(),{textContent:String(value)});context.cursorTooltipPlacement=()=>({left:10,top:10});
+  const side=context.make({title:'Side statistics',zoom:false,items:[{label:'Mid Market',value:1},{label:'Ask',value:2}],tooltipRows:row=>[row.value],draw(){}});
+  side.canvas.listeners.pointermove({clientX:120,clientY:150});const tooltip=side.shell.children[1].children[1];assert.equal(tooltip.hidden,false);assert.equal(tooltip.children[0].textContent,'1');
+  const sameCanvas=side.canvas;assert.equal(side.replace({title:'Side statistics',zoom:false,items:[{label:'Mid Market',value:3},{label:'Ask',value:4}],tooltipRows:row=>[row.value],draw(){}}),true);
+  assert.equal(side.canvas,sameCanvas);assert.equal(tooltip.hidden,false,'live replacement must not dismiss a stationary hover');assert.equal(tooltip.children[0].textContent,'3','tooltip must display revised values');
+  side.canvas.listeners.pointerleave();assert.equal(tooltip.hidden,true);
+  side.replace({title:'Side statistics',zoom:false,items:[{label:'Mid Market',value:5},{label:'Ask',value:6}],tooltipRows:row=>[row.value],draw(){}});assert.equal(tooltip.hidden,true,'a departed pointer must not be resurrected');
 });
 test('chart/save storage echoes do not repaint; real theme/configuration and filter changes still apply',()=>{
   let configuration={},style='theme-one',filters={},renders=0,loads=0,reflects=0;

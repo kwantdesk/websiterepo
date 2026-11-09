@@ -1647,6 +1647,13 @@ await boot();
       tooltip.replaceChildren(...rows.map(chartTooltipRow));tooltip.hidden=toolConfiguration.hideTooltips||!rows.length;
       const size=tooltip.getBoundingClientRect(),position=cursorTooltipPlacement(state.pointerX,state.pointerY,rect.width,rect.height,size.width,size.height);tooltip.style.left=`${position.left}px`;tooltip.style.top=`${position.top}px`;
     }
+    function redrawLiveUpdate(){
+      const hovering=state.hover!=null&&state.dragX==null;
+      if(hovering){const rect=canvas.getBoundingClientRect();state.hover=hoverIndex({clientX:rect.left+state.pointerX,clientY:rect.top+state.pointerY});}
+      // New bar renderers populate their hit regions during draw. Rebuild the
+      // stationary pointer's tooltip afterwards from the new observation.
+      redraw();if(hovering)updateHoverTooltip();else tooltip.hidden=true;
+    }
     canvas.addEventListener("pointermove",event=>{
       const rect=canvas.getBoundingClientRect();state.pointerY=event.clientY-rect.top;state.pointerX=event.clientX-rect.left;
       if(state.dragX!=null){
@@ -1702,7 +1709,7 @@ await boot();
         items=nextItems;navigatorValues=next.navigatorValues||[];state.start=nextWindow.start;state.end=nextWindow.end;
         if(state.dragStart){state.dragStart[0]+=shift;state.dragStart[1]+=shift;}
         startRange.max=endRange.max=String(Math.max(0,items.length-1));horizontalNavigation?.setLength(items.length);
-        head.replaceChild(quantLegend(next.legend||[]),head.lastChild);tooltip.hidden=true;remember();redraw();return true;
+        head.replaceChild(quantLegend(next.legend||[]),head.lastChild);remember();redrawLiveUpdate();return true;
       },
       update(nextItems,nextLegend,nextNavigatorValues){
         if(disposed||!compatibleLiveTimeline(items,nextItems))return false;
@@ -1713,7 +1720,7 @@ await boot();
         state.start=nextWindow.start;state.end=nextWindow.end;
         if(state.dragStart){state.dragStart[0]+=shift;state.dragStart[1]+=shift;}
         startRange.max=endRange.max=String(Math.max(0,items.length-1));horizontalNavigation?.setLength(items.length);
-        head.replaceChild(quantLegend(nextLegend),head.lastChild);remember();redraw();return true;
+        head.replaceChild(quantLegend(nextLegend),head.lastChild);remember();redrawLiveUpdate();return true;
       }};activeChartInstance=chart;return chart;
   }
 
