@@ -215,7 +215,7 @@ export type DrawStyle = {
 
 export const DEFAULT_POSITION_PROFIT_COLOR = "#089981";
 export const DEFAULT_POSITION_LOSS_COLOR = "#F23645";
-export const DEFAULT_POSITION_FILL_OPACITY = 1;
+export const DEFAULT_POSITION_FILL_OPACITY = 0.5;
 
 export const DRAW_STYLE_SCHEMA_VERSION = 2;
 
