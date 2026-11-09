@@ -215,6 +215,7 @@ export type DrawStyle = {
 
 export const DEFAULT_POSITION_PROFIT_COLOR = "#089981";
 export const DEFAULT_POSITION_LOSS_COLOR = "#F23645";
+export const DEFAULT_POSITION_FILL_OPACITY = 1;
 
 export const DRAW_STYLE_SCHEMA_VERSION = 2;
 
@@ -535,7 +536,7 @@ const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   // New position calculators show their readout immediately. The style panel
   // can still hide it, and explicitly saved choices remain authoritative.
   if (tool === "longPosition" || tool === "shortPosition") {
-    return { ...DEFAULT_DRAW_STYLE, showLabels: true };
+    return { ...DEFAULT_DRAW_STYLE, fillOpacity: DEFAULT_POSITION_FILL_OPACITY, showLabels: true };
   }
   // Entry and exit arrows mean the same thing the real fill markers do, so
   // they carry the fill colours rather than the theme's line colour: a green

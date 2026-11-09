@@ -129,8 +129,8 @@ export default function ChartDrawSettings({
                 </>
               )}
               {isShape ? (
-                <Row label="Fill opacity">
-                  <input type="range" min={0} max={0.6} step={0.02} value={drawing.style.fillOpacity} onChange={(e) => patchStyle({ fillOpacity: Number(e.target.value) })} className="w-40 accent-primary" />
+                <Row label={`Fill opacity · ${Math.round(drawing.style.fillOpacity * 100)}%`}>
+                  <input type="range" aria-label="Fill opacity" min={0} max={isPosition ? 1 : 0.6} step={0.01} value={drawing.style.fillOpacity} onChange={(e) => patchStyle({ fillOpacity: Number(e.target.value) })} className="w-40 accent-primary" />
                 </Row>
               ) : null}
               {supportsHorizontalExtension ? (

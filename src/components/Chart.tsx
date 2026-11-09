@@ -537,7 +537,7 @@ import { getChartDrawingContextActions, type ChartDrawingContextActions } from '
 import { buildPaperFillMarkers } from '@/lib/paperFillMarkers';
 import { drawingCoordinateToTime, drawingTimeToCoordinate, type DrawingTimeScale } from "@/lib/chartDrawingCoordinates";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
-import { DEFAULT_POSITION_PROFIT_COLOR, DEFAULT_POSITION_LOSS_COLOR, createDrawing, formatDrawingDuration, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
+import { DEFAULT_POSITION_PROFIT_COLOR, DEFAULT_POSITION_LOSS_COLOR, DEFAULT_POSITION_FILL_OPACITY, createDrawing, formatDrawingDuration, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
@@ -13494,7 +13494,7 @@ function Chart({
     stopColor: DEFAULT_POSITION_LOSS_COLOR,
     entryLineColor: "#A1A1AA",
     textColor: "#050505",
-    fillOpacity: 0.14,
+    fillOpacity: DEFAULT_POSITION_FILL_OPACITY,
     borderOpacity: 0.72,
     lineWidth: 1.25,
     lineStyle: "solid",
@@ -13558,7 +13558,7 @@ function Chart({
         labelTextColor: visualStyle.textColor ?? "#050505",
         handleFill: settings.backgroundColor ?? "#0A0A0A",
         handleStroke: settings.upColor,
-        fillOpacity: clamp(visualStyle.fillOpacity ?? 0.14, 0, 0.6),
+        fillOpacity: clamp(visualStyle.fillOpacity ?? DEFAULT_POSITION_FILL_OPACITY, 0, 1),
         borderOpacity: clamp(visualStyle.borderOpacity ?? 0.72, 0.1, 1),
         lineWidth: clamp(visualStyle.lineWidth ?? 1.25, 0.5, 4),
         lineDash: lineStyle === "dashed" ? [7, 5] : lineStyle === "dotted" ? [2, 4] : null,
@@ -21767,7 +21767,7 @@ function Chart({
             </div>
 
             {([
-              ["Fill opacity", "fillOpacity", 0, 0.6, 0.01],
+              ["Fill opacity", "fillOpacity", 0, 1, 0.01],
               ["Border opacity", "borderOpacity", 0.1, 1, 0.01],
               ["Line width", "lineWidth", 0.5, 4, 0.25],
             ] as const).map(([label, key, min, max, step]) => (

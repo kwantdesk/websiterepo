@@ -13,6 +13,7 @@ import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback,
 import {
   DRAW_TOOL_SPECS,
   DEFAULT_POSITION_PROFIT_COLOR,
+  DEFAULT_POSITION_FILL_OPACITY,
   DEFAULT_POSITION_LOSS_COLOR,
   FIB_CIRCLE_COEFFS,
   FIB_LEVELS,
@@ -1449,8 +1450,8 @@ export default function ChartDrawLayer({
           const stats = `${openPnl == null ? "" : `Open P&L: ${openPnl >= 0 ? "+" : ""}${openPnl.toFixed(pricePrecision)} · `}${risk === 0 ? "Break-even · Risk/Reward Ratio: —" : `Risk/Reward Ratio: ${rr.toFixed(2)}`}`;
           return (
             <g>
-              <rect x={xL} y={Math.min(entryY, targetY)} width={xR - xL} height={Math.max(1, Math.abs(targetY - entryY))} fill={green} fillOpacity={0.18} />
-              <rect x={xL} y={Math.min(entryY, stopY)} width={xR - xL} height={Math.max(1, Math.abs(stopY - entryY))} fill={red} fillOpacity={0.18} />
+              <rect x={xL} y={Math.min(entryY, targetY)} width={xR - xL} height={Math.max(1, Math.abs(targetY - entryY))} fill={green} fillOpacity={Math.max(0, Math.min(1, style.fillOpacity ?? DEFAULT_POSITION_FILL_OPACITY))} />
+              <rect x={xL} y={Math.min(entryY, stopY)} width={xR - xL} height={Math.max(1, Math.abs(stopY - entryY))} fill={red} fillOpacity={Math.max(0, Math.min(1, style.fillOpacity ?? DEFAULT_POSITION_FILL_OPACITY))} />
               <line x1={xL} y1={targetY} x2={xR} y2={targetY} stroke={green} strokeOpacity={0.55} strokeWidth={1} />
               <line x1={xL} y1={stopY} x2={xR} y2={stopY} stroke={red} strokeOpacity={0.55} strokeWidth={1} />
               <line x1={xL} y1={entryY} x2={xR} y2={entryY} stroke="#B2B5BE" strokeOpacity={0.8} strokeWidth={1} />
@@ -1978,7 +1979,7 @@ function previewStyle(tool: DrawToolId) {
   if (tool === "highlighter") return { ...base, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
   // Matches defaultStyleFor: the calculators are placed without their readout.
   if (tool === "longPosition" || tool === "shortPosition") {
-    return { ...base, showLabels: false };
+    return { ...base, fillOpacity: DEFAULT_POSITION_FILL_OPACITY, showLabels: false };
   }
   return base;
 }
