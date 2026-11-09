@@ -1,0 +1,50 @@
+✔ archive capacity becomes critical before the recorder reaches zero bytes (0.7959ms)
+✔ healthy capacity remains observable (0.4183ms)
+✔ a capacity probe failure is explicit rather than healthy by default (0.3616ms)
+✔ one file per surface, named after the endpoint (1.4189ms)
+✔ the same surface for two symbols is two different frames (0.6416ms)
+✔ an unchanged repeat is not written twice (9.3357ms)
+✔ a changed surface IS written (2.7144ms)
+✔ two symbols on one endpoint do not deduplicate each other (2.4129ms)
+✔ a new session starts clean instead of skipping its first frame (3.4472ms)
+✔ frames land on disk, readable, with the request that produced them (5.3356ms)
+✔ disabled or empty archives nothing (0.6606ms)
+✔ a saturated writer counts the loss instead of hiding it (3.37ms)
+✔ a dropped frame is retried rather than remembered as written (4.6322ms)
+✔ the tracked-key set cannot grow without bound (4.3447ms)
+✔ every update bit the protocol defines is requested (0.9842ms)
+✖ both the subscribe and unsubscribe paths use the full set (0.7633ms)
+✔ the archive keeps what it cannot name (0.1802ms)
+✔ no known market-data template is excluded (0.2269ms)
+✔ the raw wire payload is what gets archived (0.6166ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 18
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 636.7916
+
+✖ failing tests:
+
+test at services\rithmic_gateway\test\recorder-completeness.test.mjs:56:1
+✖ both the subscribe and unsubscribe paths use the full set (0.7633ms)
+  AssertionError [ERR_ASSERTION]: expected subscribe and unsubscribe, found 1
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/services/rithmic_gateway/test/recorder-completeness.test.mjs:62:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

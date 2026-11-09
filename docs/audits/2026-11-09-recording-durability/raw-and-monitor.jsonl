@@ -1,0 +1,2 @@
+{"rawSamples": [{"file": "/srv/kwantdesk-recordings/2026-11-08/CME-NQZ6.ndjson.gz", "templates": {"150": 531, "160": 15, "156": 940, "151": 14}, "rows": 1500, "bytes": 88687874, "mtime": 1794217286.6650584}, {"file": "/srv/kwantdesk-recordings/2026-11-08/CME-ESZ6.ndjson.gz", "templates": {"160": 7, "156": 876, "150": 611, "151": 6}, "rows": 1500, "bytes": 57849805, "mtime": 1794217286.6650584}]}
+{"checkedAt": 1794217245.67775, "phase": "live-owner", "warnings": [], "recordingsFreeGiB": 38.38, "rootFreeGiB": 29.7, "containerHealth": "healthy"}
