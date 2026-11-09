@@ -57,9 +57,25 @@ function mountPhoneWorkspace() {
       }
       if (grid.children.length) { drawer.append(section); heatmapSections.push(section); }
     }
+    const appearance = document.createElement('section'); appearance.className = 'kwant-compact-control-section';
+    const appearanceTitle = document.createElement('h3'); appearanceTitle.textContent = 'Heat settings'; appearance.append(appearanceTitle);
+    for (const [selector, text] of [['.heat-control', 'Heat sensitivity'], ['.heat-palette', 'Liquidity colour scale']]) {
+      const control = document.querySelector(selector); if (!control) continue;
+      const placeholder = document.createComment('compact liquidity appearance'); control.before(placeholder); heatmapMoved.set(control, placeholder);
+      const field = document.createElement('div'); field.className = 'kwant-compact-control-field';
+      const caption = document.createElement('span'); caption.textContent = text; field.append(caption, control); appearance.append(field);
+    }
+    if (appearance.children.length > 1) { drawer.append(appearance); heatmapSections.push(appearance); }
   }
-  function show(open) { drawer.hidden = shade.hidden = !open; toggle.setAttribute('aria-expanded', String(open)); if (open) close.focus(); else toggle.focus(); }
+  function show(open) {
+    if (app === 'heatmap' && !phone.matches) organizeHeatmapControls(open);
+    drawer.hidden = shade.hidden = !open; toggle.setAttribute('aria-expanded', String(open));
+    if (open) close.focus(); else (app === 'heatmap' && !phone.matches ? document.querySelector('#settingsButton') : toggle)?.focus();
+  }
   toggle.addEventListener('click', () => show(drawer.hidden)); close.addEventListener('click', () => show(false)); shade.addEventListener('click', () => show(false));
+  if (app === 'heatmap') drawer.addEventListener('click', event => {
+    if (event.target.closest('button[data-panel-shortcut],#helpButton,#fullscreenButton,#mapTradeButton')) show(false);
+  });
   if (workspacePane) window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== window.parent || event.data?.type !== 'kwantdesk:liquidity-map-panel-command') return;
     if (event.data.action === 'controls') show(true);
@@ -68,7 +84,7 @@ function mountPhoneWorkspace() {
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !drawer.hidden && !event.defaultPrevented) show(false); });
   const selectors = app === 'kwanty' ? ['.chart-top-controls', '.workspace-header-actions', '#sidebar'] : app === 'heatmap' ? ['#topDeck', '.app-actions'] : ['.topbar', '#toolControls'];
   function moveControls() {
-    if (!phone.matches && !workspacePane) {
+    if (!phone.matches) {
       organizeHeatmapControls(false);
       for (const [element, placeholder] of moved) { if (placeholder.parentNode) placeholder.replaceWith(element); }
       moved.clear(); drawer.hidden = shade.hidden = true; toggle.setAttribute('aria-expanded', 'false');
@@ -107,7 +123,7 @@ function mountPhoneWorkspace() {
   const observer = new MutationObserver(refresh);
   function observePhone() {
     observer.disconnect();
-    if (!phone.matches && !workspacePane) return;
+    if (!phone.matches) return;
     observer.observe(host, { childList: true, subtree: true });
     if (panelRoot) observer.observe(panelRoot, { childList: true, subtree: true });
   }

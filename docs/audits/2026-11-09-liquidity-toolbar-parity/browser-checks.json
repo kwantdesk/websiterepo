@@ -1,0 +1,94 @@
+{
+  "checks": [
+    {
+      "name": "Full original toolbar geometry identical at1200px",
+      "standalone": {
+        "app": {
+          "width": 1200,
+          "height": 45,
+          "radius": "0px",
+          "font": "13px",
+          "display": "grid"
+        },
+        "deck": {
+          "width": 1200,
+          "height": 45,
+          "radius": "0px",
+          "font": "13px",
+          "display": "block"
+        },
+        "heat": {
+          "width": 94.703125,
+          "height": 28,
+          "radius": "8px",
+          "font": "10px",
+          "display": "flex"
+        },
+        "depth": {
+          "width": 76.34375,
+          "height": 28,
+          "radius": "8px",
+          "font": "10px",
+          "display": "flex"
+        }
+      },
+      "embedded": {
+        "app": {
+          "width": 1200,
+          "height": 45,
+          "radius": "0px",
+          "font": "13px",
+          "display": "grid"
+        },
+        "deck": {
+          "width": 1200,
+          "height": 45,
+          "radius": "0px",
+          "font": "13px",
+          "display": "block"
+        },
+        "heat": {
+          "width": 94.703125,
+          "height": 28,
+          "radius": "8px",
+          "font": "10px",
+          "display": "flex"
+        },
+        "depth": {
+          "width": 76.34375,
+          "height": 28,
+          "radius": "8px",
+          "font": "10px",
+          "display": "flex"
+        }
+      }
+    },
+    {
+      "name": "600px labelled compact groups and original handlers/range retained",
+      "identity": true
+    },
+    {
+      "name": "Settings opens without controls menu covering it"
+    },
+    {
+      "name": "Expanding restores original buttons and range in place"
+    },
+    {
+      "name": "330px menu single column without horizontal overflow",
+      "columns": "280px",
+      "width": 280,
+      "scroll": 280
+    },
+    {
+      "name": "Light theme menu keeps readable foreground and surface",
+      "background": "rgb(255, 255, 255)",
+      "foreground": "rgb(17, 17, 17)"
+    },
+    {
+      "name": "Touch landscape uses compact layout with plot below40px header",
+      "top": 40
+    }
+  ],
+  "errors": [],
+  "method": "Actual map HTML, styles and responsive script in isolated headless Chrome. Renderer/provider requests blocked; original control handlers represented by fixture listeners for identity/dispatch checks."
+}

@@ -1,48 +1,58 @@
-/* A Charts panel owns its title, instrument and actions. The embedded engine
-   supplies the plot; original controls remain mounted in its named drawer. */
-html[data-embed="true"][data-workspace-pane] body[data-phone-workspace="heatmap"] .terminal-shell {
-  grid-template-rows: minmax(0, 1fr);
+/* Keep the original standalone toolbar in a Charts panel. Only a genuinely
+   narrow viewport moves its original handlers into the compact menu. */
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) {
+  html[data-embed="true"][data-workspace-pane] body[data-phone-workspace="heatmap"] .workspace { grid-row: 3; }
 }
-html[data-embed="true"][data-workspace-pane] .terminal-shell > :is(.app-bar, .top-deck) { display: none; }
-html[data-embed="true"][data-workspace-pane] body[data-phone-workspace="heatmap"] .workspace { grid-row: 1; }
-html[data-workspace-pane] .kwant-embed-phone-shade:not([hidden]) {
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-embed-phone-shade:not([hidden]) {
   display: block; position: fixed; inset: 0; z-index: 199;
   width: 100%; height: 100%; border: 0; background: #0006;
 }
-html[data-workspace-pane] .kwant-embed-phone-drawer:not([hidden]) {
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-embed-phone-drawer:not([hidden]) {
   display: flex; flex-direction: column; gap: 20px; position: fixed;
-  z-index: 200; inset: 8px; width: auto; max-width: none;
+  z-index: 200; inset: 8px 8px 8px auto; width: min(420px, calc(100% - 16px)); max-width: none;
   height: calc(100dvh - 16px); overflow: auto; overscroll-behavior: contain;
   padding: 0 16px 24px; box-sizing: border-box;
   border: 1px solid var(--ui-line); border-radius: 16px;
   background: var(--ui-panel); color: var(--ui-text); font: 12px var(--font-ui);
 }
-html[data-workspace-pane] .kwant-embed-phone-heading {
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-embed-phone-heading {
   display: flex; align-items: center; justify-content: space-between;
   min-height: 52px; flex-shrink: 0; position: sticky; top: 0; z-index: 2;
   border-bottom: 1px solid var(--ui-line); background: var(--ui-panel);
 }
-html[data-workspace-pane] .kwant-embed-phone-heading button {
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-embed-phone-heading button {
   width: 40px; height: 40px; border: 0; background: transparent; color: inherit; font-size: 24px;
 }
-html[data-workspace-pane] .kwant-embed-phone-drawer > :is(#topDeck, .app-actions) { display: none !important; }
-html[data-workspace-pane] .kwant-compact-control-section { margin: 0; padding: 0; border: 0; }
-html[data-workspace-pane] .kwant-compact-control-section h3 {
-  margin: 0 0 10px; color: var(--ui-muted); font: 500 10px var(--font-ui); letter-spacing: .08em; text-transform: uppercase;
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-embed-phone-drawer > :is(#topDeck, .app-actions) { display: none !important; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-section { margin: 0; padding: 0; border: 0; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-section h3 {
+  margin: 0 0 10px; color: var(--ui-muted); font: 500 11px var(--font-ui); letter-spacing: .06em; text-transform: uppercase;
 }
-html[data-workspace-pane] .kwant-compact-control-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
-html[data-workspace-pane] .kwant-compact-control-grid > button {
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-grid > button {
   display: flex; align-items: center; justify-content: flex-start; gap: 10px;
   width: 100%; min-width: 0; min-height: 44px; height: auto; max-height: none; padding: 10px 12px;
   border: 1px solid var(--ui-line); border-radius: 10px;
   background: var(--ui-panel); color: var(--ui-text);
-  font: 11px/1.3 var(--font-ui); text-align: left; letter-spacing: normal; text-transform: none;
+  font: 12px/1.3 var(--font-ui); text-align: left; letter-spacing: normal; text-transform: none;
   box-shadow: none; white-space: normal;
 }
-html[data-workspace-pane] .kwant-compact-control-grid > button[style*="display: none"] { display: none !important; }
-html[data-workspace-pane] .kwant-compact-control-grid > button:is(.active,.active-toggle,[aria-pressed=true]) {
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-grid > button[style*="display: none"] { display: none !important; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-grid > button:is(.active,.active-toggle,[aria-pressed=true]) {
   color: var(--ui-accent); border-color: var(--ui-accent); background: color-mix(in srgb,var(--ui-accent) 10%,var(--ui-panel));
 }
-html[data-workspace-pane] .kwant-compact-control-grid > button > svg { flex: 0 0 16px; width: 16px; height: 16px; }
-html[data-workspace-pane] .kwant-compact-control-grid > button > span:not(.kwant-compact-control-label) { display: none !important; }
-html[data-workspace-pane] .kwant-compact-control-grid > button > .kwant-compact-control-label { display: block !important; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-grid > button > svg { flex: 0 0 16px; width: 16px; height: 16px; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-grid > button > span:not(.kwant-compact-control-label) { display: none !important; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-grid > button > .kwant-compact-control-label { display: block !important; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-field {
+  display: flex; flex-direction: column; gap: 12px; padding: 12px; margin-top: 8px;
+  border: 1px solid var(--ui-line); border-radius: 10px; font: 12px var(--font-ui);
+}
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-field > :is(.heat-control,.heat-palette) {
+  display: flex !important; align-items: center; width: 100%; min-width: 0; margin: 0; padding: 0;
+}
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-field input { flex: 1; min-width: 0; width: 100%; }
+html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-field .heat-palette span { width: 100%; height: 10px; }
+@media (max-width: 360px) {
+  html[data-embed="true"] body[data-phone-workspace="heatmap"] .kwant-compact-control-grid { grid-template-columns: minmax(0,1fr); }
+}
