@@ -1,0 +1,78 @@
+{
+  "checks": [
+    {
+      "width": 1400,
+      "height": 1200,
+      "main": {
+        "height": 1154,
+        "display": "flex",
+        "minHeight": "100%",
+        "flexDirection": "column"
+      },
+      "root": {
+        "left": 0,
+        "right": 1400,
+        "bottom": 1200
+      },
+      "loader": {
+        "left": 0,
+        "right": 1400,
+        "top": 91,
+        "bottom": 1200
+      },
+      "headerBottom": 91,
+      "background": "rgb(19, 11, 30)",
+      "rootBackground": "rgb(19, 11, 30)"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "main": {
+        "height": 798,
+        "display": "flex",
+        "minHeight": "100%",
+        "flexDirection": "column"
+      },
+      "root": {
+        "left": 0,
+        "right": 390,
+        "bottom": 844
+      },
+      "loader": {
+        "left": 0,
+        "right": 390,
+        "top": 91,
+        "bottom": 844
+      },
+      "headerBottom": 91,
+      "background": "rgb(19, 11, 30)",
+      "rootBackground": "rgb(19, 11, 30)"
+    },
+    {
+      "width": 640,
+      "height": 320,
+      "main": {
+        "height": 274,
+        "display": "flex",
+        "minHeight": "100%",
+        "flexDirection": "column"
+      },
+      "root": {
+        "left": 0,
+        "right": 640,
+        "bottom": 320
+      },
+      "loader": {
+        "left": 0,
+        "right": 640,
+        "top": 91,
+        "bottom": 320
+      },
+      "headerBottom": 91,
+      "background": "rgb(19, 11, 30)",
+      "rootBackground": "rgb(19, 11, 30)"
+    }
+  ],
+  "errors": [],
+  "method": "Actual Options workspace and standard loader in isolated headless Chrome; data responses deliberately held to inspect loading geometry."
+}

@@ -798,6 +798,7 @@ function LoadingScreen() {
   return (
     <KwantLoader
       page
+      style={{ minHeight: 0, height: "auto" }}
       icon={Waves}
       title="Loading live options positioning"
       detail="Exposure, volatility, flow and price"
@@ -1059,7 +1060,7 @@ export default function GammaWorkspace() {
 
   return (
     <div className="kwant-gamma-workspace h-full min-h-0 overflow-y-auto bg-background text-foreground">
-      <main className="min-w-0">
+      <main className="flex min-h-full min-w-0 flex-col">
         <header className="kwant-workspace-secondary-bar flex shrink-0 items-center gap-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <ScanLine className="h-[17px] w-[17px]" />
@@ -1151,7 +1152,7 @@ export default function GammaWorkspace() {
           </div>
         </header>
 
-        {loading && !data ? <div className="flex flex-1 min-h-[520px]"><LoadingScreen /></div> : !data ? (
+        {loading && !data ? <div className="flex min-h-0 flex-1"><LoadingScreen /></div> : !data ? (
           <div className="flex min-h-[520px] items-center justify-center p-6">
             <Panel className="max-w-md p-6 text-center">
               <Database className="mx-auto h-6 w-6 text-danger" />

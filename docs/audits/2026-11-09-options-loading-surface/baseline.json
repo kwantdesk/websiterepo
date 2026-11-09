@@ -1,0 +1,60 @@
+{
+  "checks": [
+    {
+      "width": 1400,
+      "height": 1200,
+      "root": {
+        "left": 0,
+        "right": 1400,
+        "bottom": 1200
+      },
+      "loader": {
+        "left": 0,
+        "right": 1400,
+        "top": 91,
+        "bottom": 931
+      },
+      "headerBottom": 91,
+      "background": "rgb(19, 11, 30)",
+      "rootBackground": "rgb(19, 11, 30)"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "root": {
+        "left": 0,
+        "right": 390,
+        "bottom": 844
+      },
+      "loader": {
+        "left": 0,
+        "right": 390,
+        "top": 91,
+        "bottom": 681.796875
+      },
+      "headerBottom": 91,
+      "background": "rgb(19, 11, 30)",
+      "rootBackground": "rgb(19, 11, 30)"
+    },
+    {
+      "width": 640,
+      "height": 320,
+      "root": {
+        "left": 0,
+        "right": 640,
+        "bottom": 320
+      },
+      "loader": {
+        "left": 0,
+        "right": 640,
+        "top": 91,
+        "bottom": 315
+      },
+      "headerBottom": 91,
+      "background": "rgb(19, 11, 30)",
+      "rootBackground": "rgb(19, 11, 30)"
+    }
+  ],
+  "errors": [],
+  "method": "Actual Options workspace and standard loader in isolated headless Chrome; data responses deliberately held to inspect loading geometry."
+}
