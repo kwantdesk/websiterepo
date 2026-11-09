@@ -1,0 +1,22 @@
+{
+  "frameGapP95Ms": 22.899999998509884,
+  "stress": false,
+  "observations": 180,
+  "sourceToSeriesP50Ms": 0,
+  "sourceToSeriesP95Ms": 0.10000000149011612,
+  "maxMs": 0.3999999985098839,
+  "candleHistoryWritesDuringQuotes": 0,
+  "replayQuoteIsolation": true,
+  "liveResume": true,
+  "canvasRepaint": true,
+  "instruments": [
+    "NQ:1m",
+    "ES:5m",
+    "GC:1s",
+    "SPY:1m",
+    "QQQ:200v",
+    "NDX:10r"
+  ],
+  "errors": [],
+  "scope": "Actual shared Chart and Lightweight Charts API; test-only live quotes and API spy. Measures synchronous quote-to-series calls, not exchange latency or a multi-hour live soak."
+}

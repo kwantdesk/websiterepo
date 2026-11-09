@@ -9,6 +9,7 @@ export type ChartLivePrice = {
 type Listener = { symbol: string; contractSymbol?: string; receive: (quote: ChartLivePrice) => void };
 const latest = new Map<string, ChartLivePrice>();
 const listeners = new Map<string, Set<Listener>>();
+export const chartQuoteKey = (watchlistKey: string) => `quote:${watchlistKey}`;
 const matches = (listener: Pick<Listener, "symbol" | "contractSymbol">, quote: ChartLivePrice) =>
   listener.symbol === quote.symbol && (!listener.contractSymbol || listener.contractSymbol === quote.contractSymbol);
 
@@ -37,6 +38,27 @@ export function subscribeChartLivePrice(
     try { receive(retained); } catch { /* A later quote can retry after chart setup. */ }
   }
   return () => { set.delete(listener); if (!set.size) listeners.delete(key); };
+}
+
+/** Subscribe at the shared quote ingress, before pane validation, trading UI
+ * callbacks and execution studies. Pane prints remain a fallback; the same
+ * packet returning through the pane must not cause a second canvas repaint. */
+export function subscribeChartDisplayPrice(
+  key: string, symbol: string, contractSymbol: string | undefined,
+  broker: string | undefined, receive: Listener["receive"],
+) {
+  let last: ChartLivePrice | undefined;
+  const forward = (quote: ChartLivePrice) => {
+    if (last && (quote.sourceTimestampMs < last.sourceTimestampMs
+      || (quote.sourceTimestampMs === last.sourceTimestampMs && quote.price === last.price))) return;
+    last = quote;
+    receive(quote);
+  };
+  const stopPane = subscribeChartLivePrice(key, symbol, contractSymbol, forward);
+  const stopShared = broker ? subscribeChartLivePrice(
+    chartQuoteKey(`${broker}::${symbol}`), symbol, contractSymbol, forward,
+  ) : () => {};
+  return () => { stopPane(); stopShared(); };
 }
 
 type PriceSeries = Pick<ISeriesApi<"Candlestick">, "options" | "applyOptions" | "createPriceLine" | "removePriceLine">;

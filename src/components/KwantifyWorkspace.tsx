@@ -1,6 +1,6 @@
 "use client";
 import { createLeasedMarketSource } from "../../public/browser-market-stream.js";
-import { publishChartLivePrice } from "@/lib/liveChartPrice";
+import { chartQuoteKey, publishChartLivePrice } from "@/lib/liveChartPrice";
 import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import { readWorkspacePreferenceValue, recordConfirmedWorkspacePreference } from "@/lib/workspacePreferenceFallback";
 
@@ -922,6 +922,16 @@ function publishLiveWatchlistQuote(
   const previous = liveWatchlistSnapshots.get(key);
   const mid = Number(quote.mid);
   if (!Number.isFinite(mid) || mid <= 0) return;
+  // The displayed chart quote shares the watchlist's ingress. Do not route it
+  // through pane candle validation, paper-order handlers or study batching.
+  // Contract/symbol scoping and monotonic provider timestamps stay enforced
+  // by the price bus; cached startup values never impersonate a live tick.
+  const timestamp = marketTimestamp(quote.timestamp);
+  if (!quote.cached && Number.isFinite(timestamp)) publishChartLivePrice({
+    key: chartQuoteKey(key), symbol: displayCmeSymbol(quote.instrument),
+    contractSymbol: quote.contractSymbol || undefined,
+    price: mid, sourceTimestampMs: timestamp, receivedAt: Date.now(),
+  });
   const previousMid = previous?.mid || mid;
   const openPrice = previous?.openPrice || fallbackOpenPrice || mid;
   const change = mid - openPrice;
@@ -14516,7 +14526,7 @@ export default function KwantifyWorkspace({
       // the dominant multi-chart freeze, worst on GEX Vue's four index panes.
       publishLiveWatchlistQuote(
         key,
-        { instrument: symbol, bid: mid, ask: mid, mid, broker: "Market Index" },
+        { instrument: symbol, bid: mid, ask: mid, mid, broker: "Market Index", timestamp: snapshot.timestamp },
         openPrice,
       );
 

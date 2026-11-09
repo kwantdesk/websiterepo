@@ -1,0 +1,38 @@
+(node:11172) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/liveChartPrice.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every quote reaches its scoped marker synchronously, independently of interval or candle aggregation (1.8685ms)
+✔ wrong symbol/contract, invalid and older observations cannot move a chart; equal timestamps can bobble (0.2079ms)
+✔ remount gets a fresh retained quote, stopped subscribers and stale retained prices do not leak (0.2202ms)
+✔ native line receives exact quoted values without update/setData on candle history, and restores replay defaults (0.3608ms)
+✔ actual validated futures quote consumer publishes before its execution-only candle return (435.2665ms)
+✔ between-tick quote labels retain the contract axis increment without rounding to a different execution price (0.4052ms)
+✔ actual execution consumer publishes before heavy history work and ignores flow-only records (207.5132ms)
+✔ replay cleanup restores defaults even when the chart library mutates its options object (0.281ms)
+(node:18916) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/observedCandleHistory.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a candle prepared in the visible frame updates the actual series without a second frame wait (60.8175ms)
+✔ latest prepared price cancels the queued older paint without shrinking its real high/low (16.2856ms)
+✔ a pending real rollover finalizes both bars in the same prepared frame (10.1607ms)
+✔ event charts retain their distinct frame queue and replay ignores live prints (12.6652ms)
+✔ actual live CVD sampler retains final closing flow and updates the next candle before any prop commit (10.3246ms)
+✔ live input capture also runs for ordinary indicators without a Volume or CVD pane (10.6807ms)
+✔ Heikin Ashi paints consecutive executions and rollover without a history redraw (9.3698ms)
+(node:26164) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/liveChartPrice.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ shared ingress updates all matching panes before any pane validation or execution callback (2.6088ms)
+✔ broker, instrument and contract isolation plus monotonic ordering across ingress and pane fallback (0.3139ms)
+✔ actual watchlist ingress publishes exact midpoint before scheduling UI and rejects cached/invalid quotes (389.8532ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1031.5608
