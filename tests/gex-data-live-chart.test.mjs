@@ -29,7 +29,7 @@ test('failed ticker selection removes stale chart; failed same-query refresh ret
   let ticker='SPY',fail=false,resets=0;
   const nodes=new Map(),q=key=>{if(!nodes.has(key))nodes.set(key,{hidden:true,textContent:''});return nodes.get(key);};
   const context={activeTool:{id:'heat-map'},window:{},EMBEDDED:false,frameVisible:true,toolRequestId:0,toolCursor:null,pollTimer:null,activeController:null,AbortController,
-    masterReplay:null,toolRequestInFlight:false,lastToolSuccessAt:0,
+    masterReplay:null,toolRequestInFlight:false,lastToolSuccessAt:0,pendingLiveFrame:null,
     toolView:{setAttribute(){}},q,clearTimeout(){},updateInitialToolLoading(){},toolPayload:{data:{ticker:'SPY'}},toolPayloadQuery:null,
     dataRequestIdentity,buildRequest:()=>({sessionDate:'2026-10-16',filter:{ticker}}),snapshotSelections:new Map(),snapshotKey:()=> 'heat',resetStage(){resets++;},
     loadToolPayload:async()=>{if(fail)throw Error('Unavailable');return {data:{ticker}};},renderToolPayload(){},renderSnapshotControl(){},updateToolTimestamp(){},saveToolControls(){},updateLiveState(){},schedulePoll(){}};

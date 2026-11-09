@@ -1718,9 +1718,9 @@ await boot();
     if(label&&!toolConfiguration.hideAxisTitles){ctx.translate(rightSide?right+66:18,(top+bottom)/2);ctx.rotate(rightSide?Math.PI/2:-Math.PI/2);ctx.textAlign="center";ctx.fillText(label,0,0);}ctx.restore();
   }
 
-  function drawHorizontalTicks(ctx,left,right,top,bottom,min,max,formatter) {
+  function drawHorizontalTicks(ctx,left,right,top,bottom,min,max,formatter,ticks=null) {
     ctx.save();ctx.font="700 13px Aleph, sans-serif";ctx.textAlign="right";ctx.fillStyle=themePaint("#fff");
-    for(const value of niceTicks(min,max,5)){const y=bottom-(value-min)/Math.max(1e-9,max-min)*(bottom-top);ctx.strokeStyle=CHART_COLORS.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();}
+    for(const value of ticks||niceTicks(min,max,5)){const y=bottom-(value-min)/Math.max(1e-9,max-min)*(bottom-top);ctx.strokeStyle=CHART_COLORS.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();}
     ctx.restore();
   }
 
@@ -1889,9 +1889,9 @@ await boot();
       draw:(ctx,w,h,state)=>{
         const left=78,right=w-(hasUnderlying?78:30),top=12,bottom=h-34,visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1);
         const paneHeight=hasVolume?Math.min(100,h*.15):0,volumeTop=bottom-paneHeight,mainBottom=hasVolume?volumeTop-Math.min(20,h*.1):bottom;
-        const bounds=priceChartBounds(visible,chartType),{min:pmin,max:pmax}=niceValueDomain(bounds.min,bounds.max),vmax=niceValueDomain(0,Math.max(1,...visible.map(row=>row.volume||0))).max;
+        const bounds=priceChartBounds(visible,chartType),{min:pmin,max:pmax,ticks:priceTicks}=niceValueDomain(bounds.min,bounds.max),vmax=niceValueDomain(0,Math.max(1,...visible.map(row=>row.volume||0))).max;
         const domain=timeDomain(rows,state.rawStart??state.start,state.rawEnd??state.end,{padBars:chartType==="candles"||hasVolume}),x=index=>timeX(visible[index]?.time,domain,left,right),py=value=>mainBottom-(value-pmin)/(pmax-pmin)*(mainBottom-top),slot=visible.length>1?(right-left)*(visible.at(-1).time-visible[0].time)/Math.max(1,domain.max-domain.min)/(visible.length-1):(right-left);
-        drawHorizontalTicks(ctx,left,right,top,mainBottom,pmin,pmax,chartStrikeLabel);
+        drawHorizontalTicks(ctx,left,right,top,mainBottom,pmin,pmax,chartStrikeLabel,priceTicks);
         ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,mainBottom-top);ctx.clip();
         if(chartType==="candles")drawPriceCandles(ctx,visible,x,py,slot);
         else if(presentation.lineColor)quantLine(ctx,visible.filter(row=>Number.isFinite(row.close)).map(row=>[x(visible.indexOf(row)),py(row.close)]),presentation.lineColor,2);
@@ -1903,7 +1903,7 @@ await boot();
           drawHorizontalTicks(ctx,left,right,volumeTop,bottom,0,vmax);
           drawAxisLabels(ctx,{left,top:volumeTop,right,bottom,min:0,max:vmax,label:"Option Volume",steps:4,formatter:abbreviatedTick});
         }
-        drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:pmin,max:pmax,formatter:chartStrikeLabel,label:presentation.leftAxisName});
+        drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:pmin,max:pmax,ticks:priceTicks,formatter:chartStrikeLabel,label:presentation.leftAxisName});
         if(hasUnderlying)drawAxisLabels(ctx,{left,top,right,bottom:mainBottom,min:smin,max:smax,formatter:chartStrikeLabel,rightSide:true,label:"Underlying ($)"});
         drawTimeLabels(ctx,rows,state.rawStart??state.start,state.rawEnd??state.end,left,right,bottom,domain);drawChartCrosshair(ctx,state,left,right,top,bottom);
         // Source502083 exposes the hovered clock on the axis, outside the OHLC
