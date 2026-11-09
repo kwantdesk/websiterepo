@@ -5044,6 +5044,7 @@ export default function ChartIndicatorsControl({
                    IndicatorSettingsLayout reads only its direct children, and
                    a Fragment would collapse the lot into a single child. */
                 groupFootprintSettingRows([
+                    ["Candle layout", "candleLayout", [["overlay", "Overlay"], ["side-by-side", "Candle + footprint"]]],
                     ["Scale", "scaleMode", [["visible-region", "Visible region"], ["per-bar", "Per bar"], ["all-loaded", "All loaded"], ["fixed-maximum", "Fixed maximum"]]],
                     ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
                     ["Grouping mode", "groupMode", [["fixed", "Fixed"], ["open-close", "Based on open / close"]]],

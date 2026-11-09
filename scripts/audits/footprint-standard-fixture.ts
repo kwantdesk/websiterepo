@@ -1,0 +1,20 @@
+import type {InstitutionalTrade} from '@/lib/institutionalMarketData';
+import type {Time} from '@/lib/lightweightChartsCompat';
+import {FootprintPrimitive} from '@/lib/footprintPrimitive';
+import {buildFootprintBars} from '@/lib/footprint';
+import {applyFootprintPreset,DEFAULT_FOOTPRINT_SETTINGS} from '@/lib/footprintSettings';
+const settings=applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS,'standard');
+const candles=Array.from({length:5},(_,i)=>({timestamp:1000+i*60000,open:100+i*.25,close:100+(i+1)*.25,high:101.5+i*.25,low:99.5+i*.25,volume:200}));
+const records:InstitutionalTrade[]=candles.flatMap((c,i)=>Array.from({length:9},(_,j)=>{const price=c.low+j*.25,size=2+(i+j)*3;return {eventId:`${i}:${j}`,recordIndex:i*20+j,timestamp:c.timestamp+j+1,open:price,high:price,low:price,close:price,volume:size,trades:1,bidVolume:j%2?size:0,askVolume:j%2?0:size,delta:j%2?-size:size,aggressor:j%2?'SELL':'BUY'};}));
+const bars=buildFootprintBars(candles,records,{...settings,tickSize:.25,groupTicks:1,instrument:'NQ'}).map(b=>({...b,time:Math.floor(b.timestamp/1000) as Time}));
+(window as any).renderStandard=(light=false,slot=122)=>{
+ const canvas=document.querySelector('canvas')!,ctx=canvas.getContext('2d')!;canvas.width=740;canvas.height=440;const text=light?'#181818':'#eeeeee',background=light?'#f9f9f9':'#090909';ctx.fillStyle=background;ctx.fillRect(0,0,740,440);const calls:any[]=[];
+ const fill=ctx.fillRect.bind(ctx),label=ctx.fillText.bind(ctx);ctx.fillRect=(x,y,w,h)=>{calls.push({kind:'body',x,y,w,h});fill(x,y,w,h)};ctx.fillText=(s,x,y,max)=>{calls.push({kind:'text',text:s,x,y});max===undefined?label(s,x,y):label(s,x,y,max)};
+ const p=new FootprintPrimitive(),scale={options:()=>({barSpacing:slot}),getVisibleRange:()=>null,timeToCoordinate:(time:number)=>50+bars.findIndex(b=>b.time===time)*slot};
+ p.attached({chart:{timeScale:()=>scale},series:{priceToCoordinate:(price:number)=>35+(103-price)*80},requestUpdate(){}} as any);
+ p.update(bars,{...p.options(),...settings,rowPriceStep:.25,profileRowPriceStep:.25,opacity:1,textColor:text,backgroundColor:background,candleColors:{upColor:text,downColor:'#888888',borderUpColor:text,borderDownColor:'#888888',wickUpColor:text,wickDownColor:'#888888',borderVisible:true,wickVisible:true}} as any);
+ const target={useMediaCoordinateSpace:(fn:any)=>fn({context:ctx,mediaSize:{width:740,height:440}})};
+ p.paneViews()[0].renderer().draw(target as any);
+ const initial=calls.slice();calls.length=0;p.updateLiveCandle({time:bars[4].time,timestamp:bars[4].timestamp,open:bars[4].open,high:103,low:bars[4].low,close:102.75,tickSize:.25});p.paneViews()[0].renderer().draw(target as any);
+ ctx.fillRect=fill;ctx.fillText=label;p.detached();return {initial,live:calls,layout:settings.candleLayout};
+};

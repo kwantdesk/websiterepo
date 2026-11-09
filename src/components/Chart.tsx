@@ -7217,6 +7217,8 @@ function Chart({
       // and prints its numbers at the same size.
       rowPriceStep: Math.max(0, priceFormat.minMove * resolvedFootprintGroupTicks),
       candleSpacing: clamp(Number(footprintSettings.candleSpacing ?? 6), 1, 24),
+      candleLayout: footprintSettings.candleLayout === "side-by-side" ? "side-by-side" : "overlay",
+      candleColors: resolvedCandleColors,
       borderWidth: clamp(Number(footprintSettings.borderWidth ?? 1), 0.5, 4),
       opacity: clamp(Number(footprintSettings.backgroundOpacity ?? 74) / 100, 0, 1),
       minimumOpacity: clamp(Number(footprintSettings.minimumOpacity ?? 8) / 100, 0, 1),
@@ -7329,7 +7331,7 @@ function Chart({
         : String(footprintSettings.perBarProfilePocColor ?? settings.borderUpColor),
       backgroundColor: settings.backgroundColor,
     };
-  }, [footprintSettings, priceFormat.minMove, resolvedFootprintGroupTicks, settings]);
+  }, [footprintSettings, priceFormat.minMove, resolvedCandleColors, resolvedFootprintGroupTicks, settings]);
   useEffect(() => {
     liveFootprintEnabledRef.current = Boolean(footprintIndicator);
     const sourceTailTimestamp = footprintSourceCandles.at(-1)?.timestamp ?? Number.NEGATIVE_INFINITY;
@@ -8046,6 +8048,7 @@ function Chart({
           40,
           Math.min(86, footprintPrimitiveOptions.barWidth)
             + footprintPrimitiveOptions.candleSpacing
+            + (footprintPrimitiveOptions.candleLayout === "side-by-side" ? 24 : 0)
             + adaptiveProfileSpan,
         ),
       );

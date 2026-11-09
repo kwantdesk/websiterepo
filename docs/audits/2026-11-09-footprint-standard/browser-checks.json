@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "light": false,
+      "bodies": 5,
+      "texts": 90,
+      "liveGeometryChanged": true
+    },
+    {
+      "light": true,
+      "bodies": 5,
+      "texts": 90,
+      "liveGeometryChanged": true
+    }
+  ],
+  "errors": [],
+  "method": "Actual footprint primitive, real Canvas2D and preset; deterministic offline execution fixture."
+}

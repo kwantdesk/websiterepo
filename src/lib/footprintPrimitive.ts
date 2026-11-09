@@ -15,7 +15,8 @@ import {
   type FootprintVisualizationMode,
 } from "./footprint";
 import { applyLiveFootprintCandleGeometry } from "./footprintLive";
-import { footprintPercentile } from "./footprintRenderMath";
+import { footprintPercentile, footprintSidecarGeometry } from "./footprintRenderMath";
+import type { CandleSeriesColors } from "./candleStyle";
 
 export type FootprintRenderBar = FootprintBar & {
   time: Time;
@@ -54,6 +55,8 @@ export type FootprintPrimitiveOptions = {
   /** Price distance between adjacent rows in the optional side profiles. */
   profileRowPriceStep: number;
   candleSpacing: number;
+  candleLayout: "overlay" | "side-by-side";
+  candleColors?: CandleSeriesColors;
   borderWidth: number;
   opacity: number;
   minimumOpacity: number;
@@ -151,6 +154,7 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   perBarProfileOutline: false,
   barWidth: 92,
   candleSpacing: 6,
+  candleLayout: "overlay",
   borderWidth: 1,
   opacity: 1,
   minimumOpacity: 0.08,
@@ -454,8 +458,9 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
 
       for (let index = fromIndex; index < toIndex; index += 1) {
         const bar = bars[index];
-        const x = timeScale.timeToCoordinate(bar.time);
-        if (x === null) continue;
+        const anchorX = timeScale.timeToCoordinate(bar.time);
+        if (anchorX === null) continue;
+        const sideBySide = options.candleLayout === "side-by-side";
         const profileLayerEnabled = options.showPerBarVolumeProfile || options.showPerBarDeltaProfile;
         const requestedProfileWidth = options.barWidth
           * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1);
@@ -475,6 +480,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
          * the minute before it happened to be empty.
          */
         const ceilingWidth = options.barWidth
+          + (sideBySide ? 24 : 0)
           + options.candleSpacing
           + requestedProfileWidth * profileSideCount
           + options.perBarProfileGap * profileSideCount
@@ -498,11 +504,15 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         const adaptiveProfileGap = adaptiveProfileWidth >= 1 ? options.perBarProfileGap : 0;
         const profileSpacing = profileSideCount
           * (adaptiveProfileWidth + adaptiveProfileGap);
-        const barWidth = Math.max(
+        const sidecar = sideBySide
+          ? footprintSidecarGeometry(anchorX, nearest, options.candleSpacing, options.barWidth, profileSpacing)
+          : null;
+        const barWidth = sidecar?.footprintWidth ?? Math.max(
           8,
           Math.min(options.barWidth, availableSlotWidth - profileSpacing),
         );
-        const left = x - barWidth / 2;
+        const left = sidecar?.left ?? anchorX - barWidth / 2;
+        const x = sidecar?.footprintX ?? anchorX;
         const halfWidth = barWidth / 2;
         const barMetrics = bar.rows.flatMap((row) => {
           const values = displayValues(row, options);
@@ -519,31 +529,36 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         const lowY = params.series.priceToCoordinate(bar.low);
         const openY = params.series.priceToCoordinate(bar.open);
         const closeY = params.series.priceToCoordinate(bar.close);
+        const rising = bar.close >= bar.open;
+        const candleX = sidecar?.candleX ?? x;
+        const candleLeft = sidecar ? candleX - sidecar.candleWidth / 2 : left;
+        const candleWidth = sidecar?.candleWidth ?? barWidth;
+        const candleColors = sidecar ? options.candleColors : undefined;
         if (options.showWick && highY !== null && lowY !== null) {
           context.save();
-          context.globalAlpha = 0.48;
-          context.strokeStyle = bar.close >= bar.open ? options.askColor : options.bidColor;
+          context.globalAlpha = sidecar ? 1 : 0.48;
+          context.strokeStyle = candleColors ? rising ? candleColors.wickUpColor : candleColors.wickDownColor : rising ? options.askColor : options.bidColor;
           context.lineWidth = 1;
           context.beginPath();
-          context.moveTo(Math.round(x) + 0.5, highY);
-          context.lineTo(Math.round(x) + 0.5, lowY);
+          context.moveTo(Math.round(candleX) + 0.5, highY);
+          context.lineTo(Math.round(candleX) + 0.5, lowY);
           context.stroke();
           context.restore();
         }
         if ((options.showBodyOutline || options.showBodyFill) && openY !== null && closeY !== null) {
           context.save();
-          context.globalAlpha = bar.isClosed ? 0.34 : 0.72;
-          context.strokeStyle = bar.close >= bar.open ? options.askColor : options.bidColor;
-          context.fillStyle = bar.close >= bar.open ? options.askColor : options.bidColor;
+          context.globalAlpha = sidecar ? 1 : bar.isClosed ? 0.34 : 0.72;
+          context.strokeStyle = candleColors ? rising ? candleColors.borderUpColor : candleColors.borderDownColor : rising ? options.askColor : options.bidColor;
+          context.fillStyle = candleColors ? rising ? candleColors.upColor : candleColors.downColor : rising ? options.askColor : options.bidColor;
           const bodyTop = Math.min(openY, closeY);
           const bodyHeight = Math.max(1, Math.abs(closeY - openY));
           if (options.showBodyFill) {
-            context.globalAlpha *= 0.09;
-            context.fillRect(left, bodyTop, barWidth, bodyHeight);
+            if (!sidecar) context.globalAlpha *= 0.09;
+            context.fillRect(candleLeft, bodyTop, candleWidth, bodyHeight);
           }
           if (options.showBodyOutline) {
-            context.globalAlpha = bar.isClosed ? 0.34 : 0.72;
-            context.strokeRect(left + 0.5, bodyTop + 0.5, Math.max(1, barWidth - 1), Math.max(1, bodyHeight - 1));
+            context.globalAlpha = sidecar ? 1 : bar.isClosed ? 0.34 : 0.72;
+            context.strokeRect(candleLeft + 0.5, bodyTop + 0.5, Math.max(1, candleWidth - 1), Math.max(1, bodyHeight - 1));
           }
           context.restore();
         }

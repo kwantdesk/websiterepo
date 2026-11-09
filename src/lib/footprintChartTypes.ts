@@ -313,6 +313,7 @@ const SETTING_SECTIONS: Record<string, string> = {
   minimumRowHeightToShowText: "Cells",
   barWidth: "Cells",
   candleSpacing: "Cells",
+  candleLayout: "Cells",
   fontSize: "Cells",
   fontWeight: "Cells",
   borderWidth: "Cells",

@@ -1,0 +1,37 @@
+(node:13160) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprint.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ POC, value area, maxima and VWAP use the selected footprint input (3.93ms)
+✔ the incremental footprint cache invalidates when input data changes (0.9612ms)
+✔ every named footprint view survives settings validation (2.3659ms)
+✔ live footprint packets go straight to the shared frame queue (6.4319ms)
+(node:35356) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprint.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ closed footprint cells reflect a delivered burst immediately without waiting for the repair timer (38.394ms)
+✔ coalesced bursts across several event bars update both main cells and separate profile grouping (1.8669ms)
+✔ a later React cache refresh cannot replace delivered closed-bar numbers with stale cells (0.5074ms)
+✔ every footprint setting has a default and a live runtime consumer (26.8446ms)
+✔ every exposed footprint mode is connected to the live chart options (5.0003ms)
+✔ all footprint numeric controls feed aggregation, rendering, or performance (2.9729ms)
+✔ previously disconnected footprint controls now change renderer behavior (5.3888ms)
+✔ per-bar volume and delta profiles share the footprint execution rows (1.8637ms)
+✔ footprint preset and local-template selections remain controlled and persistent (0.5599ms)
+(node:32212) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprintSettings.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Standard is a persisted clean candle and bid-ask preset and other presets restore overlay layout (1.5382ms)
+✔ candle anchors, internal gap and neighbouring-pair space survive zoom (0.2922ms)
+✔ Footprint selection, not zoom-dependent execution coverage, owns native candle visibility (1.9946ms)
+✔ first paint cannot briefly expose native candles underneath Footprint (1.8315ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 286.2016

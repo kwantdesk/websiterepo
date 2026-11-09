@@ -58,6 +58,7 @@ export type FootprintSettings = {
   perBarProfilePocColor: string;
   barWidth: number;
   candleSpacing: number;
+  candleLayout: "overlay" | "side-by-side";
   fontSize: number;
   footprintTextSizeVersion: number;
   fontWeight: number;
@@ -173,6 +174,7 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   perBarProfilePocColor: "#E4BF5A",
   barWidth: 92,
   candleSpacing: 6,
+  candleLayout: "overlay",
   fontSize: 13,
   footprintTextSizeVersion: 1,
   fontWeight: 500,
@@ -255,6 +257,7 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
 
 export type FootprintPresetName =
   | "kwantdesk"
+  | "standard"
   | "order-flow"
   | "imbalance"
   | "delta"
@@ -270,6 +273,7 @@ export const FOOTPRINT_PRESET_OPTIONS: ReadonlyArray<{
   description: string;
 }> = [
   { id: "kwantdesk", label: "KwantDesk default", description: "Balanced Bid × Ask cells with value area, POC and stacked imbalances." },
+  { id: "standard", label: "Standard", description: "A normal candle beside a clean Bid × Ask footprint, with space between each pair." },
   { id: "order-flow", label: "Order flow + profiles", description: "Digital Bid × Ask histogram with live volume and delta wings." },
   { id: "imbalance", label: "Imbalance", description: "High-contrast diagonal and stacked imbalance view." },
   { id: "delta", label: "Delta", description: "Signed delta histogram with positive and negative extrema." },
@@ -280,6 +284,18 @@ export const FOOTPRINT_PRESET_OPTIONS: ReadonlyArray<{
 
 export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSettings>> = {
   kwantdesk: {},
+  standard: {
+    chartType: "bid-ask", chartVariant: "bid-ask-ladder",
+    contentMode: "ladder", visualizationMode: "text-only",
+    candleLayout: "side-by-side", candleSpacing: 12, barWidth: 92,
+    showZeros: true,
+    showWick: true, showBodyOutline: true, showBodyFill: true,
+    showPerBarVolumeProfile: false, showPerBarDeltaProfile: false,
+    showSummary: false, showBarDelta: false, showBetweenVolume: false,
+    showValueArea: false, showVah: false, showVal: false,
+    showVolumePoc: false, showDeltaPoc: false, showCentreDivider: false,
+    showImbalances: false, showStackedImbalances: false, outerEdgeMode: false,
+  },
   "order-flow": {
     chartType: "bid-ask",
     chartVariant: "bid-ask-digital-histogram",
@@ -521,6 +537,7 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     perBarProfilePocSize: clamp(source.perBarProfilePocSize, 2, 12, 5),
     barWidth: clamp(source.barWidth, 28, 180, 92),
     candleSpacing: clamp(source.candleSpacing, 1, 24, 6),
+    candleLayout: source.candleLayout === "side-by-side" ? "side-by-side" : "overlay",
     fontSize: clamp(Number(source.footprintTextSizeVersion ?? 0) < 1 && Number(source.fontSize) === 11
       ? 13 : source.fontSize, 9, 15, 13),
     footprintTextSizeVersion: 1,
