@@ -45,6 +45,7 @@ export const showDataDialog=dialog;
 export function confirmLocalAction(title,message,action,event){if(event?.shiftKey){action();return;}dialog(title,el=>el.append(node('p','',message),button('Cancel',()=>el.close()),button('Confirm',()=>{action();el.close();})));}
 
 export function showToolConfiguration(anchor){
+  if(openWorkspacePalette()){closePopup();return;}
   popup(anchor,'Tool Configuration',el=>{
     el.append(button('Colour palette',()=>{if(openWorkspacePalette())closePopup();}));
     const configuration=getConfiguration();for(const {key,label} of TOOL_CONFIGURATION_OPTIONS){const row=node('label','configuration-row'),input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!configuration[key];input.setAttribute('aria-label',label);

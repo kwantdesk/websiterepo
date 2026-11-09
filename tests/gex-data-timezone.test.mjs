@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {sanitizeToolConfiguration} from '../public/gex-data-app/tool-configuration.js';
 import {normalizeTimeZone} from '../src/lib/timeZones.ts';
 import {formatTableValue} from '../public/gex-data-app/table-view.js';
 
@@ -21,10 +22,11 @@ function host({account='owner', savedAccount=account, savedZone, savedPalette, c
   const frame = {frames:[child],postMessage:data=>messages.push(['root',data.type])};
   const window = {
     location:{origin:'https://test.local',search:''},
+    dispatchEvent:()=>true,
     addEventListener:(name,handler)=>listeners.set(name,handler),
     removeEventListener:name=>listeners.delete(name),
   };
-  const context = {exports:{}, window, document:{documentElement:{}}, URLSearchParams, Map, Set, AbortController,
+  const context = {exports:{}, window, document:{documentElement:{}}, URLSearchParams, Map, Set, AbortController, CustomEvent,
     getComputedStyle:()=>({getPropertyValue:name=>({'--background':'#080808','--foreground':'#ffffff','--primary':'#0088ff','--candle-up':'#00ff00','--candle-down':'#ff0000'}[name]||'#777777')}),
     localStorage:{getItem:key=>store.get(key)??null},
     MutationObserver:class {observe(){} disconnect(){}},
@@ -33,6 +35,8 @@ function host({account='owner', savedAccount=account, savedZone, savedPalette, c
         const ref={current:refs.length===0?{contentWindow:frame}:value};refs.push(ref);return ref;
       },useState:value=>[value,()=>{}]};
       if(name==='react/jsx-runtime')return {jsx:(_,props)=>props,jsxs:(_,props)=>props};
+      if(name.includes('privateToolRevalidation'))return {revalidatePrivateTool:()=>{throw Error('No requests expected in the settings/timezone harness');}};
+      if(name.includes('tool-configuration'))return {sanitizeToolConfiguration};
       if(name.includes('browserStorageQuota'))return {writeProtectedItem:(key,value)=>{store.set(key,value);return {ok:true};}};
       if(name.includes('userPreferences'))return {PREFERENCES_HYDRATED_EVENT:'hydrated'};
       if(name.includes('chartSettings'))return {
@@ -60,9 +64,9 @@ function host({account='owner', savedAccount=account, savedZone, savedPalette, c
 
 test('GEX Data uses the charts picker, top-right reserved toolbar space and current chart default',()=>{
   assert.match(hostSource,/import TimeZoneSelect, \{ CHART_TIME_ZONE_TRIGGER_CLASS_NAME \} from "@\/components\/ui\/TimeZoneSelect"/);
-  assert.match(hostSource,/absolute right-2 top-\[5px\]/);
+  assert.match(hostSource,/absolute right-2 top-\[6px\]/);
   assert.match(hostSource,/params\.set\("hostTimezone", "1"\)/);
-  assert.match(read('../public/gex-data-app/site.css'),/\.host-timezone-control \.topbar\{padding-right:190px!important\}/);
+  assert.match(read('../public/gex-data-app/site.css'),/\.host-timezone-control \.app-shell > \.topbar\{grid-template-columns:/);
   const h=host({chartZone:'Australia/Brisbane'});
   assert.equal(h.api.timezone(),'Australia/Brisbane');h.cleanup();
 });
@@ -131,7 +135,7 @@ test('GEX BOX page is retired but shared tools are preserved, and Settings expos
   assert.match(read('../public/gex-data-app/workspace-ui.js'),/button\('Colour palette'/);
   const picker=read('../src/components/gex-data/GexPaletteSettings.tsx');
   assert.match(picker,/GEX_MAP_PALETTE_PRESETS.map/);assert.match(picker,/onPreview\(originalRef.current\)/);
-  assert.match(picker,/Save this palette\?/);assert.match(picker,/Follow website theme/);
+  assert.match(picker,/Save these settings\?/);assert.match(picker,/Follow website theme/);
 });
 
 test('axes, table times and retrieval timestamps honor zone changes, including NY DST',()=>{
