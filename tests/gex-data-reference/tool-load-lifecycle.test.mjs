@@ -18,7 +18,7 @@ class Node{
 }
 function harness(){
   const nodes=new Map(),requests=[],selection={ticker:'SPY',expiry:'2026-10-19',strike:766,type:'PUT'},previous={data:{ticker:'SPY',close:4.80}},view=new Node();
-  const env={activeTool:{id:'option-price-over-time',view:'optionOhlc'},masterReplay:null,window:{},frameVisible:true,toolRequestId:0,toolRequestInFlight:false,
+  const env={activeTool:{id:'option-price-over-time',view:'optionOhlc'},masterReplay:null,window:{},frameVisible:true,toolRequestId:0,toolRequestInFlight:false,pendingLiveFrame:false,
     toolCursor:'previous-cursor',toolPayload:previous,toolPayloadQuery:null,pollTimer:null,activeController:null,AbortController,Date,EMBEDDED:false,
     snapshotSelections:new Map(),snapshotKey:()=> 'snapshot',dataRequestIdentity,
     toolView:view,q:key=>{if(!nodes.has(key))nodes.set(key,new Node());return nodes.get(key);},clearTimeout(){},updateInitialToolLoading(){},

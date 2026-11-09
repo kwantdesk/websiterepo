@@ -1,3 +1,4 @@
+import {numericControlChoices} from '../../public/gex-data-app/numeric-control-options.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -27,7 +28,7 @@ class Element {
 const descend = node => [node, ...node.children.flatMap(descend)];
 function harness({ id = 'exposure-by-strike', controls = ['greek', 'representation'], saved, copied } = {}) {
   const holder = new Element('div'), tool = { id, controls };
-  const env = { activeTool: tool, toolControlDefault, HEAT_METRICS, NEWS_TOPIC_CHOICES: [], NEWS_SENTIMENTS: [], PERIOD_OPTIONS: [],
+  const env = { activeTool: tool, toolControlDefault,numericControlChoices, HEAT_METRICS, NEWS_TOPIC_CHOICES: [], NEWS_SENTIMENTS: [], PERIOD_OPTIONS: [],
     NOTIFICATION_TYPES: [], PRICE_CHART_TYPES: [], MARKET_SHARE_MODES: [], instrumentChoices: () => [['QQQ', 'QQQ']],
     document: { createElement: tag => new Element(tag) },
     element: (tag, cls) => { const node = new Element(tag); node.className = cls; return node; },

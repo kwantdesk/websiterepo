@@ -42,7 +42,7 @@ test('actual table adapter mounts Dark Pool columns in top bar and restores ordi
   const nodes={'#toolTableWrap':wrap,'#tableColumnControls':normalHost,'#darkPoolColumnControls':topHost,'#toolVisual':{},'#chartToolbar':{},'#toolTable':{},'#tableSearch':{},'#tableCount':{},'#loadMore':{}},instances=[];
   const env={activeTool:{id:'dark-pool-levels'},tableRuntime:null,tableColumnHost:null,tableCursor:null,toolCursor:null,instanceKey:'test',gexStorage:{getItem:()=>null,setItem(){}},q:key=>nodes[key],
     createTableView:options=>{const instance={options,sets:[],destroyed:0,setRows(rows,config){this.sets.push({rows,config});},destroy(){this.destroyed++;}};instances.push(instance);return instance;}};
-  vm.runInNewContext(fragment+'\nthis.show=showTable;',env);
+  vm.runInNewContext(source.slice(source.indexOf('  function syncGainersHeaderSort('),source.indexOf('\n  function ',source.indexOf('  function syncGainersHeaderSort(')+5))+fragment+'\nthis.show=showTable;',env);
   const rows=[{rank:1,price:100,notionalValue:1000,tradeFraction:.5}],schema=[{key:'price'}];
   env.show(rows,schema,null,{sortKey:'price',inlineFilters:false});
   assert.equal(instances[0].options.columnHost,topHost);assert.equal(instances[0].options.search,null);assert.equal(instances[0].options.count,null);

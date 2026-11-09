@@ -1,3 +1,5 @@
+import {notificationReferenceSession} from '../../public/gex-data-app/exchange-notification-interaction-model.js';
+import {numericControlChoices} from '../../public/gex-data-app/numeric-control-options.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -31,7 +33,7 @@ const descendants=node=>[node,...node.children.flatMap(descendants)];
 function harness({toolId='order-flow-consolidated',saved,copied,page={},global={},groups=[]}={}){
   const document={createElement:tag=>new Node(tag,document),createElementNS:(_namespace,tag)=>new Node(tag,document)},holder=document.createElement('div'),nodes=new Map([['#toolControls',holder]]),writes=[],loads=[],requests=[],tables=[],timers=[];
   const tool=definitions.find(tool=>tool.id===toolId),getNode=key=>{if(!nodes.has(key))nodes.set(key,document.createElement('div'));return nodes.get(key);};
-  const env={document,console,structuredClone,AbortController,Date,toolControlDefault,activeTool:tool,CONTROL_OPTIONS:{},commonSessionDateControls:null, netDriftContractControls:null,masterReplay:null,
+  const env={document,console,structuredClone,AbortController,Date,toolControlDefault,numericControlChoices,activeTool:tool,CONTROL_OPTIONS:{},commonSessionDateControls:null, netDriftContractControls:null,masterReplay:null,
     instrumentChoices:()=>[['SPY','SPY'],['QQQ','QQQ']],Option:function(text,value){this.text=text;this.value=value;this.children=[];},
     element:(tag,className='',text='')=>{const node=document.createElement(tag);node.className=className;node.textContent=String(text);return node;},
     q:(selector,root)=>selector.startsWith('#')?getNode(selector):selector==='.flow-statistics'?getNode('#toolTableWrap').children.find(child=>child.className==='flow-statistics'):descendants(root||holder).find(node=>node.dataset?.control===/data-control="([^"]+)"/.exec(selector)?.[1]),
@@ -43,18 +45,18 @@ function harness({toolId='order-flow-consolidated',saved,copied,page={},global={
     controlsStorageKey:'controls',gexStorage:{getItem:()=>null,setItem:(_key,value)=>writes.push(JSON.parse(value))},toolSeriesOptions:()=>[],syncNetDriftDisplayButtons(){},updateLiveState(){},
     clearTimeout(){},setTimeout:(callback,delay)=>{timers.push({callback,delay});return timers.length;},
     snapshotSelections:new Map(),snapshotKey:()=>tool.id,toolCursor:null,toolPayload:null,toolPayloadQuery:null,
-    optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows,additionalToolRequest,dataRequestIdentity,
+    optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows,additionalToolRequest,dataRequestIdentity,notificationReferenceSession,
     popup(){},mountOptionTapeSessionControls:configuration=>{env.session=configuration;env.sessionSyncs=0;return {sync(){env.sessionSyncs++;},destroy(){}};},
     tableColumns:null,tableRows:[],tableRuntime:null,instanceKey:'test',CONSOLIDATED_COLUMNS,UNCONSOLIDATED_COLUMNS,flowStatisticsModel,
     themePaint:value=>value,compact:(value,money)=>String(money?'$':'')+value,
     createTableView:()=>({setRows:(rows,config)=>tables.push({rows,config}),getColumns:()=>[],render(){}}),setSummary:items=>{env.summary=items;},
-    window:{},frameVisible:true,toolRequestId:0,toolRequestInFlight:false,pollTimer:null,activeController:null,lastToolAttemptAt:0,lastToolSuccessAt:0,
+    window:{},frameVisible:true,toolRequestId:0,toolRequestInFlight:false,pendingLiveFrame:false,pollTimer:null,activeController:null,lastToolAttemptAt:0,lastToolSuccessAt:0,
     toolView:document.createElement('section'),updateInitialToolLoading(){},schedulePoll(){},updateToolTimestamp(){},renderSnapshotControl(){},
     activeChartInstance:null,activeChartUpdate:null,activeChartDispose:null,activeChartReset:null,refreshingCanvas:null,
     loadToolPayload:()=>new Promise((resolve,reject)=>requests.push({resolve,reject,body:plain(env.api.buildRequest(tool))})),
   };
   const metaStart=source.indexOf('  const CONTROL_META = {'),metaEnd=source.indexOf('\n  const q =',metaStart),render=actual('renderControls'),stop=render.indexOf("    if(tool.view==='volatilitySkew')");
-  const functions=['makeControl','getControl','setControl','reflectFilterOverrides','syncDateControl','saveToolControls','optionTapeSessionScope','optionTapeHeaderFilters','optionTapeTableConfiguration','requestBase','maybeFilter','buildRequest','onControlsChanged','resetStage','showTable','renderFlowStatistics','renderToolPayload','loadActiveTool'];
+  const functions=['makeControl','getControl','setControl','reflectFilterOverrides','syncDateControl','saveToolControls','optionTapeSessionScope','optionTapeHeaderFilters','optionTapeTableConfiguration','requestBase','maybeFilter','buildRequest','onControlsChanged','resetStage','syncGainersHeaderSort','showTable','renderFlowStatistics','renderToolPayload','loadActiveTool'];
   vm.runInNewContext(source.slice(metaStart,metaEnd)+functions.map(actual).join('\n')+render.slice(0,stop)+'\n}\nthis.api={renderControls,getControl,setControl,saveToolControls,buildRequest,onControlsChanged,optionTapeTableConfiguration,optionTapeSessionScope,renderToolPayload,loadActiveTool};',env);
   env.api.renderControls(tool);env.loadActiveTool=options=>{loads.push({options,body:plain(env.api.buildRequest(tool))});};
   return {env,tool,nodes,writes,loads,requests,tables,timers,page,global,input:id=>env.q(`[data-control="${id}"]`,holder),get:env.api.getControl,set:env.api.setControl,request:()=>plain(env.api.buildRequest(tool)),configuration:()=>env.api.optionTapeTableConfiguration(tool),load:options=>env.api.loadActiveTool(options)};
@@ -71,13 +73,13 @@ test(`${toolId}: actual factory restores copied sort/filter/date state and saved
 test(`${toolId}: legacy historical controls migrate once, explicit Current wins, overrides never overwrite saved range`,()=>{
   const old=harness({toolId,saved:{mode:'historical',date:'2026-10-16',ticker:'SPY'}});assert.equal(old.get('tapeSessionStart'),'2026-10-16');assert.equal(old.get('tapeSessionEnd'),'2026-10-16');assert.equal(old.request().sessionDate,'2026-10-16');
   const current=harness({toolId,copied:{c_mode:'historical',c_date:'2026-10-16',c_tapeSessionStart:'',c_tapeSessionEnd:''},global:{sessionDate:'2026-10-30'}});assert.equal(current.get('tapeSessionStart'),'');assert.equal(current.env.session.getScope().disabled,true);assert.equal(current.request().sessionDate,'2026-10-30');assert.equal(current.request().timeRange,undefined);
-  delete current.global.sessionDate;assert.equal(current.get('mode'),'latest');assert.equal(current.request().sessionDate,'2026-11-02');
+  delete current.global.sessionDate;assert.equal(current.get('mode'),'latest');if(toolId==='order-flow-consolidated')assert.deepEqual(current.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});else assert.equal(current.request().sessionDate,'2026-11-02');
   const range=harness({toolId,saved:{tapeSessionStart:'2026-10-16',tapeSessionEnd:'2026-10-19'},page:{sessionDate:'2026-10-23'}});assert.equal(range.request().sessionDate,'2026-10-23');assert.equal(range.request().timeRange,undefined);assert.equal(range.get('tapeSessionStart'),'2026-10-16');delete range.page.sessionDate;assert.ok(range.request().timeRange);
 });
 test(`${toolId}: Session picker changes are saved through actual controls, including Current and full range`,()=>{
   const h=harness({toolId,saved:{mode:'historical',date:'2026-10-16',ticker:'SPY'}});h.env.toolCursor=['old'];
   h.env.session.onChange({startDate:'2026-10-16',endDate:'2026-10-19'});assert.equal(h.env.toolCursor,null);assert.equal(h.get('mode'),'historical');assert.ok(h.request().timeRange);assert.equal(h.input('date').closest().hidden,true);assert.equal(h.timers.at(-1).delay,180);
-  h.env.session.onChange({startDate:'',endDate:''});assert.equal(h.get('mode'),'latest');assert.equal(h.request().timeRange,undefined);assert.equal(h.request().sessionDate,'2026-11-02');assert.equal(h.writes.at(-1)[toolId].tapeSessionStart,'');
+  h.env.session.onChange({startDate:'',endDate:''});assert.equal(h.get('mode'),'latest');if(toolId==='order-flow-consolidated'){assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});assert.equal(h.request().sessionDate,undefined);}else{assert.equal(h.request().timeRange,undefined);assert.equal(h.request().sessionDate,'2026-11-02');}assert.equal(h.writes.at(-1)[toolId].tapeSessionStart,'');
 });
 test(`${toolId}: atomic provider sort and typed header filters retain scope, compose groups, reset cursor and avoid no-op requests`,()=>{
   const group={id:'g1',type:toolId==='order-flow-consolidated'?'OPTION_TRADES_CONSOLIDATED':'OPTION_TRADES_UNCONSOLIDATED',expression:{field:'VOLUME',operation:'GREATER_THAN',values:[1000]}},h=harness({toolId,saved:{mode:'historical',date:'2026-10-16',ticker:'SPY'},groups:[group]});

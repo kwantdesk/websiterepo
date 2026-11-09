@@ -1,3 +1,4 @@
+import {numericControlChoices} from '../../public/gex-data-app/numeric-control-options.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -109,7 +110,7 @@ function actualTickerHarness(toolId, {saved, copied, page = {}, global = {}} = {
   const document = {createElement: tag => new Element(tag, document)};
   const holder = document.createElement('div');
   const tool = {id: toolId, controls: ['ticker']};
-  const env = {document, activeTool: tool, toolControlDefault, CONTROL_OPTIONS: {},
+  const env = {document, activeTool: tool, toolControlDefault,numericControlChoices, CONTROL_OPTIONS: {},
     instrumentChoices: () => [['SPY', 'SPY'], ['QQQ', 'QQQ']],
     Option: function (text, value) { const option = document.createElement('option'); option.textContent = text; option.value = value; return option; },
     element: (tag, cls) => { const node = document.createElement(tag); node.className = cls; return node; },

@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { additionalToolRequest } from '../../public/gex-data-app/additional-tool-requests.js';
 import {equityPrintRequest} from '../../public/gex-data-app/equity-print-interaction-model.js';
-import {notificationRequest} from '../../public/gex-data-app/exchange-notification-interaction-model.js';
+import {notificationRequest,notificationReferenceSession} from '../../public/gex-data-app/exchange-notification-interaction-model.js';
 import { resolveFilterOverride, expirationFilterForTool } from '../../public/gex-data-app/preferences-model.js';
 
 const source = readFileSync(new URL('../../public/gex-data-app/app.js', import.meta.url), 'utf8');
@@ -32,7 +32,7 @@ function harness(toolId, overrides = { page: {}, global: {} }) {
   const holder = {}, env = { activeTool, masterReplay: null, toolCursor: null,
     apiStatus: { market: { sessionDate: '2026-10-16', optionsSessionDate: '2026-10-16' } },
     q: selector => selector === '#toolControls' ? holder : nodes.get(/data-control="([^"]+)"/.exec(selector)?.[1]),
-    getFilterOverrides: () => overrides, resolveFilterOverride, expirationFilterForTool, additionalToolRequest,equityPrintRequest,equityPrintHeaderFilters:()=>[],notificationRequest,notificationHeaderFilters:()=>[],
+    getFilterOverrides: () => overrides, resolveFilterOverride, expirationFilterForTool, additionalToolRequest,equityPrintRequest,equityPrintHeaderFilters:()=>[],notificationRequest,notificationReferenceSession,notificationHeaderFilters:()=>[],
     FILTER_GROUP_TOOLS: new Set(),
   };
   vm.createContext(env);

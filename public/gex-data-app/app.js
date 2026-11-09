@@ -1236,7 +1236,7 @@ await boot();
         return {data:{},unavailable:true};
       })]);
       const prices=parsePrices(price),sessionDate=effectiveSessionDate;
-      const entries=sessionDate?snapshotControlTimeline(prices,{sessionDate,schedule:equityOptionSnapshotSchedule(tool.id==='market-map'?'SPY':getControl('ticker'),sessionDate,apiStatus.market?.calendar),includeObservedPremarket:tool.id==='exposure-by-expiration'}):prices.map(row=>({time:row.time}));
+      const entries=sessionDate?snapshotControlTimeline(prices,{sessionDate,schedule:equityOptionSnapshotSchedule(tool.id==='market-map'?'SPY':getControl('ticker'),sessionDate,apiStatus.market?.calendar),includeObservedPremarket:['exposure-by-expiration','heat-map'].includes(tool.id)}):prices.map(row=>({time:row.time}));
       const timeline=entries.map(entry=>entry.time),selected=snapshotTime??timeline.at(-1),matching=timeline.length?selectedSnapshotSpot(prices,snapshotTime?completedMinuteSnapshot(selected):selected):null;
       return {...result,_timeline:timeline,_snapshotEntries:entries,_snapshotTime:selected,_spot:matching?.available?matching.spot:undefined,_priceHistoryUnavailable:price.unavailable===true};
     }

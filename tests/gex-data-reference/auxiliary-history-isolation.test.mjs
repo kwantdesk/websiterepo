@@ -55,3 +55,17 @@ test('market-map latest uses the verified close control, not an invented extra s
   assert.equal(result._snapshotEntries[1].sourceTime,null);
   assert.equal(result._snapshotTime,close);
 });
+
+for(const id of ['heat-map','exposure-by-expiration','exposure-by-strike','market-map']){
+  test(`${id}: only evidenced premarket snapshot tools expose observed early minutes`,async()=>{
+    const {load,context}=harness();
+    const early=Date.parse('2026-10-16T11:30Z'),rth=Date.parse('2026-10-16T13:30Z');
+    context.parsePrices=()=>[{time:early,spot:99},{time:rth,spot:100}];
+    context.snapshotControlTimeline=snapshotControlTimeline;
+    context.equityOptionSnapshotSchedule=(_,date)=>({verified:true,sessionDate:date,timeZone:'America/New_York',openMinute:570,closeMinute:975});
+    const result=await load({id,endpoint:id});
+    assert.equal(result._timeline.includes(early),['heat-map','exposure-by-expiration'].includes(id));
+    assert.equal(result._timeline.includes(rth),true);
+    assert.equal(result._timeline.includes(early+60000),false,'do not fabricate absent intermediate snapshots');
+  });
+}

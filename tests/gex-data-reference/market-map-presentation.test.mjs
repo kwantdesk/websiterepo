@@ -1,3 +1,4 @@
+import {numericControlChoices} from '../../public/gex-data-app/numeric-control-options.js';
 import {gainersIndustryChoices} from '../../public/gex-data-app/gainers-industry-controls.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -62,7 +63,7 @@ function actual(name){const match=new RegExp(`^  function ${name}\\(`,'m').exec(
 function pickerHarness({saved,copied,toolId='market-map'}={}){
   const document={createElement:tag=>new Element(tag,document)},holder=document.createElement('div');
   const tool={id:toolId,controls:['industry']};
-  const env={document,activeTool:tool,CONTROL_OPTIONS:{},toolControlDefault,marketMapIndustryChoices,marketMapIndustryInventory:observeMarketMapIndustries(new Map(),data),
+  const env={document,activeTool:tool,CONTROL_OPTIONS:{},toolControlDefault,numericControlChoices,marketMapIndustryChoices,marketMapIndustryInventory:observeMarketMapIndustries(new Map(),data),
     gainersIndustryChoices,instrumentChoices:()=>[],multiChoiceDropdown:options=>multiChoiceDropdown({...options,document}),element:(tag,cls)=>{const node=document.createElement(tag);node.className=cls;return node;},
     q:selector=>selector==='#toolControls'?holder:descend(holder).find(node=>node.dataset?.control===/data-control="([^"]+)"/.exec(selector)?.[1]),qa:()=>descend(holder).filter(node=>node.dataset?.control),
     commonSessionDateControls:null,netDriftContractControls:null,savedToolControls:saved?{[toolId]:saved}:{},VIEW_PARAMETERS:new URLSearchParams(copied?{instance:'copy',...copied}:{}),getFilterOverrides:()=>({page:{},global:{}})};

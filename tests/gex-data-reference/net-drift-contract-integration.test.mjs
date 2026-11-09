@@ -1,3 +1,4 @@
+import {numericControlChoices} from '../../public/gex-data-app/numeric-control-options.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -31,7 +32,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 function harness({ toolId = 'net-drift', saved, copied } = {}) {
   const holder = new Element('div'), storage = new Map(), controls = toolId === 'exposure-by-expiration' ? ['ticker', 'strike'] : toolId==='option-price-over-time'?['ticker','expiry','strike','contractType','osi']:['contract-statistics','contract-trade-side-statistics'].includes(toolId)?['tickerOptional','expiry','strike']:['ticker', 'expiry', 'strike'];
   const choiceCalls=[];
-  const env = { console, structuredClone, toolControlDefault, activeTool: { id: toolId, endpoint:toolId, view: toolId === 'exposure-by-expiration' ? 'exposureExpiration' : 'netDrift', controls }, CONTROL_OPTIONS: Object.fromEntries(['moneyType','tradeSide'].map(id=>[id,JSON.parse(source.match(new RegExp(`^\\s*${id}:\\s*(\\[\\[.*\\]\\]),$`,'m'))[1])])),
+  const env = { console, structuredClone, toolControlDefault,numericControlChoices, activeTool: { id: toolId, endpoint:toolId, view: toolId === 'exposure-by-expiration' ? 'exposureExpiration' : 'netDrift', controls }, CONTROL_OPTIONS: Object.fromEntries(['moneyType','tradeSide'].map(id=>[id,JSON.parse(source.match(new RegExp(`^\\s*${id}:\\s*(\\[\\[.*\\]\\]),$`,'m'))[1])])),
     multiChoiceDropdown:options=>{choiceCalls.push(plain(options));return new Element('input');},
     instrumentChoices: () => [['SPY', 'SPY'], ['QQQ', 'QQQ']], document: { createElement: tag => new Element(tag) },
     Option: function (text, value) { this.text = text; this.value = value; this.children = []; },
@@ -69,7 +70,7 @@ test('negative control: number inputs discard comma selections, hidden inputs pr
 
 test('actual Moneyness factory sends source ordered full labels and searchable multiselect, keeping API values',()=>{
   const h=harness({toolId:'contract-statistics'});h.makeControl('moneyType');
-  assert.deepEqual(h.choiceCalls[0],{choices:[['ATM','At the Money'],['ITM','In the Money'],['OTM','Out of the Money']],label:'Moneyness',emptyLabel:'All moneyness',searchable:true,compactSummary:true,summaryLabels:{}});
+  assert.deepEqual(h.choiceCalls[0],{choices:[['ATM','At the Money'],['ITM','In the Money'],['OTM','Out of the Money']],label:'Moneyness',emptyLabel:'All moneyness',searchable:true,compactSummary:true,countSummary:true,summaryLabels:{}});
   h.makeControl('tradeSide');assert.equal(h.choiceCalls[1].searchable,true);assert.equal(h.choiceCalls[1].compactSummary,false);assert.deepEqual(h.choiceCalls[1].summaryLabels,{ABOVE_ASK:'AA',ASK:'A',MID_MARKET:'M',BID:'B',BELOW_BID:'BB'});
   assert.deepEqual(h.choiceCalls[1].choices.map(([value])=>[value,h.choiceCalls[1].summaryLabels[value]]),[['ABOVE_ASK','AA'],['ASK','A'],['MID_MARKET','M'],['BID','B'],['BELOW_BID','BB']]);
   h.makeControl('tradeType');assert.equal(h.choiceCalls[2].searchable,false);
@@ -165,7 +166,7 @@ test('actual change pipeline clears expiry+strikes on ticker and strikes only on
   assert.equal(h.getControl('ticker'), 'QQQ'); assert.equal(h.getControl('expiry'), ''); assert.equal(h.getControl('strike'), '');
   assert.equal(h.env.savedToolControls['net-drift'].strike, '');
   const other = harness({ toolId: 'exposure-by-strike', saved: { expiry: '2026-10-23', strike: '760' } });
-  other.change('ticker'); assert.equal(other.getControl('expiry'), '2026-10-23'); assert.equal(other.getControl('strike'), '760');
+  other.change('ticker'); assert.equal(other.getControl('expiry'), '', 'a different ticker clears its previous contract expiry'); assert.equal(other.getControl('strike'), '760');
 });
 
 test('Exposure by Expiration ticker change clears its multiple strikes and pinned snapshot without Net Drift expiry behavior', () => {

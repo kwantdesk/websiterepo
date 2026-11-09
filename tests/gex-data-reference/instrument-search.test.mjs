@@ -1,3 +1,4 @@
+import {numericControlChoices} from '../../public/gex-data-app/numeric-control-options.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -147,7 +148,7 @@ function actualHeatControl(doc){
   const app=readFileSync(new URL('../../public/gex-data-app/app.js',import.meta.url),'utf8'),optionsLine=app.split(/\r?\n/).find(line=>line.trim().startsWith('heatMetric:'));
   const options=runInNewContext('('+optionsLine.trim().replace(/^heatMetric:\s*/,'').replace(/,$/,'')+')',{HEAT_METRICS});
   const makeControl=app.slice(app.indexOf('  function makeControl(id)'),app.indexOf('  function getControl(id)'));
-  return runInNewContext(makeControl+'; makeControl("heatMetric");',{CONTROL_META:{heatMetric:['Data mode','select']},CONTROL_OPTIONS:{heatMetric:options},activeTool:{id:'heat-map'},document:doc,element:(tag,className,text)=>{const node=doc.createElement(tag);node.className=className||'';if(text!==undefined)node.textContent=text;return node;},Option:function(text,value){const option=doc.createElement('option');option.textContent=text;option.value=value;return option;}});
+  return runInNewContext(makeControl+'; makeControl("heatMetric");',{numericControlChoices,CONTROL_META:{heatMetric:['Data mode','select']},CONTROL_OPTIONS:{heatMetric:options},activeTool:{id:'heat-map'},document:doc,element:(tag,className,text)=>{const node=doc.createElement(tag);node.className=className||'';if(text!==undefined)node.textContent=text;return node;},Option:function(text,value){const option=doc.createElement('option');option.textContent=text;option.value=value;return option;}});
 }
 
 test('actual Heat Map control groups all46 unchanged values Call19 Put19 Net8 with alphabetical short menu labels',()=>{
