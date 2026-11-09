@@ -1,0 +1,31 @@
+(node:22684) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/public/heatmap-app/src/liquidity-presentation.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ time-axis wheel cannot resize bubbles when insufficient history leaves the geometry unchanged (0.8615ms)
+✔ a real time-axis stretch scales bubbles and saturates with the visible geometry (0.7605ms)
+✔ vertical zoom still scales bubbles independently of a time-axis limit (0.125ms)
+(node:26376) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/themePresets.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every website theme keeps both Liquidity Map sides readable (5.3441ms)
+✔ a saved legacy hollow palette replaces black sell ink with distinct light green (0.6966ms)
+✔ all dark/white map presets keep DOM and price rail on their own palette surface (60.1567ms)
+✔ switching map presets and website themes uses fresh colours without a reload (0.3562ms)
+✔ LIQ MAP volume bars share the live trade-bubble palette (1.2296ms)
+✔ bubble transparency at zero renders fully opaque spheres (0.1881ms)
+(node:37744) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/public/heatmap-app/src/palettes.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ new and restored automatic settings follow the website theme; manual choices survive (1.7703ms)
+✔ actual theme button handler selects, persists and renders automatic mode (54.8325ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 397.0168

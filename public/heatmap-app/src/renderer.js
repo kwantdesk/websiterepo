@@ -1,7 +1,7 @@
 import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=grouped-depth-scale';
 import { cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261109-realised-bubble-zoom';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
-import { paletteAccents, paletteCanvasTheme, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=heat-gradient-contrast';
+import { paletteAccents, paletteCanvasTheme, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20261109-website-theme';
 import { writeHeatRgba } from './heat-raster.js?v=heat-render-recovery';
 
 function colorCss([red, green, blue], alpha = 1) {

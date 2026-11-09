@@ -10,11 +10,12 @@ export const HEAT_GRADIENT_PRESETS = Object.freeze([
   { id: 'white-violet-amber', label: 'Violet → Amber', from: '#C7ACF4', to: '#A44D00', light: true },
   { id: 'white-lime-teal', label: 'Lime → Teal', from: '#CBEC79', to: '#006A70', light: true },
 ]);
-export const DEFAULT_PALETTE = 'cyan-magenta';
+export const DEFAULT_PALETTE = 'auto';
 const gradientStops = Object.fromEntries(HEAT_GRADIENT_PRESETS.map(({id, from, to, light}) => [
   id, [[0, light ? [255, 255, 255] : [0, 0, 0]], [.18, rgb(from)], [1, rgb(to)]],
 ]));
 export function normalizeHeatPalette(name) {
+  if (name === 'auto') return name;
   if (Object.hasOwn(gradientStops, name)) return name;
   if (name === 'mono') return 'black-white';
   if (name === 'chromeymono') return 'chromey-mono';

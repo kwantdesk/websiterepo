@@ -6,7 +6,7 @@ import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=grouped-depth-scale';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261109-realised-bubble-zoom';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261109-website-theme';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -21,7 +21,7 @@ import {
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from './live-market.js?v=20261030-bubble-source-time';
-import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient, paletteCanvasTheme, paletteAccents } from './palettes.js?v=heat-gradient-contrast';
+import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient, paletteCanvasTheme, paletteAccents } from './palettes.js?v=20261109-website-theme';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
@@ -267,6 +267,12 @@ class DepthForgeApp {
     });
     $('settingsButton').addEventListener('click', () => this.#openPanel('settings'));
 
+    $('useWebsiteTheme').addEventListener('click', () => {
+      this.settings.palette = 'auto';
+      this.#syncPaletteControls();
+      this.#saveSettings();
+      this.requestRender();
+    });
     for (const preset of HEAT_GRADIENT_PRESETS) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -1112,7 +1118,7 @@ class DepthForgeApp {
 
   #syncPaletteControls() {
     this.settings.palette = normalizeHeatPalette(this.settings.palette);
-    for (const button of document.querySelectorAll('#heatGradientPresets button, #lightHeatGradientPresets button')) {
+    for (const button of document.querySelectorAll('#useWebsiteTheme, #heatGradientPresets button, #lightHeatGradientPresets button')) {
       const selected = button.dataset.palette === this.settings.palette;
       button.setAttribute('aria-pressed', String(selected));
       button.classList.toggle('active-toggle', selected);
