@@ -160,7 +160,11 @@ export function resolveTradeClusterTimeIndex(history, cluster, frameIndices = nu
   const timestamp = Number(cluster.anchorTimestamp);
   if (!Number.isFinite(timestamp)) return owner;
   if (timestamp < Number(history[0].timestamp)) return -1;
-  if (timestamp >= Number(history.at(-1).timestamp)) return history.length - 1;
+  // A newer execution has no depth-time coordinate yet. Keep it in the
+  // cluster cache until the real timeline catches up, rather than painting it
+  // at an earlier column and moving it on the next frame.
+  if (timestamp > Number(history.at(-1).timestamp)) return -1;
+  if (timestamp === Number(history.at(-1).timestamp)) return history.length - 1;
   let low = 0, high = history.length - 1;
   while (low + 1 < high) {
     const middle = (low + high) >>> 1;
@@ -825,9 +829,8 @@ export class DepthRenderer {
       return;
     }
 
-    const verticalOffset = ratio > 0.45 && ratio < 0.55 ? 1 : 2;
     const x = centerX - radius;
-    const y = centerY - radius + verticalOffset;
+    const y = centerY - radius;
     const left = x;
     const right = x + diameter;
     const top = y;

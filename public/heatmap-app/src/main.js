@@ -6,7 +6,7 @@ import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=grouped-depth-scale';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=grouped-depth-scale';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261109-exact-trade-centres';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
