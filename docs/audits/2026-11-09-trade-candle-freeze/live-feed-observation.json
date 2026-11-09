@@ -1,0 +1,30 @@
+[
+  {
+    "symbol": "NQ",
+    "status": 200,
+    "events": {
+      "ready": 1,
+      "seed": 1,
+      "trades": 23
+    },
+    "newRecords": 23,
+    "seedRecords": 128,
+    "maxTradeEventGapMs": 3842,
+    "lastExecution": 1794189902361,
+    "latestPrice": 27148.5
+  },
+  {
+    "symbol": "ES",
+    "status": 200,
+    "events": {
+      "ready": 1,
+      "seed": 1,
+      "trades": 29
+    },
+    "newRecords": 29,
+    "seedRecords": 128,
+    "maxTradeEventGapMs": 1870,
+    "lastExecution": 1794189902771,
+    "latestPrice": 7425.75
+  }
+]

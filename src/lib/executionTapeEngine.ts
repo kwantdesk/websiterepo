@@ -48,6 +48,7 @@ export const STREAM_SEED_TIMEOUT_MS = 5_000;
  */
 export const STREAM_STALE_RECONNECT_DELAY_MS = 250;
 export const STREAM_RECONNECT_DELAY_MS = 4_000;
+const STREAM_LEASE_RENEWAL_HEADROOM_MS = 10_000;
 
 export async function requestExecutionStreamLease(query: URLSearchParams) {
   const params = new URLSearchParams(query);
@@ -142,8 +143,15 @@ export function createExecutionTapeEngine(
     pending = [];
   };
 
-  const scheduleReconnect = (delayMs: number = STREAM_RECONNECT_DELAY_MS) => {
+  type Lease = Awaited<ReturnType<typeof requestExecutionStreamLease>>;
+  const leaseQuery = () => new URLSearchParams({
+    exchange: futuresVenue(symbol), symbol, contractSymbol,
+    seedLimit: seedPublished ? "4096" : "128",
+  });
+  const scheduleReconnect = (delayMs: number = STREAM_RECONNECT_DELAY_MS, preparedLease?: Lease) => {
     if (stopped) return;
+    // Invalidate old callbacks and any renewal request still in flight.
+    generation += 1;
     closeConnection();
     // These prints have already been admitted/deduplicated. Discarding them
     // on a reconnect loses fast touches forever: a replay seed will dedup them.
@@ -155,11 +163,27 @@ export function createExecutionTapeEngine(
     if (reconnectTimer !== null) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      void connect();
+      void connect(preparedLease);
     }, delayMs);
   };
 
-  async function connect(): Promise<void> {
+  async function renewLease(connectionGeneration: number): Promise<void> {
+    leaseTimer = null;
+    try {
+      // Authentication can take seconds. Keep receiving exact executions on
+      // the healthy connection until replacement access has actually arrived.
+      const lease = await requestExecutionStreamLease(leaseQuery());
+      if (stopped || generation !== connectionGeneration) return;
+      scheduleReconnect(0, lease);
+    } catch {
+      if (stopped || generation !== connectionGeneration) return;
+      // A failed renewal is not evidence that the current tape is unhealthy.
+      // Its existing error/watchdog path still owns genuine transport failure.
+      leaseTimer = setTimeout(() => { void renewLease(connectionGeneration); }, STREAM_RECONNECT_DELAY_MS);
+    }
+  }
+
+  async function connect(preparedLease?: Lease): Promise<void> {
     if (stopped) return;
     closeConnection();
     generation += 1;
@@ -176,21 +200,14 @@ export function createExecutionTapeEngine(
        * order-flow studies looking paused. Resolve the venue from the same
        * canonical root mapping used by the recorded-history reader.
        */
-      const query = new URLSearchParams({
-        exchange: futuresVenue(symbol),
-        symbol,
-        contractSymbol,
-        // A 25k-print seed blocks live trades behind megabytes of JSON on a
-        // slow proxy. History is restored separately; this is a live handoff.
-        seedLimit: seedPublished ? "4096" : "128",
-      });
-      const lease = await requestExecutionStreamLease(query);
+      const lease = preparedLease ?? await requestExecutionStreamLease(leaseQuery());
       if (stopped || generation !== thisGeneration) return;
       const stream = new EventSource(lease.url);
       source = stream;
       // Planned lease renewal must not incur the four-second outage backoff.
       // Reconnect seeds cover the short handoff and share exact tape dedup.
-      leaseTimer = setTimeout(() => scheduleReconnect(0), Math.max(1, lease.expiresAt - Date.now() - 500));
+      leaseTimer = setTimeout(() => { void renewLease(thisGeneration); },
+        Math.max(1, lease.expiresAt - Date.now() - STREAM_LEASE_RENEWAL_HEADROOM_MS));
       let connectionSeeded = false;
       const seedDeadline = Date.now() + STREAM_SEED_TIMEOUT_MS;
 

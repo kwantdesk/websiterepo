@@ -1,0 +1,36 @@
+(node:26276) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/browserStreamTicket.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ history negotiation signs the selected clock and immutable generation for its isolated VPS route (95.1015ms)
+✔ authenticated lease negotiation returns a finite exact-scope URL, never a cross-origin redirect (17.0628ms)
+✔ client leases retain venue/root/contract and reject unexpected hosts, credentials, scope and expiry (1.6256ms)
+✔ planned renewal has no outage backoff and reconnect seed dedup retains new actual prints (53.8031ms)
+✖ a delayed renewal lease must not stop admitted live prints or status (29.9214ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 662.7569
+
+✖ failing tests:
+
+test at tests\execution-stream-lease.test.mjs:53:1
+✖ a delayed renewal lease must not stop admitted live prints or status (29.9214ms)
+  AssertionError [ERR_ASSERTION]: healthy tape must stay open while authentication is pending
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tests/execution-stream-lease.test.mjs:63:66)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
