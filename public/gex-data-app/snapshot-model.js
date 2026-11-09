@@ -72,7 +72,7 @@ export function equityOptionSnapshotSchedule(ticker,sessionDate,calendar){
  * Missing source minutes stay missing. With no proven schedule retain the
  * actual source extent and its existing final-item latest behavior.
  */
-export function snapshotControlTimeline(rows,{sessionDate,schedule=null,now=Date.now()}={}){
+export function snapshotControlTimeline(rows,{sessionDate,schedule=null,now=Date.now(),includeObservedPremarket=false}={}){
   validateDate(sessionDate);
   if(!Number.isFinite(now))throw new Error('Invalid current time');
   const verified=schedule?.verified===true&&schedule.sessionDate===sessionDate&&schedule.timeZone===NY;
@@ -80,7 +80,9 @@ export function snapshotControlTimeline(rows,{sessionDate,schedule=null,now=Date
   if(verified){
     const {openMinute,closeMinute}=schedule;
     if(!Number.isInteger(openMinute)||!Number.isInteger(closeMinute)||openMinute<0||openMinute>=1440||closeMinute<=openMinute||closeMinute>1440)throw new Error('Invalid snapshot session bounds');
-    open=sessionMinuteTimestamp(sessionDate,0,{openMinute});
+    // Exposure-by-expiration includes actual pre-open source minutes. The cash
+    // open remains the default for other tools; no empty minutes are generated.
+    open=includeObservedPremarket?-Infinity:sessionMinuteTimestamp(sessionDate,0,{openMinute});
     close=sessionMinuteTimestamp(sessionDate,closeMinute-openMinute,{openMinute});
   }
   const times=[...new Set((rows||[]).map(row=>typeof row==='number'?row:Number(row?.time??row?.timestamp))

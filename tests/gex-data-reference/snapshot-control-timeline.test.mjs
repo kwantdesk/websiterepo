@@ -6,6 +6,17 @@ const schedule=(sessionDate,openMinute=570,closeMinute=975)=>({verified:true,ses
 const rowsFor=(date,minutes)=>minutes.map(minute=>({time:sessionMinuteTimestamp(date,minute),close:100+minute}));
 const clock=(date,hour=23)=>Date.parse(`${date}T${String(hour).padStart(2,'0')}:00:00Z`);
 
+test('expiration exposure retains actual observed pre-open snapshots without filling gaps or changing other tools',()=>{
+ const date='2026-11-06',source=rowsFor(date,[-120,-119,-117,0,404]),before=structuredClone(source);
+ const entries=snapshotControlTimeline(source,{sessionDate:date,schedule:schedule(date),now:clock(date),includeObservedPremarket:true});
+ assert.deepEqual(entries.slice(0,-1).map(e=>e.time),source.map(r=>r.time));
+ assert.equal(entries[0].snapshotTime,'2026-11-06T12:31:00.000Z');
+ assert.equal(entries.at(-1).time,Date.parse('2026-11-06T21:15Z'));
+ assert.equal(entries[2].time-entries[1].time,120000);
+ assert.deepEqual(snapshotControlTimeline(source,{sessionDate:date,schedule:schedule(date),now:clock(date)}).slice(0,-1).map(e=>e.time),source.slice(-2).map(r=>r.time));
+ assert.deepEqual(source,before);
+});
+
 test('SPY-proven9:30–16:15 schedule adds a separate close/latest sentinel, not a synthetic price bucket',()=>{
   const date='2026-10-16',source=rowsFor(date,[0,1,403,404]);
   const entries=snapshotControlTimeline(source,{sessionDate:date,schedule:schedule(date),now:clock(date)});
