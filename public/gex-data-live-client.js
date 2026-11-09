@@ -4,7 +4,7 @@
 const tools = new Set(('contract-statistics contract-trade-side-statistics exposure-by-expiration exposure-by-strike gainers-losers heat-map interval-map iv-rank market-share max-pain max-pain-over-time net-drift option-price-over-time net-flow volatility-skew volatility-drift term-structure open-interest-by-strike open-interest-by-expiration open-interest-over-time open-interest-change order-flow-consolidated order-flow-unconsolidated dark-flow dark-pool-levels equity-prints exchange-notifications market-map stock-price-over-time news-articles').split(' '));
 // Other paged tapes retain finite REST delivery until their page merges are
 // audited. Latest-first Equity has a tested provider-ID merge for loaded pages.
-for (const tool of ['order-flow-consolidated', 'order-flow-unconsolidated', 'exchange-notifications', 'open-interest-change', 'news-articles']) tools.delete(tool);
+for (const tool of ['order-flow-consolidated', 'order-flow-unconsolidated', 'open-interest-change', 'news-articles']) tools.delete(tool);
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
 export function createGexDataLiveClient({ createSource, onFrame = () => {}, setTimer = setTimeout, clearTimer = clearTimeout }) {
   const entries = new Map(), owners = new Map(); let disposed = false, bytes = 0;
@@ -30,8 +30,9 @@ export function createGexDataLiveClient({ createSource, onFrame = () => {}, setT
       if (!body || typeof body !== 'object' || Array.isArray(body)) return fallback();
       // Older pages are finite REST requests. They do not close the same
       // selection's first-page live channel while the user scrolls back.
-      if (body.searchAfter) return tool === 'equity-prints' ? null : fallback();
-      if (tool === 'equity-prints' && (body.sort?.field !== 'TRADE_TIME' || body.sort?.direction !== 'DESCENDING')) return fallback();
+      if (body.searchAfter) return ['equity-prints','exchange-notifications'].includes(tool) ? null : fallback();
+      const chronologicalField=tool==='equity-prints'?'TRADE_TIME':tool==='exchange-notifications'?'CREATED_TIME':null;
+      if (chronologicalField && (body.sort?.field !== chronologicalField || body.sort?.direction !== 'DESCENDING')) return fallback();
       text = JSON.stringify(canonical(body));
     } catch { return fallback(); }
     const encodedBytes = new TextEncoder().encode(text); if (encodedBytes.length > 2900) return fallback();

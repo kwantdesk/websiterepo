@@ -20,7 +20,7 @@ import {formatTableValue,createTableView} from '../../public/gex-data-app/table-
 import {CONSOLIDATED_COLUMNS,flowStatisticsModel,GAINERS_COLUMNS,gainersModel,MARKET_SHARE_COLUMNS,marketShareTableModel} from '../../public/gex-data-app/options-models.js';
 import {UNCONSOLIDATED_COLUMNS} from '../../public/gex-data-app/option-trade-detail-model.js';
 import {validateGexDataRequest} from '../../src/lib/gexDataPolicy.ts';
-import {mergeEquityLivePage} from '../../public/gex-data-app/equity-live-page.js';
+import {mergeEquityLivePage,mergeLiveTapePage} from '../../public/gex-data-app/equity-live-page.js';
 
 const source=readFileSync(new URL('../../public/gex-data-app/app.js',import.meta.url),'utf8'),plain=value=>JSON.parse(JSON.stringify(value));
 const definitions=vm.runInNewContext(source.slice(source.indexOf('const TOOL_DEFINITIONS = [')+'const TOOL_DEFINITIONS = '.length,source.indexOf('\n  ];',source.indexOf('const TOOL_DEFINITIONS = ['))+5));
@@ -152,6 +152,23 @@ test('actual live Equity refresh preserves older loaded pages, deepest cursor an
  assert.deepEqual(Array.from(h.env.toolCursor),['deepest',20]);assert.deepEqual(Array.from(h.env.tableRows,r=>r.id),['new','one','two']);
  h.set('ticker','QQQ');const switched=h.load({liveFrame:true});h.requests[4].resolve({data:[{id:'qqq',tradeTime:50}],nextSearchAfter:['qqq',50]});await switched;
  assert.deepEqual(Array.from(h.env.tableRows,r=>r.id),['qqq']);assert.deepEqual(Array.from(h.env.toolCursor),['qqq',50]);
+});
+
+test('actual live notification refresh retains pages/cursor and never mixes a new type filter',async()=>{
+ const h=harness({toolId:'exchange-notifications'}),initial=h.load();
+ h.requests[0].resolve({data:[{id:'a',createdTime:30,type:'LUDP'}],nextSearchAfter:['old',30]});await initial;
+ const page=h.load({append:true});h.requests[1].resolve({data:[{id:'b',createdTime:20,type:'REG_SHO'}],nextSearchAfter:['deep',20]});await page;
+ const generation=h.env.equityPageGeneration,live=h.load({liveFrame:true});h.requests[2].resolve({data:[{id:'c',createdTime:40,type:'LUDP'},{id:'a',createdTime:30,type:'LUDP'}],nextSearchAfter:['first',30]});await live;
+ assert.deepEqual(Array.from(h.env.tableRows,r=>r.id),['c','a','b']);assert.deepEqual(Array.from(h.env.toolCursor),['deep',20]);assert.equal(h.env.equityPageGeneration,generation);
+ h.set('notificationType','REG_SHO');const changed=h.load({liveFrame:true});assert.deepEqual(h.requests[3].body.filter.types,['REG_SHO']);h.requests[3].resolve({data:[{id:'b',createdTime:20,type:'REG_SHO'}],nextSearchAfter:null});await changed;
+ assert.deepEqual(Array.from(h.env.tableRows,r=>r.type),['REG_SHO']);assert.equal(h.env.toolCursor,null);
+});
+
+test('a changed live frame arriving during pagination is consumed immediately after that page finishes',async()=>{
+ const h=harness({toolId:'equity-prints'}),initial=h.load();h.requests[0].resolve({data:[{id:'one',tradeTime:30}],nextSearchAfter:['old',30]});await initial;
+ const older=h.load({append:true}),before=h.loads.length;h.env.api.receiveLiveToolFrame();assert.equal(h.env.pendingLiveFrame,true);assert.equal(h.loads.length,before);
+ h.requests[1].resolve({data:[{id:'two',tradeTime:20}],nextSearchAfter:null});await older;await Promise.resolve();
+ assert.equal(h.env.pendingLiveFrame,false);assert.deepEqual(plain(h.loads.at(-1).options),{liveFrame:true});assert.equal(h.loads.length,before+1);
 });
 
 test('actual load/render/reset pipeline with the REAL TableView keeps the focused Equity editor through a 100-to-14 response',async()=>{
@@ -345,20 +362,20 @@ function harness({toolId='order-flow-consolidated',saved,copied,page={},global={
     clearTimeout(){},setTimeout:(callback,delay)=>{timers.push({callback,delay});return timers.length;},
     snapshotSelections:new Map(),snapshotKey:()=>tool.id,toolCursor:null,toolPayload:null,toolPayloadQuery:null,equityPageGeneration:0,
     optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows,additionalToolRequest,dataRequestIdentity,
-    equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor,mergeEquityLivePage,EQUITY_PRINT_COLUMNS,EXCHANGE_NOTIFICATION_COLUMNS,equitySideColorToken,equityPrintColorToken,notificationColorToken,
+    equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor,mergeEquityLivePage,mergeLiveTapePage,EQUITY_PRINT_COLUMNS,EXCHANGE_NOTIFICATION_COLUMNS,equitySideColorToken,equityPrintColorToken,notificationColorToken,
     notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,
     mountSessionDateControls,mountDarkPoolLevelLimit,matchesCurrentPayload:()=>false,popup(_anchor,_title,build){const menu=document.createElement('section');document.body.append(menu);build(menu);env.menu=menu;return menu;},mountOptionTapeSessionControls:configuration=>{env.session=configuration;env.sessionSyncs=0;return realCalendar?mountOptionTapeSessionControls(configuration):{sync(){env.sessionSyncs++;},destroy(){}};},
     GAINERS_COLUMNS,gainersModel,MARKET_SHARE_COLUMNS,marketShareTableModel,tableColumns:null,tableRows:[],tableRuntime:null,instanceKey:'test',CONSOLIDATED_COLUMNS,UNCONSOLIDATED_COLUMNS,flowStatisticsModel,
     themePaint:value=>value,compact:(value,money)=>String(money?'$':'')+value,
     createTableView:options=>{if(!realTable)return {setRows:(rows,config)=>tables.push({rows,config}),getColumns:()=>[],render(){}};const view=createTableView(options),setRows=view.setRows;view.setRows=(rows,config)=>{tables.push({rows,config});setRows(rows,config);};return view;},setSummary:items=>{env.summary=items;},
-    window:{},frameVisible:true,toolRequestId:0,toolRequestInFlight:false,pollTimer:null,activeController:null,lastToolAttemptAt:0,lastToolSuccessAt:0,
+    window:{},frameVisible:true,toolRequestId:0,toolRequestInFlight:false,pendingLiveFrame:false,pollTimer:null,activeController:null,lastToolAttemptAt:0,lastToolSuccessAt:0,
     toolView:document.createElement('section'),updateInitialToolLoading(){},schedulePoll(){},updateToolTimestamp(){},renderSnapshotControl(){},
     activeChartInstance:null,activeChartUpdate:null,activeChartDispose:null,activeChartReset:null,refreshingCanvas:null,
     loadToolPayload:()=>new Promise((resolve,reject)=>requests.push({resolve,reject,body:plain(env.api.buildRequest(tool))})),
   };
   const metaStart=source.indexOf('  const CONTROL_META = {'),metaEnd=source.indexOf('\n  const q =',metaStart),render=actual('renderControls'),stop=render.indexOf("    if(tool.view==='volatilitySkew')");
-  const functions=['makeControl','getControl','setControl','reflectFilterOverrides','syncDateControl','saveToolControls','optionTapeSessionScope','optionTapeHeaderFilters','optionTapeTableConfiguration','equityPrintHeaderFilters','equityPrintTableConfiguration','notificationHeaderFilters','notificationTableConfiguration','requestBase','maybeFilter','buildRequest','onControlsChanged','resetStage','showTable','renderFlowStatistics','renderToolPayload','loadActiveTool'];
-  vm.runInNewContext(source.slice(metaStart,metaEnd)+functions.map(actual).join('\n')+render.slice(0,stop)+'\n}\nthis.api={reflectFilterOverrides,syncDateControl,renderControls,getControl,setControl,saveToolControls,buildRequest,onControlsChanged,optionTapeTableConfiguration,equityPrintTableConfiguration,notificationTableConfiguration,optionTapeSessionScope,renderToolPayload,loadActiveTool};',env);
+  const functions=['makeControl','getControl','setControl','reflectFilterOverrides','syncDateControl','saveToolControls','optionTapeSessionScope','optionTapeHeaderFilters','optionTapeTableConfiguration','equityPrintHeaderFilters','equityPrintTableConfiguration','notificationHeaderFilters','notificationTableConfiguration','requestBase','maybeFilter','buildRequest','onControlsChanged','resetStage','showTable','renderFlowStatistics','renderToolPayload','loadActiveTool','receiveLiveToolFrame'];
+  vm.runInNewContext(source.slice(metaStart,metaEnd)+functions.map(actual).join('\n')+render.slice(0,stop)+'\n}\nthis.api={reflectFilterOverrides,syncDateControl,renderControls,getControl,setControl,saveToolControls,buildRequest,onControlsChanged,optionTapeTableConfiguration,equityPrintTableConfiguration,notificationTableConfiguration,optionTapeSessionScope,renderToolPayload,loadActiveTool,receiveLiveToolFrame};',env);
   env.api.renderControls(tool);env.loadActiveTool=options=>{loads.push({options,body:plain(env.api.buildRequest(tool))});};
   return {env,tool,holder,nodes,writes,loads,requests,tables,timers,page,global,input:id=>env.q(`[data-control="${id}"]`,holder),get:env.api.getControl,set:env.api.setControl,request:()=>plain(env.api.buildRequest(tool)),configuration:()=>env.api.optionTapeTableConfiguration(tool),load:options=>env.api.loadActiveTool(options)};
 }

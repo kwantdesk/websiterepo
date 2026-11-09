@@ -61,3 +61,10 @@ test('latest-first Equity shares changed frames while older REST pages preserve 
  assert.equal(client.request(url,options({...body,sort:{field:'SIZE',direction:'DESCENDING'}}),'equity'),null);assert.equal(sources[0].closed,true);
  client.dispose();
 });
+test('chronological notifications share changed frames but ticker-ranked selections stay REST',async()=>{
+ const {client,sources,changes}=fixture(),url='/api/gex-data/exchange-notifications',body={sessionDate:'2026-11-09',sort:{field:'CREATED_TIME',direction:'DESCENDING'},size:100};
+ const first=client.request(url,options(body),'notifications');sources[0].frame('a',1000,[{id:'one'}]);await first;
+ assert.equal(client.request(url,options({...body,searchAfter:['older']}),'notifications'),null);assert.equal(sources[0].closed,false);
+ sources[0].frame('b',2000,[{id:'two'}]);assert.equal(changes.length,1);
+ assert.equal(client.request(url,options({...body,sort:{field:'TICKER',direction:'DESCENDING'}}),'notifications'),null);assert.equal(sources[0].closed,true);client.dispose();
+});

@@ -163,7 +163,7 @@ export function createTableView({ table, search = null, count = null, columnHost
   let externalFilterChange = typeof onFilterChange === 'function' ? onFilterChange : null, headerMenuEnabled = headerMenu, inlineFiltersEnabled=inlineFilters, atomicSort = null, menuCleanup = null,fillLastColumn=false,localHeaderFilters=false;
   const headerFilters = new Map();
   let menuDragId=null,menuGrabbedId=null,autoFilterEditor=null,autoFilterPosition=null,autoFilterColumnId=null,paging=null;
-  let columnMenuOwner=null,columnMenuClose=null;
+  let columnMenuOwner=null,columnMenuClose=null,persistLocalSort=false;
   const sortEntries = column => (column.sortKeys?.length ? column.sortKeys : [{key:column.key,field:column.sortField??column.key,label:column.label,type:column.type}]).map(entry=>typeof entry==='string'?{key:entry,field:entry,label:entry}:entry);
   function isSortActive(column) {
     if(sortId===idOf(column))return true;
@@ -190,7 +190,7 @@ export function createTableView({ table, search = null, count = null, columnHost
   const valueFor = (row, column) => column.type === 'contract' ? row.ticker : column.type === 'moneyness' ? row.moneyness?.degree : tableValue(row, column.key);
   function savedKey() { return `gex-data-table-columns:${toolId}`; }
   function persist() {
-    const state = { order: [...order], hidden: [...hidden], widths: Object.fromEntries(widths) };
+    const state = { order: [...order], hidden: [...hidden], widths: Object.fromEntries(widths), ...(persistLocalSort&&!externalSortChange?{sort:{id:sortId,direction:sortDirection}}:{}) };
     try { if (storage && toolId) storage.setItem(savedKey(), JSON.stringify(state)); } catch { /* Column preferences are optional. */ }
     onColumnsChange?.(state);
   }
@@ -215,6 +215,7 @@ export function createTableView({ table, search = null, count = null, columnHost
     const column = columns.find(item => idOf(item) === id); if (!column || column.sortable === false) return;
     atomicSort = null; sortDirection = direction ?? (sortId === id ? -sortDirection : -1); sortId = id;
     enforceSortVisibility();
+    if(persistLocalSort&&!externalSortChange)persist();
     onSort?.({ id, key: column.key, direction: sortDirection });
     if (externalSortChange) {
       // A server-ranked page must not be misleadingly reordered as though the
@@ -516,6 +517,7 @@ export function createTableView({ table, search = null, count = null, columnHost
   function render() { if (destroyed) return; renderHead(); renderBody(); renderColumnControls(); }
   let configuredSortKey;
   function setRows(nextRows, configuration = {}) {
+    let restoredLocalSort=false;
     const previousSortId=sortId;
     const changedTool = (configuration.toolId ?? toolId) !== toolId;
     if(changedTool)closeHeaderMenu();paging=configuration.autoPaging??null;
@@ -526,6 +528,7 @@ export function createTableView({ table, search = null, count = null, columnHost
     if(Object.hasOwn(configuration,'inlineFilters'))inlineFiltersEnabled=configuration.inlineFilters;else if(changedTool)inlineFiltersEnabled=inlineFilters;
     if(Object.hasOwn(configuration,'localHeaderFilters'))localHeaderFilters=configuration.localHeaderFilters===true;else if(changedTool)localHeaderFilters=false;
     if(Object.hasOwn(configuration,'fillLastColumn'))fillLastColumn=configuration.fillLastColumn===true;else if(changedTool)fillLastColumn=false;
+    if(Object.hasOwn(configuration,'persistLocalSort'))persistLocalSort=configuration.persistLocalSort===true;else if(changedTool)persistLocalSort=false;
     if(changedTool){atomicSort=null;headerFilters.clear();menuDragId=null;menuGrabbedId=null;}
     if(Array.isArray(configuration.headerFilters)){headerFilters.clear();for(const filter of configuration.headerFilters)if(filter?.field&&filter.operator)headerFilters.set(filter.field,filter);}
     rows = [...(nextRows || [])].filter(row => row && row.group !== 'TOTAL'); totalRow = configuration.totalRow ?? nextRows?.find(row => row.group === 'TOTAL') ?? null;
@@ -533,7 +536,7 @@ export function createTableView({ table, search = null, count = null, columnHost
     if (configuration.columns) {
       columns = configuration.columns.map(column => typeof column === 'string' ? { key: column, label: column, type: 'text' } : { ...column });
       if (changedTool || !order.length) { order = columns.map(idOf); hidden.clear(); widths.clear(); filters.clear(); sortId = configuration.sortKey ?? null; sortDirection = configuration.sortDirection ?? -1;
-        try { const saved = storage && toolId ? JSON.parse(storage.getItem(savedKey()) || 'null') : null; if (saved) { order = mergeColumnOrder(saved.order || [], order); hidden = new Set((saved.hidden || []).filter(id => typeof id === 'string' && columns.find(column => idOf(column) === id)?.canHide !== false)); widths = new Map(Object.entries(saved.widths || {}).filter(([, width]) => Number.isFinite(width) && width >= 60)); } } catch { /* Ignore malformed preferences. */ }
+        try { const saved = storage && toolId ? JSON.parse(storage.getItem(savedKey()) || 'null') : null; if (saved) { order = mergeColumnOrder(saved.order || [], order); hidden = new Set((saved.hidden || []).filter(id => typeof id === 'string' && columns.find(column => idOf(column) === id)?.canHide !== false)); widths = new Map(Object.entries(saved.widths || {}).filter(([, width]) => Number.isFinite(width) && width >= 60)); if(persistLocalSort&&!externalSortChange&&[1,-1].includes(saved.sort?.direction)&&columns.some(column=>idOf(column)===saved.sort.id&&column.sortable!==false)){sortId=saved.sort.id;sortDirection=saved.sort.direction;restoredLocalSort=true;} } } catch { /* Ignore malformed preferences. */ }
       } else order = mergeColumnOrder(order, columns.map(idOf));
       // A required column stays visible even when a stale saved preference or
       // a prior schema had allowed hiding it. Menu visibility is independent.
@@ -546,7 +549,7 @@ export function createTableView({ table, search = null, count = null, columnHost
     }
     // An explicit Rank/Metric control change owns sorting. Ordinary refreshes
     // with the same configured key must preserve the user's column sort.
-    if (configuration.sortKey !== undefined && (changedTool || configuredSortKey !== configuration.sortKey || !sortId)) {
+    if (!restoredLocalSort && configuration.sortKey !== undefined && (changedTool || configuredSortKey !== configuration.sortKey || !sortId)) {
       sortId = configuration.sortKey; sortDirection = configuration.sortDirection ?? -1;
     }
     configuredSortKey = configuration.sortKey;

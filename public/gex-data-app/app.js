@@ -40,7 +40,7 @@ import {mountNetDriftContractControls,mountObservedStrikeControl,mountObservedEx
 import {optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows} from './option-tape-interaction-model.js?v=20261103';
 import {toolControlDefault} from './tool-control-defaults.js?v=20261103';
 import {equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor} from './equity-print-interaction-model.js?v=20261103';
-import {mergeEquityLivePage} from './equity-live-page.js';
+import {mergeLiveTapePage} from './equity-live-page.js';
 import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor} from './exchange-notification-interaction-model.js?v=20261104';
 import {mountDarkPoolLevelLimit} from './dark-pool-level-controls.js?v=20261103';
 import {mountOptionTapeSessionControls} from './option-tape-session-controls.js?v=20261103';
@@ -652,6 +652,7 @@ await boot();
   let activeChartInstance = null;
   let refreshingCanvas = null;
   let toolRequestInFlight = false;
+  let pendingLiveFrame = false;
   let lastToolSuccessAt = 0;
   let lastToolAttemptAt = 0;
   let storedWindows=[];try{storedWindows=JSON.parse(gexStorage.getItem(`gex-data-chart-windows:${VIEW_PARAMETERS.get('instance')||'standalone'}`)||'[]');}catch{}
@@ -1288,22 +1289,28 @@ await boot();
         if(toolPayload?.statistics!=null&&(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)||payload.statistics==null))payload.statistics=toolPayload.statistics;
       }
       let nextCursor=tool.id==='equity-prints'?equityPrintCursor(payload):tool.id==='exchange-notifications'?notificationCursor(payload):['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)?optionTapeCursor(payload):payload.nextSearchAfter||null;
-      const retainedLiveEquity=liveFrame&&!append&&tool.id==='equity-prints'&&toolPayloadQuery===query&&Array.isArray(payload.data)&&tableRows.length>0;
-      if(retainedLiveEquity){payload.data=mergeEquityLivePage(tableRows,payload.data);nextCursor=previousCursor;}
-      if(['equity-prints','exchange-notifications'].includes(tool.id)&&!append&&!retainedLiveEquity)equityPageGeneration++;
+      const retainedLiveTape=liveFrame&&!append&&['equity-prints','exchange-notifications'].includes(tool.id)&&toolPayloadQuery===query&&Array.isArray(payload.data)&&tableRows.length>0;
+      if(retainedLiveTape){payload.data=mergeLiveTapePage(tableRows,payload.data,{timeField:tool.id==='exchange-notifications'?'createdTime':'tradeTime'});nextCursor=previousCursor;}
+      if(['equity-prints','exchange-notifications'].includes(tool.id)&&!append&&!retainedLiveTape)equityPageGeneration++;
       toolPayload=payload;toolPayloadQuery=query;toolCursor=nextCursor;renderToolPayload(tool,payload,{refresh:true,append});renderSnapshotControl(payload);
       lastToolSuccessAt=Date.now();
       updateToolTimestamp(tool,payload);
       saveToolControls();updateLiveState();
     }catch(error){
-      if(liveFrame&&tool.id==='equity-prints'&&requestId===toolRequestId&&activeTool===tool&&toolPayload)toolCursor=previousCursor;
+      if(liveFrame&&['equity-prints','exchange-notifications'].includes(tool.id)&&requestId===toolRequestId&&activeTool===tool&&toolPayload)toolCursor=previousCursor;
       if(!requestPrepared&&requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){
         toolPayload=null;toolPayloadQuery=null;toolCursor=null;resetStage();q('#toolUpdated').textContent='';
       }
       if(requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){q("#toolError").textContent=error.message;q("#toolError").hidden=false;if(append&&['equity-prints','exchange-notifications'].includes(tool.id)&&toolCursor)q('#loadMore').hidden=false;updateLiveState();if(EMBEDDED)parent.postMessage({type:'gex-data-status',failed:true,message:error.message},location.origin);}
     }finally{
-      if(requestId===toolRequestId&&activeTool===tool){toolRequestInFlight=false;q('#loadMore').disabled=false;updateInitialToolLoading(false);toolView.setAttribute("aria-busy","false");schedulePoll();}
+      if(requestId===toolRequestId&&activeTool===tool){toolRequestInFlight=false;q('#loadMore').disabled=false;updateInitialToolLoading(false);toolView.setAttribute("aria-busy","false");if(pendingLiveFrame){pendingLiveFrame=false;Promise.resolve().then(()=>{if(requestId===toolRequestId&&activeTool===tool)receiveLiveToolFrame();});}else schedulePoll();}
     }
+  }
+
+  function receiveLiveToolFrame(){
+    if(!activeTool||!frameVisible||document.hidden||window.__gexDataActive===false)return;
+    if(toolRequestInFlight){pendingLiveFrame=true;return;}
+    pendingLiveFrame=false;loadActiveTool({liveFrame:true});
   }
 
   function updateToolTimestamp(tool,payload) {
@@ -1326,7 +1333,7 @@ await boot();
     if (!activeTool || !frameVisible || window.__gexDataActive===false || document.hidden || getControl("mode") === "historical" || (requestedDate&&currentDate&&requestedDate<currentDate) || snapshotSelections.has(snapshotKey(activeTool)) || !toolMarketOpen()) {clearTimeout(pollTimer);pollTimer=null;return;}
     if(toolRequestInFlight&&!activeController?.signal.aborted)return;
     if(pollTimer!==null)return;
-    pollTimer = setTimeout(() => {pollTimer=null;loadActiveTool({liveFrame:activeTool?.id==='equity-prints'});}, Math.max(30000,activeTool.liveMs));
+    pollTimer = setTimeout(() => {pollTimer=null;loadActiveTool({liveFrame:['equity-prints','exchange-notifications'].includes(activeTool?.id)});}, Math.max(30000,activeTool.liveMs));
   }
   function refreshResumedTool() {
     if(!activeTool||!frameVisible||window.__gexDataActive===false||document.hidden)return;
@@ -1863,7 +1870,7 @@ await boot();
     const limit=Math.max(1,Math.floor(Number(getControl("topLevels"))||50));
     const all=Object.entries(payload.data||{}).map(([price,row])=>({price:Number(price),notionalValue:number(row.notionalValue),tradeCount:number(row.tradeCount),volume:number(row.size)})).filter(row=>Number.isFinite(row.price)).sort((a,b)=>b.notionalValue-a.notionalValue);
     const rows=all.slice(0,limit).map((row,index)=>({rank:index+1,...row}));const sortKey='price';
-    rows.sort((a,b)=>b[sortKey]-a[sortKey]);showTable(prepareDarkPoolLevels(payload,{limit,sortKey}),DARK_POOL_LEVEL_COLUMNS.map(column=>({...column,menuReorder:column.key!=='rank',type:column.key==="price"||column.key==="notionalValue"?"money":column.key==="rank"?"text":"abbreviated",...(column.key==="rank"?{sortable:false,canHide:false,columnMenu:false,resizable:false,reorderable:false}:{}),...(column.key==="price"?{autoCurrency:true}:{}),...(column.key==="notionalValue"?{bar:"primary",fractionField:"notionalFraction"}:column.key==="tradeCount"?{percentField:"tradeFraction"}:column.key==="volume"?{percentField:"volumeFraction"}:{})})),null,{sortKey,inlineFilters:false,fillLastColumn:true});
+    rows.sort((a,b)=>b[sortKey]-a[sortKey]);showTable(prepareDarkPoolLevels(payload,{limit,sortKey}),DARK_POOL_LEVEL_COLUMNS.map(column=>({...column,menuReorder:column.key!=='rank',type:column.key==="price"||column.key==="notionalValue"?"money":column.key==="rank"?"text":"abbreviated",...(column.key==="rank"?{sortable:false,canHide:false,columnMenu:false,resizable:false,reorderable:false}:{}),...(column.key==="price"?{autoCurrency:true}:{}),...(column.key==="notionalValue"?{bar:"primary",fractionField:"notionalFraction"}:column.key==="tradeCount"?{percentField:"tradeFraction"}:column.key==="volume"?{percentField:"volumeFraction"}:{})})),null,{sortKey,inlineFilters:false,fillLastColumn:true,persistLocalSort:true});
     setSummary([["Top levels",rows.length],["Available levels",all.length.toLocaleString()],["Leading price",formatPrice(all[0]?.price)],["Underlying",formatPrice(payload.latestStockPrice)]]);
     netDriftContractControls?.sync();
   }
@@ -2030,7 +2037,7 @@ await boot();
       cell.append(actions,element("pre","",JSON.stringify(row,null,2)));detail.append(cell);tr.after(detail);
     }});
     const schema=columns||[...new Set(rows.flatMap(row=>Object.keys(row)))].map(key=>({key,label:key,type:typeof rows.find(row=>row[key]!=null)?.[key]==="number"?"decimal":"text"}));
-    tableRuntime.setRows(rows,{columns:schema,totalRow,toolId:activeTool.id,sortKey:configuration.sortKey,sortId:configuration.sortId,sortDirection:configuration.sortDirection,onSortChange:configuration.onSortChange??null,onFilterChange:configuration.onFilterChange??null,headerMenu:configuration.headerMenu??false,headerFilters:configuration.headerFilters??[],inlineFilters:configuration.inlineFilters??true,fillLastColumn:configuration.fillLastColumn??false,localHeaderFilters:configuration.localHeaderFilters??false,autoPaging:pagedEquity?{getState:()=>({enabled:['equity-prints','exchange-notifications'].includes(activeTool?.id)&&frameVisible,scope:toolPayloadQuery,pageGeneration:equityPageGeneration,cursor:toolCursor,busy:toolRequestInFlight}),onNext:()=>loadActiveTool({append:true})}:null});
+    tableRuntime.setRows(rows,{columns:schema,totalRow,toolId:activeTool.id,sortKey:configuration.sortKey,sortId:configuration.sortId,sortDirection:configuration.sortDirection,onSortChange:configuration.onSortChange??null,onFilterChange:configuration.onFilterChange??null,headerMenu:configuration.headerMenu??false,headerFilters:configuration.headerFilters??[],inlineFilters:configuration.inlineFilters??true,fillLastColumn:configuration.fillLastColumn??false,persistLocalSort:configuration.persistLocalSort??false,localHeaderFilters:configuration.localHeaderFilters??false,autoPaging:pagedEquity?{getState:()=>({enabled:['equity-prints','exchange-notifications'].includes(activeTool?.id)&&frameVisible,scope:toolPayloadQuery,pageGeneration:equityPageGeneration,cursor:toolCursor,busy:toolRequestInFlight}),onNext:()=>loadActiveTool({append:true})}:null});
     q("#loadMore").hidden = pagedEquity||!toolCursor;
   }
 
@@ -2262,7 +2269,7 @@ await boot();
   const statusTimer=setInterval(refreshMarketStatus, 60000); renderToolNav();
   const activityChanged=()=>{if(window.__gexDataActive===false||document.hidden){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}else{refreshMarketStatus();refreshResumedTool();}};
   window.addEventListener('gex-data-activity',activityChanged);document.addEventListener('visibilitychange',activityChanged);
-  window.addEventListener('gex-data-live-frame',()=>{if(!toolRequestInFlight&&activeTool&&frameVisible&&!document.hidden&&window.__gexDataActive!==false)loadActiveTool({liveFrame:true});});
+  window.addEventListener('gex-data-live-frame',receiveLiveToolFrame);
   window.addEventListener('pagehide',()=>{clearInterval(statusTimer);clearTimeout(pollTimer);activeController?.abort();activeChartDispose?.();tableRuntime?.destroy();});
   window.addEventListener('gex-data-timezone',refreshTimeZonePresentation);
   const preferenceFilterSignature=()=>JSON.stringify({overrides:getFilterOverrides(),groups:getFilterGroups().map(group=>({id:group.id,expression:group.expression}))});

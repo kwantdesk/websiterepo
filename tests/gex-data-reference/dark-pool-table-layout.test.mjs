@@ -22,3 +22,16 @@ test('actual Dark Pool renderer keeps early columns compact, lets only the final
  assert.deepEqual(head.children[0].children.map(node=>node.style.width),['70px','115px','150px','140px','auto']);
  view.setVisible('volume',false);assert.equal(head.children[0].children.at(-1).style.width,'auto');assert.equal(head.children[0].children[1].style.width,'115px');view.destroy();
 });
+
+test('Dark Pool opt-in local sort survives reopening without overriding server-owned sorts',()=>{
+ const store=new Map(),storage={getItem:key=>store.get(key),setItem:(key,value)=>store.set(key,value)};
+ function open(configuration={}){
+  const document={createElement:tag=>new Node(document,tag),createTextNode:text=>({textContent:text}),addEventListener(){},removeEventListener(){}};document.body=new Node(document);
+  const table=new Node(document,'table');table.tBodies=[];table.createTHead=()=>new Node(document,'thead');table.createTBody=()=>new Node(document,'tbody');table.createTFoot=()=>new Node(document,'tfoot');
+  const view=createTableView({table,storage});view.setRows([{price:750,notionalValue:100},{price:751,notionalValue:50}],{toolId:'dark-pool-levels',columns:DARK_POOL_LEVEL_COLUMNS,sortKey:'price',persistLocalSort:true,...configuration});return view;
+ }
+ const first=open();first.setSort('notionalValue',1);assert.equal(first.getVisibleRows()[0].notionalValue,50);first.destroy();
+ const reopened=open();assert.equal(reopened.getSort().id,'notionalValue');assert.equal(reopened.getSort().direction,1);assert.equal(reopened.getVisibleRows()[0].notionalValue,50);reopened.destroy();
+ const server=open({onSortChange(){}});assert.equal(server.getSort().id,'price');server.destroy();
+ const other=open({persistLocalSort:false});assert.equal(other.getSort().id,'price');other.destroy();
+});
