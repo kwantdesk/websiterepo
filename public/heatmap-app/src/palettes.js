@@ -18,7 +18,7 @@ export function normalizeHeatPalette(name) {
   if (name === 'auto') return name;
   if (Object.hasOwn(gradientStops, name)) return name;
   if (name === 'mono') return 'black-white';
-  if (name === 'chromeymono') return 'chromey-mono';
+  if (['chromeymono', 'chromey-mono', 'chromium-mono'].includes(name)) return 'red-lime';
   return DEFAULT_PALETTE;
 }
 
@@ -27,18 +27,6 @@ const atLandmarks = colors => colors.map((color, index) => [BOOKMAP_LANDMARKS[in
 
 export const PALETTES = Object.freeze({
   ...gradientStops,
-  /*
-   * The DeepChart look, matching the "Chromey Mono" website theme.
-   *
-   * Black through to a single high-voltage green, so the heat reads as one
-   * structure rather than as a rainbow: depth is brightness, not hue. The
-   * accents keep the market-side encoding - green resting bid, red resting
-   * ask - which is what keeps the book legible at a glance against it.
-   */
-  chromeymono: atLandmarks([
-    [0, 0, 0], [0, 24, 0], [0, 60, 0], [0, 118, 0],
-    [0, 188, 0], [0, 255, 0], [200, 255, 200],
-  ]),
   kwantify: atLandmarks([
     [5, 7, 7], [5, 20, 16], [4, 50, 37], [0, 106, 75],
     [0, 174, 116], [0, 245, 160], [190, 255, 231],
@@ -118,7 +106,6 @@ export const PALETTES = Object.freeze({
 // ask/sell uses `ask`, so the market-side encoding stays consistent while the
 // complete chart changes theme as one unit.
 export const PALETTE_ACCENTS = Object.freeze({
-  chromeymono: Object.freeze({ bid: [0, 255, 0], ask: [193, 20, 20] }),
   kwantify: Object.freeze({ bid: [0, 245, 160], ask: [239, 68, 68] }),
   liquid: Object.freeze({ bid: [100, 210, 255], ask: [255, 159, 10] }),
   thermal: Object.freeze({ bid: [0, 190, 230], ask: [255, 125, 0] }),
@@ -139,7 +126,6 @@ export const PALETTE_ACCENTS = Object.freeze({
 });
 
 export const NEW_PALETTE_NAMES = Object.freeze([
-  'chromeymono',
   'aurora', 'magma', 'viridis', 'plasma', 'arctic',
   'limefire', 'purplegold', 'copper', 'icefire', 'neon',
 ]);

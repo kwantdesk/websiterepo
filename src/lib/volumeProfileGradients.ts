@@ -52,7 +52,8 @@ const BY_ID = new Map(VOLUME_PROFILE_GRADIENTS.map((gradient) => [gradient.id, g
 
 /** Resolves a stored setting to a scheme, or null when gradients are off. */
 export function resolveVolumeProfileGradient(value: unknown): VolumeProfileGradient | null {
-  const id = String(value ?? VOLUME_PROFILE_GRADIENT_OFF).trim();
+  const storedId = String(value ?? VOLUME_PROFILE_GRADIENT_OFF).trim();
+  const id = ["chromey-mono", "chromeymono", "chromium-mono"].includes(storedId) ? "red-lime" : storedId;
   if (!id || id === VOLUME_PROFILE_GRADIENT_OFF) return null;
   return BY_ID.get(id) ?? null;
 }

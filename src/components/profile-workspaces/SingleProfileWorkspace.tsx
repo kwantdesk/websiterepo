@@ -879,7 +879,7 @@ export default function SingleProfileWorkspace({
                         title={gradient.label}
                         onClick={() => setDraft((current) => ({ ...current, gradientPreset: gradient.id }))}
                         className={`relative h-8 overflow-hidden border ${
-                          draft.gradientPreset === gradient.id ? "border-primary" : "border-border hover:border-primary/40"
+                          resolveVolumeProfileGradient(draft.gradientPreset)?.id === gradient.id ? "border-primary" : "border-border hover:border-primary/40"
                         }`}
                       >
                         <span aria-hidden className="absolute inset-0" style={{ background: `linear-gradient(90deg, ${gradient.from}, ${gradient.to})` }} />

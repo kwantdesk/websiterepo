@@ -6,7 +6,7 @@ import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
 import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=grouped-depth-scale';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261109-website-theme';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261109-remove-duplicate-palette';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -21,7 +21,7 @@ import {
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from './live-market.js?v=20261030-bubble-source-time';
-import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient, paletteCanvasTheme, paletteAccents } from './palettes.js?v=20261109-website-theme';
+import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient, paletteCanvasTheme, paletteAccents } from './palettes.js?v=20261109-remove-duplicate-palette';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,

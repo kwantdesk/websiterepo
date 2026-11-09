@@ -1,12 +1,6 @@
 /** Canonical footprint/profile gradient colours, also consumed by Liquidity Map. */
 export const INDICATOR_GRADIENT_SCHEMES = Object.freeze([
   {
-    "id": "chromey-mono",
-    "label": "Chromey Mono",
-    "from": "#C11414",
-    "to": "#00FF00"
-  },
-  {
     "id": "pink-blue",
     "label": "Pink → Blue",
     "from": "#FF2D95",

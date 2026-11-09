@@ -73,6 +73,7 @@ import {
   VOLUME_PROFILE_GRADIENTS,
   VOLUME_PROFILE_GRADIENT_OFF,
   isVolumeProfileGradientActive,
+  resolveVolumeProfileGradient,
   mixHexColors,
 } from "@/lib/volumeProfileGradients";
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
@@ -2257,7 +2258,7 @@ export default function ChartIndicatorsControl({
                       Off
                     </button>
                     {VOLUME_PROFILE_GRADIENTS.map((gradient) => {
-                      const active = String(settingsInstance.settings?.gradientPreset ?? "") === gradient.id;
+                      const active = resolveVolumeProfileGradient(settingsInstance.settings?.gradientPreset)?.id === gradient.id;
                       return (
                         <button
                           key={gradient.id}
@@ -5301,7 +5302,7 @@ export default function ChartIndicatorsControl({
                       Off
                     </button>
                     {VOLUME_PROFILE_GRADIENTS.map((gradient) => {
-                      const active = String(settingsInstance.settings?.gradientPreset ?? "") === gradient.id;
+                      const active = resolveVolumeProfileGradient(settingsInstance.settings?.gradientPreset)?.id === gradient.id;
                       return (
                         <button
                           key={gradient.id}

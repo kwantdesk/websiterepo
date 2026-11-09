@@ -8,7 +8,7 @@ import {
   type IndicatorPaletteTheme,
 } from "@/lib/indicatorPalettes";
 import { paletteRolesFor } from "@/lib/indicatorPaletteRegistry";
-import { isVolumeProfileGradientActive } from "@/lib/volumeProfileGradients";
+import { isVolumeProfileGradientActive, resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 
 /** What an indicator's settings dialog is allowed to persist. */
 type IndicatorSettingValue = string | number | boolean;
@@ -69,7 +69,7 @@ export default function IndicatorPaletteSection({
           Off
         </button>
         {INDICATOR_GRADIENTS.map((gradient) => {
-          const chosen = String(settings[INDICATOR_GRADIENT_KEY] ?? "") === gradient.id;
+          const chosen = resolveVolumeProfileGradient(settings[INDICATOR_GRADIENT_KEY])?.id === gradient.id;
           return (
             <button
               key={gradient.id}
