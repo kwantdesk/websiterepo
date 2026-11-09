@@ -530,7 +530,7 @@ await boot();
     { id: "option-price-over-time", title: "Contract Price / Time", group: "Order Flow", icon: "⌇", endpoint: "option-price-over-time", view: "optionOhlc", controls: ["mode", "date", "ticker", "osi", "expiry", "strike", "contractType", "period", "chartType"], liveMs: 10000, description: "Intraday option OHLC and volume for one explicitly selected contract or exact OSI." },
     { id: "contract-trade-side-statistics", title: "Contract Side Statistics", group: "Order Flow", icon: "◐", endpoint: "contract-trade-side-statistics", view: "sideStats", controls: ["mode", "date", "tickerOptional", "moneyType", "sideMetric", "expiry", "strike"], liveMs: 15000, description: "Call and put activity split across above-ask, ask, mid, bid, and below-bid trade sides." },
     { id: "contract-statistics", title: "Contract Statistics", group: "Order Flow", icon: "◑", endpoint: "contract-statistics", view: "contractStats", controls: ["mode", "date", "tickerOptional", "moneyType", "tradeSide", "expiry", "strike"], liveMs: 15000, description: "Call-vs-put premium, volume, and trade-count totals for the selected flow slice." },
-    { id: "gainers-losers", title: "Gainers / Losers", group: "Order Flow", icon: "↕", endpoint: "gainers-losers", view: "gainers", controls: ["mode", "date", "tickerOptional", "sector", "industry", "rankMetric","tapeSessionStart","tapeSessionEnd"], liveMs: 20000, description: "Rank symbols by bullish or bearish option premium, volume, and activity." },
+    { id: "gainers-losers", title: "Gainers / Losers", group: "Order Flow", icon: "↕", endpoint: "gainers-losers", view: "gainers", controls: ["mode", "date", "tickerOptional", "sector", "industry", "rankMetric","rankDirection","tapeSessionStart","tapeSessionEnd"], liveMs: 20000, description: "Rank symbols by bullish or bearish option premium, volume, and activity." },
     { id: "market-share", title: "Market Share", group: "Order Flow", icon: "◔", endpoint: "market-share", view: "marketShare", controls: ["mode", "date", "tickerOptional", "shareMode", "shareView", "shareChart","tapeSessionStart","tapeSessionEnd"], liveMs: 20000, description: "Exchange share in premium, trade count, or volume using an interactive chart." },
     { id: "market-share-table", title: "Market Share Table", group: "Order Flow", icon: "▥", endpoint: "market-share", view: "marketShareTable", controls: ["mode", "date", "tickerOptional","tapeSessionStart","tapeSessionEnd"], liveMs: 20000, description: "Detailed per-exchange equity-call, equity-put, and index activity." },
 
@@ -577,7 +577,7 @@ await boot();
     chartType: PRICE_CHART_TYPES,
     levelMetric: [["price", "Price"], ["notionalValue", "Notional"], ["size", "Share volume"], ["tradeCount", "Trade count"]],
     sideMetric: [["PREMIUM", "Premium"], ["VOLUME", "Volume"], ["TRADE_COUNT", "Trade Count"]],
-    rankMetric: [["bullishPremium", "Bullish premium"], ["bearishPremium", "Bearish premium"], ["premium", "Total premium"], ["volume", "Volume"]],
+    rankMetric: [["bullishPremium", "Bullish premium"], ["bearishPremium", "Bearish premium"], ["premium", "Total premium"], ["volume", "Volume"], ["ticker", "Ticker"], ["premiumRatio", "Premium ratio"], ["tradeCount", "Trade count"]],
     shareMetric: [["Premium", "Premium"], ["Volume", "Volume"], ["TradeCount", "Trade count"]],
     shareBucket: [["total", "Total"], ["equityCall", "Equity calls"], ["equityPut", "Equity puts"], ["index", "Index"]],
     shareChart: [["pie", "Pie"], ["bar", "Bar"]],
@@ -600,6 +600,7 @@ await boot();
     oiSortField:['Ranking field','hidden',null,'changeInOpenInterest'],oiSortDirection:['Ranking direction','hidden',null,'DESCENDING'],
     tapeSortField:['Tape sort field','hidden',null,'TRADE_TIME'],tapeSortDirection:['Tape sort direction','hidden',null,'DESCENDING'],tapeFilters:['Tape column filters','hidden',null,'[]'],
     tapeSortColumn:['Tape sorted column','hidden',null,'time'],
+    rankDirection:['Ranking direction','hidden',null,'-1'],
     tapeSessionStart:['Tape first session','hidden',null,''],tapeSessionEnd:['Tape last session','hidden',null,''],
     deltaMin:['Minimum absolute delta','number',null,'0'],deltaMax:['Maximum absolute delta','number',null,'1'],
     expiryStart:['First expiration','date'],expiryEnd:['Last expiration','date'],
@@ -1046,6 +1047,7 @@ await boot();
   }
   window.addEventListener('pagehide',()=>{saveToolControls();try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}});
   function onControlsChanged(event) {
+    if(activeTool?.id==='gainers-losers'&&event?.target?.dataset.control==='rankMetric')setControl('rankDirection','-1');
     if(['equity-prints','exchange-notifications'].includes(activeTool?.id)){toolCursor=null;q('#loadMore').hidden=true;}
     if(activeTool?.id==='exchange-notifications'&&['notificationType','tickerOptional'].includes(event?.target?.dataset.control)){const field=event.target.dataset.control==='notificationType'?'TYPE':'TICKER';setControl('tapeFilters',JSON.stringify(notificationHeaderFilters().filter(item=>notificationField(item.field??item.key)?.field!==field)));}
     if(activeTool?.id==='max-pain'&&event?.target?.dataset.control==='ticker'){
@@ -2040,6 +2042,13 @@ await boot();
     return output;
   }
 
+  function syncGainersHeaderSort(selection){
+    if(activeTool?.id!=='gainers-losers'||!CONTROL_OPTIONS.rankMetric.some(([key])=>key===selection.key))return;
+    setControl('rankMetric',selection.key);
+    setControl('rankDirection',selection.direction===1?'1':'-1');
+    saveToolControls();
+  }
+
   function showTable(rows,columns=null,totalRow=null,configuration={}) {
     tableColumns=columns;
     q("#toolVisual").hidden = true; q("#chartToolbar").hidden = true; q("#toolTableWrap").hidden = false;
@@ -2050,7 +2059,7 @@ await boot();
     if(tableRuntime&&tableColumnHost!==columnHost){tableRuntime.destroy();tableRuntime=null;}
     tableColumnHost=columnHost;
     tableRows = rows;
-    if(!tableRuntime)tableRuntime=createTableView({table:q("#toolTable"),search:compactTools?null:q("#tableSearch"),count:compactTools?null:q("#tableCount"),columnHost,storage:{getItem:key=>gexStorage.getItem('gex-data:'+instanceKey+':'+key),setItem:(key,value)=>gexStorage.setItem('gex-data:'+instanceKey+':'+key,value)},onRowClick:(row,event)=>{
+    if(!tableRuntime)tableRuntime=createTableView({table:q("#toolTable"),search:compactTools?null:q("#tableSearch"),count:compactTools?null:q("#tableCount"),columnHost,onSort:syncGainersHeaderSort,storage:{getItem:key=>gexStorage.getItem('gex-data:'+instanceKey+':'+key),setItem:(key,value)=>gexStorage.setItem('gex-data:'+instanceKey+':'+key,value)},onRowClick:(row,event)=>{
       const tr=event.target.closest("tr");if(!tr)return;const next=tr.nextElementSibling;if(next?.classList.contains("detail-row")){next.remove();return;}const detail=element("tr","detail-row"),cell=element("td","row-detail"),actions=element("div","row-detail-actions");cell.colSpan=tableRuntime.getColumns().filter(column=>column.visible).length;
       if(row.ticker){const button=element("button","",row.osi||row.expirationDate?"View contract chart":"View stock chart");button.type="button";button.addEventListener("click",()=>{const id=row.osi||row.expirationDate?"option-price-over-time":"stock-price-over-time";savedToolControls[id]={...savedToolControls[id],mode:getControl("mode"),date:getControl("date"),ticker:row.ticker,osi:row.osi||"",expiry:row.expirationDate||"",strike:row.strikePrice??"",contractType:row.contractType||"CALL"};showTool(id);});actions.append(button);}
       cell.append(actions,element("pre","",JSON.stringify(row,null,2)));detail.append(cell);tr.after(detail);
@@ -2238,7 +2247,7 @@ await boot();
       renderSideStatsQuant(payload); return;
     }
     if (tool.view === "gainers") {
-      const model=gainersModel(data,getControl("rankMetric")||"bullishPremium"),rows=model.rows;showTable(rows,GAINERS_COLUMNS,null,{sortKey:getControl("rankMetric")||"bullishPremium",inlineFilters:false,localHeaderFilters:true,fillLastColumn:true});const top=rows[0];setSummary([["Symbols",rows.length.toLocaleString()],["Leader",top?.ticker||"—"],["Bullish premium",compact(rows.reduce((s,r)=>s+number(r.bullishPremium),0),true),"positive"],["Bearish premium",compact(rows.reduce((s,r)=>s+number(r.bearishPremium),0),true),"negative"]]);return;
+      const direction=getControl('rankDirection')==='1'?1:-1,model=gainersModel(data,getControl("rankMetric")||"bullishPremium",direction),rows=model.rows;showTable(rows,GAINERS_COLUMNS,null,{sortKey:getControl("rankMetric")||"bullishPremium",sortDirection:direction,inlineFilters:false,localHeaderFilters:true,fillLastColumn:true});const top=rows[0];setSummary([["Symbols",rows.length.toLocaleString()],["Leader",top?.ticker||"—"],["Bullish premium",compact(rows.reduce((s,r)=>s+number(r.bullishPremium),0),true),"positive"],["Bearish premium",compact(rows.reduce((s,r)=>s+number(r.bearishPremium),0),true),"negative"]]);return;
     }
     if (tool.view === "marketShare" || tool.view === "marketShareTable") {
       if(tool.view==="marketShareTable"){const model=marketShareTableModel(data),rows=model.rows;showTable(rows,MARKET_SHARE_COLUMNS,model.totalRow,{sortKey:"equityTotalVolume",inlineFilters:false,fillLastColumn:true});setSummary([["Exchanges",rows.length],["Total premium",compact(model.totals.totalPremium,true)],["Equity calls",compact(rows.reduce((s,r)=>s+number(r.equityCallPremium),0),true),"positive"],["Equity puts",compact(rows.reduce((s,r)=>s+number(r.equityPutPremium),0),true),"negative"]]);}else renderMarketShareQuant(payload);return;
