@@ -19,7 +19,7 @@ import {
   type Drawing,
 } from "@/lib/chartDrawTools";
 import { deleteDrawTemplate, loadDrawTemplates, saveDrawTemplate, type DrawTemplateStore } from "@/lib/chartDrawTemplates";
-import { LINE_TEXT_TOOLS } from "@/lib/chartLineText";
+import { DRAWING_LABEL_TOOLS } from "@/lib/chartLineText";
 
 // Tabbed settings dialog for a charting drawing — Style, Text, Coordinates and
 // Visibility — with save/load style templates per tool type. Clean-room UI; the
@@ -73,7 +73,7 @@ export default function ChartDrawSettings({
   const spec = DRAW_TOOL_SPECS[drawing.tool];
   const isShape = SHAPE_TOOLS.includes(drawing.tool);
   const isText = TEXT_TOOLS.includes(drawing.tool);
-  const isLineText = LINE_TEXT_TOOLS.has(drawing.tool);
+  const isLineText = DRAWING_LABEL_TOOLS.has(drawing.tool);
   const isEmoji = drawing.tool === "emoji";
   const isProfile = PROFILE_TOOLS.includes(drawing.tool);
   const fixedProfile = drawing.tool === "fixedRangeVolumeProfile";

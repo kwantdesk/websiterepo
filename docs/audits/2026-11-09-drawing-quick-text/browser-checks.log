@@ -1,0 +1,9 @@
+PASS trendLine single-click editor, Enter, Escape, click-away persistence
+PASS rectangle single-click editor, Enter, Escape, click-away persistence
+PASS horizontalLine single-click editor, Enter, Escape, click-away persistence
+PASS verticalLine single-click editor, Enter, Escape, click-away persistence
+PASS polyline single-click editor, Enter, Escape, click-away persistence
+PASS ellipse single-click editor, Enter, Escape, click-away persistence
+PASS fibRetracement single-click editor, Enter, Escape, click-away persistence
+PASS longPosition single-click editor, Enter, Escape, click-away persistence
+PASS viewport movement, locked drawing guard, zero browser errors
