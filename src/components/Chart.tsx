@@ -11836,6 +11836,17 @@ function Chart({
     };
     // Rebind after chart recreation, including first creation after pane mount.
   }, [chartReadyRevision]);
+  const indicatorVisibleTimeWindow = useCallback(() => {
+    const range = chartRef.current?.timeScale().getVisibleRange();
+    if (!range || typeof range.from !== "number" || typeof range.to !== "number") return null;
+    // Event bars have synthetic chart seconds. Convert both native boundaries
+    // back to the exact source timeline used by the lower study series.
+    const from = (eventSourceTimeByChartTimeRef.current.get(Number(range.from)) ?? Number(range.from) * 1_000) / 1_000;
+    const to = (eventSourceTimeByChartTimeRef.current.get(Number(range.to)) ?? Number(range.to) * 1_000) / 1_000;
+    const padding = Math.max(1, (to - from) * 0.1);
+    return { from: from - padding, to: to + padding };
+  }, []);
+
   const indicatorTimeToX = useCallback(
     (time: number) => {
       // Time-based candles can use their epoch second directly. Event-based
@@ -21277,6 +21288,7 @@ function Chart({
         collapsedPanes={collapsedIndicatorPanes}
         paneLayout={indicatorPaneLayout}
         timeToX={indicatorTimeToX}
+        readVisibleTimeWindow={indicatorVisibleTimeWindow}
         onResizePane={resizeIndicatorPane}
         onTogglePane={toggleIndicatorPane}
         onMovePane={moveIndicatorPane}

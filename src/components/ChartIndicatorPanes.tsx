@@ -12,7 +12,7 @@ import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 }
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 import type { KwantStatsTable } from "@/lib/kwantStats";
 import { chartCandleBodyWidth, paneBarSpacing } from "@/lib/chartBarWidth";
-import { sampledPanePoints, sampledVerticalPanePoints } from "@/lib/chartIndicatorPaneSampling";
+import { sampledPanePoints, sampledVerticalPanePoints, visiblePaneData, type PaneTimeWindow } from "@/lib/chartIndicatorPaneSampling";
 import KstPanePlot from "@/components/KstPanePlot";
 import { createPaneCoordinateCache, resolvePaneCoordinate } from "@/lib/paneCoordinateContinuity";
 import { cvdSeriesRegressed } from "@/lib/cvdRenderContinuity";
@@ -124,6 +124,7 @@ function ChartIndicatorPaneSurface({
   paneHeights,
   collapsedPanes,
   timeToX,
+  readVisibleTimeWindow,
   onResizePane,
   onTogglePane,
   onUpdateSetting,
@@ -140,6 +141,7 @@ function ChartIndicatorPaneSurface({
   paneHeights: Record<string, number>;
   collapsedPanes: Record<string, boolean>;
   timeToX: (time: number) => number | null;
+  readVisibleTimeWindow?: () => PaneTimeWindow;
   onResizePane: (instanceId: string, height: number) => void;
   onTogglePane: (instanceId: string) => void;
   onUpdateSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
@@ -150,6 +152,7 @@ function ChartIndicatorPaneSurface({
   // The native chart moves independently of React. This value deliberately
   // participates in memoized renders so pane plots follow pan and zoom.
   void viewportVersion;
+  const visibleWindow = readVisibleTimeWindow?.();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [verticalScaleByPane, setVerticalScaleByPane] = useState<Record<string, number>>({});
   const [verticalPanByPane, setVerticalPanByPane] = useState<Record<string, number>>({});
@@ -302,7 +305,7 @@ function ChartIndicatorPaneSurface({
         // loaded history makes a live CVD tape look flat after one large move.
         const visibleSeries = group.series.map((definition) => ({
           ...definition,
-          data: definition.data.filter((point) => {
+          data: (definition.horizontalPriceLine ? definition.data : visiblePaneData(definition.data, visibleWindow)).filter((point) => {
             if (definition.horizontalPriceLine) return true;
             const x = xForTime(point.time);
             return x !== null && x >= -10 && x <= plotWidth + 10;
@@ -550,7 +553,7 @@ function ChartIndicatorPaneSurface({
                   return <KstPanePlot key={definition.key} series={definition} nameRow={seriesIndex}
                     bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                     referenceCoordinate={definition.horizontalPriceLine ? yFor(definition.data[0]?.value ?? NaN, definition) : undefined}
-                    points={sampledPanePoints(definition, xForTime, plotWidth).map(p => ({ ...p, y: yFor(p.value, definition) }))} />;
+                    points={sampledPanePoints(definition, xForTime, plotWidth, visibleWindow).map(p => ({ ...p, y: yFor(p.value, definition) }))} />;
                 }
                 if (definition.horizontalPriceLine) {
                   const value = definition.data[0]?.value;
@@ -560,7 +563,7 @@ function ChartIndicatorPaneSurface({
                     strokeDasharray={definition.lineStyle === "dotted" ? "1 3" : definition.lineStyle === "dashed" ? "5 4" : undefined}
                     vectorEffect="non-scaling-stroke" />;
                 }
-                const visible = sampledPanePoints(definition, xForTime, plotWidth);
+                const visible = sampledPanePoints(definition, xForTime, plotWidth, visibleWindow);
                 if (!visible.length) return null;
                 if (definition.kind === "histogram") {
                   // The same width the candle above it is drawn at. A flat
@@ -684,7 +687,7 @@ function ChartIndicatorPaneSurface({
             {!collapsed && (group.indicatorId === "super-trend-difference" || group.indicatorId === "super-trend") ? group.series.map(definition => (
               <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition} rightInset={28}
                 bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
-                points={sampledPanePoints(definition, xForTime, plotWidth).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
+                points={sampledPanePoints(definition, xForTime, plotWidth, visibleWindow).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
             )) : null}
             {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.max, group.indicatorId)}</text> : null}
             {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.min, group.indicatorId)}</text> : null}
@@ -1072,6 +1075,7 @@ function ChartVerticalIndicatorPaneSurface({
   viewportVersion,
   collapsedPanes,
   timeToX,
+  readVisibleTimeWindow,
   onTogglePane,
   onOpenSettings,
   placementStyle,
@@ -1085,12 +1089,14 @@ function ChartVerticalIndicatorPaneSurface({
   viewportVersion: number;
   collapsedPanes: Record<string, boolean>;
   timeToX: (time: number) => number | null;
+  readVisibleTimeWindow?: () => PaneTimeWindow;
   onTogglePane: (instanceId: string) => void;
   onOpenSettings?: (instanceId: string) => void;
   placementStyle: CSSProperties;
   onPaneHandlePointerDown: (instanceId: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   void viewportVersion;
+  const visibleWindow = readVisibleTimeWindow?.();
   const [scaleByPane, setScaleByPane] = useState<Record<string, number>>({});
   const paneRootRef = useRef<HTMLDivElement>(null);
   const scaleSidePane = (groupKey: string, deltaY: number, deltaMode = 0) => {
@@ -1154,7 +1160,7 @@ function ChartVerticalIndicatorPaneSurface({
           const innerWidth = Math.max(12, innerRight - innerLeft);
           const visibleSeries = group.series.map((definition) => ({
             ...definition,
-            data: definition.data.filter((point) => {
+            data: (definition.horizontalPriceLine ? definition.data : visiblePaneData(definition.data, visibleWindow)).filter((point) => {
               if (definition.horizontalPriceLine) return true;
               const x = timeToX(point.time);
               return x !== null && x >= -10 && x <= globalPlotWidth + 10;
@@ -1215,7 +1221,7 @@ function ChartVerticalIndicatorPaneSurface({
                       return <KstPanePlot key={definition.key} series={definition} nameRow={seriesIndex} vertical
                         bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
                         referenceCoordinate={definition.horizontalPriceLine ? xForValue(definition.data[0]?.value ?? NaN, definition) : undefined}
-                        points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(p => ({ ...p, x: xForValue(p.value, definition), y: p.y + plotTop }))} />;
+                        points={sampledVerticalPanePoints(definition, yForTime, plotHeight, visibleWindow).map(p => ({ ...p, x: xForValue(p.value, definition), y: p.y + plotTop }))} />;
                     }
                     if (definition.horizontalPriceLine) {
                       const value = definition.data[0]?.value;
@@ -1225,7 +1231,7 @@ function ChartVerticalIndicatorPaneSurface({
                         strokeDasharray={definition.lineStyle === "dotted" ? "1 3" : definition.lineStyle === "dashed" ? "5 4" : undefined}
                         vectorEffect="non-scaling-stroke" />;
                     }
-                    const visible = sampledVerticalPanePoints(definition, yForTime, plotHeight)
+                    const visible = sampledVerticalPanePoints(definition, yForTime, plotHeight, visibleWindow)
                       .map((point) => ({ ...point, y: point.y + plotTop }));
                     if (!visible.length) return null;
                     if (definition.kind === "histogram") {
@@ -1309,7 +1315,7 @@ function ChartVerticalIndicatorPaneSurface({
                   {group.indicatorId === "super-trend-difference" || group.indicatorId === "super-trend" ? group.series.map(definition => (
                     <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition}
                       bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
-                      points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(point => ({ ...point, x: xForValue(point.value, definition), y: point.y + plotTop }))} />
+                      points={sampledVerticalPanePoints(definition, yForTime, plotHeight, visibleWindow).map(point => ({ ...point, x: xForValue(point.value, definition), y: point.y + plotTop }))} />
                   )) : null}
                   <text x={innerLeft} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace">{formatPaneValue(domain.min, group.indicatorId)}</text>
                   <text x={innerRight} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="Aleph, monospace" textAnchor="end">{formatPaneValue(domain.max, group.indicatorId)}</text>
@@ -1387,6 +1393,7 @@ function ChartIndicatorPanes({
   collapsedPanes,
   paneLayout,
   timeToX,
+  readVisibleTimeWindow,
   onResizePane,
   onTogglePane,
   onMovePane,
@@ -1409,6 +1416,7 @@ function ChartIndicatorPanes({
   collapsedPanes: Record<string, boolean>;
   paneLayout: IndicatorPaneLayoutMap;
   timeToX: (time: number) => number | null;
+  readVisibleTimeWindow?: () => PaneTimeWindow;
   onResizePane: (instanceId: string, height: number) => void;
   onTogglePane: (instanceId: string) => void;
   onMovePane: (instanceId: string, dock: IndicatorPaneDock, targetIndex: number) => void;
@@ -1627,6 +1635,7 @@ function ChartIndicatorPanes({
       paneHeights={paneHeights}
       collapsedPanes={collapsedPanes}
       timeToX={surfaceTimeToX}
+      readVisibleTimeWindow={readVisibleTimeWindow}
       onResizePane={onResizePane}
       onTogglePane={guardedToggle}
       onUpdateSetting={onUpdateSetting}
@@ -1654,6 +1663,7 @@ function ChartIndicatorPanes({
         viewportVersion={surfaceViewportVersion}
         collapsedPanes={collapsedPanes}
         timeToX={stableTimeToX}
+        readVisibleTimeWindow={readVisibleTimeWindow}
         onTogglePane={guardedToggle}
         onOpenSettings={onOpenSettings}
         placementStyle={placementStyle}

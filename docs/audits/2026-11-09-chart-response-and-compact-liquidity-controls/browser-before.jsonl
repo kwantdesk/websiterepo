@@ -1,0 +1,2 @@
+{"baseline":true,"before":{"charts":1,"updates":46},"after":{"charts":1,"updates":228,"last":{"at":1794194489397,"close":27999.25}},"metrics":{"updates":228,"gapP50":26,"gapP95":43,"gapMax":59,"stalls":[]},"errors":[]}
+{"elapsed":6262,"errors":[],"stalls":[],"canvases":9}

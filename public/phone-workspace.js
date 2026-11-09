@@ -20,12 +20,50 @@ function mountPhoneWorkspace() {
   const close = document.createElement('button'); close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label', 'Close chart controls');
   heading.append(title, close); drawer.append(heading); document.body.append(shade, drawer);
   const moved = new Map();
+  // Move the original buttons, never clones: their live state and existing
+  // click handlers must remain attached in a narrow embedded chart as well.
+  const heatmapMoved = new Map();
+  const heatmapSections = [];
+  function organizeHeatmapControls(compact) {
+    if (app !== 'heatmap') return;
+    if (!compact) {
+      for (const [button, placeholder] of heatmapMoved) {
+        placeholder.replaceWith(button);
+        button.querySelector('.kwant-compact-control-label')?.remove();
+      }
+      heatmapMoved.clear();
+      heatmapSections.splice(0).forEach(section => section.remove());
+      return;
+    }
+    if (heatmapSections.length) return;
+    const groups = [
+      ['Navigate', [['[data-tool="crosshair"]', 'Crosshair'], ['[data-tool="pan"]', 'Pan chart'], ['[data-tool="measure"]', 'Measure'], ['#zoomIn', 'Zoom in'], ['#zoomOut', 'Zoom out'], ['#resetView', 'Reset view']]],
+      ['Chart layers', [['#toggleHeatmap', 'Heat map'], ['#toggleDom', 'Order book'], ['#toggleTrades', 'Trade bubbles'], ['#toggleProfile', 'Volume profile'], ['#toggleCvd', 'Cumulative delta']]],
+      ['Trading & settings', [['#mapTradeButton', 'Trade'], ['[data-panel-shortcut="depth"]', 'Depth settings'], ['[data-panel-shortcut="signals"]', 'Signals'], ['[data-panel-shortcut="settings"]', 'Display settings'], ['#fullscreenButton', 'Full screen'], ['#helpButton', 'Keyboard shortcuts']]],
+    ];
+    for (const [name, controls] of groups) {
+      const section = document.createElement('section'); section.className = 'kwant-compact-control-section';
+      const label = document.createElement('h3'); label.textContent = name;
+      const grid = document.createElement('div'); grid.className = 'kwant-compact-control-grid';
+      section.append(label, grid);
+      for (const [selector, text] of controls) {
+        const button = document.querySelector(selector);
+        if (!button) continue;
+        const placeholder = document.createComment('compact liquidity control');
+        button.before(placeholder); heatmapMoved.set(button, placeholder);
+        const caption = document.createElement('span'); caption.className = 'kwant-compact-control-label'; caption.textContent = text;
+        button.append(caption); grid.append(button);
+      }
+      if (grid.children.length) { drawer.append(section); heatmapSections.push(section); }
+    }
+  }
   function show(open) { drawer.hidden = shade.hidden = !open; toggle.setAttribute('aria-expanded', String(open)); if (open) close.focus(); else toggle.focus(); }
   toggle.addEventListener('click', () => show(drawer.hidden)); close.addEventListener('click', () => show(false)); shade.addEventListener('click', () => show(false));
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !drawer.hidden && !event.defaultPrevented) show(false); });
   const selectors = app === 'kwanty' ? ['.chart-top-controls', '.workspace-header-actions', '#sidebar'] : app === 'heatmap' ? ['#topDeck', '.app-actions'] : ['.topbar', '#toolControls'];
   function moveControls() {
     if (!phone.matches) {
+      organizeHeatmapControls(false);
       for (const [element, placeholder] of moved) { if (placeholder.parentNode) placeholder.replaceWith(element); }
       moved.clear(); drawer.hidden = shade.hidden = true; toggle.setAttribute('aria-expanded', 'false');
       return;
@@ -35,6 +73,7 @@ function mountPhoneWorkspace() {
       if (!element || moved.has(element)) continue;
       const placeholder = document.createComment('phone control position'); element.before(placeholder); moved.set(element, placeholder); drawer.append(element);
     }
+    organizeHeatmapControls(true);
   }
   let scheduled = false;
   const refresh = () => { if (scheduled) return; scheduled = true; requestAnimationFrame(() => { scheduled = false; moveControls(); updatePanels(); }); };

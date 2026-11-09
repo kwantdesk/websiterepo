@@ -1,0 +1,197 @@
+▲ Next.js 16.2.6 (webpack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 22.8s
+  Running TypeScript ...
+  Finished TypeScript in 82s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/87) ...
+  Generating static pages using 11 workers (21/87)
+  Generating static pages using 11 workers (43/87)
+  Generating static pages using 11 workers (65/87)
+✓ Generating static pages using 11 workers (87/87) in 2.3s
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ○ /accounts
+├ ○ /agent
+├ ○ /ai
+├ ○ /alerts
+├ ○ /algo
+├ ƒ /api/backtesting/session
+├ ƒ /api/bounce-levels
+├ ƒ /api/chart-drawings
+├ ƒ /api/chart-gamma-levels
+├ ƒ /api/chart-gex-profile
+├ ƒ /api/cme-history
+├ ƒ /api/cme-history-page
+├ ƒ /api/dark-pool-map
+├ ƒ /api/databento/health
+├ ƒ /api/databento/live
+├ ƒ /api/databento/market
+├ ƒ /api/databento/options
+├ ƒ /api/databento/tpo-levels
+├ ƒ /api/databento/value-area
+├ ƒ /api/desktop-auth/authorize
+├ ƒ /api/desktop-auth/jwks
+├ ƒ /api/desktop-auth/refresh
+├ ƒ /api/desktop-auth/revocations
+├ ƒ /api/desktop-auth/revoke
+├ ƒ /api/desktop-auth/token
+├ ƒ /api/economic-calendar
+├ ƒ /api/expected-move
+├ ƒ /api/financial-info
+├ ƒ /api/friends
+├ ƒ /api/gameplan
+├ ƒ /api/gamma-bot
+├ ƒ /api/gamma-environment
+├ ƒ /api/gamma-heatmap
+├ ƒ /api/gex-box/catalog
+├ ƒ /api/gex-box/history
+├ ƒ /api/gex-box/research
+├ ƒ /api/gex-box/snapshot
+├ ƒ /api/gex-box/tool
+├ ƒ /api/gex-cal
+├ ƒ /api/gex-data/[tool]
+├ ƒ /api/gex-data/heat-map-history
+├ ƒ /api/gex-flow
+├ ƒ /api/gex-flow/ratios
+├ ƒ /api/gex-interval-map
+├ ƒ /api/gex-map
+├ ƒ /api/gex-map/future
+├ ƒ /api/gexbot-flow
+├ ƒ /api/gexbot-terminal
+├ ƒ /api/gexdesk
+├ ƒ /api/gexdesk/history
+├ ƒ /api/gexdesk/zero-gamma
+├ ƒ /api/hedge-levels
+├ ƒ /api/implied-volatility-rank
+├ ƒ /api/institutional-market-data
+├ ƒ /api/institutional-market-data/[...path]
+├ ƒ /api/journal
+├ ƒ /api/journal/analysis
+├ ƒ /api/journal/extract-trade
+├ ƒ /api/kwantbot
+├ ƒ /api/kwantbot/archive
+├ ƒ /api/kwantbot/context
+├ ƒ /api/kwantbot/learning-reviews
+├ ƒ /api/kwanty/[operation]
+├ ƒ /api/lab/access
+├ ƒ /api/lab/run
+├ ƒ /api/lab/snapshot
+├ ƒ /api/macro-intelligence
+├ ƒ /api/macro-memory/ingest
+├ ƒ /api/macro-memory/search
+├ ƒ /api/market-data/diagnostics
+├ ƒ /api/market-indices
+├ ƒ /api/native-gamma
+├ ƒ /api/net-gamma-exposure-by-strike
+├ ƒ /api/news-sharing
+├ ƒ /api/options-delta
+├ ƒ /api/options-expiration-calendar
+├ ƒ /api/options-flow
+├ ƒ /api/options-flow/market-data
+├ ƒ /api/options-flow/positioning
+├ ƒ /api/options-vwap
+├ ƒ /api/precision-tools
+├ ƒ /api/research/opra-tape
+├ ƒ /api/research/positioning-walls
+├ ƒ /api/site-access
+├ ƒ /api/socials
+├ ƒ /api/socials-desktop/follow
+├ ƒ /api/socials-desktop/following
+├ ƒ /api/socials-desktop/friend-avatar
+├ ƒ /api/socials-desktop/friends-events
+├ ƒ /api/socials-desktop/gameplan-score
+├ ƒ /api/socials-desktop/notifications
+├ ƒ /api/socials-desktop/profile
+├ ƒ /api/socials-desktop/reaction
+├ ƒ /api/socials-desktop/state
+├ ƒ /api/socials/activity
+├ ƒ /api/socials/assessment
+├ ƒ /api/socials/desks
+├ ƒ /api/socials/emoji-preferences
+├ ƒ /api/socials/follows
+├ ƒ /api/socials/gameplan-execution
+├ ƒ /api/socials/notifications
+├ ƒ /api/support/[...path]
+├ ƒ /api/telemetry/renderer
+├ ƒ /api/vix-environment
+├ ƒ /api/waitlist
+├ ƒ /api/zero-gamma-bars
+├ ƒ /api/zero-gamma-line
+├ ƒ /api/zyon
+├ ƒ /api/zyon/gameplan-draft
+├ ƒ /api/zyon/gameplan-lock
+├ ƒ /api/zyon/health
+├ ƒ /api/zyon/journal
+├ ƒ /auth/callback
+├ ƒ /auth/signin
+├ ƒ /auth/signout
+├ ○ /automation
+├ ○ /automation/backtests
+├ ○ /automation/connections
+├ ○ /automation/execution
+├ ○ /automation/journal
+├ ○ /automation/replay
+├ ○ /automation/risk
+├ ○ /automation/scanner
+├ ○ /automation/strategies
+├ ƒ /automation/strategies/[strategyId]
+├ ○ /backtesting
+├ ○ /charts
+├ ○ /connector
+├ ○ /connector/cfds
+├ ƒ /connector/cfds/[kwantId]
+├ ○ /connector/futures
+├ ○ /connector/trade-syncer
+├ ○ /converter
+├ ƒ /desktop/authorize
+├ ○ /editor
+├ ○ /gameplan
+├ ○ /gamma
+├ ○ /gamvue
+├ ○ /gex-box
+├ ● /gex-box/[surface]
+│ ├ /gex-box/classic
+│ ├ /gex-box/state
+│ ├ /gex-box/orderflow
+│ └ /gex-box/research
+├ ○ /gex-data
+├ ○ /gexbot
+├ ○ /gexdesk
+├ ○ /gexmap
+├ ○ /heatmap
+├ ○ /journal
+├ ○ /kwantbot
+├ ○ /kwanty
+├ ƒ /lab
+├ ○ /landing
+├ ○ /leaderboard
+├ ○ /liqmap
+├ ƒ /login
+├ ○ /manifest.webmanifest
+├ ○ /news
+├ ƒ /settings
+├ ○ /socials
+├ ƒ /socials/[handle]
+├ ○ /support
+├ ○ /trade-syncer
+├ ○ /trade-syncer/account-trades
+├ ○ /trade-syncer/accounts
+├ ○ /trade-syncer/copier-engine
+├ ○ /trade-syncer/copier-logs
+├ ○ /trade-syncer/dashboard
+├ ○ /trade-syncer/integrations
+├ ○ /trade-syncer/templates
+├ ○ /vault
+└ ○ /zyon
+
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand

@@ -38,3 +38,30 @@
 
 /* Docked GEX tools keep their own top controls, with no extra phone bar. */
 html.embedded body[data-phone-workspace="gex-data"] #toolView { height:100dvh; }
+
+@media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
+  body[data-phone-workspace=heatmap] .kwant-embed-phone-drawer { gap: 20px; padding: 0 16px 24px; }
+  body[data-phone-workspace=heatmap] .kwant-embed-phone-drawer > :is(#topDeck,.app-actions) { display: none !important; }
+  .kwant-compact-control-section { margin: 0; padding: 0; border: 0; }
+  .kwant-compact-control-section h3 { margin: 0 0 10px; color: var(--site-muted); font: inherit; font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+  .kwant-compact-control-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  body[data-phone-workspace=heatmap] .kwant-embed-phone-drawer .kwant-compact-control-grid > button {
+    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    width: 100%; min-width: 0; height: auto; min-height: 44px; max-height: none; padding: 10px 12px;
+    border: 1px solid var(--site-border); border-radius: 10px;
+    background: var(--site-panel); color: var(--site-foreground);
+    font: inherit; font-size: 11px; line-height: 1.3; text-align: left; letter-spacing: normal; text-transform: none;
+    box-shadow: none; white-space: normal;
+  }
+  body[data-phone-workspace=heatmap] .kwant-embed-phone-drawer .kwant-compact-control-grid > button[style*="display: none"] { display: none !important; }
+  body[data-phone-workspace=heatmap] .kwant-embed-phone-drawer .kwant-compact-control-grid > button:is(.active,.active-toggle,[aria-pressed=true]) {
+    color: var(--site-primary); border-color: var(--site-primary);
+    background: color-mix(in srgb,var(--site-primary) 10%,var(--site-panel));
+  }
+  body[data-phone-workspace=heatmap] .kwant-embed-phone-drawer .kwant-compact-control-grid > button:hover {
+    color: var(--site-foreground); background: color-mix(in srgb,var(--site-foreground) 6%,var(--site-panel));
+  }
+  .kwant-compact-control-grid > button > svg { flex: 0 0 16px; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .kwant-compact-control-grid > button > span:not(.kwant-compact-control-label) { display: none !important; }
+  .kwant-compact-control-grid > button > .kwant-compact-control-label { display: block !important; }
+}

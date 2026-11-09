@@ -1,0 +1,71 @@
+✔ Kwant-zone cache is rendered only when the individual pane enables it (1.4932ms)
+✔ pane controls mutate and clear only the chart pane they belong to (0.6516ms)
+(node:11136) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartIndicatorEngine.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ reconciling cumulative history with live data retains real delta wicks on their own scale (8.0097ms)
+✔ a new classified execution extends a cumulative-history seed without adding its session offset (1.6363ms)
+✔ already-corrupted cached extrema cannot flatten the rest of the CVD scale (0.7692ms)
+(node:27348) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartIndicatorPaneSampling.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ zoomed-out CVD candles never merge two sessions into one false candle (7.0627ms)
+✔ line and histogram sampling preserve a break through the whole pixel bucket (7.577ms)
+✔ side-docked CVD panes apply the same hard session boundary (1.2461ms)
+(node:30920) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/executionTape.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every visible ES/NQ/gold pane flushes at the next frame without a selection throttle (1.6821ms)
+✔ hidden batches resume on the next frame without losing executions or duplicate flushes (2.2124ms)
+✔ actual execution worker engine publishes at 8ms with ordered lossless deduplication (241.492ms)
+(node:7108) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartIndicatorPaneSampling.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ actual CVD candles and KWANT Stats cells follow every pan/zoom frame while parent Chart props remain unchanged (836.4144ms)
+✔ removing all panes cancels queued viewport work; re-adding binds again and unmount detaches (292.2019ms)
+✔ chart recreation rebinds the pane viewport listener instead of retaining a disposed chart (377.4121ms)
+✔ CVD right-axis drag stretches the rendered plot using a fixed press-time range, independently of the chart (250.7215ms)
+✔ Shift-axis drag moves the value range without stretching; double-click restores automatic scale (220.6739ms)
+✔ every numeric lower pane has its own drag axis; tables and collapsed panes do not (243.5297ms)
+✔ axis capture loss, cancellation and component disposal release all drag listeners (954.1806ms)
+(node:32480) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/chartIndicatorPaneSampling.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ visible line geometry matches full-history projection and keeps session breaks (88.5893ms)
+✔ visible histogram geometry matches full-history projection and keeps session breaks (102.9697ms)
+✔ visible candlestick geometry matches full-history projection and keeps session breaks (38.7667ms)
+✔ source window is reversible on pan, never mutates or truncates archived data (0.495ms)
+✔ sparse/event source seconds keep neighbouring samples and exact OHLC unchanged (0.4089ms)
+✔ actual native viewport adapter reads current pan and maps event-bar seconds back to source time (471.9953ms)
+(node:21816) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/liveExecutionTape.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ ordered live additions do not compact or reorder below the high-water mark (20.423ms)
+✔ large tapes compact to reserved flow and exact capacities (31.506ms)
+✔ exact executions replace overlapping flow buckets (1.0186ms)
+✔ exact execution replacement preserves records outside its second (0.2875ms)
+(node:4600) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/observedCandleHistory.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a candle prepared in the visible frame updates the actual series without a second frame wait (92.8832ms)
+✔ latest prepared price cancels the queued older paint without shrinking its real high/low (28.5714ms)
+✔ a pending real rollover finalizes both bars in the same prepared frame (16.3167ms)
+✔ event charts retain their distinct frame queue and replay ignores live prints (12.21ms)
+✔ actual live CVD sampler retains final closing flow and updates the next candle before any prop commit (13.1989ms)
+✔ live input capture also runs for ordinary indicators without a Volume or CVD pane (12.5727ms)
+✔ Heikin Ashi paints consecutive executions and rollover without a history redraw (11.7848ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3928.3522

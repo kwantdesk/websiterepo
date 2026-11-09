@@ -3,6 +3,29 @@ import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 export type HorizontalPanePoint = CalculatedIndicatorSeries["data"][number] & { x: number };
 export type VerticalPanePoint = CalculatedIndicatorSeries["data"][number] & { y: number };
 
+export type PaneTimeWindow = { from: number; to: number } | null;
+
+/** Indicator output is chronological. Cull by native chart time before asking
+ * the chart to project thousands of off-screen points on every live refresh.
+ * Retain neighbours for strokes entering the plot; final pixel clipping stays
+ * with the existing renderer. This never changes calculation/history inputs. */
+export function visiblePaneData<T extends { time: number }>(data: T[], window?: PaneTimeWindow): T[] {
+  if (!window || !Number.isFinite(window.from) || !Number.isFinite(window.to)
+    || window.to < window.from || data.length < 3) return data;
+  const lowerBound = (time: number) => {
+    let low = 0, high = data.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (data[middle].time < time) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  const start = Math.max(0, lowerBound(window.from) - 1);
+  const end = Math.min(data.length, lowerBound(window.to) + 2);
+  return start === 0 && end === data.length ? data : data.slice(start, end);
+}
+
 /**
  * Downsample a pane series without ever aggregating across an explicit break.
  *
@@ -16,8 +39,9 @@ export function sampledPanePoints(
   definition: CalculatedIndicatorSeries,
   xForTime: (time: number) => number | null,
   plotWidth: number,
+  window?: PaneTimeWindow,
 ): HorizontalPanePoint[] {
-  const visible = definition.data
+  const visible = visiblePaneData(definition.data, window)
     .map((point) => ({ ...point, x: xForTime(point.time) }))
     .filter((point): point is HorizontalPanePoint =>
       point.x !== null && point.x >= -10 && point.x <= plotWidth + 10);
@@ -62,8 +86,9 @@ export function sampledVerticalPanePoints(
   definition: CalculatedIndicatorSeries,
   yForTime: (time: number) => number | null,
   plotHeight: number,
+  window?: PaneTimeWindow,
 ): VerticalPanePoint[] {
-  const visible = definition.data
+  const visible = visiblePaneData(definition.data, window)
     .map((point) => ({ ...point, y: yForTime(point.time) }))
     .filter((point): point is VerticalPanePoint =>
       point.y !== null && point.y >= -10 && point.y <= plotHeight + 10);
