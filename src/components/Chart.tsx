@@ -265,6 +265,7 @@ import { futuresVenue } from "@/lib/futuresVenue";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
+import { footprintGroupTicks } from "@/lib/footprintGrouping";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { mergeFootprintHistoryRecords } from '@/lib/footprintHistoryMerge';
 import { footprintProfileGranularityTicks } from "@/lib/footprintSettings";
@@ -4943,7 +4944,7 @@ function Chart({
       );
       liveFootprintRenderBarsRef.current = nextBars;
       retainedFootprintBarsRef.current = {
-        key: `${instrument}:${timeframe}`,
+        key: `${instrument}:${timeframe}:${buildSettings.groupTicks}:${profileGroupTicks}`,
         bars: nextBars,
       };
       primitive.update(nextBars, primitiveOptions);
@@ -6868,38 +6869,53 @@ function Chart({
     sampledIndicatorMarketTrades, footprintSourceCandles, timeframeToMs(timeframe),
   ), [exactFootprintHistory.active, exactFootprintHistory.records, footprintSourceCandles,
     sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion, timeframe]);
-  const resolvedFootprintGroupTicks = useMemo(() => {
-    const manual = Math.max(1, Math.round(Number(footprintSettings.manualTicks ?? 1)));
-    if (footprintSettings.groupingMode === "manual") return manual;
-    const series = candleSeriesRef.current;
-    const reference = footprintVisibleCandles.at(-1)?.close;
-    if (!series || !reference || !Number.isFinite(reference)) return manual;
-    const firstY = series.priceToCoordinate(reference);
-    const secondY = series.priceToCoordinate(reference + priceFormat.minMove);
-    if (firstY === null || secondY === null) return manual;
-    const pixelsPerTick = Math.max(0.01, Math.abs(secondY - firstY));
-    const targetPixels = Math.max(8, Number(footprintSettings.fontSize ?? 10) * 1.05);
-    const factor = Math.max(0.5, Math.min(4, Number(footprintSettings.autoGroupFactor ?? 1)));
-    let grouped = Math.max(1, Math.ceil(targetPixels / pixelsPerTick * factor));
-    if (footprintSettings.groupMode === "open-close") {
-      const latest = footprintVisibleCandles.at(-1);
-      if (latest) {
-        const bodyTicks = Math.abs(latest.close - latest.open) / Math.max(priceFormat.minMove, 0.000001);
-        grouped = Math.max(grouped, Math.ceil(bodyTicks / 18));
-      }
-    }
-    return Math.min(100, grouped);
-  }, [
-    chartReadyRevision,
-    footprintSettings.autoGroupFactor,
-    footprintSettings.fontSize,
-    footprintSettings.groupMode,
-    footprintSettings.groupingMode,
-    footprintSettings.manualTicks,
-    footprintVisibleCandles,
-    priceFormat.minMove,
-    footprintViewportVersion,
-  ]);
+  // Read the projection in the primitive's real paint, after native autoscale.
+  // Render-time coordinates can still describe the previous five-day scale.
+  const [paintedFootprintGroup, setPaintedFootprintGroup] = useState<{ scope: string; ticks: number } | null>(null);
+  const footprintGroupingScope = [instrument, timeframe, contractSymbol,
+    footprintSettings.groupingMode, footprintSettings.manualTicks,
+    footprintSettings.autoGroupFactor, footprintSettings.fontSize,
+    footprintSettings.groupMode, priceFormat.minMove].join(":");
+  const footprintGroupingInputRef = useRef({ settings: footprintSettings, bodyTicks: 0 });
+  const groupingCandle = footprintVisibleCandles.at(-1);
+  footprintGroupingInputRef.current = {
+    settings: footprintSettings,
+    bodyTicks: groupingCandle ? Math.abs(groupingCandle.close - groupingCandle.open) / Math.max(priceFormat.minMove, 0.000001) : 0,
+  };
+  // Other order-flow studies can consume these bars without attaching the
+  // Footprint renderer. Keep their existing scale-based calculation intact.
+  const otherStudyFirstY = !footprintIndicator && groupingCandle
+    ? candleSeriesRef.current?.priceToCoordinate(groupingCandle.close) : null;
+  const otherStudySecondY = !footprintIndicator && groupingCandle
+    ? candleSeriesRef.current?.priceToCoordinate(groupingCandle.close + priceFormat.minMove) : null;
+  const resolvedFootprintGroupTicks = !footprintIndicator
+    ? footprintGroupTicks(footprintSettings,
+      otherStudyFirstY != null && otherStudySecondY != null ? Math.abs(otherStudySecondY - otherStudyFirstY) : null,
+      footprintGroupingInputRef.current.bodyTicks)
+    : paintedFootprintGroup?.scope === footprintGroupingScope
+      ? paintedFootprintGroup.ticks : footprintGroupTicks(footprintSettings, null, 0);
+  useEffect(() => {
+    const primitive = footprintPrimitiveRef.current;
+    if (!primitive || !footprintIndicator) return;
+    let frame: number | null = null;
+    let nextTicks = resolvedFootprintGroupTicks;
+    let committedTicks = resolvedFootprintGroupTicks;
+    primitive.observePriceScale(priceFormat.minMove, (pixelsPerTick) => {
+      const input = footprintGroupingInputRef.current;
+      nextTicks = footprintGroupTicks(input.settings, pixelsPerTick, input.bodyTicks);
+      if (nextTicks === committedTicks || frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        if (nextTicks === committedTicks) return;
+        committedTicks = nextTicks;
+        setPaintedFootprintGroup({ scope: footprintGroupingScope, ticks: nextTicks });
+      });
+    });
+    return () => {
+      primitive.observePriceScale(priceFormat.minMove, null);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [chartReadyRevision, footprintIndicator, footprintGroupingScope, priceFormat.minMove, resolvedFootprintGroupTicks]);
   const footprintBuildSettings = useMemo((): FootprintBuildSettings => ({
       tickSize: priceFormat.minMove,
       groupTicks: resolvedFootprintGroupTicks,
@@ -7013,7 +7029,7 @@ function Chart({
       time: (eventChartTimeBySourceTimeRef.current.get(bar.timestamp)
         ?? Math.floor(bar.timestamp / 1_000)) as Time,
     })), [footprintBars, footprintProfileRowsByTimestamp]);
-  const footprintDataKey = `${instrument}:${timeframe}`;
+  const footprintDataKey = `${instrument}:${timeframe}:${resolvedFootprintGroupTicks}:${footprintProfileGroupTicks}`;
   const liveFootprintRenderBars = useMemo(
     () => replayTimestampMs != null ? footprintRenderBars : retainLiveFootprintRows(
       footprintRenderBars,

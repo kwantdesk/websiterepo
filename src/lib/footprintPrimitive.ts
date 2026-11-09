@@ -402,6 +402,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
     const bars = this.primitive.bars();
     const options = this.primitive.options();
     if (!bars.length) return;
+    this.primitive.samplePriceScale();
 
     target.useMediaCoordinateSpace(({ context: screenContext, mediaSize }) => {
       const timeScale = params.chart.timeScale();
@@ -995,6 +996,21 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   private renderVersion = 0;
   private loadedScaleByTime = new Map<string, number>();
   private loadedScaleInput: FootprintPrimitiveOptions["inputType"] = DEFAULT_OPTIONS.inputType;
+  private scaleObserver: { tickSize: number; listener: (pixelsPerTick: number) => void } | null = null;
+
+  observePriceScale(tickSize: number, listener: ((pixelsPerTick: number) => void) | null) {
+    this.scaleObserver = listener ? { tickSize, listener } : null;
+    this.attachedParams?.requestUpdate();
+  }
+
+  samplePriceScale() {
+    const observer = this.scaleObserver;
+    const price = this.renderBars.at(-1)?.close;
+    if (!observer || price == null || !this.attachedParams) return;
+    const first = this.attachedParams.series.priceToCoordinate(price);
+    const second = this.attachedParams.series.priceToCoordinate(price + observer.tickSize);
+    if (first !== null && second !== null) observer.listener(Math.abs(second - first));
+  }
 
   attached(param: SeriesAttachedParameter<Time>) {
     this.attachedParams = param;
@@ -1002,6 +1018,7 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   }
   detached() {
     this.attachedParams = null;
+    this.scaleObserver = null;
     if (this.pendingUpdate !== null) clearTimeout(this.pendingUpdate);
     this.pendingUpdate = null;
     // Release the offscreen surface's multi-megabyte backing store.

@@ -1,0 +1,76 @@
+(node:39648) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprintGrouping.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ unpainted scale starts with detailed rows rather than a stale coarse projection (1.0315ms)
+✔ manual grouping remains independent of scale, automatic factors and open-close mode preserved (0.2356ms)
+(node:38332) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprint.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ initial footprint keeps available execution rows while exact history is loading (1.3937ms)
+✔ new candle cannot drop the just-closed footprint before exact history returns (0.2171ms)
+✔ exact closed rows survive every live update without being replaced by compacted tape (0.4245ms)
+✔ late exact rows replace only their own bucket once, with no double counting (0.1548ms)
+✔ actual footprint cache preserves exact price rows across repeated live/history paints and candle rollover (7.7624ms)
+✔ actual cold-open loading gate runs once and stays off at later candle boundaries (58.1304ms)
+(node:33300) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprint.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ closed footprint cells reflect a delivered burst immediately without waiting for the repair timer (34.7782ms)
+✔ coalesced bursts across several event bars update both main cells and separate profile grouping (1.3116ms)
+✔ a later React cache refresh cannot replace delivered closed-bar numbers with stale cells (0.5657ms)
+✔ retains execution rows through a transient empty live batch (2.3179ms)
+✔ does not leak retained rows into a different time range (0.2445ms)
+✔ retains the last valid view while a transport refresh is empty (0.4991ms)
+✔ moves live footprint OHLC immediately without replacing execution rows (0.4476ms)
+✔ appends a new forming candle without deleting the completed footprint (0.3752ms)
+✔ retains rows by source timestamp when chart coordinates are remapped (0.2066ms)
+✔ a stale sampled render cannot delete the forming live candle (0.1983ms)
+(node:36152) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprintSettings.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Standard is a persisted clean candle and bid-ask preset and other presets restore overlay layout (2.1971ms)
+✔ candle anchors, internal gap and neighbouring-pair space survive zoom (0.3238ms)
+✔ Footprint selection, not zoom-dependent execution coverage, owns native candle visibility (1.3487ms)
+✔ first paint cannot briefly expose native candles underneath Footprint (0.4131ms)
+(node:38448) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/footprint.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ aggregates executed bid and ask volume into candle price rows (3.4657ms)
+✔ marks diagonal ask and bid imbalances against the adjacent price (0.5451ms)
+✔ calculates per-bar volume POC and fixed 70 percent value area (0.4668ms)
+✔ honours trade-size filtering without inventing footprint volume (0.3033ms)
+✔ preserves unclassified executions as between-market footprint volume (0.5975ms)
+✔ calculates execution-weighted VWAP and the intrabar delta path (0.2507ms)
+✔ groups prices by exchange ticks without rounding across bucket boundaries (0.6971ms)
+✔ formats large footprint cells compactly (18.7575ms)
+✔ uses integer tick indexes for decimal instruments (0.3957ms)
+✔ deduplicates repeated source sequences (0.3161ms)
+✔ orders historical executions deterministically before building delta path (0.1991ms)
+✔ uses VWAP then close then lower tick for deterministic POC ties (0.1919ms)
+✔ unknown volume can become POC but never creates Delta or imbalance (0.172ms)
+✔ marks complete adjacent ask stacks and records combined volume (0.2091ms)
+✔ a missing price row breaks stacked imbalance (0.1711ms)
+✔ unfinished auctions require Bid and Ask at the candle extreme (0.2261ms)
+✔ settings validation migrates invalid values safely (0.5627ms)
+✔ legacy footprint detail gates migrate to adaptive readable defaults (0.1793ms)
+✔ presets reuse one versioned settings model (0.2522ms)
+✔ visible preset aliases change the live footprint mode (0.2793ms)
+✔ presets select a matching named chart and include professional alternatives (0.4981ms)
+✔ trade-count imbalance calculations use trades rather than contract volume (0.281ms)
+✔ delta-percent mode converts a ratio threshold exactly (0.2376ms)
+✔ positive and negative delta extrema are not invented (0.1617ms)
+✔ local footprint templates validate names, settings and invalid records (0.2939ms)
+✔ show empty price rows fills only valid exchange tick rows (0.2478ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 563.2793

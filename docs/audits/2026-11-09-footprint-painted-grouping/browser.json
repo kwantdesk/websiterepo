@@ -1,0 +1,46 @@
+{
+  "initial": {
+    "step": 0.5,
+    "rows": 21,
+    "px": 12.407000000000039,
+    "total": 82,
+    "at": 2581.89999999851
+  },
+  "coarse": {
+    "step": 16.75,
+    "rows": 1,
+    "px": 0.2067833333333624,
+    "total": 82,
+    "at": 2847.39999999851
+  },
+  "fine": {
+    "step": 0.25,
+    "rows": 41,
+    "px": 15.50875000000002,
+    "total": 82,
+    "at": 3113.5999999940395
+  },
+  "manual": {
+    "step": 1,
+    "rows": 11,
+    "px": 0.2067833333333624,
+    "total": 82,
+    "at": 3641.5
+  },
+  "autoAgain": {
+    "step": 16.75,
+    "rows": 1,
+    "px": 0.2067833333333624,
+    "total": 82,
+    "at": 3909.2999999970198
+  },
+  "resized": {
+    "step": 0.5,
+    "rows": 21,
+    "px": 9.733749999999986,
+    "total": 82,
+    "at": 4177
+  },
+  "errors": [],
+  "scope": "Actual shared Chart, native scale-only zoom, unchanged execution totals; no production trading surfaces"
+}
