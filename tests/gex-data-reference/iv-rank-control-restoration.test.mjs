@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { additionalToolRequest } from '../../public/gex-data-app/additional-tool-requests.js';
+import {numericControlChoices} from '../../public/gex-data-app/numeric-control-options.js';
 import {toolControlDefault} from '../../public/gex-data-app/tool-control-defaults.js';
 import { resolveFilterOverride, expirationFilterForTool } from '../../public/gex-data-app/preferences-model.js';
 
@@ -17,6 +18,7 @@ function actual(name) {
 
 class Element {
   constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.value = ''; }
+  setAttribute(name,value) { this[name]=value; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren() { this.children = []; }
   add(option) { this.children.push(option); }
@@ -29,7 +31,7 @@ function harness({ saved, copied } = {}) {
   // Exercise the actual numeric factory and saved/copy restoration sequence;
   // omit the unrelated custom multi-select contract-type widget from this DOM.
   const tool = { id: 'iv-rank', controls: ['ticker', 'lookback', 'maturity'] };
-  const env = { activeTool: tool, toolControlDefault, CONTROL_OPTIONS: {}, instrumentChoices: () => [['QQQ', 'QQQ'], ['SPY', 'SPY']],
+  const env = { activeTool: tool, toolControlDefault, numericControlChoices, CONTROL_OPTIONS: {}, instrumentChoices: () => [['QQQ', 'QQQ'], ['SPY', 'SPY']],
     element: (tag, cls) => { const node = new Element(tag); node.className = cls; return node; },
     document: { createElement: tag => new Element(tag) },
     Option: function (text, value) { this.text = text; this.value = value; this.children = []; },
@@ -55,10 +57,10 @@ function harness({ saved, copied } = {}) {
     request: () => plain(env.api.buildRequest(tool)), getControl: env.api.getControl };
 }
 
-test('Actual IV Rank maturity factory exposes supported integer bounds and the existing default', () => {
+test('Actual IV Rank maturity dropdown exposes each supported integer and the existing default', () => {
   const h = harness(), input = h.input('maturity');
-  assert.equal(input.type, 'number'); assert.equal(input.step, '1');
-  assert.equal(input.min, '1'); assert.equal(input.max, '365');
+  assert.equal(input.tagName, 'select');
+  assert.deepEqual(input.children.map(option=>Number(option.value)),Array.from({length:365},(_,index)=>index+1));
   assert.equal(input.value, '30'); assert.equal(h.request().maturity, 30);
 });
 

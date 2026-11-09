@@ -1768,7 +1768,7 @@ await boot();
     const chart=quantCanvas({
       title:`Interval Map (${code}) - ${ticker}`,
       legend:[{label:ticker,color:CHART_COLORS.primary,value:formatPrice(latestSpot)}],
-      items:plotRows,navigatorValues:intervalPreview(plotRows),verticalValues:profile,height:560,plotLeft:98,plotRight:16,twoDimensional:true,timeScale:true,
+      items:plotRows,navigatorValues:intervalPreview(plotRows),verticalValues:profile,height:560,plotLeft:98,plotRight:16,twoDimensional:true,timeScale:true,initialWindow:netDriftInitialRthIndex(plotRows)==null?null:{start:netDriftInitialRthIndex(plotRows),end:plotRows.length-1},
       tooltipRows:(_row,_index,state)=>{
         if(!plotBounds)return [];
         const strike=plotBounds.maxY-(state.pointerY-plotBounds.top)/Math.max(1,plotBounds.bottom-plotBounds.top)*(plotBounds.maxY-plotBounds.minY),time=plotBounds.minX+(state.pointerX-plotBounds.left)/Math.max(1,plotBounds.right-plotBounds.left)*(plotBounds.maxX-plotBounds.minX),selection=selectTooltip(time,strike);
