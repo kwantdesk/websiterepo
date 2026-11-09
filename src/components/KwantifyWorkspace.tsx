@@ -21262,7 +21262,7 @@ export default function KwantifyWorkspace({
               },
             ]}
             onChange={(next) => setIndicatorsForPane(activePaneId, next)}
-          /> : <button type="button" disabled aria-label="Indicators unavailable for this tool panel" title="This tool has its own settings; chart indicators cannot be added here." className="kwant-chart-row-control flex h-7 items-center gap-1.5 px-2.5 text-[10px] uppercase text-muted"><BarChart3 className="h-3.5 w-3.5" />Indicators</button>}
+          /> : activeWorkspacePane.content === "liqmap" ? null : <button type="button" disabled aria-label="Indicators unavailable for this tool panel" title="This tool has its own settings; chart indicators cannot be added here." className="kwant-chart-row-control flex h-7 items-center gap-1.5 px-2.5 text-[10px] uppercase text-muted"><BarChart3 className="h-3.5 w-3.5" />Indicators</button>}
           {
             <button
               type="button"
