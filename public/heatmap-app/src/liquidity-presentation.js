@@ -45,6 +45,16 @@ export function tradeClusterReference(layout, previous) {
 
 export function tradeBubbleZoom(layout, reference) {
   const priceScale = (layout.plotHeight / layout.visibleTickSpan) / reference.rowPixels;
-  const timeScale = layout.columnPixels / reference.columnPixels;
+  // The renderer fits the available frames across the plot and enforces a
+  // minimum 30-column window. Requested zoom can change without changing that
+  // geometry (especially while history is building). Match its realised scale,
+  // rather than resizing spheres against an invisible requested zoom.
+  const spacing = columnPixels => {
+    const columns = Math.min(layout.historyLength, Math.max(30, Math.floor(layout.dataWidth / columnPixels)));
+    return layout.dataWidth / Math.max(1, columns - 1);
+  };
+  const timeScale = layout.historyLength > 0 && layout.dataWidth > 0
+    ? spacing(layout.columnPixels) / spacing(reference.columnPixels)
+    : layout.columnPixels / reference.columnPixels;
   return Math.max(.2, Math.min(5, Math.sqrt(Math.max(.001, priceScale * timeScale))));
 }

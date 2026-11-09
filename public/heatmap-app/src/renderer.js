@@ -1,5 +1,5 @@
 import { tradeClusterWindowStart, tradeClusterWindowMs } from './depth-engine.js?v=grouped-depth-scale';
-import { cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261030-cvd-line-only';
+import { cvdTimeCoordinate, advanceCvdPresentation, tradeClusterReference, tradeBubbleZoom } from './liquidity-presentation.js?v=20261109-realised-bubble-zoom';
 import { priceScaleRows } from './price-scale.js?v=20261029-depth-clear-scale';
 import { paletteAccents, paletteCanvasTheme, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=heat-gradient-contrast';
 import { writeHeatRgba } from './heat-raster.js?v=heat-render-recovery';
@@ -442,7 +442,7 @@ export class DepthRenderer {
       domWidth,
       bottomTick, topTick, centerTick, visibleTickSpan, rowTicks, columnPixels,
       overlayBottomTick, overlayTopTick, overlayCenterTick, overlayYForTick,
-      start, end, count, xForIndex, yForTick, tickForY,
+      start, end, count, historyLength: history.length, xForIndex, yForTick, tickForY,
       config, history,
     };
     this.visibleExecutionProfile = this.#getVisibleExecutionProfile(history);

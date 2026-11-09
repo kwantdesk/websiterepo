@@ -1,0 +1,60 @@
+(node:26908) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/public/heatmap-app/src/renderer.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a newer print waits for its real time coordinate instead of jumping from the last column (0.7088ms)
+✔ every sphere composition is centred on the exact execution coordinate (59.1198ms)
+(node:27188) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/public/heatmap-app/src/depth-engine.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ an early HTTP probe and later SSE history keep the actual timeline chronological (1.6853ms)
+✔ presentation ticks cannot rewrite a recorded frame and move its execution-time coordinate (0.2861ms)
+✔ a delayed execution uses its real time between depth frames, not its arrival frame (0.148ms)
+✔ the actual bubble renderer keeps exact execution coordinates through zoom, pan and history repair (66.7971ms)
+(node:11784) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/public/heatmap-app/src/liquidity-presentation.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ time-axis wheel cannot resize bubbles when insufficient history leaves the geometry unchanged (1.3474ms)
+✔ a real time-axis stretch scales bubbles and saturates with the visible geometry (0.2818ms)
+✔ vertical zoom still scales bubbles independently of a time-axis limit (0.1738ms)
+(node:5728) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/public/heatmap-app/src/depth-engine.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a growing smart cluster retains its first execution price and frame (3.0841ms)
+✔ a cached bubble resolves the same frame after the rolling window shifts (0.4283ms)
+✔ live refresh retains settled clusters and rebuilds only the overlapping tail (1.494ms)
+(node:36404) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/public/heatmap-app/src/liquidity-presentation.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ CVD is line-only and migrates old candles and bars without restoring removed controls (2.9017ms)
+✔ CVD live tip shares the exact price data edge and never flashes into the live gap (0.4406ms)
+✔ live CVD presentation eases, retargets without overshoot, settles and never edits source totals (1.0584ms)
+✔ actual CVD canvas stays a line with legacy bar settings and preserves the live tip animation (17.7869ms)
+✔ actual bubble renderer keeps identities, volumes, colours and market anchors through zoom and new prints (12.1065ms)
+(node:37740) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/public/heatmap-app/src/depth-engine.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ maximum clustering combines dense multi-second bursts while preserving every executed contract (3.5606ms)
+✔ strength has bounded, increasing spatial reach and nested source-time windows (0.2489ms)
+✔ 3D sphere volume represents contracts and never renormalizes when a huge unrelated trade arrives (0.1417ms)
+✔ individual minimum2 retains all real larger trades; bubble minimum filters combined volume separately (0.3029ms)
+✔ wide-window incremental refresh equals full rebuild including every bubble diameter (20.8029ms)
+✔ a later fixed source window cannot rewrite a settled bubble or its size (0.2428ms)
+✔ the same executions cluster identically with sparse or dense depth updates (0.6277ms)
+✔ growing clusters keep the first execution identity across numeric ID boundaries (0.2502ms)
+✔ large volumes cannot make clustering consume unrelated price levels (0.4438ms)
+✔ zero strength disables spatial merging even for small overlapping bubbles (0.3201ms)
+✔ a huge unrelated print cannot split an existing cluster through volume renormalization (0.648ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 419.761
