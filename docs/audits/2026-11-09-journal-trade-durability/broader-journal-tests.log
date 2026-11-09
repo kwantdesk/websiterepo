@@ -1,0 +1,447 @@
+(node:27480) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journalStore.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a Journal account deletion purges every locally retained record for only that account (3.6376ms)
+✔ deletion identity is case and whitespace insensitive (19.3414ms)
+✔ the API treats an already-absent or local-only Journal as successfully deleted (0.7716ms)
+✔ cloud deletion also removes linked trade posts before the account cascade (0.8441ms)
+✔ the Journal and paper writer both honor persistent deletion tombstones (21.4767ms)
+(node:33400) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ reset affects only the selected journal; newly closed trades continue and originals remain intact (2.601ms)
+✔ unreset journals do not lose any records (0.3487ms)
+✔ stale saves cannot overwrite a confirmed reset or resurrect old demo trades (1.6346ms)
+✔ API reset is authenticated, targets an owned account, requires typed confirmation, and never deletes trading records (4.7528ms)
+(node:33464) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ advanced journal metrics calculate daily quality and recovery (18.0568ms)
+(node:29284) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journalFeatureVisibility.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ archived Zyon is absent and old selections reopen Overall Journal (1.8158ms)
+✔ actual journal account/trade selectors exclude Zyon without changing records (275.7104ms)
+✔ archived outcome fetch and refresh timer are gated off (0.4667ms)
+(node:32668) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journalBulkDelete.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ only selected journals are removed, sequentially, once each (3.0368ms)
+✔ partial failure preserves failed journals and does not undo successful deletes (0.4742ms)
+✔ built-in journals are never sent for deletion (0.2371ms)
+✔ account switch stops new requests, while confirmed in-flight deletion still gets its original-owner tombstone (36.958ms)
+✔ empty selection is a no-op (0.3595ms)
+✔ UI offers searchable checkbox selection and exact typed confirmation before deletion (6.2177ms)
+✔ daily outcomes use a shared zero baseline with proportional profit and loss bars (25.0429ms)
+✖ journal equity curve exposes responsive axes and trade-by-trade hover detail (55.1137ms)
+(node:32132) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a three-trade CSV imports into one existing journal with complete economics (28.7361ms)
+✔ an updated export skips existing rows and adds only genuinely new trades (6.9223ms)
+✔ duplicate detection is scoped to the selected journal account (2.5112ms)
+✔ an execution CSV pairs fills into editable closed trades (2.8916ms)
+✔ a semicolon-delimited Deep Charts closed-trade export imports signed quantities (4.9788ms)
+✔ a Claude CSV with separate entry and exit date/time columns imports cleanly (1.9709ms)
+✔ a compact generated trade list preserves Entry/Exit points and infers exit time from Hold (3.2513ms)
+✔ a Claude CSV with qualified date-time headers imports cleanly (1.4289ms)
+✔ a generated CSV can include prose, a code fence, and common alternate headers (1.7916ms)
+✔ rejected CSV rows explain the fields that were actually missing (1.3642ms)
+✔ source-agnostic inference imports unfamiliar closed-trade column wording (1.4496ms)
+✔ generic broker fill logs pair B/S executions into a closed trade (1.1749ms)
+✔ nested JSON collections and row objects import without a platform adapter (8.4104ms)
+(node:27232) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journalManualOutcome.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ profit alone records an outcome without inventing execution details (5.9635ms)
+✔ losses and breakeven count correctly alongside existing results (1.243ms)
+✔ optional execution times establish hold only when both are known (0.9168ms)
+✔ manual outcomes survive demo reconciliation and a saved journal reload (9.9608ms)
+✔ HTML table exports still import into the selected demo journal (13.8742ms)
+✔ actual create-trade route accepts owned demo/import/manual journals and rejects mismatched accounts or invalid profit (89.4005ms)
+Journal load failed { code: 'TEST', message: 'offline' }
+(node:2916) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ real create/read API durably returns a backdated manual outcome in its journal and Overall (41.0292ms)
+✔ real delete API hides original and all copies, retains recoverable rows and blocks stale upload revival (20.0125ms)
+✔ stale recovery synchronization cannot overwrite a saved review or move its trade date (1.9519ms)
+✔ failed deletion acknowledgement retains the trade instead of claiming it was removed (3.0087ms)
+✔ deletion-history read failure is a failed load, never an empty authoritative journal (2.516ms)
+✔ legacy backdated manual entries recover their real database receipt time (1.4091ms)
+(node:11328) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journalTradeDetails.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ shows exact hold duration and compares excursions with gross P&L, not net after fees (1.2627ms)
+✔ short price move is direction aware; losing exits can give back more than the peak (0.2099ms)
+✔ missing excursions are unknown, not zero or fabricated from entry and exit (0.2148ms)
+✔ duration distinguishes sub-minute, multi-day, zero and missing time (0.2962ms)
+✔ cloud serialization retains excursion fields and detail UI exposes them (3.2195ms)
+✔ an immediate manual close includes its final executed price in excursions and persists into journal details (26.4845ms)
+(node:15992) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a newly added journal result immediately belongs to Overall exactly once (1.3563ms)
+✔ deleting an outcome removes all copies and linked evidence from all reporting inputs (1.4323ms)
+✔ stale snapshots cannot revive deleted source or copied trades (1.1255ms)
+✔ a late cloud response preserves a trade added or edited during loading (0.4795ms)
+✔ cloud updates still win over unchanged cached rows (0.2433ms)
+✔ backdated manual trades added after reset stay visible at their actual calendar date (0.3061ms)
+✔ local durability retains newer trades against stale saves and persists removal (1.5962ms)
+✔ an IndexedDB read finishing late cannot overwrite a concurrently saved trade (158.6036ms)
+✔ a working but empty IndexedDB recovers a prior localStorage fallback (33.7353ms)
+(node:28008) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ reset excludes old outcomes, including the boundary, while new outcomes continue (4.7936ms)
+✔ editing an old receipt after reset never resurrects it; another user's outcomes never enter (0.2686ms)
+✔ reset timestamp merges are monotonic across cache, cloud and late hydration (0.2244ms)
+✔ reset requires explicit confirmation and writes only an authenticated private marker (6.9031ms)
+(node:20512) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperAccounts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a close survives clear fills before the first journal save, plus reload (29.0682ms)
+✔ a close survives clear chart history before the first journal save, plus reload (9.8093ms)
+✔ a close survives reset demo balance before the first journal save, plus reload (2.8454ms)
+✔ legacy available fills migrate into durable evidence before clearing (1.9274ms)
+✔ every demo account exists in the journal before its first close (3.046ms)
+✔ cloud recording sends new rows once and retries failed batches without opening Journal (1.8533ms)
+✔ append-only cloud sync cannot overwrite journal reviews and is wired to trading (5.4802ms)
+(node:26820) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperAccounts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ local/cloud aliases for 20 October become one linked demo journal without touching history (2.2133ms)
+✔ new empty demo journals use cloud-safe ids before their first trade (1.8453ms)
+✔ unrelated imported accounts and archived demo metadata remain intact (0.2539ms)
+✔ different names that clean to the same id are never silently merged (0.3101ms)
+✔ active native journals get one tradeable account with a seeded ledger and stable ID (14.4423ms)
+✔ linking an existing same-name demo keeps its account and balance (0.7474ms)
+✔ Journal backfills demo accounts and closed fills on open, preserving explicit deletion guards (2.5527ms)
+ℹ tests 79
+ℹ suites 0
+ℹ pass 78
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1513.2411
+
+✖ failing tests:
+
+test at tests\journal-equity-curve.test.mjs:7:1
+✖ journal equity curve exposes responsive axes and trade-by-trade hover detail (55.1137ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /stroke=\{geometry\.finalPnl >= 0 \? "var\(--primary\)" : "var\(--danger\)"\}/. Input:
+
+  '"use client";\r\n' +
+    '\r\n' +
+    'import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";\r\n' +
+    'import { journalManualOutcome } from "@/lib/journalManualOutcome";\r\n' +
+    '\r\n' +
+    'import Image from "next/image";\r\n' +
+    'import { createPortal } from "react-dom";\r\n' +
+    'import {\r\n' +
+    '  resolveOutcomeColors,\r\n' +
+    '  SEMANTIC_WIN,\r\n' +
+    '  SEMANTIC_LOSS,\r\n' +
+    '  type OutcomeColors,\r\n' +
+    '} from "@/lib/outcomeColors";\r\n' +
+    'import {\r\n' +
+    '  Activity,\r\n' +
+    '  ArchiveRestore,\r\n' +
+    '  ArrowDownRight,\r\n' +
+    '  ArrowUpRight,\r\n' +
+    '  BarChart3,\r\n' +
+    '  BrainCircuit,\r\n' +
+    '  BookPlus,\r\n' +
+    '  BookOpen,\r\n' +
+    '  Bot,\r\n' +
+    '  CalendarDays,\r\n' +
+    '  Camera,\r\n' +
+    '  Check,\r\n' +
+    '  ChevronLeft,\r\n' +
+    '  ChevronRight,\r\n' +
+    '  CircleAlert,\r\n' +
+    '  Clock3,\r\n' +
+    '  Download,\r\n' +
+    '  Eye,\r\n' +
+    '  FileJson,\r\n' +
+    '  FileSpreadsheet,\r\n' +
+    '  FileText,\r\n' +
+    '  Filter,\r\n' +
+    '  FolderArchive,\r\n' +
+    '  GripVertical,\r\n' +
+    '  ImageIcon,\r\n' +
+    '  Import,\r\n' +
+    '  Layers3,\r\n' +
+    '  LineChart,\r\n' +
+    '  Mic,\r\n' +
+    '  NotebookPen,\r\n' +
+    '  MoreVertical,\r\n' +
+    '  Paperclip,\r\n' +
+    '  Pencil,\r\n' +
+    '  Plus,\r\n' +
+    '  RefreshCw,\r\n' +
+    '  Search,\r\n' +
+    '  Save,\r\n' +
+    '  Share2,\r\n' +
+    '  ShieldCheck,\r\n' +
+    '  Sparkles,\r\n' +
+    '  Star,\r\n' +
+    '  Tags,\r\n' +
+    '  Target,\r\n' +
+    '  Trash2,\r\n' +
+    '  TrendingDown,\r\n' +
+    '  TrendingUp,\r\n' +
+    '  Upload,\r\n' +
+    '  Wallet,\r\n' +
+    '  X,\r\n' +
+    '} from "lucide-react";\r\n' +
+    'import KwantLoader from "@/components/KwantLoader";\r\n' +
+    'import { formatTradeHoldDuration, journalTradeDetails } from "@/lib/journalTradeDetails";\r\n' +
+    'import { deleteJournalSelection } from "@/lib/journalBulkDelete";\r\n' +
+    'import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";\r\n' +
+    'import { mergeJournalHydration, mergeJournalSnapshots } from "@/lib/journalStateMerge";\r\n' +
+    'import {\r\n' +
+    '  applyJournalAccountResets,\r\n' +
+    '  removeJournalTradeEverywhere,\r\n' +
+    '  calculateJournalAdvancedStats,\r\n' +
+    '  calculateJournalExecutionStats,\r\n' +
+    '  calculateJournalStats,\r\n' +
+    '  EMPTY_JOURNAL_STATE,\r\n' +
+    '  isZyonJournalAccountName,\r\n' +
+    '  JOURNAL_COPY_LIMIT,\r\n' +
+    '  JOURNAL_COPY_PREFIX,\r\n' +
+    '  latestZyonJournalReset,\r\n' +
+    '  journalTradesToCsv,\r\n' +
+    '  mergeJournalImportTrades,\r\n' +
+    '  parseJournalTextFile,\r\n' +
+    '  uniqueJournalOutcomes,\r\n' +
+    '  ZYON_JOURNAL_ACCOUNT,\r\n' +
+    '  zyonOutcomesToJournalTrades,\r\n' +
+    '  type JournalAccount,\r\n' +
+    '  type JournalEvidence,\r\n' +
+    '  type JournalImportBatch,\r\n' +
+    '  type JournalParseResult,\r\n' +
+    '  type JournalState,\r\n' +
+    '  type JournalTrade,\r\n' +
+    '  type JournalTradingAccountType,\r\n' +
+    '} from "@/lib/journal";\r\n' +
+    'import {\r\n' +
+    '  clearJournalAccountDeletion,\r\n' +
+    '  loadJournalAccountDeletions,\r\n' +
+    '  loadJournalState,\r\n' +
+    '  markJournalAccountDeleted,\r\n' +
+    '  purgeDeletedJournalAccounts,\r\n' +
+    '  saveJournalState,\r\n' +
+    '} from "@/lib/journalStore";\r\n' +
+    'import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, normalizePaperJournalAccounts, paperJournalAccountName } from "@/lib/paperJournal";\r\n' +
+    'import { ZYON_JOURNAL_VISIBLE, visibleJournalAccountFilter } from "@/lib/journalFeatureVisibility";\r\n' +
+    'import { parseMoney, readPaperTradingAccounts, type PaperTradingAccountRecord } from "@/lib/paperAccounts";\r\n' +
+    'import { loadPaperTradingLedger, type PaperTradingLedger } from "@/lib/paperTrading";\r\n' +
+    'import {\r\n' +
+    '  buildJournalAnalysisEvidence,\r\n' +
+    '  type JournalAnalysisFinding,\r\n' +
+    '  type JournalAnalysisLeak,\r\n' +
+    '  type JournalQuantAnalysis,\r\n' +
+    '} from "@/lib/journalAnalysis";\r\n' +
+    'import KwantSelect from "@/components/ui/KwantSelect";\r\n' +
+    'import { usePersistentFieldDictation } from "@/hooks/usePersistentFieldDictation";\r\n' +
+    'import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type CSSProperties } from "react";\r\n' +
+    '\r\n' +
+    'type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";\r\n' +
+    'type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";\r\n' +
+    'type SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";\r\n' +
+    '\r\n' +
+    'type JournalCloudState = "loading" | "cloud" | "local" | "error";\r\n' +
+    'type AccountCreationMode = "manual" | "import" | "journal";\r\n' +
+    'type ImportDialogPurpose = "add-account" | "append-trades";\r\n' +
+    '\r\n' +
+    'type JournalMemoryCacheEntry = {\r\n' +
+    '  state: JournalState;\r\n' +
+    '  zyonTrades: JournalTrade[];\r\n' +
+    '  cloudState: JournalCloudState;\r\n' +
+    '  tab: JournalTab;\r\n' +
+    '  accountFilter: string;\r\n' +
+    '  updatedAt: number;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'const JOURNAL_MEMORY_CACHE = new Map<string, JournalMemoryCacheEntry>();\r\n' +
+    '\r\n' +
+    'type ManualTradeDraft = {\r\n' +
+    '  name: string;\r\n' +
+    '  symbol: string;\r\n' +
+    '  side: "" | "LONG" | "SHORT";\r\n' +
+    '  contractClass: "" | "MICRO" | "MINI" | "OTHER";\r\n' +
+    '  quantity: string;\r\n' +
+    '  openedAt: string;\r\n' +
+    '  closedAt: string;\r\n' +
+    '  entryPrice: string;\r\n' +
+    '  exitPrice: string;\r\n' +
+    '  stopPrice: string;\r\n' +
+    '  targetPrice: string;\r\n' +
+    '  plannedRiskReward: string;\r\n' +
+    '  initialRisk: string;\r\n' +
+    '  netPnl: string;\r\n' +
+    '  fees: string;\r\n' +
+    '  tags: string;\r\n' +
+    '  notes: string;\r\n' +
+    '  improvements: string;\r\n' +
+    '  tradingAccountName: string;\r\n' +
+    '  tradingAccountType: "" | JournalTradingAccountType;\r\n' +
+    '  accountSize: string;\r\n' +
+    '  rating: number | null;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type ManualTradeDictationField = Exclude<keyof ManualTradeDraft, "rating">;\r\n' +
+    '\r\n' +
+    'const MANUAL_TRADE_DICTATION_LABELS: Record<ManualTradeDictationField, string> = {\r\n' +
+    '  name: "Trade / setup name",\r\n' +
+    '  symbol: "Instrument",\r\n' +
+    '  side: "Direction",\r\n' +
+    '  contractClass: "Contract class",\r\n' +
+    '  quantity: "Contracts",\r\n' +
+    '  openedAt: "Entry time",\r\n' +
+    '  closedAt: "Exit time",\r\n' +
+    '  entryPrice: "Entry price",\r\n' +
+    '  exitPrice: "Exit price",\r\n' +
+    '  stopPrice: "Stop price",\r\n' +
+    '  targetPrice: "Target price",\r\n' +
+    '  plannedRiskReward: "Planned risk : reward",\r\n' +
+    '  initialRisk: "Initial risk",\r\n' +
+    '  netPnl: "Net profit / loss",\r\n' +
+    '  fees: "Fees",\r\n' +
+    '  tags: "Tags",\r\n' +
+    '  notes: "Notes",\r\n' +
+    '  improvements: "How can I do better next time?",\r\n' +
+    '  tradingAccountName: "Account / provider",\r\n' +
+    '  tradingAccountType: "Account type",\r\n' +
+    '  accountSize: "Account size",\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'const MANUAL_TRADE_NUMBER_FIELDS = new Set<ManualTradeDictationField>([\r\n' +
+    '  "quantity",\r\n' +
+    '  "entryPrice",\r\n' +
+    '  "exitPrice",\r\n' +
+    '  "stopPrice",\r\n' +
+    '  "targetPrice",\r\n' +
+    '  "plannedRiskReward",\r\n' +
+    '  "initialRisk",\r\n' +
+    '  "netPnl",\r\n' +
+    '  "fees",\r\n' +
+    '  "accountSize",\r\n' +
+    ']);\r\n' +
+    '\r\n' +
+    'type SocialJournalResponse = {\r\n' +
+    '  viewerId?: string;\r\n' +
+    '  objects?: Array<{\r\n' +
+    '    id: string;\r\n' +
+    '    userId: string;\r\n' +
+    '    objectType: string;\r\n' +
+    '    parentId: string | null;\r\n' +
+    '    payload: Record<string, unknown>;\r\n' +
+    '    createdAt: string;\r\n' +
+    '    updatedAt: string;\r\n' +
+    '  }>;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type CloudJournalResponse = {\r\n' +
+    '  cloud?: boolean;\r\n' +
+    '  deletedTradeIds?: string[];\r\n' +
+    '  zyonResetAt?: string | null;\r\n' +
+    '  accounts?: JournalAccount[];\r\n' +
+    '  trades?: JournalTrade[];\r\n' +
+    '  imports?: JournalImportBatch[];\r\n' +
+    '  evidence?: JournalEvidence[];\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'type JournalAnalysisResponse = {\r\n' +
+    '  analysis?: JournalQuantAnalysis | null;\r\n' +
+    '  fingerprint?: string;\r\n' +
+    '  cloud?: boolean;\r\n' +
+    '  error?: string;\r\n' +
+    '  elapsedMs?: number;\r\n' +
+    '};\r\n' +
+    '\r\n' +
+    'const JOURNAL_TABS: Array<{ id: JournalTab; label: string; description: string; icon: typeof Activity }> = [\r\n' +
+    '  { id: "pulse", label: "Pulse", description: "Account overview", icon: Activity },\r\n' +
+    '  { id: "calendar", label: "Calendar", description: "Performance by day", icon: CalendarDays },\r\n' +
+    '  { id: "trades", label: "Trade Log", description: "Every recorded trade", icon: FileSpreadsheet },\r\n' +
+    '  { id: "edgebook", label: "Edgebook", description: "Repeatable patterns", icon: Sparkles },\r\n' +
+    '  { id: "analysis", label: "Analysis", description: "Quant mentor review", icon: BrainCircuit },\r\n' +
+    '  { id: "evidence", label: "Evidence", description: "Screenshots and notes", icon: ImageIcon },\r\n' +
+    '  { id: "imports", label: "Imports", description: "Source file history", icon: FolderArchive },\r\n' +
+    '];\r\n' +
+    '\r\n' +
+    'const ACCEPTED_FILES = ".xlsx,.xls,.xlsm,.xlsb,.ods,.fods,.xml,.html,.htm,.csv,.tsv,.txt,.json,.md,.png,.jpg,.jpeg,.webp,.gif";\r\n' +
+    'const SPREADSHEET_EXTENSIONS = new Set(["xlsx", "xls", "xlsm", "xlsb", "ods", "fods", "xml", "html", "htm"]);\r\n' +
+    'const TABULAR_TEXT_EXTENSIONS = new Set(["csv", "tsv", "txt", "json"]);\r\n' +
+    'const MAX_EVIDENCE_BYTES = 8_000_000;\r\n' +
+    'const MAX_WORKBOOK_BYTES = 75_000_000;\r\n' +
+    'const MAX_MANUAL_IMAGE_BYTES = 20_000_000;\r\n' +
+    'const MAX_CLOUD_IMAGE_BYTES = 1_800_000;\r\n' +
+    '\r\n' +
+    'function localDateTimeInput(date = new Date()) {\r\n' +
+    '  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);\r\n' +
+    '  return shifted.toISOString().slice(0, -1);\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'const JOURNAL_CLOCK_VALUES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));\r\n' +
+    '\r\n' +
+    'function JournalExecutionClock({ label, value, bookingDate, onFocus, onChange }: {\r\n' +
+    '  label: "Entry" | "Exit";\r\n' +
+    '  value: string;\r\n' +
+    '  bookingDate: string;\r\n' +
+    '  onFocus: () => void;\r\n' +
+    '  onChange: (value: string) => void;\r\n' +
+    '}) {\r\n' +
+    '  const [date, time = ""] = value.split("T");\r\n' +
+    '  const [hour = "", minute = "", second = ""] = time.split(":");\r\n' +
+    '  const executionDate = date || bookingDate;\r\n' +
+    '  const controlClass = "h-10 w-full min-w-0 rounded-xl border border-border bg-background px-2 font-mono text-[9px] text-foreground";\r\n' +
+    '  return (\r\n' +
+    '    <fieldset className="min-w-0 lg:col-span-2">\r\n' +
+    '      <legend className="mb-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">{label} time</legend>\r\n' +
+    '      <div className="grid grid-cols-3 gap-1.5">\r\n' +
+    '        <KwantSelect aria-label={`${label} hour`} menuLabel={`${label} hour · 24-hour clock`} value={hour} disabled={!executionDate}\r\n' +
+    '          onFocus={onFocus} onChange={(event) => {\r\n' +
+    '            const nextHour = event.target.value;\r\n' +
+    '            onChange(nextHour ? `${executionDate}T${nextHour}:${minute || "00"}:${second || "00"}` : date);\r\n' +
+    '          }} className={controlClass}>\r\n' +
+    '          <option value="">Hour</option>\r\n' +
+    '          {JOURNAL_CLOCK_VALUES.slice(0, 24).map((option) => <option key={option}>{option}</option>)}\r\n' +
+    '        </KwantSelect>\r\n' +
+    '        <KwantSelect aria-label={`${label} minute`} menuLabel={`${label} minute`} value={minute} disabled={!hour}\r\n' +
+    '          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${event.target.value}:${second || "00"}`)} className={controlClass}>\r\n' +
+    '          <option value="" disabled>Min</option>\r\n' +
+    '          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}\r\n' +
+    '        </KwantSelect>\r\n' +
+    '        <KwantSelect aria-label={`${label} second`} menuLabel={`${label} second`} value={hour ? second.slice(0, 2) || "00" : ""} disabled={!hour}\r\n' +
+    '          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${minute || "00"}:${event.target.value}`)} className={controlClass}>\r\n' +
+    '          <option value="" disabled>Sec</option>\r\n' +
+    '          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}\r\n' +
+    '        </KwantSelect>\r\n' +
+    '      '... 281377 more characters
+
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tests/journal-equity-curve.test.mjs:21:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '"use client";\r\n\r\nimport KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";\r\nimport { journalManualOutcome } from "@/lib/journalManualOutcome";\r\n\r\nimport Image from "next/image";\r\nimport { createPortal } from "react-dom";\r\nimport {\r\n  resolveOutcomeColors,\r\n  SEMANTIC_WIN,\r\n  SEMANTIC_LOSS,\r\n  type OutcomeColors,\r\n} from "@/lib/outcomeColors";\r\nimport {\r\n  Activity,\r\n  ArchiveRestore,\r\n  ArrowDownRight,\r\n  ArrowUpRight,\r\n  BarChart3,\r\n  BrainCircuit,\r\n  BookPlus,\r\n  BookOpen,\r\n  Bot,\r\n  CalendarDays,\r\n  Camera,\r\n  Check,\r\n  ChevronLeft,\r\n  ChevronRight,\r\n  CircleAlert,\r\n  Clock3,\r\n  Download,\r\n  Eye,\r\n  FileJson,\r\n  FileSpreadsheet,\r\n  FileText,\r\n  Filter,\r\n  FolderArchive,\r\n  GripVertical,\r\n  ImageIcon,\r\n  Import,\r\n  Layers3,\r\n  LineChart,\r\n  Mic,\r\n  NotebookPen,\r\n  MoreVertical,\r\n  Paperclip,\r\n  Pencil,\r\n  Plus,\r\n  RefreshCw,\r\n  Search,\r\n  Save,\r\n  Share2,\r\n  ShieldCheck,\r\n  Sparkles,\r\n  Star,\r\n  Tags,\r\n  Target,\r\n  Trash2,\r\n  TrendingDown,\r\n  TrendingUp,\r\n  Upload,\r\n  Wallet,\r\n  X,\r\n} from "lucide-react";\r\nimport KwantLoader from "@/components/KwantLoader";\r\nimport { formatTradeHoldDuration, journalTradeDetails } from "@/lib/journalTradeDetails";\r\nimport { deleteJournalSelection } from "@/lib/journalBulkDelete";\r\nimport WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";\r\nimport { mergeJournalHydration, mergeJournalSnapshots } from "@/lib/journalStateMerge";\r\nimport {\r\n  applyJournalAccountResets,\r\n  removeJournalTradeEverywhere,\r\n  calculateJournalAdvancedStats,\r\n  calculateJournalExecutionStats,\r\n  calculateJournalStats,\r\n  EMPTY_JOURNAL_STATE,\r\n  isZyonJournalAccountName,\r\n  JOURNAL_COPY_LIMIT,\r\n  JOURNAL_COPY_PREFIX,\r\n  latestZyonJournalReset,\r\n  journalTradesToCsv,\r\n  mergeJournalImportTrades,\r\n  parseJournalTextFile,\r\n  uniqueJournalOutcomes,\r\n  ZYON_JOURNAL_ACCOUNT,\r\n  zyonOutcomesToJournalTrades,\r\n  type JournalAccount,\r\n  type JournalEvidence,\r\n  type JournalImportBatch,\r\n  type JournalParseResult,\r\n  type JournalState,\r\n  type JournalTrade,\r\n  type JournalTradingAccountType,\r\n} from "@/lib/journal";\r\nimport {\r\n  clearJournalAccountDeletion,\r\n  loadJournalAccountDeletions,\r\n  loadJournalState,\r\n  markJournalAccountDeleted,\r\n  purgeDeletedJournalAccounts,\r\n  saveJournalState,\r\n} from "@/lib/journalStore";\r\nimport { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, normalizePaperJournalAccounts, paperJournalAccountName } from "@/lib/paperJournal";\r\nimport { ZYON_JOURNAL_VISIBLE, visibleJournalAccountFilter } from "@/lib/journalFeatureVisibility";\r\nimport { parseMoney, readPaperTradingAccounts, type PaperTradingAccountRecord } from "@/lib/paperAccounts";\r\nimport { loadPaperTradingLedger, type PaperTradingLedger } from "@/lib/paperTrading";\r\nimport {\r\n  buildJournalAnalysisEvidence,\r\n  type JournalAnalysisFinding,\r\n  type JournalAnalysisLeak,\r\n  type JournalQuantAnalysis,\r\n} from "@/lib/journalAnalysis";\r\nimport KwantSelect from "@/components/ui/KwantSelect";\r\nimport { usePersistentFieldDictation } from "@/hooks/usePersistentFieldDictation";\r\nimport { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type CSSProperties } from "react";\r\n\r\ntype JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";\r\ntype OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";\r\ntype SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";\r\n\r\ntype JournalCloudState = "loading" | "cloud" | "local" | "error";\r\ntype AccountCreationMode = "manual" | "import" | "journal";\r\ntype ImportDialogPurpose = "add-account" | "append-trades";\r\n\r\ntype JournalMemoryCacheEntry = {\r\n  state: JournalState;\r\n  zyonTrades: JournalTrade[];\r\n  cloudState: JournalCloudState;\r\n  tab: JournalTab;\r\n  accountFilter: string;\r\n  updatedAt: number;\r\n};\r\n\r\nconst JOURNAL_MEMORY_CACHE = new Map<string, JournalMemoryCacheEntry>();\r\n\r\ntype ManualTradeDraft = {\r\n  name: string;\r\n  symbol: string;\r\n  side: "" | "LONG" | "SHORT";\r\n  contractClass: "" | "MICRO" | "MINI" | "OTHER";\r\n  quantity: string;\r\n  openedAt: string;\r\n  closedAt: string;\r\n  entryPrice: string;\r\n  exitPrice: string;\r\n  stopPrice: string;\r\n  targetPrice: string;\r\n  plannedRiskReward: string;\r\n  initialRisk: string;\r\n  netPnl: string;\r\n  fees: string;\r\n  tags: string;\r\n  notes: string;\r\n  improvements: string;\r\n  tradingAccountName: string;\r\n  tradingAccountType: "" | JournalTradingAccountType;\r\n  accountSize: string;\r\n  rating: number | null;\r\n};\r\n\r\ntype ManualTradeDictationField = Exclude<keyof ManualTradeDraft, "rating">;\r\n\r\nconst MANUAL_TRADE_DICTATION_LABELS: Record<ManualTradeDictationField, string> = {\r\n  name: "Trade / setup name",\r\n  symbol: "Instrument",\r\n  side: "Direction",\r\n  contractClass: "Contract class",\r\n  quantity: "Contracts",\r\n  openedAt: "Entry time",\r\n  closedAt: "Exit time",\r\n  entryPrice: "Entry price",\r\n  exitPrice: "Exit price",\r\n  stopPrice: "Stop price",\r\n  targetPrice: "Target price",\r\n  plannedRiskReward: "Planned risk : reward",\r\n  initialRisk: "Initial risk",\r\n  netPnl: "Net profit / loss",\r\n  fees: "Fees",\r\n  tags: "Tags",\r\n  notes: "Notes",\r\n  improvements: "How can I do better next time?",\r\n  tradingAccountName: "Account / provider",\r\n  tradingAccountType: "Account type",\r\n  accountSize: "Account size",\r\n};\r\n\r\nconst MANUAL_TRADE_NUMBER_FIELDS = new Set<ManualTradeDictationField>([\r\n  "quantity",\r\n  "entryPrice",\r\n  "exitPrice",\r\n  "stopPrice",\r\n  "targetPrice",\r\n  "plannedRiskReward",\r\n  "initialRisk",\r\n  "netPnl",\r\n  "fees",\r\n  "accountSize",\r\n]);\r\n\r\ntype SocialJournalResponse = {\r\n  viewerId?: string;\r\n  objects?: Array<{\r\n    id: string;\r\n    userId: string;\r\n    objectType: string;\r\n    parentId: string | null;\r\n    payload: Record<string, unknown>;\r\n    createdAt: string;\r\n    updatedAt: string;\r\n  }>;\r\n};\r\n\r\ntype CloudJournalResponse = {\r\n  cloud?: boolean;\r\n  deletedTradeIds?: string[];\r\n  zyonResetAt?: string | null;\r\n  accounts?: JournalAccount[];\r\n  trades?: JournalTrade[];\r\n  imports?: JournalImportBatch[];\r\n  evidence?: JournalEvidence[];\r\n};\r\n\r\ntype JournalAnalysisResponse = {\r\n  analysis?: JournalQuantAnalysis | null;\r\n  fingerprint?: string;\r\n  cloud?: boolean;\r\n  error?: string;\r\n  elapsedMs?: number;\r\n};\r\n\r\nconst JOURNAL_TABS: Array<{ id: JournalTab; label: string; description: string; icon: typeof Activity }> = [\r\n  { id: "pulse", label: "Pulse", description: "Account overview", icon: Activity },\r\n  { id: "calendar", label: "Calendar", description: "Performance by day", icon: CalendarDays },\r\n  { id: "trades", label: "Trade Log", description: "Every recorded trade", icon: FileSpreadsheet },\r\n  { id: "edgebook", label: "Edgebook", description: "Repeatable patterns", icon: Sparkles },\r\n  { id: "analysis", label: "Analysis", description: "Quant mentor review", icon: BrainCircuit },\r\n  { id: "evidence", label: "Evidence", description: "Screenshots and notes", icon: ImageIcon },\r\n  { id: "imports", label: "Imports", description: "Source file history", icon: FolderArchive },\r\n];\r\n\r\nconst ACCEPTED_FILES = ".xlsx,.xls,.xlsm,.xlsb,.ods,.fods,.xml,.html,.htm,.csv,.tsv,.txt,.json,.md,.png,.jpg,.jpeg,.webp,.gif";\r\nconst SPREADSHEET_EXTENSIONS = new Set(["xlsx", "xls", "xlsm", "xlsb", "ods", "fods", "xml", "html", "htm"]);\r\nconst TABULAR_TEXT_EXTENSIONS = new Set(["csv", "tsv", "txt", "json"]);\r\nconst MAX_EVIDENCE_BYTES = 8_000_000;\r\nconst MAX_WORKBOOK_BYTES = 75_000_000;\r\nconst MAX_MANUAL_IMAGE_BYTES = 20_000_000;\r\nconst MAX_CLOUD_IMAGE_BYTES = 1_800_000;\r\n\r\nfunction localDateTimeInput(date = new Date()) {\r\n  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);\r\n  return shifted.toISOString().slice(0, -1);\r\n}\r\n\r\nconst JOURNAL_CLOCK_VALUES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));\r\n\r\nfunction JournalExecutionClock({ label, value, bookingDate, onFocus, onChange }: {\r\n  label: "Entry" | "Exit";\r\n  value: string;\r\n  bookingDate: string;\r\n  onFocus: () => void;\r\n  onChange: (value: string) => void;\r\n}) {\r\n  const [date, time = ""] = value.split("T");\r\n  const [hour = "", minute = "", second = ""] = time.split(":");\r\n  const executionDate = date || bookingDate;\r\n  const controlClass = "h-10 w-full min-w-0 rounded-xl border border-border bg-background px-2 font-mono text-[9px] text-foreground";\r\n  return (\r\n    <fieldset className="min-w-0 lg:col-span-2">\r\n      <legend className="mb-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">{label} time</legend>\r\n      <div className="grid grid-cols-3 gap-1.5">\r\n        <KwantSelect aria-label={`${label} hour`} menuLabel={`${label} hour · 24-hour clock`} value={hour} disabled={!executionDate}\r\n          onFocus={onFocus} onChange={(event) => {\r\n            const nextHour = event.target.value;\r\n            onChange(nextHour ? `${executionDate}T${nextHour}:${minute || "00"}:${second || "00"}` : date);\r\n          }} className={controlClass}>\r\n          <option value="">Hour</option>\r\n          {JOURNAL_CLOCK_VALUES.slice(0, 24).map((option) => <option key={option}>{option}</option>)}\r\n        </KwantSelect>\r\n        <KwantSelect aria-label={`${label} minute`} menuLabel={`${label} minute`} value={minute} disabled={!hour}\r\n          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${event.target.value}:${second || "00"}`)} className={controlClass}>\r\n          <option value="" disabled>Min</option>\r\n          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}\r\n        </KwantSelect>\r\n        <KwantSelect aria-label={`${label} second`} menuLabel={`${label} second`} value={hour ? second.slice(0, 2) || "00" : ""} disabled={!hour}\r\n          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${minute || "00"}:${event.target.value}`)} className={controlClass}>\r\n          <option value="" disabled>Sec</option>\r\n          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}\r\n        </KwantSelect>\r\n      '... 281377 more characters,
+    expected: /stroke=\{geometry\.finalPnl >= 0 \? "var\(--primary\)" : "var\(--danger\)"\}/,
+    operator: 'match',
+    diff: 'simple'
+  }

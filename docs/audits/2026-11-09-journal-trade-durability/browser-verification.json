@@ -1,0 +1,1 @@
+{"passed":true,"checks":["manual addition in named journal and Overall","Overall deletion removes source and copy","Calendar contains only retained trade","copy journal cleared","reload with stale cloud rows does not revive deleted family","manual addition survives reload"],"requests":["create-trade","sync"],"errors":[]}

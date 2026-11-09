@@ -261,6 +261,7 @@ export function appendPaperTradesToJournal(
 ): JournalState {
   const withAccounts = ensurePaperJournalAccounts(state, records, now);
   const known = new Set(withAccounts.trades.map((trade) => trade.id));
+  const deleted = new Set(withAccounts.deletedTradeIds ?? []);
   const journalNames = new Map(withAccounts.accounts.map((account) => [account.id, account.name]));
   const nameById = new Map(records.map((record) => [
     record.id,
@@ -281,7 +282,7 @@ export function appendPaperTradesToJournal(
     }
     for (const fill of fills) {
       if (!isExitFill(fill)) continue;
-      if (known.has(`${PAPER_JOURNAL_TRADE_PREFIX}${fill.id}`)) continue;
+      if (known.has(`${PAPER_JOURNAL_TRADE_PREFIX}${fill.id}`) || deleted.has(`${PAPER_JOURNAL_TRADE_PREFIX}${fill.id}`)) continue;
       const trade = paperFillToJournalTrade(fill, entries.get(fill.positionId) ?? null, accountName);
       if (trade) added.push(trade);
     }

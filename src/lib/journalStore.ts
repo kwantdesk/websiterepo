@@ -4,6 +4,7 @@ import {
   EMPTY_JOURNAL_STATE,
   type JournalState,
 } from "./journal.ts";
+import { mergeJournalSnapshots } from "./journalStateMerge.ts";
 
 const DATABASE_NAME = "kwantdesk-journal";
 const DATABASE_VERSION = 1;
@@ -131,6 +132,8 @@ function normalizeState(value: unknown): JournalState {
   const candidate = value as Partial<JournalState>;
   return {
     version: 1,
+    deletedTradeIds: Array.isArray(candidate.deletedTradeIds)
+      ? [...new Set(candidate.deletedTradeIds.filter((id): id is string => typeof id === "string" && Boolean(id)))] : [],
     zyonResetAt: typeof candidate.zyonResetAt === "string" && Number.isFinite(Date.parse(candidate.zyonResetAt)) ? candidate.zyonResetAt : null,
     accounts: Array.isArray(candidate.accounts) ? candidate.accounts : [],
     trades: Array.isArray(candidate.trades) ? candidate.trades : [],
@@ -168,7 +171,15 @@ export async function loadJournalState(accountKey: string) {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error ?? new Error("Unable to read the journal."));
     });
-    const normalized = normalizeState(stored);
+    let recovered = stored;
+    // A prior quota/IDB failure can have saved the journal in localStorage.
+    // An empty but working IDB must not silently conceal that fallback later.
+    if (recovered == null) {
+      try { recovered = JSON.parse(window.localStorage.getItem(key) ?? "null"); } catch { /* no fallback */ }
+    }
+    const concurrent = memoryStore.get(key);
+    const normalized = concurrent ? mergeJournalSnapshots(normalizeState(recovered), concurrent)
+      : applyJournalAccountResets(normalizeState(recovered));
     memoryStore.set(key, normalized);
     return normalized;
   } catch {
@@ -185,12 +196,18 @@ export async function saveJournalState(accountKey: string, state: JournalState) 
   const key = storageKey(accountKey);
   const previous = memoryStore.get(key);
   const previousAccounts = new Map(previous?.accounts.map(account => [account.id, account]));
-  const normalized = applyJournalAccountResets(normalizeState({
+  const incoming = applyJournalAccountResets(normalizeState({
     ...state,
     accounts: state.accounts.map(account => ({ ...account,
       resetAt: latestZyonJournalReset(account.resetAt, previousAccounts.get(account.id)?.resetAt),
     })),
   }));
+  // A paper fill or a manual save can arrive while another pane still holds
+  // an earlier snapshot. Preserve those outcomes, while honoring deletions.
+  const combined = previous ? mergeJournalSnapshots(previous, incoming) : incoming;
+  const normalized = purgeDeletedJournalAccounts({ ...combined,
+    imports: incoming.imports, evidence: incoming.evidence,
+  }, loadJournalAccountDeletions(accountKey));
   memoryStore.set(key, normalized);
   try {
     const database = await openDatabase();

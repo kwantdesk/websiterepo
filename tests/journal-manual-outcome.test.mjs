@@ -59,12 +59,12 @@ test('HTML table exports still import into the selected demo journal',async()=>{
 test('actual create-trade route accepts owned demo/import/manual journals and rejects mismatched accounts or invalid profit',async()=>{
  const source=fs.readFileSync('src/app/api/journal/route.ts','utf8');
  const block=source.slice(source.indexOf('  if (action === "create-trade")'),source.indexOf('  if (action === "save-evidence")'));
- const writes=[];let row={id:'paper-test',name:'20 october',source:'import'};
+ const writes=[];let deleted=false;let row={id:'paper-test',name:'20 october',source:'import'};
  const filters=[];
  const supabase={from(table){return {select(){return this},eq(key,value){filters.push([key,value]);return this},async maybeSingle(){return {data:row}},async upsert(payload){writes.push({table,payload});return {error:null}}}}};
  const code=ts.transpileModule(`(async (body)=>{const action='create-trade';${block}})`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const run=vm.runInNewContext(code,{
-  supabase,actor:{userId:'owner'},cleanText:x=>x,cleanId:x=>x,accountId:x=>x,
+  supabase,wasDeleted:()=>deleted,actor:{userId:'owner'},cleanText:x=>x,cleanId:x=>x,accountId:x=>x,
   isZyonJournalAccountName:x=>x==='ZYON Journal',sanitizeTrade:x=>x,
   NextResponse:{json:(body,options)=>({body,status:options?.status??200})},
  });
@@ -72,6 +72,7 @@ test('actual create-trade route accepts owned demo/import/manual journals and re
  for(const source of ['import','manual','paper']){row={...row,source};assert.equal((await run(body)).status,200);}
  assert.ok(filters.some(([key,value])=>key==='user_id'&&value==='owner'));
  assert.ok(writes.every(w=>w.table==='journal_trades'&&w.payload.account_id==='paper-test'));
+ deleted=true;assert.equal((await run(body)).status,409);deleted=false;
  row={...row,name:'another journal'};assert.equal((await run(body)).status,400);
  assert.equal((await run({...body,trade:{...body.trade,netPnl:null}})).status,400);
  assert.equal((await run({...body,account:'ZYON Journal'})).status,400);

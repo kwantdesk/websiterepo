@@ -1,0 +1,322 @@
+✖ journal equity curve exposes responsive axes and trade-by-trade hover detail (77.844ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 181.587
+
+✖ failing tests:
+
+test at tmp\journal-equity-baseline.test.mjs:8:1
+✖ journal equity curve exposes responsive axes and trade-by-trade hover detail (77.844ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /stroke=\{geometry\.finalPnl >= 0 \? "var\(--primary\)" : "var\(--danger\)"\}/. Input:
+
+  '"use client";\n' +
+    '\n' +
+    'import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";\n' +
+    'import { journalManualOutcome } from "@/lib/journalManualOutcome";\n' +
+    '\n' +
+    'import Image from "next/image";\n' +
+    'import { createPortal } from "react-dom";\n' +
+    'import {\n' +
+    '  resolveOutcomeColors,\n' +
+    '  SEMANTIC_WIN,\n' +
+    '  SEMANTIC_LOSS,\n' +
+    '  type OutcomeColors,\n' +
+    '} from "@/lib/outcomeColors";\n' +
+    'import {\n' +
+    '  Activity,\n' +
+    '  ArchiveRestore,\n' +
+    '  ArrowDownRight,\n' +
+    '  ArrowUpRight,\n' +
+    '  BarChart3,\n' +
+    '  BrainCircuit,\n' +
+    '  BookPlus,\n' +
+    '  BookOpen,\n' +
+    '  Bot,\n' +
+    '  CalendarDays,\n' +
+    '  Camera,\n' +
+    '  Check,\n' +
+    '  ChevronLeft,\n' +
+    '  ChevronRight,\n' +
+    '  CircleAlert,\n' +
+    '  Clock3,\n' +
+    '  Download,\n' +
+    '  Eye,\n' +
+    '  FileJson,\n' +
+    '  FileSpreadsheet,\n' +
+    '  FileText,\n' +
+    '  Filter,\n' +
+    '  FolderArchive,\n' +
+    '  GripVertical,\n' +
+    '  ImageIcon,\n' +
+    '  Import,\n' +
+    '  Layers3,\n' +
+    '  LineChart,\n' +
+    '  Mic,\n' +
+    '  NotebookPen,\n' +
+    '  MoreVertical,\n' +
+    '  Paperclip,\n' +
+    '  Pencil,\n' +
+    '  Plus,\n' +
+    '  RefreshCw,\n' +
+    '  Search,\n' +
+    '  Save,\n' +
+    '  Share2,\n' +
+    '  ShieldCheck,\n' +
+    '  Sparkles,\n' +
+    '  Star,\n' +
+    '  Tags,\n' +
+    '  Target,\n' +
+    '  Trash2,\n' +
+    '  TrendingDown,\n' +
+    '  TrendingUp,\n' +
+    '  Upload,\n' +
+    '  Wallet,\n' +
+    '  X,\n' +
+    '} from "lucide-react";\n' +
+    'import KwantLoader from "@/components/KwantLoader";\n' +
+    'import { formatTradeHoldDuration, journalTradeDetails } from "@/lib/journalTradeDetails";\n' +
+    'import { deleteJournalSelection } from "@/lib/journalBulkDelete";\n' +
+    'import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";\n' +
+    'import {\n' +
+    '  applyJournalAccountResets,\n' +
+    '  calculateJournalAdvancedStats,\n' +
+    '  calculateJournalExecutionStats,\n' +
+    '  calculateJournalStats,\n' +
+    '  EMPTY_JOURNAL_STATE,\n' +
+    '  isZyonJournalAccountName,\n' +
+    '  JOURNAL_COPY_LIMIT,\n' +
+    '  JOURNAL_COPY_PREFIX,\n' +
+    '  latestZyonJournalReset,\n' +
+    '  journalTradesToCsv,\n' +
+    '  mergeJournalImportTrades,\n' +
+    '  parseJournalTextFile,\n' +
+    '  uniqueJournalOutcomes,\n' +
+    '  ZYON_JOURNAL_ACCOUNT,\n' +
+    '  zyonOutcomesToJournalTrades,\n' +
+    '  type JournalAccount,\n' +
+    '  type JournalEvidence,\n' +
+    '  type JournalImportBatch,\n' +
+    '  type JournalParseResult,\n' +
+    '  type JournalState,\n' +
+    '  type JournalTrade,\n' +
+    '  type JournalTradingAccountType,\n' +
+    '} from "@/lib/journal";\n' +
+    'import {\n' +
+    '  clearJournalAccountDeletion,\n' +
+    '  loadJournalAccountDeletions,\n' +
+    '  loadJournalState,\n' +
+    '  markJournalAccountDeleted,\n' +
+    '  purgeDeletedJournalAccounts,\n' +
+    '  saveJournalState,\n' +
+    '} from "@/lib/journalStore";\n' +
+    'import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, normalizePaperJournalAccounts, paperJournalAccountName } from "@/lib/paperJournal";\n' +
+    'import { ZYON_JOURNAL_VISIBLE, visibleJournalAccountFilter } from "@/lib/journalFeatureVisibility";\n' +
+    'import { parseMoney, readPaperTradingAccounts, type PaperTradingAccountRecord } from "@/lib/paperAccounts";\n' +
+    'import { loadPaperTradingLedger, type PaperTradingLedger } from "@/lib/paperTrading";\n' +
+    'import {\n' +
+    '  buildJournalAnalysisEvidence,\n' +
+    '  type JournalAnalysisFinding,\n' +
+    '  type JournalAnalysisLeak,\n' +
+    '  type JournalQuantAnalysis,\n' +
+    '} from "@/lib/journalAnalysis";\n' +
+    'import KwantSelect from "@/components/ui/KwantSelect";\n' +
+    'import { usePersistentFieldDictation } from "@/hooks/usePersistentFieldDictation";\n' +
+    'import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type CSSProperties } from "react";\n' +
+    '\n' +
+    'type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";\n' +
+    'type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";\n' +
+    'type SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";\n' +
+    '\n' +
+    'type JournalCloudState = "loading" | "cloud" | "local" | "error";\n' +
+    'type AccountCreationMode = "manual" | "import" | "journal";\n' +
+    'type ImportDialogPurpose = "add-account" | "append-trades";\n' +
+    '\n' +
+    'type JournalMemoryCacheEntry = {\n' +
+    '  state: JournalState;\n' +
+    '  zyonTrades: JournalTrade[];\n' +
+    '  cloudState: JournalCloudState;\n' +
+    '  tab: JournalTab;\n' +
+    '  accountFilter: string;\n' +
+    '  updatedAt: number;\n' +
+    '};\n' +
+    '\n' +
+    'const JOURNAL_MEMORY_CACHE = new Map<string, JournalMemoryCacheEntry>();\n' +
+    '\n' +
+    'type ManualTradeDraft = {\n' +
+    '  name: string;\n' +
+    '  symbol: string;\n' +
+    '  side: "" | "LONG" | "SHORT";\n' +
+    '  contractClass: "" | "MICRO" | "MINI" | "OTHER";\n' +
+    '  quantity: string;\n' +
+    '  openedAt: string;\n' +
+    '  closedAt: string;\n' +
+    '  entryPrice: string;\n' +
+    '  exitPrice: string;\n' +
+    '  stopPrice: string;\n' +
+    '  targetPrice: string;\n' +
+    '  plannedRiskReward: string;\n' +
+    '  initialRisk: string;\n' +
+    '  netPnl: string;\n' +
+    '  fees: string;\n' +
+    '  tags: string;\n' +
+    '  notes: string;\n' +
+    '  improvements: string;\n' +
+    '  tradingAccountName: string;\n' +
+    '  tradingAccountType: "" | JournalTradingAccountType;\n' +
+    '  accountSize: string;\n' +
+    '  rating: number | null;\n' +
+    '};\n' +
+    '\n' +
+    'type ManualTradeDictationField = Exclude<keyof ManualTradeDraft, "rating">;\n' +
+    '\n' +
+    'const MANUAL_TRADE_DICTATION_LABELS: Record<ManualTradeDictationField, string> = {\n' +
+    '  name: "Trade / setup name",\n' +
+    '  symbol: "Instrument",\n' +
+    '  side: "Direction",\n' +
+    '  contractClass: "Contract class",\n' +
+    '  quantity: "Contracts",\n' +
+    '  openedAt: "Entry time",\n' +
+    '  closedAt: "Exit time",\n' +
+    '  entryPrice: "Entry price",\n' +
+    '  exitPrice: "Exit price",\n' +
+    '  stopPrice: "Stop price",\n' +
+    '  targetPrice: "Target price",\n' +
+    '  plannedRiskReward: "Planned risk : reward",\n' +
+    '  initialRisk: "Initial risk",\n' +
+    '  netPnl: "Net profit / loss",\n' +
+    '  fees: "Fees",\n' +
+    '  tags: "Tags",\n' +
+    '  notes: "Notes",\n' +
+    '  improvements: "How can I do better next time?",\n' +
+    '  tradingAccountName: "Account / provider",\n' +
+    '  tradingAccountType: "Account type",\n' +
+    '  accountSize: "Account size",\n' +
+    '};\n' +
+    '\n' +
+    'const MANUAL_TRADE_NUMBER_FIELDS = new Set<ManualTradeDictationField>([\n' +
+    '  "quantity",\n' +
+    '  "entryPrice",\n' +
+    '  "exitPrice",\n' +
+    '  "stopPrice",\n' +
+    '  "targetPrice",\n' +
+    '  "plannedRiskReward",\n' +
+    '  "initialRisk",\n' +
+    '  "netPnl",\n' +
+    '  "fees",\n' +
+    '  "accountSize",\n' +
+    ']);\n' +
+    '\n' +
+    'type SocialJournalResponse = {\n' +
+    '  viewerId?: string;\n' +
+    '  objects?: Array<{\n' +
+    '    id: string;\n' +
+    '    userId: string;\n' +
+    '    objectType: string;\n' +
+    '    parentId: string | null;\n' +
+    '    payload: Record<string, unknown>;\n' +
+    '    createdAt: string;\n' +
+    '    updatedAt: string;\n' +
+    '  }>;\n' +
+    '};\n' +
+    '\n' +
+    'type CloudJournalResponse = {\n' +
+    '  cloud?: boolean;\n' +
+    '  zyonResetAt?: string | null;\n' +
+    '  accounts?: JournalAccount[];\n' +
+    '  trades?: JournalTrade[];\n' +
+    '  imports?: JournalImportBatch[];\n' +
+    '  evidence?: JournalEvidence[];\n' +
+    '};\n' +
+    '\n' +
+    'type JournalAnalysisResponse = {\n' +
+    '  analysis?: JournalQuantAnalysis | null;\n' +
+    '  fingerprint?: string;\n' +
+    '  cloud?: boolean;\n' +
+    '  error?: string;\n' +
+    '  elapsedMs?: number;\n' +
+    '};\n' +
+    '\n' +
+    'const JOURNAL_TABS: Array<{ id: JournalTab; label: string; description: string; icon: typeof Activity }> = [\n' +
+    '  { id: "pulse", label: "Pulse", description: "Account overview", icon: Activity },\n' +
+    '  { id: "calendar", label: "Calendar", description: "Performance by day", icon: CalendarDays },\n' +
+    '  { id: "trades", label: "Trade Log", description: "Every recorded trade", icon: FileSpreadsheet },\n' +
+    '  { id: "edgebook", label: "Edgebook", description: "Repeatable patterns", icon: Sparkles },\n' +
+    '  { id: "analysis", label: "Analysis", description: "Quant mentor review", icon: BrainCircuit },\n' +
+    '  { id: "evidence", label: "Evidence", description: "Screenshots and notes", icon: ImageIcon },\n' +
+    '  { id: "imports", label: "Imports", description: "Source file history", icon: FolderArchive },\n' +
+    '];\n' +
+    '\n' +
+    'const ACCEPTED_FILES = ".xlsx,.xls,.xlsm,.xlsb,.ods,.fods,.xml,.html,.htm,.csv,.tsv,.txt,.json,.md,.png,.jpg,.jpeg,.webp,.gif";\n' +
+    'const SPREADSHEET_EXTENSIONS = new Set(["xlsx", "xls", "xlsm", "xlsb", "ods", "fods", "xml", "html", "htm"]);\n' +
+    'const TABULAR_TEXT_EXTENSIONS = new Set(["csv", "tsv", "txt", "json"]);\n' +
+    'const MAX_EVIDENCE_BYTES = 8_000_000;\n' +
+    'const MAX_WORKBOOK_BYTES = 75_000_000;\n' +
+    'const MAX_MANUAL_IMAGE_BYTES = 20_000_000;\n' +
+    'const MAX_CLOUD_IMAGE_BYTES = 1_800_000;\n' +
+    '\n' +
+    'function localDateTimeInput(date = new Date()) {\n' +
+    '  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);\n' +
+    '  return shifted.toISOString().slice(0, -1);\n' +
+    '}\n' +
+    '\n' +
+    'const JOURNAL_CLOCK_VALUES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));\n' +
+    '\n' +
+    'function JournalExecutionClock({ label, value, bookingDate, onFocus, onChange }: {\n' +
+    '  label: "Entry" | "Exit";\n' +
+    '  value: string;\n' +
+    '  bookingDate: string;\n' +
+    '  onFocus: () => void;\n' +
+    '  onChange: (value: string) => void;\n' +
+    '}) {\n' +
+    '  const [date, time = ""] = value.split("T");\n' +
+    '  const [hour = "", minute = "", second = ""] = time.split(":");\n' +
+    '  const executionDate = date || bookingDate;\n' +
+    '  const controlClass = "h-10 w-full min-w-0 rounded-xl border border-border bg-background px-2 font-mono text-[9px] text-foreground";\n' +
+    '  return (\n' +
+    '    <fieldset className="min-w-0 lg:col-span-2">\n' +
+    '      <legend className="mb-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">{label} time</legend>\n' +
+    '      <div className="grid grid-cols-3 gap-1.5">\n' +
+    '        <KwantSelect aria-label={`${label} hour`} menuLabel={`${label} hour · 24-hour clock`} value={hour} disabled={!executionDate}\n' +
+    '          onFocus={onFocus} onChange={(event) => {\n' +
+    '            const nextHour = event.target.value;\n' +
+    '            onChange(nextHour ? `${executionDate}T${nextHour}:${minute || "00"}:${second || "00"}` : date);\n' +
+    '          }} className={controlClass}>\n' +
+    '          <option value="">Hour</option>\n' +
+    '          {JOURNAL_CLOCK_VALUES.slice(0, 24).map((option) => <option key={option}>{option}</option>)}\n' +
+    '        </KwantSelect>\n' +
+    '        <KwantSelect aria-label={`${label} minute`} menuLabel={`${label} minute`} value={minute} disabled={!hour}\n' +
+    '          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${event.target.value}:${second || "00"}`)} className={controlClass}>\n' +
+    '          <option value="" disabled>Min</option>\n' +
+    '          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}\n' +
+    '        </KwantSelect>\n' +
+    '        <KwantSelect aria-label={`${label} second`} menuLabel={`${label} second`} value={hour ? second.slice(0, 2) || "00" : ""} disabled={!hour}\n' +
+    '          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${minute || "00"}:${event.target.value}`)} className={controlClass}>\n' +
+    '          <option value="" disabled>Sec</option>\n' +
+    '          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}\n' +
+    '        </KwantSelect>\n' +
+    '      </div>\n' +
+    '      <div className="mt-2 flex items-center gap-2">\n' +
+    '        <span className="shrink-0 text-[8px] text-muted">{label} date</span>\n' +
+    '        <KwantDateTimeInput type="date" aria-label={`${label} date`} value={executionDate} onFocus={onFocus}\n' +
+    '          onValueChange={(nextDate) => {\n' +
+    '            const next = nextDate || bookingDate;\n' +
+    '            onChange(time && next ? `${next}T${time}` : nextDate);\n' +
+    '          }} className="h-8 min-w-'... 275815 more characters
+
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tmp/journal-equity-baseline.test.mjs:22:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.start (node:internal/test_runner/test:1096:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '"use client";\n\nimport KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";\nimport { journalManualOutcome } from "@/lib/journalManualOutcome";\n\nimport Image from "next/image";\nimport { createPortal } from "react-dom";\nimport {\n  resolveOutcomeColors,\n  SEMANTIC_WIN,\n  SEMANTIC_LOSS,\n  type OutcomeColors,\n} from "@/lib/outcomeColors";\nimport {\n  Activity,\n  ArchiveRestore,\n  ArrowDownRight,\n  ArrowUpRight,\n  BarChart3,\n  BrainCircuit,\n  BookPlus,\n  BookOpen,\n  Bot,\n  CalendarDays,\n  Camera,\n  Check,\n  ChevronLeft,\n  ChevronRight,\n  CircleAlert,\n  Clock3,\n  Download,\n  Eye,\n  FileJson,\n  FileSpreadsheet,\n  FileText,\n  Filter,\n  FolderArchive,\n  GripVertical,\n  ImageIcon,\n  Import,\n  Layers3,\n  LineChart,\n  Mic,\n  NotebookPen,\n  MoreVertical,\n  Paperclip,\n  Pencil,\n  Plus,\n  RefreshCw,\n  Search,\n  Save,\n  Share2,\n  ShieldCheck,\n  Sparkles,\n  Star,\n  Tags,\n  Target,\n  Trash2,\n  TrendingDown,\n  TrendingUp,\n  Upload,\n  Wallet,\n  X,\n} from "lucide-react";\nimport KwantLoader from "@/components/KwantLoader";\nimport { formatTradeHoldDuration, journalTradeDetails } from "@/lib/journalTradeDetails";\nimport { deleteJournalSelection } from "@/lib/journalBulkDelete";\nimport WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";\nimport {\n  applyJournalAccountResets,\n  calculateJournalAdvancedStats,\n  calculateJournalExecutionStats,\n  calculateJournalStats,\n  EMPTY_JOURNAL_STATE,\n  isZyonJournalAccountName,\n  JOURNAL_COPY_LIMIT,\n  JOURNAL_COPY_PREFIX,\n  latestZyonJournalReset,\n  journalTradesToCsv,\n  mergeJournalImportTrades,\n  parseJournalTextFile,\n  uniqueJournalOutcomes,\n  ZYON_JOURNAL_ACCOUNT,\n  zyonOutcomesToJournalTrades,\n  type JournalAccount,\n  type JournalEvidence,\n  type JournalImportBatch,\n  type JournalParseResult,\n  type JournalState,\n  type JournalTrade,\n  type JournalTradingAccountType,\n} from "@/lib/journal";\nimport {\n  clearJournalAccountDeletion,\n  loadJournalAccountDeletions,\n  loadJournalState,\n  markJournalAccountDeleted,\n  purgeDeletedJournalAccounts,\n  saveJournalState,\n} from "@/lib/journalStore";\nimport { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal, normalizePaperJournalAccounts, paperJournalAccountName } from "@/lib/paperJournal";\nimport { ZYON_JOURNAL_VISIBLE, visibleJournalAccountFilter } from "@/lib/journalFeatureVisibility";\nimport { parseMoney, readPaperTradingAccounts, type PaperTradingAccountRecord } from "@/lib/paperAccounts";\nimport { loadPaperTradingLedger, type PaperTradingLedger } from "@/lib/paperTrading";\nimport {\n  buildJournalAnalysisEvidence,\n  type JournalAnalysisFinding,\n  type JournalAnalysisLeak,\n  type JournalQuantAnalysis,\n} from "@/lib/journalAnalysis";\nimport KwantSelect from "@/components/ui/KwantSelect";\nimport { usePersistentFieldDictation } from "@/hooks/usePersistentFieldDictation";\nimport { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type CSSProperties } from "react";\n\ntype JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";\ntype OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";\ntype SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";\n\ntype JournalCloudState = "loading" | "cloud" | "local" | "error";\ntype AccountCreationMode = "manual" | "import" | "journal";\ntype ImportDialogPurpose = "add-account" | "append-trades";\n\ntype JournalMemoryCacheEntry = {\n  state: JournalState;\n  zyonTrades: JournalTrade[];\n  cloudState: JournalCloudState;\n  tab: JournalTab;\n  accountFilter: string;\n  updatedAt: number;\n};\n\nconst JOURNAL_MEMORY_CACHE = new Map<string, JournalMemoryCacheEntry>();\n\ntype ManualTradeDraft = {\n  name: string;\n  symbol: string;\n  side: "" | "LONG" | "SHORT";\n  contractClass: "" | "MICRO" | "MINI" | "OTHER";\n  quantity: string;\n  openedAt: string;\n  closedAt: string;\n  entryPrice: string;\n  exitPrice: string;\n  stopPrice: string;\n  targetPrice: string;\n  plannedRiskReward: string;\n  initialRisk: string;\n  netPnl: string;\n  fees: string;\n  tags: string;\n  notes: string;\n  improvements: string;\n  tradingAccountName: string;\n  tradingAccountType: "" | JournalTradingAccountType;\n  accountSize: string;\n  rating: number | null;\n};\n\ntype ManualTradeDictationField = Exclude<keyof ManualTradeDraft, "rating">;\n\nconst MANUAL_TRADE_DICTATION_LABELS: Record<ManualTradeDictationField, string> = {\n  name: "Trade / setup name",\n  symbol: "Instrument",\n  side: "Direction",\n  contractClass: "Contract class",\n  quantity: "Contracts",\n  openedAt: "Entry time",\n  closedAt: "Exit time",\n  entryPrice: "Entry price",\n  exitPrice: "Exit price",\n  stopPrice: "Stop price",\n  targetPrice: "Target price",\n  plannedRiskReward: "Planned risk : reward",\n  initialRisk: "Initial risk",\n  netPnl: "Net profit / loss",\n  fees: "Fees",\n  tags: "Tags",\n  notes: "Notes",\n  improvements: "How can I do better next time?",\n  tradingAccountName: "Account / provider",\n  tradingAccountType: "Account type",\n  accountSize: "Account size",\n};\n\nconst MANUAL_TRADE_NUMBER_FIELDS = new Set<ManualTradeDictationField>([\n  "quantity",\n  "entryPrice",\n  "exitPrice",\n  "stopPrice",\n  "targetPrice",\n  "plannedRiskReward",\n  "initialRisk",\n  "netPnl",\n  "fees",\n  "accountSize",\n]);\n\ntype SocialJournalResponse = {\n  viewerId?: string;\n  objects?: Array<{\n    id: string;\n    userId: string;\n    objectType: string;\n    parentId: string | null;\n    payload: Record<string, unknown>;\n    createdAt: string;\n    updatedAt: string;\n  }>;\n};\n\ntype CloudJournalResponse = {\n  cloud?: boolean;\n  zyonResetAt?: string | null;\n  accounts?: JournalAccount[];\n  trades?: JournalTrade[];\n  imports?: JournalImportBatch[];\n  evidence?: JournalEvidence[];\n};\n\ntype JournalAnalysisResponse = {\n  analysis?: JournalQuantAnalysis | null;\n  fingerprint?: string;\n  cloud?: boolean;\n  error?: string;\n  elapsedMs?: number;\n};\n\nconst JOURNAL_TABS: Array<{ id: JournalTab; label: string; description: string; icon: typeof Activity }> = [\n  { id: "pulse", label: "Pulse", description: "Account overview", icon: Activity },\n  { id: "calendar", label: "Calendar", description: "Performance by day", icon: CalendarDays },\n  { id: "trades", label: "Trade Log", description: "Every recorded trade", icon: FileSpreadsheet },\n  { id: "edgebook", label: "Edgebook", description: "Repeatable patterns", icon: Sparkles },\n  { id: "analysis", label: "Analysis", description: "Quant mentor review", icon: BrainCircuit },\n  { id: "evidence", label: "Evidence", description: "Screenshots and notes", icon: ImageIcon },\n  { id: "imports", label: "Imports", description: "Source file history", icon: FolderArchive },\n];\n\nconst ACCEPTED_FILES = ".xlsx,.xls,.xlsm,.xlsb,.ods,.fods,.xml,.html,.htm,.csv,.tsv,.txt,.json,.md,.png,.jpg,.jpeg,.webp,.gif";\nconst SPREADSHEET_EXTENSIONS = new Set(["xlsx", "xls", "xlsm", "xlsb", "ods", "fods", "xml", "html", "htm"]);\nconst TABULAR_TEXT_EXTENSIONS = new Set(["csv", "tsv", "txt", "json"]);\nconst MAX_EVIDENCE_BYTES = 8_000_000;\nconst MAX_WORKBOOK_BYTES = 75_000_000;\nconst MAX_MANUAL_IMAGE_BYTES = 20_000_000;\nconst MAX_CLOUD_IMAGE_BYTES = 1_800_000;\n\nfunction localDateTimeInput(date = new Date()) {\n  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);\n  return shifted.toISOString().slice(0, -1);\n}\n\nconst JOURNAL_CLOCK_VALUES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));\n\nfunction JournalExecutionClock({ label, value, bookingDate, onFocus, onChange }: {\n  label: "Entry" | "Exit";\n  value: string;\n  bookingDate: string;\n  onFocus: () => void;\n  onChange: (value: string) => void;\n}) {\n  const [date, time = ""] = value.split("T");\n  const [hour = "", minute = "", second = ""] = time.split(":");\n  const executionDate = date || bookingDate;\n  const controlClass = "h-10 w-full min-w-0 rounded-xl border border-border bg-background px-2 font-mono text-[9px] text-foreground";\n  return (\n    <fieldset className="min-w-0 lg:col-span-2">\n      <legend className="mb-1.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">{label} time</legend>\n      <div className="grid grid-cols-3 gap-1.5">\n        <KwantSelect aria-label={`${label} hour`} menuLabel={`${label} hour · 24-hour clock`} value={hour} disabled={!executionDate}\n          onFocus={onFocus} onChange={(event) => {\n            const nextHour = event.target.value;\n            onChange(nextHour ? `${executionDate}T${nextHour}:${minute || "00"}:${second || "00"}` : date);\n          }} className={controlClass}>\n          <option value="">Hour</option>\n          {JOURNAL_CLOCK_VALUES.slice(0, 24).map((option) => <option key={option}>{option}</option>)}\n        </KwantSelect>\n        <KwantSelect aria-label={`${label} minute`} menuLabel={`${label} minute`} value={minute} disabled={!hour}\n          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${event.target.value}:${second || "00"}`)} className={controlClass}>\n          <option value="" disabled>Min</option>\n          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}\n        </KwantSelect>\n        <KwantSelect aria-label={`${label} second`} menuLabel={`${label} second`} value={hour ? second.slice(0, 2) || "00" : ""} disabled={!hour}\n          onFocus={onFocus} onChange={(event) => onChange(`${executionDate}T${hour}:${minute || "00"}:${event.target.value}`)} className={controlClass}>\n          <option value="" disabled>Sec</option>\n          {JOURNAL_CLOCK_VALUES.map((option) => <option key={option}>{option}</option>)}\n        </KwantSelect>\n      </div>\n      <div className="mt-2 flex items-center gap-2">\n        <span className="shrink-0 text-[8px] text-muted">{label} date</span>\n        <KwantDateTimeInput type="date" aria-label={`${label} date`} value={executionDate} onFocus={onFocus}\n          onValueChange={(nextDate) => {\n            const next = nextDate || bookingDate;\n            onChange(time && next ? `${next}T${time}` : nextDate);\n          }} className="h-8 min-w-'... 275815 more characters,
+    expected: /stroke=\{geometry\.finalPnl >= 0 \? "var\(--primary\)" : "var\(--danger\)"\}/,
+    operator: 'match',
+    diff: 'simple'
+  }

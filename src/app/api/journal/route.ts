@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { getJournalRouteActor } from "@/lib/serverAuth";
 import {
   applyJournalAccountResets,
+  journalTradeIdentity,
   isZyonJournalAccountName,
   JOURNAL_COPY_LIMIT,
   JOURNAL_COPY_PREFIX,
@@ -26,6 +27,7 @@ type AccountRow = {
 
 type TradeRow = {
   account_id: string;
+  created_at?: string;
   payload: JournalTrade;
 };
 
@@ -64,6 +66,7 @@ type AccountState = {
 const JOURNAL_EVIDENCE_KIND = "journal-evidence-v1";
 const JOURNAL_ACCOUNT_STATE_KIND = "journal-account-state-v1";
 const JOURNAL_ANALYSIS_KIND = "journal-quant-analysis-v1";
+const JOURNAL_TRADE_DELETION_KIND = "journal-trade-deletion-v1";
 const MAX_CLOUD_EVIDENCE_DATA_URL = 2_500_000;
 
 function publicTradeSnapshot(trade: JournalTrade) {
@@ -257,6 +260,7 @@ function sanitizeTrade(value: unknown, account: string): JournalTrade | null {
     account,
     openedAt,
     closedAt,
+    recordedAt: isoDate(trade.recordedAt, null) ?? undefined,
     entryTimeKnown: typeof trade.entryTimeKnown === "boolean" ? trade.entryTimeKnown : true,
     exitTimeKnown: typeof trade.exitTimeKnown === "boolean" ? trade.exitTimeKnown : Boolean(closedAt),
     symbol,
@@ -383,7 +387,7 @@ async function loadJournalTradeRows(supabase: Awaited<ReturnType<typeof createSu
   const pageSize = 1_000;
   for (let offset = 0; offset < 20_000; offset += pageSize) {
     const { data, error } = await supabase.from("journal_trades")
-      .select("account_id,payload")
+      .select("account_id,payload,created_at")
       .eq("user_id", userId)
       .order("opened_at", { ascending: false })
       .order("id")
@@ -395,12 +399,28 @@ async function loadJournalTradeRows(supabase: Awaited<ReturnType<typeof createSu
   return { data: trades, error: null };
 }
 
+async function loadJournalTradeDeletions(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, userId: string) {
+  const ids = new Set<string>();
+  for (let offset = 0; ; offset += 1_000) {
+    const { data, error } = await supabase.from("social_objects").select("id,payload")
+      .eq("user_id", userId).eq("object_type", "progress")
+      .eq("payload->>kind", JOURNAL_TRADE_DELETION_KIND).order("id").range(offset, offset + 999);
+    if (error) return { ids: [], error };
+    for (const row of data ?? []) {
+      const id = cleanId(row.payload?.tradeId);
+      if (id) ids.add(id);
+    }
+    if (!data || data.length < 1_000) break;
+  }
+  return { ids: [...ids], error: null };
+}
+
 export async function GET(request: NextRequest) {
   const { actor, supabase } = await journalClient(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false, accounts: [], trades: [], imports: [] });
 
-  const [accountResult, tradeResult, importResult, evidenceResult, accountStateResult] = await Promise.all([
+  const [accountResult, tradeResult, importResult, evidenceResult, accountStateResult, tradeDeletions] = await Promise.all([
     supabase
       .from("journal_accounts")
       .select("id,name,source,created_at,updated_at")
@@ -428,9 +448,10 @@ export async function GET(request: NextRequest) {
       .eq("object_type", "progress")
       .eq("payload->>kind", JOURNAL_ACCOUNT_STATE_KIND)
       .limit(500),
+    loadJournalTradeDeletions(supabase, actor.userId),
   ]);
 
-  const error = accountResult.error ?? tradeResult.error ?? importResult.error;
+  const error = accountResult.error ?? tradeResult.error ?? importResult.error ?? tradeDeletions.error;
   if (error) {
     if (tableUnavailable(error.code)) {
       return NextResponse.json({ cloud: false, accounts: [], trades: [], imports: [] });
@@ -459,8 +480,14 @@ export async function GET(request: NextRequest) {
 
   const visibleState = applyJournalAccountResets({
     version: 1,
+    deletedTradeIds: tradeDeletions.ids,
     accounts: accountRows.map((row) => fromAccountRow(row, accountStates.get(row.id))),
-    trades: ((tradeResult.data ?? []) as TradeRow[]).map((row) => ({ ...row.payload, account: accountNames.get(row.account_id) ?? row.payload.account })),
+    trades: ((tradeResult.data ?? []) as TradeRow[]).map((row) => ({ ...row.payload,
+      // Existing manually booked history already has a real database receipt
+      // clock. Recover it without guessing or changing the execution date.
+      recordedAt: row.payload.recordedAt ?? (row.payload.sourceImportId?.startsWith("manual:") ? row.created_at : undefined),
+      account: accountNames.get(row.account_id) ?? row.payload.account,
+    })),
     imports: ((importResult.data ?? []) as ImportRow[]).map((row) => ({ ...row.payload, account: accountNames.get(row.account_id) ?? row.payload.account })),
     evidence: evidenceResult.error
       ? []
@@ -500,6 +527,11 @@ export async function POST(request: NextRequest) {
   }
 
   const action = cleanText(body.action, 20);
+  const tradeDeletions = ["copy-trades", "create-trade", "update", "sync", "append-paper"].includes(action)
+    ? await loadJournalTradeDeletions(supabase, actor.userId) : { ids: [], error: null };
+  if (tradeDeletions.error) return NextResponse.json({ error: "Journal deletion history could not be checked. Retry without changing your trade." }, { status: 502 });
+  const deletedTradeIds = new Set(tradeDeletions.ids);
+  const wasDeleted = (trade: JournalTrade) => deletedTradeIds.has(trade.id) || deletedTradeIds.has(journalTradeIdentity(trade));
   if (action === "reset-zyon-journal") {
     if (body.confirmation !== "RESET ZYON JOURNAL") {
       return NextResponse.json({ error: "Confirm the ZYON Journal reset." }, { status: 400 });
@@ -852,6 +884,7 @@ export async function POST(request: NextRequest) {
 
     const copies = new Map<string, JournalTrade>();
     for (const { account_id: sourceId, payload: trade } of sources) {
+      if (trade && wasDeleted(trade)) continue;
       const source = accounts.get(sourceId);
       if (!source || !trade?.id || sourceId === destinationId || isZyonJournalAccountName(source) || trade.sourceImportId?.startsWith("zyon:")) continue;
       const resetAt = accountStates.get(`journal-account-state:${sourceId}`)?.resetAt;
@@ -888,6 +921,8 @@ export async function POST(request: NextRequest) {
       || typeof suppliedPnl !== "number" || !Number.isFinite(suppliedPnl)) {
       return NextResponse.json({ error: "Complete the required manual trade details." }, { status: 400 });
     }
+    if (wasDeleted(trade)) return NextResponse.json({ error: "That trade was deleted. Add a new trade instead." }, { status: 409 });
+    trade.recordedAt = new Date().toISOString();
     const accountKey = cleanId(body.accountId) || accountId(account);
     const { data: accountRow, error: accountError } = await supabase
       .from("journal_accounts")
@@ -952,6 +987,8 @@ export async function POST(request: NextRequest) {
     if (existingError) return NextResponse.json({ error: "Journal trade could not be checked." }, { status: 502 });
     if (!existingRow) return NextResponse.json({ error: "That Journal trade no longer exists." }, { status: 404 });
     trade.journalCopy = (existingRow.payload as JournalTrade).journalCopy;
+    trade.recordedAt = (existingRow.payload as JournalTrade).recordedAt;
+    if (wasDeleted(trade)) return NextResponse.json({ error: "That trade was deleted." }, { status: 409 });
     const previousTrade = sanitizeTrade(existingRow.payload, account);
     const { error } = await supabase
       .from("journal_trades")
@@ -994,7 +1031,7 @@ export async function POST(request: NextRequest) {
   const id = cleanId(body.accountId) || accountId(account);
   const trades = (Array.isArray(body.trades) ? body.trades : [])
     .map((trade) => sanitizeTrade(trade, account))
-    .filter((trade): trade is JournalTrade => Boolean(trade && !trade.id.startsWith(JOURNAL_COPY_PREFIX)))
+    .filter((trade): trade is JournalTrade => Boolean(trade && !trade.id.startsWith(JOURNAL_COPY_PREFIX) && !wasDeleted(trade)))
     .slice(0, 5_000);
   if (appendPaper && trades.some(trade => !trade.id.startsWith("paper:"))) {
     return NextResponse.json({ error: "Choose a linked demo journal with paper execution records." }, { status: 400 });
@@ -1033,7 +1070,9 @@ export async function POST(request: NextRequest) {
       closed_at: trade.closedAt,
       payload: trade,
     }));
-    const { error } = await supabase.from("journal_trades").upsert(rows, { onConflict: "user_id,id", ...(appendPaper ? { ignoreDuplicates: true } : {}) });
+    // Recovery/import synchronization inserts missing outcomes only. Edits
+    // use the explicit update action; stale devices cannot overwrite them.
+    const { error } = await supabase.from("journal_trades").upsert(rows, { onConflict: "user_id,id", ignoreDuplicates: true });
     if (error) return NextResponse.json({ error: "Imported trades could not be saved." }, { status: 502 });
   }
 
@@ -1075,36 +1114,48 @@ export async function DELETE(request: NextRequest) {
       .eq("id", tradeId)
       .maybeSingle();
     if (tradeError) return NextResponse.json({ error: "Journal trade could not be checked." }, { status: 502 });
-    if (!tradeRow) return NextResponse.json({ cloud: true, deleted: false });
-    const storedTrade = tradeRow.payload as Partial<JournalTrade>;
-    if (isZyonJournalAccountName(storedTrade.account) || String(storedTrade.sourceImportId ?? "").startsWith("zyon:")) {
-      return NextResponse.json({ error: "Verified ZYON outcomes stay read-only." }, { status: 400 });
+    const storedTrade = tradeRow?.payload as JournalTrade | undefined;
+    if (storedTrade && (isZyonJournalAccountName(storedTrade.account) || String(storedTrade.sourceImportId ?? "").startsWith("zyon:"))) {
+      return NextResponse.json({ error: "Automatic outcomes cannot be deleted here." }, { status: 400 });
     }
-    const linked = await findLinkedTradePosts(supabase, actor.userId, tradeId);
-    if (linked.error) return NextResponse.json({ error: "Linked Socials posts could not be checked." }, { status: 502 });
-    const linkedIds = linked.rows.map((row) => row.id);
-    if (linkedIds.length) {
-      const childDelete = await supabase
-        .from("social_objects")
-        .delete()
+    const canonical = storedTrade ? journalTradeIdentity(storedTrade)
+      : cleanId(request.nextUrl.searchParams.get("canonicalTradeId")) || tradeId;
+    const family: Array<{ id: string; payload: JournalTrade }> = [];
+    for (let offset = 0; ; offset += 1_000) {
+      const { data, error } = await supabase.from("journal_trades").select("id,payload")
         .eq("user_id", actor.userId)
-        .in("parent_id", linkedIds);
-      if (childDelete.error) return NextResponse.json({ error: "Linked post activity could not be removed." }, { status: 502 });
-      const postDelete = await supabase
-        .from("social_objects")
-        .delete()
-        .eq("user_id", actor.userId)
-        .in("id", linkedIds);
-      if (postDelete.error) return NextResponse.json({ error: "Linked Socials posts could not be removed." }, { status: 502 });
+        .or(`id.eq.${canonical},payload->journalCopy->>originalTradeId.eq.${canonical}`)
+        .order("id").range(offset, offset + 999);
+      if (error) return NextResponse.json({ error: "The trade's journal references could not be checked." }, { status: 502 });
+      family.push(...(data ?? []) as Array<{ id: string; payload: JournalTrade }>);
+      if (!data || data.length < 1_000) break;
     }
-    const journalDelete = await supabase
-      .from("journal_trades")
-      .delete()
-      .eq("user_id", actor.userId)
-      .eq("id", tradeId);
-    if (journalDelete.error) return NextResponse.json({ error: "Journal trade could not be removed." }, { status: 502 });
-    return NextResponse.json({ cloud: true, deleted: true, linkedPostsDeleted: linkedIds.length });
+    let linkedPostsDeleted = 0;
+    for (const row of family) {
+      const linked = await findLinkedTradePosts(supabase, actor.userId, row.id);
+      if (linked.error) return NextResponse.json({ error: "Linked Socials posts could not be checked." }, { status: 502 });
+      const linkedIds = linked.rows.map(post => post.id);
+      if (!linkedIds.length) continue;
+      const children = await supabase.from("social_objects").delete().eq("user_id", actor.userId).in("parent_id", linkedIds);
+      if (children.error) return NextResponse.json({ error: "Linked post activity could not be removed." }, { status: 502 });
+      const posts = await supabase.from("social_objects").delete().eq("user_id", actor.userId).in("id", linkedIds);
+      if (posts.error) return NextResponse.json({ error: "Linked Socials posts could not be removed." }, { status: 502 });
+      linkedPostsDeleted += linkedIds.length;
+    }
+    // Retain the source rows for recovery, but exclude this outcome (including
+    // all current/future copies) from every read and reject stale re-uploads.
+    const deletedAt = new Date().toISOString();
+    const deletionId = `journal-trade-deletion:${createHash("sha256").update(canonical).digest("hex")}`;
+    const { error: deletionError } = await supabase.from("social_objects").upsert({
+      user_id: actor.userId, id: deletionId, object_type: "progress", scope: "private",
+      author_label: actor.label, desk_id: null, parent_id: null,
+      payload: { kind: JOURNAL_TRADE_DELETION_KIND, tradeId: canonical, deletedAt }, updated_at: deletedAt,
+    }, { onConflict: "user_id,id" });
+    if (deletionError) return NextResponse.json({ error: "Journal deletion could not be saved. Please retry." }, { status: 502 });
+    return NextResponse.json({ cloud: true, deleted: true, linkedPostsDeleted,
+      deletedTradeIds: [...new Set([canonical, tradeId, ...family.map(row => row.id)])] });
   }
+
   const importId = cleanId(request.nextUrl.searchParams.get("importId"));
   if (!importId) return NextResponse.json({ error: "Choose an import to remove." }, { status: 400 });
 

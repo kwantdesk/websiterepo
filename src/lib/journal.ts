@@ -20,6 +20,8 @@ export type JournalTrade = {
   account: string;
   openedAt: string;
   closedAt: string | null;
+  /** When a manually booked result was added, independently of its trade date. */
+  recordedAt?: string;
   entryTimeKnown?: boolean;
   exitTimeKnown?: boolean;
   symbol: string;
@@ -65,6 +67,28 @@ export type JournalTrade = {
 export const JOURNAL_COPY_PREFIX = "journal-copy:";
 export const JOURNAL_COPY_LIMIT = 100;
 
+export function journalTradeIdentity(trade: Pick<JournalTrade, "id" | "journalCopy">) {
+  return trade.journalCopy?.originalTradeId || trade.id;
+}
+
+/** Deletion applies to an outcome and every journal reference to it. */
+export function applyJournalTradeDeletions(state: JournalState): JournalState {
+  if (!state.deletedTradeIds?.length) return state;
+  const deleted = new Set(state.deletedTradeIds);
+  const removed = new Set(state.trades.filter(trade => deleted.has(trade.id)
+    || deleted.has(journalTradeIdentity(trade))).map(trade => trade.id));
+  return { ...state,
+    trades: state.trades.filter(trade => !removed.has(trade.id)),
+    evidence: state.evidence.filter(item => !item.tradeId || !removed.has(item.tradeId) && !deleted.has(item.tradeId)),
+  };
+}
+
+export function removeJournalTradeEverywhere(state: JournalState, trade: JournalTrade, deletedIds: string[] = []) {
+  return applyJournalTradeDeletions({ ...state,
+    deletedTradeIds: [...new Set([...(state.deletedTradeIds ?? []), journalTradeIdentity(trade), trade.id, ...deletedIds])],
+  });
+}
+
 export function uniqueJournalOutcomes(trades: JournalTrade[]) {
   const outcomes = new Map<string, JournalTrade>();
   for (const trade of trades) {
@@ -92,6 +116,7 @@ export type JournalAccount = {
 
 /** A journal reset changes reporting only, never the underlying trading ledger. */
 export function applyJournalAccountResets(state: JournalState): JournalState {
+  state = applyJournalTradeDeletions(state);
   const cutoffs = new Map(state.accounts.flatMap(account => {
     const cutoff = Date.parse(account.resetAt ?? "");
     return Number.isFinite(cutoff) ? [[account.name, cutoff] as const] : [];
@@ -103,7 +128,7 @@ export function applyJournalAccountResets(state: JournalState): JournalState {
   };
   return {
     ...state,
-    trades: state.trades.filter(trade => visible(trade.account, trade.journalCopy?.importedAt ?? trade.closedAt ?? trade.openedAt)),
+    trades: state.trades.filter(trade => visible(trade.account, trade.journalCopy?.importedAt ?? trade.recordedAt ?? trade.closedAt ?? trade.openedAt)),
     imports: state.imports.filter(batch => visible(batch.account, batch.importedAt)),
     evidence: state.evidence.filter(item => visible(item.account, item.importedAt)),
   };
@@ -151,6 +176,7 @@ export type JournalImportBatch = {
 
 export type JournalState = {
   version: 1;
+  deletedTradeIds?: string[];
   zyonResetAt?: string | null;
   accounts: JournalAccount[];
   trades: JournalTrade[];

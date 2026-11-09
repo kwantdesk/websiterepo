@@ -66,8 +66,10 @@ import KwantLoader from "@/components/KwantLoader";
 import { formatTradeHoldDuration, journalTradeDetails } from "@/lib/journalTradeDetails";
 import { deleteJournalSelection } from "@/lib/journalBulkDelete";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
+import { mergeJournalHydration, mergeJournalSnapshots } from "@/lib/journalStateMerge";
 import {
   applyJournalAccountResets,
+  removeJournalTradeEverywhere,
   calculateJournalAdvancedStats,
   calculateJournalExecutionStats,
   calculateJournalStats,
@@ -210,6 +212,7 @@ type SocialJournalResponse = {
 
 type CloudJournalResponse = {
   cloud?: boolean;
+  deletedTradeIds?: string[];
   zyonResetAt?: string | null;
   accounts?: JournalAccount[];
   trades?: JournalTrade[];
@@ -988,6 +991,8 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
   const resolvedAccountKey = accountKey || "local";
   const initialMemory = JOURNAL_MEMORY_CACHE.get(resolvedAccountKey);
   const [rawState, setState] = useState<JournalState>(() => initialMemory?.state ?? EMPTY_JOURNAL_STATE);
+  const journalStateRef = useRef(rawState);
+  journalStateRef.current = rawState;
   const state = useMemo(() => applyJournalAccountResets(rawState), [rawState]);
   const [resetJournalTarget, setResetJournalTarget] = useState<string | null>(null);
   const [showJournalManager, setShowJournalManager] = useState(false);
@@ -1130,6 +1135,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
 
   useEffect(() => {
     let active = true;
+    const stateAtLoadStart = journalStateRef.current;
     const memory = JOURNAL_MEMORY_CACHE.get(resolvedAccountKey);
     if (memory) {
       setState(purgeDeletedJournalAccounts(
@@ -1159,6 +1165,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
       const remembered = memory ? purgeDeletedJournalAccounts(memory.state, deletions) : null;
       const filteredCloud = purgeDeletedJournalAccounts({
         version: 1,
+        deletedTradeIds: cloud.deletedTradeIds ?? [],
         accounts: Array.isArray(cloud.accounts) ? cloud.accounts : [],
         trades: Array.isArray(cloud.trades) ? cloud.trades : [],
         imports: Array.isArray(cloud.imports) ? cloud.imports : [],
@@ -1175,9 +1182,11 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
       cloudAccounts.forEach((account) => accounts.set(account.id, { ...account,
         resetAt: latestZyonJournalReset(accounts.get(account.id)?.resetAt, account.resetAt),
       }));
-      const keepCachedTrade = (trade: JournalTrade) => !cloud.cloud || !trade.id.startsWith(JOURNAL_COPY_PREFIX);
-      const trades = new Map(stored.trades.filter(keepCachedTrade).map((trade) => [trade.id, trade]));
-      remembered?.trades.filter(keepCachedTrade).forEach((trade) => trades.set(trade.id, trade));
+      // Absence from one asynchronous response is not a deletion. Cloud
+      // tombstones are the authority for removal, including copied outcomes.
+      const keepCachedTrade = (_trade: JournalTrade) => true;
+      const trades = new Map(stored.trades.map((trade) => [trade.id, trade]));
+      remembered?.trades.forEach((trade) => trades.set(trade.id, trade));
       cloudTrades.forEach((trade) => trades.set(trade.id, trade));
       const imports = new Map(stored.imports.map((batch) => [batch.id, batch]));
       remembered?.imports.forEach((batch) => imports.set(batch.id, batch));
@@ -1187,6 +1196,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
       cloudEvidence.forEach((item) => evidence.set(item.id, item));
       const mergedSources = {
         ...stored,
+        deletedTradeIds: [...new Set([...(stored.deletedTradeIds ?? []), ...(remembered?.deletedTradeIds ?? []), ...(cloud.deletedTradeIds ?? [])])],
         zyonResetAt: latestZyonJournalReset(stored.zyonResetAt, remembered?.zyonResetAt, cloud.zyonResetAt),
         accounts: [...accounts.values()],
         trades: [...trades.values()],
@@ -1206,8 +1216,8 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
             ? { ...account, resetAt: latestZyonJournalReset(account.resetAt, resetAccount.resetAt) } : account);
         }
       }
-      setState({ ...merged, zyonResetAt: latestZyonJournalReset(merged.zyonResetAt,
-        zyonResetApplied.current?.accountKey === resolvedAccountKey ? zyonResetApplied.current.resetAt : null) });
+      setState(current => mergeJournalHydration({ ...merged, zyonResetAt: latestZyonJournalReset(merged.zyonResetAt,
+        zyonResetApplied.current?.accountKey === resolvedAccountKey ? zyonResetApplied.current.resetAt : null) }, current, stateAtLoadStart));
       setCloudState(cloud.cloud ? "cloud" : "local");
       setJournalCloudLoaded(Boolean(cloud.cloud));
       setReady(true);
@@ -1355,12 +1365,12 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
           const knownAccounts = new Set(current.accounts.map((account) => account.id));
           const trades = stored.trades.filter((trade) => !knownTrades.has(trade.id) && !trade.id.startsWith(JOURNAL_COPY_PREFIX));
           const accounts = stored.accounts.filter((account) => !knownAccounts.has(account.id));
-          if (!trades.length && !accounts.length) return current;
-          return {
+          return mergeJournalSnapshots(current, {
             ...current,
+            deletedTradeIds: stored.deletedTradeIds,
             accounts: [...current.accounts, ...accounts],
             trades: [...current.trades, ...trades],
-          };
+          });
         });
       }).catch(() => {
         // Nothing to merge is not an error worth surfacing; the next close retries.
@@ -1998,6 +2008,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
 
   const submitManualTrade = async () => {
     if ((!selectedAccountCanAddTrade && !editingTrade) || manualTradeSaving) return;
+    const owner = resolvedAccountKey;
     let outcome: ReturnType<typeof journalManualOutcome>;
     try {
       // A chosen execution date alone does not assert that the time is known.
@@ -2040,11 +2051,12 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
     setManualTradeError("");
     try {
       const preparedEvidence = await Promise.all(manualEvidenceFiles.map(prepareManualEvidence));
+      if (journalOwnerRef.current !== owner) return;
       const id = editingTrade?.id ?? crypto.randomUUID();
       const sourceImportId = editingTrade?.sourceImportId ?? `manual:${id}`;
       const tradeAccount = editingTrade?.account ?? accountFilter;
       const now = new Date().toISOString();
-      const trade: JournalTrade = {
+      let trade: JournalTrade = {
         id,
         account: tradeAccount,
         ...outcome,
@@ -2075,6 +2087,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
         sourceFile: editingTrade?.sourceFile ?? "KwantDesk Manual",
         sourceSheet: editingTrade?.sourceSheet,
         sourceRows: editingTrade?.sourceRows ?? [],
+        recordedAt: editingTrade ? editingTrade.recordedAt : now,
         fingerprint: editingTrade?.fingerprint ?? sourceImportId,
         journalCopy: editingTrade?.journalCopy,
       };
@@ -2097,12 +2110,18 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
             ? { action: "update", trade }
             : { action: "create-trade", account: tradeAccount, accountId: accountRecord.get(tradeAccount)?.id, trade }),
         });
-      const result = await response.json() as { cloud?: boolean; error?: string; linkedPostsUpdated?: number };
+      const result = await response.json() as { cloud?: boolean; error?: string; linkedPostsUpdated?: number; trade?: JournalTrade };
       if (!response.ok || !result.cloud) throw new Error(result.error || "Trade save failed.");
-      await Promise.all(evidence.map(async (item) => {
-          if (!await persistEvidence(item)) throw new Error("Evidence save failed.");
-          return true;
-        }));
+      if (journalOwnerRef.current !== owner) return;
+      trade = result.trade ?? trade;
+      const evidenceResults = await Promise.all(evidence.map(persistEvidence));
+      if (journalOwnerRef.current !== owner) return;
+      const latest = journalStateRef.current;
+      await saveJournalState(owner, { ...latest,
+        trades: [...latest.trades.filter(candidate => candidate.id !== trade.id), trade],
+        evidence: [...evidence, ...latest.evidence].slice(0, 500),
+      });
+      if (journalOwnerRef.current !== owner) return;
       setState((current) => ({
         ...current,
         trades: editingTrade
@@ -2122,6 +2141,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
           : "Trade updated.");
         window.dispatchEvent(new CustomEvent("kwantdesk:social-post-created"));
       }
+      if (evidenceResults.some(saved => !saved)) setJournalLifecycleMessage("Trade saved. Some attachments are saved on this device but could not sync yet.");
     } catch (error) {
       setManualTradeError(error instanceof Error ? error.message : "The manual trade could not be prepared.");
     } finally {
@@ -2649,6 +2669,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
     if (!window.confirm(`Remove "${batch.fileName}" and every Journal record created by this import?`)) return;
     setState((current) => ({
       ...current,
+      deletedTradeIds: [...new Set([...(current.deletedTradeIds ?? []), ...current.trades.filter(trade => trade.sourceImportId === batch.id).flatMap(trade => [trade.id, trade.journalCopy?.originalTradeId ?? trade.id])])],
       trades: current.trades.filter((trade) => trade.sourceImportId !== batch.id),
       evidence: current.evidence.filter((item) => item.sourceImportId !== batch.id),
       imports: current.imports.filter((item) => item.id !== batch.id),
@@ -2668,11 +2689,13 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
     setTradeMenuId(null);
     setTradeMutationError("");
     try {
-      const response = await fetch(`/api/journal?tradeId=${encodeURIComponent(trade.id)}`, { method: "DELETE" });
-      const result = await response.json() as { cloud?: boolean; error?: string; linkedPostsDeleted?: number };
+      const response = await fetch(`/api/journal?tradeId=${encodeURIComponent(trade.id)}&canonicalTradeId=${encodeURIComponent(trade.journalCopy?.originalTradeId ?? trade.id)}`, { method: "DELETE" });
+      const result = await response.json() as { cloud?: boolean; error?: string; linkedPostsDeleted?: number; deletedTradeIds?: string[] };
       if (!response.ok || !result.cloud) throw new Error(result.error || "The trade could not be deleted.");
       if (journalOwnerRef.current !== owner) return;
-      setState((current) => ({ ...current, trades: current.trades.filter((candidate) => candidate.id !== trade.id) }));
+      await saveJournalState(owner, removeJournalTradeEverywhere(journalStateRef.current, trade, result.deletedTradeIds));
+      if (journalOwnerRef.current !== owner) return;
+      setState((current) => removeJournalTradeEverywhere(current, trade, result.deletedTradeIds));
       setSelectedTradeId((id) => id === trade.id ? null : id);
       setCloudState("cloud");
       setJournalLifecycleMessage(result.linkedPostsDeleted
@@ -3770,7 +3793,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
             <div className="p-5">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-danger/25 bg-danger/10 text-danger"><Trash2 className="h-5 w-5" /></span>
               <h2 className="mt-5 text-[16px] font-semibold text-foreground">Delete {deleteTradeTarget.symbol} trade?</h2>
-              <p className="mt-2 text-[9px] leading-5 text-muted">{deleteTradeTarget.journalCopy ? `This removes the copy from ${deleteTradeTarget.account}. The original trade stays in its source journal. Any Socials post linked to this copy is also removed.` : "This removes the Journal record and any Socials post linked to it."}</p>
+              <p className="mt-2 text-[9px] leading-5 text-muted">This removes this trade from Overall, Calendar and every journal containing it, along with linked Socials posts.</p>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" onClick={() => setDeleteTradeTargetId(null)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Cancel</button>

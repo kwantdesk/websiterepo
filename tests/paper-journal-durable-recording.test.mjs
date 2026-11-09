@@ -80,7 +80,7 @@ test("cloud recording sends new rows once and retries failed batches without ope
 
 test("append-only cloud sync cannot overwrite journal reviews and is wired to trading", () => {
   const api = readFileSync(new URL("../src/app/api/journal/route.ts", import.meta.url), "utf8");
-  assert.match(api, /from\("journal_trades"\)\.upsert\(rows, \{ onConflict: "user_id,id", \.\.\.\(appendPaper \? \{ ignoreDuplicates: true \}/);
+  assert.match(api, /from\("journal_trades"\)\.upsert\(rows, \{ onConflict: "user_id,id", ignoreDuplicates: true \}/);
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
   assert.match(workspace, /void syncPaperJournalCloud\(key, next\)/);
   assert.match(workspace, /window.addEventListener\("online", retry\)/);

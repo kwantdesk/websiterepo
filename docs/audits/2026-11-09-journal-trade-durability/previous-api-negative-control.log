@@ -1,0 +1,112 @@
+(node:31120) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✖ real create/read API durably returns a backdated manual outcome in its journal and Overall (30.1824ms)
+✖ real delete API hides original and all copies, retains recoverable rows and blocks stale upload revival (1.7601ms)
+✖ stale recovery synchronization cannot overwrite a saved review or move its trade date (2.7297ms)
+✖ failed deletion acknowledgement retains the trade instead of claiming it was removed (1.116ms)
+✖ deletion-history read failure is a failed load, never an empty authoritative journal (1.6184ms)
+✖ legacy backdated manual entries recover their real database receipt time (1.3735ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 0
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 630.9044
+
+✖ failing tests:
+
+test at tests\journal-trade-api-lifecycle.test.mjs:32:1
+✖ real create/read API durably returns a backdated manual outcome in its journal and Overall (30.1824ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+    assert.ok(saved.trade.recordedAt)
+
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tests/journal-trade-api-lifecycle.test.mjs:32:325)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests\journal-trade-api-lifecycle.test.mjs:33:1
+✖ real delete API hides original and all copies, retains recoverable rows and blocks stale upload revival (1.7601ms)
+  TypeError: Cannot read properties of undefined (reading 'includes')
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tests/journal-trade-api-lifecycle.test.mjs:33:723)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at tests\journal-trade-api-lifecycle.test.mjs:34:1
+✖ stale recovery synchronization cannot overwrite a saved review or move its trade date (2.7297ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  'old' !== 'reviewed'
+
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tests/journal-trade-api-lifecycle.test.mjs:34:389)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'old',
+    expected: 'reviewed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\journal-trade-api-lifecycle.test.mjs:35:1
+✖ failed deletion acknowledgement retains the trade instead of claiming it was removed (1.116ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  200 !== 502
+
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tests/journal-trade-api-lifecycle.test.mjs:35:248)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 502,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\journal-trade-api-lifecycle.test.mjs:36:1
+✖ deletion-history read failure is a failed load, never an empty authoritative journal (1.6184ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  200 !== 502
+
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tests/journal-trade-api-lifecycle.test.mjs:36:209)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 502,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\journal-trade-api-lifecycle.test.mjs:38:1
+✖ legacy backdated manual entries recover their real database receipt time (1.3735ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/tests/journal-trade-api-lifecycle.test.mjs:38:443)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

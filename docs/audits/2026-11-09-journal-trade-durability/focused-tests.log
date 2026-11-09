@@ -1,0 +1,72 @@
+(node:11772) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journalStore.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a Journal account deletion purges every locally retained record for only that account (4.9869ms)
+✔ deletion identity is case and whitespace insensitive (0.73ms)
+✔ the API treats an already-absent or local-only Journal as successfully deleted (1.3052ms)
+✔ cloud deletion also removes linked trade posts before the account cascade (2.1749ms)
+✔ the Journal and paper writer both honor persistent deletion tombstones (7.8599ms)
+(node:31232) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ reset affects only the selected journal; newly closed trades continue and originals remain intact (6.6214ms)
+✔ unreset journals do not lose any records (0.372ms)
+✔ stale saves cannot overwrite a confirmed reset or resurrect old demo trades (1.6563ms)
+✔ API reset is authenticated, targets an owned account, requires typed confirmation, and never deletes trading records (2.6045ms)
+✔ daily outcomes use a shared zero baseline with proportional profit and loss bars (11.5297ms)
+Journal load failed { code: 'TEST', message: 'offline' }
+(node:32912) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ real create/read API durably returns a backdated manual outcome in its journal and Overall (29.1691ms)
+✔ real delete API hides original and all copies, retains recoverable rows and blocks stale upload revival (14.4907ms)
+✔ stale recovery synchronization cannot overwrite a saved review or move its trade date (1.6376ms)
+✔ failed deletion acknowledgement retains the trade instead of claiming it was removed (1.7361ms)
+✔ deletion-history read failure is a failed load, never an empty authoritative journal (2.196ms)
+✔ legacy backdated manual entries recover their real database receipt time (1.2936ms)
+(node:31936) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/journal.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a newly added journal result immediately belongs to Overall exactly once (1.3341ms)
+✔ deleting an outcome removes all copies and linked evidence from all reporting inputs (1.1222ms)
+✔ stale snapshots cannot revive deleted source or copied trades (0.3929ms)
+✔ a late cloud response preserves a trade added or edited during loading (0.314ms)
+✔ cloud updates still win over unchanged cached rows (0.1902ms)
+✔ backdated manual trades added after reset stay visible at their actual calendar date (0.1906ms)
+✔ local durability retains newer trades against stale saves and persists removal (1.0862ms)
+✔ an IndexedDB read finishing late cannot overwrite a concurrently saved trade (111.6838ms)
+✔ a working but empty IndexedDB recovers a prior localStorage fallback (29.7211ms)
+(node:18824) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperAccounts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a close survives clear fills before the first journal save, plus reload (19.5422ms)
+✔ a close survives clear chart history before the first journal save, plus reload (1.1061ms)
+✔ a close survives reset demo balance before the first journal save, plus reload (0.7878ms)
+✔ legacy available fills migrate into durable evidence before clearing (0.5688ms)
+✔ every demo account exists in the journal before its first close (2.2315ms)
+✔ cloud recording sends new rows once and retries failed batches without opening Journal (1.8916ms)
+✔ append-only cloud sync cannot overwrite journal reviews and is wired to trading (4.9911ms)
+(node:29412) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/paperAccounts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ local/cloud aliases for 20 October become one linked demo journal without touching history (1.3988ms)
+✔ new empty demo journals use cloud-safe ids before their first trade (1.4696ms)
+✔ unrelated imported accounts and archived demo metadata remain intact (0.3072ms)
+✔ different names that clean to the same id are never silently merged (0.3149ms)
+✔ active native journals get one tradeable account with a seeded ledger and stable ID (11.8058ms)
+✔ linking an existing same-name demo keeps its account and balance (0.5737ms)
+✔ Journal backfills demo accounts and closed fills on open, preserving explicit deletion guards (1.604ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 942.7715
