@@ -14,7 +14,7 @@ import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} fr
 import {restoreSurfaceSelections,persistSurfaceSelections} from '../../public/gex-data-app/surface-selection-storage.js';
 import {dataRequestIdentity} from '../../public/gex-data-app/live-chart-model.js';
 import {equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor} from '../../public/gex-data-app/equity-print-interaction-model.js';
-import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor} from '../../public/gex-data-app/exchange-notification-interaction-model.js';
+import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,notificationReferenceSession} from '../../public/gex-data-app/exchange-notification-interaction-model.js';
 import {EQUITY_PRINT_COLUMNS,EXCHANGE_NOTIFICATION_COLUMNS,equitySideColorToken,equityPrintColorToken,notificationColorToken} from '../../public/gex-data-app/equity-renderers.js';
 import {formatTableValue,createTableView} from '../../public/gex-data-app/table-view.js';
 import {CONSOLIDATED_COLUMNS,flowStatisticsModel,GAINERS_COLUMNS,gainersModel,MARKET_SHARE_COLUMNS,marketShareTableModel} from '../../public/gex-data-app/options-models.js';
@@ -283,11 +283,11 @@ test('actual Dark Pool defaults remain blank/current and range overrides restore
 });
 test('actual Exchange calendar preserves legacy session, extends range across EDT/DST and restores authoritative overrides',()=>{
   const h=harness({toolId:'exchange-notifications',realCalendar:true,copied:{c_mode:'historical',c_date:'2026-10-16',c_notificationType:'LUDP'}});
-  assert.deepEqual(h.request().sort,{field:'CREATED_TIME',direction:'DESCENDING'});assert.deepEqual(h.request().filter.types,['LUDP']);assert.equal(h.request().sessionDate,'2026-10-16');
+  assert.deepEqual(h.request().sort,{field:'CREATED_TIME',direction:'DESCENDING'});assert.deepEqual(h.request().filter.types,['LUDP']);assert.deepEqual(h.request().timeRange,{startTime:'2026-10-16T13:30:00.000Z',endTime:'2026-10-17T04:00:00.000Z'});
   byLabel(h.holder,'Session Date Range').fire('click');assert.equal(byLabel(h.env.menu,'Oct 17, 2026').disabled,true);byLabel(h.env.menu,'Oct 19, 2026').fire('click');
   assert.equal(h.env.menu.isConnected,false);assert.deepEqual(h.request().timeRange,{startTime:'2026-10-16T04:00:00.000Z',endTime:'2026-10-20T04:00:00.000Z'});assert.equal(h.request().sessionDate,undefined);
   h.set('tapeSessionStart','2026-10-31');h.set('tapeSessionEnd','2026-11-02');assert.deepEqual(h.request().timeRange,{startTime:'2026-10-31T04:00:00.000Z',endTime:'2026-11-03T05:00:00.000Z'});
-  h.global.sessionDate='2026-10-16';h.global.tickers=['SPY','QQQ'];h.env.api.reflectFilterOverrides();assert.equal(h.request().sessionDate,'2026-10-16');assert.equal(h.request().timeRange,undefined);assert.deepEqual(h.request().filter.tickers,['SPY','QQQ']);
+  h.global.sessionDate='2026-10-16';h.global.tickers=['SPY','QQQ'];h.env.api.reflectFilterOverrides();assert.deepEqual(h.request().timeRange,{startTime:'2026-10-16T13:30:00.000Z',endTime:'2026-10-17T04:00:00.000Z'});assert.deepEqual(h.request().filter.tickers,['SPY','QQQ']);
   delete h.global.sessionDate;delete h.global.tickers;h.env.api.reflectFilterOverrides();assert.equal(h.request().timeRange.endTime,'2026-11-03T05:00:00.000Z');
 });
 
@@ -363,7 +363,7 @@ function harness({toolId='order-flow-consolidated',saved,copied,page={},global={
     snapshotSelections:new Map(),snapshotKey:()=>tool.id,toolCursor:null,toolPayload:null,toolPayloadQuery:null,equityPageGeneration:0,
     optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows,additionalToolRequest,dataRequestIdentity,
     equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor,mergeEquityLivePage,mergeLiveTapePage,EQUITY_PRINT_COLUMNS,EXCHANGE_NOTIFICATION_COLUMNS,equitySideColorToken,equityPrintColorToken,notificationColorToken,
-    notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,
+    notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,notificationReferenceSession,
     mountSessionDateControls,mountDarkPoolLevelLimit,matchesCurrentPayload:()=>false,popup(_anchor,_title,build){const menu=document.createElement('section');document.body.append(menu);build(menu);env.menu=menu;return menu;},mountOptionTapeSessionControls:configuration=>{env.session=configuration;env.sessionSyncs=0;return realCalendar?mountOptionTapeSessionControls(configuration):{sync(){env.sessionSyncs++;},destroy(){}};},
     GAINERS_COLUMNS,gainersModel,MARKET_SHARE_COLUMNS,marketShareTableModel,tableColumns:null,tableRows:[],tableRuntime:null,instanceKey:'test',CONSOLIDATED_COLUMNS,UNCONSOLIDATED_COLUMNS,flowStatisticsModel,
     themePaint:value=>value,compact:(value,money)=>String(money?'$':'')+value,

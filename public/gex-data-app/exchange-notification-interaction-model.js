@@ -58,3 +58,16 @@ export function notificationRequest(body,{sort,filters=[],preserveTickerFilter=f
   if(header)result.filterExpression=normalizeAPIExpression(result.filterExpression?{conjunction:'AND',filters:[result.filterExpression,header]}:header);
   validateNotificationRequest(result);return result;
 }
+
+// Reference table observed2026-11-09 starts at09:30ET, including when the
+// calendar date is explicit. The public sessionDate includes premarket events.
+// Apply only to a single UI session; caller-supplied explicit ranges stay exact.
+export function notificationReferenceSession(body){
+  if(!body?.sessionDate||body.timeRange)return structuredClone(body);
+  const date=body.sessionDate;
+  if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('Invalid notification session date.');
+  const formatter=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  const resolve=target=>{let value=target;for(let pass=0;pass<5;pass++){const p=Object.fromEntries(formatter.formatToParts(value).map(part=>[part.type,part.value]));const shown=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second),difference=target-shown;value+=difference;if(!difference)return new Date(value).toISOString();}throw Error('Cannot resolve notification session boundary.');};
+  const day=Date.parse(date+'T00:00:00Z'),result=structuredClone(body);delete result.sessionDate;
+  result.timeRange={startTime:resolve(day+570*60000),endTime:resolve(day+86400000)};return result;
+}

@@ -41,7 +41,7 @@ import {optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeFi
 import {toolControlDefault} from './tool-control-defaults.js?v=20261103';
 import {equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor} from './equity-print-interaction-model.js?v=20261103';
 import {mergeLiveTapePage} from './equity-live-page.js';
-import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor} from './exchange-notification-interaction-model.js?v=20261104';
+import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,notificationReferenceSession} from './exchange-notification-interaction-model.js?v=20261104';
 import {mountDarkPoolLevelLimit} from './dark-pool-level-controls.js?v=20261103';
 import {mountOptionTapeSessionControls} from './option-tape-session-controls.js?v=20261103';
 import {mountSessionDateControls} from './session-date-controls.js?v=20261103';
@@ -1176,7 +1176,7 @@ await boot();
       return additionalToolRequest(tool.id,controls,optionTapeRequest(tool.id,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:optionTapeHeaderFilters(tool)},body));
     }
     if(tool.id==='equity-prints')return equityPrintRequest(body,{sort:{field:getControl('tapeSortField')||'TRADE_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:equityPrintHeaderFilters()});
-    if(tool.id==='exchange-notifications')return notificationRequest(body,{sort:{field:getControl('tapeSortField')||'CREATED_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:notificationHeaderFilters(),preserveTickerFilter:tickerOverride.type!=='NONE'});
+    if(tool.id==='exchange-notifications')return notificationRequest(notificationReferenceSession(body),{sort:{field:getControl('tapeSortField')||'CREATED_TIME',direction:getControl('tapeSortDirection')||'DESCENDING'},filters:notificationHeaderFilters(),preserveTickerFilter:tickerOverride.type!=='NONE'});
     if(tool.id==='news-articles')return newsFeedRequest({...controls,...(dateOverride.type!=='NONE'?{mode:'historical'}:{})},body,{timeZone:gexTimeZone()});
     // Keep the complete chain for the reference's local, reversible expiry,
     // strike, moneyness and signed-delta selections. Never hide valid choices

@@ -22,9 +22,16 @@ export function gexToolStreamSelection(search, now = Date.now()) {
   if (bytes.toString('base64url') !== encoded || bytes.length > 3000) throw Error('Invalid live data selection.');
   const body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw Error('Invalid live data selection.');
-  const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  const marketDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const date = marketDate.format(now);
   const selectedDate = body.sessionDate ?? body.sessionDateRange?.endDate;
-  const once = Boolean(body.snapshotTime || body.timeRange || selectedDate && selectedDate < date);
+  const rangeStart=Date.parse(body.timeRange?.startTime),rangeEnd=Date.parse(body.timeRange?.endTime);
+  // Notification UI uses an observed09:30ET lower boundary. Only a bounded
+  // current-market-day window containing now remains live; past/future and
+  // other tools' historical ranges retain their one-acquisition behavior.
+  const liveNotificationRange=tool==='exchange-notifications'&&Number.isFinite(rangeStart)&&Number.isFinite(rangeEnd)
+    &&rangeStart<=now&&rangeEnd>now&&marketDate.format(rangeStart)===date&&marketDate.format(rangeEnd-1)===date;
+  const once = Boolean(body.snapshotTime || body.timeRange&&!liveNotificationRange || selectedDate && selectedDate < date);
   const pollMs = tool.startsWith('open-interest') || tool === 'iv-rank' ? 60000 : tool === 'news-articles' ? 30000 : 2000;
   return { tool, path, body, once, pollMs };
 }

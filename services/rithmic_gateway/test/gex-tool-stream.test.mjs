@@ -12,6 +12,18 @@ test('live selection preserves exact filters, historical pins acquire once indep
   assert.equal(gexToolStreamSelection(selection({ snapshotTime: '2026-11-09T15:00Z' }), now).once, true);
   for (const query of [selection({}, 'bogus'), selection() + '&tool=net-drift', '?tool=net-drift&request=***', selection({ a: 'x'.repeat(4000) })]) assert.throws(() => gexToolStreamSelection(query, now));
 });
+test('only current-day notification windows containing now refresh; past/future pins remain finite across DST',()=>{
+  for(const [now,start,end] of [['2026-10-30T15:00:00Z','2026-10-30T13:30:00Z','2026-10-31T04:00:00Z'],['2026-11-09T16:00:00Z','2026-11-09T14:30:00Z','2026-11-10T05:00:00Z']]){
+    const body={timeRange:{startTime:start,endTime:end}},at=Date.parse(now);
+    assert.equal(gexToolStreamSelection(selection(body,'exchange-notifications'),at).once,false);
+    assert.equal(gexToolStreamSelection(selection({...body,snapshotTime:now},'exchange-notifications'),at).once,true);
+    assert.equal(gexToolStreamSelection(selection(body,'net-drift'),at).once,true);
+    assert.equal(gexToolStreamSelection(selection(body,'exchange-notifications'),Date.parse(start)-1).once,true);
+    assert.equal(gexToolStreamSelection(selection(body,'exchange-notifications'),Date.parse(end)).once,true);
+  }
+  assert.equal(gexToolStreamSelection(selection({timeRange:{startTime:'bad',endTime:'bad'}},'exchange-notifications')).once,true);
+});
+
 test('real HTTP stream survives request completion, emits exact frame, releases on viewer disconnect', async () => {
   let send, verify, stopped = 0, subscriptions = 0;
   const pool = { subscribe(scope, listener, error, verified) { assert.equal(scope.path, '/v1/options/tool/net-drift'); subscriptions++; send = listener; verify = verified; return () => stopped++; } };
