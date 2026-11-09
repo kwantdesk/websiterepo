@@ -22,14 +22,17 @@ test('broker, instrument and contract isolation plus monotonic ordering across i
  assert.deepEqual(values,[7400,7400.25]);stop();
  publishChartLivePrice({...packet,price:7401,sourceTimestampMs:now+33});assert.equal(values.length,2);
 });
-test('actual watchlist ingress publishes exact midpoint before scheduling UI and rejects cached/invalid quotes',()=>{
+test('actual watchlist ingress publishes real prints first, keeps BBO in watchlist and rejects cached/invalid observations',()=>{
  const source=fs.readFileSync('src/components/KwantifyWorkspace.tsx','utf8');const ast=ts.createSourceFile('w.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let fn;
  function visit(n){if(ts.isFunctionDeclaration(n)&&n.name?.text==='publishLiveWatchlistQuote')fn=n.getText(ast);ts.forEachChild(n,visit)}visit(ast);assert(fn);
  const order=[],seen=[];const stop=subscribeChartDisplayPrice('actual-ingress','GC','GCZ6','Databento',x=>{order.push('chart');seen.push(x.price)});
  const scope={chartQuoteKey,publishChartLivePrice,marketTimestamp:x=>Number(x),displayCmeSymbol:x=>x,liveWatchlistSnapshots:new Map(),liveWatchlistFlashTimers:new Map(),setTimeout:()=>1,clearTimeout:()=>{},scheduleLiveWatchlistPaint:()=>order.push('watchlist'),Date,Number};
  vm.runInNewContext(ts.transpileModule(fn+';this.publish=publishLiveWatchlistQuote',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,scope);
- scope.publish('Databento::GC',{instrument:'GC',contractSymbol:'GCZ6',mid:4000.05,timestamp:now+100});
- assert.deepEqual(order,['chart','watchlist']);assert.deepEqual(seen,[4000.05]);
+ scope.publish('Databento::GC',{instrument:'GC',contractSymbol:'GCZ6',mid:4000.1,timestamp:now+100,isTrade:true});
+ assert.deepEqual(order,['chart','watchlist']);assert.deepEqual(seen,[4000.1]);
+ scope.publish('Databento::GC',{instrument:'GC',contractSymbol:'GCZ6',mid:4000.05,timestamp:now+104,isTrade:false});
+ assert.equal(seen.length,1,'BBO midpoint must not become an execution candle close');assert.equal(scope.liveWatchlistSnapshots.get('Databento::GC').mid,4000.05);
+ scope.publish('Databento::GC',{instrument:'GC',contractSymbol:'GCZ6',mid:4000.2,timestamp:now+103,isTrade:true});assert.deepEqual(seen,[4000.1,4000.2],'quote watermark cannot suppress the real trade');
  scope.publish('Databento::GC',{instrument:'GC',contractSymbol:'GCZ6',mid:4000.1,timestamp:now+101,cached:true});
- scope.publish('Databento::GC',{instrument:'GC',contractSymbol:'GCZ6',mid:NaN,timestamp:now+102});assert.equal(seen.length,1);stop();
+ scope.publish('Databento::GC',{instrument:'GC',contractSymbol:'GCZ6',mid:NaN,timestamp:now+102});assert.equal(seen.length,2);stop();
 });

@@ -1,0 +1,10 @@
+{
+  "checks": "160 coherent real price paints; midpoint isolation; older tape/extrema; rollover; event-bar atomic paint",
+  "paints": 160,
+  "p95IngressToBothApisMs": 0.20000000298023224,
+  "maxIngressToBothApisMs": 1.2999999970197678,
+  "maxCandleLineApiDifferenceMs": 0.6000000014901161,
+  "replayIsolation": true,
+  "errors": [],
+  "scope": "Actual Chart and Lightweight Charts, isolated classified fixtures; not measured exchange transport latency"
+}

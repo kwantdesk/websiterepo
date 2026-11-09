@@ -154,7 +154,7 @@ import {
 import { mergeHistoricalAndLiveCandle, retainFormingCandleExtrema } from "@/lib/liveCandleAuthority";
 import { ObservedCandleHistory, clockCandleHistoryNeedsRedraw, clockCandleTimelineChanged } from "@/lib/observedCandleHistory";
 import { CLOSED_CHART_HISTORY_EVENT, type ClosedChartHistoryDetail } from "@/lib/chartLiveEvents";
-import { createLiveQuotePriceLine, subscribeChartDisplayPrice } from "@/lib/liveChartPrice";
+import { advanceCandleFromLivePrice, createLiveQuotePriceLine, subscribeChartDisplayPrice } from "@/lib/liveChartPrice";
 import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   CHART_INDICATOR_BY_ID,
@@ -3408,6 +3408,7 @@ function Chart({
   const candleSeriesRef = useRef<ReturnType<IChartApi["addCandlestickSeries"]> | null>(null);
   const priceAxisCenterInsetsRef = useRef({ topInset: 0, bottomInset: 0 });
   const priceAxisLiveQuoteRef = useRef<number | null>(null);
+  const liveCandlePricePaintRef = useRef<((candle: Candle) => void) | null>(null);
   const overlayChartSeriesRef = useRef(new Map<string,
     | { kind: "line"; series: ReturnType<IChartApi["addLineSeries"]> }
     | { kind: "candlestick"; series: ReturnType<IChartApi["addCandlestickSeries"]>; volumeWidth: OverlayVolumeWidthPrimitive }
@@ -4761,6 +4762,7 @@ function Chart({
           low: paintedCandle.low,
           close: paintedCandle.close,
         }, historicalUpdate);
+        if (!historicalUpdate) liveCandlePricePaintRef.current?.(candle);
         recordChartTickPaint(instrument, candle.sourceEndTimestamp);
         if (!historicalUpdate && liveFootprintEnabledRef.current && footprintPrimitiveRef.current) {
           liveFootprintSourceCandlesRef.current = mergeLiveIndicatorCandle(
@@ -7149,11 +7151,36 @@ function Chart({
     if (!series || !liveCandleEventKey || replayTimestampMs != null && replayTimestampMs > 0) return;
     const marker = createLiveQuotePriceLine(series, livePriceLineColor);
     priceAxisLiveQuoteRef.current = null;
+    const paintPrice = (price: number, sourceTimestampMs: number) => {
+      priceAxisLiveQuoteRef.current = price;
+      marker.update({ key: liveCandleEventKey, symbol: instrument, contractSymbol: contractSymbol || undefined,
+        price, sourceTimestampMs, receivedAt: Date.now() });
+    };
+    // Candle and last-trade line are submitted to the chart in the same turn.
+    // This also covers event bars, whose boundaries must come from the tape.
+    const paintCandlePrice = (candle: Candle) => paintPrice(candle.close, candle.sourceEndTimestamp ?? candle.timestamp);
+    liveCandlePricePaintRef.current = paintCandlePrice;
     const unsubscribe = subscribeChartDisplayPrice(liveCandleEventKey, instrument, contractSymbol || undefined,
       candleSourceIdentity?.split(":")[0],
-      quote => { if (!liveReplayActiveRef.current) { priceAxisLiveQuoteRef.current = quote.price; marker.update(quote); } });
-    return () => { priceAxisLiveQuoteRef.current = null; unsubscribe(); marker.dispose(); };
-  }, [candleSourceIdentity, chartReadyRevision, contractSymbol, instrument, liveCandleEventKey, livePriceLineColor, replayTimestampMs]);
+      quote => {
+        if (liveReplayActiveRef.current || quote.priceType === "quote") return;
+        if (quote.priceType === "trade" || quote.priceType === "index") {
+          if (timeframeToMs(timeframe) === null) return;
+          const candle = advanceCandleFromLivePrice(latestCandleRef.current, quote, timeframe ?? "1m");
+          if (!candle) return; // Never invent a new bar/open from a coalesced quote.
+          window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+            detail: { key: liveCandleEventKey, candle, sourceTimestampMs: quote.sourceTimestampMs, paintInCurrentFrame: true },
+          }));
+          return;
+        }
+        // Legacy/unclassified observations retain their existing display path.
+        paintPrice(quote.price, quote.sourceTimestampMs);
+      });
+    return () => {
+      if (liveCandlePricePaintRef.current === paintCandlePrice) liveCandlePricePaintRef.current = null;
+      priceAxisLiveQuoteRef.current = null; unsubscribe(); marker.dispose();
+    };
+  }, [candleSourceIdentity, chartReadyRevision, contractSymbol, instrument, liveCandleEventKey, livePriceLineColor, replayTimestampMs, timeframe]);
 
   const indicatorPaletteTheme = useMemo(() => ({
     up: settings.upColor,

@@ -1,11 +1,27 @@
 import type {ISeriesApi} from "lightweight-charts";
+import type { Candle } from "./backtester";
+import { chartTimeBucketStartMs } from "./chartTimeBucket";
 
-/** The live quote marker is independent of execution-built OHLC and studies.
- * No interpolation, candle mutation, network calls or React commits. */
+/** Classified live prices share chart ingress without network calls or React
+ * commits. Only real prints/index observations may advance candle display. */
 export type ChartLivePrice = {
   key: string; symbol: string; contractSymbol?: string;
   price: number; sourceTimestampMs: number; receivedAt: number;
+  /** A quote midpoint is not an executed candle close. */
+  priceType?: "trade" | "quote" | "index";
 };
+
+/** Fast display of a verified print in an already established clock candle.
+ * The lossless tape still owns bar creation, volume, delta and full history. */
+export function advanceCandleFromLivePrice(candle: Candle | null, quote: ChartLivePrice, timeframe: string): Candle | null {
+  if (!candle || (quote.priceType !== "trade" && quote.priceType !== "index")
+    || !Number.isFinite(quote.price) || quote.price <= 0 || !Number.isFinite(quote.sourceTimestampMs)
+    || ![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)
+    || chartTimeBucketStartMs(quote.sourceTimestampMs, timeframe) !== candle.timestamp
+    || quote.sourceTimestampMs < (candle.sourceEndTimestamp ?? candle.timestamp)) return null;
+  return { ...candle, close: quote.price, high: Math.max(candle.high, quote.price),
+    low: Math.min(candle.low, quote.price), sourceEndTimestamp: quote.sourceTimestampMs };
+}
 type Listener = { symbol: string; contractSymbol?: string; receive: (quote: ChartLivePrice) => void };
 const latest = new Map<string, ChartLivePrice>();
 const listeners = new Map<string, Set<Listener>>();
@@ -14,6 +30,10 @@ const matches = (listener: Pick<Listener, "symbol" | "contractSymbol">, quote: C
   listener.symbol === quote.symbol && (!listener.contractSymbol || listener.contractSymbol === quote.contractSymbol);
 
 export function publishChartLivePrice(quote: ChartLivePrice) {
+  // This bus now paints last price and candle together. BBO midpoints still
+  // update the separate watchlist store, but are not executed candle prices
+  // and must not advance the trade watermark ahead of a delayed real print.
+  if (quote.priceType === "quote") return;
   if (!quote.key || !quote.symbol || !Number.isFinite(quote.price) || quote.price <= 0
     || !Number.isFinite(quote.sourceTimestampMs) || quote.sourceTimestampMs <= 0
     || !Number.isFinite(quote.receivedAt)) return;

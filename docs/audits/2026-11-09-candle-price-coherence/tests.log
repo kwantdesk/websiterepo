@@ -1,0 +1,50 @@
+(node:19160) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/liveChartPrice.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 1s real print advances only the current candle without adding volume or changing open (1.6256ms)
+✔ 5s real print advances only the current candle without adding volume or changing open (0.1219ms)
+✔ 15s real print advances only the current candle without adding volume or changing open (0.0949ms)
+✔ 30s real print advances only the current candle without adding volume or changing open (0.1256ms)
+✔ 45s real print advances only the current candle without adding volume or changing open (0.1161ms)
+✔ 1m real print advances only the current candle without adding volume or changing open (0.1122ms)
+✔ 3m real print advances only the current candle without adding volume or changing open (0.1008ms)
+✔ 5m real print advances only the current candle without adding volume or changing open (0.081ms)
+✔ 15m real print advances only the current candle without adding volume or changing open (0.1012ms)
+✔ 30m real print advances only the current candle without adding volume or changing open (0.1523ms)
+✔ 45m real print advances only the current candle without adding volume or changing open (0.085ms)
+✔ 1h real print advances only the current candle without adding volume or changing open (0.0841ms)
+✔ 4h real print advances only the current candle without adding volume or changing open (0.0903ms)
+✔ 1D real print advances only the current candle without adding volume or changing open (0.5933ms)
+✔ 1W real print advances only the current candle without adding volume or changing open (0.1833ms)
+✔ 1M real print advances only the current candle without adding volume or changing open (0.1538ms)
+✔ quote midpoint, old print, another bucket, missing history and invalid prices never manufacture candle geometry (0.125ms)
+✔ lossless late prints can add missing wick evidence without rewinding the fast display close or volume (0.2699ms)
+✔ a newer quote midpoint cannot suppress an earlier real trade on the shared display subscription (0.2614ms)
+(node:15656) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/liveChartPrice.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every quote reaches its scoped marker synchronously, independently of interval or candle aggregation (1.5723ms)
+✔ wrong symbol/contract, invalid and older observations cannot move a chart; equal timestamps can bobble (0.1795ms)
+✔ remount gets a fresh retained quote, stopped subscribers and stale retained prices do not leak (0.2028ms)
+✔ native line receives exact quoted values without update/setData on candle history, and restores replay defaults (0.3312ms)
+✔ actual validated futures quote consumer publishes before its execution-only candle return (359.5317ms)
+✔ between-tick quote labels retain the contract axis increment without rounding to a different execution price (0.235ms)
+✔ actual execution consumer publishes before heavy history work and ignores flow-only records (179.0595ms)
+✔ replay cleanup restores defaults even when the chart library mutates its options object (0.2681ms)
+(node:37616) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Karen/Documents/QUANT%20DESK/kwantdesk-websiterepo/src/lib/liveChartPrice.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ shared ingress updates all matching panes before any pane validation or execution callback (1.5347ms)
+✔ broker, instrument and contract isolation plus monotonic ordering across ingress and pane fallback (0.2012ms)
+✔ actual watchlist ingress publishes real prints first, keeps BBO in watchlist and rejects cached/invalid observations (343.6705ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 922.2845

@@ -931,6 +931,7 @@ function publishLiveWatchlistQuote(
     key: chartQuoteKey(key), symbol: displayCmeSymbol(quote.instrument),
     contractSymbol: quote.contractSymbol || undefined,
     price: mid, sourceTimestampMs: timestamp, receivedAt: Date.now(),
+    priceType: quote.isTrade ? "trade" : quote.broker === "Market Index" ? "index" : "quote",
   });
   const previousMid = previous?.mid || mid;
   const openPrice = previous?.openPrice || fallbackOpenPrice || mid;
@@ -6648,7 +6649,7 @@ function WorkspaceChartPaneComponent({
       }
       if (print) publishChartLivePrice({ key: pane.id, symbol: displayCmeSymbol(pane.symbol),
         contractSymbol: resolvedContractSymbol ?? undefined, price: print.close,
-        sourceTimestampMs: print.timestamp, receivedAt: Date.now() });
+        sourceTimestampMs: print.timestamp, receivedAt: Date.now(), priceType: "trade" });
       appendLosslessPaneRecords(pendingExecutionRecords, records);
       executionPaintScheduler.schedule();
     };
@@ -8609,7 +8610,8 @@ function WorkspaceChartPaneComponent({
       // omit intermediate prints and cannot supply a bar's true extrema/open.
       if (!price.cached) publishChartLivePrice({ key: pane.id, symbol: displayCmeSymbol(pane.symbol),
         contractSymbol: usingDatabentoPaneFeed ? price.contractSymbol ?? resolvedContractSymbol ?? undefined : undefined,
-        price: Number(price.mid), sourceTimestampMs: tickTimestamp, receivedAt: Date.now() });
+        price: Number(price.mid), sourceTimestampMs: tickTimestamp, receivedAt: Date.now(),
+        priceType: price.isTrade ? "trade" : "quote" });
       if (usingDatabentoPaneFeed) {
         if (!price.cached) markMarketActive(chartSourceTimestamp(price.timestamp));
         if (price.contractSymbol) witnessRithmicExecution({
@@ -8883,7 +8885,7 @@ function WorkspaceChartPaneComponent({
           latestMarketIndexFrameRef.current = nextFrame;
           publishChartLivePrice({ key: pane.id, symbol: displayCmeSymbol(pane.symbol),
             contractSymbol: resolvedContractSymbol ?? undefined, price: snapshot.lastPrice,
-            sourceTimestampMs: tickTimestamp, receivedAt: Date.now() });
+            sourceTimestampMs: tickTimestamp, receivedAt: Date.now(), priceType: "index" });
           liveTailStartTimestampRef.current = liveTailStartTimestampRef.current === null
             ? tickTimestamp
             : Math.min(liveTailStartTimestampRef.current, tickTimestamp);
