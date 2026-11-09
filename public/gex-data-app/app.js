@@ -1885,7 +1885,7 @@ await boot();
     if(hasUnderlying)legend.push({label:ticker,color:CHART_COLORS.primary,value:currencyAuto(prepared.processedRows.at(-1)?.spot)});
     quantCanvas({
       title:`${tool.title} - ${ticker}`,legend,items:rows,navigatorValues:rows.map(row=>row.close),height:540,timeScale:true,timePadding:chartType==="candles"||hasVolume,plotRight:hasUnderlying?78:30,
-      tooltipRows:row=>priceChartTooltipRows(row,{option,...selected}),
+      tooltipRows:row=>priceChartTooltipRows(row,{option,...selected,timeZone:gexTimeZone()}),
       draw:(ctx,w,h,state)=>{
         const left=78,right=w-(hasUnderlying?78:30),top=12,bottom=h-34,visible=rows.slice(state.start,state.end+1),span=Math.max(1,visible.length-1);
         const paneHeight=hasVolume?Math.min(100,h*.15):0,volumeTop=bottom-paneHeight,mainBottom=hasVolume?volumeTop-Math.min(20,h*.1):bottom;

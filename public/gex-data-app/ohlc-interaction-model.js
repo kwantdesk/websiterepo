@@ -42,12 +42,16 @@ export function priceContractSelection({ticker,osi='',expirationDate,strikePrice
   return match?{ticker:match[1],expirationDate:`20${match[2]}-${match[3]}-${match[4]}`,strikePrice:Number(match[6])/1000,contractType:match[5]==='C'?'CALL':'PUT'}:{ticker,expirationDate,strikePrice,contractType};
 }
 
-/** Source971542/840034: time is a separate crosshair-axis badge, not tooltip. */
-export function priceChartTooltipRows(row,{option=false,ticker,expirationDate,strikePrice,contractType}={}){
+/** Current Stock tooltip includes the hovered exchange instant in the display timezone. */
+export function priceChartTooltipRows(row,{option=false,ticker,expirationDate,strikePrice,contractType,timeZone='America/New_York'}={}){
   if(!row)return [];
   const tone=finite(row.open)&&finite(row.close)?row.close>row.open?'bullish':row.close<row.open?'bearish':null:null;
   const metric=(label,value,color)=>({parts:[{text:label+': '},{text:currencyAuto(value),tone:color}]});
   const rows=[String(ticker||'')];
+  if(!option&&finite(row.time)){
+    const date=new Date(row.time);
+    if(Number.isFinite(date.getTime()))rows.push(date.toLocaleTimeString('en-US',{timeZone,hour:'numeric',minute:'2-digit',hour12:true}),date.toLocaleDateString('en-US',{timeZone,month:'short',day:'numeric',year:'numeric'}));
+  }
   if(option){
     const date=typeof expirationDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)?new Date(expirationDate+'T12:00:00Z'):null;
     const label=date&&Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===expirationDate?date.toLocaleDateString('en-US',{timeZone:'UTC',month:'long',day:'numeric',year:'numeric'}):'—';

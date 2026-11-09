@@ -46,11 +46,17 @@ test('Missing high/low observations never acquire invented wicks or a fabricated
   assert.equal(payload.data[T].highPrice,null);assert.equal(payload.data[T].lowPrice,null);
 });
 
-test('Source OHLC tooltip has full labels, automatic currency and semantic per-value colors without an invented clock or percentage',()=>{
+test('OHLC tooltip keeps full price labels and only displays a clock for an observed timestamp',()=>{
   const rows=priceChartTooltipRows({open:100,close:102,low:99,high:105},{ticker:'SPY'});
   assert.deepEqual(texts(rows),['SPY','Open: $100','Close: $102','Low: $99','High: $105']);
   assert.deepEqual(rows.find(row=>row.columns).columns.flat().map(row=>row.parts[1].tone),['bullish','bullish','bearish','bullish']);
   const equal=priceChartTooltipRows({open:100,close:100,low:100,high:100},{ticker:'SPY'});assert.ok(equal.find(row=>row.columns).columns.flat().every(row=>row.parts[1].tone===null));
+});
+
+test('stock tooltip clock and calendar date follow the selected timezone across midnight',()=>{
+ const row={time:Date.parse('2026-11-09T16:50:00Z'),open:751.02,close:751.01,low:750.84,high:751.15};
+ assert.deepEqual(texts(priceChartTooltipRows(row,{ticker:'SPY',timeZone:'Australia/Brisbane'})).slice(0,3),['SPY','2:50 AM','Nov 10, 2026']);
+ assert.deepEqual(texts(priceChartTooltipRows(row,{ticker:'SPY',timeZone:'America/New_York'})).slice(0,3),['SPY','11:50 AM','Nov 9, 2026']);
 });
 
 test('Contract OSI description, true underlying, volume precision and non-mutating selection',()=>{
@@ -67,7 +73,7 @@ function harness(controls={},view='ohlc'){
     CHART_COLORS:{primary:'#FFF',price:'price',call:'green',put:'red'},themePaint:value=>value,actionForeground:()=> '#000',toolConfiguration:{hideCrosshairs:false},
     quantCanvas:spec=>specs.push(spec),setSummary(){},quantLine(){},drawPriceCandles:(...args)=>{candleCalls.push(args);return drawPriceCandles(...args);},drawOptionVolume,
     drawHorizontalTicks(){},drawAxisLabels:(_,options)=>axes.push(options),drawTimeLabels(){},drawChartCrosshair(){},chartStrikeLabel:currencyAuto,
-    displayChartTime:time=>new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'}).format(time),
+    gexTimeZone:()=> 'America/New_York',displayChartTime:time=>new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'}).format(time),
   };
   vm.runInNewContext(actual('renderOhlcQuant')+'\nthis.render=renderOhlcQuant;',env);
   const ctx=new Proxy({measureText:text=>({width:String(text).length*7}),fillText:text=>labels.push(text)},{get:(target,key)=>key in target?target[key]:(...args)=>assert.ok(args.filter(value=>typeof value==='number').every(Number.isFinite)),set:(target,key,value)=>{target[key]=value;return true;}});
@@ -77,7 +83,7 @@ function harness(controls={},view='ohlc'){
 test('Actual Stock renderer keeps untrimmed header close, genuine RTH candle wicks and hovered minute on the axis',()=>{
   const h=harness();h.render({data:{[T-60000]:point(90,91),[T]:point(100,102,106,98),[T+60000]:point(102,103,104,99),[T+8*3600000]:point(110,111)}});
   const spec=h.specs[0];assert.equal(spec.items.length,2);assert.equal(spec.legend[0].value,'$111');
-  assert.deepEqual(texts(spec.tooltipRows(spec.items[0])),['SPY','Open: $100','Close: $102','Low: $98','High: $106']);
+  assert.deepEqual(texts(spec.tooltipRows(spec.items[0])),['SPY','9:30 AM','Oct 16, 2026','Open: $100','Close: $102','Low: $98','High: $106']);
   h.draw({start:0,end:1,hover:0,hoverRatio:.25,pointerX:150,pointerY:100});assert.equal(h.candleCalls[0][1][0].high,106);assert.equal(h.candleCalls[0][1][0].low,98);assert.ok(h.labels.some(label=>/9:30/.test(label)));
 });
 
