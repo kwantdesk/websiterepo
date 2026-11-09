@@ -1,0 +1,22 @@
+{
+  "tests": 31,
+  "baselineFailures": 14,
+  "currentFailures": 14,
+  "sameFailureNames": true,
+  "failures": [
+    "✖ restores the full Kwant Desk liquidity-map control surface",
+    "✖ toolbar DOM control sits between heatmap and trades and removes the full rail",
+    "✖ new users and reset share the canonical account-backed display defaults",
+    "✖ embedded liquidity map uses the restored horizontal toolbar",
+    "✖ liquidity-map display and bubble settings follow the signed-in account",
+    "✖ CVD is labelled and horizontally synchronized with the liquidity map",
+    "✖ signals and display inspector closes when the user clicks away",
+    "✖ display settings stay inside the viewport and scroll independently",
+    "✖ inspector uses one toolbar navigation and themed custom dropdowns",
+    "✖ instrument changes show staged loading progress until the first new frame paints",
+    "✖ auto-center keeps live price as the true viewport target",
+    "✖ auto-center keeps the marker fixed while the price plane follows smoothly",
+    "✖ dragging and zooming cannot break an enabled auto-center lock",
+    "✖ refresh and drag always snap an enabled auto-center back to live price"
+  ]
+}

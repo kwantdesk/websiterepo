@@ -73,6 +73,7 @@ function mountPhoneWorkspace() {
     if (open) close.focus(); else (app === 'heatmap' && !phone.matches ? document.querySelector('#settingsButton') : toggle)?.focus();
   }
   toggle.addEventListener('click', () => show(drawer.hidden)); close.addEventListener('click', () => show(false)); shade.addEventListener('click', () => show(false));
+  if (app === 'heatmap') window.addEventListener('kwantdesk:liquidity-instrument-menu', () => { if (!drawer.hidden) show(false); });
   if (app === 'heatmap') drawer.addEventListener('click', event => {
     if (event.target.closest('button[data-panel-shortcut],#helpButton,#fullscreenButton,#mapTradeButton')) show(false);
   });

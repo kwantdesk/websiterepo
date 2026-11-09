@@ -1,0 +1,45 @@
+{
+  "checks": [
+    {
+      "name": "standalone",
+      "modal": false,
+      "x": 126,
+      "y": 39,
+      "width": 340,
+      "height": 360,
+      "anchorBottom": 33,
+      "stableSearch": true,
+      "outsideCloses": true,
+      "escapeCloses": true,
+      "selectionRetained": true
+    },
+    {
+      "name": "charts-panel",
+      "modal": false,
+      "x": 252,
+      "y": 39.5,
+      "width": 340,
+      "height": 360,
+      "anchorBottom": 33.5,
+      "stableSearch": true,
+      "outsideCloses": true,
+      "escapeCloses": true,
+      "selectionRetained": true
+    },
+    {
+      "name": "phone",
+      "modal": false,
+      "x": 42,
+      "y": 39.5,
+      "width": 340,
+      "height": 360,
+      "anchorBottom": 33.5,
+      "stableSearch": true,
+      "outsideCloses": true,
+      "escapeCloses": true,
+      "selectionRetained": true
+    }
+  ],
+  "errors": [],
+  "method": "Actual dropdown module and extracted actual main open method, original HTML/CSS/responsive script; renderer/provider connections blocked; instrument result selection represented by fixture callback."
+}

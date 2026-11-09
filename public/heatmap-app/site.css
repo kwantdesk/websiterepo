@@ -288,3 +288,15 @@ html[data-embed="true"] .cvd-panel header { background: var(--ui-bg); }
     border-radius: var(--kwant-control-radius);
   }
 }
+
+/* Instrument selection is an anchored, nonmodal dropdown, never a centred overlay. */
+#instrumentPicker[open]{inset:auto;margin:0;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);z-index:1000;grid-template-rows:38px 46px minmax(0,1fr);border-radius:10px;box-shadow:0 8px 24px #0003}
+#instrumentPicker::backdrop{background:transparent;backdrop-filter:none}
+#instrumentPicker .modal-header{min-height:38px;padding:6px 10px}
+#instrumentPicker .instrument-search-wrap{height:34px;min-height:34px;margin:6px 8px;padding:0 8px}
+#instrumentPicker #instrumentSearch,#instrumentPicker #instrumentSearch:is(:focus,:focus-visible){height:32px}
+#instrumentPicker .instrument-picker-copy{display:none}
+#instrumentPicker .instrument-results,#instrumentPicker .instrument-empty{grid-area:3 / 1}
+#instrumentPicker .instrument-result{grid-template-columns:42px minmax(0,1fr) 20px;min-height:40px;padding:6px 8px;gap:8px}
+#instrumentPicker .instrument-result-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+#instrumentPicker .instrument-result-copy small{font-size:8px}

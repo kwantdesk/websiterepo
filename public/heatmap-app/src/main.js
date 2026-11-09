@@ -1,3 +1,4 @@
+import { openInstrumentDropdown } from './instrument-dropdown.js';
 import { normalizeControlValue, synchronizeSettingsControls } from './settings-controls.js?v=20261030-settings-contracts';
 import { normalizeCvdStyle } from './liquidity-presentation.js?v=20261030-cvd-line-only';
 import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261029-depth-clear-scale';
@@ -224,8 +225,8 @@ class DepthForgeApp {
       }
       this.switchSymbol(tab.dataset.symbol);
     });
-    $('newTab').addEventListener('click', () => this.#openInstrumentPicker());
-    $('symbolMenu').addEventListener('click', () => this.#openInstrumentPicker());
+    $('newTab').addEventListener('click', event => this.#openInstrumentPicker(event.currentTarget));
+    $('symbolMenu').addEventListener('click', event => this.#openInstrumentPicker(event.currentTarget));
     $('closeInstrumentPicker').addEventListener('click', () => $('instrumentPicker').close());
     $('instrumentSearch').addEventListener('input', event => this.#renderInstrumentResults(event.target.value));
     $('instrumentResults').addEventListener('click', event => {
@@ -762,12 +763,13 @@ class DepthForgeApp {
     $('instrumentEmpty').classList.toggle('hidden', matches.length > 0);
   }
 
-  #openInstrumentPicker() {
+  #openInstrumentPicker(anchor) {
     const picker = $('instrumentPicker');
     const search = $('instrumentSearch');
+    if(picker.open){picker.close();return;}
     search.value = '';
     this.#renderInstrumentResults();
-    if (!picker.open) picker.showModal();
+    openInstrumentDropdown(picker, anchor);
     requestAnimationFrame(() => search.focus());
   }
 

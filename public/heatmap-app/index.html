@@ -164,8 +164,8 @@
   >
   <link
     rel="stylesheet"
-    href="/heatmap-app/site.css?v=20261109-instrument-picker"
-    data-source="/heatmap-app/site.css?v=20261109-instrument-picker"
+    href="/heatmap-app/site.css?v=20261109-instrument-dropdown"
+    data-source="/heatmap-app/site.css?v=20261109-instrument-dropdown"
     data-liquidity-style="site"
     onload="window.__kwantLiquidityStyleLoaded('site')"
     onerror="window.__kwantLiquidityStyleFailed('site', this)"
@@ -174,14 +174,14 @@
 <link rel="stylesheet" href="/gex-data-app/themed-select.css?v=20261106">
 <style>body[data-phone-workspace=heatmap]{--site-panel:var(--ui-panel);--site-surface:var(--ui-panel-alt);--site-border:var(--ui-line);--site-foreground:var(--ui-text);--site-muted:var(--ui-muted);--site-primary:var(--ui-accent)}</style>
 <script type="module" src="/gex-data-app/themed-select.js?v=20261106"></script>
-<link rel="stylesheet" href="/phone-workspace.css?v=20261109-named-controls"><script defer src="/phone-workspace.js?v=20261109-toolbar-parity"></script>
+<link rel="stylesheet" href="/phone-workspace.css?v=20261109-named-controls"><script defer src="/phone-workspace.js?v=20261109-instrument-dropdown"></script>
 <link rel="stylesheet" href="/heatmap-app/workspace-pane.css?v=20261109-toolbar-parity" data-source="/heatmap-app/workspace-pane.css?v=20261109-toolbar-parity" data-liquidity-style="pane" onload="window.__kwantLiquidityStyleLoaded('pane')" onerror="window.__kwantLiquidityStyleFailed('pane', this)"></head>
 <body data-phone-workspace="heatmap">
   <div class="terminal-shell" id="terminalShell">
     <header class="app-bar">
       <nav class="instrument-tabs" aria-label="Instrument tabs">
         <div class="instrument-tab-list" id="instrumentTabList" role="tablist" aria-label="Open liquidity instruments"></div>
-        <button class="new-tab" id="newTab" title="Add instrument" aria-label="Add instrument"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+        <button class="new-tab" id="newTab" aria-haspopup="dialog" aria-controls="instrumentPicker" aria-expanded="false" title="Add instrument" aria-label="Add instrument"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
       </nav>
       <div class="header-context"><span>Workspace</span><strong>MNQ liquidity map</strong></div>
       <div class="app-actions">
@@ -266,7 +266,7 @@
         <div class="symbol-card">
           <span class="symbol-icon" id="symbolIcon">M</span>
           <div><strong id="symbolLabel">MNQU6</strong><small id="symbolDescription">Micro E-mini Nasdaq-100</small></div>
-          <button id="symbolMenu" aria-label="Open symbol menu">⌄</button>
+          <button id="symbolMenu" aria-haspopup="dialog" aria-controls="instrumentPicker" aria-expanded="false" aria-label="Open symbol menu">⌄</button>
         </div>
       </aside>
 
@@ -404,7 +404,7 @@
 
   <dialog class="modal instrument-picker" id="instrumentPicker" aria-labelledby="instrumentPickerTitle">
     <div class="modal-header">
-      <div><small>LIQ MAP</small><strong id="instrumentPickerTitle">Add instrument</strong></div>
+      <div><small>LIQ MAP</small><strong id="instrumentPickerTitle">Instruments</strong></div>
       <button id="closeInstrumentPicker" aria-label="Close instrument picker">×</button>
     </div>
     <div class="instrument-search-wrap">
@@ -417,6 +417,6 @@
     <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
   </dialog>
 
-  <script type="module" src="src/main.js?v=grouped-depth-scale"></script>
+  <script type="module" src="src/main.js?v=20261109-instrument-dropdown"></script>
 </body>
 </html>
