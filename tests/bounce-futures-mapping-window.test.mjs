@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { supportsChartInterval } from '../src/lib/chartIntervals.ts';
 import { newYorkSessionTimestamp } from '../src/lib/gexVueReplay.ts';
 import { prepareBounceGexMirror, selectBounceGexMirror } from '../src/lib/bounceGexMapMirror.ts';
 import { normalizeLinkedGexMapSettings, DEFAULT_LINKED_GEX_MAP_SETTINGS } from '../src/lib/gexMapLinkedSettings.ts';
@@ -24,7 +25,7 @@ function historyRoute(now) {
         return [{ timestamp: now - 60000, open: 28000 }];
       } };
       if (name === '@/lib/chartHistoryWindow') return { DEFAULT_CHART_HISTORY_CALENDAR_DAYS: 10 };
-      if (name === '@/lib/chartIntervals') return { isEventBasedChartInterval: () => false };
+      if (name === '@/lib/chartIntervals') return { isEventBasedChartInterval: () => false, supportsChartInterval };
       if (name === '@/lib/providerErrorMessage') return { logProviderError: () => {}, providerErrorMessage: e => String(e) };
       return {};
     },

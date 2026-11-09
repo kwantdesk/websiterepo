@@ -8,6 +8,7 @@ import type { StrikeMappingSnapshot } from "@/lib/netGammaExposureByStrike";
 import { buildGammaHeatmapMapping, mapGammaHeatmapStrike, normalizeGammaHeatmapInstrument } from "@/lib/gammaHeatmap";
 import type { ExposureStrike } from "@/lib/optionsFlow";
 import { bounceGexMapHistoryParent } from "@/lib/bounceGexMapHistory";
+import { newYorkSessionTimestamp } from "@/lib/gexVueReplay";
 
 type MirrorFrame = { timestamp: number; sourceTimestamp?: number; slice: BounceExposureSlice; mapping: StrikeMappingSnapshot; airPockets: BounceLevelsSnapshot["airPockets"] };
 export type PreparedBounceGexMirror = { payload: GexMapPanelPayload; frames: MirrorFrame[]; live: MirrorFrame | null; display: string; atClock: (timestamp: number) => MirrorFrame | null };
@@ -26,6 +27,7 @@ export function prepareBounceGexMirror(input: {
     : /^(ES|MES)$/.test(display) ? ["SPX", "SPY"]
     : /^(RTY|M2K)$/.test(display) ? ["IWM"] : null;
   const crossFamily = !direct && futuresFamily !== null && !futuresFamily.includes(source);
+  const cashClose = newYorkSessionTimestamp(payload.sessionDate, 16 * 60);
   // displayPriceAt supplies the containing minute's OPEN. Pair it with the
   // source OPEN, not that minute's final close (which creates a return-sized
   // sawtooth in every projected strike and leaks future prices into replay).
@@ -33,9 +35,23 @@ export function prepareBounceGexMirror(input: {
     let low = 0, high = reference.candles.length;
     while (low < high) { const mid = (low + high) >>> 1; if (reference.candles[mid].timestamp <= timestamp) low = mid + 1; else high = mid; }
     const candle = reference.candles[low - 1];
-    if (!candle || timestamp >= candle.timestamp + 60_000) return null;
-    const sourcePrice = candle.open, displayPrice = input.displayPriceAt(candle.timestamp);
-    return sourcePrice > 0 && displayPrice && displayPrice > 0 ? { sourcePrice, displayPrice } : null;
+    if (candle && timestamp < candle.timestamp + 60_000) {
+      const sourcePrice = candle.open, displayPrice = input.displayPriceAt(candle.timestamp);
+      if (sourcePrice > 0 && displayPrice && displayPrice > 0) return { sourcePrice, displayPrice, timestamp: candle.timestamp };
+    }
+    // Exposure can finish at 16:15 while the underlying price series ends at
+    // 16:00. Keep that closing ladder calibrated to a real, simultaneous pair
+    // of recorded opens. Never pair it with today's futures price, carry an
+    // intraday gap, or borrow a future minute during replay.
+    if (reference.sessionDate !== payload.sessionDate || timestamp < cashClose || timestamp >= cashClose + 16 * 60_000) return null;
+    for (let i = low - 1; i >= 0; i--) {
+      const candidate = reference.candles[i];
+      if (candidate.timestamp < cashClose - 60_000) break;
+      if (candidate.timestamp > cashClose) continue;
+      const displayPrice = input.displayPriceAt(candidate.timestamp);
+      if (candidate.open > 0 && displayPrice && displayPrice > 0) return { sourcePrice: candidate.open, displayPrice, timestamp: candidate.timestamp };
+    }
+    return null;
   };
   // Independent index returns move the entire ladder when every strike
   // is repriced at the current ratio. Cross-family projections instead
@@ -70,7 +86,8 @@ export function prepareBounceGexMirror(input: {
       sourceTicker: source, displayInstrument: display, alpha: mapped.basis, beta: mapped.scale,
       sourceSpotPrice: mappingSourcePrice, displayMidPrice: displayPrice, mappedSourceSpotPrice: mapGammaHeatmapStrike(mappingSourcePrice, mapped),
       mappingConfidence: mapped.confidence * 100,
-      calculatedAtMs: sessionAnchor?.timestamp ?? timestamp, dataAgeMs: sessionAnchor ? timestamp - sessionAnchor.timestamp : 0,
+      calculatedAtMs: sessionAnchor?.timestamp ?? pair?.timestamp ?? timestamp,
+      dataAgeMs: timestamp - (sessionAnchor?.timestamp ?? pair?.timestamp ?? timestamp),
     };
     const model = deriveGexMapStarModel({ rows, previous, spot, settings: settings.starSettings });
     const star = selectGexMapStarNode(rows), maximum = Math.abs(star?.net ?? 0), max = Math.max(1, maximum);

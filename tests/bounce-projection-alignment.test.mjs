@@ -83,3 +83,25 @@ for (const [source, display] of [['QQQ', 'NQ'], ['SPX', 'ES']]) {
   assert.ok(result.levels.every(node => Math.abs(node.mappedPrice - (source === 'SPX' ? node.sourceStrike + 20 : node.sourceStrike * 40)) < 1e-8));
  });
 }
+
+for (const [source,display] of [['QQQ','NQ'],['QQQ','MNQ'],['NDX','NQ'],['SPY','ES'],['SPX','MES'],['IWM','RTY']]) {
+ test(source+' closing exposure remains visible after the underlying price series stops',()=>{
+  const f=projectionFixture(source),close=Date.parse('2026-11-03T21:00:00Z');
+  const payload={...f.payload,compact:true,status:'LAST_SESSION',asOf:new Date(close+15*60000).toISOString(),candles:[{...f.payload.candles[0],timestamp:close}],frames:[5,10,15].map(m=>({timestamp:close+m*60000,updates:f.rows}))};
+  const prices=t=>t===close?(source==='NDX'||source==='SPX'?f.base+20:f.base*40):null;
+  const prepared=prepare({...f,payload},display,{displayPriceAt:prices});const snapshot=selectBounceGexMirror(prepared,null);
+  assert.ok(snapshot);assert.equal(snapshot.levels.length,f.rows.length);assert.equal(prepared.frames.length,3);
+  assert.equal(snapshot.mapping.calculatedAtMs,close);assert.equal(snapshot.mapping.dataAgeMs,15*60000);
+  for(const level of snapshot.levels){const expected=source==='NDX'||source==='SPX'?level.sourceStrike+20:level.sourceStrike*40;assert.ok(Math.abs(level.mappedPrice-expected)<1e-8);}
+  assert.equal(selectBounceGexMirror(prepared,close+4*60000),null,'future closing exposure must not leak backwards');
+  assert.equal(selectBounceGexMirror(prepared,close+10*60000).snapshotTimeMs,close+10*60000);
+  assert.equal(selectBounceGexMirror(prepare({...f,payload},display,{displayPriceAt:()=>null,historyKey:'missing-'+source}),null),null,'missing paired futures quote must remain unavailable');
+ });
+}
+test('closing fallback never carries stale intraday, previous-session or next-session prices',()=>{
+ const f=projectionFixture(),close=Date.parse('2026-11-03T21:00:00Z');
+ for(const candleTime of [close-2*60000,close-86400000,close+86400000]){
+  const payload={...f.payload,compact:true,status:'LAST_SESSION',asOf:new Date(close+15*60000).toISOString(),candles:[{...f.payload.candles[0],timestamp:candleTime}],frames:[{timestamp:close+15*60000,updates:f.rows}]};
+  assert.equal(selectBounceGexMirror(prepare({...f,payload},'NQ',{displayPriceAt:()=>20000}),null),null);
+ }
+});
