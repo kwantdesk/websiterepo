@@ -4,6 +4,7 @@
   "chartRetained": true,
   "changedHistoricalPixels": true,
   "visitedFrameNoRefetch": true,
+  "timezoneReformats": true,
   "mapRequests": [
     "latest",
     "2026-11-06T14:32:00.000Z",

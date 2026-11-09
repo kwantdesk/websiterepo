@@ -1332,7 +1332,7 @@ await boot();
     const existing=q('.snapshot-control',q('#toolVisual')),timeline=payload._timeline;
     if(snapshotScrubbing&&existing)return;
     const selectedIndex=timeline?.findIndex(time=>time===(snapshotSelections.get(snapshotKey(activeTool))??timeline.at(-1))),selectedValue=String(selectedIndex>=0?selectedIndex:Math.max(0,(timeline?.length||1)-1));
-    const timelineKey=JSON.stringify(timeline);
+    const timelineKey=gexTimeZone()+JSON.stringify(timeline);
     if(existing&&existing.dataset.timeline===timelineKey){existing.querySelector('input[type=range]').value=selectedValue;existing.querySelector('select').value=selectedValue;const existingOutput=existing.querySelector('output');if(existingOutput)existingOutput.textContent=displayChartTime(timeline[Number(selectedValue)]);return;}
     existing?.remove();if(!timeline?.length)return;
     const holder=element("div","snapshot-control"),label=element("b","","Time"),range=document.createElement("input"),output=element("output"),timeSelect=document.createElement('select');timeSelect.className='snapshot-time-select';timeSelect.setAttribute('aria-label','Snapshot time');for(const [value,text]of snapshotTimeOptions(timeline,displayChartTime))timeSelect.add(new Option(text,value));range.type="range";range.min="0";range.max=String(timeline.length-1);range.step="1";range.setAttribute("aria-label","One-minute exposure snapshot");
