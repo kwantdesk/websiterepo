@@ -60,3 +60,6 @@
 .top-action.chart-workspace-trigger{height:28px;min-height:28px;padding:0 10px!important;font-size:10px;font-weight:600;letter-spacing:.075em;border-color:transparent!important;background:transparent!important;color:var(--site-muted)!important}
 .top-action.chart-workspace-trigger[aria-expanded=true]{background:color-mix(in srgb,var(--site-primary) 8%,var(--site-panel))!important;border-color:color-mix(in srgb,var(--site-primary) 35%,transparent)!important;color:var(--site-primary)!important}
 @media(pointer:coarse){.workspace-popup.chart-workspace-menu .saved-workspace-icon{opacity:1}}
+
+/* Keep add adjacent to the final tab; reserve the trailing edge for close. */
+.dock-add{flex:0 0 24px;align-self:center;margin-left:0}.dock-close{flex:0 0 28px;width:28px;height:24px;border:0;border-radius:5px;background:transparent;color:var(--gex-23623939636462);font-size:20px;line-height:1;cursor:pointer;margin-left:4px}.dock-close:disabled{opacity:.35;cursor:default}.dock-close:hover:not(:disabled){background:var(--gex-23323230393430)}

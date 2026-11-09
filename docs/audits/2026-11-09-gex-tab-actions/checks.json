@@ -1,0 +1,21 @@
+{
+  "checks": [
+    {
+      "width": 1440,
+      "addAfterLastTab": true,
+      "closeAtRight": true,
+      "closeVisible": true,
+      "overflow": false
+    },
+    {
+      "width": 600,
+      "addAfterLastTab": true,
+      "closeAtRight": true,
+      "closeVisible": true,
+      "overflow": false
+    }
+  ],
+  "addDialog": true,
+  "closesSelectedOnly": true,
+  "errors": []
+}

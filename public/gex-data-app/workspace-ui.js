@@ -145,7 +145,8 @@ export function bootWorkspace({tools,showBoard,openTool}){
       item.append(button('⋮',event=>{event.stopPropagation();tabMenu(event.currentTarget,tab,set);},'dock-tab-menu'));item.addEventListener('contextmenu',event=>{event.preventDefault();tabMenu(item,tab,set);});
       item.addEventListener('click',()=>{if(!drag)act({type:'select',tabId:tab.id});});item.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' ')act({type:'select',tabId:tab.id});});item.addEventListener('pointerdown',event=>tabDragStart(event,item,tab));scroll.append(item);
     }
-    strip.append(button('+',event=>addDialog(event.currentTarget,set.id),'dock-add'));const overflow=button('⌄',event=>popup(event.currentTarget,'Tabs',el=>{for(const tab of set.children)el.append(button(tab.name,()=>{closePopup();act({type:'select',tabId:tab.id});}));}),'dock-overflow');overflow.setAttribute('aria-label','All tabs');strip.append(overflow);
+    const add=button('+',event=>addDialog(event.currentTarget,set.id),'dock-add');add.setAttribute('aria-label','Add tool to this panel');add.title='Add tool';scroll.append(add);
+    const active=set.children[set.selected??0],close=button('×',()=>{if(active)act({type:'delete',tabId:active.id});},'dock-close');close.disabled=!active;close.setAttribute('aria-label',active?'Close '+active.name:'Close active tool');close.title=active?'Close '+active.name:'Close active tool';strip.append(close);
     const body=node('div','dock-body');body.dataset.body=set.id;const selected=set.children[set.selected??0];if(!selected)body.append(button('+ Add Tool',event=>addDialog(event.currentTarget,set.id)));else if(popouts.has(selected.id))body.append(button('Bring it back',()=>{popouts.get(selected.id)?.close?.();popouts.delete(selected.id);render();}));
     pane.append(strip,body);return pane;
   }
