@@ -8,6 +8,8 @@ import { WORKSPACE_PRESET_DELETIONS_KEY, isWorkspacePresetDeleted, markWorkspace
 
 export const GEX_MAP_ZOOM_MIN = 0.5;
 export const GEX_MAP_ZOOM_MAX = 2;
+/** Displayed 100% now uses the former 130% node scale. */
+export const GEX_MAP_ZOOM_BASE_SCALE = 1.3;
 
 export const GEX_MAP_WORKSPACES_KEY = "kwantdesk:gex-map-workspaces:v1";
 const ACTIVE_KEY = "kwantdesk:gex-map-active-workspace:v1";

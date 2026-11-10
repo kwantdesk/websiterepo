@@ -34,7 +34,7 @@ import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix, { loadFutureSettings } from "@/components/gex-map/GexMapFutureMatrix";
 import GexMapWorkspacesMenu from "./GexMapWorkspacesMenu";
 import {
-  GEX_MAP_ZOOM_MIN, GEX_MAP_ZOOM_MAX, readActiveGexMapWorkspace, rememberActiveGexMapWorkspace,
+  GEX_MAP_ZOOM_MIN, GEX_MAP_ZOOM_MAX, GEX_MAP_ZOOM_BASE_SCALE, readActiveGexMapWorkspace, rememberActiveGexMapWorkspace,
   type GexMapWorkspacePreset, type GexMapWorkspaceSnapshot,
 } from "@/lib/gexMapWorkspaces";
 import { buildGexMapSnapshots as buildSnapshots, gexMapPriceAt as priceAt, gexMapSurfaceRows } from "@/lib/gexMapSnapshots";
@@ -817,7 +817,7 @@ function ExposurePanel({
             // CSS zoom reflows heights and typography together, so the +/-
             // clicker genuinely fits more strike nodes on screen when zoomed
             // out and fewer, larger nodes when zoomed in.
-            style={ladderZoom !== 1 ? ({ zoom: ladderZoom } as CSSProperties) : undefined}
+            style={{ zoom: ladderZoom * GEX_MAP_ZOOM_BASE_SCALE } as CSSProperties}
           >
             {rows.map((row) => {
               const prior = previous.get(row.strike);
@@ -1976,7 +1976,7 @@ function GexMapWorkspace({
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             {replayMode ? <div role="status" className="flex h-full items-center justify-center p-6 text-center text-xs text-muted">
               The forward-expiry matrix has no recorded replay surface. Switch to Present for timestamped exposure replay.
-            </div> : <GexMapFutureMatrix palette={activePalette} zoom={futureZoom}
+            </div> : <GexMapFutureMatrix palette={activePalette} zoom={futureZoom * GEX_MAP_ZOOM_BASE_SCALE}
               workspaceSettings={privateWorkspace ? futureSettings : undefined}
               onWorkspaceSettingsChange={privateWorkspace ? setFutureSettings : undefined} />}
           </div>
