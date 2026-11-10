@@ -1,0 +1,3 @@
+Browser tab: 23, Title: "Query Performance | Observability | kwantdesk's Project | kwantdesk | Supabase", URL: "https://supabase.com/dashboard/project/wmkqvoeqeplnutkmrgim/observability/query-performance".
+There has been no change in the accessibility tree.
+The focused UI element is 0 AXWebArea Query Performance | Observability | kwantdesk's Project | kwantdesk | Supabase, URL: supabase.com/dashboard/project/wmkqvoeqeplnutkmrgim/observability/query-performance

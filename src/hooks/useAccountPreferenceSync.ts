@@ -37,6 +37,14 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
       const write = !needsInitialRead && (dirty || (markHandoff
         && paperValuationFingerprint(sent) !== paperValuationFingerprint(base)));
       try {
+        // Focus/reconnect hints can repeat without a saved change. Compare
+        // the tiny revision first instead of repeatedly loading the full
+        // workspace/ledger document. Actual local edits and valuation handoffs
+        // still go directly through the conflict-safe exchange.
+        if (!write && !needsInitialRead && knownRevision !== undefined) {
+          const revision = await readAccountPreferenceRevision(supabase, userId);
+          if (!active || revision === knownRevision) return;
+        }
         // Following failed initial hydration, this browser's defaults are not
         // an acknowledged account revision. Read the real account first; only
         // subsequent edits may be uploaded. Preserve edits during this read.

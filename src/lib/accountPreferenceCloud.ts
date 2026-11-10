@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeSnapshot, type UserPreferenceSnapshot } from './userPreferences';
-import { mergeAccountPreferenceChanges } from './accountPreferenceMerge';
+import { accountPreferenceFingerprint, mergeAccountPreferenceChanges, paperValuationFingerprint } from './accountPreferenceMerge';
 import { accountPreferenceReadUnavailable, isMissingPreferenceStore } from './accountPreferenceErrors';
 
 const empty = (): UserPreferenceSnapshot => ({ version: 1, complete: true, updatedAt: new Date(0).toISOString(), values: {} });
@@ -50,6 +50,16 @@ export async function exchangeAccountPreferences(client: SupabaseClient, userId:
       remote ??= row ? empty() : base;
       const snapshot = mergeAccountPreferenceChanges(base, local, remote);
       if (!write) return { remote, snapshot, revision };
+      // A save/hydration or CAS retry may already be satisfied by a peer.
+      // Rewriting the entire JSON document in that case creates needless
+      // TOAST/WAL work and broadcasts another revision to every device.
+      // Keep valuation handoffs even though ordinary quote ticks are excluded
+      // from the execution fingerprint. A missing primary row must still be
+      // inserted when migrating a legacy snapshot.
+      if (row && accountPreferenceFingerprint(snapshot) === accountPreferenceFingerprint(remote)
+        && paperValuationFingerprint(snapshot) === paperValuationFingerprint(remote)) {
+        return { remote, snapshot, revision };
+      }
       // Monotonic revision even if two devices' clocks disagree.
       snapshot.updatedAt = new Date(Math.max(Date.now(), (Date.parse(row?.updated_at ?? '') || 0) + 1)).toISOString();
       const fields = table === 'user_preferences'

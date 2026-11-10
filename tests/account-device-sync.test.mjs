@@ -116,3 +116,29 @@ test('read-only catchup never writes the database',async()=>{
  const result=await exchangeAccountPreferences(db.client,'owner',base,base,false);
  assert.equal(result.snapshot.values["olisa-chart-workspace-layout"],'desktop');assert.equal(db.writes,0);
 });
+
+test('saving already acknowledged preferences does not rewrite the full document or bump its revision',async()=>{
+ const original=snapshot({'olisa-theme':'desktop','olisa-chart-workspace-layout':'quad'}),db=database(original);
+ for(let n=0;n<50;n++){
+  const result=await exchangeAccountPreferences(db.client,'owner',original,{...original,updatedAt:new Date().toISOString()},true);
+  assert.equal(result.revision,original.updatedAt);assert.deepEqual(result.snapshot.values,original.values);
+ }
+ assert.equal(db.writes,0);
+});
+test('a peer that already saved the same change satisfies a local save without another write',async()=>{
+ const base=snapshot({'olisa-theme':'old','olisa-chart-workspace-layout':'base'});
+ const local=snapshot({'olisa-theme':'phone','olisa-chart-workspace-layout':'base'});
+ const remote=snapshot({'olisa-theme':'phone','olisa-chart-workspace-layout':'peer layout'}),db=database(remote);
+ const result=await exchangeAccountPreferences(db.client,'owner',base,local,true);
+ assert.deepEqual(result.snapshot.values,remote.values);assert.equal(db.writes,0);
+});
+test('no-op suppression still saves a newer open-position valuation and protection edits',async()=>{
+ const base=tradeSnapshot(opened()),db=database(base);
+ const updated=processPaperQuote(ledgerOf(base),[record],'ES',{...quote(7700.25),timestamp:quote(7700).timestamp+1000});
+ const marked=await exchangeAccountPreferences(db.client,'owner',base,tradeSnapshot(updated),true);
+ assert.equal(db.writes,1);assert.equal(ledgerOf(marked.snapshot).accounts[record.id].positions[0].markPrice,7700.25);
+ const id=updated.accounts[record.id].positions[0].id;
+ const protectedLedger=updatePaperProtection(updated,record.id,id,{kind:'stop_loss',price:7699.5}).ledger;
+ const moved=await exchangeAccountPreferences(db.client,'owner',marked.remote,tradeSnapshot(protectedLedger),true);
+ assert.equal(db.writes,2);assert.equal(ledgerOf(moved.snapshot).accounts[record.id].positions[0].stopLoss,7699.5);
+});

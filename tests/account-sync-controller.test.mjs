@@ -25,7 +25,7 @@ function controller(acknowledged = true, account = { cloud: snapshot({'olisa-the
   if(id.includes('userPreferences'))return {isTrackedStorageKey:key=>key==='olisa-theme',captureBrowserPreferences:()=>{captures++;return structuredClone(state)},readScopedPreferences:()=>acknowledged ? structuredClone(account.cloud) : null,receiveAccountPreferences(_owner,next){state=next;applied++;}};
   if(id.includes('accountPreferenceMerge'))return {accountPreferenceFingerprint,mergeAccountPreferenceChanges,mergePaperTradingLedgerUpdate,paperValuationFingerprint};
   if(id.includes('paperTrading'))return {normalizePaperTradingLedger};
-  if(id.includes('accountPreferenceCloud'))return {async readAccountPreferenceRevision(){revisions++;return accountPreferenceFingerprint(account.cloud)},async exchangeAccountPreferences(_client,owner,base,local,write){assert.equal(owner,'owner');calls++;const merged=mergeAccountPreferenceChanges(base,local,account.cloud);if(write){writes++;account.cloud=merged;}return {remote:structuredClone(account.cloud),snapshot:merged,revision:accountPreferenceFingerprint(account.cloud)};}};
+  if(id.includes('accountPreferenceCloud'))return {async readAccountPreferenceRevision(){revisions++;return JSON.stringify(account.cloud.values)},async exchangeAccountPreferences(_client,owner,base,local,write){assert.equal(owner,'owner');calls++;const merged=mergeAccountPreferenceChanges(base,local,account.cloud);if(write){writes++;account.cloud=merged;}return {remote:structuredClone(account.cloud),snapshot:merged,revision:JSON.stringify(account.cloud.values)};}};
   throw Error(id);
  };
  vm.runInNewContext(code,{exports,require,window,document,CustomEvent:class {constructor(type,options){this.type=type;this.detail=options?.detail}},Date,console});
@@ -166,4 +166,10 @@ test('a second device requests the latest overnight valuation without enabling p
  assert.equal(received.markPrice,30010);assert.equal(received.unrealizedPnl,200);
  desktop.emit('kwantdesk:preferences-changed');await desktop.flush();assert.equal(desktop.writes,1);
  desktop.cleanup();phone.cleanup();
+});
+
+test('repeated unchanged focus and peer hints read only the revision, not the whole preferences document',async()=>{
+ const c=controller();await c.flush();const before=c.calls;
+ for(let i=0;i<25;i++){c.emit('focus');await c.flush();c.notify();await c.flush();}
+ assert.equal(c.calls,before);assert.equal(c.writes,0);assert.ok(c.revisions>=50);c.cleanup();
 });
