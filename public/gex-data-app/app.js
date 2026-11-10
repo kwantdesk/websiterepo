@@ -1299,7 +1299,7 @@ await boot();
         if(toolPayload?.statistics!=null&&(['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)||payload.statistics==null))payload.statistics=toolPayload.statistics;
       }
       let nextCursor=tool.id==='equity-prints'?equityPrintCursor(payload):tool.id==='exchange-notifications'?notificationCursor(payload):['order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)?optionTapeCursor(payload):payload.nextSearchAfter||null;
-      const retainedLiveTape=liveFrame&&!append&&['equity-prints','exchange-notifications','order-flow-consolidated'].includes(tool.id)&&toolPayloadQuery===query&&Array.isArray(payload.data)&&tableRows.length>0;
+      const retainedLiveTape=liveFrame&&!append&&['equity-prints','exchange-notifications','order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)&&toolPayloadQuery===query&&Array.isArray(payload.data)&&tableRows.length>0;
       if(retainedLiveTape){payload.data=mergeLiveTapePage(tableRows,payload.data,{timeField:tool.id==='exchange-notifications'?'createdTime':'tradeTime'});nextCursor=previousCursor;}
       if(['equity-prints','exchange-notifications'].includes(tool.id)&&!append&&!retainedLiveTape)equityPageGeneration++;
       toolPayload=payload;toolPayloadQuery=query;toolCursor=nextCursor;renderToolPayload(tool,payload,{refresh:true,append});renderSnapshotControl(payload);
@@ -1307,7 +1307,7 @@ await boot();
       updateToolTimestamp(tool,payload);
       saveToolControls();updateLiveState();
     }catch(error){
-      if(liveFrame&&['equity-prints','exchange-notifications','order-flow-consolidated'].includes(tool.id)&&requestId===toolRequestId&&activeTool===tool&&toolPayload)toolCursor=previousCursor;
+      if(liveFrame&&['equity-prints','exchange-notifications','order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)&&requestId===toolRequestId&&activeTool===tool&&toolPayload)toolCursor=previousCursor;
       if(!requestPrepared&&requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){
         toolPayload=null;toolPayloadQuery=null;toolCursor=null;resetStage();q('#toolUpdated').textContent='';
       }

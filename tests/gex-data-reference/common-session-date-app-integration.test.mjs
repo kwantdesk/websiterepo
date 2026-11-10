@@ -178,8 +178,8 @@ test('Gainers/Losers uses09:30–16:15for single sessions and preserves explicit
  h.env.session.onChange({startDate:'2026-11-02',endDate:'2026-11-02'});assert.deepEqual(h.request().timeRange,{startTime:'2026-11-02T14:30:00.000Z',endTime:'2026-11-02T21:15:00.000Z'});
 });
 
-test('actual consolidated live refresh keeps older trades, deepest cursor and new provider statistics',async()=>{
- const h=harness({toolId:'order-flow-consolidated'}),initial=h.load(),statistics={CALL:{ASK:{premium:100,volume:2}},PUT:{BID:{premium:50,volume:1}}};
+for(const toolId of ['order-flow-consolidated','order-flow-unconsolidated'])test(`actual ${toolId} live refresh keeps older trades, deepest cursor and new provider statistics`,async()=>{
+ const h=harness({toolId}),initial=h.load(),statistics={CALL:{ASK:{premium:100,volume:2}},PUT:{BID:{premium:50,volume:1}}};
  h.requests[0].resolve({data:[{id:'a',tradeTime:30}],statistics,nextSearchAfter:['30']});await initial;assert.equal(h.nodes.get('#toolError').hidden,true,h.nodes.get('#toolError').textContent);
  const page=h.load({append:true});h.requests[1].resolve({data:[{id:'b',tradeTime:20}],nextSearchAfter:['20']});await page;assert.equal(h.nodes.get('#toolError').hidden,true,h.nodes.get('#toolError').textContent);
  const nextStatistics={CALL:{ASK:{premium:200,volume:3}},PUT:{BID:{premium:70,volume:2}}};
