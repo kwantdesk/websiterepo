@@ -372,11 +372,13 @@ function sanitizeImport(value: unknown, account: string): JournalImportBatch | n
   };
 }
 
-async function journalClient(request: NextRequest) {
-  const actor = await getJournalRouteActor(request);
+async function journalClient(request: NextRequest, boundedImport = false) {
+  let actor;
+  try { actor = await getJournalRouteActor(request, boundedImport ? { timeoutMs: 5_000 } : {}); }
+  catch { return { actor: null, supabase: null, unavailable: true }; }
   if (!actor) return { actor: null, supabase: null };
   try {
-    return { actor, supabase: await createSupabaseServerClient() };
+    return { actor, supabase: await createSupabaseServerClient(boundedImport ? { requestSignal: AbortSignal.timeout(10_000) } : {}) };
   } catch {
     return { actor, supabase: null };
   }
@@ -416,7 +418,8 @@ async function loadJournalTradeDeletions(supabase: Awaited<ReturnType<typeof cre
 }
 
 export async function GET(request: NextRequest) {
-  const { actor, supabase } = await journalClient(request);
+  const { actor, supabase, unavailable } = await journalClient(request);
+  if (unavailable) return NextResponse.json({ error: "Journal session verification is temporarily unavailable. Your trades have not been cleared." }, { status: 503 });
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false, accounts: [], trades: [], imports: [] });
 
@@ -502,10 +505,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { actor, supabase } = await journalClient(request);
-  if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  if (!supabase) return NextResponse.json({ cloud: false, error: "Journal cloud storage is unavailable." }, { status: 503 });
-
   let body: {
     action?: unknown;
     ownerId?: unknown;
@@ -527,7 +526,11 @@ export async function POST(request: NextRequest) {
   }
 
   const action = cleanText(body.action, 20);
-  const tradeDeletions = ["copy-trades", "create-trade", "update", "sync", "append-paper"].includes(action)
+  const { actor, supabase, unavailable } = await journalClient(request, action === "copy-trades");
+  if (unavailable) return NextResponse.json({ error: "Journal session verification is temporarily unavailable. Your trades have not been cleared." }, { status: 503 });
+  if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  if (!supabase) return NextResponse.json({ cloud: false, error: "Journal cloud storage is unavailable." }, { status: 503 });
+  const tradeDeletions = ["create-trade", "update", "sync", "append-paper"].includes(action)
     ? await loadJournalTradeDeletions(supabase, actor.userId) : { ids: [], error: null };
   if (tradeDeletions.error) return NextResponse.json({ error: "Journal deletion history could not be checked. Retry without changing your trade." }, { status: 502 });
   const deletedTradeIds = new Set(tradeDeletions.ids);
@@ -862,10 +865,13 @@ export async function POST(request: NextRequest) {
     }
 
     const importedAt = new Date().toISOString();
-    const [{ data: sourceRows, error: sourceError }, { data: accountRows, error: accountError }] = await Promise.all([
+    const [{ data: sourceRows, error: sourceError }, { data: accountRows, error: accountError }, copyDeletions] = await Promise.all([
       supabase.from("journal_trades").select("account_id,payload").eq("user_id", actor.userId).in("id", ids),
       supabase.from("journal_accounts").select("id,name").eq("user_id", actor.userId),
+      loadJournalTradeDeletions(supabase, actor.userId),
     ]);
+    if (copyDeletions.error) return NextResponse.json({ error: "Journal deletion history could not be checked. Retry without changing your trade." }, { status: 502 });
+    for (const id of copyDeletions.ids) deletedTradeIds.add(id);
     if (sourceError || accountError) return NextResponse.json({ error: "The journals or source trades could not be checked." }, { status: 502 });
     const accounts = new Map((accountRows ?? []).map((row) => [String(row.id), String(row.name)]));
     const destination = accounts.get(destinationId);
@@ -1115,7 +1121,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { actor, supabase } = await journalClient(request);
+  const { actor, supabase, unavailable } = await journalClient(request);
+  if (unavailable) return NextResponse.json({ error: "Journal session verification is temporarily unavailable. Your trades have not been cleared." }, { status: 503 });
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false }, { status: 503 });
   const evidenceId = cleanId(request.nextUrl.searchParams.get("evidenceId"));

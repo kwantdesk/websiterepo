@@ -10,7 +10,7 @@ function getPublicKey() {
   );
 }
 
-export async function createClient({ freshOAuth = false, cookieResponse }: { freshOAuth?: boolean; cookieResponse?: NextResponse } = {}) {
+export async function createClient({ freshOAuth = false, cookieResponse, requestSignal }: { freshOAuth?: boolean; cookieResponse?: NextResponse; requestSignal?: AbortSignal } = {}) {
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = getPublicKey();
@@ -20,6 +20,17 @@ export async function createClient({ freshOAuth = false, cookieResponse }: { fre
   }
 
   return createServerClient(url, key, {
+    ...(requestSignal ? { global: { fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const caller = init?.signal ?? (input instanceof Request ? input.signal : null);
+      const signal = AbortSignal.any([requestSignal, ...(caller ? [caller] : [])]);
+      const timedOut = () => Response.json({ message: "Journal request timed out.", code: "REQUEST_TIMEOUT" }, { status: 408 });
+      if (signal.aborted) return timedOut();
+      try { return await fetch(input, { ...init, signal }); }
+      catch (error) {
+        if (requestSignal.aborted) return timedOut();
+        throw error;
+      }
+    } } } : {}),
     cookies: {
       getAll() {
         // Starting a new login needs only a new PKCE verifier. Recovering an

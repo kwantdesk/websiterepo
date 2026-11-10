@@ -68,6 +68,7 @@ import { deleteJournalSelection } from "@/lib/journalBulkDelete";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import { mergeJournalHydration, mergeJournalSnapshots } from "@/lib/journalStateMerge";
 import { journalImportableTrades } from "@/lib/journalImportCandidates";
+import { copyJournalTrades } from "@/lib/journalCopyRequest";
 import {
   applyJournalAccountResets,
   removeJournalTradeEverywhere,
@@ -1839,12 +1840,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
     setImportMessage("");
     const owner = resolvedAccountKey;
     try {
-      const response = await fetch("/api/journal", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "copy-trades", accountId: destination.id, tradeIds }),
-      });
-      const result = await response.json() as { cloud?: boolean; trades?: JournalTrade[]; skipped?: number; error?: string };
-      if (!response.ok || !result.cloud || !result.trades) throw new Error(result.error || "The selected trades could not be imported.");
+      const result = await copyJournalTrades(destination.id, tradeIds);
       if (journalOwnerRef.current !== owner) return;
       const trades = result.trades;
       setState((current) => {

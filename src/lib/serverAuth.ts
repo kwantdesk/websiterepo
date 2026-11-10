@@ -76,7 +76,7 @@ export async function getSocialsRouteActor(request: NextRequest): Promise<RouteA
 
 /** Identity-bound desktop Journal bridge. Cloud database credentials never
  * leave the browser service and the desktop public ticket never reaches it. */
-export async function getJournalRouteActor(request: NextRequest): Promise<RouteActor | null> {
+export async function getJournalRouteActor(request: NextRequest, options: { timeoutMs?: number } = {}): Promise<RouteActor | null> {
   const desktop = internalDesktopActor(
     request,
     JOURNAL_GATEWAY_TOKEN_HEADER,
@@ -84,7 +84,7 @@ export async function getJournalRouteActor(request: NextRequest): Promise<RouteA
     process.env.KWANTDESK_JOURNAL_SERVICE_TOKEN,
   );
   if (desktop) return desktop;
-  return getRouteActor(request);
+  return getRouteActor(request, options);
 }
 
 export async function getRouteActor(request?: NextRequest, options: { timeoutMs?: number } = {}): Promise<RouteActor | null> {
