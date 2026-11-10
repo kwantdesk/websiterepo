@@ -1650,7 +1650,8 @@ function GexMapWorkspace({
   }
 
   function removePanel(id: PanelConfig["id"]) {
-    setPanels((current) => current.filter((panel) => panel.id !== id));
+    if (panels.length <= 1) return;
+    setPanels((current) => current.length > 1 ? current.filter((panel) => panel.id !== id) : current);
     setPanelData((current) => {
       const next = { ...current };
       delete next[id];
@@ -1985,7 +1986,7 @@ function GexMapWorkspace({
             className="gex-map-panel-grid grid h-full min-w-0 gap-2"
             style={{ "--gex-map-panel-count": panels.length } as CSSProperties}
           >
-            {panels.map((panel, panelIndex) => {
+            {panels.map((panel) => {
               const candidate = panelData[panel.id];
               const payload = panelMatches(panel, candidate) ? candidate : null;
               const matchesPanel = payload
@@ -2019,7 +2020,7 @@ function GexMapWorkspace({
                     ? `The provider returned ${payload?.sessionDate}, but replay requested ${requestedReplayDate}. The selected session archive was not returned, so no substitute exposure is shown.`
                     : null}
                   onChange={(patch) => updatePanel(panel.id, patch)}
-                  onRemove={panelIndex >= DEFAULT_PANELS.length ? () => removePanel(panel.id) : undefined}
+                  onRemove={panels.length > 1 ? () => removePanel(panel.id) : undefined}
                 />
               );
             })}
