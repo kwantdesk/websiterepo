@@ -738,10 +738,7 @@ function ExposurePanel({
             menuWidth={210}
             onChange={(greekMode) => onChange({ greekMode })}
           />
-          <div className="gex-map-panel-spot ml-auto shrink-0 text-right">
-            <div data-gex-model={payload?.model} className="text-[7px] font-semibold uppercase leading-none tracking-[0.1em] text-muted">
-              {payload ? payload.model === "DEALER_INVENTORY" ? "Dealer estimate" : "Structural OI" : valueHeading}
-            </div>
+          <div data-gex-model={payload?.model} className="gex-map-panel-spot ml-auto shrink-0 text-right">
             <div className="font-mono text-[11px] font-semibold text-foreground">{formatPrice(spot)}</div>
             <div className={`font-mono text-[9px] ${payload && (payload.sessionChangePercent ?? 0) >= 0 ? "text-primary" : "text-danger"}`}>
               {payload?.sessionChangePercent === null || payload?.sessionChangePercent === undefined
