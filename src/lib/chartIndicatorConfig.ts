@@ -123,7 +123,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "swing-point",
   "parabolic-sar",
   "average-directional-index-adx",
-  "absolute-levels",
   "price-movement-levels",
   "average-daily-range-target",
   "volume-delta-sprint",
