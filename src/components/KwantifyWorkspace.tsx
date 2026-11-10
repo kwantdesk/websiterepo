@@ -35,7 +35,8 @@ import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import { beginChartHistoryRead, readChartCacheWithin } from "@/lib/chartHistoryRead";
-import { fetchJsonWithBudget, readMarketDataJson } from "@/lib/marketDataRequest";
+import { fetchJsonWithBudget, readMarketDataJson, MarketDataResponseError } from "@/lib/marketDataRequest";
+import { ChartHistoryRecovery, isTransientHistoryFailure } from "@/lib/chartHistoryRecovery";
 import { chartActivityRemainingMs, chartSourceTimestamp } from "@/lib/chartCountdown";
 import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
 import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components/ui/TimeZoneSelect";
@@ -4048,54 +4049,21 @@ async function fetchWorkspaceCandles(
   }
 
   if (broker === "Market Index") {
-    // Bounded, and retried once.
-    //
-    // Cash-index history shares the gateway's spaced vendor queue with every
-    // GEX surface on the page. On GEX VUE that is dozens of requests, and a
-    // chart that happens to queue behind them waits a long time: measured on
-    // production, SPX's own history request ran 92.5 SECONDS and returned
-    // nothing while SPY, NDX and QQQ came back in five to nine. The endpoint
-    // itself is not slow - the same window fetched in 2.8s once the queue had
-    // drained. The pane simply lost the race.
-    //
-    // This fetch had no timeout, so losing the race meant waiting for ever, and
-    // `chartIsLoading` is candles.length === 0 - the pane sat on "restoring
-    // candles" with nothing on its way. A bounded attempt plus one retry turns
-    // a permanent hang into a slightly late chart, because by the second
-    // attempt the startup burst has cleared.
-    /*
-     * The requested window, quantised.
-     *
-     * `to` is Date.now(), so it differed by a few milliseconds between two
-     * panes mounting together: every request was a unique URL. That made the
-     * shared-request key below miss almost every time, and it defeated the
-     * route's own ETag - it answers with an identity and a max-age precisely
-     * so an unchanged series can come back as a 304 instead of the whole
-     * payload, and a URL that never repeats can never revalidate.
-     *
-     * Rounding down costs at most fifteen seconds of tail, which the live
-     * quote stream owns anyway.
-     */
+    // Read our recorded archive, shared across matching panes. A single budget
+    // covers headers, body and the bounded transport retry. Internal deadlines
+    // remain TimeoutError; they must not look like a cancelled pane request.
     const windowQuantumMs = 15_000;
     const windowFrom = Math.floor(from / windowQuantumMs) * windowQuantumMs;
     const windowTo = Math.floor(to / windowQuantumMs) * windowQuantumMs;
-
-    const attempt = async (timeoutMs: number) => {
-      const timeoutController = new AbortController();
-      const timer = window.setTimeout(() => timeoutController.abort(), timeoutMs);
-      try {
-        const response = await fetch(
-          `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${windowFrom}&to=${windowTo}`,
-          { cache: "no-store", signal: timeoutController.signal },
-        );
-        const payload = await readMarketDataJson<WorkspaceHistoryPayload>(response);
-        if (!response.ok) throw new Error(payload.error ?? `${symbol} index history is unavailable.`);
-        return Object.assign(sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe), {
-          historyCoverage: payload.historyCoverage,
-        });
-      } finally {
-        window.clearTimeout(timer);
-      }
+    const attempt = async () => {
+      const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(
+        `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${windowFrom}&to=${windowTo}`,
+        25_000,
+      );
+      if (!response.ok) throw new MarketDataResponseError(response.status);
+      return Object.assign(sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe), {
+        historyCoverage: payload.historyCoverage,
+      });
     };
 
     /*
@@ -4117,13 +4085,7 @@ async function fetchWorkspaceCandles(
     if (pending) return pending;
 
     const request = (async () => {
-      let candles: Candle[];
-      try {
-        candles = await attempt(20_000);
-      } catch {
-        // By the second attempt the page's startup burst has usually cleared.
-        candles = await attempt(30_000);
-      }
+      const candles = await attempt();
       /*
        * Persisted so the NEXT visit paints instantly instead of racing the
        * queue again. Never under the live key for a historical range request -
@@ -6830,6 +6792,12 @@ function WorkspaceChartPaneComponent({
     skipInheritedFlowRef.current = Boolean(inherited?.orderFlowReady);
     workspaceDuplicateSeeds.discard(chartInstanceId);
     const requestController = new AbortController();
+    const indexHistoryRecovery = new ChartHistoryRecovery();
+    const recoverIndexHistory = (error: unknown, retry: () => Promise<void>) => {
+      if (pane.broker === "Market Index" && !cancelled && isTransientHistoryFailure(error)) {
+        indexHistoryRecovery.schedule(() => { if (!cancelled) void retry(); });
+      }
+    };
     const eventHistory = pane.broker === "Databento" && isEventBasedChartInterval(pane.timeframe);
     eventHistoryTailRef.current = !inherited && !replayHistoryRange && eventHistory
       ? { records: [], droppedThrough: -Infinity } : null;
@@ -6922,7 +6890,8 @@ function WorkspaceChartPaneComponent({
           setSettledChartRequestKey(requestedChartHydrationKey);
           setLoading(false);
         } catch (loadError) {
-          if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
+          if (cancelled || requestController.signal.aborted) return;
+          recoverIndexHistory(loadError, loadReplaySession);
           historyHydratedRef.current = false;
           setLoading(false);
           setError(loadError instanceof Error
@@ -6936,6 +6905,7 @@ function WorkspaceChartPaneComponent({
       return () => {
         cancelled = true;
         requestController.abort();
+        indexHistoryRecovery.dispose();
       };
     }
 
@@ -7464,7 +7434,8 @@ function WorkspaceChartPaneComponent({
       } catch (loadError) {
         if (cancelled) return;
         eventHistoryTailRef.current = null;
-        if (loadError instanceof DOMException && loadError.name === "AbortError") return;
+        if (requestController.signal.aborted) return;
+        recoverIndexHistory(loadError, loadHistory);
         /*
          * The route's own words, when it has any.
          *
@@ -7609,6 +7580,7 @@ function WorkspaceChartPaneComponent({
     return () => {
       cancelled = true;
       requestController.abort();
+      indexHistoryRecovery.dispose();
       if (reconciliationTimer !== null) window.clearTimeout(reconciliationTimer);
       if (requestTailReconciliationRef.current === requestTailReconciliation) {
         requestTailReconciliationRef.current = null;
