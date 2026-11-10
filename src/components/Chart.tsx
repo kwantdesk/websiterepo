@@ -28,7 +28,7 @@ import { TextOnChartPrimitive } from "@/lib/textOnChartPrimitive";
 import { OverlayTimeframeHighlightPrimitive } from "@/lib/overlayTimeframeHighlightPrimitive";
 import { OnCandleStatsPrimitive } from "@/lib/onCandleStatsPrimitive";
 import { ShiftCandlePrimitive } from "@/lib/shiftCandlePrimitive";
-import { buildSpeedOfTapeFrame as buildSimpleSpeedOfTapeFrame, normalizeSpeedOfTapeSettings as normalizeSimpleSpeedOfTapeSettings, speedOfTapeSeries as simpleSpeedOfTapeSeries } from "@/lib/speedOfTape";
+import { buildChartSpeedOfTapeFrame, normalizeSpeedOfTapeSettings as normalizeSimpleSpeedOfTapeSettings, chartSpeedOfTapeSeries } from "@/lib/speedOfTape";
 import { useChartIndicatorAlertDelivery } from "@/components/useChartIndicatorAlertDelivery";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { useExactFootprintHistory } from "@/components/useExactFootprintHistory";
@@ -8750,30 +8750,11 @@ function Chart({
       }
     }
   }, [baseCalculatedIndicatorSeries, indicatorCandles, indicatorSignature, indicators, instrument, marketIsActive, replayTimestampMs]);
-  const calculatedIndicatorPanes = useMemo(() => {
+  const historicalCalculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
       if (momentumOnChart(instance)) return [];
-      if (instance.indicatorId === "speed-of-tape") {
-        const source = normalizeSimpleSpeedOfTapeSettings(instance.settings);
-        const visible = visibleIndicatorTheme(settings);
-        const frame = buildSimpleSpeedOfTapeFrame(indicatorMarketTrades, instance.settings ?? {}, visible);
-        let series = simpleSpeedOfTapeSeries(frame, instance.instanceId);
-        if (timeframe && isEventBasedChartInterval(timeframe) && eventChartIndicatorTimeMap) {
-          series = series.map((definition) => ({ ...definition, data: definition.data.flatMap((point) => {
-            const sourceMs = point.time * 1_000;
-            let low = 0, high = indicatorCandles.length - 1;
-            while (low < high) { const middle = Math.ceil((low + high) / 2); if (indicatorCandles[middle].timestamp <= sourceMs) low = middle; else high = middle - 1; }
-            const mapped = indicatorCandles[low] ? eventChartIndicatorTimeMap.exact.get(indicatorCandles[low].timestamp) : undefined;
-            return mapped == null ? [] : [{ ...point, time: mapped }];
-          }) }));
-        }
-        return [{ key: instance.instanceId, title: "Speed of Tape", indicatorId: instance.indicatorId, settings: instance.settings, series,
-          statusLabel: frame.status === "ready" ? `${source.numberSeconds}s · μ ${Math.round(frame.mean).toLocaleString()} · σ ${Math.round(frame.standardDeviation).toLocaleString()}` : frame.status.replaceAll("-", " ").toUpperCase(),
-          currentBadgeValue: frame.bars.at(-1)?.value, currentBadge: frame.bars.length ? Math.round(frame.bars.at(-1)!.value).toLocaleString() : undefined,
-          showHeader: true, showLegend: true, defaultHeight: source.paneHeight, minimumHeight: 120, maximumHeight: 520,
-          unavailableReason: frame.status === "orders-unavailable" ? "Historical order-placement events are unavailable; Trades are not substituted." : frame.status === "waiting-for-executions" ? "Waiting for exact Rithmic executions." : undefined }];
-      }
+      if (instance.indicatorId === "speed-of-tape") return [];
       if (instance.indicatorId === "book-speed") {
         const source = bookSpeedSettings;
         const chartTimeFor = (timestampMs: number) => {
@@ -9257,6 +9238,37 @@ function Chart({
     tapeSpeedSettings,
     timeframe,
   ]);
+  // Speed is a lightweight live execution study. Never hold it behind the
+  // sampled candles/tape used to budget heavier historical indicators.
+  const speedOfTapeEnabled = indicators.some(instance => instance.enabled && instance.indicatorId === "speed-of-tape");
+  const [speedOfTapeClock, setSpeedOfTapeClock] = useState(Date.now);
+  useEffect(() => {
+    if (!speedOfTapeEnabled || replayTimestampMs != null) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") setSpeedOfTapeClock(Date.now());
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [speedOfTapeEnabled, replayTimestampMs]);
+  const speedOfTapePanes = useMemo(() => indicators.flatMap((instance): IndicatorPaneGroup[] => {
+    if (!instance.enabled || instance.indicatorId !== "speed-of-tape") return [];
+    const source = normalizeSimpleSpeedOfTapeSettings(instance.settings);
+    // The retained tape is strongest-print sampled beyond fifteen minutes.
+    // That prefix cannot truthfully supply execution intensity.
+    const completeFrom = Math.max(marketTrades[0]?.timestamp ?? Infinity,
+      (marketTrades.at(-1)?.timestamp ?? Infinity) - 15 * 60_000);
+    const frame = buildChartSpeedOfTapeFrame(marketTrades, instance.settings ?? {}, visibleIndicatorTheme(settings),
+      candles.slice(-4_000), timeframeToMs(timeframe), replayTimestampMs ?? Math.max(speedOfTapeClock, Date.now()), completeFrom);
+    return [{key: instance.instanceId, title: "Speed of Tape", indicatorId: instance.indicatorId, settings: instance.settings,
+      series: chartSpeedOfTapeSeries(frame, instance.instanceId),
+      statusLabel: frame.status === "ready" ? `Trailing ${source.numberSeconds}s` : frame.status.replaceAll("-", " ").toUpperCase(),
+      currentBadgeValue: frame.bars.at(-1)?.value,
+      currentBadge: frame.bars.length ? Math.round(frame.bars.at(-1)!.value).toLocaleString() : undefined,
+      showHeader: true, showLegend: true, defaultHeight: source.paneHeight, minimumHeight: 120, maximumHeight: 520,
+      unavailableReason: frame.status === "orders-unavailable" ? "Order-placement events are unavailable; choose Volume or Trades."
+        : frame.status === "waiting-for-executions" ? "Waiting for exact executions." : undefined}];
+  }), [indicators, marketTrades, marketTradesVersion, candles, timeframe, replayTimestampMs, speedOfTapeClock, settings]);
+  const calculatedIndicatorPanes = useMemo(() => [...historicalCalculatedIndicatorPanes, ...speedOfTapePanes],
+    [historicalCalculatedIndicatorPanes, speedOfTapePanes]);
   const defaultIndicatorPaneHeight = Math.max(88, Math.min(140, overlaySize.height * 0.18));
   const resolvedIndicatorPaneHeights = useMemo(
     () => Object.fromEntries(calculatedIndicatorPanes.map((group) => [

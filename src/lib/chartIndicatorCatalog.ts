@@ -91,7 +91,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Imbalance Rejector", "Order Flow", "Marks imbalance patterns that reject and reverse.", true),
   indicator("Unfinished Auction", "Order Flow", "Flags auction extremes with incomplete bid/ask participation.", true),
   indicator("Dynamic POC", "Order Flow", "Tracks the developing point of control.", true),
-  indicator("Speed of Tape", "Order Flow", "Execution intensity over configurable seconds using Volume, Orders or Trades with deviation filtering.", true),
+  indicator("Speed of Tape", "Order Flow", "Live execution volume or trade count over a trailing seconds window, aligned to each candle with size and deviation filters.", true),
   indicator("Speed of Tape (Instant)", "Order Flow", "Low-latency transaction-speed signal.", true),
   indicator("Volume/Delta Sprint", "Order Flow", "Detects rapid bursts in volume and delta.", true),
   indicator("Tape Speed & Order-Flow Burst", "Order Flow", "Live transaction velocity, directional burst, churn, response and contextual order-flow classification from the shared Rithmic execution tape.", true, "Kwantify", undefined, "Tape"),

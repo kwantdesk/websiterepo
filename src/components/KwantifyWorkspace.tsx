@@ -5899,7 +5899,7 @@ function WorkspaceChartPaneComponent({
   const footprintLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "deep-print-footprint");
   const instantTapeLiveActive = indicators.some((instance) =>
-    instance.enabled && instance.indicatorId === "speed-of-tape-instant");
+    instance.enabled && (instance.indicatorId === "speed-of-tape-instant" || instance.indicatorId === "speed-of-tape"));
   const auctionGapLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "auction-gap-tracker");
   const bigContractsLiveActive = indicators.some((instance) =>
@@ -6422,7 +6422,7 @@ function WorkspaceChartPaneComponent({
       // must not keep pushing the growing tape back through React afterwards.
       // Other order-flow studies still receive a sampled checkpoint.
       if (footprintLiveActive && !nonFootprintOrderFlowActive) return;
-      const baseCadence = footprintLiveActive
+      const baseCadence = footprintLiveActive && !instantTapeLiveActive
         ? 1_500
         : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS;
       const cadence = activeRef.current ? baseCadence : Math.max(750, baseCadence);

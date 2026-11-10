@@ -7980,7 +7980,7 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "speed-of-tape" ? (
                 <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Database</span><KwantSelect value={String(settingsInstance.settings?.database ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), database: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Speed of Tape database"><option value="volume">Volume</option><option value="trades">Trades</option></KwantSelect></label>
-                  <p className="text-[8px] leading-4 text-muted">Measures exact execution intensity inside fixed N-second windows. Deviation filtering keeps only windows at or above the configured threshold.</p>
+                  <p className="text-[8px] leading-4 text-muted">Each candle shows execution volume or trade count in the trailing seconds window. The forming candle updates with the tape. Min/max filter execution size; deviation filtering hides weaker readings.</p>
                 </div>
               ) : null}
 
