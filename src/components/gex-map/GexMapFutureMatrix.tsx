@@ -164,31 +164,37 @@ export default function GexMapFutureMatrix({ palette, zoom = 1, workspaceSetting
   }, [chain, settings.lookaheadDays]);
 
   const spotStrike = useMemo(() => {
-    if (!chain?.stockPrice || !view?.strikes.length) return null;
+    const spot = chain?.stockPrice;
+    if (spot == null || !Number.isFinite(spot) || spot <= 0 || !view?.strikes.length) return null;
     return view.strikes.reduce((best, strike) =>
-      Math.abs(strike - chain.stockPrice!) < Math.abs(best - chain.stockPrice!) ? strike : best);
-  }, [chain, view]);
+      Math.abs(strike - spot) < Math.abs(best - spot) ? strike : best);
+  }, [chain?.stockPrice, view]);
 
-  // Every load, refresh, or window change: pin horizontal scroll back to zero
-  // (a leftover offset detached the sticky strike column and left a gap on
-  // its left) and centre the spot strike vertically, like the ladder panels.
   const scrollRef = useRef<HTMLDivElement>(null);
   const spotRowRef = useRef<HTMLTableRowElement>(null);
   const centeredKeyRef = useRef("");
+  const centerSpotStrike = useCallback(() => {
+    const container = scrollRef.current;
+    const row = spotRowRef.current;
+    if (!container || !row) return false;
+
+    // scrollIntoView accounts for CSS zoom. Keep the selected expiry columns
+    // in view when recentering the strike axis.
+    const expiryOffset = container.scrollLeft;
+    row.scrollIntoView({ block: "center", inline: "nearest" });
+    container.scrollLeft = expiryOffset;
+    return true;
+  }, []);
+
   useEffect(() => {
-    if (!view?.strikes.length || spotStrike === null) return;
+    if (spotStrike === null) return;
     const key = `${chain?.symbol}:${chain?.greekMode}:${settings.lookaheadDays}`;
     if (centeredKeyRef.current === key) return;
     const container = scrollRef.current;
-    const row = spotRowRef.current;
-    if (!container || !row) return;
+    if (!container || !centerSpotStrike()) return;
     centeredKeyRef.current = key;
-    // scrollIntoView is CSS-zoom-aware; manual offsetTop math undershot by
-    // the zoom factor. Horizontal scroll is pinned back to zero afterwards so
-    // the sticky strike column never sits detached with a gap on its left.
-    row.scrollIntoView({ block: "center" });
     container.scrollLeft = 0;
-  }, [chain?.greekMode, chain?.symbol, settings.lookaheadDays, spotStrike, view]);
+  }, [centerSpotStrike, chain?.greekMode, chain?.symbol, settings.lookaheadDays, spotStrike]);
 
   const chip = "flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em]";
 
@@ -282,7 +288,17 @@ export default function GexMapFutureMatrix({ palette, zoom = 1, workspaceSetting
           <table className="w-full min-w-max border-separate border-spacing-0 font-mono text-[10px]">
             <thead>
               <tr>
-                <th className="sticky left-0 top-0 z-30 border-b border-r border-border bg-panel px-2 py-1 text-left text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Strike</th>
+                <th scope="col" className="sticky left-0 top-0 z-30 border-b border-r border-border bg-panel text-left text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  <button
+                    type="button"
+                    onClick={centerSpotStrike}
+                    disabled={spotStrike === null}
+                    title="Center on the current strike"
+                    className="block w-full px-2 py-1 text-left uppercase tracking-[0.14em] enabled:hover:text-foreground"
+                  >
+                    Strike
+                  </button>
+                </th>
                 {view.expirations.map((expiration) => {
                   const heading = expirationHeading(expiration);
                   return (
@@ -297,7 +313,11 @@ export default function GexMapFutureMatrix({ palette, zoom = 1, workspaceSetting
             <tbody>
               {view.strikes.map((strike) => (
                 <tr key={strike} ref={strike === spotStrike ? spotRowRef : undefined}>
-                  <td className={`sticky left-0 z-10 whitespace-nowrap border-r border-border bg-panel px-2 py-0.5 text-right font-semibold ${strike === spotStrike ? "text-primary" : "text-foreground"}`}>
+                  <td
+                    onDoubleClick={spotStrike === null ? undefined : centerSpotStrike}
+                    title={spotStrike === null ? undefined : "Double-click to center on the current strike"}
+                    className={`sticky left-0 z-10 select-none whitespace-nowrap border-r border-border bg-panel px-2 py-0.5 text-right font-semibold ${strike === spotStrike ? "text-primary" : "text-foreground"}`}
+                  >
                     {strike === spotStrike ? "▸ " : ""}{strike.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </td>
                   {view.expirations.map((expiration) => {
