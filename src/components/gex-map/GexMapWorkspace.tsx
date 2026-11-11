@@ -98,6 +98,7 @@ import { gexMapReplayDisplay } from "@/lib/gexMapReplayTime";
 import {
   GEX_MAP_REPLAY_WINDOWS,
   framesInReplayWindow,
+  gexMapReplayNavigation,
   type GexMapReplayWindowId,
 } from "@/lib/gexMapReplayWindow";
 
@@ -1161,7 +1162,7 @@ function GexMapWorkspace({
   });
   const [internalReplayMode, setReplayMode] = useState(false);
   const [replayDate, setReplayDate] = useState("");
-  const [cursor, setCursor] = useState(0);
+  const [replayTimestamp, setReplayTimestamp] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [stepMinutes, setStepMinutes] = useState<(typeof FRAME_STEPS)[number]>(
@@ -1589,23 +1590,28 @@ function GexMapWorkspace({
     return ordered.filter((timestamp) => Math.round((timestamp - anchor) / 60_000) % stepMinutes === 0);
   }, [panelData, panelMatches, panels, replayMode, replayWindow, requestedReplayDate, stepMinutes]);
 
-  useEffect(() => {
-    if (externalReplay || !replayMode || !playing || timeline.length < 2) return;
-    const timer = window.setInterval(() => {
-      setCursor((current) => {
-        if (current >= timeline.length - 1) {
-          setPlaying(false);
-          return current;
-        }
-        return current + 1;
-      });
-    }, Math.max(80, 1_000 / speed));
-    return () => window.clearInterval(timer);
-  }, [externalReplay, playing, replayMode, speed, timeline.length]);
-
+  // The clock is independent of the sampled timeline. Changing step size or
+  // waiting for a new panel response must not reinterpret it as a frame index.
   const selectedTimestamp = replayMode
-    ? externalReplay?.timestampMs ?? timeline[Math.min(cursor, Math.max(0, timeline.length - 1))] ?? null
+    ? externalReplay?.timestampMs ?? replayTimestamp ?? timeline[0] ?? null
     : null;
+  const navigation = gexMapReplayNavigation(timeline, selectedTimestamp);
+
+  useEffect(() => {
+    if (externalReplay || !replayMode || !playing) return;
+    const timer = window.setTimeout(() => {
+      if (navigation.next === null) setPlaying(false);
+      else setReplayTimestamp(navigation.next);
+    }, Math.max(80, 1_000 / speed));
+    return () => window.clearTimeout(timer);
+  }, [externalReplay, navigation.next, playing, replayMode, speed]);
+
+  function holdReplayClock() {
+    if (!replayMode || externalReplay) return;
+    setReplayTimestamp(selectedTimestamp);
+    setPlaying(false);
+  }
+
   const currentSessionDate = latestSessionDate
     || panels.map((panel) => panelData[panel.id]?.sessionDate).find(Boolean)
     || "";
@@ -1672,13 +1678,13 @@ function GexMapWorkspace({
     setReplayDate(currentSessionDate || replayDate);
     setReplayMode(true);
     setPlaying(false);
-    setCursor(0);
+    setReplayTimestamp(null);
   }
 
   function exitReplay() {
     setReplayMode(false);
     setPlaying(false);
-    setCursor(0);
+    setReplayTimestamp(null);
   }
 
   function workspaceSnapshot(): GexMapWorkspaceSnapshot {
@@ -1713,8 +1719,7 @@ function GexMapWorkspace({
     setFutureZoom(futureZoom);
     setPriceLocked(priceLocked);
     setReplayWindow(replayWindow);
-    setCursor(0);
-    setPlaying(false);
+    holdReplayClock();
   }
 
   const starSettingsButton = (
@@ -1762,8 +1767,7 @@ function GexMapWorkspace({
                   type="button"
                   onClick={() => {
                     setStepMinutes(value);
-                    setCursor(0);
-                    setPlaying(false);
+                    holdReplayClock();
                   }}
                   className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${stepMinutes === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
                 >
@@ -1817,8 +1821,7 @@ function GexMapWorkspace({
                     type="button"
                     onClick={() => {
                       setExposureModel(value);
-                      setCursor(0);
-                      setPlaying(false);
+                      holdReplayClock();
                     }}
                     aria-pressed={exposureModel === value}
                     className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${exposureModel === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
@@ -1839,8 +1842,7 @@ function GexMapWorkspace({
                   type="button"
                   onClick={() => {
                     setExpiryScope(scope);
-                    setCursor(0);
-                    setPlaying(false);
+                    holdReplayClock();
                   }}
                   aria-pressed={expiryScope === scope}
                   className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${expiryScope === scope ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
@@ -1860,8 +1862,7 @@ function GexMapWorkspace({
                   type="button"
                   onClick={() => {
                     setRepresentation(mode);
-                    setCursor(0);
-                    setPlaying(false);
+                    holdReplayClock();
                   }}
                   aria-pressed={representation === mode}
                   className={`h-5 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${representation === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
@@ -1914,7 +1915,10 @@ function GexMapWorkspace({
                   <button
                     key={entry.id}
                     type="button"
-                    onClick={() => setReplayWindow(entry.id)}
+                    onClick={() => {
+                      holdReplayClock();
+                      setReplayWindow(entry.id);
+                    }}
                     aria-pressed={replayWindow === entry.id}
                     title={replayDisplay.window(entry.id, requestedReplayDate)}
                     className={`h-6 rounded-[var(--kwant-control-radius,8px)] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${
@@ -2037,7 +2041,7 @@ function GexMapWorkspace({
                 max={currentSessionDate || undefined}
                 onChange={(date) => {
                   setReplayDate(date);
-                  setCursor(0);
+                  setReplayTimestamp(null);
                   setPlaying(false);
                 }}
                 showSessionLabel={false}
@@ -2046,13 +2050,13 @@ function GexMapWorkspace({
               {timeZoneControl}
 
               <div role="group" aria-label="Replay playback" className="flex items-center gap-1">
-                <button type="button" onClick={() => setCursor(0)} className="gex-map-replay-control gex-map-replay-icon" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
-                <button type="button" onClick={() => setCursor((value) => Math.max(0, value - 1))} className="gex-map-replay-control gex-map-replay-icon" title="Previous frame"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setReplayTimestamp(timeline[0] ?? null)} className="gex-map-replay-control gex-map-replay-icon" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setReplayTimestamp(navigation.previous)} disabled={navigation.previous === null} className="gex-map-replay-control gex-map-replay-icon" title="Previous frame"><ChevronLeft className="h-3.5 w-3.5" /></button>
                 <button type="button" onClick={() => setPlaying((value) => !value)} disabled={timeline.length < 2} className="gex-map-replay-control gex-map-replay-icon gex-map-replay-play" title={playing ? "Pause" : "Play"}>
                   {playing ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
                 </button>
-                <button type="button" onClick={() => setCursor((value) => Math.min(timeline.length - 1, value + 1))} className="gex-map-replay-control gex-map-replay-icon" title="Next frame"><ChevronRight className="h-3.5 w-3.5" /></button>
-                <button type="button" onClick={() => setCursor(Math.max(0, timeline.length - 1))} className="gex-map-replay-control gex-map-replay-icon" title="Latest frame"><SkipForward className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setReplayTimestamp(navigation.next)} disabled={navigation.next === null} className="gex-map-replay-control gex-map-replay-icon" title="Next frame"><ChevronRight className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setReplayTimestamp(timeline.at(-1) ?? null)} className="gex-map-replay-control gex-map-replay-icon" title="Latest frame"><SkipForward className="h-3.5 w-3.5" /></button>
               </div>
 
               <div className="min-w-[110px]">
@@ -2070,9 +2074,9 @@ function GexMapWorkspace({
                 type="range"
                 min={0}
                 max={Math.max(0, timeline.length - 1)}
-                value={Math.min(cursor, Math.max(0, timeline.length - 1))}
+                value={navigation.sliderIndex}
                 onChange={(event) => {
-                  setCursor(Number(event.target.value));
+                  setReplayTimestamp(timeline[Number(event.target.value)] ?? null);
                   setPlaying(false);
                 }}
                 className="min-w-[180px] flex-1 accent-[var(--primary)]"

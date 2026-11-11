@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { gexMapReplayDisplay, gexReplayCalendar } from "../src/lib/gexMapReplayTime.ts";
-import { framesInReplayWindow } from "../src/lib/gexMapReplayWindow.ts";
+import { framesInReplayWindow, gexMapReplayNavigation } from "../src/lib/gexMapReplayWindow.ts";
 const open = Date.parse("2026-10-30T13:30:00Z"), close = Date.parse("2026-10-30T19:59:00Z");
 test("Brisbane history follows the website clock, including midnight rollover", () => {
   const display = gexMapReplayDisplay("Australia/Brisbane");
@@ -54,4 +54,26 @@ test("the replay calendar maps the local cash open back to the same New York arc
       assert.equal(calendar.exchangeDate(calendar.localOpenDate(date)), date);
     }
   }
+});
+
+test("changing replay intervals keeps an off-grid clock between the correct navigation targets", () => {
+  const clock = open + 63 * 60_000;
+  for (const step of [1, 2, 5, 10]) {
+    const timeline = Array.from({ length: 12 * 10 + 1 }, (_, i) => open + i * step * 60_000);
+    const { previous, next, sliderIndex } = gexMapReplayNavigation(timeline, clock);
+    assert.ok(previous < clock);
+    assert.ok(next > clock);
+    assert.ok(timeline[sliderIndex] <= clock);
+    assert.ok(timeline[sliderIndex + 1] > clock);
+    if (step === 10) {
+      assert.equal(previous, open + 60 * 60_000);
+      assert.equal(next, open + 70 * 60_000);
+    }
+  }
+});
+
+test("replay navigation handles an empty replacement surface and a clock outside a selected window", () => {
+  assert.deepEqual(gexMapReplayNavigation([], open), { sliderIndex: 0, previous: null, next: null });
+  assert.deepEqual(gexMapReplayNavigation([open, close], open - 1), { sliderIndex: 0, previous: null, next: open });
+  assert.deepEqual(gexMapReplayNavigation([open, close], close + 1), { sliderIndex: 1, previous: close, next: null });
 });

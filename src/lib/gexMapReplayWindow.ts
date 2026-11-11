@@ -49,3 +49,21 @@ export function framesInReplayWindow(timestamps: readonly number[], windowId: Ge
    */
   return inside.length ? inside : [...timestamps];
 }
+
+/** Find replay controls around an exact clock, even when it falls between steps. */
+export function gexMapReplayNavigation(timeline: readonly number[], timestamp: number | null) {
+  let low = 0;
+  let high = timeline.length;
+  while (timestamp !== null && low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (timeline[middle] <= timestamp) low = middle + 1;
+    else high = middle;
+  }
+  const index = low - 1;
+  const previous = timeline[index] === timestamp ? index - 1 : index;
+  return {
+    sliderIndex: Math.max(0, index),
+    previous: timeline[previous] ?? null,
+    next: timeline[low] ?? null,
+  };
+}
