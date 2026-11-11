@@ -2501,8 +2501,7 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     symbol: pane.symbol ?? fallback.symbol,
     broker,
     timeframe,
-    // Load-range selection is coming soon; saved ranges use five sessions.
-    period: "5D",
+    period: chartLoadPeriod(pane.period, timeframe),
     watchlistKey: pane.watchlistKey ?? makeWatchlistKey(pane.symbol ?? fallback.symbol, pane.broker ?? fallback.broker),
     // Existing saved workspaces predate mixed panels and are chart panes.
     content: pane.content === null || isWorkspacePanelKind(pane.content) ? pane.content : "charts",
@@ -2894,6 +2893,15 @@ function getPeriodConfig(period: string): { from: string; label: string } {
     "1Y": { from: new Date(now - 365 * day).toISOString(), label: "1Y" },
     All: { from: new Date(now - 4 * 365 * day).toISOString(), label: "All" },
   }[period] ?? { from: new Date(now - 365 * day).toISOString(), label: "1Y" };
+}
+
+function supportsMonthlyChartHistory(timeframe: string) {
+  const interval = getChartInterval(timeframe);
+  return interval != null && interval.kind !== "second" && !isEventBasedChartInterval(timeframe);
+}
+
+function chartLoadPeriod(period: string | undefined, timeframe: string) {
+  return period === "1M" && supportsMonthlyChartHistory(timeframe) ? "1M" : "5D";
 }
 
 function requestedChartHistoryStart(period: string) {
@@ -3951,7 +3959,7 @@ async function fetchWorkspaceCandles(
   // How much calendar history to ask the route for. Event-based bars have to
   // be BUILT from the raw tape, so a full ten-day window is minutes of work on
   // a cold cache; the first paint asks for a short window instead.
-  historyDays = DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+  historyDays = period === "1M" ? 30 : DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   historicalRange?: WorkspaceHistoricalRange,
   auctionGapExpectedContract?: string | null,
 ) {
@@ -6979,7 +6987,7 @@ function WorkspaceChartPaneComponent({
       || hasUsableOrderFlowHistory(immediateHydratedCandles));
     const immediateTailNeedsReconciliation = pane.broker === "Databento"
       && cmeChartTailNeedsReconciliation(immediateHydratedCandles, pane.timeframe);
-    const immediateHistoryIsHydrated = Boolean(inherited) || hasImmediateHistory
+    const immediateHistoryIsHydrated = Boolean(inherited) || period === "5D" && hasImmediateHistory
       && Boolean(immediateCache?.updatedAt && Date.now() - immediateCache.updatedAt <= 20_000)
       && hasFiveDayHistory(immediateHistory, pane.timeframe)
       && !immediateTailNeedsReconciliation
@@ -7213,7 +7221,7 @@ function WorkspaceChartPaneComponent({
           5 * 60_000,
           getTimeframeMs(pane.timeframe) * 2,
         );
-      const cachedIsHydrated = !cached?.derived && cachedCandles.length > 0
+      const cachedIsHydrated = period === "5D" && !cached?.derived && cachedCandles.length > 0
         && cachedTailIsFresh
         && cachedMarketIndexTailIsCurrent
         && !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe)
@@ -7327,7 +7335,9 @@ function WorkspaceChartPaneComponent({
           requestController.signal,
           false,
           false,
-          DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+          // The archive supplies the extra OHLCV through the base request.
+          // Keep execution reconstruction within the existing recent window.
+          period === "1M" && !needsOrderFlowHistory ? 30 : DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
           undefined,
           needsAuctionGapHistory ? resolvedContractSymbol : null,
         );
@@ -7502,6 +7512,7 @@ function WorkspaceChartPaneComponent({
             // Repair attempts must not persist another full history snapshot
             // before this pane has verified it. Cache the successful result once.
             true,
+            DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
           ),
           resolvedContractSymbol && !eventHistory
             ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
@@ -7733,6 +7744,7 @@ function WorkspaceChartPaneComponent({
           controller.signal,
           false,
           true,
+          DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
         );
         if (cancelled || !downloaded.length) return;
         const previous = latestCandlesRef.current;
@@ -13798,7 +13810,8 @@ export default function KwantifyWorkspace({
     if (!nextPane) return;
     if (selectedInstrument !== nextPane.symbol) setSelectedInstrument(nextPane.symbol);
     if (selectedTimeframe !== nextPane.timeframe) setSelectedTimeframe(nextPane.timeframe);
-    if (selectedPeriod !== "5D") setSelectedPeriod("5D");
+    const nextPeriod = chartLoadPeriod(nextPane.period, nextPane.timeframe);
+    if (selectedPeriod !== nextPeriod) setSelectedPeriod(nextPeriod);
     if (connectedBroker !== nextPane.broker) setConnectedBroker(nextPane.broker);
     if (selectedWatchlistKey !== nextPane.watchlistKey) setSelectedWatchlistKey(nextPane.watchlistKey);
   }, [preferencesReady, activeWorkspacePane, connectedBroker, selectedInstrument, selectedPeriod, selectedTimeframe, selectedWatchlistKey]);
@@ -18822,7 +18835,8 @@ export default function KwantifyWorkspace({
   };
 
   const handleChartPeriod = (paneId: string, period: string) => {
-    if (period !== "5D") return;
+    const pane = workspacePanes.find((candidate) => candidate.id === paneId);
+    if (!pane || period !== chartLoadPeriod(period, pane.timeframe) || pane.period === period) return;
     clearBacktest();
     updateWorkspacePane(paneId, { period });
     if (paneId === activePaneId) {
@@ -19705,7 +19719,7 @@ export default function KwantifyWorkspace({
         chartInstanceId={workspaceChartInstanceId(chartWorkspaceScope, pane.id)}
         active={activePaneId === pane.id}
         embedded
-        period="5D"
+        period={chartLoadPeriod(pane.period, pane.timeframe)}
         settings={chartSettings}
         crosshairLinked={linkedCrosshairPaneIds.has(pane.id)}
         candlesVisible={!candlesHiddenPaneIds.has(pane.id)}
@@ -20708,18 +20722,22 @@ export default function KwantifyWorkspace({
                 <div className="max-h-[560px] overflow-y-auto p-2">
                   <div className="mb-1 flex flex-wrap items-center gap-2 border-b border-border/60 px-2 pb-2.5">
                     <div>
-                      <div className="flex items-center gap-2 text-[11px] font-medium text-foreground">Load range<span className="rounded-md border border-border px-1.5 py-0.5 text-[9px] font-normal text-muted">Coming soon</span></div>
-                      <div className="text-[9px] text-muted">Automatically loads five trading days</div>
+                      <div className="text-[11px] font-medium text-foreground">Load range</div>
+                      <div className="text-[9px] text-muted">Recorded history for the selected chart</div>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center gap-1">
-                      {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
+                      {["5D", "1M"].map((range) => (
                         <button
                           key={range}
                           type="button"
-                          disabled
-                          aria-pressed={range === "5D"}
-                          title="Load range selection is coming soon. Charts automatically load five trading days."
-                          className={`cursor-default rounded-lg border px-2 py-1.5 font-mono text-[10px] ${range === "5D" ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-muted opacity-40"}`}
+                          disabled={range === "1M" && !supportsMonthlyChartHistory(selectedTimeframe)}
+                          aria-pressed={range === selectedPeriod}
+                          title={range === "1M" ? "One month of recorded history for minute and longer intervals" : "Five trading days"}
+                          onClick={() => {
+                            handleChartPeriod(activePaneId, range);
+                            setShowAllTF(false);
+                          }}
+                          className={`rounded-lg border px-2 py-1.5 font-mono text-[10px] disabled:opacity-40 ${range === selectedPeriod ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-muted hover:text-foreground"}`}
                         >
                           {range}
                         </button>
