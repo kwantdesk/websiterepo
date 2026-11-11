@@ -92,7 +92,11 @@ test('account pools do not share responses and reference release does not kill a
 
 test('tool panels reuse real source surfaces and chart Indicators are natively disabled',()=>{
   const shell=read('src/components/KwantifyWorkspace.tsx'),frame=read('src/components/options-flow/OptionsFlowToolPanel.tsx');
-  assert.ok(shell.indexOf('Options Flow Tools')>shell.indexOf('Market &amp; Order Flow'));
+  assert.ok(shell.indexOf('Options Flow Tools')>shell.indexOf('Order Flow Tools'));
+  assert.match(shell, /<details className=[^>]+>\s*<summary[^>]+>\s*<span>Order Flow Tools/);
+  assert.match(shell, /<details className=[^>]+>\s*<summary[^>]+>\s*<span>Options Flow Tools/);
+  assert.match(shell, /const WORKSPACE_PICKER_ORDER = \[\s*"charts", "gamvue", "gexmap", "gexdata", "gamma", "liqmap",\s*"news", "socials", "journal", "algo", "backtesting"/);
+  assert.match(shell, /tool.source === "gex-data" && tool.toolId !== "exposure-forecast"/);
   assert.match(shell,/activePaneIsChart \? <ChartIndicatorsControl/);
   assert.match(shell,/<button type="button" disabled aria-label="Indicators unavailable/);
   assert.match(shell,/optionsFlowState: normalizeOptionsFlowState/);

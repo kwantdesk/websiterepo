@@ -146,6 +146,7 @@ import {
   Plus,
   RefreshCw,
   Repeat,
+  RotateCcw,
   Save,
   Search,
   Send,
@@ -199,6 +200,7 @@ import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, applyActiveThe
 import type { ChartLevel, ChartOverlaySeries, ChartZone } from "@/components/Chart";
 import {
   CHART_INDICATOR_BY_ID,
+  CHART_INDICATOR_CATALOG,
   type ChartIndicatorInstance,
 } from "@/lib/chartIndicatorCatalog";
 import {
@@ -1038,8 +1040,9 @@ type StrategyItem = {
 };
 
 type WorkspaceLayout = "single" | "split-vertical" | "columns-3" | "split-horizontal" | "quad" | "columns" | "gexmap-columns" | "gexmap-columns-4" | "gexmap-quad" | "custom";
-type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
+type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal" | "gexdata";
 type WorkspaceToolKind =
+  | `tool-indicator:${string}`
   | "tool-gamma-heatmap"
   | "tool-implied-volatility-rank"
   | "tool-net-gamma-exposure-by-strike"
@@ -1457,15 +1460,16 @@ const WORKSPACE_PANEL_OPTIONS: Array<WorkspacePanelOption<WorkspacePagePanelKind
   { id: "charts", label: "CHARTS", description: "Live chart and indicators", icon: BarChart3 },
   { id: "zyon", label: "ZYON", description: "AI quant analyst", icon: Sparkles },
   { id: "gameplan", label: "GAMEPLAN", description: "Live session plan", icon: FileText },
+  { id: "gexdata", label: "GEX DATA", description: "Options analytics and market data", icon: BarChart3 },
   { id: "gamma", label: "OPTIONS", description: "Options positioning", icon: Zap },
   { id: "gexmap", label: "GEX MAP", description: "Strike exposure map", icon: Layers3 },
-  { id: "liqmap", label: "LIQ MAP", description: "Live Level 3 liquidity", icon: List },
+  { id: "liqmap", label: "LIQUIDITY MAP", description: "Live Level 3 liquidity", icon: List },
   { id: "news", label: "NEWS", description: "Calendar and macro", icon: Bell },
   { id: "socials", label: "SOCIALS", description: "Feed, desks and profiles", icon: UsersRound },
   { id: "journal", label: "JOURNAL", description: "Trades and analysis", icon: FileText },
 ];
 
-const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
+const LEGACY_WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-gamma-heatmap", label: "GAMMA HEATMAP", description: "Historical and live options exposure mapped onto futures price", icon: Layers3, indicatorId: "gamma-heatmap" },
   { id: "tool-implied-volatility-rank", label: "IMPLIED VOLATILITY RANK", description: "Current IV inside its historical lookback range at a chosen maturity, with optional true IV Percentile and underlying-price context.", icon: ImpliedVolatilityRankIcon as typeof BarChart3, indicatorId: "implied-volatility-rank" },
   { id: "tool-net-gamma-exposure-by-strike", label: "NET GAMMA EXPOSURE BY STRIKE", description: "Current signed Net GEX profile mapped precisely onto futures price", icon: BarChart3, indicatorId: "net-gamma-exposure-by-strike" },
@@ -1505,6 +1509,50 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-multi-book-sweep-synchronization", label: "MULTI-BOOK SWEEP SYNCHRONIZATION", description: "Synchronized sweeps across related futures books", icon: ArrowLeftRight },
   { id: "tool-ghost-liquidity", label: "GHOST LIQUIDITY", description: "Liquidity that appears, retreats and reappears", icon: EyeOff },
 ];
+
+// Preserve legacy IDs for saved workspaces. New picker entries come from the
+// live indicator library and reuse the same chart pane and settings path.
+const installedWorkspaceIndicatorIds = new Set(LEGACY_WORKSPACE_TOOL_OPTIONS.map(option => option.indicatorId));
+const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
+  ...LEGACY_WORKSPACE_TOOL_OPTIONS,
+  ...CHART_INDICATOR_CATALOG
+    .filter(indicator => ["Order Flow", "Volume & Profiles", "Options Flow"].includes(indicator.category)
+      && !installedWorkspaceIndicatorIds.has(indicator.id))
+    .map((indicator): WorkspacePanelOption<WorkspaceToolKind> => ({
+      id: `tool-indicator:${indicator.id}`,
+      label: indicator.name,
+      description: indicator.description,
+      icon: BarChart3,
+      indicatorId: indicator.id,
+    })),
+];
+
+const PICKER_STANDALONE_TOOLS = new Set<WorkspaceToolKind>([
+  "tool-single-tpo-chart", "tool-single-volume-profile", "tool-spoofing-detector",
+]);
+const ORDER_FLOW_PICKER_TOOLS = WORKSPACE_TOOL_OPTIONS.filter(option => {
+  const category = option.indicatorId ? CHART_INDICATOR_BY_ID.get(option.indicatorId)?.category : null;
+  return category === "Order Flow" || category === "Volume & Profiles" || PICKER_STANDALONE_TOOLS.has(option.id);
+}).sort((a, b) => a.label.localeCompare(b.label));
+
+const OPTIONS_INDICATOR_PICKER_TOOLS = WORKSPACE_TOOL_OPTIONS.filter(option =>
+  option.id === "tool-gex-flow" || (option.indicatorId && CHART_INDICATOR_BY_ID.get(option.indicatorId)?.category === "Options Flow"),
+).sort((a, b) => a.label.localeCompare(b.label));
+
+const GEX_DATA_PICKER_TOOLS = OPTIONS_FLOW_TOOLS
+  .filter(tool => tool.source === "gex-data" && tool.toolId !== "exposure-forecast")
+  .map(tool => ({ ...tool, icon: BarChart3 }))
+  .sort((a, b) => a.label.localeCompare(b.label));
+
+const WORKSPACE_PICKER_ORDER = [
+  "charts", "gamvue", "gexmap", "gexdata", "gamma", "liqmap",
+  "news", "socials", "journal", "algo", "backtesting",
+] as const;
+const WORKSPACE_PICKER_LINKS = {
+  gamvue: { label: "GEX VIEW", description: "Open the GEX View workspace", icon: BarChart3, href: "/gamvue" },
+  algo: { label: "ALGO", description: "Open the Algo workspace", icon: Code2, href: "/algo" },
+  backtesting: { label: "BACKTESTING", description: "Open the Backtesting workspace", icon: RotateCcw, href: "/backtesting" },
+} as const;
 
 const ALL_WORKSPACE_PANEL_OPTIONS: WorkspacePanelOption[] = [
   ...WORKSPACE_PANEL_OPTIONS,
@@ -10837,7 +10885,6 @@ export default function KwantifyWorkspace({
   const activePaneIdRef = useRef(activePaneId);
   activePaneIdRef.current = activePaneId;
   const [workspacePanelPickerPaneId, setWorkspacePanelPickerPaneId] = useState<string | null>(null);
-  const [optionsFlowPickerOpen, setOptionsFlowPickerOpen] = useState(false);
   const [workspacePanelTransition, setWorkspacePanelTransition] = useState<{
     paneId: string;
     content: WorkspacePanelKind;
@@ -18976,9 +19023,32 @@ export default function KwantifyWorkspace({
         </div>
       );
     }
+    const panelGridClass = "grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3";
+    const disclosureClass = "flex cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary hover:bg-surface [&::-webkit-details-marker]:hidden";
+    const renderPickerButton = (
+      option: Pick<WorkspacePanelOption, "label" | "description" | "icon"> & { id: string },
+      actions: { onClick: () => void; onPointerEnter?: () => void },
+    ) => {
+      const Icon = option.icon;
+      const selected = pane.content === option.id;
+      return (
+        <button key={option.id} type="button" {...actions}
+          className={`flex min-h-[60px] items-center gap-3 rounded-xl border p-3 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.07] ${selected ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}>
+          <Icon className="h-4 w-4 shrink-0 text-primary" />
+          <span className="min-w-0">
+            <span className="block text-[9px] font-semibold text-foreground">{option.label}</span>
+            <span className="mt-1 block text-[8px] leading-relaxed text-muted">{option.description}</span>
+          </span>
+        </button>
+      );
+    };
+    const renderPanelOption = (option: WorkspacePanelOption) => renderPickerButton(option, {
+      onClick: () => void selectWorkspacePanelContent(pane.id, option.id),
+      onPointerEnter: () => void preloadWorkspaceModule(option.id).catch(() => null),
+    });
     return (
       <div className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} flex min-h-0 items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl`}>
-        <div data-workspace-panel-picker className="@container my-auto w-full max-w-[840px] border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
+        <div data-workspace-panel-picker className="@container my-auto w-full max-w-[840px] rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-primary">
@@ -18998,99 +19068,50 @@ export default function KwantifyWorkspace({
                 <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="mb-2 flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
-            <Layers3 className="h-3.5 w-3.5 text-primary" />
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+            <Layers3 className="h-4 w-4 text-primary" />
             <span>Workspaces</span>
           </div>
-          <div className="grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
-            {WORKSPACE_PANEL_OPTIONS.filter(option => !isWorkspaceFeatureArchived(option.id)).map((option) => {
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onPointerEnter={() => void preloadWorkspaceModule(option.id).catch(() => null)}
-                  onClick={() => void selectWorkspacePanelContent(pane.id, option.id)}
-                  disabled={workspacePanelTransition?.paneId === pane.id}
-                  className={`group flex min-h-[72px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none ${pane.content === option.id || workspacePanelTransition?.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-transform group-hover:scale-105">
-                    <Icon className="h-[17px] w-[17px]" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[12px] font-semibold text-foreground">{option.label}</span>
-                    <span className="mt-0.5 hidden truncate text-[10px] text-muted @[300px]:block">{option.description}</span>
-                  </span>
-                </button>
-              );
+          <div className={panelGridClass}>
+            {WORKSPACE_PICKER_ORDER.map(id => {
+              if (id === "gamvue" || id === "algo" || id === "backtesting") {
+                const { href, ...option } = WORKSPACE_PICKER_LINKS[id];
+                return renderPickerButton({ id, ...option }, {
+                  onClick: () => {
+                    cancelWorkspacePanelPicker(pane);
+                    router.push(href);
+                  },
+                });
+              }
+              const option = WORKSPACE_PANEL_OPTIONS.find(candidate => candidate.id === id);
+              return option ? renderPanelOption(option) : null;
             })}
           </div>
           <div className="my-4 border-t border-border" />
-          <div className="mb-2 flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
-            <BarChart3 className="h-3.5 w-3.5 text-primary" />
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+            <BarChart3 className="h-4 w-4 text-primary" />
             <span>Tools &amp; Indicators</span>
           </div>
-          <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-primary/80">Options</div>
-          <div className="mb-3 grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
-            {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id === "tool-gamma-heatmap" || option.id === "tool-implied-volatility-rank" || option.id === "tool-net-gamma-exposure-by-strike" || option.id === "tool-gex-interval-map" || option.id === "tool-bounce-levels" || option.id === "tool-dark-pool-map" || option.id === "tool-dark-pool-gex").map((option) => {
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => void selectWorkspacePanelContent(pane.id, option.id)}
-                  disabled={workspacePanelTransition?.paneId === pane.id}
-                  className={`group flex min-h-[66px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none ${pane.content === option.id || workspacePanelTransition?.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Icon className="h-[17px] w-[17px]" /></span>
-                  <span className="min-w-0"><span className="block text-[12px] font-semibold leading-4 text-foreground">{option.label}</span><span className="mt-1 hidden text-[10px] leading-4 text-muted @[300px]:block">{option.description}</span></span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">Market &amp; Order Flow</div>
-          <div className="grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
-            {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id !== "tool-gamma-heatmap" && option.id !== "tool-implied-volatility-rank" && option.id !== "tool-net-gamma-exposure-by-strike" && option.id !== "tool-gex-interval-map" && option.id !== "tool-bounce-levels" && option.id !== "tool-dark-pool-map" && option.id !== "tool-dark-pool-gex").map((option) => {
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => void selectWorkspacePanelContent(pane.id, option.id)}
-                  disabled={workspacePanelTransition?.paneId === pane.id}
-                  className={`group flex min-h-[66px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none ${pane.content === option.id || workspacePanelTransition?.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-transform group-hover:scale-105">
-                    <Icon className="h-[17px] w-[17px]" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[12px] font-semibold leading-4 text-foreground">{option.label}</span>
-                    <span className="mt-1 hidden text-[10px] leading-4 text-muted @[300px]:block">{option.description}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="my-4 border-t border-border" />
-          <button type="button" onClick={() => setOptionsFlowPickerOpen(open => !open)} aria-expanded={optionsFlowPickerOpen}
-            className="mb-2 flex w-full items-center justify-between border border-border bg-surface p-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
-            <span>Options Flow Tools</span><ChevronDown className={`h-4 w-4 ${optionsFlowPickerOpen ? "rotate-180" : ""}`} />
-          </button>
-          {optionsFlowPickerOpen && (["gex-data", "kwanty", "gex-box"] as const).map(source => (
-            <section key={source} className="mb-3" aria-label={`${source} options tools`}>
-              <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">{source === "gex-data" ? "GEX DATA" : source === "kwanty" ? "KWANTY" : "GEX BOX"}</div>
-              <div className="grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
-                {OPTIONS_FLOW_TOOLS.filter(tool => tool.source === source).map(tool => (
-                  <button key={tool.id} type="button" onClick={() => void selectWorkspacePanelContent(pane.id, tool.id)}
-                    onPointerEnter={() => void preloadWorkspaceModule(tool.id).catch(() => null)}
-                    disabled={workspacePanelTransition?.paneId === pane.id}
-                    className="flex min-h-[60px] items-center gap-3 rounded-xl border border-border bg-surface/60 p-3 text-left hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none">
-                    <BarChart3 className="h-4 w-4 shrink-0 text-primary" /><span><span className="block text-[9px] font-semibold text-foreground">{tool.label}</span><span className="mt-1 block text-[8px] text-muted">{tool.description}</span></span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
+          <details className="group mb-2 rounded-xl border border-border bg-surface/60">
+            <summary className={disclosureClass}>
+              <span>Order Flow Tools</span><ChevronDown className="h-4 w-4 group-open:rotate-180" />
+            </summary>
+            <div className={panelGridClass + " p-2 pt-0"}>{ORDER_FLOW_PICKER_TOOLS.map(renderPanelOption)}</div>
+          </details>
+          <details className="group rounded-xl border border-border bg-surface/60">
+            <summary className={disclosureClass}>
+              <span>Options Flow Tools</span><ChevronDown className="h-4 w-4 group-open:rotate-180" />
+            </summary>
+            {[
+              { label: "Options tools and indicators", options: OPTIONS_INDICATOR_PICKER_TOOLS },
+              { label: "GEX Data", options: GEX_DATA_PICKER_TOOLS },
+            ].map(group => (
+              <section key={group.label} className="p-2 pt-0" aria-label={group.label}>
+                <div className="mb-2 px-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">{group.label}</div>
+                <div className={panelGridClass}>{group.options.map(renderPanelOption)}</div>
+              </section>
+            ))}
+          </details>
         </div>
       </div>
     );
@@ -19146,6 +19167,10 @@ export default function KwantifyWorkspace({
         );
       case "gameplan":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gameplan`} label="Game Plan"><GameplanWorkspace initialInstrument={displayCmeSymbol(pane.symbol)} /></WorkspaceFailureBoundary>;
+      case "gexdata":
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexdata-${authenticatedGexDataUserId}`} label="GEX Data">
+          <GexDataWorkspace accountKey={authenticatedGexDataUserId} active={chartSurfaceActive} />
+        </WorkspaceFailureBoundary>;
       case "gamma":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Options"><GammaWorkspace /></WorkspaceFailureBoundary>;
       case "gexmap": {

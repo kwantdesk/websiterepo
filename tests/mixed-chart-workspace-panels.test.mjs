@@ -14,7 +14,7 @@ const gexMapSource = await fs.readFile(
 test("chart layouts expose only the governed mixed-workspace choices", () => {
   assert.match(
     workspaceSource,
-    /type WorkspacePagePanelKind = "charts" \| "zyon" \| "gameplan" \| "gamma" \| "gexmap" \| "liqmap" \| "news" \| "socials" \| "journal";/,
+    /type WorkspacePagePanelKind = "charts" \| "zyon" \| "gameplan" \| "gamma" \| "gexmap" \| "liqmap" \| "news" \| "socials" \| "journal" \| "gexdata";/,
   );
   assert.match(workspaceSource, /type WorkspacePanelKind = WorkspacePagePanelKind \| WorkspaceToolKind/);
   assert.doesNotMatch(workspaceSource, /type WorkspacePagePanelKind[^;]*(?:backtesting|levelz)/);
@@ -78,9 +78,10 @@ test("mixed-workspace picker and selected headers use uppercase product labels",
     ["charts", "CHARTS"],
     ["zyon", "ZYON"],
     ["gameplan", "GAMEPLAN"],
-    ["gamma", "GAMMA"],
+    ["gamma", "OPTIONS"],
+    ["gexdata", "GEX DATA"],
     ["gexmap", "GEX MAP"],
-    ["liqmap", "LIQ MAP"],
+    ["liqmap", "LIQUIDITY MAP"],
     ["news", "NEWS"],
     ["socials", "SOCIALS"],
     ["journal", "JOURNAL"],
