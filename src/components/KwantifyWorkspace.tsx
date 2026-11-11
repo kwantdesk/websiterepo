@@ -129,6 +129,7 @@ import {
   Grid3X3,
   Info,
   Layers3,
+  Landmark,
   List,
   Loader2,
   Lock,
@@ -17798,7 +17799,7 @@ export default function KwantifyWorkspace({
   };
 
   const filteredBrokers = brokers
-    .filter((broker) => broker.name.toLowerCase().includes(brokerSearch.toLowerCase()))
+    .filter((broker) => broker.type !== "paper" && broker.name.toLowerCase().includes(brokerSearch.toLowerCase()))
     .sort((a, b) => {
       const aFav = brokerFavourites.includes(a.name);
       const bFav = brokerFavourites.includes(b.name);
@@ -17924,8 +17925,7 @@ export default function KwantifyWorkspace({
     setConnectedBroker(brokerName);
     writeProtectedItem("olisa-connected-broker", brokerName);
     window.sessionStorage.setItem("olisa-broker-session", JSON.stringify(nextConnection));
-    setSelectedBroker(null);
-    setShowBrokerModal(false);
+    closeBrokerModal();
   };
 
   const selectPaperTradingAccount = (accountId: string) => {
@@ -18482,11 +18482,37 @@ export default function KwantifyWorkspace({
     const paperBroker = brokerByName["Paper Trading"];
     if (!paperBroker) return;
     setShowTradesMenu(false);
-    setTradesMenuView("root");
     setSelectedBroker(paperBroker);
     setBrokerMode("Demo");
     setShowQuickPaperAccountForm(paperTradingAccounts.length === 0);
     setShowBrokerModal(true);
+  };
+
+  const openBrokerAccountPicker = () => {
+    setShowTradesMenu(false);
+    setTradesMenuView("root");
+    setSelectedBroker(null);
+    setBrokerSearch("");
+    setShowBrokerModal(true);
+  };
+
+  const closeBrokerModal = () => {
+    setShowBrokerModal(false);
+    setSelectedBroker(null);
+    setTradesMenuView("root");
+  };
+
+  const goBackFromBroker = () => {
+    if (selectedBroker?.type !== "paper") {
+      setSelectedBroker(null);
+      return;
+    }
+    const returnToPaperMenu = tradesMenuView === "paper";
+    closeBrokerModal();
+    if (returnToPaperMenu) {
+      setTradesMenuView("paper");
+      setShowTradesMenu(true);
+    }
   };
 
   const openPaperOrderTicket = () => {
@@ -19714,7 +19740,7 @@ export default function KwantifyWorkspace({
           </div>
         </div>
         {!tradingUnlocked && (
-          <button onClick={() => setShowBrokerModal(true)} className="mt-2 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted transition-colors hover:text-foreground">
+          <button onClick={openBrokerAccountPicker} className="mt-2 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted transition-colors hover:text-foreground">
             Link Your Own Broker
           </button>
         )}
@@ -20570,7 +20596,7 @@ export default function KwantifyWorkspace({
           accountAvatarUrl={currentAvatarUrl || ""}
           onAccountClick={() => router.push(currentUsername ? `/socials/${encodeURIComponent(currentUsername)}` : "/socials")}
           onTradesClick={() => {
-            setTradesMenuView(paperTradingAccounts.length > 0 ? "paper" : "root");
+            setTradesMenuView("root");
             setShowTradesMenu((current) => {
               return !current;
             });
@@ -20636,7 +20662,7 @@ export default function KwantifyWorkspace({
               </header>
 
               {tradesMenuView === "root" ? (
-                <div className="p-2.5">
+                <div className="space-y-2.5 p-2.5">
                   <button
                     type="button"
                     onClick={() => setTradesMenuView("paper")}
@@ -20646,10 +20672,7 @@ export default function KwantifyWorkspace({
                       <Wallet className="h-4 w-4" strokeWidth={1.55} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">Paper trading</span>
-                        <span className={`h-1.5 w-1.5 rounded-full ${selectedPaperTradingAccount ? "bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-muted/50"}`} />
-                      </span>
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">Paper Trading</span>
                       <span className="mt-1 block truncate text-[10px] text-muted">
                         {selectedPaperTradingAccount
                           ? `${selectedPaperTradingAccount.name} linked · ${formatDollar(selectedPaperSummary?.equity ?? 0)} equity`
@@ -20658,9 +20681,17 @@ export default function KwantifyWorkspace({
                     </span>
                     <ChevronRight className="h-3.5 w-3.5 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
                   </button>
-                  <p className="px-1 pb-0.5 pt-2.5 text-[9px] leading-4 text-muted">
-                    Paper orders use live chart prices, CME contract specifications, margin, and attached stop-loss and take-profit logic.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={openBrokerAccountPicker}
+                    className="group flex w-full items-center gap-3 rounded-[4px] border border-border bg-background/35 p-3 text-left transition-colors hover:border-primary/35 hover:bg-primary/[0.045]"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border border-primary/25 bg-primary/[0.08] text-primary">
+                      <Landmark className="h-4 w-4" strokeWidth={1.55} />
+                    </span>
+                    <span className="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">Broker Account</span>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-2.5 p-2.5">
@@ -20670,7 +20701,6 @@ export default function KwantifyWorkspace({
                         <div className="mb-2 flex items-center justify-between gap-3">
                           <label className="text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Trading account</label>
                           <span className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-primary">
-                            <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_var(--primary)]" />
                             Linked
                           </span>
                         </div>
@@ -20708,26 +20738,21 @@ export default function KwantifyWorkspace({
                       </button>
                     </>
                   ) : (
-                    <div className="rounded-[4px] border border-border bg-background/35 p-4 text-center">
-                      <Wallet className="mx-auto h-5 w-5 text-primary" strokeWidth={1.55} />
-                      <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">No paper account linked</div>
-                      <p className="mt-1 text-[10px] leading-4 text-muted">Create a simulated futures account, then it will be available in every order ticket.</p>
                       <button
                         type="button"
                         onClick={openPaperAccountLinker}
-                        className="mt-3 h-8 rounded-[3px] border border-primary/35 bg-primary px-4 text-[10px] font-bold uppercase tracking-[0.1em] text-on-primary"
+                        className="h-9 w-full rounded-[4px] border border-primary/35 bg-primary px-4 text-[10px] font-bold uppercase tracking-[0.1em] text-on-primary"
                       >
                         Create paper account
                       </button>
-                    </div>
                   )}
-                  <div className="flex items-center justify-between border-t border-border pt-2.5">
+                  {paperTradingAccounts.length > 0 && <div className="flex items-center justify-between border-t border-border pt-2.5">
                     <button
                       type="button"
                       onClick={openPaperAccountLinker}
                       className="text-[9px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:text-foreground"
                     >
-                      {paperTradingAccounts.length > 0 ? "Link another account" : "Account setup"}
+                      Link another account
                     </button>
                     <button
                       type="button"
@@ -20740,7 +20765,7 @@ export default function KwantifyWorkspace({
                     >
                       Manage accounts <ChevronRight className="h-3 w-3" />
                     </button>
-                  </div>
+                  </div>}
                 </div>
               )}
             </section>
@@ -22923,21 +22948,21 @@ export default function KwantifyWorkspace({
       </div>
 
       {showBrokerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setShowBrokerModal(false); setSelectedBroker(null); }}>
-          <div className="flex max-h-[600px] w-[700px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={closeBrokerModal}>
+          <div role="dialog" aria-modal="true" aria-labelledby="trade-account-dialog-title" className="flex max-h-[min(600px,calc(100dvh-2rem))] w-full max-w-[700px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border px-5">
-              <h2 className="text-[18px] font-semibold">Trade with your broker</h2>
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                  <input value={brokerSearch} onChange={(event) => setBrokerSearch(event.target.value)} placeholder="Search brokers..." className="w-48 rounded-xl border border-border bg-surface py-2 pl-9 pr-3 text-[13px] outline-none focus:border-primary/40" />
-                </div>
-                <button onClick={() => { setShowBrokerModal(false); setSelectedBroker(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
-              </div>
+              <h2 id="trade-account-dialog-title" className="text-[18px] font-semibold">
+                {selectedBroker?.type === "paper" ? "Connect your paper trading account" : "Trade with your broker"}
+              </h2>
+              <button type="button" aria-label="Close account setup" onClick={closeBrokerModal} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
             {!selectedBroker ? (
               <>
-                <div className="grid flex-1 grid-cols-4 gap-3 overflow-y-auto p-5">
+                <div className="relative mx-5 mt-4 shrink-0">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                  <input value={brokerSearch} onChange={(event) => setBrokerSearch(event.target.value)} aria-label="Search brokers" placeholder="Search brokers..." className="w-full rounded-xl border border-border bg-surface py-2 pl-9 pr-3 text-[13px] outline-none focus:border-primary/40" />
+                </div>
+                <div className="grid flex-1 grid-cols-2 gap-3 overflow-y-auto p-5 sm:grid-cols-4">
                   {filteredBrokers.map((broker) => {
                     const favourite = brokerFavourites.includes(broker.name);
                     const connected = connectedBroker === broker.name;
@@ -22974,7 +22999,8 @@ export default function KwantifyWorkspace({
             ) : (
               <>
                 <div className="flex-1 overflow-y-auto p-5">
-                  <button onClick={() => setSelectedBroker(null)} className="mb-5 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Back</button>
+                  <button type="button" onClick={goBackFromBroker} className="mb-5 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Back</button>
+                  {selectedBroker.type !== "paper" && <>
                   <div className="mb-6 flex items-center gap-4">
                     {renderBrokerBadge(
                       selectedBroker,
@@ -23001,12 +23027,13 @@ export default function KwantifyWorkspace({
                       {getBrokerHealth(selectedBroker).label}
                     </span>
                   </div>
+                  </>}
                   {selectedBroker.type === "capital" && (
                     <div className="space-y-3"><input type="password" placeholder="API Key" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><div className="flex rounded-xl border border-border bg-surface p-1">{(["Live", "Demo"] as const).map((mode) => <button key={mode} onClick={() => setBrokerMode(mode)} className={`flex-1 rounded-lg py-2 text-[13px] ${brokerMode === mode ? "bg-panel text-foreground" : "text-muted"}`}>{formatTradingModeLabel(mode)}</button>)}</div></div>
                   )}
                   {selectedBroker.type === "paper" && (
                     <div className="space-y-3">
-                      {selectedBrokerPaperAccounts.length > 0 ? (
+                      {selectedBrokerPaperAccounts.length > 0 && (
                         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
                           <div className="mb-2 flex items-center justify-between">
                             <span className="text-[12px] font-semibold uppercase tracking-wider text-primary">Paper accounts</span>
@@ -23028,10 +23055,6 @@ export default function KwantifyWorkspace({
                               </option>
                             ))}
                           </KwantSelect>
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl border border-orange-400/20 bg-orange-400/10 p-4 text-[13px] text-orange-100/85">
-                          No paper accounts yet. Create one below and we will link it straight away.
                         </div>
                       )}
                       {(showQuickPaperAccountForm || selectedBrokerPaperAccounts.length === 0) && (
@@ -23104,10 +23127,10 @@ export default function KwantifyWorkspace({
                   )}
                   {selectedBroker.type === "soon" && <div className="rounded-2xl border border-border bg-surface/50 p-5 text-[13px] text-muted">Coming soon — we're working on connecting this broker.</div>}
                 </div>
-                <div className="flex items-center justify-between border-t border-border p-5">
-                  <button className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Test Connection</button>
+                {(selectedBroker.type !== "paper" || selectedBrokerPaperAccounts.length > 0) && (
+                <div className="flex items-center justify-end border-t border-border p-5">
+                  {selectedBroker.type !== "paper" && <button className="mr-auto rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Test Connection</button>}
                   <div className="flex gap-2">
-                    <button onClick={() => setSelectedBroker(null)} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Back</button>
                     {selectedBroker.type === "ctrader" ? (
                       <>
                         <button onClick={() => connectBroker(selectedBroker.name)} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Use Shared Feed</button>
@@ -23120,6 +23143,7 @@ export default function KwantifyWorkspace({
                     )}
                   </div>
                 </div>
+                )}
               </>
             )}
           </div>
