@@ -1058,31 +1058,23 @@ export default function GammaWorkspace() {
     setGexScope("FULL_CHAIN");
   };
 
+  const toolbarControl = "kwant-workspace-secondary-control items-center gap-1.5 whitespace-nowrap border border-border bg-surface";
+
   return (
     <div className="kwant-gamma-workspace h-full min-h-0 overflow-y-auto bg-background text-foreground">
       <main className="flex min-h-full min-w-0 flex-col">
         <header className="kwant-workspace-secondary-bar flex shrink-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <ScanLine className="h-[17px] w-[17px]" />
-          </span>
-          <div className="hidden min-w-0 lg:block">
-            <h1 className="truncate text-[13px] font-semibold">Options</h1>
-            <p className="truncate text-[10px] text-muted">Dealer positioning, gamma intelligence and consolidated tape</p>
-          </div>
-          <div className="hidden h-5 w-px shrink-0 bg-border lg:block" />
-          <div ref={instrumentMenuRef} className="relative z-[120] min-w-0">
+          <h1 className="sr-only">Options</h1>
+          <div ref={instrumentMenuRef} className="relative z-[120] min-w-0 shrink">
             <button
               type="button"
+              aria-label={`Options underlying: ${selectedInstrument.symbol}`}
               aria-haspopup="listbox"
               aria-expanded={instrumentMenuOpen}
               onClick={() => setInstrumentMenuOpen((open) => !open)}
-              className={`group/instrument kwant-workspace-secondary-control flex w-full max-w-[240px] sm:min-w-[178px] items-center gap-2 rounded-xl border px-2.5 text-left transition-all ${
-                instrumentMenuOpen
-                  ? "border-primary/35 bg-primary/[0.07] shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-primary)_12%,transparent)]"
-                  : "border-border bg-surface hover:border-primary/20 hover:bg-card"
-              }`}
+              className={`${toolbarControl} group/instrument flex w-full max-w-[240px] px-2.5 text-left text-muted transition-colors hover:border-primary/25 hover:text-foreground sm:min-w-[178px]`}
             >
-              <span className="flex h-5 min-w-8 items-center justify-center rounded-md bg-primary/10 px-1.5 font-mono text-[10px] font-semibold text-primary">
+              <span className="flex h-5 min-w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 px-1.5 font-mono text-[10px] font-semibold text-primary">
                 {selectedInstrument.symbol}
               </span>
               <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
@@ -1136,18 +1128,35 @@ export default function GammaWorkspace() {
               </div>
             ) : null}
           </div>
-          {headerMarketData?.lastPrice !== null && headerMarketData?.lastPrice !== undefined ? <span ref={livePriceRef} data-gamma-number="true" className={`rounded-md px-1.5 py-1 font-mono text-[12px] font-semibold transition-colors duration-150 ${priceTick === "UP" ? "bg-primary/10 text-primary" : priceTick === "DOWN" ? "bg-danger/10 text-danger" : "text-foreground"}`}>{headerMarketData.symbol} {formatPrice(headerMarketData.lastPrice)}</span> : null}
-          <div className="ml-auto flex min-w-0 items-center gap-2">
-            {headerMarketData ? (
-              <span data-gamma-time="true" className="hidden shrink-0 items-center gap-1.5 text-[10px] text-muted md:flex">
-                <Clock3 className="h-3 w-3" /> Price {formatClock(headerMarketData.asOf)}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+            {headerMarketData?.lastPrice != null ? (
+              <span
+                ref={livePriceRef}
+                data-gamma-number="true"
+                className={`${toolbarControl} flex px-2.5 tabular-nums transition-colors duration-150 ${priceTick === "UP" ? "text-primary" : priceTick === "DOWN" ? "text-danger" : "text-foreground"}`}
+              >
+                {headerMarketData.symbol} {formatPrice(headerMarketData.lastPrice)}
               </span>
             ) : null}
-            <span data-gamma-time="true" className={`kwant-workspace-secondary-control hidden min-w-0 items-center gap-1.5 border px-2.5 sm:flex ${headerMarketData?.status === "LIVE" ? "border-primary/20 bg-primary/10 text-primary" : headerMarketData?.status === "UNAVAILABLE" ? "border-danger/20 bg-danger/10 text-danger" : "border-border bg-surface text-muted"}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${headerMarketData?.status === "LIVE" ? "animate-pulse bg-primary" : "bg-muted"}`} /> {headerMarketData ? `${headerMarketData.provider} · ${headerMarketData.status.replace("_", " ")} · ${formatPulse(pricePulseMs)}` : "CONNECTING"}
+            {headerMarketData ? (
+              <span data-gamma-time="true" className={`${toolbarControl} hidden px-2.5 text-muted tabular-nums md:flex`}>
+                <Clock3 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                Price {formatClock(headerMarketData.asOf)}
+              </span>
+            ) : null}
+            <span data-gamma-time="true" className={`${toolbarControl} hidden px-2.5 text-muted sm:flex`}>
+              <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${headerMarketData?.status === "LIVE" ? "bg-primary" : headerMarketData?.status === "UNAVAILABLE" ? "bg-danger" : "bg-muted"}`} />
+              {headerMarketData ? `${headerMarketData.provider} · ${headerMarketData.status.replace("_", " ")} · ${formatPulse(pricePulseMs)}` : "Connecting"}
             </span>
-            <button type="button" onClick={() => void loadData(symbol, priceMode, true)} disabled={refreshing} className="kwant-workspace-secondary-control flex w-7 shrink-0 items-center justify-center border border-border bg-surface text-muted transition-colors hover:text-foreground disabled:opacity-50" title="Refresh now">
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            <button
+              type="button"
+              onClick={() => void loadData(symbol, priceMode, true)}
+              disabled={refreshing}
+              className={`${toolbarControl} flex w-[var(--kwant-workspace-command-control)] shrink-0 justify-center text-muted transition-colors hover:border-primary/25 hover:text-foreground disabled:opacity-50`}
+              aria-label="Refresh options data"
+              title="Refresh now"
+            >
+              <RefreshCw aria-hidden="true" className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
             </button>
           </div>
         </header>
