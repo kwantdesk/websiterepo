@@ -1101,11 +1101,20 @@ await boot();
     await loadActiveTool();
   }
 
-  function requestBase() {
+  function currentToolSessionDate(tool=activeTool, market=apiStatus.market) {
+    // Market Map starts with the cash session, unlike premarket equity tools.
+    if(tool?.group==='Equities'&&tool.id!=='market-map')return market?.sessionDate;
+    return market?.optionsSessionDate||market?.sessionDate;
+  }
+
+  function requestBase(tool=activeTool) {
     const body = {};
     if(masterReplay){body.sessionDate=masterReplay.sessionDate;return body;}
     if (getControl("mode") === "historical" && getControl("date")) body.sessionDate = getControl("date");
-    else if(activeTool?.id!=='iv-rank'&&apiStatus.market?.sessionDate)body.sessionDate=activeTool?.group==='Equities'?apiStatus.market.sessionDate:(apiStatus.market.optionsSessionDate||apiStatus.market.sessionDate);
+    else if(tool?.id!=='iv-rank'){
+      const sessionDate=currentToolSessionDate(tool);
+      if(sessionDate)body.sessionDate=sessionDate;
+    }
     return body;
   }
 
@@ -1115,7 +1124,7 @@ await boot();
   }
 
   function buildRequest(tool) {
-    const body = requestBase();
+    const body = requestBase(tool);
     const ticker = String(getControl("ticker") || getControl("tickerOptional") || "").trim().toUpperCase();
     if (ticker) maybeFilter(body, tool.id === "market-share" || tool.id === "market-share-table" || tool.id === "gainers-losers" || tool.id === "exchange-notifications" ? "tickers" : "ticker", ticker, ["market-share", "market-share-table", "gainers-losers", "exchange-notifications"].includes(tool.id));
     const period = getControl("period"); if (period) body.aggregationPeriod = period;
@@ -1161,7 +1170,7 @@ await boot();
     const override=getFilterOverrides(),tickerOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.tickers,globalValue:override.global.tickers,isTicker:true}),expiryOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.expirationDate,globalValue:override.global.expirationDate}),dateOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.sessionDate,globalValue:override.global.sessionDate});
     if(tickerOverride.type!=='NONE'&&tool.id!=='market-map'){body.filter||={};delete body.filter.ticker;delete body.filter.tickers;const multiple=['market-share','market-share-table','gainers-losers','exchange-notifications','contract-statistics','contract-trade-side-statistics','net-drift','order-flow-consolidated','order-flow-unconsolidated','equity-prints','news-articles'].includes(tool.id);body.filter[multiple?'tickers':'ticker']=multiple?tickerOverride.value:tickerOverride.value[0];}
     if(expiryOverride.type!=='NONE'&&!['dark-flow','dark-pool-levels','equity-prints','exchange-notifications','stock-price-over-time','market-map','iv-rank','max-pain-over-time','exposure-forecast','news-articles'].includes(tool.id)){body.filter||={};delete body.filter.expirationDate;delete body.filter.expirationDates;Object.assign(body.filter,expirationFilterForTool(tool.id,expiryOverride.value));}
-    if(dateOverride.type!=='NONE'&&tool.id!=='iv-rank'){if(tool.id==='dark-pool-levels')body.sessionDateRange={startDate:dateOverride.value,endDate:dateOverride.value};else body.sessionDate=dateOverride.value;}
+    if(dateOverride.type!=='NONE'&&tool.id!=='iv-rank'&&!(masterReplay&&tool.id==='market-map')){if(tool.id==='dark-pool-levels')body.sessionDateRange={startDate:dateOverride.value,endDate:dateOverride.value};else body.sessionDate=dateOverride.value;}
     const attached=FILTER_GROUP_TOOLS.has(tool.id)?getFilterGroups().filter(group=>(toolGroupIds[tool.id]||[]).includes(group.id)&&(group.type||'OPTION_TRADES_UNCONSOLIDATED')===filterGroupTypeForTool(tool.id)):[];if(attached.length)body.filterExpression=normalizeAPIExpression({conjunction:'AND',filters:attached.map(group=>group.expression)});
     if(tool.id==='option-price-over-time'&&body.filter?.osi){if(tickerOverride.type!=='NONE'||expiryOverride.type!=='NONE')throw Error('Clear page/global ticker and expiration overrides when selecting an exact OSI contract.');body.filter={osi:body.filter.osi};}
     if(tool.id==='max-pain'){
@@ -1231,14 +1240,15 @@ await boot();
     if(snapshotTools.includes(tool.id)){
       // A missing auxiliary price history must not discard genuine primary
       // exposure/map data. Do not invent a spot or replay timeline in its place.
-      const [result,price]=await Promise.all([toolFetch(tool.endpoint,body),toolFetch("stock-price-over-time",{...requestBase(),aggregationPeriod:"1m",filter:{ticker:tool.id==='market-map'?'SPY':getControl("ticker")}}).catch(error=>{
+      const priceSession=tool.id==='market-map'&&effectiveSessionDate?{sessionDate:effectiveSessionDate}:requestBase(tool);
+      const [result,price]=await Promise.all([toolFetch(tool.endpoint,body),toolFetch("stock-price-over-time",{...priceSession,aggregationPeriod:"1m",filter:{ticker:tool.id==='market-map'?'SPY':getControl("ticker")}}).catch(error=>{
         if(activeController?.signal.aborted)throw error;
         return {data:{},unavailable:true};
       })]);
       const prices=parsePrices(price),sessionDate=effectiveSessionDate;
       const entries=sessionDate?snapshotControlTimeline(prices,{sessionDate,schedule:equityOptionSnapshotSchedule(tool.id==='market-map'?'SPY':getControl('ticker'),sessionDate,apiStatus.market?.calendar),includeObservedPremarket:['exposure-by-expiration','heat-map'].includes(tool.id)}):prices.map(row=>({time:row.time}));
       const timeline=entries.map(entry=>entry.time),selected=snapshotTime??timeline.at(-1),matching=timeline.length?selectedSnapshotSpot(prices,snapshotTime?completedMinuteSnapshot(selected):selected):null;
-      return {...result,_timeline:timeline,_snapshotEntries:entries,_snapshotTime:selected,_spot:matching?.available?matching.spot:undefined,_priceHistoryUnavailable:price.unavailable===true};
+      return {...result,_sessionDate:sessionDate,_timeline:timeline,_snapshotEntries:entries,_snapshotTime:selected,_spot:matching?.available?matching.spot:undefined,_priceHistoryUnavailable:price.unavailable===true};
     }
     if (["interval-map", "max-pain-over-time", "option-price-over-time"].includes(tool.id)) {
       const osiRoot=tool.id==='option-price-over-time'?String(body.filter?.osi||'').replaceAll(' ','').match(/^([A-Z.]+)\d{6}[CP]\d{8}$/)?.[1]:null;
@@ -1339,7 +1349,7 @@ await boot();
   function schedulePoll() {
     if(masterReplay){clearTimeout(pollTimer);pollTimer=null;return;}
     let requestedDate;try{const request=activeTool?buildRequest(activeTool):{};if(activeTool?.group==='News'&&request.timeRange){clearTimeout(pollTimer);pollTimer=null;return;}requestedDate=request.sessionDate??request.sessionDateRange?.endDate??request.sessionDateRange?.startDate;}catch{clearTimeout(pollTimer);pollTimer=null;return;}
-    const currentDate=activeTool?.group==='Equities'?apiStatus.market?.sessionDate:(apiStatus.market?.optionsSessionDate||apiStatus.market?.sessionDate);
+    const currentDate=currentToolSessionDate();
     if (!activeTool || !frameVisible || window.__gexDataActive===false || document.hidden || getControl("mode") === "historical" || (requestedDate&&currentDate&&requestedDate<currentDate) || snapshotSelections.has(snapshotKey(activeTool)) || !toolMarketOpen()) {clearTimeout(pollTimer);pollTimer=null;return;}
     if(toolRequestInFlight&&!activeController?.signal.aborted)return;
     if(pollTimer!==null)return;
@@ -1350,12 +1360,16 @@ await boot();
     if(toolRequestInFlight&&!activeController?.signal.aborted)return;
     if(!toolPayload){loadActiveTool();return;}
     let requestedDate;try{const request=buildRequest(activeTool);if(activeTool.group==='News'&&request.timeRange){schedulePoll();return;}requestedDate=request.sessionDate??request.sessionDateRange?.endDate??request.sessionDateRange?.startDate;}catch{return;}
-    const currentDate=activeTool.group==='Equities'?apiStatus.market?.sessionDate:(apiStatus.market?.optionsSessionDate||apiStatus.market?.sessionDate);
+    const currentDate=currentToolSessionDate();
     const interval=Math.max(30000,activeTool.liveMs),stale=Date.now()-lastToolSuccessAt>=interval,retryReady=activeController?.signal.aborted||Date.now()-lastToolAttemptAt>=interval;
     if(!masterReplay&&getControl('mode')!=='historical'&&!(requestedDate&&currentDate&&requestedDate<currentDate)&&!snapshotSelections.has(snapshotKey(activeTool))&&toolMarketOpen()&&stale&&retryReady)loadActiveTool();
     else schedulePoll();
   }
-  function toolMarketOpen(){return activeTool?.group==='News'||Boolean(activeTool?.group==='Equities'?apiStatus.market?.equitiesOpen:apiStatus.market?.optionsOpen??apiStatus.market?.open);}
+  function toolMarketOpen(){
+    const market=apiStatus.market;
+    if(activeTool?.id==='market-map')return Boolean(market?.equitiesOpen&&currentToolSessionDate()===market.sessionDate);
+    return activeTool?.group==='News'||Boolean(activeTool?.group==='Equities'?market?.equitiesOpen:market?.optionsOpen??market?.open);
+  }
 
   function renderSnapshotControl(payload){
     const existing=q('.snapshot-control',q('#toolVisual')),timeline=payload._timeline;
@@ -2127,7 +2141,7 @@ await boot();
 
 
   function renderMarketMap(payload) {
-    const industrySession=getControl('mode')==='historical'?getControl('date'):apiStatus.market?.optionsSessionDate||todayOffset(0);
+    const industrySession=payload._sessionDate||currentToolSessionDate()||todayOffset(0);
     if(industrySession!==marketMapIndustrySession){marketMapIndustryInventory=new Map();marketMapIndustrySession=industrySession;}
     const entries=[],sectors=[],grouping=getControl("mapGroup")||"SECTOR";
     function updateObservations(next){
@@ -2151,6 +2165,10 @@ await boot();
         if(measuredSize&&(measuredSize.width!==w||measuredSize.height!==h)){camera={...MARKET_MAP_CAMERA_IDENTITY};saveCamera();}
         measuredSize={width:w,height:h};mapWidth=w;mapHeight=h;camera=clampMarketMapCamera(camera,w,h,maxZoom);
         ({hits,headers}=drawMarketMapFrame(ctx,{groups:sectors,grouping,width:w,height:h,camera,paint:themePaint}));
+        if(!entries.length){
+          ctx.save();ctx.fillStyle=themePaint('#fff');ctx.textAlign='center';ctx.textBaseline='middle';
+          ctx.fillText('No market data for this selection.',w/2,h/2,w-16);ctx.restore();
+        }
         maxZoom=marketMapMaxZoom(hits);horizontalNavigation?.sync();verticalNavigation?.sync();
       }
     });
@@ -2289,8 +2307,11 @@ await boot();
   async function refreshMarketStatus() {
     if(window.__gexDataActive===false||document.hidden||!frameVisible)return;
     const wasOpen=toolMarketOpen();
+    const previousMarket=apiStatus.market;
     try { apiStatus = await fetchJson("/api/gex-data/status"); updateLiveState();
-      if(wasOpen&&!toolMarketOpen()){closingReconcileAt=Date.now()+60000;if(activeTool&&getControl('mode')!=='historical')loadActiveTool();}
+      const mapSessionChanged=activeTool?.id==='market-map'&&!masterReplay&&getControl('mode')!=='historical'&&!snapshotSelections.has(snapshotKey(activeTool))&&currentToolSessionDate(activeTool,previousMarket||{})!==currentToolSessionDate()&&buildRequest(activeTool).sessionDate===currentToolSessionDate();
+      if(mapSessionChanged)loadActiveTool();
+      else if(wasOpen&&!toolMarketOpen()){closingReconcileAt=Date.now()+60000;if(activeTool&&getControl('mode')!=='historical')loadActiveTool();}
       else if(closingReconcileAt&&Date.now()>=closingReconcileAt){closingReconcileAt=0;if(activeTool&&getControl('mode')!=='historical')loadActiveTool();}
       schedulePoll(); } catch { /* Keep errors until a real data request succeeds. */ }
   }

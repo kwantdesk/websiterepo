@@ -14,10 +14,18 @@ function harness(data,{width=400,height=200,savedCamera}={}){
   const env={number:Number,marketMapIndustryInventory:new Map(),marketMapIndustrySession:null,observeMarketMapIndustries,marketMapIndustryChoices,marketMapTooltipRows,marketMapHeaderTooltipRows,drawMarketMapFrame,squarifyTreemap,MARKET_MAP_SLIDER_MAX,MARKET_MAP_CAMERA_IDENTITY,marketMapMaxZoom,clampMarketMapCamera,wheelMarketMapCamera,panMarketMapCamera,marketMapCameraWindows,applyMarketMapWindow,marketMapWorldPoint,
     getControl:key=>controls[key],setControl:(key,value)=>{controls[key]=value;},onControlsChanged(){changes++;},apiStatus:{market:{}},todayOffset:()=>'',instanceKey:'test',compact:String,gexStorage:{getItem:()=>stored,setItem:(_key,value)=>{stored=value;}},themePaint:value=>value,q:()=>({setChoices(){}}),element:()=>({}),bindZoomNavigator:()=>({sync(){}}),setSummary(){},activeChartReset:null,
     quantCanvas(options){chartOptions=options;chart={shell,canvas,redraw(){if(dimensions.width<=0||dimensions.height<=0){options.draw(ctx,dimensions.width,dimensions.height);return;}options.draw(ctx,dimensions.width,dimensions.height);}};return chart;}};
-  vm.runInNewContext(source.slice(source.indexOf('  function renderMarketMap('),source.indexOf('  function aggregateExposureTool('))+'\nthis.render=renderMarketMap;',env);env.render({data});
+  vm.runInNewContext(source.slice(source.indexOf('  function renderMarketMap('),source.indexOf('  function aggregateExposureTool('))+'\nthis.render=renderMarketMap;',env);env.render({data,_sessionDate:controls.date});
   return {ctx,controls,env,get options(){return chartOptions;},draw(w,h){dimensions={width:w,height:h};chart.redraw();},fire(name,extra={}){listeners[name]?.({clientX:50,clientY:60,button:0,pointerId:1,preventDefault(){},...extra});},camera:()=>JSON.parse(stored),get changes(){return changes;},get tooltipHidden(){return tooltipHidden;}};
 }
 const row=(industry,size,change=1)=>({industry,sector:'TECHNOLOGY',size,currentValue:100+change,previousValue:100,companyName:'Example'});
+test('Market Map explains an empty response and redraws when real tiles arrive',()=>{
+  const h=harness({});
+  assert.ok(h.ctx.calls.some(call=>call.text==='No market data for this selection.'));
+  h.ctx.calls.length=0;
+  assert.equal(h.env.activeChartUpdate({data:{NVDA:row('SEMICONDUCTORS',1)}}),true);
+  assert.ok(h.ctx.calls.some(call=>call.text==='NVDA'));
+  assert.ok(!h.ctx.calls.some(call=>call.text==='No market data for this selection.'));
+});
 test('actual Market Map path uses screen labels after zoom, uncapped font and post-tile header truncation/suppression',()=>{
   const ctx=context(),groups=[{name:'SEMICONDUCTORS',weight:1,rows:[{ticker:'TEST',weight:1,change:1}]}];
   const draw=(width,height,zoom)=>{ctx.calls.length=0;return drawMarketMapFrame(ctx,{groups,grouping:'NONE',width,height,camera:{zoomX:zoom,zoomY:zoom,offsetX:0,offsetY:0},paint:value=>value});};
