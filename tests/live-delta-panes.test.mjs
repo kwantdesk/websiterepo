@@ -5,12 +5,46 @@ import ts from 'typescript';
 import { LiveDeltaPaneModel, LIVE_DELTA_PANE_INTERVAL_MS, isLiveDeltaPane, deltaPaneIdentity } from '../src/lib/liveDeltaPanes.ts';
 import { calculateIndicatorSeries } from '../src/lib/chartIndicatorEngine.ts';
 import { LIVE_CHART_CANDLE_EVENT, LIVE_CHART_EXECUTION_EVENT } from '../src/lib/chartLiveEvents.ts';
+import { mergeMonthlyRecordedFlow } from '../src/lib/institutionalMarketData.ts';
 const start=Date.UTC(2026,10,5,8);
 const theme={primary:'#fff',secondary:'#ccc',positive:'#0f0',negative:'#f00',muted:'#888'};
 const candle=(i,ask=10,bid=3)=>({timestamp:start+i*60000,open:100,high:101,low:99,close:100,volume:ask+bid,askVolume:ask,bidVolume:bid,askTrades:ask,bidTrades:bid,delta:ask-bid});
 const group=(id,settings={})=>({key:id,indicatorId:id,settings,series:[]});
 const ids=['cumulative-volume-delta','delta-cumulative-candlestick','delta-cumulative-histogram','delta-bar'];
 const input=(candles)=>({candles,theme,instrument:'NQ',tickSize:0.25});
+
+test("monthly flow only enriches matching closed candles with missing classified volume", () => {
+  const flow = [candle(0), candle(1), candle(2), candle(3)];
+  const priceOnly = flow.map(({ askVolume, bidVolume, delta, ...bar }) => bar);
+  priceOnly[1] = { ...priceOnly[1], volume: 99 };
+  priceOnly[2] = { ...flow[2], askVolume: 9, bidVolume: 4, delta: 5 };
+  const result = mergeMonthlyRecordedFlow(priceOnly, flow);
+  assert.equal(result[0].delta, 7);
+  assert.equal(result[1], priceOnly[1]);
+  assert.equal(result[2], priceOnly[2]);
+  assert.equal(result[3], priceOnly[3]);
+});
+
+test("monthly CVD and Delta retain old bars and match the full engine after a live batch", () => {
+  const rows = Array.from({ length: 4500 }, (_, i) => candle(i, 10 + i % 7, 3));
+  const studies = [group("cumulative-volume-delta", { displayStyle: "line", showBidAskVolumes: true }),
+    group("delta-bar"), group("delta-cumulative-candlestick", { resetToSession: false, showAverage: true })];
+  const next = candle(rows.length, 40, 3);
+  const chart = harness(studies, { ...input(rows), preserveEarlierHistory: true });
+  try {
+    chart.flush();
+    chart.executions([...rows.slice(-32), next]);
+    chart.flush();
+    for (const study of chart.output) {
+      const expected = calculateIndicatorSeries({
+        instanceId: study.key, indicatorId: study.indicatorId, enabled: true, settings: study.settings,
+      }, [...rows, next], theme);
+      assert.deepEqual(study.series.map(({ data }) => data), expected.map(({ data }) => data));
+    }
+  } finally {
+    chart.dispose();
+  }
+});
 
 test('ATR and deviation hydrate next frame and update independently of delayed parent samples', () => {
  const rows=Array.from({length:30},(_,i)=>({...candle(i),close:100+i*.25,high:110+i*.25,low:90+i*.25}));

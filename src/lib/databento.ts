@@ -541,7 +541,7 @@ export async function getDatabentoOrderFlowHistory(
   timeframe: string,
   start: string,
   end: string,
-  options: { auctionGap?: boolean } = {},
+  options: { auctionGap?: boolean; compactContract?: string } = {},
 ): Promise<DatabentoOrderFlowHistory> {
   if (isEventBasedChartInterval(timeframe)) {
     const bars = await getDatabentoBars(symbol, timeframe, start, end);
@@ -570,6 +570,10 @@ export async function getDatabentoOrderFlowHistory(
     orderFlow: "1",
     sourceTimes: "1",
   });
+  if (options.compactContract) {
+    query.set("contractSymbol", options.compactContract);
+    query.set("exec", "0");
+  }
   if (options.auctionGap) query.set("auctionGap", "1");
   if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
   if (Number.isFinite(requestedTo)) query.set("toMs", String(requestedTo));
@@ -588,6 +592,9 @@ export async function getDatabentoOrderFlowHistory(
     symbol?: unknown;
     auctionGap?: unknown;
   };
+  if (options.compactContract && payload.symbol !== options.compactContract) {
+    throw new Error("Recorded order flow returned a different contract.");
+  }
 
   const candles = (Array.isArray(payload.candles) ? payload.candles : [])
     .map((row) => {

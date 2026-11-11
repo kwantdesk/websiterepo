@@ -801,6 +801,7 @@ interface ChartProps {
   onHistoryEdgeReached?: () => void;
   focusRange?: { id: string; fromMs: number; toMs: number } | null;
   candles: Candle[];
+  extendedDeltaHistory?: boolean;
   marketTrades?: InstitutionalTrade[];
   marketTradesVersion?: number;
   bigContractHistory?: InstitutionalTrade[];
@@ -3249,6 +3250,7 @@ function Chart({
   onHistoryEdgeReached,
   focusRange,
   candles: rawCandles,
+  extendedDeltaHistory = false,
   marketTrades: rawMarketTrades = EMPTY_CHART_ITEMS,
   marketTradesVersion = 0,
   bigContractHistory = EMPTY_CHART_ITEMS,
@@ -6109,6 +6111,7 @@ function Chart({
   // must never be folded back into CVD or it will replace exact history with a
   // biased subset of large prints.
   const indicatorCandles = indicatorWindowCandles;
+  const deltaPaneCandles = extendedDeltaHistory ? sampledIndicatorCandles : indicatorCandles;
   const indicatorCandlesLite = indicatorWindowCandlesLite;
   const indicatorCandlesDeep = indicatorWindowCandlesDeep;
   const miniDomIndicator = useMemo(
@@ -8462,7 +8465,9 @@ function Chart({
         && !CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId)
       ) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
-      const studyCandles = instance.indicatorId === "volume" ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs) : requiresOrderFlowWindow
+      const studyCandles = instance.indicatorId === "volume" ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
+        : CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId) ? deltaPaneCandles
+        : requiresOrderFlowWindow
         ? indicatorCandles
         : DEEP_HISTORY_INDICATOR_IDS.has(instance.indicatorId)
           ? indicatorCandlesDeep
@@ -8478,6 +8483,7 @@ function Chart({
     }),
     [
       indicatorCandles,
+      deltaPaneCandles,
       indicatorCandlesDeep,
       indicatorCandlesLite,
       indicatorSignature,
@@ -21373,7 +21379,7 @@ function Chart({
 
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
-        liveDeltaInputs={{ candles: indicatorCandles, volumeCandles: sampledIndicatorCandles, priceCandles: candles, instrument, tickSize: priceFormat.minMove,
+        liveDeltaInputs={{ candles: deltaPaneCandles, preserveEarlierHistory: extendedDeltaHistory, volumeCandles: sampledIndicatorCandles, priceCandles: candles, instrument, tickSize: priceFormat.minMove,
           theme: visibleIndicatorTheme(settings),
           mapTime: eventChartIndicatorTimeMap ? (sourceTime) =>
             eventChartTimeBySourceTimeRef.current.get(Math.round(sourceTime * 1000))

@@ -13,6 +13,7 @@ import {
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
 } from "@/lib/chartHistoryWindow";
 import { isEventBasedChartInterval, supportsChartInterval } from "@/lib/chartIntervals";
+import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
 import {
   getDatabentoEventBars,
   getDatabentoEventHistory,
@@ -265,12 +266,20 @@ export async function GET(request: Request) {
   const historyDays = Number.isFinite(requestedDays)
     ? Math.max(1, Math.min(MAX_HISTORY_DAYS, Math.round(requestedDays)))
     : DEFAULT_HISTORY_DAYS;
+  const requestedFlowContract = url.searchParams.get("flowContract");
   if (!symbol || symbol.length > 90) {
     return NextResponse.json({ error: "A valid CME instrument is required." }, { status: 400 });
   }
+  const compactContract = scopedFuturesContract(symbol, requestedFlowContract);
 
   if (!supportsChartInterval(timeframe, "Databento")) {
     return NextResponse.json({ error: "Unsupported CME chart interval." }, { status: 400 });
+  }
+  if (requestedFlowContract !== null && (!compactContract || !includeOrderFlow
+    || includeExecutions || includeAuctionGap || forceFresh || hasExplicitRange
+    || historyDays !== MAX_HISTORY_DAYS || isEventBasedChartInterval(timeframe)
+    || /^\d+s$/.test(timeframe))) {
+    return NextResponse.json({ error: "Invalid monthly order-flow request." }, { status: 400 });
   }
 
   const now = Date.now();
@@ -291,10 +300,11 @@ export async function GET(request: Request) {
   const end = new Date(toMs).toISOString();
   const cacheScope = hasExplicitRange ? `range-${fromMs}-${toMs}` : `${historyDays}d`;
   const rangeLabel = hasExplicitRange ? `${start}/${end}` : `${historyDays}D`;
-  const cacheKey = `${symbol}::${timeframe}::${cacheScope}::${includeOrderFlow ? "flow" : "bars"}::${includeAuctionGap ? "gap" : "base"}`;
+  const cacheKey = `${symbol}::${timeframe}::${cacheScope}::${includeOrderFlow ? "flow" : "bars"}::${includeAuctionGap ? "gap" : "base"}${compactContract ? `::${compactContract}` : ""}`;
   const cached = historyCache.get(cacheKey);
   const cacheLifetime = hasExplicitRange
     ? HISTORICAL_SESSION_CACHE_MS
+    : compactContract ? 60_000
     : isEventBasedChartInterval(timeframe)
     ? EVENT_HISTORY_CACHE_MS
     : FRESH_CACHE_MS;
@@ -339,7 +349,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    const history = isEventBasedChartInterval(timeframe)
+    const history = compactContract
+      ? await getDatabentoOrderFlowHistory(symbol, timeframe, start, end, { compactContract })
+      : isEventBasedChartInterval(timeframe)
       ? includeOrderFlow
         ? await durableEventHistoryOrDirect(
             symbol,

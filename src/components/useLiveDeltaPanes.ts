@@ -31,9 +31,12 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
         frame = null;
         const latest = current.current;
         if (!latest.inputs) return;
-        model.hydrate(latest.inputs.candles);
+        model.hydrate(latest.inputs.candles, mode === "delta" && latest.inputs.preserveEarlierHistory === true);
         if (pendingSnapshot) {
-          model.observeSnapshot(pendingSnapshot, true);
+          model.observeSnapshot(
+            mode === "delta" && latest.inputs.preserveEarlierHistory ? pendingSnapshot.slice(-256) : pendingSnapshot,
+            true,
+          );
           pendingSnapshot = undefined;
         }
         for (const candle of pendingPrices.values()) model.observe(candle);
@@ -55,7 +58,7 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
       if (!detail || detail.key !== chartKey) return;
       const latest = current.current.inputs;
       if (!latest) return;
-      if (mode === "price") pendingPrices.set(detail.candle.timestamp, detail.candle);
+      if (mode === "price" || mode === "delta" && latest.preserveEarlierHistory) pendingPrices.set(detail.candle.timestamp, detail.candle);
       else {
         model.hydrate(latest.candles);
         model.observe(detail.candle);
@@ -69,7 +72,7 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
       // coalescing. Do not reconstruct delta from price or add the tape twice.
       const latest = current.current.inputs;
       if (!latest) return;
-      if (mode === "price") {
+      if (mode === "price" || mode === "delta" && latest.preserveEarlierHistory) {
         pendingSnapshot = detail.candles;
         pendingPrices.clear();
       } else {

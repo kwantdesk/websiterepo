@@ -1894,6 +1894,28 @@ export function enrichCandlesWithInstitutionalCandleFlow(
   });
 }
 
+/** Attach exact-contract flow to continuous history only for identical bars. */
+export function mergeMonthlyRecordedFlow(candles: Candle[], contractCandles: Candle[]) {
+  if (!candles.length || !contractCandles.length) return candles;
+  const byTime = new Map(contractCandles.map((candle) => [candle.timestamp, candle]));
+  const matched: Candle[] = [];
+  // The current candle belongs to the existing live flow pipeline.
+  for (let i = 0; i < candles.length - 1; i++) {
+    const candle = candles[i];
+    const flow = byTime.get(candle.timestamp);
+    if (!flow || flow.open !== candle.open || flow.high !== candle.high
+      || flow.low !== candle.low || flow.close !== candle.close || flow.volume !== candle.volume
+      || (flow.sourceStartTimestamp != null && candle.sourceStartTimestamp != null
+        && flow.sourceStartTimestamp !== candle.sourceStartTimestamp)
+      || (flow.sourceEndTimestamp != null && candle.sourceEndTimestamp != null
+        && flow.sourceEndTimestamp !== candle.sourceEndTimestamp)
+      || Number(flow.askVolume ?? 0) + Number(flow.bidVolume ?? 0) <= 0
+      || Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0) continue;
+    matched.push(flow);
+  }
+  return enrichCandlesWithInstitutionalCandleFlow(candles, matched);
+}
+
 /**
  * How far a held bar may differ from the exchange-baked bar before it is
  * treated as under-counted, as a fraction of the baked bar and as an

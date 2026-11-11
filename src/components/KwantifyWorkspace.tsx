@@ -22,6 +22,7 @@ import { WORKSPACE_PRESET_DELETIONS_KEY, isWorkspacePresetDeleted, markWorkspace
 import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
 import { createExecutionPaintScheduler, createExecutionStudyScheduler } from '@/lib/executionPaintScheduler';
 import { hasUsableOrderFlowHistory } from '@/lib/orderFlowHistoryReadiness';
+import { isLiveDeltaPane } from "@/lib/liveDeltaPanes";
 
 import { freshPaperExecutionQuote, paperOrderReceipt, paperTradeExecutionQuote } from "@/lib/paperOrderReceipt";
 
@@ -220,6 +221,7 @@ import {
   buildChartVolumeProfile,
   applyInstitutionalTradesToVolumeProfile,
   enrichCandlesWithInstitutionalCandleFlow,
+  mergeMonthlyRecordedFlow,
   healClosedCandleIntegrity,
   enrichCandlesWithInstitutionalTrades,
   fetchInstitutionalFrontMonth,
@@ -3962,6 +3964,7 @@ async function fetchWorkspaceCandles(
   historyDays = period === "1M" ? 30 : DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   historicalRange?: WorkspaceHistoricalRange,
   auctionGapExpectedContract?: string | null,
+  compactFlowContract?: string,
 ) {
   const periodConfig = getPeriodConfig(period);
   const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
@@ -3973,7 +3976,7 @@ async function fetchWorkspaceCandles(
 
   if (broker === "Databento") {
     const rangeScope = historicalRange?.key ?? `${historyDays}d`;
-    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}${auctionGapExpectedContract ? `::auction-gap:${auctionGapExpectedContract.toUpperCase()}` : ""}::${rangeScope}`;
+    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}${auctionGapExpectedContract ? `::auction-gap:${auctionGapExpectedContract.toUpperCase()}` : ""}::${rangeScope}${compactFlowContract ? `::${compactFlowContract}` : ""}`;
     const replayCacheKey = historicalRange ? `${requestKey}:${historicalRange.fromMs}:${historicalRange.toMs}` : null;
     const replayCached = replayCacheKey ? workspaceReplayCandles.get(replayCacheKey) : null;
     if (!forceFresh && replayCached && replayCached.until > Date.now()
@@ -3990,7 +3993,7 @@ async function fetchWorkspaceCandles(
       // The bounded request finishes into its symbol-scoped cache; each pane
       // checks its own cancelled flag before presenting the result.
       const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(
-        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${auctionGapExpectedContract ? "&auctionGap=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
+        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${auctionGapExpectedContract ? "&auctionGap=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}${compactFlowContract ? `&flowContract=${encodeURIComponent(compactFlowContract)}` : ""}`,
         isEventBasedChartInterval(timeframe) || getChartInterval(timeframe)?.kind === "second" ? 285_000 : 45_000,
         forceFresh,
       );
@@ -6179,6 +6182,28 @@ function WorkspaceChartPaneComponent({
     error,
     candleCount: candles.length,
   });
+  const monthlyFlowContract = !replayActive && pane.broker === "Databento" && period === "1M"
+    && indicators.some((instance) => instance.enabled && isLiveDeltaPane(instance.indicatorId))
+    ? resolvedContractSymbol
+    : null;
+  const monthlyFlowKey = monthlyFlowContract ? `${requestedChartHydrationKey}:${monthlyFlowContract}` : null;
+  const [monthlyFlow, setMonthlyFlow] = useState<{ key: string; candles: Candle[] } | null>(null);
+  useEffect(() => {
+    if (!monthlyFlowKey || !monthlyFlowContract || chartIsLoading) return;
+    let cancelled = false;
+    void fetchWorkspaceCandles(
+      pane.symbol, pane.timeframe, pane.broker, "1M", 500, true, undefined,
+      false, true, 30, undefined, null, monthlyFlowContract,
+    ).then((rows) => {
+      if (!cancelled && rows.length) startTransition(() => setMonthlyFlow({ key: monthlyFlowKey, candles: rows }));
+    }).catch(() => {
+      // Recent flow and price can still display when older flow is unavailable.
+    });
+    return () => { cancelled = true; };
+  }, [chartIsLoading, monthlyFlowContract, monthlyFlowKey, pane.broker, pane.symbol, pane.timeframe]);
+  const displayCandles = useMemo(() => monthlyFlowKey && monthlyFlow?.key === monthlyFlowKey
+    ? mergeMonthlyRecordedFlow(replayDisplayCandles, monthlyFlow.candles)
+    : replayDisplayCandles, [monthlyFlow, monthlyFlowKey, replayDisplayCandles]);
   useEffect(() => workspaceDuplicateSeeds.register(chartInstanceId, () => {
     if (chartIsLoading || replayActive || error || !historyHydratedRef.current || !latestCandlesRef.current.length) return null;
     return {
@@ -9949,7 +9974,8 @@ function WorkspaceChartPaneComponent({
       ) : (
         <Chart
           onHistoryEdgeReached={loadEarlierEventHistory}
-          candles={replayDisplayCandles}
+          candles={displayCandles}
+          extendedDeltaHistory={Boolean(monthlyFlowKey)}
           bigContractHistory={replayHistoryRange || bigContractHistory.symbol !== pane.symbol ? undefined : bigContractHistory.records}
           marketTrades={replayMarketTrades}
           marketTradesVersion={marketTradesVersion}
