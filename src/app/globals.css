@@ -2206,7 +2206,8 @@ body.kwant-cockpit-ui canvas {
 
 .kwant-workspace-secondary-control,
 .kwant-news-subnav > div > button,
-.gex-map-header[data-standalone] button {
+.gex-map-header[data-standalone] button,
+body .gex-map-replay .gex-map-replay-control {
   box-sizing: border-box;
   height: var(--kwant-workspace-command-control);
   min-height: var(--kwant-workspace-command-control);
@@ -2216,6 +2217,49 @@ body.kwant-cockpit-ui canvas {
 }
 
 .kwant-news-subnav > div { justify-content: safe center; }
+
+body .gex-map-replay .gex-map-replay-control {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.gex-map-replay .gex-map-replay-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--kwant-workspace-command-control);
+}
+
+.gex-map-replay .gex-map-replay-control svg {
+  width: 14px;
+  height: 14px;
+  color: currentColor;
+}
+
+body .gex-map-replay .gex-map-replay-control:hover:not(:disabled),
+body .gex-map-replay .gex-map-replay-control[aria-expanded="true"],
+body .gex-map-replay .gex-map-replay-control[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  color: var(--primary);
+}
+
+body .gex-map-replay .gex-map-replay-play:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.gex-map-replay .gex-map-replay-control:disabled {
+  opacity: .45;
+}
+
+.gex-map-replay .gex-map-replay-control:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: 1px;
+}
 
 .gex-map-header[data-standalone] .gex-map-header-controls > div,
 .gex-map-header[data-standalone] .gex-map-header-actions > [role="group"] {

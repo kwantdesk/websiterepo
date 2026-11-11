@@ -1737,7 +1737,7 @@ function GexMapWorkspace({
       menuLabel={replayMode ? "Replay timezone" : "GEX Map timezone"}
       referenceTimestampMs={selectedTimestamp ?? undefined}
       compact
-      className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME}
+      className={replayMode ? "gex-map-replay-control w-[180px] shrink-0 px-2.5" : CHART_TIME_ZONE_TRIGGER_CLASS_NAME}
     />
   ) : null;
 
@@ -2029,7 +2029,7 @@ function GexMapWorkspace({
         )}
 
         {replayMode && !externalReplay ? (
-          <footer className="shrink-0 overflow-x-auto border-t border-border bg-panel px-3 py-2">
+          <footer className="gex-map-replay shrink-0 overflow-x-auto border-t border-border bg-panel px-3 py-2">
             <div className="flex min-w-max items-center gap-2">
               <ReplaySessionDatePicker
                 timeZone={timeZone}
@@ -2041,25 +2041,29 @@ function GexMapWorkspace({
                   setCursor(0);
                   setPlaying(false);
                 }}
-                className="h-9 rounded-lg px-3 text-[10px]"
+                showSessionLabel={false}
+                className="gex-map-replay-control px-2.5"
               />
               {timeZoneControl}
 
-              <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
-                <button type="button" onClick={() => setCursor(0)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
-                <button type="button" onClick={() => setCursor((value) => Math.max(0, value - 1))} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Previous frame"><ChevronLeft className="h-3.5 w-3.5" /></button>
-                <button type="button" onClick={() => setPlaying((value) => !value)} disabled={timeline.length < 2} className="flex h-7 w-8 items-center justify-center rounded-md bg-primary text-on-primary disabled:opacity-40" title={playing ? "Pause" : "Play"}>
+              <div role="group" aria-label="Replay playback" className="flex items-center gap-1">
+                <button type="button" onClick={() => setCursor(0)} className="gex-map-replay-control gex-map-replay-icon" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setCursor((value) => Math.max(0, value - 1))} className="gex-map-replay-control gex-map-replay-icon" title="Previous frame"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setPlaying((value) => !value)} disabled={timeline.length < 2} className="gex-map-replay-control gex-map-replay-icon gex-map-replay-play" title={playing ? "Pause" : "Play"}>
                   {playing ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
                 </button>
-                <button type="button" onClick={() => setCursor((value) => Math.min(timeline.length - 1, value + 1))} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Next frame"><ChevronRight className="h-3.5 w-3.5" /></button>
-                <button type="button" onClick={() => setCursor(Math.max(0, timeline.length - 1))} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Latest frame"><SkipForward className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setCursor((value) => Math.min(timeline.length - 1, value + 1))} className="gex-map-replay-control gex-map-replay-icon" title="Next frame"><ChevronRight className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setCursor(Math.max(0, timeline.length - 1))} className="gex-map-replay-control gex-map-replay-icon" title="Latest frame"><SkipForward className="h-3.5 w-3.5" /></button>
               </div>
 
               <div className="min-w-[110px]">
                 <div className="font-mono text-[11px] font-semibold text-foreground">
                   {selectedTimestamp ? replayDisplay.clock(selectedTimestamp) : "No replay frames"}
                 </div>
-                <div className="text-[8px] text-muted">{selectedTimestamp ? replayDisplay.date(selectedTimestamp) : "Select a session"}</div>
+                <div className="text-[9px] text-muted">
+                  {selectedTimestamp ? replayDisplay.date(selectedTimestamp) : "Select a session"}
+                  {replayDate ? ` · NY session ${replayDate}` : ""}
+                </div>
               </div>
 
               <input
@@ -2075,20 +2079,21 @@ function GexMapWorkspace({
                 className="min-w-[180px] flex-1 accent-[var(--primary)]"
               />
 
-              <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
+              <div role="group" aria-label="Replay speed" className="flex items-center gap-1">
                 {SPEEDS.map((value) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setSpeed(value)}
-                    className={`h-7 rounded-md px-2 text-[9px] font-semibold ${speed === value ? "bg-panel text-primary" : "text-muted hover:text-foreground"}`}
+                    aria-pressed={speed === value}
+                    className="gex-map-replay-control gex-map-replay-icon"
                   >
                     {value}×
                   </button>
                 ))}
               </div>
 
-              <div className="hidden items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[8px] text-muted 2xl:flex">
+              <div className="hidden items-center gap-1.5 whitespace-nowrap text-[9px] text-muted 2xl:flex">
                 <Gauge className="h-3.5 w-3.5 text-accent" />
                 <span>{timeline.length} provider frames</span>
               </div>
