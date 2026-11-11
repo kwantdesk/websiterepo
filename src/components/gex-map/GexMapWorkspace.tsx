@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleStop,
-  Gauge,
   Lock,
   LockOpen,
   Minus,
@@ -2091,11 +2090,6 @@ function GexMapWorkspace({
                     {value}×
                   </button>
                 ))}
-              </div>
-
-              <div className="hidden items-center gap-1.5 whitespace-nowrap text-[9px] text-muted 2xl:flex">
-                <Gauge className="h-3.5 w-3.5 text-accent" />
-                <span>{timeline.length} provider frames</span>
               </div>
             </div>
           </footer>
