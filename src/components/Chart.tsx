@@ -2952,9 +2952,8 @@ function drawingsStorageKey(instrument: string, chartInstanceId: string) {
   return `kwantdesk:chart-drawings:v1:${chartInstanceId}:${instrument}`;
 }
 
-// Canvas colours cannot use color-mix; derive a real rgba with the requested
-// alpha from whatever colour string the theme supplies.
-function colorWithCrosshairAlpha(color: string, alpha: number) {
+// Canvas lines use a resolved RGBA color. Scale any alpha already in the theme.
+function scaleChartColorAlpha(color: string, alpha: number) {
   const bounded = Math.max(0, Math.min(1, alpha));
   const trimmed = color.trim();
   const rgba = trimmed.match(/^rgba?\(([^)]+)\)$/i);
@@ -2963,14 +2962,13 @@ function colorWithCrosshairAlpha(color: string, alpha: number) {
     const baseAlpha = parts.length > 3 ? Number(parts[3]) : 1;
     return `rgba(${parts[0]},${parts[1]},${parts[2]},${Math.max(0, Math.min(1, (Number.isFinite(baseAlpha) ? baseAlpha : 1) * bounded))})`;
   }
-  const hex = trimmed.match(/^#([0-9a-f]{6})$/i)?.[1];
+  const hex = trimmed.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i)?.[1];
   if (hex) {
-    return `rgba(${parseInt(hex.slice(0, 2), 16)},${parseInt(hex.slice(2, 4), 16)},${parseInt(hex.slice(4, 6), 16)},${bounded})`;
-  }
-  const short = trimmed.match(/^#([0-9a-f]{3})$/i)?.[1];
-  if (short) {
-    const [r, g, b] = [...short].map((part) => parseInt(`${part}${part}`, 16));
-    return `rgba(${r},${g},${b},${bounded})`;
+    const channels = hex.length <= 4
+      ? [...hex].map((digit) => digit.repeat(2))
+      : hex.match(/../g)!;
+    const [r, g, b, opacity = 255] = channels.map((channel) => parseInt(channel, 16));
+    return `rgba(${r},${g},${b},${(opacity / 255) * bounded})`;
   }
   return trimmed;
 }
@@ -4423,7 +4421,7 @@ function Chart({
       crosshair: {
         vertLine: {
           width: Math.max(1, Math.min(4, Math.round(crosshairStyle.width))) as 1 | 2 | 3 | 4,
-          color: colorWithCrosshairAlpha(livePriceLineColor, effectiveAlpha),
+          color: scaleChartColorAlpha(livePriceLineColor, effectiveAlpha),
         },
       },
     });
@@ -15528,6 +15526,9 @@ function Chart({
         : (Math.floor(sourceTimestamp / 1_000) as Time);
     };
 
+    const gridLineColor = settings.gridLines
+      ? scaleChartColorAlpha(settings.gridColor, 0.5)
+      : "transparent";
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { color: settings.backgroundColor },
@@ -15548,8 +15549,8 @@ function Chart({
           })} · ${compactTimeZoneLabel(chartTimeZone)}`,
       },
       grid: {
-        vertLines: { color: settings.gridLines ? settings.gridColor : "transparent" },
-        horzLines: { color: settings.gridLines ? settings.gridColor : "transparent" },
+        vertLines: { color: gridLineColor },
+        horzLines: { color: gridLineColor },
       },
       rightPriceScale: {
         borderColor: "#1A1A1D",
