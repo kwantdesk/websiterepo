@@ -51,7 +51,7 @@ export default function CandleCountdownBadge({ candleIntervalMs, timeframe, hasC
   if (!label) return null;
   return <div
     data-candle-timer
-    className="pointer-events-none flex h-3.5 min-w-[27px] items-center justify-center whitespace-nowrap rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
+    className="pointer-events-none flex h-[21px] min-w-[41px] items-center justify-center whitespace-nowrap rounded-[4px] bg-primary px-[3px] font-mono text-[9px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
     title={eventBased ? "Elapsed time in this execution-based candle; it has no fixed closing time" : label === "–" ? "Market closed, feed inactive or awaiting the next candle" : "Time until the next candle opens"}
   >{label}</div>;
 }
