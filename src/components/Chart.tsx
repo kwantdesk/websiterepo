@@ -1,4 +1,5 @@
 "use client";
+import { createPortal } from "react-dom";
 import { installPriceScaleDoubleClickToggle } from "@/lib/priceScaleDoubleClickToggle";
 import { useChartDrawingUndo } from "@/components/useChartDrawingUndo";
 import { recordChartTickPaint } from "@/lib/chartTickAudit";
@@ -3829,6 +3830,21 @@ function Chart({
   const [positionSettingsDrawingId, setPositionSettingsDrawingId] = useState<string | null>(null);
   const [drawingInteraction, setDrawingInteraction] = useState<DrawingInteraction | null>(null);
   const [hideDrawings, setHideDrawings] = useState(false);
+  const [drawingLockNotice, setDrawingLockNotice] = useState(false);
+  const drawingLockNoticeTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (drawingLockNoticeTimer.current !== null) window.clearTimeout(drawingLockNoticeTimer.current);
+  }, []);
+
+  function showDrawingLockNotice() {
+    if (drawingLockNoticeTimer.current !== null) window.clearTimeout(drawingLockNoticeTimer.current);
+    setDrawingLockNotice(true);
+    drawingLockNoticeTimer.current = window.setTimeout(() => {
+      drawingLockNoticeTimer.current = null;
+      setDrawingLockNotice(false);
+    }, 2_200);
+  }
+
   const drawingsLockedRef = useRef(drawingsLocked);
   drawingsLockedRef.current = drawingsLocked;
   const [magnetMode, setMagnetMode] = useState<"off" | "weak" | "medium" | "strong">("medium");
@@ -14163,7 +14179,10 @@ function Chart({
 
   useLayoutEffect(() => {
     professionalDrawingManagerRef.current?.setInteractionEnabled(!drawingsLocked);
-    if (!drawingsLocked) return;
+    if (!drawingsLocked) {
+      setDrawingLockNotice(false);
+      return;
+    }
     selectedToolRef.current = "cursor";
     setSelectedTool("cursor");
     setDrawTool("cursor");
@@ -19343,30 +19362,53 @@ function Chart({
           that owns its own layout space, so chart content, candles and
           overlays begin to its right instead of rendering underneath it. */}
       {toolbarEnabled ? (
-        <div className="contents" inert={drawingsLocked}>
-        <ChartDrawToolbar
-          activeTool={drawTool}
-          keepDrawing={drawKeepDrawing}
-          magnet={drawMagnet}
-          magnetStrength={drawMagnetStrength}
-          emoji={drawEmoji}
-          quickEmojis={drawQuickEmojis}
-          onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
-          onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
-          onToggleMagnet={toggleDrawMagnet}
-          onSelectMagnetStrength={selectDrawMagnetStrength}
-          onSelectEmoji={selectDrawEmoji}
-          onOpenSettings={() => setDrawSettingsOpen(true)}
-          hasSelection={Boolean(drawSelectedId)}
-          onDeleteSelection={() => {
-            if (!drawSelectedId) return;
-            editSvgDrawing(drawSelectedId, null);
-            setDrawSelectedId(null);
-            setDrawSettingsOpen(false);
-          }}
-          onClearAll={clearAllChartDrawings}
-        />
+        <div className="relative z-[26] h-full shrink-0">
+          <div className="contents" inert={drawingsLocked}>
+            <ChartDrawToolbar
+              key={drawingsLocked ? "locked" : "unlocked"}
+              activeTool={drawTool}
+              keepDrawing={drawKeepDrawing}
+              magnet={drawMagnet}
+              magnetStrength={drawMagnetStrength}
+              emoji={drawEmoji}
+              quickEmojis={drawQuickEmojis}
+              onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
+              onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
+              onToggleMagnet={toggleDrawMagnet}
+              onSelectMagnetStrength={selectDrawMagnetStrength}
+              onSelectEmoji={selectDrawEmoji}
+              onOpenSettings={() => setDrawSettingsOpen(true)}
+              hasSelection={Boolean(drawSelectedId)}
+              onDeleteSelection={() => {
+                if (!drawSelectedId) return;
+                editSvgDrawing(drawSelectedId, null);
+                setDrawSelectedId(null);
+                setDrawSettingsOpen(false);
+              }}
+              onClearAll={clearAllChartDrawings}
+            />
+          </div>
+          {drawingsLocked ? (
+            <button
+              type="button"
+              aria-label="Drawing tools are locked. Use the lock in the top right corner to unlock."
+              className="absolute inset-0 z-30 cursor-not-allowed rounded-none border-0 bg-transparent p-0 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-primary"
+              onClick={showDrawingLockNotice}
+            />
+          ) : null}
         </div>
+      ) : null}
+      {drawingsLocked && drawingLockNotice && typeof document !== "undefined" ? createPortal(
+        <div className="pointer-events-none fixed inset-0 z-[1000] grid place-items-center px-4">
+          <div role="status" className="flex items-center gap-3 rounded-xl border border-border bg-panel px-4 py-3 text-foreground shadow-lg">
+            <Lock aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+            <div>
+              <div className="text-sm font-semibold">Workspace Locked</div>
+              <div className="text-xs text-muted">(Unlock in the top right corner)</div>
+            </div>
+          </div>
+        </div>,
+        document.fullscreenElement ?? document.body,
       ) : null}
       <div
         ref={chartContainerRef}
