@@ -541,7 +541,7 @@ export async function getDatabentoOrderFlowHistory(
   timeframe: string,
   start: string,
   end: string,
-  options: { auctionGap?: boolean; compactContract?: string } = {},
+  options: { auctionGap?: boolean; compactContract?: string; limit?: number } = {},
 ): Promise<DatabentoOrderFlowHistory> {
   if (isEventBasedChartInterval(timeframe)) {
     const bars = await getDatabentoBars(symbol, timeframe, start, end);
@@ -575,6 +575,7 @@ export async function getDatabentoOrderFlowHistory(
     query.set("exec", "0");
   }
   if (options.auctionGap) query.set("auctionGap", "1");
+  if (options.limit) query.set("limit", String(options.limit));
   if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
   if (Number.isFinite(requestedTo)) query.set("toMs", String(requestedTo));
   const response = await fetchInstitutionalMarketData(

@@ -2900,13 +2900,8 @@ function getPeriodConfig(period: string): { from: string; label: string } {
   }[period] ?? { from: new Date(now - 365 * day).toISOString(), label: "1Y" };
 }
 
-function supportsMonthlyChartHistory(timeframe: string) {
-  const interval = getChartInterval(timeframe);
-  return interval != null && interval.kind !== "second" && !isEventBasedChartInterval(timeframe);
-}
-
-function chartLoadPeriod(period: string | undefined, timeframe: string) {
-  return period === "5D" || !supportsMonthlyChartHistory(timeframe) ? "5D" : DEFAULT_CHART_LOAD_PERIOD;
+function chartLoadPeriod(period: string | undefined) {
+  return period === "5D" ? "5D" : DEFAULT_CHART_LOAD_PERIOD;
 }
 
 function requestedChartHistoryStart(period: string) {
@@ -3818,6 +3813,7 @@ type WorkspaceHistoryPayload = {
   auctionGap?: unknown;
   historyCoverage?: unknown;
   configured?: boolean;
+  nextBefore?: number | null;
 };
 
 function fetchWorkspaceHistoricalExecutions(
@@ -3949,6 +3945,26 @@ function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
   }).sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
 }
 
+const workspaceHistoryPageRequests = new Map<string, Promise<WorkspaceHistoryPayload>>();
+
+async function fetchWorkspaceHistoryPage(symbol: string, timeframe: string, from: number, to: number, before = to) {
+  const query = new URLSearchParams({ symbol, timeframe, from: String(from), to: String(to), before: String(before) });
+  const key = query.toString();
+  const pending = workspaceHistoryPageRequests.get(key);
+  if (pending) return pending;
+  const request = fetchJsonWithBudget<WorkspaceHistoryPayload>("/api/cme-history-page?" + key, 150_000)
+    .then(({ response, payload }) => {
+      if (!response.ok) throw new Error("Recorded history page unavailable");
+      return payload;
+    });
+  workspaceHistoryPageRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    workspaceHistoryPageRequests.delete(key);
+  }
+}
+
 async function fetchWorkspaceCandles(
   symbol: string,
   timeframe: string,
@@ -3978,6 +3994,9 @@ async function fetchWorkspaceCandles(
   const historicalLimit = getHistoricalCandleLimit(period, timeframe, outputsize);
 
   if (broker === "Databento") {
+    // Load recent seconds first. Older seconds are paged at the chart edge.
+    const seconds = getChartInterval(timeframe)?.kind === "second";
+    if (!historicalRange && seconds) historyDays = Math.min(historyDays, 4);
     const rangeScope = historicalRange?.key ?? `${historyDays}d`;
     const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}${auctionGapExpectedContract ? `::auction-gap:${auctionGapExpectedContract.toUpperCase()}` : ""}::${rangeScope}${compactFlowContract ? `::${compactFlowContract}` : ""}`;
     const replayCacheKey = historicalRange ? `${requestKey}:${historicalRange.fromMs}:${historicalRange.toMs}` : null;
@@ -4001,7 +4020,18 @@ async function fetchWorkspaceCandles(
         forceFresh,
       );
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
-      const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
+      let providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
+      if (seconds && !historicalRange && !healOnly && !providerCandles.length) {
+        // On an extended closure or a sparse instrument the first page may
+        // be empty. Find the nearest recorded bars so panning remains possible.
+        let cursor = to - historyDays * 86_400_000;
+        while (cursor > from && !providerCandles.length) {
+          const page = await fetchWorkspaceHistoryPage(symbol, timeframe, from, cursor);
+          providerCandles = sanitizeCandles((page.candles ?? []) as Candle[], symbol, timeframe);
+          if (page.nextBefore == null || page.nextBefore >= cursor) break;
+          cursor = page.nextBefore;
+        }
+      }
       if (auctionGapExpectedContract) {
         const result = acceptAuctionGapCompactRows(
           payload.auctionGap,
@@ -5605,39 +5635,46 @@ function WorkspaceChartPaneComponent({
     const toMs = newYorkSessionTimestamp(replaySessionDate, GEX_VUE_REPLAY_CLOSE_MINUTE + 5);
     return replayChartHistoryRange({ startMs: fromMs, endMs: toMs }, period);
   }, [pane.broker, pane.timeframe, period, replayActive, replaySessionDate]);
-  const eventPageScope = `${pane.id}:${pane.symbol}:${pane.timeframe}:${period}:${replayHistoryRange?.key ?? "live"}`;
-  const eventPagesRef = useRef({ scope: eventPageScope, candles: [] as Candle[], busy: false, done: false, retryAt: 0 });
-  if (eventPagesRef.current.scope !== eventPageScope) eventPagesRef.current = { scope: eventPageScope, candles: [], busy: false, done: false, retryAt: 0 };
-  const loadEarlierEventHistory = useCallback(async () => {
-    if (pane.broker !== "Databento" || !isEventBasedChartInterval(pane.timeframe)) return;
-    if (eventPagesRef.current.scope !== eventPageScope) eventPagesRef.current = { scope: eventPageScope, candles: [], busy: false, done: false, retryAt: 0 };
-    const state = eventPagesRef.current;
+  const historyPageScope = `${pane.id}:${pane.symbol}:${pane.timeframe}:${period}:${replayHistoryRange?.key ?? "live"}`;
+  const historyPagesRef = useRef({ scope: historyPageScope, candles: [] as Candle[], busy: false, done: false, retryAt: 0 });
+  if (historyPagesRef.current.scope !== historyPageScope) historyPagesRef.current = { scope: historyPageScope, candles: [], busy: false, done: false, retryAt: 0 };
+  const loadEarlierRecordedHistory = useCallback(async () => {
+    const eventBased = isEventBasedChartInterval(pane.timeframe);
+    const seconds = getChartInterval(pane.timeframe)?.kind === "second";
+    if (pane.broker !== "Databento" || (!eventBased && !seconds)) return;
+    const state = historyPagesRef.current;
+    if (state.scope !== historyPageScope || state.busy || state.done || state.retryAt > Date.now()) return;
     const first = latestCandlesRef.current[0];
-    if (!first || latestCandlesRef.current.length < 50_000 || state.busy || state.done || state.retryAt > Date.now()) return;
+    if (!first || (eventBased && period === "5D" && !replayHistoryRange && latestCandlesRef.current.length < 50_000)) return;
+    const from = replayHistoryRange?.fromMs ?? requestedChartHistoryStart(period);
+    let cursor = eventBased ? first.sourceStartTimestamp ?? first.timestamp : first.timestamp;
     state.busy = true;
-    const to = first.sourceStartTimestamp ?? first.timestamp;
-    const from = replayHistoryRange?.fromMs ?? Math.max(
-      requestedChartHistoryStart(period), Date.now() - DEFAULT_CHART_HISTORY_CALENDAR_DAYS * 86400000,
-    );
-    if (to <= from) { state.busy = false; state.done = true; return; }
     try {
-      const query = new URLSearchParams({ symbol: pane.symbol, timeframe: pane.timeframe,
-        from: String(from), to: String(to), before: String(first.timestamp) });
-      const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(`/api/cme-history-page?${query}`, 150_000);
-      if (!response.ok) throw new Error("Recorded history page unavailable");
-      if (eventPagesRef.current !== state) return;
-      const older = sanitizeCandles(Array.isArray(payload.candles) ? payload.candles as Candle[] : [], pane.symbol, pane.timeframe)
-        .filter(bar => bar.timestamp < first.timestamp);
-      state.done = older.length < 50_000;
-      state.candles = mergeChartHistory(older, state.candles);
-      if (older.length) {
-        const merged = mergeChartHistory(older, latestCandlesRef.current);
-        latestCandlesRef.current = merged;
-        setCandles(merged);
+      while (cursor > from && historyPagesRef.current === state) {
+        const payload = await fetchWorkspaceHistoryPage(
+          pane.symbol, pane.timeframe, from, cursor, eventBased ? first.timestamp : cursor,
+        );
+        if (historyPagesRef.current !== state) return;
+        const older = sanitizeCandles(Array.isArray(payload.candles) ? payload.candles as Candle[] : [], pane.symbol, pane.timeframe)
+          .filter(bar => bar.timestamp < first.timestamp);
+        const next = payload.nextBefore;
+        state.done = next == null || next >= cursor;
+        if (older.length) {
+          state.candles = mergeChartHistory(older, state.candles);
+          const merged = trimChartHistoryForPeriod(
+            mergeChartHistory(older, latestCandlesRef.current), period, from, pane.timeframe,
+          );
+          latestCandlesRef.current = merged;
+          setCandles(merged);
+          return;
+        }
+        if (state.done || next == null) return;
+        cursor = next;
       }
+      state.done = true;
     } catch { state.retryAt = Date.now() + 10_000; }
     finally { state.busy = false; }
-  }, [eventPageScope, pane.broker, pane.symbol, pane.timeframe, period, replayHistoryRange]);
+  }, [historyPageScope, pane.broker, pane.symbol, pane.timeframe, period, replayHistoryRange]);
   const replayVisibleCandleCount = useMemo(() => {
     if (!replayActive || !replayTimestampMs) return -1;
     return replayObservationCount(plottedCandles, replayTimestampMs);
@@ -7363,9 +7400,9 @@ function WorkspaceChartPaneComponent({
           requestController.signal,
           false,
           false,
-          // The archive supplies the extra OHLCV through the base request.
-          // Keep execution reconstruction within the existing recent window.
-          period === "1M" && !needsOrderFlowHistory ? 30 : DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+          // Event bars already carry recorded volume and delta. Time bars
+          // use independent base and compact monthly flow requests.
+          period === "1M" && (!needsOrderFlowHistory || eventHistory) ? 30 : DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
           undefined,
           needsAuctionGapHistory ? resolvedContractSymbol : null,
         );
@@ -7397,8 +7434,8 @@ function WorkspaceChartPaneComponent({
               liveSeam,
             )
           : clean;
-        if (isEventBasedChartInterval(pane.timeframe) && eventPagesRef.current.scope === eventPageScope) {
-          mergedHistory = mergeChartHistory(eventPagesRef.current.candles, mergedHistory);
+        if (historyPagesRef.current.scope === historyPageScope) {
+          mergedHistory = mergeChartHistory(historyPagesRef.current.candles, mergedHistory);
         }
         if (!mergedHistory.length) throw new Error("CME returned no usable candles.");
         const latestObserved = pane.broker === "Databento"
@@ -7540,7 +7577,6 @@ function WorkspaceChartPaneComponent({
             // Repair attempts must not persist another full history snapshot
             // before this pane has verified it. Cache the successful result once.
             true,
-            DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
           ),
           resolvedContractSymbol && !eventHistory
             ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
@@ -7550,7 +7586,7 @@ function WorkspaceChartPaneComponent({
         let repaired = trimChartHistoryForPeriod(
           trimCandlesAfterActiveBucket(
             sanitizeCandles(
-              eventHistory ? continueEventHistory(mergeChartHistory(eventPagesRef.current.candles, historical)) : mergeHistoricalWithLiveTail(
+              eventHistory ? continueEventHistory(mergeChartHistory(historyPagesRef.current.candles, historical)) : mergeHistoricalWithLiveTail(
                 mergeChartHistory(
                   mergeChartHistory(latestCandlesRef.current, historical),
                   seam,
@@ -9976,7 +10012,9 @@ function WorkspaceChartPaneComponent({
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (
         <Chart
-          onHistoryEdgeReached={loadEarlierEventHistory}
+          onHistoryEdgeReached={pane.broker === "Databento"
+            && (isEventBasedChartInterval(pane.timeframe) || getChartInterval(pane.timeframe)?.kind === "second")
+            ? loadEarlierRecordedHistory : undefined}
           candles={displayCandles}
           extendedDeltaHistory={Boolean(monthlyFlowKey)}
           bigContractHistory={replayHistoryRange || bigContractHistory.symbol !== pane.symbol ? undefined : bigContractHistory.records}
@@ -11623,7 +11661,7 @@ export default function KwantifyWorkspace({
     setTemplates(next.templates);
     setSelectedInstrument(nextPane.symbol);
     setSelectedTimeframe(nextPane.timeframe);
-    setSelectedPeriod(chartLoadPeriod(nextPane.period, nextPane.timeframe));
+    setSelectedPeriod(chartLoadPeriod(nextPane.period));
     setSelectedWatchlistKey(nextPane.watchlistKey);
     setConnectedBroker(nextPane.broker);
     setShowWorkspacePresetMenu(false);
@@ -13839,7 +13877,7 @@ export default function KwantifyWorkspace({
     if (!nextPane) return;
     if (selectedInstrument !== nextPane.symbol) setSelectedInstrument(nextPane.symbol);
     if (selectedTimeframe !== nextPane.timeframe) setSelectedTimeframe(nextPane.timeframe);
-    const nextPeriod = chartLoadPeriod(nextPane.period, nextPane.timeframe);
+    const nextPeriod = chartLoadPeriod(nextPane.period);
     if (selectedPeriod !== nextPeriod) setSelectedPeriod(nextPeriod);
     if (connectedBroker !== nextPane.broker) setConnectedBroker(nextPane.broker);
     if (selectedWatchlistKey !== nextPane.watchlistKey) setSelectedWatchlistKey(nextPane.watchlistKey);
@@ -15295,7 +15333,7 @@ export default function KwantifyWorkspace({
           setActivePaneId(nextActivePane.id);
           setSelectedInstrument(nextActivePane.symbol);
           setSelectedTimeframe(nextActivePane.timeframe);
-          setSelectedPeriod(chartLoadPeriod(nextActivePane.period, nextActivePane.timeframe));
+          setSelectedPeriod(chartLoadPeriod(nextActivePane.period));
           setSelectedWatchlistKey(nextActivePane.watchlistKey);
           setConnectedBroker(nextActivePane.broker);
 
@@ -15352,7 +15390,7 @@ export default function KwantifyWorkspace({
             setChartSettings(next.chartSettings); setDraftChartSettings(next.chartSettings);
             setChartSettingsSnapshot(next.chartSettings); setTemplates(next.templates);
             setSelectedInstrument(pane.symbol); setSelectedTimeframe(pane.timeframe);
-            setSelectedPeriod(chartLoadPeriod(pane.period, pane.timeframe)); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
+            setSelectedPeriod(chartLoadPeriod(pane.period)); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
           } else {
             // Cloud chart preferences belong to Charts. Gamma keeps its own
             // layout and behaviour while inheriting only the active theme.
@@ -15494,7 +15532,7 @@ export default function KwantifyWorkspace({
         setChartSettings(next.chartSettings); setDraftChartSettings(next.chartSettings);
         setChartSettingsSnapshot(next.chartSettings); setTemplates(next.templates);
         setSelectedInstrument(pane.symbol); setSelectedTimeframe(pane.timeframe);
-        setSelectedPeriod(chartLoadPeriod(pane.period, pane.timeframe)); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
+        setSelectedPeriod(chartLoadPeriod(pane.period)); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
         window.requestAnimationFrame(() => { workspaceScopeHydratingRef.current = false; });
       }
       const read = <T,>(key: string, fallback: T): T => {
@@ -16427,7 +16465,7 @@ export default function KwantifyWorkspace({
     setActivePaneId(paneId);
     setSelectedInstrument(nextPane.symbol);
     setSelectedTimeframe(nextPane.timeframe);
-    setSelectedPeriod(chartLoadPeriod(nextPane.period, nextPane.timeframe));
+    setSelectedPeriod(chartLoadPeriod(nextPane.period));
     setConnectedBroker(nextPane.broker);
     setSelectedWatchlistKey(nextPane.watchlistKey);
     writeProtectedItem("olisa-connected-broker", nextPane.broker);
@@ -16608,7 +16646,7 @@ export default function KwantifyWorkspace({
     setActivePaneId(nextPaneId);
     setSelectedInstrument(nextPane.symbol);
     setSelectedTimeframe(nextPane.timeframe);
-    setSelectedPeriod(chartLoadPeriod(nextPane.period, nextPane.timeframe));
+    setSelectedPeriod(chartLoadPeriod(nextPane.period));
     setConnectedBroker(nextPane.broker);
     setSelectedWatchlistKey(nextPane.watchlistKey);
     showReportToast("success", "Panel duplicated — the copy is independent and ready to arrange", 1800);
@@ -16660,7 +16698,7 @@ export default function KwantifyWorkspace({
     setActivePaneId(nextPaneId);
     setSelectedInstrument(nextPane.symbol);
     setSelectedTimeframe(nextPane.timeframe);
-    setSelectedPeriod(chartLoadPeriod(nextPane.period, nextPane.timeframe));
+    setSelectedPeriod(chartLoadPeriod(nextPane.period));
     setConnectedBroker(nextPane.broker);
     setSelectedWatchlistKey(nextPane.watchlistKey);
     showReportToast("success", "Floating panel duplicated — the copy remains independent", 1800);
@@ -16983,7 +17021,7 @@ export default function KwantifyWorkspace({
       setActivePaneId(nextActivePane.id);
       setSelectedInstrument(nextActivePane.symbol);
       setSelectedTimeframe(nextActivePane.timeframe);
-      setSelectedPeriod(chartLoadPeriod(nextActivePane.period, nextActivePane.timeframe));
+      setSelectedPeriod(chartLoadPeriod(nextActivePane.period));
       setConnectedBroker(nextActivePane.broker);
       setSelectedWatchlistKey(nextActivePane.watchlistKey);
     }
@@ -18867,7 +18905,7 @@ export default function KwantifyWorkspace({
 
   const handleChartPeriod = (paneId: string, period: string) => {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
-    if (!pane || period !== chartLoadPeriod(period, pane.timeframe) || chartLoadPeriod(pane.period, pane.timeframe) === period) return;
+    if (!pane || period !== chartLoadPeriod(period) || chartLoadPeriod(pane.period) === period) return;
     clearBacktest();
     updateWorkspacePane(paneId, { period, preferFiveDayHistory: period === "5D" });
     if (paneId === activePaneId) {
@@ -19750,7 +19788,7 @@ export default function KwantifyWorkspace({
         chartInstanceId={workspaceChartInstanceId(chartWorkspaceScope, pane.id)}
         active={activePaneId === pane.id}
         embedded
-        period={chartLoadPeriod(pane.period, pane.timeframe)}
+        period={chartLoadPeriod(pane.period)}
         settings={chartSettings}
         crosshairLinked={linkedCrosshairPaneIds.has(pane.id)}
         candlesVisible={!candlesHiddenPaneIds.has(pane.id)}
@@ -20765,9 +20803,8 @@ export default function KwantifyWorkspace({
                         <button
                           key={range}
                           type="button"
-                          disabled={range === "1M" && !supportsMonthlyChartHistory(selectedTimeframe)}
                           aria-pressed={range === selectedPeriod}
-                          title={range === "1M" ? "One month of recorded history for minute and longer intervals" : "Five trading days"}
+                          title={range === "1M" ? "One month of recorded history" : "Five trading days"}
                           onClick={() => {
                             handleChartPeriod(activePaneId, range);
                             setShowAllTF(false);

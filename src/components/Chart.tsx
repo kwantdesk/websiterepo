@@ -15314,7 +15314,9 @@ function Chart({
     const previousPaintCandles = previousPaintCandlesRef.current;
     const changedClockHistory = !eventBased && clockCandleHistoryNeedsRedraw(previousPaintCandles, seriesCandles);
     previousPaintCandlesRef.current = seriesCandles;
-    if (!styleChanged && !changedClockHistory && lastCandleKey === prevDataRef.current) return;
+    const prependedHistory = prevFirstTimestampRef.current !== null
+      && observedSourceCandles[0]?.timestamp < prevFirstTimestampRef.current;
+    if (!styleChanged && !changedClockHistory && !prependedHistory && lastCandleKey === prevDataRef.current) return;
     prevDataRef.current = lastCandleKey;
 
     const previousCandleCount = prevCandlesLengthRef.current;
@@ -15360,7 +15362,7 @@ function Chart({
         drawingTimelineRevisionRef.current += 1;
       }
       const pageViewport = chartRef.current?.timeScale().getVisibleLogicalRange();
-      const prependCount = eventBased && previousPaintCandles.length
+      const prependCount = (eventBased || historyEdgeCallbackRef.current) && previousPaintCandles.length
         ? drawCandles.findIndex(bar => bar.timestamp === previousPaintCandles[0].timestamp) : 0;
       candleSeriesRef.current.setData(chartData);
       lastRenderedCandleTimeRef.current = chartData.length

@@ -12,7 +12,7 @@ import type { Candle } from "@/lib/backtester";
 import {
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
 } from "@/lib/chartHistoryWindow";
-import { isEventBasedChartInterval, supportsChartInterval } from "@/lib/chartIntervals";
+import { getChartInterval, isEventBasedChartInterval, supportsChartInterval } from "@/lib/chartIntervals";
 import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
 import {
   getDatabentoEventBars,
@@ -294,7 +294,11 @@ export async function GET(request: Request) {
       { status: 400 },
     );
   }
-  const fromMs = hasExplicitRange ? Math.round(requestedFrom) : now - historyDays * 24 * 60 * 60_000;
+  const interval = getChartInterval(timeframe);
+  const secondsBucketMs = interval?.kind === "second" ? interval.value * 1_000 : null;
+  const relativeFrom = now - historyDays * 24 * 60 * 60_000;
+  const fromMs = hasExplicitRange ? Math.round(requestedFrom)
+    : secondsBucketMs ? Math.floor(relativeFrom / secondsBucketMs) * secondsBucketMs : relativeFrom;
   const toMs = hasExplicitRange ? Math.min(now, Math.round(requestedTo)) : now;
   const start = new Date(fromMs).toISOString();
   const end = new Date(toMs).toISOString();
@@ -370,6 +374,10 @@ export async function GET(request: Request) {
             end,
             cacheScope,
           )
+      : !hasExplicitRange && secondsBucketMs !== null
+        ? await getDatabentoOrderFlowHistory(symbol, timeframe, start, end, {
+            auctionGap: includeAuctionGap, limit: 50_000,
+          })
       : includeOrderFlow && !forceFresh
         ? await durableTimeHistoryOrDirect(
             symbol,
