@@ -14,6 +14,7 @@ import { accountPreferenceReadUnavailable, isMissingPreferenceStore } from "./ac
 
 import { mergeDrawingClearBarriers } from "./drawingClearBarriers";
 import { mergeWorkspacePresetPreferences } from "./workspacePresetPreferences";
+import { mergeWorkspaceIndicatorState, WORKSPACE_INDICATOR_KEYS } from "./workspaceIndicatorPreferences.ts";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
@@ -414,6 +415,16 @@ export async function hydrateUserPreferences(
   if (localPreferencesBelongToUser) selected = { ...selected,
     values: mergeWorkspacePresetPreferences(current.values, latest.values, selected.values,
       mergeDrawingClearBarriers(latest.values, selected.values, selected.values)) };
+  if (localPreferencesBelongToUser) {
+    for (const key of WORKSPACE_INDICATOR_KEYS) {
+      const edited = latest.values[key];
+      if (edited === undefined || edited === current.values[key]) continue;
+      selected = { ...selected, updatedAt: latest.updatedAt, values: {
+        ...selected.values,
+        [key]: mergeWorkspaceIndicatorState(current.values[key], edited, selected.values[key]) ?? edited,
+      } };
+    }
+  }
   selected = { ...selected, values: reconcileThemeChoice(
     selected.values, selected.values, cloud?.values ?? {}, scoped?.values ?? {},
     localPreferencesBelongToUser || (!activePreferenceOwner && !legacyPreferenceOwner) ? latest.values : {},

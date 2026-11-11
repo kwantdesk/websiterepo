@@ -1,4 +1,5 @@
 import { mergeWorkspacePanePreferences } from "./workspacePanePreferences.ts";
+import { mergeWorkspaceIndicatorState, WORKSPACE_INDICATOR_KEYS } from "./workspaceIndicatorPreferences.ts";
 import { CHART_SETTINGS_STORAGE_KEY, mergeChartSettingsChanges } from './chartSettings.ts';
 import { workspaceScopeStorageKey } from './chartWorkspaceScope.ts';
 import { reconcileThemeChoice } from './themeChoice.ts';
@@ -261,5 +262,9 @@ export function mergeAccountPreferenceChanges(base: UserPreferenceSnapshot, loca
   values = mergeDrawingClearBarriers(local.values, remote.values, values);
   values = mergeWorkspacePresetPreferences(base.values, local.values, remote.values, values);
   values = mergeWorkspacePanePreferences(base.values, local.values, remote.values, values);
+  for (const key of WORKSPACE_INDICATOR_KEYS) {
+    const merged = mergeWorkspaceIndicatorState(base.values[key], local.values[key], remote.values[key]);
+    if (merged !== undefined) values[key] = merged;
+  }
   return { version: 1, complete: true, updatedAt: same(values, remote.values) ? remote.updatedAt : new Date().toISOString(), values };
 }

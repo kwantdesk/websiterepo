@@ -18,6 +18,7 @@ import { readChartDrawingStore, updateChartDrawingPane } from "@/lib/chartDrawin
 
 import { mergePaperTradingLedgerUpdate } from "@/lib/accountPreferenceMerge";
 import { WORKSPACE_PRESET_DELETIONS_KEY, isWorkspacePresetDeleted, markWorkspacePresetDeleted, mergeWorkspacePresetPreferences } from "@/lib/workspacePresetPreferences";
+import { CHART_INDICATORS_STORAGE_KEY } from "@/lib/workspaceIndicatorPreferences";
 
 import { scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
 import { createExecutionPaintScheduler, createExecutionStudyScheduler } from '@/lib/executionPaintScheduler';
@@ -91,7 +92,7 @@ import {
   type GexVueReplayState,
 } from "@/lib/gexVueReplay";
 
-import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
 import { warmWorkspaceCodeInBackground } from "@/lib/workspaceCodeWarmup";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
@@ -681,7 +682,6 @@ type FriendMessageToast = {
   preview: string;
 };
 type AlertsPanelTab = "social" | "market";
-const CHART_INDICATORS_STORAGE_KEY = "kwantdesk-chart-indicators";
 
 type Message = { role: "user" | "assistant"; content: string };
 type StrategyVersion = { code: string; timestamp: Date | string; version: number };
@@ -11533,9 +11533,24 @@ export default function KwantifyWorkspace({
   const [miniLoading, setMiniLoading] = useState(false);
   const [strategies, setStrategies] = useState<StrategyItem[]>(demoStrategies);
   const [chartIndicatorsSuppressed, setChartIndicatorsSuppressed] = useState(false);
-  const [paneIndicators, setPaneIndicators] = useState<Record<string, ChartIndicatorInstance[]>>(
+  const [paneIndicators, setPaneIndicatorsState] = useState<Record<string, ChartIndicatorInstance[]>>(
     initialChartWorkspaceRuntime.indicators,
   );
+  const paneIndicatorsRef = useRef(paneIndicators);
+  const setPaneIndicators = useCallback((
+    update: SetStateAction<Record<string, ChartIndicatorInstance[]>>,
+    persistImmediately = false,
+  ) => {
+    const next = typeof update === "function" ? update(paneIndicatorsRef.current) : update;
+    paneIndicatorsRef.current = next;
+    setPaneIndicatorsState(next);
+    if (persistImmediately) {
+      writeProtectedItem(
+        workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_INDICATORS_STORAGE_KEY),
+        JSON.stringify(next),
+      );
+    }
+  }, []);
   const [paneLevelVisibility, setPaneLevelVisibility] = useState<Record<string, PaneLevelVisibility>>(
     initialChartWorkspaceRuntime.levelVisibility,
   );
@@ -11676,7 +11691,7 @@ export default function KwantifyWorkspace({
       presets: workspacePresets,
       activePresetId: activeWorkspacePresetId,
       activePaneId,
-      indicators: paneIndicators,
+      indicators: paneIndicatorsRef.current,
       levelVisibility: paneLevelVisibility,
       favouriteTimeframes: favTFs,
       chartSettings,
@@ -11729,6 +11744,7 @@ export default function KwantifyWorkspace({
     chartSettings,
     favTFs,
     paneIndicators,
+    setPaneIndicators,
     paneLevelVisibility,
     templates,
     workspaceFloatingWindows,
@@ -13400,19 +13416,19 @@ export default function KwantifyWorkspace({
   }, [favInstruments]);
 
   useEffect(() => {
-    if (workspaceScopeHydratingRef.current) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     // Slider-driven indicator settings can emit dozens of updates per second.
     // Persist after the interaction settles so synchronous localStorage writes
     // never block the chart or settings drawer while the pointer is moving.
+    const scope = chartWorkspaceScopeRef.current;
+    const key = workspaceScopeStorageKey(scope, CHART_INDICATORS_STORAGE_KEY);
     const timer = window.setTimeout(() => {
-      writeProtectedItem(
-        workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_INDICATORS_STORAGE_KEY),
-        JSON.stringify(clonePaneIndicatorState(paneIndicators)),
-      );
-      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+      if (scope !== chartWorkspaceScopeRef.current || paneIndicators !== paneIndicatorsRef.current) return;
+      const serialized = JSON.stringify(paneIndicators);
+      if (window.localStorage.getItem(key) !== serialized) writeProtectedItem(key, serialized);
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [paneIndicators]);
+  }, [paneIndicators, preferencesReady]);
 
   useEffect(() => {
     const relinkIndicators = () => {
@@ -13420,7 +13436,7 @@ export default function KwantifyWorkspace({
     };
     window.addEventListener("kwantdesk:theme-change", relinkIndicators);
     return () => window.removeEventListener("kwantdesk:theme-change", relinkIndicators);
-  }, []);
+  }, [setPaneIndicators]);
 
   const getBottomPanelMaxHeight = useCallback(() => {
     const mainRect = mainRef.current?.getBoundingClientRect();
@@ -15477,7 +15493,7 @@ export default function KwantifyWorkspace({
     };
 
     checkUsername();
-  }, [router, supabase]);
+  }, [router, setPaneIndicators, supabase]);
 
   useEffect(() => {
     if (!authChecked || !preferenceUserId) return;
@@ -15620,7 +15636,7 @@ export default function KwantifyWorkspace({
     };
     window.addEventListener(PREFERENCES_HYDRATED_EVENT, restoreAccountRevision);
     return () => window.removeEventListener(PREFERENCES_HYDRATED_EVENT, restoreAccountRevision);
-  }, [preferenceUserId, chartingDrawingsStorageKey]);
+  }, [preferenceUserId, chartingDrawingsStorageKey, setPaneIndicators]);
 
   useEffect(() => {
     const syncChartPalette = (event?: Event) => {
@@ -16154,14 +16170,19 @@ export default function KwantifyWorkspace({
 
   const setIndicatorsForPane = useCallback((paneId: string, next: ChartIndicatorInstance[]) => {
     setChartIndicatorsSuppressed(false);
+    const previous = paneIndicatorsRef.current[paneId] ?? [];
+    // Write list changes in the click handler. A reload or account response
+    // can land before the debounced writer for ordinary style edits runs.
+    const listChanged = previous.length !== next.length
+      || previous.some((instance, index) => instance.instanceId !== next[index]?.instanceId);
     setPaneIndicators((current) => ({
       ...current,
       [paneId]: next.map((instance) => ({
         ...instance,
         settings: instance.settings ? { ...instance.settings } : undefined,
       })),
-    }));
-  }, []);
+    }), listChanged);
+  }, [setPaneIndicators]);
 
   const handleEmbeddedGexMapStateChange = useCallback((paneId: string, state: GexMapEmbedState) => {
     setWorkspacePanes(current => {
@@ -16211,11 +16232,11 @@ export default function KwantifyWorkspace({
           ? { ...instance, settings: { ...(instance.settings ?? {}), [key]: value } }
           : instance),
     }));
-  }, []);
+  }, [setPaneIndicators]);
 
   const removeAllIndicatorsFromPane = useCallback((paneId: string) => {
     setChartIndicatorsSuppressed(true);
-    setPaneIndicators((current) => ({ ...current, [paneId]: [] }));
+    setPaneIndicators((current) => ({ ...current, [paneId]: [] }), true);
     setStrategies((current) => {
       const next = current.map((strategy) =>
         strategy.addedToChart
@@ -16231,7 +16252,7 @@ export default function KwantifyWorkspace({
       persistStrategies(next);
       return next;
     });
-  }, []);
+  }, [setPaneIndicators]);
 
   const handleRemoveAllIndicatorsFromChart = useCallback(() => {
     if (!activePaneIsChart) return;
@@ -17378,7 +17399,7 @@ export default function KwantifyWorkspace({
       // the theme's. An afternoon spent colouring CVD, candles, big trades, IB
       // levels, the footprint and the profiles was lost on reopening the very
       // workspace it was saved into.
-      setPaneIndicators(clonePaneIndicatorState(preset.indicators));
+      setPaneIndicators(clonePaneIndicatorState(preset.indicators), true);
     }
     setCandleSettingsByPane(clonePaneCandleSettings(preset.candleSettings ?? {}));
     setPaneLevelVisibility(clonePaneLevelVisibility(preset.levelVisibility ?? {}));
