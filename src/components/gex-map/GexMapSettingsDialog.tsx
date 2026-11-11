@@ -5,6 +5,8 @@ import {ChevronDown,X} from "lucide-react";
 import {GEX_MAP_DRAG_BAR_TRACK,GEX_MAP_SHARED_PALETTE_PRESETS,GEX_MAP_STOP_COUNT,gexMapPaletteFromPreset,gexMapDragBarColor,gexMapSignedScale,gexMapSignedLegendGradient,gexMapPalettesEqual,type GexMapPalette} from "@/lib/gexMapPalette";
 import ChartColorField, {isInsideChartColorPopover} from "@/components/ChartColorField";
 import {RECOMMENDED_GEX_MAP_STAR_SETTINGS,type GexMapStarSettings,type GexMapViewMode} from "@/lib/gexMapStar";
+import {GEX_MAP_FUTURE_LOOKAHEADS,type GexMapFutureSettings} from "@/lib/gexMapWorkspaces";
+import {OPTIONS_FLOW_INSTRUMENTS} from "@/lib/optionsFlow";
 type GexMapDropdownOption<T extends string> = {
   value: T;
   label: string;
@@ -159,6 +161,7 @@ export function GexMapDropdown<T extends string>({
 }
 export default function GexMapSettingsDialog({
   open,
+  future,
   embedded = false,
   section = "all",
   settings,
@@ -172,6 +175,10 @@ export default function GexMapSettingsDialog({
   onClose,
 }: {
   open: boolean;
+  future?: {
+    settings: GexMapFutureSettings;
+    onChange: (settings: GexMapFutureSettings) => void;
+  };
   embedded?: boolean;
   section?: "all" | "colours" | "settings";
   settings: GexMapStarSettings;
@@ -234,6 +241,68 @@ export default function GexMapSettingsDialog({
       : `${side} exposure ${Math.abs(Number(scaleSlotLabel(index)))}% of this side's peak`;
   };
   const rowClass = "grid grid-cols-[minmax(0,1fr)_160px] items-center gap-4 border-b border-border/60 py-3";
+  const futureControls = future ? <>
+    <div className={rowClass}>
+      <span className="text-[10px] text-foreground">Underlying</span>
+      <GexMapDropdown
+        ariaLabel="Forward matrix underlying"
+        value={future.settings.symbol}
+        options={OPTIONS_FLOW_INSTRUMENTS.map(({ symbol, label }) => ({ value: symbol, label: symbol, detail: label }))}
+        menuLabel="Underlying"
+        menuWidth={224}
+        onChange={(symbol) => future.onChange({ ...future.settings, symbol })}
+      />
+    </div>
+    <div className={rowClass}>
+      <span className="text-[10px] text-foreground">Exposure</span>
+      <GexMapDropdown<GexMapFutureSettings["greek"]>
+        ariaLabel="Forward exposure"
+        value={future.settings.greek}
+        options={[{ value: "GAMMA", label: "GEX", detail: "Gamma exposure" }, { value: "VANNA", label: "VEX", detail: "Vanna exposure" }]}
+        menuLabel="Exposure"
+        menuWidth={190}
+        onChange={(greek) => future.onChange({ ...future.settings, greek })}
+      />
+    </div>
+    <div className={rowClass}>
+      <span className="text-[10px] text-foreground">Forward window</span>
+      <GexMapDropdown
+        ariaLabel="Forward window"
+        value={String(future.settings.lookaheadDays)}
+        options={GEX_MAP_FUTURE_LOOKAHEADS.map((days) => ({ value: String(days), label: `${days}d` }))}
+        menuLabel="Forward window"
+        menuWidth={190}
+        onChange={(days) => future.onChange({ ...future.settings, lookaheadDays: Number(days) })}
+      />
+    </div>
+    <div className={rowClass}>
+      <span className="text-[10px] text-foreground">Values</span>
+      <GexMapDropdown<GexMapFutureSettings["valueMode"]>
+        ariaLabel="Forward matrix values"
+        value={future.settings.valueMode}
+        options={[{ value: "star-percent", label: "% of Star" }, { value: "signed", label: "Signed ($)" }]}
+        menuLabel="Values"
+        menuWidth={190}
+        onChange={(valueMode) => future.onChange({ ...future.settings, valueMode })}
+      />
+    </div>
+    <label className={rowClass}>
+      <span>
+        <span className="block text-[10px] text-foreground">Focus · {future.settings.highlightPercent}%</span>
+        <span className="text-[8px] text-muted">Dim cells below this share of the Star exposure</span>
+      </span>
+      <input
+        aria-label="Forward matrix focus"
+        type="range"
+        min={0}
+        max={90}
+        step={5}
+        value={future.settings.highlightPercent}
+        onChange={(event) => future.onChange({ ...future.settings, highlightPercent: Number(event.target.value) })}
+        className="w-full accent-[var(--primary)]"
+      />
+    </label>
+  </> : null;
   const viewControls = <>
           <div className={rowClass}>
             <span><span className="block text-[10px] text-foreground">View</span><span className="text-[8px] text-muted">Full = every strike raw · Ninja = structural nodes · Star = only the Star node</span></span>
@@ -459,17 +528,17 @@ export default function GexMapSettingsDialog({
             </div>
           ) : null}
   </>;
-  const content = (<section className={embedded ? "w-full rounded-xl border border-border bg-panel" : "max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]"} onPointerDown={(event) => event.stopPropagation()}>
+  const content = (<section role={embedded ? undefined : "dialog"} aria-modal={embedded ? undefined : true} aria-label={embedded ? undefined : future ? "Future view settings" : "GEX Map view settings"} className={embedded ? "w-full rounded-xl border border-border bg-panel" : "max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]"} onPointerDown={(event) => event.stopPropagation()}>
         {!embedded ? <header className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-panel px-4">
           <div>
-            <div className="text-[11px] font-semibold text-foreground">{viewMode.toUpperCase()} VIEW SETTINGS</div>
-            <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Applied to every GEX Map panel</div>
+            <div className="text-[11px] font-semibold text-foreground">{future ? "FUTURE" : viewMode.toUpperCase()} VIEW SETTINGS</div>
+            {future ? null : <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Applied to every GEX Map panel</div>}
           </div>
-          <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label="Close Star view settings"><X className="h-3.5 w-3.5" /></button>
+          <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label={future ? "Close Future view settings" : "Close Star view settings"}><X className="h-3.5 w-3.5" /></button>
         </header> : null}
         <div className="px-4 pb-4">
-          {section === "colours" ? colourControls : section === "settings" ? viewControls : embedded ? <>{colourControls}<h3 className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">View and nodes</h3>{viewControls}</> : <>{viewControls}{colourControls}</>}
-          {section !== "colours" ? <button type="button" onClick={() => onChange({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS })} className="mt-4 h-8 border border-primary/40 px-3 text-[9px] font-semibold text-primary hover:bg-primary/10">RESET RECOMMENDED DEFAULTS</button> : null}
+          {future ? <>{futureControls}{colourControls}</> : section === "colours" ? colourControls : section === "settings" ? viewControls : embedded ? <>{colourControls}<h3 className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">View and nodes</h3>{viewControls}</> : <>{viewControls}{colourControls}</>}
+          {!future && section !== "colours" ? <button type="button" onClick={() => onChange({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS })} className="mt-4 h-8 border border-primary/40 px-3 text-[9px] font-semibold text-primary hover:bg-primary/10">RESET RECOMMENDED DEFAULTS</button> : null}
         </div>
         {!embedded ? <footer className="sticky bottom-0 z-10 flex h-12 items-center justify-between gap-3 border-t border-border bg-panel px-4">
           <span className="text-[8px] text-muted">

@@ -1,13 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
-import { GexMapDropdown } from "@/components/gex-map/GexMapSettingsDialog";
 import { gexMapExposureRange, gexMapHeatColorCss, gexMapHeatStrength, gexMapSignedScale, type GexMapPalette } from "@/lib/gexMapPalette";
 import { parseResolvedColor, readableTextOn } from "@/lib/readableContrast";
 import GexMapExposureLegend from "./GexMapExposureLegend";
-import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
-import { GEX_MAP_FUTURE_LOOKAHEADS, normalizeGexMapFutureSettings, type GexMapFutureSettings } from "@/lib/gexMapWorkspaces";
+import type { GexMapFutureSettings } from "@/lib/gexMapWorkspaces";
 
 // GEX MAP · FUTURE view: the forward positioning matrix. Strikes run down the
 // left, one column per upcoming EXPIRY inside the lookahead window, and every
@@ -27,25 +24,6 @@ type FutureChain = {
   expiryStrikes: Array<{ expiration: string; strike: number; call: number; put: number; net: number }>;
 };
 
-const FUTURE_SETTINGS_KEY = "kwantdesk:gex-map-future:v1";
-type FutureGreek = GexMapFutureSettings["greek"];
-type FutureValueMode = GexMapFutureSettings["valueMode"];
-
-export function loadFutureSettings(): GexMapFutureSettings {
-  try {
-    return normalizeGexMapFutureSettings(JSON.parse(window.localStorage.getItem(FUTURE_SETTINGS_KEY) ?? "null"));
-  } catch {
-    return normalizeGexMapFutureSettings(null);
-  }
-}
-
-function saveFutureSettings(settings: GexMapFutureSettings) {
-  try {
-    window.localStorage.setItem(FUTURE_SETTINGS_KEY, JSON.stringify(settings));
-    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
-  } catch { /* Preferences can still be edited for this session. */ }
-}
-
 function formatCompactDollars(value: number) {
   const absolute = Math.abs(value);
   const sign = value < 0 ? "-" : "";
@@ -62,27 +40,15 @@ function expirationHeading(expiration: string) {
   return { date: expiration.slice(5), weekday };
 }
 
-export default function GexMapFutureMatrix({ palette, zoom = 1, workspaceSettings, onWorkspaceSettingsChange }: {
+export default function GexMapFutureMatrix({ palette, zoom = 1, settings }: {
   palette: GexMapPalette;
   zoom?: number;
-  workspaceSettings?: GexMapFutureSettings;
-  onWorkspaceSettingsChange?: (settings: GexMapFutureSettings) => void;
+  settings: GexMapFutureSettings;
 }) {
-  const [localSettings, setLocalSettings] = useState(loadFutureSettings);
-  const settings = workspaceSettings ?? localSettings;
   const [chain, setChain] = useState<FutureChain | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
-
-  const patchSettings = useCallback((patch: Partial<GexMapFutureSettings>) => {
-    const next = { ...settings, ...patch };
-    if (onWorkspaceSettingsChange) onWorkspaceSettingsChange(next);
-    else {
-      setLocalSettings(next);
-      saveFutureSettings(next);
-    }
-  }, [onWorkspaceSettingsChange, settings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +135,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1, workspaceSetting
     return view.strikes.reduce((best, strike) =>
       Math.abs(strike - spot) < Math.abs(best - spot) ? strike : best);
   }, [chain?.stockPrice, view]);
+  const spotLabel = chain?.stockPrice?.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const spotRowRef = useRef<HTMLTableRowElement>(null);
@@ -196,87 +163,8 @@ export default function GexMapFutureMatrix({ palette, zoom = 1, workspaceSetting
     container.scrollLeft = 0;
   }, [centerSpotStrike, chain?.greekMode, chain?.symbol, settings.lookaheadDays, spotStrike]);
 
-  const chip = "flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em]";
-
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-panel px-2 py-1.5">
-        <div className="w-[104px] shrink-0">
-        <GexMapDropdown
-          ariaLabel="Forward matrix underlying"
-          value={settings.symbol}
-          options={OPTIONS_FLOW_INSTRUMENTS.map((instrument) => ({
-            value: instrument.symbol,
-            label: instrument.symbol,
-            detail: instrument.label,
-          }))}
-          menuLabel="Underlying"
-          menuWidth={224}
-          onChange={(symbol) => patchSettings({ symbol })}
-        />
-        </div>
-        <div className="flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5">
-          {(["GAMMA", "VANNA"] as const).map((greek) => (
-            <button
-              key={greek}
-              type="button"
-              onClick={() => patchSettings({ greek })}
-              aria-pressed={settings.greek === greek}
-              className={`flex h-full items-center rounded-[2px] px-2 text-[9px] font-bold uppercase leading-none tracking-[0.075em] ${settings.greek === greek ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
-            >
-              {greek === "GAMMA" ? "GEX" : "VEX"}
-            </button>
-          ))}
-        </div>
-        <div className="w-[76px] shrink-0">
-        <GexMapDropdown
-          ariaLabel="Forward window"
-          value={String(settings.lookaheadDays)}
-          options={GEX_MAP_FUTURE_LOOKAHEADS.map((days) => ({
-            value: String(days),
-            label: `${days}d`,
-            detail: `Expiries within ${days} days`,
-          }))}
-          menuLabel="Forward window"
-          menuWidth={190}
-          onChange={(days) => patchSettings({ lookaheadDays: Number(days) })}
-        />
-        </div>
-        <div className="flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5">
-          {([["star-percent", "% Star"], ["signed", "$"]] as const).map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => patchSettings({ valueMode: mode })}
-              aria-pressed={settings.valueMode === mode}
-              className={`flex h-full items-center rounded-[2px] px-2 text-[9px] font-bold uppercase leading-none tracking-[0.075em] ${settings.valueMode === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <label className={`${chip} gap-1.5 text-muted`} title="Dim cells below this share of the Star cell's magnitude">
-          Focus
-          <input
-            type="range"
-            min={0}
-            max={90}
-            step={5}
-            value={settings.highlightPercent}
-            onChange={(event) => patchSettings({ highlightPercent: Number(event.target.value) })}
-            className="w-20 accent-primary"
-            aria-label="Highlight threshold as percent of the Star cell"
-          />
-          <span className="font-mono text-foreground">{settings.highlightPercent}%</span>
-        </label>
-        <div className="ml-auto flex items-center gap-2 text-[9px] text-muted">
-          {chain?.stockPrice ? (
-            <span className="font-mono text-foreground">Spot {chain.stockPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-          ) : null}
-          {loading ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
-        </div>
-      </div>
-
       {error && !chain ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-[11px] text-muted">{error}</div>
       ) : !view || !view.expirations.length ? (
@@ -315,7 +203,9 @@ export default function GexMapFutureMatrix({ palette, zoom = 1, workspaceSetting
                 <tr key={strike} ref={strike === spotStrike ? spotRowRef : undefined}>
                   <td
                     onDoubleClick={spotStrike === null ? undefined : centerSpotStrike}
-                    title={spotStrike === null ? undefined : "Double-click to center on the current strike"}
+                    title={spotStrike === null ? undefined : strike === spotStrike
+                      ? `Spot ${spotLabel} · Double-click to center`
+                      : "Double-click to center on the current strike"}
                     className={`sticky left-0 z-10 select-none whitespace-nowrap border-r border-border bg-panel px-2 py-0.5 text-right font-semibold ${strike === spotStrike ? "text-primary" : "text-foreground"}`}
                   >
                     {strike === spotStrike ? "▸ " : ""}{strike.toLocaleString(undefined, { maximumFractionDigits: 2 })}

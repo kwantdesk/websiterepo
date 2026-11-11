@@ -30,11 +30,12 @@ export { GexMapDropdown } from "./GexMapSettingsDialog";
 import { useGexMapSettingsBridge } from "./useLinkedGexMapSettings";
 import { publishGexMapSurface, subscribeGexMapSurface } from "@/lib/gexMapSurfaceBus";
 import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
-import GexMapFutureMatrix, { loadFutureSettings } from "@/components/gex-map/GexMapFutureMatrix";
+import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
 import GexMapWorkspacesMenu from "./GexMapWorkspacesMenu";
 import {
-  GEX_MAP_ZOOM_MIN, GEX_MAP_ZOOM_MAX, GEX_MAP_ZOOM_BASE_SCALE, readActiveGexMapWorkspace, rememberActiveGexMapWorkspace,
-  type GexMapWorkspacePreset, type GexMapWorkspaceSnapshot,
+  GEX_MAP_FUTURE_SETTINGS_KEY, GEX_MAP_ZOOM_MIN, GEX_MAP_ZOOM_MAX, GEX_MAP_ZOOM_BASE_SCALE,
+  loadFutureSettings, saveFutureSettings, readActiveGexMapWorkspace, rememberActiveGexMapWorkspace,
+  type GexMapFutureSettings, type GexMapWorkspacePreset, type GexMapWorkspaceSnapshot,
 } from "@/lib/gexMapWorkspaces";
 import { buildGexMapSnapshots as buildSnapshots, gexMapPriceAt as priceAt, gexMapSurfaceRows } from "@/lib/gexMapSnapshots";
 import {
@@ -1121,6 +1122,23 @@ function GexMapWorkspace({
   const [privateWorkspace, setPrivateWorkspace] = useState(Boolean(initialWorkspace));
   const initialSnapshot = initialWorkspace?.snapshot;
   const [futureSettings, setFutureSettings] = useState(() => initialSnapshot?.futureSettings ?? loadFutureSettings());
+  useEffect(() => {
+    if (privateWorkspace) return;
+    const sync = () => setFutureSettings(loadFutureSettings());
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key === GEX_MAP_FUTURE_SETTINGS_KEY || event.key === null) sync();
+    };
+    window.addEventListener("storage", syncStorage);
+    window.addEventListener("kwantdesk:preferences-hydrated", sync);
+    return () => {
+      window.removeEventListener("storage", syncStorage);
+      window.removeEventListener("kwantdesk:preferences-hydrated", sync);
+    };
+  }, [privateWorkspace]);
+  const updateFutureSettings = (next: GexMapFutureSettings) => {
+    setFutureSettings(next);
+    if (!privateWorkspace) saveFutureSettings(next);
+  };
   const replayDisplay = useMemo(() => gexMapReplayDisplay(timeZone), [timeZone]);
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
@@ -1691,7 +1709,7 @@ function GexMapWorkspace({
     return {
       view: { surfaceVersion: 2, panels, viewMode, stepMinutes, expiryScope, representation, exposureModel, timeHorizon },
       starSettings, palette: savedPalette, ladderZoom, futureZoom, priceLocked, replayWindow,
-      futureSettings: privateWorkspace ? futureSettings : loadFutureSettings(),
+      futureSettings,
     };
   }
 
@@ -1727,8 +1745,8 @@ function GexMapWorkspace({
       type="button"
       onClick={() => setStarSettingsOpen(true)}
       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
-      title="STAR view settings"
-      aria-label="Open Star view settings"
+      title={timeHorizon === "future" ? "Future view settings" : "STAR view settings"}
+      aria-label={timeHorizon === "future" ? "Open Future view settings" : "Open Star view settings"}
     >
       <SlidersHorizontal className="h-3 w-3" />
     </button>
@@ -1976,12 +1994,11 @@ function GexMapWorkspace({
         </header>
 
         {timeHorizon === "future" ? (
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden px-2 py-1.5">
             {replayMode ? <div role="status" className="flex h-full items-center justify-center p-6 text-center text-xs text-muted">
               The forward-expiry matrix has no recorded replay surface. Switch to Present for timestamped exposure replay.
             </div> : <GexMapFutureMatrix palette={activePalette} zoom={futureZoom * GEX_MAP_ZOOM_BASE_SCALE}
-              workspaceSettings={privateWorkspace ? futureSettings : undefined}
-              onWorkspaceSettingsChange={privateWorkspace ? setFutureSettings : undefined} />}
+              settings={futureSettings} />}
           </div>
         ) : (
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-1.5">
@@ -2110,6 +2127,7 @@ function GexMapWorkspace({
       ) : null}
       <GexMapSettingsDialog
         open={starSettingsOpen}
+        future={timeHorizon === "future" ? { settings: futureSettings, onChange: updateFutureSettings } : undefined}
         settings={starSettings}
         viewMode={viewMode}
         onViewModeChange={setViewMode}

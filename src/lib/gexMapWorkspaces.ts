@@ -16,6 +16,7 @@ const ACTIVE_KEY = "kwantdesk:gex-map-active-workspace:v1";
 const FILE_KIND = "kwantdesk.gex-map-workspaces";
 const LIMIT = 60;
 const symbols = new Set<string>(OPTIONS_FLOW_INSTRUMENTS.map(({ symbol }) => symbol));
+export const GEX_MAP_FUTURE_SETTINGS_KEY = "kwantdesk:gex-map-future:v1";
 export const GEX_MAP_FUTURE_LOOKAHEADS = [7, 14, 21, 30, 60];
 
 export type GexMapFutureSettings = {
@@ -37,6 +38,20 @@ export function normalizeGexMapFutureSettings(value: unknown): GexMapFutureSetti
     valueMode: settings.valueMode === "signed" ? "signed" : "star-percent",
     highlightPercent: Math.min(90, Math.max(0, number(settings.highlightPercent) || 0)),
   };
+}
+
+export function loadFutureSettings(): GexMapFutureSettings {
+  try {
+    return normalizeGexMapFutureSettings(JSON.parse(window.localStorage.getItem(GEX_MAP_FUTURE_SETTINGS_KEY) ?? "null"));
+  } catch {
+    return normalizeGexMapFutureSettings(null);
+  }
+}
+
+export function saveFutureSettings(settings: GexMapFutureSettings) {
+  try {
+    writeProtectedItem(GEX_MAP_FUTURE_SETTINGS_KEY, JSON.stringify(settings));
+  } catch { /* Preferences can still be edited for this session. */ }
 }
 
 export type GexMapWorkspaceSnapshot = {
