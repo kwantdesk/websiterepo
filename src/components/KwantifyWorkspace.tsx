@@ -1085,6 +1085,7 @@ type WorkspacePane = {
   broker: string;
   timeframe: string;
   period: string;
+  preferFiveDayHistory?: boolean;
   watchlistKey: string;
   content: WorkspacePanelKind | null;
   /** A pane lock only pins this pane; it must never lock the whole workspace. */
@@ -1289,20 +1290,21 @@ const OANDA_GRANULARITY_MAP: Record<string, string> = {
   "1m": "M1", "5m": "M5", "15m": "M15", "30m": "M30",
   "1h": "H1", "2h": "H2", "4h": "H4", "1D": "D", "1W": "W", "1M": "M",
 };
+const DEFAULT_CHART_LOAD_PERIOD = "1M";
 const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
-  { id: "pane-1", symbol: "ES.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("ES.v.0", "Databento"), content: "charts", locked: false },
-  { id: "pane-2", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("NQ.v.0", "Databento"), content: "charts", locked: false },
-  { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("CL.v.0", "Databento"), content: "charts", locked: false },
-  { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("GC.v.0", "Databento"), content: "charts", locked: false },
+  { id: "pane-1", symbol: "ES.v.0", broker: "Databento", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("ES.v.0", "Databento"), content: "charts", locked: false },
+  { id: "pane-2", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("NQ.v.0", "Databento"), content: "charts", locked: false },
+  { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("CL.v.0", "Databento"), content: "charts", locked: false },
+  { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("GC.v.0", "Databento"), content: "charts", locked: false },
 ];
 
 // GEX VUE is an independent charting surface. Its pane ids are namespaced so
 // drawings and indicators can never collide with the ordinary Charts page.
 const DEFAULT_GAMMA_WORKSPACE_PANES: WorkspacePane[] = [
-  { id: "gex-standard-spx", symbol: "SPX", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("SPX", "Market Index"), content: "charts", locked: false },
-  { id: "gex-standard-ndx", symbol: "NDX", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("NDX", "Market Index"), content: "charts", locked: false },
-  { id: "gex-standard-spy", symbol: "SPY", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("SPY", "Market Index"), content: "charts", locked: false },
-  { id: "gex-standard-qqq", symbol: "QQQ", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("QQQ", "Market Index"), content: "charts", locked: false },
+  { id: "gex-standard-spx", symbol: "SPX", broker: "Market Index", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("SPX", "Market Index"), content: "charts", locked: false },
+  { id: "gex-standard-ndx", symbol: "NDX", broker: "Market Index", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("NDX", "Market Index"), content: "charts", locked: false },
+  { id: "gex-standard-spy", symbol: "SPY", broker: "Market Index", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("SPY", "Market Index"), content: "charts", locked: false },
+  { id: "gex-standard-qqq", symbol: "QQQ", broker: "Market Index", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("QQQ", "Market Index"), content: "charts", locked: false },
 ];
 
 /**
@@ -1316,7 +1318,6 @@ const DEFAULT_GAMMA_WORKSPACE_PANES: WorkspacePane[] = [
  */
 const GEX_MAP_AUTO_CHART_SYMBOLS = ["SPXW", "NDX", "SPY", "QQQ"] as const;
 const GEX_MAP_AUTO_CHART_TIMEFRAME = "5m";
-const GEX_MAP_AUTO_CHART_PERIOD = "5D";
 /** One synchronized GEX column for every underlying in the replay roster. */
 const GEX_MAP_AUTO_MAP_PANELS = [
   { id: "left", symbol: "SPXW", greekMode: "GAMMA" as const },
@@ -1403,7 +1404,7 @@ function createGexQuadMapPreset(chartSettings: ChartSettings): WorkspacePreset {
   const symbols = ["SPXW", "NDX", "QQQ", "SPY"];
   const panes: WorkspacePane[] = symbols.map(symbol => ({
     id: `gex-quad-map-${symbol.toLowerCase()}`, symbol, broker: "Market Index",
-    timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey(symbol, "Market Index"),
+    timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey(symbol, "Market Index"),
     content: "charts", locked: false,
   }));
   const mapPane: WorkspacePane = {
@@ -2503,7 +2504,9 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     symbol: pane.symbol ?? fallback.symbol,
     broker,
     timeframe,
-    period: chartLoadPeriod(pane.period, timeframe),
+    // Older workspaces stored 5D for every chart, including implicit defaults.
+    period: pane.preferFiveDayHistory === true ? "5D" : DEFAULT_CHART_LOAD_PERIOD,
+    preferFiveDayHistory: pane.preferFiveDayHistory === true,
     watchlistKey: pane.watchlistKey ?? makeWatchlistKey(pane.symbol ?? fallback.symbol, pane.broker ?? fallback.broker),
     // Existing saved workspaces predate mixed panels and are chart panes.
     content: pane.content === null || isWorkspacePanelKind(pane.content) ? pane.content : "charts",
@@ -2903,7 +2906,7 @@ function supportsMonthlyChartHistory(timeframe: string) {
 }
 
 function chartLoadPeriod(period: string | undefined, timeframe: string) {
-  return period === "1M" && supportsMonthlyChartHistory(timeframe) ? "1M" : "5D";
+  return period === "5D" || !supportsMonthlyChartHistory(timeframe) ? "5D" : DEFAULT_CHART_LOAD_PERIOD;
 }
 
 function requestedChartHistoryStart(period: string) {
@@ -10895,7 +10898,7 @@ export default function KwantifyWorkspace({
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [selectedWatchlistKey, setSelectedWatchlistKey] = useState<string>(initialWorkspacePane.watchlistKey);
   const [selectedTimeframe, setSelectedTimeframe] = useState(initialWorkspacePane.timeframe);
-  const [selectedPeriod, setSelectedPeriod] = useState("5D");
+  const [selectedPeriod, setSelectedPeriod] = useState<string>(DEFAULT_CHART_LOAD_PERIOD);
   const [chartLoadingMessage, setChartLoadingMessage] = useState("");
   const [feedErrorByBroker, setFeedErrorByBroker] = useState<Record<string, string>>({});
   const [streamHealthyByBroker, setStreamHealthyByBroker] = useState<Record<string, boolean>>({});
@@ -11620,7 +11623,7 @@ export default function KwantifyWorkspace({
     setTemplates(next.templates);
     setSelectedInstrument(nextPane.symbol);
     setSelectedTimeframe(nextPane.timeframe);
-    setSelectedPeriod(nextPane.period);
+    setSelectedPeriod(chartLoadPeriod(nextPane.period, nextPane.timeframe));
     setSelectedWatchlistKey(nextPane.watchlistKey);
     setConnectedBroker(nextPane.broker);
     setShowWorkspacePresetMenu(false);
@@ -15292,7 +15295,7 @@ export default function KwantifyWorkspace({
           setActivePaneId(nextActivePane.id);
           setSelectedInstrument(nextActivePane.symbol);
           setSelectedTimeframe(nextActivePane.timeframe);
-          setSelectedPeriod(nextActivePane.period);
+          setSelectedPeriod(chartLoadPeriod(nextActivePane.period, nextActivePane.timeframe));
           setSelectedWatchlistKey(nextActivePane.watchlistKey);
           setConnectedBroker(nextActivePane.broker);
 
@@ -15349,7 +15352,7 @@ export default function KwantifyWorkspace({
             setChartSettings(next.chartSettings); setDraftChartSettings(next.chartSettings);
             setChartSettingsSnapshot(next.chartSettings); setTemplates(next.templates);
             setSelectedInstrument(pane.symbol); setSelectedTimeframe(pane.timeframe);
-            setSelectedPeriod(pane.period); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
+            setSelectedPeriod(chartLoadPeriod(pane.period, pane.timeframe)); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
           } else {
             // Cloud chart preferences belong to Charts. Gamma keeps its own
             // layout and behaviour while inheriting only the active theme.
@@ -15491,7 +15494,7 @@ export default function KwantifyWorkspace({
         setChartSettings(next.chartSettings); setDraftChartSettings(next.chartSettings);
         setChartSettingsSnapshot(next.chartSettings); setTemplates(next.templates);
         setSelectedInstrument(pane.symbol); setSelectedTimeframe(pane.timeframe);
-        setSelectedPeriod(pane.period); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
+        setSelectedPeriod(chartLoadPeriod(pane.period, pane.timeframe)); setSelectedWatchlistKey(pane.watchlistKey); setConnectedBroker(pane.broker);
         window.requestAnimationFrame(() => { workspaceScopeHydratingRef.current = false; });
       }
       const read = <T,>(key: string, fallback: T): T => {
@@ -16424,7 +16427,7 @@ export default function KwantifyWorkspace({
     setActivePaneId(paneId);
     setSelectedInstrument(nextPane.symbol);
     setSelectedTimeframe(nextPane.timeframe);
-    setSelectedPeriod(nextPane.period);
+    setSelectedPeriod(chartLoadPeriod(nextPane.period, nextPane.timeframe));
     setConnectedBroker(nextPane.broker);
     setSelectedWatchlistKey(nextPane.watchlistKey);
     writeProtectedItem("olisa-connected-broker", nextPane.broker);
@@ -16489,7 +16492,8 @@ export default function KwantifyWorkspace({
             // Market Index feed, never the CME broker the pane may have held.
             broker: "Market Index",
             timeframe: GEX_MAP_AUTO_CHART_TIMEFRAME,
-            period: GEX_MAP_AUTO_CHART_PERIOD,
+            period: DEFAULT_CHART_LOAD_PERIOD,
+            preferFiveDayHistory: false,
             watchlistKey: makeWatchlistKey(symbol, "Market Index"),
           };
         }
@@ -16550,7 +16554,8 @@ export default function KwantifyWorkspace({
     const nextPane: WorkspacePane = {
       ...activeWorkspacePane,
       id: nextPaneId,
-      period: "1W",
+      period: DEFAULT_CHART_LOAD_PERIOD,
+      preferFiveDayHistory: false,
       content: null,
       locked: false,
     };
@@ -16603,7 +16608,7 @@ export default function KwantifyWorkspace({
     setActivePaneId(nextPaneId);
     setSelectedInstrument(nextPane.symbol);
     setSelectedTimeframe(nextPane.timeframe);
-    setSelectedPeriod(nextPane.period);
+    setSelectedPeriod(chartLoadPeriod(nextPane.period, nextPane.timeframe));
     setConnectedBroker(nextPane.broker);
     setSelectedWatchlistKey(nextPane.watchlistKey);
     showReportToast("success", "Panel duplicated — the copy is independent and ready to arrange", 1800);
@@ -16655,7 +16660,7 @@ export default function KwantifyWorkspace({
     setActivePaneId(nextPaneId);
     setSelectedInstrument(nextPane.symbol);
     setSelectedTimeframe(nextPane.timeframe);
-    setSelectedPeriod(nextPane.period);
+    setSelectedPeriod(chartLoadPeriod(nextPane.period, nextPane.timeframe));
     setConnectedBroker(nextPane.broker);
     setSelectedWatchlistKey(nextPane.watchlistKey);
     showReportToast("success", "Floating panel duplicated — the copy remains independent", 1800);
@@ -16978,7 +16983,7 @@ export default function KwantifyWorkspace({
       setActivePaneId(nextActivePane.id);
       setSelectedInstrument(nextActivePane.symbol);
       setSelectedTimeframe(nextActivePane.timeframe);
-      setSelectedPeriod(nextActivePane.period);
+      setSelectedPeriod(chartLoadPeriod(nextActivePane.period, nextActivePane.timeframe));
       setConnectedBroker(nextActivePane.broker);
       setSelectedWatchlistKey(nextActivePane.watchlistKey);
     }
@@ -18862,9 +18867,9 @@ export default function KwantifyWorkspace({
 
   const handleChartPeriod = (paneId: string, period: string) => {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
-    if (!pane || period !== chartLoadPeriod(period, pane.timeframe) || pane.period === period) return;
+    if (!pane || period !== chartLoadPeriod(period, pane.timeframe) || chartLoadPeriod(pane.period, pane.timeframe) === period) return;
     clearBacktest();
-    updateWorkspacePane(paneId, { period });
+    updateWorkspacePane(paneId, { period, preferFiveDayHistory: period === "5D" });
     if (paneId === activePaneId) {
       setSelectedPeriod(period);
     }

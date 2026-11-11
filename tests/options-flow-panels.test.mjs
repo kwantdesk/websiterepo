@@ -36,7 +36,7 @@ test('pane snapshots survive workspace normalisation and duplicates diverge',()=
   const raw=shell.slice(shell.indexOf('function normalizeWorkspacePane('),shell.indexOf('\ntype ChartWorkspaceRuntime'));
   const exports={};vm.runInNewContext(ts.transpileModule(raw+'\nexports.normalize=normalizeWorkspacePane;',{
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
-    {exports,normalizeOptionsFlowState,isWorkspacePanelKind:value=>!!optionsFlowTool(value),parseChartInterval:()=>({}),
+    {exports,DEFAULT_CHART_LOAD_PERIOD:'1M',normalizeOptionsFlowState,isWorkspacePanelKind:value=>!!optionsFlowTool(value),parseChartInterval:()=>({}),
       normalizeBrokerLabel:x=>x,parseTimeframe:()=>null,normalizeWorkspaceChartSymbol:x=>x,
       makeWatchlistKey:()=>'',isMarketIndexSymbol:()=>false,supportsChartInterval:()=>true});
   const original={id:'pane-a',content:'options-flow:kwanty:state',symbol:'NDX',broker:'Market Index',timeframe:'5m',period:'5D',watchlistKey:'a',locked:false,
@@ -44,6 +44,9 @@ test('pane snapshots survive workspace normalisation and duplicates diverge',()=
   // Some instrument normalisers are imported by the actual helper. Supply its
   // existing dependencies; execute the actual function, not a rewritten clone.
   const normalized=exports.normalize(original,original);
+  assert.equal(normalized.period,'1M','a legacy five-day default upgrades to one month');
+  const explicitFiveDays=exports.normalize({...original,preferFiveDayHistory:true},original);
+  assert.equal(exports.normalize(JSON.parse(JSON.stringify(explicitFiveDays)),original).period,'5D');
   assert.equal(normalized.content,original.content);
   assert.equal(normalized.optionsFlowState['kwanty:v1'],original.optionsFlowState['kwanty:v1']);
   const duplicate=structuredClone(normalized);duplicate.id='pane-b';

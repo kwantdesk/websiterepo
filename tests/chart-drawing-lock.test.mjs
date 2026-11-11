@@ -55,6 +55,7 @@ test('each pane toggles its own saved drawing lock and normalization preserves i
   const panes = [{ id: 'a', broker: 'Databento', symbol: 'NQ', locked: false }, { id: 'b', broker: 'Databento', symbol: 'ES', locked: true }];
   const context = { React, Lock: () => null, Unlock: () => null, updateWorkspacePane: (id, patch) => Object.assign(panes.find(p => p.id === id), patch), isMarketIndexSymbol: () => false, supportsChartInterval: () => true, makeWatchlistKey: s => s, isWorkspacePanelKind: () => true, normalizeOptionsFlowState: v => v };
   vm.createContext(context);
+  context.DEFAULT_CHART_LOAD_PERIOD = '1M';
   vm.runInContext(ts.transpileModule(functions.join('\n'), { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022 } }).outputText, context);
   const button = context.renderChartDrawingLockButton(panes[0]);
   assert.equal(button.props['aria-pressed'], false);
