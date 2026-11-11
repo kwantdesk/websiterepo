@@ -272,7 +272,7 @@ export default function EditorPage() {
             <KwantSelect value={strategy.language} onChange={(e) => setStrategy((current) => ({ ...current, language: e.target.value }))} className="rounded-lg border border-border bg-surface px-2 py-1 text-[12px] text-muted outline-none">
               <option>Python</option>
               <option>Pine Script</option>
-              <option>Kwantify</option>
+              <option value="Kwantify">Quant Desk</option>
               <option>MQL5</option>
             </KwantSelect>
             <span>Ln {cursor.line}, Col {cursor.col}</span>

@@ -1215,7 +1215,7 @@ export default function GammaWorkspace() {
               </Panel>
 
               <Panel>
-                <PanelHeader title="Key options levels" eyebrow="Transparent Kwantify ranking" icon={TableProperties} trailing={<span className="text-[9px] uppercase tracking-[0.14em] text-muted">{data.levels.keyLevels.length} levels</span>} />
+                <PanelHeader title="Key options levels" eyebrow="Transparent Quant Desk ranking" icon={TableProperties} trailing={<span className="text-[9px] uppercase tracking-[0.14em] text-muted">{data.levels.keyLevels.length} levels</span>} />
                 <KeyLevelsTable data={data} anchoredBasis={anchoredLevelBasis} anchoredScale={anchoredLevelScale} expectedMove={chartExpectedMove} />
               </Panel>
             </div>

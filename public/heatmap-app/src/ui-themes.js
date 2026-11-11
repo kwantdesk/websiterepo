@@ -34,7 +34,7 @@ export const UI_THEMES = Object.freeze([
     id: DEFAULT_UI_THEME,
     name: 'Website theme',
     code: 'SYNC',
-    description: 'Linked to the appearance selected in Kwantify Settings.',
+    description: 'Linked to the appearance selected in Quant Desk Settings.',
   }),
 ]);
 
@@ -85,7 +85,7 @@ function websiteUiTheme() {
     id: DEFAULT_UI_THEME,
     name: 'Website theme',
     code: 'SYNC',
-    description: 'Linked to the appearance selected in Kwantify Settings.',
+    description: 'Linked to the appearance selected in Quant Desk Settings.',
     css: {
       '--ui-bg': site.background,
       '--ui-chrome': site.panel,

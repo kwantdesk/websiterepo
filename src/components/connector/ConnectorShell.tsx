@@ -21,7 +21,7 @@ export default function ConnectorShell({ children }: { children: ReactNode }) {
     ? "Copy a connection code, connect MT5, and manage the seat only when you need more detail."
     : isFutures
       ? "Connect direct broker lanes, route accounts, and manage futures execution health."
-      : "Build the native bridge between kwantify strategies and external execution venues.";
+      : "Build the native bridge between Quant Desk strategies and external execution venues.";
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">

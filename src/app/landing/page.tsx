@@ -345,7 +345,7 @@ export default function LandingPage() {
       <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-[#131722] to-transparent" />
 
       <header className="relative z-10 flex w-full items-center justify-between px-5 py-7 md:px-8 xl:px-10">
-        <Link href="/landing" aria-label="Kwantify home" className="brand-wordmark">
+        <Link href="/landing" aria-label="Quant Desk home" className="brand-wordmark">
           <HeaderWordmarkScene />
         </Link>
         <nav className="hidden items-center gap-8 text-sm text-[#787B86] md:flex">
@@ -379,7 +379,7 @@ export default function LandingPage() {
             transition={{ delay: 0.08, duration: 0.65 }}
             className="text-balance text-5xl font-semibold leading-[0.95] text-white md:text-7xl xl:text-[92px]"
           >
-            Kwantify
+            Quant Desk
             <span className="block text-[#D1D4DC]">Strategy OS.</span>
           </motion.h1>
           <motion.p

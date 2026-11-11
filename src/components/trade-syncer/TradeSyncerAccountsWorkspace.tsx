@@ -71,7 +71,7 @@ const platformCards: PlatformCard[] = [
       {
         id: "gateway",
         title: "Gateway Session",
-        detail: "Link a managed gateway lane and let kwantify control the sync lifecycle.",
+        detail: "Link a managed gateway lane and let Quant Desk control the sync lifecycle.",
         recommended: true,
       },
       {
@@ -94,7 +94,7 @@ const platformCards: PlatformCard[] = [
       {
         id: "terminal-bridge",
         title: "Terminal Bridge",
-        detail: "Install the kwantify bridge in the terminal and pair it to this account.",
+        detail: "Install the Quant Desk bridge in the terminal and pair it to this account.",
         recommended: true,
       },
     ],
@@ -870,7 +870,7 @@ function TradeSyncerAccountsWorkspaceContent({
                   </div>
                   <div className="rounded-2xl border border-border bg-background/40 p-4">
                     <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-muted">
-                      What kwantify stores
+                      What Quant Desk stores
                     </div>
                     <div className="mt-3 space-y-2 text-[12px] leading-6 text-muted">
                       <div>OAuth broker session for the connected user</div>

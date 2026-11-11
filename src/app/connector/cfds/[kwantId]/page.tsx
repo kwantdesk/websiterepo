@@ -135,7 +135,7 @@ const seatSupportPlaybooks = [
   {
     title: "Heartbeat Not Moving",
     detail: "If the seat stays stale or offline, the real problem is often local MT5 setup rather than the connector API.",
-    firstMove: "Check the WebRequest allow-list, confirm the EA is still attached to the chart, and make sure the terminal can reach the kwantify host.",
+    firstMove: "Check the WebRequest allow-list, confirm the EA is still attached to the chart, and make sure the terminal can reach the Quant Desk host.",
   },
   {
     title: "Synthetic Signal Rejected",
@@ -859,7 +859,7 @@ export default function CfdConnectorDetailPage() {
         title: "MT5 is not claiming queued test trades",
         detail:
           latestSyntheticExpiryReport?.errorMessage ??
-          "Kwantify queued the synthetic test trade, but this MT5 seat has not claimed it within the normal mailbox window.",
+          "Quant Desk queued the synthetic test trade, but this MT5 seat has not claimed it within the normal mailbox window.",
         action:
           "Reload the chart with the latest downloaded EA build, then rerun one test trade. If the terminal still never claims, check the MT5 Experts log for claim-loop messages instead of retrying the website button repeatedly.",
       });
@@ -1259,7 +1259,7 @@ export default function CfdConnectorDetailPage() {
             ) : null}
             {session && claimLoopLooksStalled ? (
               <div className="mt-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-3 text-[12px] text-danger">
-                Kwantify is queueing the MT5 test trade, but this terminal is not claiming it before the mailbox expires it. That usually means the chart is still running an older EA build or a stuck claim loop. Re-download the latest EA from this page, replace it in MT5, reload the chart, then run one fresh test trade.
+                Quant Desk is queueing the MT5 test trade, but this terminal is not claiming it before the mailbox expires it. That usually means the chart is still running an older EA build or a stuck claim loop. Re-download the latest EA from this page, replace it in MT5, reload the chart, then run one fresh test trade.
               </div>
             ) : null}
             {needsViewerSignIn ? (
@@ -2333,7 +2333,7 @@ export default function CfdConnectorDetailPage() {
             <div className="space-y-4">
               <div className="rounded-2xl border border-border bg-surface/60 p-4 text-[13px] leading-6 text-muted">
                 If MT5 restarts with an unreconciled in-flight command, the downloadable EA still protects against duplicate execution,
-                but it now asks kwantify whether that old signal is still live before freezing the seat indefinitely.
+                but it now asks Quant Desk whether that old signal is still live before freezing the seat indefinitely.
                 If the backend no longer has a live in-flight copy, or if the command has safely recycled back into the mailbox,
                 the EA auto-clears the stale local latch and resumes polling on its own.
                 Dead-letter commands below are the matching website-side review lane for commands that exhausted claim retries.
@@ -2347,7 +2347,7 @@ export default function CfdConnectorDetailPage() {
                   2. Leave <span className="font-semibold text-foreground">ClearRecoveredCommandOnStartup</span> off during normal use. It is now just an explicit operator override, not the everyday path.
                 </span>
                 <span className="block mt-1">
-                  3. Keep <span className="font-semibold text-foreground">ReportRecoveredCommandClear</span> on if you want manual startup clears to show up explicitly in kwantify when you intentionally discard a checkpoint.
+                  3. Keep <span className="font-semibold text-foreground">ReportRecoveredCommandClear</span> on if you want manual startup clears to show up explicitly in Quant Desk when you intentionally discard a checkpoint.
                 </span>
               </div>
 

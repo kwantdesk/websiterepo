@@ -264,7 +264,7 @@ function DemandPanel({ data }: { data: OptionsFlowPayload }) {
 
         <div className="mt-4 rounded-xl border border-border bg-panel p-3">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Kwantify composite</span>
+            <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Quant Desk composite</span>
             <span className={`text-[9px] font-semibold ${composite === "EXPANSION PRESSURE" ? "text-danger" : composite === "COMPRESSION SUPPORTED" ? "text-primary" : "text-accent"}`}>{composite}</span>
           </div>
           <div className="mt-2 text-[9px] leading-4 text-muted">Combines dealer-signed net GEX with option buy/sell premium. This is a transparent regime inference, not a trade recommendation.</div>

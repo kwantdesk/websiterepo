@@ -157,7 +157,7 @@ function buildBacktestAnalysisPrompt(snapshot: AutomationBacktestSnapshot, code:
 
   return `BACKTEST ANALYSIS REQUEST
 
-Analyze this Kwantify strategy backtest like a serious strategy research partner. Do not rewrite the code yet unless I explicitly ask. Journal the lesson, identify what worked, what did not, what might be a data/sample issue, what we should test next, and what we should avoid changing so we do not go in circles.
+Analyze this Quant Desk strategy backtest like a serious strategy research partner. Do not rewrite the code yet unless I explicitly ask. Journal the lesson, identify what worked, what did not, what might be a data/sample issue, what we should test next, and what we should avoid changing so we do not go in circles.
 
 Required answer structure:
 1. Verdict

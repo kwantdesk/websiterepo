@@ -223,7 +223,7 @@ function RankProgressCard() {
             <div className="h-3 rounded-full bg-surface"><div className="h-full w-[78%] rounded-full bg-primary" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
-            {["League position: #8 of 30", "Status: Safe", "Weekly XP: 915", "Kwantify Score: 74"].map((stat) => <div key={stat} className="rounded-xl border border-border bg-background/40 p-3 text-muted">{stat}</div>)}
+            {["League position: #8 of 30", "Status: Safe", "Weekly XP: 915", "Quant Desk Score: 74"].map((stat) => <div key={stat} className="rounded-xl border border-border bg-background/40 p-3 text-muted">{stat}</div>)}
           </div>
         </div>
 
@@ -321,8 +321,8 @@ export default function LeaderboardPage() {
               </section>
 
               <section className="rounded-2xl border border-border bg-panel p-5">
-                <div className="mb-4 flex flex-wrap gap-3"><KwantSelect className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>By Kwantify Score</option><option>By Profit Factor</option><option>By Vault Clones</option><option>By Win Rate Consistency</option><option>By Streak</option></KwantSelect><KwantSelect className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>All</option><option>NAS100 specialists</option><option>Gold specialists</option><option>Crypto</option><option>Forex</option></KwantSelect></div>
-                <div className="overflow-hidden rounded-xl border border-border"><table className="w-full text-[13px]"><thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted"><tr>{["Rank", "Trader", "Kwantify Score", "Profit Factor", "Best Strategy", "Vault Strategies", "Clones Received", "Total XP"].map((h) => <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>)}</tr></thead><tbody>{leaderboard.map((trader) => <RankRow key={trader.rank} trader={trader} />)}<RankRow trader={myTrader} /></tbody></table></div>
+                <div className="mb-4 flex flex-wrap gap-3"><KwantSelect className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>By Quant Desk Score</option><option>By Profit Factor</option><option>By Vault Clones</option><option>By Win Rate Consistency</option><option>By Streak</option></KwantSelect><KwantSelect className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>All</option><option>NAS100 specialists</option><option>Gold specialists</option><option>Crypto</option><option>Forex</option></KwantSelect></div>
+                <div className="overflow-hidden rounded-xl border border-border"><table className="w-full text-[13px]"><thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted"><tr>{["Rank", "Trader", "Quant Desk Score", "Profit Factor", "Best Strategy", "Vault Strategies", "Clones Received", "Total XP"].map((h) => <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>)}</tr></thead><tbody>{leaderboard.map((trader) => <RankRow key={trader.rank} trader={trader} />)}<RankRow trader={myTrader} /></tbody></table></div>
                 <button className="mt-4 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Load more</button>
               </section>
             </>

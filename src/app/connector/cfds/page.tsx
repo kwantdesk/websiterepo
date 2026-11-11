@@ -221,7 +221,7 @@ const connectorSupportPlaybooks = [
     title: "Allowed URL Missing",
     detail:
       "If MT5 never heartbeats or test connection keeps failing, the connector host is often missing from the WebRequest allow-list.",
-    action: "Open MT5 Options, add the kwantify connector URL under Expert Advisors, then rerun Test Connection.",
+    action: "Open MT5 Options, add the Quant Desk connector URL under Expert Advisors, then rerun Test Connection.",
   },
   {
     title: "Algo Trading Disabled",
@@ -256,7 +256,7 @@ const connectorOnboardingSteps = [
   },
   {
     step: "03",
-    title: "Whitelist kwantify",
+    title: "Whitelist Quant Desk",
     detail: "Add the connector URL to the MT5 WebRequest allow-list so heartbeat and claim calls can work.",
   },
   {

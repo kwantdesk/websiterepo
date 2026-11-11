@@ -15,6 +15,13 @@ test("ordinary words containing similar letters are not damaged", () => {
   assert.equal(publicFacingTerminology("Linear, logarithmic and algorithmic"), "Linear, logarithmic and algorithmic");
 });
 
+test("legacy display branding is updated without rewriting technical identifiers", () => {
+  assert.equal(publicFacingTerminology("Kwantify Simulator, Quantify, KWANTIFY"), "Quant Desk Simulator, Quant Desk, Quant Desk");
+  const technicalCopy = "Use kwantify:heatmap settings to quantify risk. See .kwantify/memory and KWANTIFY-FANOUT.";
+  assert.equal(publicFacingTerminology(technicalCopy), technicalCopy);
+  assert.equal(containsPrivateTerminology(technicalCopy), false);
+});
+
 test("the privacy guard covers the root app and dynamic visible surfaces", () => {
   const layout = readFileSync("src/app/layout.tsx", "utf8");
   const guard = readFileSync("src/components/PrivateTerminologyGuard.tsx", "utf8");

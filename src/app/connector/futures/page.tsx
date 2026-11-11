@@ -841,7 +841,7 @@ export default function ConnectorFuturesPage() {
   ]);
 
   const schemaRows = [
-    ["Signal source", "kwantify runtime / imported strategy / optional webhook source"],
+    ["Signal source", "Quant Desk runtime / imported strategy / optional webhook source"],
     ["Payload identity", "strategy id, version id, signal id, venue, account profile, environment"],
     ["Order intent", "symbol, side, contracts, type, tif, stop, target, trailing instructions"],
     ["Risk layer", "max contracts, duplicate lockout, session lock, kill switch, account cap"],
@@ -2075,10 +2075,10 @@ export default function ConnectorFuturesPage() {
           <SectionCard eyebrow="Flow" title="Connector Lifecycle">
           <div className="grid gap-3">
             {[
-              { icon: Cable, title: "Signal Intake", detail: "Native kwantify signal or imported external payload arrives in a normalized inbox." },
+              { icon: Cable, title: "Signal Intake", detail: "Native Quant Desk signal or imported external payload arrives in a normalized inbox." },
               { icon: Split, title: "Routing Policy", detail: "Connector resolves destination venue, account profile, symbol map, sizing mode, and risk rules." },
               { icon: ArrowRightLeft, title: "Order Dispatch", detail: "Tradovate or future Rithmic adapter sends the order and receives acknowledgement." },
-              { icon: RadioTower, title: "Execution Sync", detail: "Accept / reject / fill / bracket attach / flat lifecycle updates stream back into kwantify." },
+              { icon: RadioTower, title: "Execution Sync", detail: "Accept / reject / fill / bracket attach / flat lifecycle updates stream back into Quant Desk." },
               { icon: Database, title: "Journal Truth", detail: "Every connector event is written into audit logs so the operator can review what happened." },
             ].map((step) => (
               <div key={step.title} className="rounded-2xl border border-border bg-surface/60 p-4">
@@ -2175,7 +2175,7 @@ export default function ConnectorFuturesPage() {
                   </div>
                   <div className="mt-3 space-y-2 text-[12px] text-muted">
                     <div className="rounded-xl border border-border/70 bg-background/50 px-3 py-2">
-                      <span className="font-semibold text-foreground">Broker link:</span> this connects Tradovate to kwantify. It is separate from TradingView alerts.
+                      <span className="font-semibold text-foreground">Broker link:</span> this connects Tradovate to Quant Desk. It is separate from TradingView alerts.
                     </div>
                     <div className="rounded-xl border border-border/70 bg-background/50 px-3 py-2">
                       <span className="font-semibold text-foreground">After connect:</span> we sync Tradovate accounts, let you choose the exact lane, then send a safe test order before automation.
@@ -2237,7 +2237,7 @@ export default function ConnectorFuturesPage() {
 
               <div className="mt-4 rounded-xl border border-border/70 bg-panel/70 px-3 py-2 text-[11px] text-muted">
                 {tradovateRetailConnect?.oauthConfigured
-                  ? "Retail broker-connect is configured on this server. When you click Connect Tradovate, kwantify can redirect you into Tradovate's OAuth flow."
+                  ? "Retail broker-connect is configured on this server. When you click Connect Tradovate, Quant Desk can redirect you into Tradovate's OAuth flow."
                   : "Retail broker-connect still needs Tradovate OAuth app credentials on the server. Until that is configured, use the Advanced API Setup lane below for internal testing only."}
               </div>
 
@@ -4378,7 +4378,7 @@ export default function ConnectorFuturesPage() {
                   <div className="mt-2 text-[12px] text-muted">
                     {tradovateAccountDiscovery.error
                       ? tradovateAccountDiscovery.error
-                      : "This is the real Tradovate account inventory surface we should bind to kwantify routing profiles."}
+                      : "This is the real Tradovate account inventory surface we should bind to Quant Desk routing profiles."}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[
@@ -4622,7 +4622,7 @@ export default function ConnectorFuturesPage() {
                       : `${tradovateBrokerState.positions.length} position${tradovateBrokerState.positions.length === 1 ? "" : "s"} · ${tradovateBrokerState.workingOrders.length} working order${tradovateBrokerState.workingOrders.length === 1 ? "" : "s"}`}
                   </div>
                   <div className="mt-2 text-[12px] text-muted">
-                    {tradovateBrokerState.error || "This is the first broker-truth pull we can reconcile against kwantify route and journal state."}
+                    {tradovateBrokerState.error || "This is the first broker-truth pull we can reconcile against Quant Desk route and journal state."}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[

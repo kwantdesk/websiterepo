@@ -185,12 +185,12 @@ export default function AlertsPage() {
                 <div className="mb-4 flex items-center justify-between"><h2 className="text-[16px] font-semibold">Connect Telegram</h2><span className={`rounded-lg px-2 py-1 text-[11px] ${telegram ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>{telegram ? "Connected" : "Not Connected"}</span></div>
                 <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
                   <div className="space-y-2 text-[13px] text-muted">
-                    <p>1. Open Telegram and search for @KwantifyBot</p>
+                    <p>1. Open the <a href="https://t.me/KwantifyBot" target="_blank" rel="noopener noreferrer" className="text-primary underline">Quant Desk bot</a> in Telegram</p>
                     <p>2. Send /start to the bot</p>
                     <p>3. Copy your Chat ID and paste it below</p>
                     <div className="mt-4 flex gap-2"><input placeholder="Telegram Chat ID" className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 font-mono text-[13px] outline-none" /><button onClick={() => setTelegram(true)} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary">Test Connection</button></div>
                   </div>
-                  <div className="rounded-2xl border border-border bg-background/50 p-4 text-[13px] text-muted"><div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-primary" /><span className="font-semibold text-foreground">Kwantify</span></div>Test message from Kwantify. Telegram alerts are ready.</div>
+                  <div className="rounded-2xl border border-border bg-background/50 p-4 text-[13px] text-muted"><div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-primary" /><span className="font-semibold text-foreground">Quant Desk</span></div>Test message from Quant Desk. Telegram alerts are ready.</div>
                 </div>
               </div>
 
@@ -212,7 +212,7 @@ export default function AlertsPage() {
                       {briefing.title === "Drawdown Alert" && <div className="mb-3 flex items-center gap-2 text-[13px] text-muted">Threshold <input defaultValue="3" className="w-16 rounded-lg border border-border bg-surface px-2 py-1 font-mono outline-none" />%</div>}
                       <p className="mb-4 text-[13px] leading-6 text-muted">{briefing.content}</p>
                       <div className="rounded-2xl border border-border bg-background/50 p-4 font-mono text-[12px] leading-6 text-muted">
-                        <div className="mb-2 flex items-center gap-2 font-sans"><span className="h-2 w-2 rounded-full bg-primary" /><span className="font-semibold text-foreground">Kwantify</span></div>
+                        <div className="mb-2 flex items-center gap-2 font-sans"><span className="h-2 w-2 rounded-full bg-primary" /><span className="font-semibold text-foreground">Quant Desk</span></div>
                         <pre className="whitespace-pre-wrap">{briefing.preview}</pre>
                       </div>
                     </div>

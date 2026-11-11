@@ -150,7 +150,11 @@ export default function ConverterPage() {
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-panel px-4">
               <span className="text-[13px] font-semibold">Input</span>
               <KwantSelect value={inputLanguage} onChange={(event) => setInputLanguage(event.target.value as Language)} className="rounded-lg border border-border bg-surface px-3 py-1 text-[12px] text-muted outline-none">
-                {languages.map((language) => <option key={language}>{language}</option>)}
+                {languages.map((language) => (
+                  <option key={language} value={language}>
+                    {language === "Kwantify JavaScript" ? "Quant Desk JavaScript" : language}
+                  </option>
+                ))}
               </KwantSelect>
             </div>
             <div className="flex min-h-0 flex-1 overflow-hidden bg-background font-mono text-[14px] leading-7">
@@ -172,7 +176,7 @@ export default function ConverterPage() {
               <button onClick={(event) => { event.stopPropagation(); convert(); }} disabled={loading || !inputCode.trim()} className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-on-primary transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40">
                 <ArrowRight className="h-5 w-5" />
               </button>
-              <span className="w-24 text-center text-[11px] text-muted">Powered by Kwantify AI</span>
+              <span className="w-24 text-center text-[11px] text-muted">Powered by Quant Desk AI</span>
             </div>
           </div>
 
@@ -181,7 +185,11 @@ export default function ConverterPage() {
               <div className="flex items-center gap-3">
                 <span className="text-[13px] font-semibold">Output</span>
                 <KwantSelect value={outputLanguage} onChange={(event) => setOutputLanguage(event.target.value as Language)} className="rounded-lg border border-border bg-surface px-3 py-1 text-[12px] text-muted outline-none">
-                  {languages.map((language) => <option key={language}>{language}</option>)}
+                  {languages.map((language) => (
+                    <option key={language} value={language}>
+                      {language === "Kwantify JavaScript" ? "Quant Desk JavaScript" : language}
+                    </option>
+                  ))}
                 </KwantSelect>
               </div>
               <button onClick={copyOutput} disabled={!outputCode} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-foreground disabled:opacity-30" title="Copy output">

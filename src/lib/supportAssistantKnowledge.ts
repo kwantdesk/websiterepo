@@ -1,5 +1,5 @@
 export const SUPPORT_ASSISTANT_KNOWLEDGE = `
-Kwantify is a retail trading workflow platform that combines charting, alerts, automation, execution connectors, journaling, copy-trading style workflows, leaderboards, and AI-assisted strategy tooling.
+Quant Desk is a retail trading workflow platform that combines charting, alerts, automation, execution connectors, journaling, copy-trading style workflows, leaderboards, and AI-assisted strategy tooling.
 
 Core product areas:
 - Main chart: charting, alerts, drawing tools, strategy overlays, watchlist, right-side alerts rail.

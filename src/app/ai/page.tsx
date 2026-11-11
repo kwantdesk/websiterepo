@@ -466,12 +466,12 @@ function buildBacktestImprovementPrompt(
     .join("\n");
   const goalLabel = getImprovementGoalLabel(goal);
 
-  return `Improve this Kwantify JavaScript trading strategy using the latest backtest results below.
+  return `Improve this Quant Desk JavaScript trading strategy using the latest backtest results below.
 
 Goals:
 - keep the same general idea unless the data proves it is weak
 - reduce obvious weakness and improve live robustness
-- preserve Kwantify runtime compatibility
+- preserve Quant Desk runtime compatibility
 - explain what changed and why
 - primary improvement goal: ${goalLabel}
 
@@ -1887,13 +1887,13 @@ export default function AIPage() {
               </div>
             </div>
           ) : (
-            <div className="mx-auto max-w-4xl space-y-8 py-8">{messages.map((m, i) => m.role === "user" ? <UserMessageBubble key={i} message={m} /> : <div key={i} className="flex gap-3"><div className="mt-1 h-8 w-8 rounded-full border border-primary/20 bg-primary/10 flex items-center justify-center"><Bot className="h-4 w-4 text-primary" /></div><div className="min-w-0 flex-1"><div className="mb-2 text-[12px] font-semibold">Kwantify AI</div><AIMessage content={m.content} changeSummary={m.meta?.changeSummary} improvement={m.meta?.improvement} intake={m.meta?.intake} research={m.meta?.research} blueprint={m.meta?.blueprint} verification={m.meta?.verification} critic={m.meta?.critic} actions={m.meta?.actions} currentThreadId={currentChatId} onCopy={copy} onSave={saveToStrategies} onAcceptImproved={acceptImprovedVersion} onAcceptAndBacktestImproved={acceptImprovedVersionAndBacktest} onRun={runGeneratedBacktest} activeImproveKey={activeImproveKey} onToggleImproveMenu={(key) => setActiveImproveKey((current) => current === key ? null : key)} onImprove={improveFromLatestBacktest} copiedKey={copiedKey} /></div></div>)}{loading && <div className="flex items-start gap-3 px-6 py-4"><div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-primary animate-pulse" /></div><div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-foreground">Kwantify AI</span><div className="flex items-center gap-2"><div className="flex gap-1"><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} /><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} /><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} /></div><span className="text-[12px] text-muted animate-pulse">{loadingStatus}</span><span className="text-[10px] text-muted/50">{elapsedTime}s</span></div></div><button onClick={handleCancel} className="ml-auto text-[11px] text-muted hover:text-danger transition-colors px-2 py-1 rounded-lg hover:bg-danger/10">Stop</button></div>}<div ref={endRef} /></div>
+            <div className="mx-auto max-w-4xl space-y-8 py-8">{messages.map((m, i) => m.role === "user" ? <UserMessageBubble key={i} message={m} /> : <div key={i} className="flex gap-3"><div className="mt-1 h-8 w-8 rounded-full border border-primary/20 bg-primary/10 flex items-center justify-center"><Bot className="h-4 w-4 text-primary" /></div><div className="min-w-0 flex-1"><div className="mb-2 text-[12px] font-semibold">Quant Desk AI</div><AIMessage content={m.content} changeSummary={m.meta?.changeSummary} improvement={m.meta?.improvement} intake={m.meta?.intake} research={m.meta?.research} blueprint={m.meta?.blueprint} verification={m.meta?.verification} critic={m.meta?.critic} actions={m.meta?.actions} currentThreadId={currentChatId} onCopy={copy} onSave={saveToStrategies} onAcceptImproved={acceptImprovedVersion} onAcceptAndBacktestImproved={acceptImprovedVersionAndBacktest} onRun={runGeneratedBacktest} activeImproveKey={activeImproveKey} onToggleImproveMenu={(key) => setActiveImproveKey((current) => current === key ? null : key)} onImprove={improveFromLatestBacktest} copiedKey={copiedKey} /></div></div>)}{loading && <div className="flex items-start gap-3 px-6 py-4"><div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-primary animate-pulse" /></div><div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-foreground">Quant Desk AI</span><div className="flex items-center gap-2"><div className="flex gap-1"><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} /><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} /><div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} /></div><span className="text-[12px] text-muted animate-pulse">{loadingStatus}</span><span className="text-[10px] text-muted/50">{elapsedTime}s</span></div></div><button onClick={handleCancel} className="ml-auto text-[11px] text-muted hover:text-danger transition-colors px-2 py-1 rounded-lg hover:bg-danger/10">Stop</button></div>}<div ref={endRef} /></div>
           )}
         </section>
         {!isEmptyThread ? (
           <div className="absolute bottom-0 left-0 right-0 bg-background/95 px-6 pb-5 pt-3">
             {renderStrategyComposer(false)}
-            <p className="mt-2 text-center text-[11px] text-muted">Kwantify AI can make mistakes. Verify strategy logic before live deployment.</p>
+            <p className="mt-2 text-center text-[11px] text-muted">Quant Desk AI can make mistakes. Verify strategy logic before live deployment.</p>
           </div>
         ) : null}
       </main>

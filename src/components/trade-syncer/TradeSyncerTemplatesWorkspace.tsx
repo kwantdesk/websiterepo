@@ -176,7 +176,7 @@ function TradeSyncerTemplatesWorkspaceContent({
           onClose={() => router.push("/trade-syncer/templates")}
         >
           <div className="rounded-2xl border border-border bg-background/40 p-4 text-[13px] leading-6 text-muted">
-            Template import should support JSON or prior kwantify presets. For now this keeps the Traders Connect-style utility path alive.
+            Template import should support JSON or prior Quant Desk presets. For now this keeps the Traders Connect-style utility path alive.
           </div>
           <div className="mt-5 flex gap-3">
             <Link href="/trade-syncer/templates" className="flex-1 rounded-xl border border-border bg-background/40 py-3 text-center text-[13px] text-foreground">

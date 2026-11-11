@@ -729,7 +729,7 @@ export default function ChartCreateAlertModal({
           onChange={(checked) => setDeliveryDraft((current) => ({ ...current, inApp: checked }))}
           icon={<Smartphone className="h-4 w-4 text-muted" />}
           title="Notify in app"
-          description="Provides a push notification inside kwantify."
+          description="Provides a push notification inside Quant Desk."
         />
 
         <NotificationRow
