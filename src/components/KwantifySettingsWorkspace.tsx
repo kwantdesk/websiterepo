@@ -757,7 +757,9 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
     writeProtectedItem("olisa-chart-defaults", JSON.stringify({ ...chartDefaults, showVolume: toggles.volume, showGrid: toggles.grid }));
   }
 
-  const input = "w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40";
+  const inputBase = "w-full rounded-xl border border-border bg-surface py-3 text-[13px] outline-none focus:border-primary/40";
+  const input = `${inputBase} px-4`;
+  const handleInput = `${inputBase} ps-8 pe-10`;
   const secondaryButton = "rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground";
   const sectionTitle = "mb-4 text-[11px] font-semibold uppercase tracking-wider text-muted";
 
@@ -826,7 +828,7 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
                   <label className="block">
                     <span className="mb-2 block text-[11px] font-medium text-muted">Unique handle</span>
                     <div className="relative">
-                      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[13px] text-muted">@</span>
+                      <span aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[13px] text-muted">@</span>
                       <input
                         value={profileUsername}
                         onChange={(event) => setProfileUsername(
@@ -834,11 +836,11 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
                             .replace(/[^a-z0-9_]/g, "")
                             .slice(0, 24),
                         )}
-                        className={`${input} pl-8 pr-10`}
+                        className={handleInput}
                         placeholder="kwantdesk_user"
                         aria-describedby="identity-handle-status"
                       />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                      <span aria-hidden="true" className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2">
                         {handleCheck.state === "checking" && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
                         {handleCheck.state === "available" && <CheckCircle2 className="h-4 w-4 text-primary" />}
                         {(handleCheck.state === "taken" || handleCheck.state === "invalid" || handleCheck.state === "error") && <CircleAlert className="h-4 w-4 text-danger" />}
@@ -950,9 +952,9 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
                 <div className="mt-6 space-y-2 border-t border-border pt-5">
                   <div className="text-[13px] text-muted">Unique handle</div>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[13px] text-muted">@</span>
+                    <span aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[13px] text-muted">@</span>
                     <input
-                      className={`${input} pl-8 pr-10`}
+                      className={handleInput}
                       placeholder="Enter your handle"
                       value={profileUsername}
                       onChange={(event) => setProfileUsername(
@@ -961,7 +963,7 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
                           .slice(0, 24),
                       )}
                     />
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                    <span aria-hidden="true" className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2">
                       {handleCheck.state === "checking" && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
                       {handleCheck.state === "available" && <CheckCircle2 className="h-4 w-4 text-primary" />}
                       {(handleCheck.state === "taken" || handleCheck.state === "invalid" || handleCheck.state === "error") && <CircleAlert className="h-4 w-4 text-danger" />}
