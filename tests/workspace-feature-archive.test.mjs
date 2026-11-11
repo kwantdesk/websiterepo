@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
-import { isWorkspaceFeatureArchived, activeWorkspaceSection } from '../src/lib/archivedWorkspaceFeatures.ts';
+import { isWorkspaceFeatureArchived, isRightPanelArchived, activeWorkspaceSection } from '../src/lib/archivedWorkspaceFeatures.ts';
 const read = path => readFileSync(new URL('../'+path, import.meta.url),'utf8');
 
 test('archive is exact, reversible and preserves unrelated options/trading/journal features',()=>{
@@ -20,19 +20,29 @@ test('archive is exact, reversible and preserves unrelated options/trading/journ
  assert.equal(isWorkspaceFeatureArchived(null),false);
 });
 
+test('Kwant Bot is archived only in the right sidebar',()=>{
+ assert.equal(isRightPanelArchived('kwantbot'),true);
+ assert.equal(isRightPanelArchived('optionstape'),true);
+ assert.equal(isRightPanelArchived('watchlist'),false);
+ assert.equal(activeWorkspaceSection('kwantbot'),'kwantbot');
+});
+
 test('both primary nav orientations, home and Add panel picker omit archived entries',()=>{
  const nav=read('src/components/AppSidebar.tsx'),home=read('src/components/WorkspaceHome.tsx'),workspace=read('src/components/KwantifyWorkspace.tsx');
  assert.equal((nav.match(/navItems.filter\(item => !isWorkspaceFeatureArchived\(item.key\)\)/g)||[]).length,3);
  assert.match(home,/destinations.filter\(destination => !isWorkspaceFeatureArchived\(destination.href.slice\(1\)\)\)/);
- assert.match(workspace,/WORKSPACE_PANEL_OPTIONS.filter\(option => !isWorkspaceFeatureArchived\(option.id\)\)/);
- assert.match(workspace,/title: "Options Tape"[\s\S]{0,350}filter\(item => !isWorkspaceFeatureArchived\(item.id\)\)/);
+ const pickerOrder = workspace.match(/const WORKSPACE_PICKER_ORDER = \[([^\]]+)\]/)?.[1];
+ assert.ok(pickerOrder);
+ assert.doesNotMatch(pickerOrder, /"(?:gameplan|zyon|kwanty|optionstape)"/);
+ assert.match(workspace, /WORKSPACE_PICKER_ORDER.map/);
+ assert.match(workspace,/id: "kwantbot" as const[\s\S]{0,350}filter\(item => !isRightPanelArchived\(item.id\)\)/);
 });
 
 test('saved sidebar state and old routes cannot silently reactivate archived features',()=>{
  const workspace=read('src/components/KwantifyWorkspace.tsx'),layout=read('src/app/(workspace)/layout.tsx');
- assert.match(workspace,/saved !== null && !isWorkspaceFeatureArchived\(saved\)/);
- for(const [fn,arg] of [['toggleRightPanel','panel'],['reopenRightPanel','lastOpenRightPanel'],['selectWorkspacePanelContent','content'],['preloadWorkspaceModule','section']])
-  assert.match(workspace,new RegExp(fn+'[^\\n]*\\{\\r?\\n\\s*if \\(isWorkspaceFeatureArchived\\('+arg+'\\)\\) return'));
+ assert.match(workspace,/saved !== null && !isRightPanelArchived\(saved\)/);
+ for(const [fn,arg,guard] of [['toggleRightPanel','panel','isRightPanelArchived'],['reopenRightPanel','lastOpenRightPanel','isRightPanelArchived'],['selectWorkspacePanelContent','content','isWorkspaceFeatureArchived'],['preloadWorkspaceModule','section','isWorkspaceFeatureArchived']])
+  assert.match(workspace,new RegExp(fn+'[^\\n]*\\{\\r?\\n\\s*if \\('+guard+'\\('+arg+'\\)\\) return'));
  assert.match(workspace,/function renderEmbeddedWorkspace\(pane: WorkspacePane\) \{\s*if \(isWorkspaceFeatureArchived\(pane.content\)\)/);
  assert.match(layout,/section: activeWorkspaceSection\(direct\)/);
  assert.match(layout,/isWorkspaceFeatureArchived\(SECTION_BY_PATH\[activePath\]\)\) router.replace\("\/charts"\)/);

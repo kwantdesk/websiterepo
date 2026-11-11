@@ -33,7 +33,7 @@ import { bigContractHistoryWindows } from "@/lib/bigContractHistory";
 
 import ReplayWatchlistNumbers, { type ReplayWatchlistLoader } from "@/components/ReplayWatchlistNumbers";
 
-import { isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
+import { isRightPanelArchived, isWorkspaceFeatureArchived } from "@/lib/archivedWorkspaceFeatures";
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import { beginChartHistoryRead, readChartCacheWithin } from "@/lib/chartHistoryRead";
@@ -11069,7 +11069,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     const validPanels: RightPanel[] = ["order", "watchlist", "gex", "zyon", "kwantbot", "optionstape", "alerts", "alertslog", "friends", "messages"];
-    if (saved !== null && !isWorkspaceFeatureArchived(saved) && (validPanels as string[]).includes(saved)) {
+    if (saved !== null && !isRightPanelArchived(saved) && (validPanels as string[]).includes(saved)) {
       setRightPanel(saved as RightPanel);
       setLastOpenRightPanel(saved as RightPanel);
     } else if (saved === null) {
@@ -17702,7 +17702,7 @@ export default function KwantifyWorkspace({
   };
 
   const toggleRightPanel = (panel: RightPanel) => {
-    if (isWorkspaceFeatureArchived(panel)) return;
+    if (isRightPanelArchived(panel)) return;
     if (panel === "gex") {
       setRightPanelWidth((current) => Math.max(360, current));
     }
@@ -17812,7 +17812,7 @@ export default function KwantifyWorkspace({
   };
 
   const reopenRightPanel = () => {
-    if (isWorkspaceFeatureArchived(lastOpenRightPanel)) return;
+    if (isRightPanelArchived(lastOpenRightPanel)) return;
     if (lastOpenRightPanel === "gex") {
       setRightPanelWidth((current) => Math.max(360, current));
     }
@@ -22889,7 +22889,7 @@ export default function KwantifyWorkspace({
           { id: "optionstape" as const, title: "Options Tape", icon: FileText },
           { id: "friends" as const, title: "Friends", icon: UsersRound },
           { id: "messages" as const, title: "Messages", icon: MessageCircle },
-        ].filter(item => !isWorkspaceFeatureArchived(item.id)).map((item) => {
+        ].filter(item => !isRightPanelArchived(item.id)).map((item) => {
           const Icon = item.icon;
           const active = rightPanel === item.id;
           return (

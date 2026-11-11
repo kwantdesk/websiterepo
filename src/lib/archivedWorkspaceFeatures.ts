@@ -9,6 +9,10 @@ export function isWorkspaceFeatureArchived(id: unknown): boolean {
   return typeof id === "string" && ARCHIVED_WORKSPACE_FEATURES.has(id);
 }
 
+export function isRightPanelArchived(id: unknown): boolean {
+  return id === "kwantbot" || isWorkspaceFeatureArchived(id);
+}
+
 export function activeWorkspaceSection<T extends string>(section: T): T | "charts" {
   return isWorkspaceFeatureArchived(section) ? "charts" : section;
 }
