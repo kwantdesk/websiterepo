@@ -4380,14 +4380,25 @@ function Chart({
   const [hedgeLevelsPulseIds, setHedgeLevelsPulseIds] = useState<string[]>([]);
   const [hedgeLevelsTooltip, setHedgeLevelsTooltip] = useReplayFrameState<{ x: number; y: number; level: HedgeChartLevel } | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const previousHedgeLevelsRef = useRef<HedgeChartLevel[] | null>(null);
+  /*
+   * Lightweight Charts normally borrows the current bar's body colour for
+   * the live-price line and its scale label. That is unsafe for a hollow
+   * theme: Chromey Mono deliberately paints a falling body black on a black
+   * chart, so the price line alternated green / invisible as the forming bar
+   * crossed its open. Keep the trader's bullish theme ink, but lift it only
+   * when necessary to retain readable contrast against the chart surface.
+   */
+  const livePriceLineColor = useMemo(
+    () => legibleOn(settings.upColor, settings.backgroundColor, 4.5),
+    [settings.backgroundColor, settings.upColor],
+  );
+
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
   useBigBlocksOptions({ seriesRef: candleSeriesRef, revision: chartReadyRevision,
     instrument, replayTimestampMs, indicators, theme: settings });
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart || typeof window === "undefined") return;
-    const themeStyles = window.getComputedStyle(document.documentElement);
-    const baseColor = themeStyles.getPropertyValue("--crosshair-color").trim() || "rgba(182,255,0,.78)";
     // The native vertical line cannot go below one pixel; sub-pixel thickness
     // is emulated there by fading the line, while the DOM horizontal line
     // renders a genuine fractional-pixel hairline.
@@ -4396,7 +4407,7 @@ function Chart({
       crosshair: {
         vertLine: {
           width: Math.max(1, Math.min(4, Math.round(crosshairStyle.width))) as 1 | 2 | 3 | 4,
-          color: colorWithCrosshairAlpha(baseColor, effectiveAlpha),
+          color: colorWithCrosshairAlpha(livePriceLineColor, effectiveAlpha),
         },
       },
     });
@@ -4404,7 +4415,7 @@ function Chart({
       horzLineRef.current.style.height = `${crosshairStyle.width}px`;
       horzLineRef.current.style.opacity = String(crosshairStyle.opacity);
     }
-  }, [chartReadyRevision, crosshairStyle]);
+  }, [chartReadyRevision, crosshairStyle, livePriceLineColor]);
   const [storedIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
   // Replay bypasses the delayed live sampler, including on backward seeks.
   const sampledIndicatorCandles = useMemo(() => replayTimestampMs == null ? storedIndicatorCandles : replayCausalCandles(candles, replayTimestampMs), [candles, replayTimestampMs, storedIndicatorCandles]);
@@ -7152,19 +7163,6 @@ function Chart({
     candleSettings, settings.upColor, settings.downColor, settings.borderUpColor,
     settings.borderDownColor, settings.wickUpColor, settings.wickDownColor,
   ]);
-  /*
-   * Lightweight Charts normally borrows the current bar's body colour for
-   * the live-price line and its scale label. That is unsafe for a hollow
-   * theme: Chromey Mono deliberately paints a falling body black on a black
-   * chart, so the price line alternated green / invisible as the forming bar
-   * crossed its open. Keep the trader's bullish theme ink, but lift it only
-   * when necessary to retain readable contrast against the chart surface.
-   */
-  const livePriceLineColor = useMemo(
-    () => legibleOn(settings.upColor, settings.backgroundColor, 4.5),
-    [settings.backgroundColor, settings.upColor],
-  );
-
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series || !liveCandleEventKey || replayTimestampMs != null && replayTimestampMs > 0) return;
@@ -15500,9 +15498,6 @@ function Chart({
     }
 
     const themeStyles = window.getComputedStyle(document.documentElement);
-    const crosshairColor =
-      themeStyles.getPropertyValue("--crosshair-color").trim()
-      || "rgba(182,255,0,.78)";
     const crosshairLabelColor =
       themeStyles.getPropertyValue("--surface").trim()
       || "#18181B";
@@ -15559,7 +15554,7 @@ function Chart({
         vertLine: {
           visible: true,
           width: 1,
-          color: crosshairColor,
+          color: livePriceLineColor,
           style: 0,
           labelVisible: true,
           labelBackgroundColor: crosshairLabelColor,
@@ -15603,7 +15598,7 @@ function Chart({
         borderUpColor: "rgba(0,0,0,0)", borderDownColor: "rgba(0,0,0,0)",
         wickUpColor: "rgba(0,0,0,0)", wickDownColor: "rgba(0,0,0,0)",
       } : {}),
-      priceLineColor: legibleOn(settings.upColor, settings.backgroundColor, 4.5),
+      priceLineColor: livePriceLineColor,
       priceFormat,
       crosshairMarkerVisible: false,
     } as Parameters<typeof chart.addCandlestickSeries>[0] & { crosshairMarkerVisible: boolean });
@@ -16927,7 +16922,7 @@ function Chart({
       prevDataRef.current = "";
       lastRenderedCandleTimeRef.current = null;
     };
-  }, [chartConstructionSettingsKey, chartInstanceId, crosshairSyncInstrumentKey, instrument, priceFormat, themeVersion]);
+  }, [chartConstructionSettingsKey, chartInstanceId, crosshairSyncInstrumentKey, instrument, livePriceLineColor, priceFormat, themeVersion]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -20783,7 +20778,7 @@ function Chart({
           left: 0,
           right: 60,
           height: "1px",
-          backgroundColor: "var(--crosshair-color)",
+          backgroundColor: livePriceLineColor,
           pointerEvents: "none",
           zIndex: 5,
           willChange: "transform",
