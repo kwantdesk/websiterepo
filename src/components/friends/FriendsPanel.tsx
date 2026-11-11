@@ -841,7 +841,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
               : "Dictate a message"}
           className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-30 ${
             speechDictation.listening
-              ? "bg-primary/15 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_16%,transparent)]"
+              ? "bg-primary/15 text-primary"
               : "text-muted hover:bg-panel hover:text-primary"
           }`}
         >

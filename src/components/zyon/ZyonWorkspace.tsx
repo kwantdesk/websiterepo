@@ -669,7 +669,7 @@ function ZyonSpeechButton({
       title={title}
       className={`flex h-8 shrink-0 items-center justify-center gap-2 rounded-xl px-2.5 text-[9px] transition disabled:cursor-not-allowed disabled:opacity-30 ${
         speech.listening
-          ? "bg-primary/15 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_16%,transparent)]"
+          ? "bg-primary/15 text-primary"
           : "text-muted hover:bg-surface hover:text-primary"
       }`}
     >
@@ -2674,7 +2674,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                 onClick={() => selectZyonRoot(root)}
                 className={`rounded-lg px-3 py-1.5 font-mono text-[10px] font-semibold transition ${
                   selectedRoot === root
-                    ? "bg-primary/12 text-primary shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_9%,transparent)]"
+                    ? "bg-primary/12 text-primary"
                     : "text-muted hover:text-foreground"
                 }`}
               >

@@ -1312,7 +1312,7 @@ export default function GexBotWorkspace() {
         <div className="flex items-center gap-1 overflow-x-auto px-4 pb-2 lg:px-6">
           {(Object.keys(VIEW_META) as View[]).map((item) => {
             const Icon = VIEW_META[item].icon;
-            return <button key={item} type="button" onClick={() => setView(item)} className={`group flex min-w-[150px] items-center gap-2 rounded-xl border px-3 py-2 text-left transition ${view === item ? "border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-transparent text-muted hover:border-border hover:bg-surface hover:text-foreground"}`}><Icon className="h-3.5 w-3.5" /><span><b className="block text-[10px] uppercase tracking-[.12em]">{VIEW_META[item].label}</b><small className="block text-[8px] font-normal opacity-70">{VIEW_META[item].detail}</small></span></button>;
+            return <button key={item} type="button" onClick={() => setView(item)} className={`group flex min-w-[150px] items-center gap-2 rounded-xl border px-3 py-2 text-left transition ${view === item ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-muted hover:border-border hover:bg-surface hover:text-foreground"}`}><Icon className="h-3.5 w-3.5" /><span><b className="block text-[10px] uppercase tracking-[.12em]">{VIEW_META[item].label}</b><small className="block text-[8px] font-normal opacity-70">{VIEW_META[item].detail}</small></span></button>;
           })}
         </div>
       </header>

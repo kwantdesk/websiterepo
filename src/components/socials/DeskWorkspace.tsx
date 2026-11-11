@@ -802,7 +802,7 @@ function DeskSettingsModal({
       footer={(
         <>
           <button type="button" onClick={onClose} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>
-          <button type="button" onClick={() => onSave(draft)} disabled={working || !validAccent} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_14%,transparent)] transition hover:brightness-110 disabled:opacity-40"><Check className="h-3.5 w-3.5" />Save Desk</button>
+          <button type="button" onClick={() => onSave(draft)} disabled={working || !validAccent} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary transition hover:brightness-110 disabled:opacity-40"><Check className="h-3.5 w-3.5" />Save Desk</button>
         </>
       )}
     >
@@ -828,7 +828,7 @@ function DeskSettingsModal({
                     onClick={() => setDraft((current) => ({ ...current, accentColor: accent.value }))}
                     title={accent.label}
                     aria-label={accent.label}
-                    className={`relative aspect-square rounded-xl border bg-background/50 p-1.5 transition-all ${selected ? "border-foreground/50 shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_18%,transparent)]" : "border-border hover:border-foreground/25"}`}
+                    className={`relative aspect-square rounded-xl border bg-background/50 p-1.5 transition-all ${selected ? "border-foreground/50" : "border-border hover:border-foreground/25"}`}
                   >
                     <span className="block h-full w-full rounded-lg" style={{ background: accent.value, boxShadow: `0 0 ${selected ? 16 : 8}px ${accent.value}35` }} />
                     {selected ? <Check className="absolute inset-0 m-auto h-3.5 w-3.5 text-black mix-blend-difference invert" /> : null}
@@ -1865,7 +1865,7 @@ export default function DeskWorkspace({
       <div className="h-full min-h-0 overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_18px_70px_rgba(0,0,0,0.2)]">
         <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[68px_224px_minmax(0,1fr)] xl:grid-rows-1 2xl:grid-cols-[68px_224px_minmax(0,1fr)_286px]">
           <aside className="flex items-center gap-2 overflow-x-auto border-b border-border bg-background/65 p-2 xl:flex-col xl:overflow-x-visible xl:border-b-0 xl:border-r">
-            <button type="button" onClick={() => { setDiscovering(false); if (myWorkspaces[0]) setActiveDeskId(myWorkspaces[0].deskId); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_12%,transparent)]" title="My Desks"><Network className="h-4 w-4" /></button>
+            <button type="button" onClick={() => { setDiscovering(false); if (myWorkspaces[0]) setActiveDeskId(myWorkspaces[0].deskId); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary" title="My Desks"><Network className="h-4 w-4" /></button>
             <span className="hidden h-px w-8 bg-border xl:block" />
             {myWorkspaces.map((workspace) => (
               <button key={workspace.deskId} type="button" onClick={() => { setActiveDeskId(workspace.deskId); setDiscovering(false); }} title={workspace.name}>
@@ -1917,7 +1917,7 @@ export default function DeskWorkspace({
                     disabled={working}
                     className={`mt-1.5 flex h-9 w-full items-center justify-center gap-2 rounded-xl border text-[7px] font-semibold transition disabled:opacity-50 ${
                       activeFocusLock
-                        ? "border-primary/40 bg-primary/10 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]"
+                        ? "border-primary/40 bg-primary/10 text-primary"
                         : "border-border bg-surface/25 text-muted hover:border-primary/30 hover:text-foreground"
                     }`}
                     title={activeFocusLock
@@ -2231,7 +2231,7 @@ export default function DeskWorkspace({
                         aria-label={speechDictation.listening ? "Stop dictating Desk message" : "Dictate Desk message"}
                         aria-pressed={speechDictation.listening}
                         title={!speechDictation.supported ? "Speech input is not supported by this browser" : speechDictation.listening ? "Stop dictation" : "Dictate a message"}
-                        className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-30 ${speechDictation.listening ? "bg-primary/15 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_16%,transparent)]" : "text-muted hover:bg-surface hover:text-primary"}`}
+                        className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-30 ${speechDictation.listening ? "bg-primary/15 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`}
                       >
                         {speechDictation.listening ? <span className="absolute inset-2 animate-ping rounded-full bg-primary/25" /> : null}
                         <Mic className="relative h-3.5 w-3.5" />
@@ -2363,7 +2363,7 @@ export default function DeskWorkspace({
               <button
                 type="button"
                 onClick={openSelectedMemberProfile}
-                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_18%,transparent)]"
+                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary"
               >
                 View profile &amp; Gameplans
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -2484,7 +2484,7 @@ export default function DeskWorkspace({
               {lifecycleTarget.action === "archive" ? (
                 <button type="button" onClick={() => void archiveDesk()} disabled={working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary disabled:opacity-40"><Archive className="h-3.5 w-3.5" />Archive Desk</button>
               ) : (
-                <button type="button" onClick={() => void deleteDesk()} disabled={Boolean(deletingDeskId) || !deleteConfirmationMatches} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-on-danger transition-all enabled:shadow-[0_0_18px_color-mix(in_srgb,var(--color-danger)_20%,transparent)] disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
+                <button type="button" onClick={() => void deleteDesk()} disabled={Boolean(deletingDeskId) || !deleteConfirmationMatches} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-on-danger transition-all disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
               )}
             </>
           )}

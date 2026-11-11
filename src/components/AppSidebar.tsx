@@ -144,7 +144,7 @@ function ActiveUnderline() {
   return (
     <span
       aria-hidden="true"
-      className="absolute inset-x-2 -bottom-[7px] h-px bg-primary shadow-[0_0_7px_var(--primary)]"
+      className="absolute inset-x-2 -bottom-[7px] h-px bg-primary"
     />
   );
 }

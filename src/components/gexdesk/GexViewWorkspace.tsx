@@ -741,7 +741,7 @@ export default function GexViewWorkspace({
                 key={index}
                 type="button"
                 onClick={() => setActiveIndex(index)}
-                className={`h-1.5 rounded-full transition-all ${index === activeIndex ? "w-6 bg-primary shadow-[0_0_8px_var(--primary)]" : "w-1.5 bg-muted/35 hover:bg-muted"}`}
+                className={`h-1.5 rounded-full transition-all ${index === activeIndex ? "w-6 bg-primary" : "w-1.5 bg-muted/35 hover:bg-muted"}`}
                 aria-label={`Open Gex View chart ${index + 1}`}
               />
             ))}

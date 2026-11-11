@@ -2833,7 +2833,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
                     event.preventDefault();
                     setAccountMenu({ account: id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 210)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 170)) });
                   }}
-                  className={`group min-w-[190px] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? "cursor-grab active:cursor-grabbing" : ""} ${draggedJournal === id ? "scale-[0.98] opacity-45" : "opacity-100"} ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}
+                  className={`group min-w-[190px] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? "cursor-grab active:cursor-grabbing" : ""} ${draggedJournal === id ? "scale-[0.98] opacity-45" : "opacity-100"} ${active ? "border-primary/45 bg-primary/[0.09]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}
                 >
                   <div className="flex items-start gap-2.5">
                     {id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? <span title="Drag to reorder Journals" className="-ml-1 flex h-8 w-3 shrink-0 items-center justify-center text-muted/50 group-hover:text-muted"><GripVertical className="h-3.5 w-3.5" /></span> : null}
@@ -3521,12 +3521,12 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
             </div>
             <div className="min-h-0 space-y-4 overflow-y-auto p-5">
               {importDialogPurpose === "add-account" ? <div className="grid gap-2 sm:grid-cols-2">
-                <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setPendingFiles([]); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "manual" ? "border-primary/45 bg-primary/[0.08] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-border bg-background/30 hover:border-primary/25"}`}>
+                <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setPendingFiles([]); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "manual" ? "border-primary/45 bg-primary/[0.08]" : "border-border bg-background/30 hover:border-primary/25"}`}>
                   <BookPlus className={`h-5 w-5 ${accountCreationMode === "manual" ? "text-primary" : "text-muted"}`} />
                   <div className="mt-3 text-[10px] font-semibold text-foreground">KwantDesk Journal</div>
                   <div className="mt-1 text-[8px] leading-4 text-muted">Trade from a linked demo account with $10,000 in starting funds, and document trades with screenshots and notes.</div>
                 </button>
-                <button type="button" onClick={() => { setAccountCreationMode("import"); setImportAccount("Imported account"); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "import" ? "border-primary/45 bg-primary/[0.08] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-border bg-background/30 hover:border-primary/25"}`}>
+                <button type="button" onClick={() => { setAccountCreationMode("import"); setImportAccount("Imported account"); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "import" ? "border-primary/45 bg-primary/[0.08]" : "border-border bg-background/30 hover:border-primary/25"}`}>
                   <Upload className={`h-5 w-5 ${accountCreationMode === "import" ? "text-primary" : "text-muted"}`} />
                   <div className="mt-3 text-[10px] font-semibold text-foreground">Import account</div>
                   <div className="mt-1 text-[8px] leading-4 text-muted">Upload broker, TradingView, spreadsheet, CSV, JSON and evidence exports.</div>
@@ -3633,7 +3633,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
                 <div className="max-h-[480px] space-y-1.5 overflow-y-auto pr-1">
                   {postableTrades.map((trade) => {
                     const active = trade.id === postTradeId;
-                    return <button key={trade.id} type="button" onClick={() => { setPostTradeId(trade.id); setPostTradeError(""); }} className={`w-full rounded-2xl border p-3 text-left transition ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}>
+                    return <button key={trade.id} type="button" onClick={() => { setPostTradeId(trade.id); setPostTradeError(""); }} className={`w-full rounded-2xl border p-3 text-left transition ${active ? "border-primary/45 bg-primary/[0.09]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}>
                       <div className="flex items-center gap-2"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${trade.side === "LONG" ? "bg-[var(--journal-win)]/10 text-[var(--journal-win)]" : "bg-[var(--journal-loss)]/10 text-[var(--journal-loss)]"}`}>{trade.side === "LONG" ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold text-foreground">{trade.symbol} · {trade.setup || "Journal trade"}</span><span className="mt-0.5 block text-[7px] text-muted">{formatDate(trade.openedAt, true)} · {trade.side} · {trade.quantity} contract{trade.quantity === 1 ? "" : "s"}</span></span><span className={`font-mono text-[11px] font-semibold ${trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(trade.netPnl)}</span></div>
                     </button>;
                   })}
@@ -3673,7 +3673,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
                 aria-pressed={manualDictation.enabled}
                 aria-label={manualDictation.enabled ? "Stop persistent trade dictation" : "Start persistent trade dictation"}
                 title={!manualDictation.supported ? "Speech input is not supported by this browser" : manualDictation.enabled ? "Stop dictation" : "Start dictation, then click any field to speak into it"}
-                className={`flex h-9 max-w-[270px] items-center gap-2 rounded-xl border px-3 text-[8px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${manualDictation.enabled ? "border-primary/40 bg-primary/12 text-primary shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_13%,transparent)]" : "border-border bg-background text-muted hover:border-primary/35 hover:text-primary"}`}
+                className={`flex h-9 max-w-[270px] items-center gap-2 rounded-xl border px-3 text-[8px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${manualDictation.enabled ? "border-primary/40 bg-primary/12 text-primary" : "border-border bg-background text-muted hover:border-primary/35 hover:text-primary"}`}
               >
                 <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
                   {manualDictation.listening ? <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" /> : null}

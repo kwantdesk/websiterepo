@@ -137,7 +137,7 @@ export function GexMapDropdown<T extends string>({
                   >
                     <span className={`flex h-7 min-w-12 shrink-0 items-center justify-center rounded-lg px-2 font-mono text-[10px] font-semibold ${
                       active
-                        ? "bg-primary text-on-primary shadow-[0_0_14px_color-mix(in_srgb,var(--color-primary)_22%,transparent)]"
+                        ? "bg-primary text-on-primary"
                         : "border border-border bg-card text-foreground"
                     }`}>
                       {option.label}
@@ -357,7 +357,7 @@ export default function GexMapSettingsDialog({
                     aria-pressed={active}
                     onClick={() => onPaletteChange(presetPalette)}
                     className={`relative flex min-h-9 items-center justify-center overflow-hidden rounded-lg border px-1.5 py-1 transition-colors ${
-                      active ? "border-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" : "border-border"
+                      active ? "border-primary" : "border-border"
                     }`}
                     style={{ background: gexMapSignedLegendGradient(presetScale) }}
                   >
@@ -394,7 +394,7 @@ export default function GexMapSettingsDialog({
                         onClick={() => setEditSlot({ side: "scale", index })}
                         className={`relative h-7 rounded-[3px] border transition-transform hover:scale-110 ${
                           selected
-                            ? "border-primary shadow-[0_0_8px_color-mix(in_srgb,var(--primary)_45%,transparent)]"
+                            ? "border-primary"
                             : "border-border/70"
                         }`}
                         style={{ background: color }}
@@ -420,7 +420,7 @@ export default function GexMapSettingsDialog({
                     onClick={() => setEditSlot({ side: "star", index: 0 })}
                     className={`h-7 w-10 rounded-[3px] border transition-transform hover:scale-110 ${
                       editSlot.side === "star"
-                        ? "border-primary shadow-[0_0_8px_color-mix(in_srgb,var(--primary)_45%,transparent)]"
+                        ? "border-primary"
                         : "border-border/70"
                     }`}
                     style={{ background: palette.star }}

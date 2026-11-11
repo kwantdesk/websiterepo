@@ -19916,13 +19916,14 @@ export default function KwantifyWorkspace({
                 onClick={() => toggleSharedViewportConnection(pane.id)}
                 className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
                   linkedViewportPaneIds.has(pane.id)
-                    ? "bg-primary/15 text-primary shadow-[0_0_14px_color-mix(in_srgb,var(--primary)_35%,transparent)]"
+                    ? "bg-primary/15 text-primary"
                     : "text-muted hover:bg-surface hover:text-primary"
                 }`}
                 title={linkedViewportPaneIds.has(pane.id)
                   ? "Shared viewport linked — drag or zoom any linked chart; click to unlink"
                   : "Link this chart to the shared viewport"}
                 aria-label={linkedViewportPaneIds.has(pane.id) ? "Unlink shared viewport" : "Link shared viewport"}
+                aria-pressed={linkedViewportPaneIds.has(pane.id)}
               >
                 <ArrowLeftRight className="h-3.5 w-3.5" />
               </button>
@@ -19938,13 +19939,14 @@ export default function KwantifyWorkspace({
                 onClick={() => toggleCrosshairConnection(pane.id)}
                 className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
                   linkedCrosshairPaneIds.has(pane.id)
-                    ? "bg-primary/15 text-primary shadow-[0_0_14px_color-mix(in_srgb,var(--primary)_35%,transparent)]"
+                    ? "bg-primary/15 text-primary"
                     : "text-muted hover:bg-surface hover:text-primary"
                 }`}
                 title={linkedCrosshairPaneIds.has(pane.id)
                   ? "Crosshair linked — only the cursor crosses to the other charts; click to unlink"
                   : "Link only this chart's crosshair to the other charts"}
                 aria-label={linkedCrosshairPaneIds.has(pane.id) ? "Unlink crosshair" : "Link crosshair"}
+                aria-pressed={linkedCrosshairPaneIds.has(pane.id)}
               >
                 <Crosshair className="h-3.5 w-3.5" />
               </button>
@@ -20101,15 +20103,16 @@ export default function KwantifyWorkspace({
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => toggleSharedViewportConnection(pane.id)}
-                className={`flex h-6 w-6 items-center justify-center border transition-colors ${
+                className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${
                   linkedViewportPaneIds.has(pane.id)
-                    ? "border-primary/40 bg-primary/15 text-primary"
-                    : "border-transparent text-muted hover:border-border hover:text-primary"
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted hover:bg-surface hover:text-primary"
                 }`}
                 title={linkedViewportPaneIds.has(pane.id)
                   ? "Shared viewport linked — drag or zoom any linked chart; click to unlink"
                   : "Link this chart to the shared viewport"}
                 aria-label={linkedViewportPaneIds.has(pane.id) ? "Unlink shared viewport" : "Link shared viewport"}
+                aria-pressed={linkedViewportPaneIds.has(pane.id)}
               >
                 <ArrowLeftRight className="h-3 w-3" />
               </button>
@@ -20120,15 +20123,16 @@ export default function KwantifyWorkspace({
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => toggleCrosshairConnection(pane.id)}
-                className={`flex h-6 w-6 items-center justify-center border transition-colors ${
+                className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${
                   linkedCrosshairPaneIds.has(pane.id)
-                    ? "border-primary/45 bg-primary/10 text-primary"
-                    : "border-transparent text-muted hover:border-border hover:text-primary"
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted hover:bg-surface hover:text-primary"
                 }`}
                 title={linkedCrosshairPaneIds.has(pane.id)
                   ? "Crosshair linked — only the cursor crosses to the other charts; click to unlink"
                   : "Link only this chart's crosshair to the other charts"}
                 aria-label={linkedCrosshairPaneIds.has(pane.id) ? "Unlink crosshair" : "Link crosshair"}
+                aria-pressed={linkedCrosshairPaneIds.has(pane.id)}
               >
                 <Crosshair className="h-3 w-3" />
               </button>
@@ -22537,7 +22541,7 @@ export default function KwantifyWorkspace({
                     type="button"
                     onClick={() => void handleSendKwantBotMessage()}
                     disabled={kwantBotAttaching || kwantBotReplying || (!kwantBotDraft.trim() && !kwantBotDraftAttachments.length)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-[0_0_16px_color-mix(in_srgb,var(--primary)_24%,transparent)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
                     title={kwantBotReplying ? "Kwant Bot is replying" : "Send message"}
                     aria-label={kwantBotReplying ? "Kwant Bot is replying" : "Send message"}
                   >

@@ -640,7 +640,7 @@ export default function SocialProfileView({
             ["reposts", "Reposts", Repeat2],
             ["saved", "Saved", Bookmark],
           ] as Array<[ProfileCollectionTab, string, typeof Grid3X3]>).map(([tab, label, Icon]) => (
-            <button key={tab} type="button" onClick={() => setProfileCollectionTab(tab)} className={`flex h-10 items-center justify-center gap-2 rounded-xl px-2 text-[8px] font-semibold transition-colors ${profileCollectionTab === tab ? "bg-primary/12 text-primary shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_12%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>
+            <button key={tab} type="button" onClick={() => setProfileCollectionTab(tab)} className={`flex h-10 items-center justify-center gap-2 rounded-xl px-2 text-[8px] font-semibold transition-colors ${profileCollectionTab === tab ? "bg-primary/12 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>
               <Icon className={`h-3.5 w-3.5 ${tab === "liked" && profileCollectionTab === tab ? "fill-current" : ""}`} />{label}
             </button>
           ))}

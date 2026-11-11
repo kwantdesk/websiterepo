@@ -5,6 +5,21 @@ import fs from "node:fs/promises";
 const source = await fs.readFile(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 const navigation = await fs.readFile(new URL("../src/components/AppSidebar.tsx", import.meta.url), "utf8");
 const styles = await fs.readFile(new URL("../src/app/globals.css", import.meta.url), "utf8");
+const workspaceChrome = await fs.readFile(new URL("../public/gex-data-app/workspace-chrome.css", import.meta.url), "utf8");
+
+test("linked chart controls use the same flat accent in docked and floating headers", () => {
+  for (const handler of ["toggleSharedViewportConnection", "toggleCrosshairConnection"]) {
+    const buttons = [...source.matchAll(/<button\b[\s\S]*?<\/button>/g)]
+      .map(([button]) => button)
+      .filter((button) => button.includes(`${handler}(pane.id)`));
+    assert.equal(buttons.length, 2);
+    for (const button of buttons) {
+      assert.match(button, /"bg-primary\/15 text-primary"/);
+      assert.match(button, /aria-pressed=\{/);
+      assert.doesNotMatch(button, /shadow-|boxShadow/);
+    }
+  }
+});
 
 test("workspace controls remain centred in their command row", () => {
   assert.match(source, /kwant-chart-layout-controls kwant-chart-toolbar-scrollport/);
@@ -16,7 +31,8 @@ test("chart headers stay compact while scrolling toolbar lanes reserve scrollbar
   assert.match(styles, /--kwant-shell-bar-height:\s*36px;/);
   assert.match(styles, /header\.kwant-command-rail\s*\{[\s\S]*?height:\s*var\(--kwant-shell-bar-height\);/);
   assert.match(styles, /\.kwant-chart-command-deck\s*\{[\s\S]*?grid-template-rows:\s*var\(--kwant-shell-bar-height\);/);
-  assert.match(styles, /--kwant-chart-toolbar-row-height:\s*calc\(var\(--kwant-shell-bar-height\) \+ 8px\)/);
+  assert.match(styles, /--kwant-chart-toolbar-row-height:\s*var\(--kwant-workspace-command-row\)/);
+  assert.match(workspaceChrome, /--kwant-workspace-command-row:\s*calc\(var\(--kwant-shell-bar-height, 36px\) \+ 8px\)/);
   assert.match(styles, /@container chart-toolbar \(max-width: 1279px\)[\s\S]*?grid-template-rows:\s*repeat\(2, var\(--kwant-chart-toolbar-row-height\)\);/);
   assert.match(styles, /\.kwant-workspace-pane-header\s*\{[\s\S]*?height:\s*var\(--kwant-shell-bar-height\);/);
   assert.ok((source.match(/kwant-workspace-pane-header/g) ?? []).length >= 3);

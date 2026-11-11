@@ -188,7 +188,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
                     height: rowHeight,
                     color: cell ? "var(--foreground)" : undefined,
                     background: cell ? `color-mix(in srgb, ${positive ? "var(--candle-up)" : "var(--candle-down)"} ${Math.round(10 + magnitude * 76)}%, var(--background))` : undefined,
-                    boxShadow: isStar ? "inset 0 0 0 2px var(--primary), 0 0 12px color-mix(in srgb, var(--primary) 42%, transparent)" : undefined,
+                    boxShadow: isStar ? "inset 0 0 0 2px var(--primary)" : undefined,
                   }}
                   title={cell ? `${expiration} · ${strike}\n${compact(value ?? 0)}` : "Missing provider cell"}
                 >
