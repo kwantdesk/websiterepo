@@ -50,7 +50,14 @@ import {
   X,
 } from "lucide-react";
 
-type Tab = "demo" | "brokers" | "router";
+const accountTabs = [
+  { id: "demo", label: "Demo Accounts" },
+  { id: "brokers", label: "Connected Brokers" },
+  { id: "router", label: "Strategy Router" },
+  { id: "copy-trader", label: "Copy Trader" },
+] as const;
+
+type Tab = (typeof accountTabs)[number]["id"];
 type SavedStrategy = { name?: string; title?: string };
 
 type DemoAccount = PaperTradingAccountRecord & {
@@ -318,7 +325,19 @@ export default function AccountsPage() {
         </header>
 
         <div className="border-b border-border px-6 pt-5">
-          <div className="flex gap-2">{(["demo", "brokers", "router"] as const).map((item) => <button key={item} onClick={() => setTab(item)} className={`rounded-t-xl px-4 py-2 text-[13px] font-medium ${tab === item ? "border border-b-0 border-border bg-panel text-foreground" : "text-muted hover:text-foreground"}`}>{item === "demo" ? "Demo Accounts" : item === "brokers" ? "Connected Brokers" : "Strategy Router"}</button>)}</div>
+          <div className="flex flex-wrap gap-2">
+            {accountTabs.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={tab === id}
+                onClick={() => setTab(id)}
+                className={`rounded-t-xl px-4 py-2 text-[13px] font-medium ${tab === id ? "border border-b-0 border-border bg-panel text-foreground" : "text-muted hover:text-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-6 p-6">
@@ -397,6 +416,16 @@ export default function AccountsPage() {
               <section className="space-y-4">{routes.map((route) => <div key={route.strategy} className="rounded-2xl border border-border bg-panel p-5"><div className="flex flex-wrap items-center gap-3"><span className="rounded-xl bg-primary/10 px-3 py-2 text-[13px] text-primary">{route.strategy}</span><span className="text-primary">to</span><div className="flex flex-wrap gap-2">{route.accounts.map((account) => <span key={account} className="rounded-xl bg-surface px-3 py-2 text-[13px] text-foreground">{account}</span>)}</div><span className={`ml-auto rounded-lg px-2 py-1 text-[12px] ${route.statusClass}`}>{route.status}</span></div><div className="mt-4 grid gap-2 md:grid-cols-3">{route.sizing.map((item) => <div key={item} className="rounded-xl bg-background/40 p-3 text-[12px] text-muted">{item}</div>)}</div><div className="mt-4 text-[13px] text-muted">Last signal: <span className="text-foreground">{route.signal}</span></div><div className="mt-4 flex gap-2">{["Edit", "Pause", "Delete"].map((action) => <button key={action} className="rounded-xl border border-border bg-surface px-3 py-2 text-[12px] text-muted hover:text-foreground">{action}</button>)}</div></div>)}</section>
               <section className="rounded-2xl border border-border bg-panel p-5"><h2 className="mb-4 font-semibold">Execution Log</h2><div className="overflow-hidden rounded-xl border border-border"><table className="w-full text-[13px]"><thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted"><tr>{["Time", "Strategy", "Signal", "Direction", "Instrument", "Accounts", "Status"].map((head) => <th key={head} className="px-4 py-3 text-left font-medium">{head}</th>)}</tr></thead><tbody>{executionLog.map((row, index) => <tr key={`${row[0]}-${index}`} className="border-b border-border/60 last:border-0">{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`} className={`px-4 py-3 ${cellIndex === 6 ? cell === "Failed" ? "text-red-400" : cell === "Partial" ? "text-orange-400" : "text-primary" : cellIndex > 3 ? "font-mono" : ""}`}>{cellIndex === 6 && cell === "Executed" ? <span className="inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" />{cell}</span> : cellIndex === 6 && cell === "Failed" ? <span className="inline-flex items-center gap-1"><X className="h-3.5 w-3.5" />{cell}</span> : cell}</td>)}</tr>)}</tbody></table></div></section>
             </>
+          )}
+
+          {tab === "copy-trader" && (
+            <section aria-labelledby="copy-trader-heading" className="rounded-2xl border border-border bg-panel p-6">
+              <div className="flex items-center gap-3">
+                <Repeat aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
+                <h2 id="copy-trader-heading" className="text-lg font-semibold">Copy Trader</h2>
+              </div>
+              <p className="mt-2 text-[13px] text-muted">Automatic trade copying between accounts is coming soon.</p>
+            </section>
           )}
         </div>
       </main>
