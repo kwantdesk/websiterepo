@@ -66,11 +66,13 @@ function LiquidityMapWorkspace({
   const stylesReadyRef = useRef(false);
   const marketFrameReadyRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
+  const [stylesReady, setStylesReady] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [replayStatus, setReplayStatus] = useState<{ state: string; detail: string } | null>(null);
   const lastReplayPostAtRef = useRef(0);
   const replayPostTimerRef = useRef<number | null>(null);
   const syncReadyState = useCallback(() => {
+    setStylesReady(stylesReadyRef.current);
     setIsReady(stylesReadyRef.current && marketFrameReadyRef.current);
   }, []);
   const syncInstrument = useCallback(() => {
@@ -118,7 +120,7 @@ function LiquidityMapWorkspace({
       if (isReady) post({ active: false });
       return;
     }
-    if (!isReady) return;
+    if (!stylesReady) return;
     const send = () => {
       lastReplayPostAtRef.current = Date.now();
       post({ active: true, tradingDate: replay.tradingDate, timestampMs: replay.timestampMs });
@@ -139,7 +141,7 @@ function LiquidityMapWorkspace({
         replayPostTimerRef.current = null;
       }
     };
-  }, [isReady, replay]);
+  }, [isReady, replay, stylesReady]);
 
   useEffect(() => {
     syncPerformancePriority();
@@ -346,7 +348,7 @@ function LiquidityMapWorkspace({
       <iframe
         ref={iframeRef}
         className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
-        src={`/heatmap-app/index.html?v=20261109-toolbar-parity&shellToolbar=1${embedded ? "&workspacePane=1" : ""}`}
+        src={`/heatmap-app/index.html?v=20261112-micro-depth&shellToolbar=1${embedded ? "&workspacePane=1" : ""}`}
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
           iframeRef.current?.contentDocument?.documentElement.setAttribute(
@@ -395,7 +397,7 @@ function LiquidityMapWorkspace({
           }}
         />
       ) : null}
-      {!isReady && !inspectorOpen ? (
+      {!isReady && !inspectorOpen && !(replay && replayStatus) ? (
         <div className="pointer-events-none absolute inset-0 z-10">
           <KwantLoader
             screen

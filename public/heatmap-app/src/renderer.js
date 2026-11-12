@@ -1490,6 +1490,7 @@ export class DepthRenderer {
     const index = Math.max(layout.start, Math.min(layout.end, Math.round(layout.start + fraction * (layout.count - 1))));
     const tick = Math.round(layout.tickForY(y));
     const snapshot = layout.history[index];
+    if (!snapshot) return null;
     const liquidity = snapshot.bids.get(tick) || snapshot.asks.get(tick) || 0;
     const executed = snapshot.trades.filter(trade => trade.tick === tick).reduce((sum, trade) => sum + trade.size, 0);
     const side = snapshot.bids.has(tick) ? 'Bid' : snapshot.asks.has(tick) ? 'Ask' : 'Inside spread';

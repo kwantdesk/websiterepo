@@ -31,6 +31,41 @@ export function liveInstrumentResolveUrl(symbol, exchange = '') {
   return `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/market-data/resolve?${query}`;
 }
 
+const chicagoReplayClock = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+});
+
+// Recorder partitions are labelled by the Chicago date on which the session opened.
+export function liquidityReplayArchiveDate(timestampMs) {
+  const date = Object.fromEntries(chicagoReplayClock.formatToParts(timestampMs).map(part => [part.type, part.value]));
+  const day = Number(date.day) - (Number(date.hour) < 17 ? 1 : 0);
+  return new Date(Date.UTC(Number(date.year), Number(date.month) - 1, day)).toISOString().slice(0, 10);
+}
+
+export async function fetchLiquidityReplay(params, { chunk = false } = {}) {
+  const query = new URLSearchParams(params);
+  query.set('historyLease', '1');
+  const route = chunk ? '/v1/heatmap/replay/chunk' : '/v1/heatmap/replay';
+  const headers = { Accept: 'application/json' };
+  const lease = await fetch(INSTITUTIONAL_MARKET_DATA_ORIGIN + route + '?' + query, {
+    cache: 'no-store', credentials: 'same-origin', redirect: 'error', headers, signal: AbortSignal.timeout(5_000),
+  });
+  if (!lease.ok) return lease;
+  const { url, expiresAt, transport } = await lease.json();
+  const destination = new URL(url);
+  const now = Date.now();
+  if (transport !== 'direct-vps' || destination.origin !== 'https://feed.kwantdesk.com'
+    || destination.pathname !== '/liquidity-history' || destination.username || destination.password
+    || destination.hash || destination.searchParams.size !== 1 || !destination.searchParams.get('ticket')
+    || !Number.isFinite(expiresAt) || expiresAt <= now || expiresAt > now + 310_000) {
+    throw Error('Invalid liquidity replay lease');
+  }
+  return fetch(destination, {
+    cache: 'no-store', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', headers,
+    signal: AbortSignal.timeout(25_000),
+  });
+}
+
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 export function isPlausiblePresentationTick(value, snapshot) {
@@ -162,16 +197,14 @@ export function isFullDepthSource(source) {
   return FULL_DEPTH_SOURCES.has(source);
 }
 
-// Micro contracts trade the same underlying as their e-mini parent, so the
-// collector serves MNQ from the NQ book and answers with the parent root.
-// Comparing roots literally would reject every snapshot on a micro tab.
+// Products without dedicated depth retain their existing parent aliases.
 const MICRO_PARENT_ROOTS = {
-  MNQ: 'NQ', MES: 'ES', MYM: 'YM', M2K: 'RTY', MGC: 'GC', MCL: 'CL',
+  MYM: 'YM', M2K: 'RTY', MGC: 'GC', MCL: 'CL',
   SIL: 'SI', QG: 'NG', M6E: '6E', M6B: '6B', M6A: '6A', MBT: 'BTC', MET: 'ETH',
 };
 
 export const LIQUIDITY_MAP_ROOTS = [
-  'NQ', 'ES', 'RTY', 'YM',
+  'NQ', 'ES', 'MNQ', 'MES', 'RTY', 'YM',
   'CL', 'QM', 'NG', 'RB', 'HO',
   'GC', 'SI', 'HG', 'PL', 'PA',
   'ZN', 'TN', 'ZB', 'UB', 'ZF', 'ZT', '10Y', 'SR3',
@@ -191,16 +224,21 @@ export function normalizeLiquidityMapSymbol(value) {
   return LIQUIDITY_MAP_SYMBOLS.has(parent) ? parent : '';
 }
 
-/** Catalog entries must describe the actual parent contract, not a UI alias. */
-export function parentLiquidityCatalogRows(rows) {
+/** The catalogue must identify a contract of the selected product. */
+export function liquidityCatalogRows(rows) {
   const rawRoot = value => String(value || '').trim().toUpperCase()
     .replace(/\.[VNC]\.\d+$/i, '').replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, '');
   return (Array.isArray(rows) ? rows : []).filter(row => {
     const root = rawRoot(row?.root || row?.symbol);
-    const parent = normalizeLiquidityMapSymbol(root);
+    const supportedRoot = normalizeLiquidityMapSymbol(root);
     const contractRoot = rawRoot(row?.contractSymbol || row?.symbol || root);
-    return parent && root === parent && contractRoot === parent;
+    return root === supportedRoot && contractRoot === supportedRoot && Boolean(supportedRoot);
   });
+}
+
+export function matchesRecordedLiquidityContract(symbol, contractSymbol) {
+  return /^[A-Z0-9]+[FGHJKMNQUVXZ]\d{1,2}$/.test(contractSymbol)
+    && contractSymbol.replace(/[FGHJKMNQUVXZ]\d{1,2}$/, '') === symbol;
 }
 
 export function symbolMatchesSnapshot(requested, snapshotRoot) {

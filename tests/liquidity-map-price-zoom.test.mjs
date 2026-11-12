@@ -1,4 +1,4 @@
-import {parentLiquidityCatalogRows} from '../public/heatmap-app/src/live-market.js';
+import {liquidityCatalogRows} from '../public/heatmap-app/src/live-market.js';
 import {priceScaleRows, priceWheelFactor, MIN_VISIBLE_PRICE_ROWS} from '../public/heatmap-app/src/price-scale.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,10 +37,10 @@ test('price wheel respects trackpad magnitude and ignores horizontal-only input'
  assert.ok(Math.abs(priceWheelFactor({deltaY:100})*priceWheelFactor({deltaY:-100})-1)<1e-12);
 });
 
-test('parent catalog cannot be overwritten by later micro entries or mismatched contracts',()=>{
+test('catalog keeps independent micro books without replacing parent entries',()=>{
  const rows=[{root:'ES',contractSymbol:'ESZ6'},{root:'NQ',contractSymbol:'NQZ6'},{root:'GC',contractSymbol:'GCZ6'},
  {root:'MES',contractSymbol:'MESZ6'},{root:'MNQ',contractSymbol:'MNQZ6'},{root:'MGC',contractSymbol:'MGCZ6'},
  {root:'ES',contractSymbol:'MESZ6'}];
- assert.deepEqual(parentLiquidityCatalogRows(rows).map(row=>row.contractSymbol),['ESZ6','NQZ6','GCZ6']);
- assert.deepEqual(parentLiquidityCatalogRows([...rows].reverse()).map(row=>row.contractSymbol),['GCZ6','NQZ6','ESZ6']);
+ assert.deepEqual(liquidityCatalogRows(rows).map(row=>row.contractSymbol),['ESZ6','NQZ6','GCZ6','MESZ6','MNQZ6']);
+ assert.deepEqual(liquidityCatalogRows([...rows].reverse()).map(row=>row.contractSymbol),['MNQZ6','MESZ6','GCZ6','NQZ6','ESZ6']);
 });

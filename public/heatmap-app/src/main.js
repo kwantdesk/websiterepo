@@ -4,12 +4,13 @@ import { normalizeCvdStyle } from './liquidity-presentation.js?v=20261030-cvd-li
 import { priceScaleRows, priceWheelFactor } from './price-scale.js?v=20261029-depth-clear-scale';
 import { executableBook, executablePrint } from './trading-bridge.js?v=20261020-shared-trading';
 import { createInspectorDialog } from './inspector-dialog.js?v=20261020-centered-settings';
-import { SYMBOLS } from './market-simulator.js?v=20261017-aleph-font';
+import { SYMBOLS } from './market-simulator.js?v=20261112-micro-depth';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=grouped-depth-scale';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261109-volume-toggle';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20261112-micro-depth';
 import {
   DepthMarketFeed,
-  INSTITUTIONAL_MARKET_DATA_ORIGIN,
+  fetchLiquidityReplay,
+  liquidityReplayArchiveDate,
   isFullDepthSource,
   LIQUIDITY_MAP_ROOTS,
   LIQUIDITY_MAP_SYMBOLS,
@@ -17,10 +18,11 @@ import {
   liveInstrumentResolveUrl,
   normalizeLiveSnapshot,
   normalizeLiquidityMapSymbol,
-  parentLiquidityCatalogRows,
+  liquidityCatalogRows,
+  matchesRecordedLiquidityContract,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20261030-bubble-source-time';
+} from './live-market.js?v=20261112-micro-depth';
 import { DEFAULT_PALETTE, HEAT_GRADIENT_PRESETS, normalizeHeatPalette, paletteCssGradient, paletteCanvasTheme, paletteAccents } from './palettes.js?v=20261109-remove-duplicate-palette';
 import {
   DEFAULT_INDICATOR_SETTINGS,
@@ -819,7 +821,7 @@ class DepthForgeApp {
     const normalized = normalizeLiquidityMapSymbol(symbol);
     if (!SYMBOLS[normalized] || !this.availableInstrumentSymbols.has(normalized) || normalized === this.symbol) return;
     symbol = normalized;
-    this.#beginSymbolLoad(symbol);
+    if (!this.replay.active) this.#beginSymbolLoad(symbol);
     this.symbol = symbol;
     this.currentContractSymbol = this.instrumentSubscriptions.get(symbol)?.contractSymbol
       || SYMBOLS[symbol].contract;
@@ -852,7 +854,7 @@ class DepthForgeApp {
       subscription.contractSymbol,
       subscription.exchange,
     );
-    void this.#resolveInstrumentSubscription(symbol);
+    if (!this.replay.active) void this.#resolveInstrumentSubscription(symbol);
     this.#persistInstrumentTabs();
     this.#updateSymbolUi();
     this.#renderTape();
@@ -865,9 +867,13 @@ class DepthForgeApp {
     if (this.replay.active) {
       this.sourceMode = 'replay';
       this.playing = false;
+      clearTimeout(this.replay.retryTimer);
       this.replay.manifest = null;
       this.replay.chunks = new Map();
       this.replay.appliedThroughMs = 0;
+      this.replay.syncing = false;
+      this.replay.pending = false;
+      this.#updateSymbolUi();
       this.#postReplayStatus('loading');
       void this.#syncReplay();
     }
@@ -879,7 +885,7 @@ class DepthForgeApp {
       if (!response.ok) return;
       const payload = await response.json();
       const permitted = new Set();
-      for (const row of parentLiquidityCatalogRows(payload?.instruments)) {
+      for (const row of liquidityCatalogRows(payload?.instruments)) {
         const root = normalizeLiquidityMapSymbol(row?.root || row?.symbol);
         if (!root || !SYMBOLS[root] || row?.fullDepth === false) continue;
         permitted.add(root);
@@ -933,7 +939,7 @@ class DepthForgeApp {
       );
       if (!response.ok) return;
       const row = await response.json();
-      if (parentLiquidityCatalogRows([row]).length !== 1) return;
+      if (liquidityCatalogRows([row]).length !== 1) return;
       const resolvedRoot = normalizeLiquidityMapSymbol(row?.root || row?.symbol);
       if (resolvedRoot !== expectedSymbol) return;
       const config = SYMBOLS[expectedSymbol];
@@ -995,10 +1001,20 @@ class DepthForgeApp {
     // Name the provider the feed actually reports rather than hard-coding one.
     const provider = String(this.liveStatus.provider || 'RITHMIC').toUpperCase();
     this.#renderInstrumentTabs();
-    $('symbolLabel').textContent = this.currentContractSymbol || config.contract;
-    $('depthSymbol').textContent = this.currentContractSymbol || config.contract;
+    const contractLabel = this.replay.active
+      ? this.replay.manifest?.contractSymbol || config.key
+      : this.currentContractSymbol || config.contract;
+    $('symbolLabel').textContent = contractLabel;
+    $('depthSymbol').textContent = contractLabel;
     $('symbolDescription').textContent = config.description;
     $('symbolIcon').textContent = config.key[0];
+    if (this.replay.active) {
+      if ($('modeStatus')) $('modeStatus').lastChild.textContent = ' REPLAY';
+      if ($('footerModeStatus')) $('footerModeStatus').textContent = 'ORDER-BOOK REPLAY';
+      $('feedStatus').textContent = contractLabel;
+      if ($('sourceBanner')) $('sourceBanner').textContent = 'Recorded order-book replay';
+      return;
+    }
     if ($('modeStatus')) $('modeStatus').lastChild.textContent = isLiveDepth ? ' LIVE L3' : ' CONNECTING';
     if ($('footerModeStatus')) $('footerModeStatus').textContent = isLiveDepth ? `${provider} L3 · READ-ONLY` : `CONNECTING TO ${provider}`;
     if (isLiveDepth) {
@@ -1236,9 +1252,9 @@ class DepthForgeApp {
       this.#exitReplay();
       return;
     }
-    const tradingDate = String(data.tradingDate || '');
-    const clockMs = Number(data.timestampMs) || 0;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || clockMs <= 0) return;
+    const clockMs = Number(data.timestampMs);
+    if (!Number.isFinite(clockMs) || clockMs <= 0 || clockMs > 8.64e15) return;
+    const tradingDate = liquidityReplayArchiveDate(clockMs);
     const dateChanged = this.replay.tradingDate !== tradingDate;
     this.replay.tradingDate = tradingDate;
     this.replay.clockMs = clockMs;
@@ -1249,6 +1265,9 @@ class DepthForgeApp {
   #enterReplay() {
     clearTimeout(this.replay.retryTimer);
     this.replay.active = true;
+    clearTimeout(this.symbolLoadHideTimer);
+    this.symbolLoadActive = false;
+    $('symbolLoadingOverlay').classList.add('hidden');
     this.replay.manifest = null;
     this.replay.chunks = new Map();
     this.replay.appliedThroughMs = 0;
@@ -1298,6 +1317,7 @@ class DepthForgeApp {
     this.atLive = true;
     this.playing = true;
     this.liveFeed.start();
+    void this.#resolveInstrumentSubscription(this.symbol);
     this.#updateSymbolUi();
     this.requestRender();
   }
@@ -1309,17 +1329,17 @@ class DepthForgeApp {
       return;
     }
     this.replay.syncing = true;
+    const chunks = this.replay.chunks;
     try {
       const symbol = this.symbol;
       const tradingDate = this.replay.tradingDate;
       if (!this.replay.manifest) {
-        const query = new URLSearchParams({ symbol, tradingDate });
-        const response = await fetch(
-          `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay?${query}`,
-          { cache: 'no-store', headers: { Accept: 'application/json' } },
-        );
+        const query = new URLSearchParams({
+          symbol, tradingDate, exchange: SYMBOLS[symbol].venue, throughMs: String(this.replay.clockMs),
+        });
+        const response = await fetchLiquidityReplay(query);
         const body = await response.json().catch(() => null);
-        if (!this.replay.active || this.symbol !== symbol || this.replay.tradingDate !== tradingDate) return;
+        if (!this.replay.active || this.replay.chunks !== chunks) return;
         if (!response.ok) {
           this.#postReplayStatus('unavailable', body?.error || 'No recorded session archive.');
           return;
@@ -1334,20 +1354,25 @@ class DepthForgeApp {
           }, 5_000);
           return;
         }
-        if (!body?.manifest) {
-          this.#postReplayStatus('unavailable', body?.error || 'Replay pack unavailable.');
+        if (body?.manifest?.root !== symbol || !matchesRecordedLiquidityContract(symbol, body.manifest.contractSymbol)) {
+          this.#postReplayStatus('unavailable', 'Recorded order-book replay is unavailable for this instrument.');
           return;
         }
         this.replay.manifest = body.manifest;
+        this.#updateSymbolUi();
       }
       await this.#applyReplayWindow();
     } catch {
-      if (this.replay.active) this.#postReplayStatus('unavailable', 'Replay data could not be loaded.');
+      if (this.replay.active && this.replay.chunks === chunks) {
+        this.#postReplayStatus('unavailable', 'Replay data could not be loaded.');
+      }
     } finally {
-      this.replay.syncing = false;
-      if (this.replay.pending) {
-        this.replay.pending = false;
-        void this.#syncReplay();
+      if (this.replay.chunks === chunks) {
+        this.replay.syncing = false;
+        if (this.replay.pending) {
+          this.replay.pending = false;
+          void this.#syncReplay();
+        }
       }
     }
   }
@@ -1355,20 +1380,24 @@ class DepthForgeApp {
   async #fetchReplayChunk(startMs) {
     const cached = this.replay.chunks.get(startMs);
     if (cached) return cached;
+    const { manifest, chunks, tradingDate } = this.replay;
+    const symbol = this.symbol;
     const query = new URLSearchParams({
-      symbol: this.symbol,
-      tradingDate: this.replay.tradingDate,
+      symbol,
+      tradingDate,
+      exchange: SYMBOLS[symbol].venue,
       chunk: String(startMs),
     });
-    const response = await fetch(
-      `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay/chunk?${query}`,
-      { cache: 'no-store', headers: { Accept: 'application/json' } },
-    );
+    if (manifest.generation) query.set('generation', manifest.generation);
+    const response = await fetchLiquidityReplay(query, { chunk: true });
     if (!response.ok) return null;
     const body = await response.json().catch(() => null);
-    const frames = Array.isArray(body?.frames) ? body.frames : null;
-    if (!frames) return null;
-    this.replay.chunks.set(startMs, frames);
+    if (!this.replay.active || this.symbol !== symbol || this.replay.manifest !== manifest) return null;
+    if (!Array.isArray(body?.frames)) return null;
+    if (body.frames.some(row => row?.snapshot?.root !== symbol
+      || row.snapshot.contractSymbol !== manifest.contractSymbol)) return null;
+    const frames = body.frames;
+    chunks.set(startMs, frames);
     // Hold only the window around the clock; a whole session of packed books
     // is exactly the heap pattern that used to freeze embedded maps.
     if (this.replay.chunks.size > 4) {
@@ -1395,8 +1424,11 @@ class DepthForgeApp {
     const frames = [];
     for (const chunk of wanted) {
       const rows = await this.#fetchReplayChunk(chunk.startMs);
-      if (!this.replay.active || this.replay.clockMs !== clockMs) return;
-      if (!rows) continue;
+      if (!this.replay.active || this.replay.manifest !== manifest || this.replay.clockMs !== clockMs) return;
+      if (!rows) {
+        this.#postReplayStatus('unavailable', 'Recorded order-book frames could not be loaded for this interval.');
+        return;
+      }
       for (const row of rows) {
         const timestamp = Number(row?.snapshot?.timestamp) || 0;
         if (timestamp <= 0 || timestamp > clockMs || timestamp <= windowStartMs) continue;
@@ -1440,10 +1472,6 @@ class DepthForgeApp {
     // While the parent drives a session replay, the archive is the only
     // permitted source; a stray live probe frame must not corrupt it.
     if (this.replay.active) return;
-    // Two separate gates rejected the Rithmic feed here. The source check was
-    // pinned to Databento, and the symbol had to match literally - but the
-    // collector serves micros from the parent book and answers with the
-    // parent root, so an MNQ tab never matched an NQ snapshot.
     if (
       !symbolMatchesSnapshot(this.symbol, snapshot.symbol)
       || !isFullDepthSource(snapshot.source)

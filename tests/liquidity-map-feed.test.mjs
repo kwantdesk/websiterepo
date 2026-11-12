@@ -9,6 +9,9 @@ import {
   liveDepthSnapshotUrl,
   liveDepthStreamUrl,
   liveInstrumentResolveUrl,
+  liquidityCatalogRows,
+  liquidityReplayArchiveDate,
+  matchesRecordedLiquidityContract,
   normalizeLiquidityMapSymbol,
   normalizeLiveSnapshot,
   PackedBook,
@@ -44,7 +47,7 @@ test("accepts the Rithmic DBO contract without changing the Kwantify frame shape
   assert.equal(snapshot.source, "rithmic-depth-by-order");
   assert.equal(snapshot.bids.get(119_200), 12);
   assert.equal(snapshot.bidOrders.get(119_200), 3);
-  assert.equal(symbolMatchesSnapshot("MNQ", snapshot.symbol), true);
+  assert.equal(symbolMatchesSnapshot("MNQ", snapshot.symbol), false);
 });
 
 test("retained order books use compact numeric storage with the required Map-like API", () => {
@@ -86,14 +89,43 @@ test("presentation holds move only the live edge and never create synthetic hist
 
 test("normalizes continuous, dated, and micro contracts across the Level 3 catalog", () => {
   assert.equal(normalizeLiquidityMapSymbol("NQ.v.0"), "NQ");
-  assert.equal(normalizeLiquidityMapSymbol("MNQU6"), "NQ");
+  assert.equal(normalizeLiquidityMapSymbol("MNQU6"), "MNQ");
   assert.equal(normalizeLiquidityMapSymbol("ESU6"), "ES");
-  assert.equal(normalizeLiquidityMapSymbol("MES.v.0"), "ES");
+  assert.equal(normalizeLiquidityMapSymbol("MES.v.0"), "MES");
   assert.equal(normalizeLiquidityMapSymbol("CLV6"), "CL");
   assert.equal(normalizeLiquidityMapSymbol("MGCZ6"), "GC");
   assert.equal(normalizeLiquidityMapSymbol("ZNU6"), "ZN");
   assert.equal(normalizeLiquidityMapSymbol("6EU6"), "6E");
   assert.equal(normalizeLiquidityMapSymbol("BTCQ6"), "BTC");
+});
+
+test("selects MES and MNQ as independent recorded order books", () => {
+  for (const [root, parent] of [["MES", "ES"], ["MNQ", "NQ"]]) {
+    const contract = root + "Z6";
+    const exact = { root, contractSymbol: contract };
+    const parentBook = { root, contractSymbol: parent + "Z6" };
+    assert.deepEqual(liquidityCatalogRows([exact, parentBook]), [exact]);
+    assert.equal(symbolMatchesSnapshot(root, exact.root), true);
+    assert.equal(symbolMatchesSnapshot(root, parent), false);
+    assert.equal(matchesRecordedLiquidityContract(root, contract), true);
+    assert.equal(matchesRecordedLiquidityContract(root, parentBook.contractSymbol), false);
+    assert.equal(matchesRecordedLiquidityContract(root, root), false);
+    const stream = new URL(liveDepthStreamUrl(root, contract, 0, "CME"), "https://kwantdesk.test");
+    assert.equal(stream.searchParams.get("symbol"), root);
+    assert.equal(stream.searchParams.get("contractSymbol"), contract);
+  }
+});
+
+test("replay uses the recorder’s Chicago session date across daylight saving", () => {
+  for (const [timestamp, archiveDate] of [
+    ["2026-11-11T15:00:00Z", "2026-11-10"],
+    ["2026-11-10T22:59:59Z", "2026-11-09"],
+    ["2026-11-10T23:00:00Z", "2026-11-10"],
+    ["2026-10-26T21:59:59Z", "2026-10-25"],
+    ["2026-10-26T22:00:00Z", "2026-10-26"],
+  ]) {
+    assert.equal(liquidityReplayArchiveDate(Date.parse(timestamp)), archiveDate);
+  }
 });
 
 test("carries the exact exchange and active contract through every liquidity request", () => {

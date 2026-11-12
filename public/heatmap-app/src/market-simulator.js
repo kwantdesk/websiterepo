@@ -13,11 +13,6 @@ const instrument = (key, venue, description, tickSize, startPrice, options = {})
   defaultVisibleRows: options.defaultVisibleRows ?? 112,
 });
 
-// Every entry is a parent futures book that the VPS is allowed to request
-// from Rithmic on demand. Micro aliases are intentionally resolved to these
-// parent books: displaying a micro tab as separate L3 would imply that its
-// thinner queue is being collected when the gateway is deliberately serving
-// the deeper parent order book.
 export const SYMBOLS = Object.fromEntries([
   instrument('NQ', 'CME', 'E-mini Nasdaq-100', 0.25, 22486.25, { depthRangePoints: 100 }),
   // ES and NQ share a 0.25-point exchange tick, but ES normally covers far
@@ -25,6 +20,8 @@ export const SYMBOLS = Object.fromEntries([
   // truthful one-tick minimum viewport so ES is not visually flattened by
   // the wider NQ price window.
   instrument('ES', 'CME', 'E-mini S&P 500', 0.25, 6387.5, { depthRangePoints: 100, defaultVisibleRows: 45 }),
+  instrument('MNQ', 'CME', 'Micro E-mini Nasdaq-100', 0.25, 22486.25, { depthRangePoints: 100 }),
+  instrument('MES', 'CME', 'Micro E-mini S&P 500', 0.25, 6387.5, { depthRangePoints: 100, defaultVisibleRows: 45 }),
   instrument('RTY', 'CME', 'E-mini Russell 2000', 0.1, 2250),
   instrument('YM', 'CBOT', 'E-mini Dow', 1, 44500),
   instrument('CL', 'NYMEX', 'WTI Crude Oil', 0.01, 70),
