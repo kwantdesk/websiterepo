@@ -1,3 +1,11 @@
+import { futuresInstrumentRoot } from "./futuresInstrumentIdentity";
+import type { OptionsFlowPrint } from "./optionsFlow";
+import { GEXBOT_FLOW_TICKER, newYorkSessionKey, type GexBotFlowPayload } from "./gexBotFlow";
+
+export function classicGexSupportsInstrument(instrument: string, broker?: string) {
+  return (broker === undefined || broker === "Databento") && ["NQ", "MNQ"].includes(futuresInstrumentRoot(instrument));
+}
+
 export type ClassicGexMappingSource = "NDX" | "QQQ";
 export type ClassicGexExpiry = "ZERO_DTE" | "NEXT_EXPIRY" | "ALL";
 export type ClassicGexSource = "VOLUME" | "OPEN_INTEREST";
@@ -122,6 +130,27 @@ export function normalizeClassicGexRow(args: {
   };
 }
 
+type ClassicGexVolumePrint = Pick<OptionsFlowPrint, "expirationDate" | "strikePrice" | "contractType" | "volume">;
+
+export function classicGexObservedVolumes(prints: ClassicGexVolumePrint[]) {
+  const contracts = new Map<string, { strike: number; side: "call" | "put"; volume: number }>();
+  for (const { expirationDate, strikePrice, contractType, volume } of prints) {
+    if (!expirationDate || strikePrice == null || !Number.isFinite(strikePrice) || strikePrice <= 0
+      || volume == null || !Number.isFinite(volume) || volume <= 0
+      || (contractType !== "CALL" && contractType !== "PUT")) continue;
+    const key = expirationDate + ":" + strikePrice + ":" + contractType;
+    if (volume <= (contracts.get(key)?.volume ?? 0)) continue;
+    contracts.set(key, { strike: strikePrice, side: contractType === "CALL" ? "call" : "put", volume });
+  }
+  const strikes = new Map<number, { call?: number; put?: number }>();
+  for (const { strike, side, volume } of contracts.values()) {
+    const totals = strikes.get(strike) ?? {};
+    totals[side] = (totals[side] ?? 0) + volume;
+    strikes.set(strike, totals);
+  }
+  return strikes;
+}
+
 export function selectClassicGexRows(
   source: ClassicGexSource,
   volumeRows: ClassicGexProfileRow[],
@@ -151,6 +180,78 @@ export function interpolateScenarioZeroGamma(
   return crossings.reduce((best, crossing) => (
     Math.abs(crossing - referencePrice) < Math.abs(best - referencePrice) ? crossing : best
   ));
+}
+
+export function classicGexLadderGeometry(width: number, widthPercent: number, right: boolean) {
+  const percent = Number.isFinite(widthPercent) ? Math.max(8, Math.min(45, widthPercent)) : 24;
+  const halfWidth = width * percent / 200;
+  return { halfWidth, spineX: right ? width - halfWidth - 5 : halfWidth + 5 };
+}
+
+export function classicGexBarWidth(value: number, maximum: number, halfWidth: number, minimum: number, logarithmic: boolean) {
+  if (!value) return 0;
+  const ratio = logarithmic
+    ? Math.log1p(Math.abs(value)) / Math.log1p(maximum)
+    : Math.abs(value) / maximum;
+  return Math.min(halfWidth, Math.max(minimum, ratio * halfWidth));
+}
+
+export function classicGexLookbacks(history: ClassicGexHistorySnapshot[], asOf: number) {
+  if (!Number.isFinite(asOf)) return [];
+  return [1, 5, 10, 15, 30].flatMap(minutes => {
+    const target = asOf - minutes * 60_000;
+    let index = history.length - 1;
+    while (index >= 0 && history[index].timestamp > target) index -= 1;
+    const snapshot = history[index];
+    return snapshot && target - snapshot.timestamp <= 90_000 ? [{ minutes, snapshot }] : [];
+  });
+}
+
+export function classicGexRequest(settings: Record<string, unknown>) {
+  const source = settings.mappingSource === "NDX" ? "NDX" : "QQQ";
+  const expiry = settings.expiry === "NEXT_EXPIRY" || settings.expiry === "ALL" ? settings.expiry : "ZERO_DTE";
+  const profileSource = settings.profileSource === "OPEN_INTEREST" ? "OPEN_INTEREST" : "VOLUME";
+  const mapping = settings.mappingMode === "MANUAL" ? "MANUAL" : "AUTO";
+  const query = new URLSearchParams({ source, expiry, profileSource, mapping });
+  if (mapping === "MANUAL") {
+    const multiplier = Number(settings.manualMultiplier ?? 1);
+    const offset = Number(settings.premiumOffset ?? 0);
+    query.set("multiplier", String(Number.isFinite(multiplier) ? Math.max(0.000001, multiplier) : 1));
+    query.set("offset", String(Number.isFinite(offset) ? offset : 0));
+  }
+  return query.toString();
+}
+
+export function isClassicGexResponse(value: unknown, query: URLSearchParams): value is ClassicGexProfilePayload {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Partial<ClassicGexProfilePayload>;
+  const mapping = payload.mapping;
+  return payload.instrument === "NQ" && payload.sourceSymbol === query.get("source")
+    && payload.expiry === query.get("expiry") && payload.profileSource === query.get("profileSource")
+    && mapping != null && mapping.mode === query.get("mapping") && Number.isFinite(mapping.scale) && mapping.scale > 0
+    && Number.isFinite(mapping.offset) && (mapping.mode !== "MANUAL"
+      || (mapping.scale === Number(query.get("multiplier")) && mapping.offset === Number(query.get("offset"))))
+    && Number.isFinite(Date.parse(payload.asOf ?? ""))
+    && payload.majors != null && Array.isArray(payload.rows);
+}
+
+export function classicGexNativeMajorsEligible(instrument: string, source: unknown, expiry: unknown, mapping: unknown) {
+  return futuresInstrumentRoot(instrument) === "NQ" && source === "NDX" && expiry !== "NEXT_EXPIRY" && expiry !== "ALL" && mapping !== "MANUAL";
+}
+
+export function classicGexNativeMajors(instrument: string, profile: ClassicGexProfilePayload, flow?: GexBotFlowPayload | null) {
+  const majors = flow?.majors;
+  if (!classicGexNativeMajorsEligible(instrument, profile.sourceSymbol, profile.expiry, profile.mapping.mode)
+    || flow?.ticker !== GEXBOT_FLOW_TICKER || flow.status !== "LIVE" || profile.status !== "LIVE"
+    || !majors || !Number.isFinite(majors.fetchedAtMs) || newYorkSessionKey(majors.fetchedAtMs) !== profile.sessionDate) return null;
+  return majors;
+}
+
+export function classicGexRefreshDelay(requested: unknown, suggested?: number) {
+  const value = Number(requested);
+  const userDelay = Number.isFinite(value) ? Math.max(1_000, Math.min(10_000, value)) : 1_000;
+  const sourceDelay = suggested != null && Number.isFinite(suggested) ? Math.min(300_000, suggested) : 0;
+  return Math.max(userDelay, sourceDelay);
 }
 
 export function shouldPublishClassicGex(lastPublishedAt: number | null, now: number, intervalMs = 1_000) {

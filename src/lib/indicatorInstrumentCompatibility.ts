@@ -1,4 +1,5 @@
 import type { ChartIndicatorDefinition } from "@/lib/chartIndicatorCatalog";
+import { classicGexSupportsInstrument } from "@/lib/classicGexProfile";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 
 export type IndicatorInstrumentKind = "futures" | "cash-index" | "equity-underlying";
@@ -76,6 +77,10 @@ export function indicatorCompatibility(
 ): IndicatorCompatibility {
   const kind = indicatorInstrumentKind(instrument, broker);
   const normalizedInstrument = instrument.trim().toUpperCase().replace(/[^A-Z0-9].*$/, "");
+  if (definition.id === "classic-gex-profile" && !classicGexSupportsInstrument(instrument, broker)) return {
+    status: "unavailable", kind, label: "NQ or MNQ required", canAdd: false,
+    reason: "Classic GEX currently maps QQQ or NDX strikes onto recorded NQ and MNQ futures charts.",
+  };
   if (definition.id === "options-vwap" && getMarketIndexDefinition(instrument)?.group !== "Options Underlyings") return {
     status:"unavailable",kind,label:"Options underlying required",canAdd:false,
     reason:"Options VWAP uses the selected options underlying's own recorded option executions, without futures or equity-volume substitution.",

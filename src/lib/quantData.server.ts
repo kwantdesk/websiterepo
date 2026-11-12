@@ -82,6 +82,7 @@ import {
 import { getDatabentoBars } from "@/lib/databento";
 import {
   classicGexMajor,
+  classicGexObservedVolumes,
   classicGexStatus,
   mapClassicGexPrice,
   normalizeClassicGexRow,
@@ -4037,9 +4038,7 @@ export async function getClassicGexProfilePayload(args: {
     ? null
     : args.expiry === "ZERO_DTE"
       ? base.session.sessionDate
-      : orderedExpirations.find((candidate) => candidate > base.session.sessionDate)
-        ?? orderedExpirations[0]
-        ?? null;
+      : orderedExpirations.find((candidate) => candidate > base.session.sessionDate) ?? null;
 
   let openInterestGamma = args.expiry === "ALL"
     ? allGamma
@@ -4119,14 +4118,7 @@ export async function getClassicGexProfilePayload(args: {
     basis: (Number.isFinite(liveRatio) && liveRatio > 0 ? "LIVE" : "PINNED") as "LIVE" | "PINNED",
   } as const;
   const oiByStrike = new Map(contractRows.map((row) => [row.strike, row]));
-  const volumeByStrike = new Map<number, { call: number; put: number }>();
-  for (const row of flow) {
-    if (!row.strikePrice || !row.volume) continue;
-    const current = volumeByStrike.get(row.strikePrice) ?? { call: 0, put: 0 };
-    if (row.contractType === "CALL") current.call = Math.max(current.call, row.volume);
-    if (row.contractType === "PUT") current.put = Math.max(current.put, row.volume);
-    volumeByStrike.set(row.strikePrice, current);
-  }
+  const volumeByStrike = classicGexObservedVolumes(flow);
   const toRows = (exposure: ExposureSummary | null, contractsSource: ClassicGexSource): ClassicGexProfileRow[] => (
     exposure?.strikes.map((row) => {
       const oi = oiByStrike.get(row.strike);

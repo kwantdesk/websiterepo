@@ -439,6 +439,11 @@ import {
 } from "@/lib/chartAlerts";
 import {
   appendClassicGexHistory,
+  classicGexNativeMajorsEligible,
+  classicGexRefreshDelay,
+  classicGexRequest,
+  classicGexSupportsInstrument,
+  isClassicGexResponse,
   shouldPublishClassicGex,
   type ClassicGexHistorySnapshot,
   type ClassicGexProfilePayload,
@@ -5680,7 +5685,7 @@ function WorkspaceChartPaneComponent({
   const [expectedMoveCalibration, setExpectedMoveCalibration] = useState<ChartGammaCalibration | null>(null);
   const [gammaLevelsLoading, setGammaLevelsLoading] = useState(false);
   const [gammaLevelsError, setGammaLevelsError] = useState<string | null>(null);
-  const [classicGexProfile, setClassicGexProfile] = useState<ClassicGexProfilePayload | null>(null);
+  const [classicGexState, setClassicGexState] = useState<{ scope: string; payload: ClassicGexProfilePayload } | null>(null);
   const [classicGexHistory, setClassicGexHistory] = useState<ClassicGexHistorySnapshot[]>([]);
   const [classicGexLoading, setClassicGexLoading] = useState(false);
   const [classicGexError, setClassicGexError] = useState<string | null>(null);
@@ -5735,9 +5740,6 @@ function WorkspaceChartPaneComponent({
   const activeRef = useRef(active);
   const marketActiveRef = useRef(false);
   const marketInactiveTimerRef = useRef<number | null>(null);
-  const gexBotFlow = useGexBotFlow(
-    gammaInstrument === "NQ" || gammaInstrument === "MNQ",
-  ).payload;
   const classicGexIndicator = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null;
   const expectedMoveIndicator = indicators.find((instance) =>
@@ -5772,10 +5774,15 @@ function WorkspaceChartPaneComponent({
     ? resolveGammaEnvironmentConversion(gammaEnvironmentIndicator.settings?.sourceSymbol)
     : null;
   const directGammaEnvironmentInstrument = directGammaEnvironmentConversion?.source ?? null;
-  const classicGexSettings = classicGexIndicator?.settings ?? {};
-  const classicGexSettingsSignature = classicGexIndicator
-    ? JSON.stringify(classicGexSettings)
-    : "";
+  const classicGexSettingsSignature = classicGexIndicator ? classicGexRequest(classicGexIndicator.settings ?? {}) : "";
+  const classicGexRefreshRef = useRef<unknown>(null);
+  classicGexRefreshRef.current = classicGexIndicator?.settings?.refreshIntervalMs;
+  const classicGexLive = !replayActive && Boolean(classicGexIndicator) && classicGexSupportsInstrument(pane.symbol, pane.broker);
+  const classicGexScope = [pane.symbol, resolvedContractSymbol ?? "", classicGexSettingsSignature].join("|");
+  const classicGexSettings = classicGexIndicator?.settings;
+  const gexBotFlow = useGexBotFlow(classicGexLive && classicGexNativeMajorsEligible(
+    pane.symbol, classicGexSettings?.mappingSource, classicGexSettings?.expiry, classicGexSettings?.mappingMode,
+  )).payload;
   const needsOrderFlowHistory = indicators.some((instance) =>
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
   const needsAuctionGapHistory = indicators.some((instance) =>
@@ -6242,20 +6249,8 @@ function WorkspaceChartPaneComponent({
   const currentGammaEnvironmentError = directGammaEnvironmentConversion
     ? directGammaEnvironmentError
     : gammaLevelsError;
-  const classicGexProfileWithZero = useMemo(() => {
-    if (!classicGexProfile || classicGexProfile.zeroGamma) return classicGexProfile;
-    const zero = currentGammaOverlay?.levels.find((level) => level.label.startsWith("Zero Gamma"));
-    if (!zero) return classicGexProfile;
-    const strike = (zero.price - classicGexProfile.mapping.offset) / classicGexProfile.mapping.scale;
-    return {
-      ...classicGexProfile,
-      zeroGamma: {
-        strike,
-        mappedPrice: zero.price,
-        value: 0,
-      },
-    };
-  }, [classicGexProfile, currentGammaOverlay]);
+  const classicGexScopedProfile = classicGexLive && classicGexState?.scope === classicGexScope
+    ? classicGexState.payload : null;
   const structure = useStructureLevels({
     enabled: pane.broker === "Databento" && levelExportRequested,
     symbol: pane.symbol,
@@ -8002,102 +7997,64 @@ function WorkspaceChartPaneComponent({
   ]);
 
   useEffect(() => {
-    const supported = pane.broker === "Databento" && (gammaInstrument === "NQ" || gammaInstrument === "MNQ");
-    if (!classicGexIndicator || !supported) {
-      setClassicGexLoading(false);
-      setClassicGexError(classicGexIndicator && !supported ? "Classic GEX is available on NQ and MNQ charts." : null);
-      setClassicGexProfile(null);
-      setClassicGexHistory([]);
-      classicGexHistoryRef.current = [];
-      return;
-    }
+    setClassicGexState(null);
+    setClassicGexHistory([]);
+    classicGexHistoryRef.current = [];
+    setClassicGexError(null);
+    setClassicGexLoading(classicGexLive);
+    if (!classicGexLive) return;
 
     let cancelled = false;
     let timer: number | null = null;
-    let controller: AbortController | null = null;
-    const refreshIntervalMs = Math.max(1_000, Number(classicGexSettings.refreshIntervalMs ?? 1_000));
-    const source = String(classicGexSettings.mappingSource ?? "QQQ") === "NDX" ? "NDX" : "QQQ";
-    const expiry = ["ZERO_DTE", "NEXT_EXPIRY", "ALL"].includes(String(classicGexSettings.expiry))
-      ? String(classicGexSettings.expiry)
-      : "ZERO_DTE";
-    const profileSource = String(classicGexSettings.profileSource) === "OPEN_INTEREST" ? "OPEN_INTEREST" : "VOLUME";
-    const mapping = String(classicGexSettings.mappingMode) === "MANUAL" ? "MANUAL" : "AUTO";
-    setClassicGexProfile(null);
-    setClassicGexHistory([]);
-    classicGexHistoryRef.current = [];
-
     const schedule = (delay: number) => {
-      if (cancelled) return;
-      timer = window.setTimeout(() => void load(), delay);
+      if (!cancelled) timer = window.setTimeout(() => void load(), delay);
     };
     const load = async () => {
-      controller?.abort();
-      controller = new AbortController();
-      setClassicGexLoading((current) => current || !classicGexProfile);
-      const query = new URLSearchParams({
-        source,
-        expiry,
-        profileSource,
-        mapping,
-        multiplier: String(Number(classicGexSettings.manualMultiplier ?? 1)),
-        offset: String(Number(classicGexSettings.premiumOffset ?? 0)),
-      });
+      if (cancelled) return;
+      if (document.visibilityState === "hidden") { schedule(15_000); return; }
+      const query = new URLSearchParams(classicGexSettingsSignature);
       const futuresPrice = latestFuturesRef.current.price;
       if (futuresPrice && Number.isFinite(futuresPrice)) query.set("futuresPrice", String(futuresPrice));
+      const queryString = query.toString();
+      let providerDelay = 10_000;
       try {
-        const response = await fetch(`/api/chart-gex-profile?${query.toString()}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const raw = await response.text();
-        let candidate: unknown = null;
-        try { candidate = JSON.parse(raw); } catch { candidate = null; }
-        if (!response.ok || !candidate || typeof candidate !== "object" || !("rows" in candidate)) {
-          const message = candidate && typeof candidate === "object" && "error" in candidate
-            ? String(candidate.error)
-            : "Classic GEX returned an invalid response.";
-          throw new Error(message);
-        }
+        const payload = await fetchWorkspaceData<ClassicGexProfilePayload>(
+          "classic-gex:" + queryString,
+          "/api/chart-gex-profile?" + queryString,
+          { maxAgeMs: 1_000, timeoutMs: 20_000, validate: value => isClassicGexResponse(value, query) },
+        );
         if (cancelled) return;
-        const payload = candidate as ClassicGexProfilePayload;
-        setClassicGexProfile(payload);
+        providerDelay = payload.refreshAfterMs;
+        setClassicGexState({ scope: classicGexScope, payload });
         setClassicGexError(null);
         setClassicGexLoading(false);
         const timestamp = Date.parse(payload.asOf);
-        if (Number.isFinite(timestamp)) {
-          const previous = classicGexHistoryRef.current.at(-1);
-          if (shouldPublishClassicGex(previous?.timestamp ?? null, timestamp, 55_000)) {
-            const next = appendClassicGexHistory(
-              classicGexHistoryRef.current,
-              { timestamp, rows: payload.rows },
-            );
-            classicGexHistoryRef.current = next;
-            setClassicGexHistory(next);
-          }
+        const previous = classicGexHistoryRef.current.at(-1);
+        if (shouldPublishClassicGex(previous?.timestamp ?? null, timestamp, 55_000)) {
+          const next = appendClassicGexHistory(classicGexHistoryRef.current, { timestamp, rows: payload.rows });
+          classicGexHistoryRef.current = next;
+          setClassicGexHistory(next);
         }
       } catch (loadError) {
-        if (cancelled || (loadError instanceof Error && loadError.name === "AbortError")) return;
+        if (cancelled) return;
         setClassicGexLoading(false);
         setClassicGexError(loadError instanceof Error ? loadError.message : "Classic GEX is temporarily unavailable.");
-        setClassicGexProfile((current) => current ? { ...current, stale: true, status: "STALE" } : current);
+        setClassicGexState(current => current?.scope === classicGexScope
+          ? { scope: current.scope, payload: { ...current.payload, stale: true, status: "STALE" } } : current);
       } finally {
-        schedule(refreshIntervalMs);
+        schedule(classicGexRefreshDelay(classicGexRefreshRef.current, providerDelay));
       }
     };
 
-    setClassicGexLoading(!classicGexProfile);
     schedule(20);
     return () => {
       cancelled = true;
-      controller?.abort();
       if (timer !== null) window.clearTimeout(timer);
     };
-  // Settings are intentionally represented by a stable serialized signature.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classicGexIndicator?.instanceId, classicGexSettingsSignature, gammaInstrument, pane.broker]);
+  }, [classicGexLive, classicGexScope, classicGexSettingsSignature]);
 
   useEffect(() => {
-    if ((!levelExportRequested && !classicGexIndicator && !expectedMoveIndicator && !gammaEnvironmentIndicator) || !gammaLevelsAvailable || !primaryGammaConversion) {
+    if ((!levelExportRequested && !expectedMoveIndicator && !gammaEnvironmentIndicator) || !gammaLevelsAvailable || !primaryGammaConversion) {
       setGammaLevelsLoading(false);
       setGammaLevelsError(null);
       if (!gammaLevelsAvailable) setGammaOverlay(null);
@@ -8196,7 +8153,6 @@ function WorkspaceChartPaneComponent({
     gammaDataReady,
     gammaLevelsAvailable,
     gammaEnvironmentIndicator?.instanceId,
-    classicGexIndicator?.instanceId,
     expectedMoveConversion?.id,
     expectedMoveIndicator?.instanceId,
     levelExportRequested,
@@ -9869,10 +9825,10 @@ function WorkspaceChartPaneComponent({
           onChartingDrawingsChange={onChartingDrawingsChange}
           indicators={indicators}
           overlaySeries={replayTimestampMs ? chartOverlaySeries.map(series => ({ ...series, candles: series.candles.filter(candle => candle.timestamp + getTimeframeMs(series.timeframe) <= replayTimestampMs) })) : chartOverlaySeries}
-          classicGexProfile={classicGexProfileWithZero}
+          classicGexProfile={classicGexScopedProfile}
           classicGexHistory={classicGexHistory}
           classicGexLoading={classicGexLoading}
-          classicGexError={classicGexError}
+          classicGexError={classicGexIndicator && !replayActive && !classicGexLive ? "Requires a recorded NQ or MNQ chart." : classicGexError}
           expectedMoveCalibration={expectedMoveCalibration}
           volumeProfiles={replayTimestampMs ? volumeProfiles.filter(profile => profile.endMs <= replayTimestampMs) : volumeProfiles}
           volumeProfileError={weeklyProfileInstance && weeklyProfileFailure?.key === `${displayCmeSymbol(pane.symbol)}:${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`

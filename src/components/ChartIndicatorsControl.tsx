@@ -403,6 +403,7 @@ const hasOwnPaletteSection = (id: string) =>
   VOLUME_PROFILE_INDICATOR_IDS.has(id) || isTpoIndicator(id) || id === "deep-print-footprint";
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
   indicatorId === "big-trades" && /^(?:minimumOpacity|maximumOpacity|minimumSize|maximumSize|labelMinSize|projectionLineWidth|projectionOpacity|deepOpacity|deepLineWidth)$/.test(key) ? "Style"
+    : indicatorId === "classic-gex-profile" && ["profileWidth", "minBarWidth", "contrast"].includes(key) ? "Style"
     : indicatorId === "chaikin-accumulation-distribution"
       ? ["showAverage", "averageType", "averageLength"].includes(key) ? "Inputs" : "Style"
     : indicatorId === "average-true-range-atr" && key === "lineWidth" ? "Style"
@@ -4541,7 +4542,7 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Classic GEX stays independent from Estimated Flow Convexity. Calls extend inward in green; puts extend inward in red from the chart edge.
+                    Session-volume exposure uses observed options flow. Live NDX 0DTE can use matched GEX Bot major levels. The data source sets the fastest refresh cadence.
                   </div>
                 </div>
               ) : null}

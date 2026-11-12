@@ -701,10 +701,14 @@ import {
 } from "@/lib/auctionGapAlerts";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
 import { resolveChartLevelOverlaps } from "@/lib/chartLevelOverlap";
-import type {
-  ClassicGexHistorySnapshot,
-  ClassicGexProfilePayload,
-  ClassicGexProfileRow,
+import {
+  classicGexBarWidth,
+  classicGexLadderGeometry,
+  classicGexLookbacks,
+  classicGexNativeMajors,
+  type ClassicGexHistorySnapshot,
+  type ClassicGexProfilePayload,
+  type ClassicGexProfileRow,
 } from "@/lib/classicGexProfile";
 import {
   applyTpoDisplayCap,
@@ -11168,17 +11172,14 @@ function Chart({
   })();
   const classicGexOverlay = useMemo(() => {
     if (!classicGexIndicator || !classicGexProfile || !candleSeriesRef.current) return null;
+    if (classicGexProfile.mapping.mode === "AUTO" && classicGexProfile.mapping.scale === 1) return null;
     const profileSettings = classicGexIndicator.settings ?? {};
-    const plotWidth = Math.max(0, overlaySize.width - 64);
+    const plotWidth = chartRef.current?.paneSize().width ?? Math.max(0, overlaySize.width - nativePriceScaleWidth);
     const plotHeight = Math.max(0, overlaySize.height - 26 - indicatorPaneHeight);
     if (plotWidth < 160 || plotHeight < 80) return null;
-    const profileWidth = Math.min(
-      plotWidth * 0.45,
-      Math.max(90, plotWidth * Math.max(8, Math.min(45, Number(profileSettings.profileWidth ?? 24))) / 100),
-    );
-    const halfWidth = Math.max(42, profileWidth / 2);
     const right = String(profileSettings.panelPosition ?? "RIGHT") !== "LEFT";
-    const spineX = right ? plotWidth - halfWidth - 5 : halfWidth + 5;
+    const widthPercent = Number(profileSettings.profileWidth ?? 24);
+    const { halfWidth, spineX } = classicGexLadderGeometry(plotWidth, widthPercent, right);
     const logarithmic = profileSettings.logarithmicScaling === true;
     const minBarWidth = Math.max(1, Number(profileSettings.minBarWidth ?? 5));
     const contrast = Math.max(0.15, Math.min(1, Number(profileSettings.contrast ?? 70) / 100));
@@ -11187,13 +11188,7 @@ function Chart({
       ...classicGexProfile.rows.flatMap((row) => [Math.abs(row.call), Math.abs(row.put)]),
       ...classicGexHistory.flatMap((snapshot) => snapshot.rows.map((row) => Math.abs(row.net))),
     );
-    const scale = (value: number) => {
-      if (!value) return 0;
-      const ratio = logarithmic
-        ? Math.log1p(Math.abs(value)) / Math.log1p(maxMagnitude)
-        : Math.abs(value) / maxMagnitude;
-      return Math.max(minBarWidth, ratio * halfWidth);
-    };
+    const scale = (value: number) => classicGexBarWidth(value, maxMagnitude, halfWidth, minBarWidth, logarithmic);
     const positioned = classicGexProfile.rows.flatMap((row) => {
       const y = candleSeriesRef.current?.priceToCoordinate(row.mappedPrice) ?? null;
       return y === null || y < 2 || y > plotHeight ? [] : [{ row, y }];
@@ -11203,23 +11198,9 @@ function Chart({
       return Math.min(gap, Math.abs(row.y - positioned[index - 1].y));
     }, 12);
     const rowHeight = Math.max(2, Math.min(10, minimumGap * 0.68));
-    const historyTargets = [1, 5, 15, 30].map((minutes) => {
-      const target = Date.parse(classicGexProfile.asOf) - minutes * 60_000;
-      const snapshot = classicGexHistory.reduce<ClassicGexHistorySnapshot | null>((best, candidate) => (
-        !best || Math.abs(candidate.timestamp - target) < Math.abs(best.timestamp - target) ? candidate : best
-      ), null);
-      return snapshot && Math.abs(snapshot.timestamp - target) <= 90_000 ? { minutes, snapshot } : null;
-    }).filter((value): value is { minutes: number; snapshot: ClassicGexHistorySnapshot } => Boolean(value));
-    // Majors policy: the live GEX Bot values (already NQ basis, no mapping)
-    // are the source of truth for these lines whenever they are fresh, so the
-    // chart always matches the provider in real time. The QuantData-mapped
-    // majors are the fallback only, and they are labelled as such. A mapping
-    // that degenerated to scale 1 would draw raw index strikes on a futures
-    // chart, so that fallback is suppressed entirely.
-    const liveMajors = gexBotFlow?.status === "LIVE" ? gexBotFlow.majors : null;
-    const mappingDegenerate = classicGexProfile.mapping.mode === "AUTO"
-      && classicGexProfile.mapping.scale === 1
-      && (classicGexProfile.sourceSymbol === "NDX" || classicGexProfile.sourceSymbol === "QQQ");
+    const historyTargets = classicGexLookbacks(classicGexHistory, Date.parse(classicGexProfile.asOf));
+    // The native majors feed is specifically the NQ/NDX 0DTE ladder.
+    const liveMajors = classicGexNativeMajors(instrument, classicGexProfile, gexBotFlow);
     const majorLine = (
       show: boolean,
       livePrice: number | null | undefined,
@@ -11230,9 +11211,9 @@ function Chart({
     ) => {
       if (!show) return null;
       if (typeof livePrice === "number" && Number.isFinite(livePrice) && livePrice > 0) {
-        return { strike: livePrice, mappedPrice: livePrice, value: livePrice, label: `${label} · GB live`, color, dash };
+        return { strike: livePrice, mappedPrice: livePrice, value: livePrice, label: `${label} · GB NDX 0DTE`, color, dash };
       }
-      if (!mapped || mappingDegenerate) return null;
+      if (!mapped) return null;
       const mappingChip = classicGexProfile.mapping.mode === "MANUAL"
         ? "QD manual map"
         : classicGexProfile.mapping.basis === "PINNED"
@@ -11255,7 +11236,7 @@ function Chart({
       rows: classicGexProfile.rows,
       lines: primitiveLines,
       historyTargets,
-      widthPercent: Math.max(8, Math.min(45, Number(profileSettings.profileWidth ?? 24))),
+      widthPercent,
       logarithmic,
       minBarWidth,
       maxMagnitude,
@@ -11266,7 +11247,7 @@ function Chart({
       positiveColor: String(profileSettings.positiveColor ?? "#22C55E"),
       negativeColor: String(profileSettings.negativeColor ?? "#EF4444"),
       backgroundColor: settings.backgroundColor,
-      foregroundColor: "#F4F4F5",
+      foregroundColor: readableTextOn(settings.backgroundColor),
       precision: priceFormat.precision,
     };
     return {
@@ -11294,6 +11275,8 @@ function Chart({
     classicGexProfile,
     gexBotFlow,
     indicatorPaneHeight,
+    instrument,
+    nativePriceScaleWidth,
     overlaySize.height,
     overlaySize.width,
     priceFormat.precision,
@@ -21174,6 +21157,11 @@ function Chart({
       {classicGexIndicator ? (
         <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-[104px] z-[16] flex max-w-[430px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
           <span className="font-semibold text-foreground">Classic GEX</span>
+          {classicGexLoading && !classicGexProfile ? <span>Loading</span> : null}
+          {classicGexProfile?.mapping.mode === "AUTO" && classicGexProfile.mapping.scale === 1
+            ? <span className="text-warning">Awaiting futures calibration</span>
+            : classicGexProfile && !classicGexProfile.rows.length
+              ? <span>No exposure in this scope</span> : null}
           {classicGexProfile ? (
             <span className={classicGexProfile.stale ? "text-warning" : "text-primary"}>
               {classicGexProfile.stale
@@ -21516,7 +21504,7 @@ function Chart({
         </svg>
       ) : null}
 
-      {classicGexTooltip && classicGexProfile ? (
+      {classicGexTooltip && classicGexProfile && replayTimestampMs == null ? (
         <div
           className="pointer-events-none absolute z-[80] w-[248px] rounded-xl border border-border bg-panel/96 p-3 font-mono text-[9px] leading-4 text-muted shadow-2xl backdrop-blur"
           style={{
@@ -21529,16 +21517,16 @@ function Chart({
             <span>{classicGexProfile.status}</span>
           </div>
           <div className="grid grid-cols-[1fr_auto] gap-x-3">
-            <span>Mapping</span><span className="text-foreground">NQ / {classicGexProfile.sourceSymbol}</span>
+            <span>Mapping</span><span className="text-foreground">{instrument} / {classicGexProfile.sourceSymbol}</span>
             <span>Source strike</span><span className="text-foreground">{classicGexTooltip.row.strike.toFixed(2)}</span>
-            <span>Mapped NQ</span><span className="text-foreground">{classicGexTooltip.row.mappedPrice.toFixed(priceFormat.precision)}</span>
-            <span>Expiry</span><span className="text-foreground">{classicGexProfile.expiration ?? "All"}</span>
+            <span>Mapped price</span><span className="text-foreground">{classicGexTooltip.row.mappedPrice.toFixed(priceFormat.precision)}</span>
+            <span>Expiry</span><span className="text-foreground">{classicGexProfile.expiration ?? (classicGexProfile.expiry === "ALL" ? "All" : "Unavailable")}</span>
             <span>Call GEX / 1%</span><span style={{ color: classicGexOverlay?.positiveColor }}>{formatClassicGexValue(classicGexTooltip.row.call)}</span>
             <span>Put GEX / 1%</span><span style={{ color: classicGexOverlay?.negativeColor }}>{formatClassicGexValue(classicGexTooltip.row.put)}</span>
             <span>Net GEX / 1%</span><span className="text-foreground">{formatClassicGexValue(classicGexTooltip.row.net)}</span>
-            <span>Contracts C / P</span><span className="text-foreground">{classicGexTooltip.row.callContracts ?? "—"} / {classicGexTooltip.row.putContracts ?? "—"}</span>
+            <span>{classicGexProfile.profileSource === "VOLUME" ? "Observed volume C / P" : "Open interest C / P"}</span><span className="text-foreground">{classicGexTooltip.row.callContracts ?? "—"} / {classicGexTooltip.row.putContracts ?? "—"}</span>
             <span>Gamma</span><span className="text-foreground">{classicGexTooltip.row.gamma ?? "provider aggregate"}</span>
-            <span>Timestamp</span><span className="text-foreground">{new Date(classicGexProfile.asOf).toLocaleTimeString()}</span>
+            <span>Timestamp</span><span className="text-foreground">{new Date(classicGexProfile.asOf).toLocaleTimeString(undefined, { timeZone: normalizeTimeZone(settings.timezone) })}</span>
             <span>Data age</span><span className="text-foreground">{Math.round(classicGexProfile.dataAgeMs / 1000)}s</span>
           </div>
         </div>

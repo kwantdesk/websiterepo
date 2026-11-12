@@ -5,7 +5,7 @@ import type {
   SeriesAttachedParameter,
   Time,
 } from "@/lib/lightweightChartsCompat";
-import type { ClassicGexHistorySnapshot, ClassicGexProfileRow } from "@/lib/classicGexProfile";
+import { classicGexBarWidth, classicGexLadderGeometry, type ClassicGexHistorySnapshot, type ClassicGexProfileRow } from "@/lib/classicGexProfile";
 
 type CandleSeriesApi = SeriesAttachedParameter<Time, "Candlestick">["series"];
 
@@ -49,19 +49,8 @@ class ClassicGexProfileRenderer implements ISeriesPrimitivePaneRenderer {
 
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       if (mediaSize.width < 160 || mediaSize.height < 80) return;
-      const profileWidth = Math.min(
-        mediaSize.width * 0.45,
-        Math.max(90, mediaSize.width * data.widthPercent / 100),
-      );
-      const halfWidth = Math.max(42, profileWidth / 2);
-      const spineX = data.right ? mediaSize.width - halfWidth - 5 : halfWidth + 5;
-      const scale = (value: number) => {
-        if (!value) return 0;
-        const ratio = data.logarithmic
-          ? Math.log1p(Math.abs(value)) / Math.log1p(data.maxMagnitude)
-          : Math.abs(value) / data.maxMagnitude;
-        return Math.max(data.minBarWidth, ratio * halfWidth);
-      };
+      const { halfWidth, spineX } = classicGexLadderGeometry(mediaSize.width, data.widthPercent, data.right);
+      const scale = (value: number) => classicGexBarWidth(value, data.maxMagnitude, halfWidth, data.minBarWidth, data.logarithmic);
       const positioned = data.rows.flatMap((row) => {
         const y = series.priceToCoordinate(row.mappedPrice);
         return y === null || y < 2 || y > mediaSize.height - 2 ? [] : [{ row, y }];

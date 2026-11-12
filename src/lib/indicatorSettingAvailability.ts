@@ -11,6 +11,12 @@ export function indicatorSettingDisabledReason(
   if (key === "useThemeColors" && isVolumeProfileGradientActive(settings.gradientPreset)) {
     return "Turn the colour scheme Off to use theme colours.";
   }
+  if (id === "classic-gex-profile" && ["manualMultiplier", "premiumOffset"].includes(key) && settings.mappingMode !== "MANUAL") {
+    return "Select Manual price mapping to adjust these values.";
+  }
+  if (id === "classic-gex-profile" && key === "zeroGammaColor" && settings.showZeroGamma === false) {
+    return "Enable Show Zero Gamma to adjust its colour.";
+  }
   if (id === "book-speed") {
     if ((key === "averageLength" || /^average(?:Bid|Ask)Color$/.test(key)) && settings.showAverage === false) {
       return "Enable Show Average to adjust the average plot.";
