@@ -5,6 +5,7 @@ import { isInsideKwantDatePicker } from "@/components/ui/KwantDatePicker";
 import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
 import { ABSOLUTE_LEVEL_REFERENCE_EVENT, absoluteLevelInitialPrices, type AbsoluteLevelReferenceRequest } from "@/lib/absoluteLevels";
 import type { Candle } from "@/lib/backtester";
+import { INITIAL_BALANCE_DURATIONS, requestedInitialBalanceDurations, toggleInitialBalanceDuration } from "@/lib/marketSessions";
 import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
 import SuperTrendIndicatorSettings from "@/components/SuperTrendIndicatorSettings";
 import { GAMMA_ENVIRONMENT_SOURCES } from "@/lib/chartGammaConversion";
@@ -3693,22 +3694,24 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "ib-levels" ? (
                 <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div>
-                    <div className="text-[10px] font-medium text-foreground">Initial balance formation window</div>
+                    <div className="text-[10px] font-medium text-foreground">Initial balance durations</div>
                     <div className="mt-1 text-[8px] leading-4 text-muted">
-                      IBH and IBL move with price during this opening window, then freeze for the remainder of that session.
+                      Select one or more durations. Each high and low freezes when its opening window ends.
                     </div>
                   </div>
-                  <div className="grid grid-cols-4 gap-2" role="group" aria-label="Initial balance duration">
-                    {([15, 30, 45, 60] as const).map((minutes) => {
-                      const selected = Number(settingsInstance.settings?.durationMinutes ?? 60) === minutes;
+                  <div className="grid grid-cols-4 gap-2" role="group" aria-label="Initial balance durations">
+                    {INITIAL_BALANCE_DURATIONS.map((minutes) => {
+                      const durations = requestedInitialBalanceDurations(settingsInstance.settings ?? {});
+                      const selected = durations.includes(minutes);
                       return (
                         <button
                           key={minutes}
                           type="button"
                           aria-pressed={selected}
+                          disabled={selected && durations.length === 1}
                           onClick={() => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
-                            settings: { ...(current.settings ?? {}), durationMinutes: minutes },
+                            settings: toggleInitialBalanceDuration(current.settings ?? {}, minutes),
                           }))}
                           className={`h-9 rounded-lg border font-mono text-[9px] transition-colors ${
                             selected

@@ -314,6 +314,19 @@ export function requestedInitialBalanceDurations(
     : [normalizeInitialBalanceDuration(settings.durationMinutes)];
 }
 
+export function toggleInitialBalanceDuration(settings: SessionSettings, duration: InitialBalanceDuration): SessionSettings {
+  const selected = requestedInitialBalanceDurations(settings);
+  const next = selected.includes(duration)
+    ? selected.filter((minutes) => minutes !== duration)
+    : [...selected, duration];
+  if (next.length === 0) return settings;
+
+  return {
+    ...settings,
+    ...Object.fromEntries(INITIAL_BALANCE_DURATIONS.map((minutes) => [`ibDuration${minutes}`, next.includes(minutes)])),
+  };
+}
+
 /**
  * The boundary that owns an older Initial Balance level.
  *

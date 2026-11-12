@@ -5,6 +5,7 @@ const {
   buildInitialBalanceLevels,
   nextInitialBalanceSessionStart,
   requestedInitialBalanceDurations,
+  toggleInitialBalanceDuration,
   INITIAL_BALANCE_DURATIONS,
 } =
   await import("../src/lib/marketSessions.ts");
@@ -63,6 +64,18 @@ check("each duration is its own toggle", () => {
     requestedInitialBalanceDurations({ ibDuration15: true, ibDuration30: true, ibDuration45: true, ibDuration60: true }),
     [...INITIAL_BALANCE_DURATIONS],
   );
+});
+
+check("changing duration selections preserves legacy ranges and writes each toggle", () => {
+  const legacy = { ...base, durationMinutes: 60 };
+  const both = toggleInitialBalanceDuration(legacy, 30);
+  assert.deepEqual(requestedInitialBalanceDurations(both), [30, 60]);
+  assert.deepEqual([...new Set(buildInitialBalanceLevels(candles, both, 60_000).map(level => level.durationMinutes))].sort(), [30, 60]);
+  const shorter = toggleInitialBalanceDuration(both, 60);
+  assert.deepEqual(requestedInitialBalanceDurations(shorter), [30]);
+  assert.equal(shorter.showNewYork, true);
+  assert.equal(toggleInitialBalanceDuration(shorter, 30), shorter);
+  assert.deepEqual(requestedInitialBalanceDurations(toggleInitialBalanceDuration({ durationMinutes: 15 }, 45)), [15, 45]);
 });
 
 check("15, 30 and 60 draw together and disagree", () => {
