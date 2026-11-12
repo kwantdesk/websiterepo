@@ -33,6 +33,11 @@ check("it opens on SPX, SPY and QQQ gamma", () => {
   ]);
 });
 
+check("adding a panel starts it on SPX gamma", () => {
+  const addPanel = source.slice(source.indexOf("function addPanel()"), source.indexOf("function removePanel("));
+  assert.match(addPanel, /setPanels\(\(current\) => \[\.\.\.current, \{ id, symbol: "SPX", greekMode: "GAMMA" \}\]\)/);
+});
+
 check("every default column reads the same greek", () => {
   // The actual complaint: three columns, three different measures.
   for (const name of ["DEFAULT_PANELS", "MARKET_PANELS"]) {

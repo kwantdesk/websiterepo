@@ -1662,12 +1662,10 @@ function GexMapWorkspace({
   function addPanel() {
     if (panels.length >= MAX_GEX_MAP_PANELS) return;
     const id = `extra-${Date.now()}`;
-    const symbol = linkedMarket === "ES" ? "SPY" : "QQQ";
-    const greekMode: GreekMode = "CHARM";
     setPanelData((current) => ({ ...current, [id]: null }));
     setPanelErrors((current) => ({ ...current, [id]: null }));
     setLoading((current) => ({ ...current, [id]: true }));
-    setPanels((current) => [...current, { id, symbol, greekMode }]);
+    setPanels((current) => [...current, { id, symbol: "SPX", greekMode: "GAMMA" }]);
   }
 
   function removePanel(id: PanelConfig["id"]) {
