@@ -1204,13 +1204,15 @@ function computeIndicatorSeries(
   if (key === "average-true-range-atr") {
     const length = Math.max(1, Math.round(settingNumber(instance, "length", 14)));
     const values = wilder(trueRanges(candles), length);
+    const style = settingString(instance, "lineStyle", "solid");
     return [{
       key,
       label: `ATR ${length}`,
       kind: "line",
       placement: "pane",
       color: theme.primary,
-      lineWidth: 2,
+      lineWidth: Math.max(1, Math.min(4, Math.round(settingNumber(instance, "lineWidth", 2)))) as 1 | 2 | 3 | 4,
+      lineStyle: style === "dashed" || style === "dotted" ? style : "solid",
       data: lineData(candles, values),
     }];
   }

@@ -402,7 +402,8 @@ const isTpoIndicator = (id: string) => id === "tpo-chart" || id === "weekly-tpo"
 const hasOwnPaletteSection = (id: string) =>
   VOLUME_PROFILE_INDICATOR_IDS.has(id) || isTpoIndicator(id) || id === "deep-print-footprint";
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
-  indicatorId === "volume" ? "General" : indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
+  indicatorId === "average-true-range-atr" && key === "lineWidth" ? "Style"
+    : indicatorId === "volume" ? "General" : indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
     : indicatorId === "pivot-points"
       ? ["fontSize", "lineWidth", "periodsToShow"].includes(key) ? "Plot settings" : "Custom reference"
@@ -6544,7 +6545,7 @@ export default function ChartIndicatorsControl({
                 </div>
               )) : null}
 
-              {settingsDefinition.id === "average-directional-index-adx" ? (
+              {(settingsDefinition.id === "average-directional-index-adx" || settingsDefinition.id === "average-true-range-atr") ? (
                 <label data-settings-section="Style" className="block space-y-1 text-[10px] text-muted">
                   <span>Line style</span>
                   <KwantSelect
@@ -6552,7 +6553,7 @@ export default function ChartIndicatorsControl({
                     onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                       ...current, settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
                     }))}
-                    menuLabel="ADX line style"
+                    menuLabel={settingsDefinition.id === "average-true-range-atr" ? "ATR line style" : "ADX line style"}
                     className="h-9 w-full border border-border bg-background px-3 text-foreground"
                   >
                     <option value="solid">Solid</option>

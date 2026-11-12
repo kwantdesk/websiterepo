@@ -75,3 +75,26 @@ test('long lengths require real warmup; no fabricated pre-window values',()=>{
  }
  mkdirSync('tmp',{recursive:true});writeFileSync('tmp/atr-standard-deviation-matrix.json',JSON.stringify({instruments:instruments.length,intervals:CHART_INTERVAL_OPTIONS.length,observations},null,2));
 });
+
+test('ATR line appearance is retained in replay and live model calculations', () => {
+  const indicatorId = 'average-true-range-atr';
+  const candles = Array.from({ length: 16 }, (_, index) => ({
+    timestamp: 1700000000000 + index * 60_000,
+    open: 100, high: 102 + index, low: 99, close: 100, volume: 1,
+  }));
+  const instance = { indicatorId, instanceId: 'atr', enabled: true, settings: { length: 14, lineStyle: 'dotted', lineWidth: 3 } };
+  const [defaultPlot] = calculateIndicatorSeries({ ...instance, settings: { length: 14 } }, candles, theme);
+  assert.equal(defaultPlot.lineStyle, 'solid');
+  assert.equal(defaultPlot.lineWidth, 2);
+  const [replayPlot] = calculateIndicatorSeries(instance, candles, theme, { replayTimestampMs: candles[14].timestamp });
+  assert.equal(replayPlot.lineStyle, 'dotted');
+  assert.equal(replayPlot.lineWidth, 3);
+  assert.deepEqual(replayPlot.data, defaultPlot.data.slice(0, 2));
+
+  const model = new LiveDeltaPaneModel();
+  model.hydrate(candles);
+  const [livePlot] = model.calculate({ key: 'atr', indicatorId, settings: instance.settings, series: [] }, { candles, theme });
+  assert.equal(livePlot.lineStyle, 'dotted');
+  assert.equal(livePlot.lineWidth, 3);
+  assert.deepEqual(livePlot.data, defaultPlot.data);
+});
