@@ -137,7 +137,6 @@ export default function AccountsPage() {
   const [newAccountBalance, setNewAccountBalance] = useState("$10,000");
   const [newAccountInstrument, setNewAccountInstrument] = useState("All CME Futures");
   const [newAccountLeverage, setNewAccountLeverage] = useState("1:30");
-  const [newAccountStrategy, setNewAccountStrategy] = useState("Manual / No Strategy");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustAccountId, setAdjustAccountId] = useState("");
   const [adjustAmount, setAdjustAmount] = useState("");
@@ -275,7 +274,6 @@ export default function AccountsPage() {
       balance: parseMoney(newAccountBalance),
       leverage: newAccountLeverage,
       instrument: newAccountInstrument,
-      strategy: newAccountStrategy,
     });
     setAccounts((current) => [{ ...account, winRate: "0%" }, ...current]);
     setPaperLedger((current) => {
@@ -288,7 +286,6 @@ export default function AccountsPage() {
     setNewAccountBalance("$10,000");
     setNewAccountInstrument("All CME Futures");
     setNewAccountLeverage("1:30");
-    setNewAccountStrategy("Manual / No Strategy");
     setToast(`${account.name} created`);
     window.setTimeout(() => setToast(""), 1800);
   }
@@ -430,7 +427,7 @@ export default function AccountsPage() {
         </div>
       </main>
 
-      {showDemoModal && <Modal title="New Demo Account" onClose={() => setShowDemoModal(false)}><div className="space-y-3"><input value={newAccountName} onChange={(event) => setNewAccountName(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none" placeholder="Account name" /><KwantSelect value={newAccountBalance} onChange={(event) => setNewAccountBalance(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>$10,000</option><option>$1,000</option><option>$5,000</option><option>$25,000</option><option>$50,000</option><option>$100,000</option><option>$150,000</option><option>$250,000</option></KwantSelect><KwantSelect value={newAccountInstrument} onChange={(event) => setNewAccountInstrument(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>All CME Futures</option><option>NQ / MNQ</option><option>ES / MES</option><option>RTY / M2K</option><option>YM / MYM</option><option>GC / MGC</option><option>CL / MCL</option><option>BTC / MBT</option><option>ETH / MET</option></KwantSelect><KwantSelect value={newAccountLeverage} onChange={(event) => setNewAccountLeverage(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>1:30</option><option>1:1</option><option>1:10</option><option>1:20</option><option>1:50</option><option>1:100</option></KwantSelect><KwantSelect value={newAccountStrategy} onChange={(event) => setNewAccountStrategy(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>Manual / No Strategy</option>{strategies.map((strategy) => <option key={strategy}>{strategy}</option>)}</KwantSelect><button onClick={handleCreateDemoAccount} disabled={!newAccountName.trim()} className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-40">Create Account</button></div></Modal>}
+      {showDemoModal && <Modal title="New Demo Account" onClose={() => setShowDemoModal(false)}><div className="space-y-3"><input value={newAccountName} onChange={(event) => setNewAccountName(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none" placeholder="Account name" /><KwantSelect value={newAccountBalance} onChange={(event) => setNewAccountBalance(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>$10,000</option><option>$1,000</option><option>$5,000</option><option>$25,000</option><option>$50,000</option><option>$100,000</option><option>$150,000</option><option>$250,000</option></KwantSelect><KwantSelect value={newAccountInstrument} onChange={(event) => setNewAccountInstrument(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>All CME Futures</option><option>NQ / MNQ</option><option>ES / MES</option><option>RTY / M2K</option><option>YM / MYM</option><option>GC / MGC</option><option>CL / MCL</option><option>BTC / MBT</option><option>ETH / MET</option></KwantSelect><KwantSelect value={newAccountLeverage} onChange={(event) => setNewAccountLeverage(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>1:30</option><option>1:1</option><option>1:10</option><option>1:20</option><option>1:50</option><option>1:100</option></KwantSelect><button onClick={handleCreateDemoAccount} disabled={!newAccountName.trim()} className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-40">Create Account</button></div></Modal>}
 
       {showAdjustModal && adjustAccount && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">

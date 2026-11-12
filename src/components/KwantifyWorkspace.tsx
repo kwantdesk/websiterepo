@@ -11375,7 +11375,6 @@ export default function KwantifyWorkspace({
   const [paperAccountBalance, setPaperAccountBalance] = useState("$10,000");
   const [paperAccountInstrument, setPaperAccountInstrument] = useState("All CME Futures");
   const [paperAccountLeverage, setPaperAccountLeverage] = useState("1:30");
-  const [paperAccountStrategy, setPaperAccountStrategy] = useState("Manual / No Strategy");
   const [orderUnits, setOrderUnits] = useState("1");
   const [orderPrice, setOrderPrice] = useState("");
   // The broker/account block sits between the ticket and the actions a trader
@@ -18472,7 +18471,6 @@ export default function KwantifyWorkspace({
       balance: parsePaperMoney(paperAccountBalance),
       leverage: paperAccountLeverage,
       instrument: paperAccountInstrument,
-      strategy: paperAccountStrategy,
     });
     setPaperTradingAccounts((current) => [nextAccount, ...current]);
     const nextLedger = ensurePaperAccountLedger(paperLedgerRef.current, nextAccount);
@@ -18495,7 +18493,6 @@ export default function KwantifyWorkspace({
     setPaperAccountBalance("$10,000");
     setPaperAccountInstrument("All CME Futures");
     setPaperAccountLeverage("1:30");
-    setPaperAccountStrategy("Manual / No Strategy");
     setShowQuickPaperAccountForm(false);
   };
 
@@ -23091,10 +23088,6 @@ export default function KwantifyWorkspace({
                             </KwantSelect>
                             <KwantSelect value={paperAccountInstrument} onChange={(event) => setPaperAccountInstrument(event.target.value)} className="rounded-xl border border-border bg-surface px-4 py-3 text-[13px]">
                               <option>All CME Futures</option><option>NQ / MNQ</option><option>ES / MES</option><option>RTY / M2K</option><option>YM / MYM</option><option>GC / MGC</option><option>CL / MCL</option><option>BTC / MBT</option><option>ETH / MET</option>
-                            </KwantSelect>
-                            <KwantSelect value={paperAccountStrategy} onChange={(event) => setPaperAccountStrategy(event.target.value)} className="rounded-xl border border-border bg-surface px-4 py-3 text-[13px]">
-                              <option>Manual / No Strategy</option>
-                              {strategies.map((strategy) => <option key={strategy.id} value={strategy.name}>{strategy.name}</option>)}
                             </KwantSelect>
                           </div>
                           <button
