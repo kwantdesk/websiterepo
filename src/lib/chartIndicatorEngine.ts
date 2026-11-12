@@ -1225,10 +1225,34 @@ function computeIndicatorSeries(
   }
 
   if (key === "bollinger-bands") {
-    const length = Math.max(2, Math.round(settingNumber(instance, "length", 20)));
-    const multiplier = Math.max(0.1, settingNumber(instance, "multiplier", 2));
-    const middle = rollingMean(closes, length);
-    const deviation = rollingDeviation(closes, length);
+    const length = Math.min(500, Math.max(2, Math.round(settingNumber(instance, "length", 20))));
+    const multiplier = Math.min(10, Math.max(0.1, settingNumber(instance, "multiplier", 2)));
+    const middle: CalculatedIndicatorSeries["data"] = [];
+    const upper: CalculatedIndicatorSeries["data"] = [];
+    const lower: CalculatedIndicatorSeries["data"] = [];
+    // Center the rolling moments to retain small deviations at high prices.
+    const origin = closes[0];
+    let sum = 0;
+    let squares = 0;
+    for (let index = 0; index < closes.length; index += 1) {
+      const value = closes[index] - origin;
+      sum += value;
+      squares += value * value;
+      if (index >= length) {
+        const outgoing = closes[index - length] - origin;
+        sum -= outgoing;
+        squares -= outgoing * outgoing;
+      }
+      if (index < length - 1) continue;
+      const mean = sum / length;
+      const basis = origin + mean;
+      const width = Math.sqrt(Math.max(0, squares / length - mean * mean)) * multiplier;
+      if (!Number.isFinite(basis) || !Number.isFinite(width)) continue;
+      const time = candles[index].timestamp / 1000;
+      middle.push({ time, value: basis });
+      upper.push({ time, value: basis + width });
+      lower.push({ time, value: basis - width });
+    }
     return [
       {
         key: `${key}-middle`,
@@ -1237,7 +1261,7 @@ function computeIndicatorSeries(
         placement: "overlay",
         color: theme.primary,
         lineWidth: 2,
-        data: lineData(candles, middle),
+        data: middle,
       },
       {
         key: `${key}-upper`,
@@ -1246,7 +1270,7 @@ function computeIndicatorSeries(
         placement: "overlay",
         color: theme.secondary,
         lineWidth: 1,
-        data: lineData(candles, middle.map((value, index) => value == null || deviation[index] == null ? null : value + deviation[index]! * multiplier)),
+        data: upper,
       },
       {
         key: `${key}-lower`,
@@ -1255,7 +1279,7 @@ function computeIndicatorSeries(
         placement: "overlay",
         color: theme.secondary,
         lineWidth: 1,
-        data: lineData(candles, middle.map((value, index) => value == null || deviation[index] == null ? null : value - deviation[index]! * multiplier)),
+        data: lower,
       },
     ];
   }

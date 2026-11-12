@@ -528,6 +528,7 @@ import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { adrHistoryDay, normalizeAverageDailyRangeTargetSettings, supportsAdrDailyHistory } from "@/lib/averageDailyRangeTarget";
 import { adrDailyHistoryDays, loadAdrDailyHistory } from "@/lib/adrDailyHistory";
 import { isLivePriceStudy } from "@/lib/liveDeltaPanes";
+import { BollingerLiveCandles } from "@/lib/bollingerLiveCandles";
 import { resolveVolumeProfileInputData, resolveVolumeProfileMode, volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import { resolveVolumeProfileOwner, volumeProfileOwnerKey } from "@/lib/volumeProfileOwnership";
 import {
@@ -611,6 +612,7 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  */
 const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
+  "bollinger-bands",
   "inverse-cyber-cycle",
   "ichimoku-indicator",
   // Linear recurrence: measured 20k-bar p95 ~4.3ms; live updates are incremental.
@@ -3416,6 +3418,8 @@ function Chart({
   const priceAxisCenterInsetsRef = useRef({ topInset: 0, bottomInset: 0 });
   const priceAxisLiveQuoteRef = useRef<number | null>(null);
   const liveCandlePricePaintRef = useRef<((candle: Candle) => void) | null>(null);
+  const bollingerPaintRef = useRef<((candle: Candle, chartTime: number) => void) | null>(null);
+  const bollingerLiveRef = useRef<{ scope: string; source: BollingerLiveCandles } | null>(null);
   const overlayChartSeriesRef = useRef(new Map<string,
     | { kind: "line"; series: ReturnType<IChartApi["addLineSeries"]> }
     | { kind: "candlestick"; series: ReturnType<IChartApi["addCandlestickSeries"]>; volumeWidth: OverlayVolumeWidthPrimitive }
@@ -3471,7 +3475,8 @@ function Chart({
       applyOptions: (options: Record<string, unknown>) => void;
     };
     dataSnapshot: LightweightSeriesDataSnapshot;
-    aroonPoints?: CalculatedIndicatorSeries["data"];
+    correctionTrackedPoints?: CalculatedIndicatorSeries["data"];
+    bollingerDirectPoints?: Map<number, number>;
     optionsSignature: string;
   }>>([]);
   const superTrendPlotBuffersRef = useRef(new Map<string, SuperTrendPlotBuffer>());
@@ -4796,7 +4801,10 @@ function Chart({
           low: paintedCandle.low,
           close: paintedCandle.close,
         }, historicalUpdate);
-        if (!historicalUpdate) liveCandlePricePaintRef.current?.(candle);
+        if (!historicalUpdate) {
+          liveCandlePricePaintRef.current?.(candle);
+          bollingerPaintRef.current?.(candle, candleTime);
+        }
         recordChartTickPaint(instrument, candle.sourceEndTimestamp);
         if (!historicalUpdate && liveFootprintEnabledRef.current && footprintPrimitiveRef.current) {
           liveFootprintSourceCandlesRef.current = mergeLiveIndicatorCandle(
@@ -18322,9 +18330,20 @@ function Chart({
     return () => window.removeEventListener("keydown", cancel);
   }, [tpoMergeSelection]);
 
+  const liveBollinger = indicators.find(instance => instance.enabled && instance.indicatorId === "bollinger-bands");
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
+    const liveSource = liveBollinger && replayTimestampMs == null && bollingerLiveRef.current?.scope === observedCandleScope
+      ? bollingerLiveRef.current.source.merge(sampledIndicatorCandles) : null;
+    const bollingerTail = liveBollinger && liveSource
+      ? calculateIndicatorSeries(liveBollinger, liveSource.candles, visibleIndicatorTheme(settings)).map(definition => ({
+        ...definition,
+        data: definition.data.flatMap(point => {
+          const chartTime = liveSource.chartTimes.get(Math.round(point.time * 1000));
+          return chartTime === undefined ? [] : [{ ...point, time: chartTime }];
+        }),
+      })) : [];
     const overlayDefinitions = calculatedIndicatorSeries.filter(
       (definition) => definition.placement === "overlay",
     );
@@ -18345,7 +18364,15 @@ function Chart({
 
     for (const key of superTrendPlotBuffersRef.current.keys()) if (!nextKeys.has(key)) superTrendPlotBuffersRef.current.delete(key);
     indicatorSeriesRefs.current = overlayDefinitions.map((baseDefinition) => {
-      const definition = replayTimestampMs != null ? baseDefinition : superTrendPlotBuffersRef.current.get(baseDefinition.key)?.merge(baseDefinition) ?? baseDefinition;
+      let definition = replayTimestampMs != null ? baseDefinition : superTrendPlotBuffersRef.current.get(baseDefinition.key)?.merge(baseDefinition) ?? baseDefinition;
+      const liveBand = bollingerTail.find(band => band.key === definition.key && band.data.length);
+      if (liveBand) {
+        const firstLiveTime = liveBand.data[0].time;
+        definition = { ...definition, data: [
+          ...definition.data.filter(point => point.time < firstLiveTime),
+          ...liveBand.data,
+        ] };
+      }
       const kind = definition.kind === "histogram" ? "histogram" : "line";
       const existing = reusable.get(definition.key);
       const options = kind === "histogram"
@@ -18387,20 +18414,21 @@ function Chart({
             } : {}),
           };
       const data = lightweightIndicatorData(definition);
-      const aroonPoints = definition.key === "aroon-oscillator" || definition.key.startsWith("aroon-up-down-")
+      const correctionTrackedPoints = definition.key === "aroon-oscillator" || definition.key.startsWith("aroon-up-down-")
+        || definition.key.startsWith("bollinger-bands-")
         ? definition.data : undefined;
-      const previousAroonPoints = existing?.aroonPoints;
-      // A late candle can change an interior Aroon window with the tail intact.
+      const previousCorrectionTrackedPoints = existing?.correctionTrackedPoints;
+      // A late candle can change an interior study window with the tail intact.
       // Check its prefix before allowing the series sync to assume a tail-only update.
-      const unchangedAroon = aroonPoints !== undefined && aroonPoints === previousAroonPoints;
-      const correctedAroonHistory = !unchangedAroon && aroonPoints && previousAroonPoints
-        && aroonPoints.some((point, index) => {
-          if (index === aroonPoints.length - 1) return false;
-          const previous = previousAroonPoints[index];
+      const unchangedTrackedPoints = correctionTrackedPoints !== undefined && correctionTrackedPoints === previousCorrectionTrackedPoints;
+      const correctedStudyHistory = !unchangedTrackedPoints && correctionTrackedPoints && previousCorrectionTrackedPoints
+        && correctionTrackedPoints.some((point, index) => {
+          if (index === correctionTrackedPoints.length - 1) return false;
+          const previous = previousCorrectionTrackedPoints[index];
           return point !== previous && (point.time !== previous?.time || point.value !== previous?.value);
         });
-      const dataSnapshot = unchangedAroon && existing ? existing.dataSnapshot
-        : buildLightweightSeriesDataSnapshot(data, correctedAroonHistory ? null : existing?.dataSnapshot ?? null);
+      const dataSnapshot = unchangedTrackedPoints && existing ? existing.dataSnapshot
+        : buildLightweightSeriesDataSnapshot(data, correctedStudyHistory ? null : existing?.dataSnapshot ?? null);
       const optionsSignature = stableSeriesOptionsSignature(options);
       if (existing && existing.kind === kind) {
         if (definition.superTrendLabels) existing.superTrendLabels?.update(definition.data, definition.superTrendLabels,
@@ -18417,14 +18445,26 @@ function Chart({
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
-        const syncPlan = unchangedAroon ? "none" : planLightweightSeriesDataSync(existing.dataSnapshot, dataSnapshot);
+        const lastTime = definition.data.at(-1)?.time ?? -Infinity;
+        const direct = existing.bollingerDirectPoints;
+        const directPrefixChanged = direct && (Array.from(direct.keys()).some(time => time > lastTime)
+          || definition.data.some(point => {
+            const directValue = direct.get(point.time);
+            return point.time < lastTime && directValue !== undefined
+              && Math.abs(point.value - directValue) > Math.max(1, Math.abs(point.value)) * 1e-12;
+          }));
+        const syncPlan = directPrefixChanged ? "replace"
+          : unchangedTrackedPoints ? "none" : planLightweightSeriesDataSync(existing.dataSnapshot, dataSnapshot);
         if (syncPlan === "append" || syncPlan === "update-last") {
           const latestPoint = data.at(-1);
           if (latestPoint) existing.series.update(latestPoint);
         } else if (syncPlan === "replace") {
           existing.series.setData(data);
+        } else if (direct?.has(lastTime)) {
+          existing.series.update(data.at(-1));
         }
-        return { ...existing, dataSnapshot, aroonPoints, optionsSignature, superTrendDefinition: definition.superTrendStyleKey ? definition : undefined };
+        return { ...existing, dataSnapshot, correctionTrackedPoints, optionsSignature,
+          bollingerDirectPoints: undefined, superTrendDefinition: definition.superTrendStyleKey ? definition : undefined };
       }
       const series = kind === "histogram"
         ? chart.addHistogramSeries({
@@ -18507,11 +18547,42 @@ function Chart({
           applyOptions: (options: Record<string, unknown>) => void;
         },
         dataSnapshot,
-        aroonPoints,
+        correctionTrackedPoints,
         optionsSignature,
       };
     });
-  }, [calculatedIndicatorSeries, chartReadyRevision, settings.backgroundColor, priceFormat.precision]);
+  }, [calculatedIndicatorSeries, chartReadyRevision, settings.backgroundColor, priceFormat.precision,
+    liveBollinger, observedCandleScope, replayTimestampMs, sampledIndicatorCandles, settings]);
+  useEffect(() => {
+    if (!liveBollinger || replayTimestampMs != null) {
+      bollingerLiveRef.current = null;
+      return;
+    }
+    if (bollingerLiveRef.current?.scope !== observedCandleScope) {
+      bollingerLiveRef.current = { scope: observedCandleScope, source: new BollingerLiveCandles() };
+    }
+    const { source } = bollingerLiveRef.current;
+    bollingerPaintRef.current = (candle, chartTime) => {
+      if (!source.observe(candle, chartTime)) return;
+      const tail = source.merge(sampledIndicatorCandlesRef.current);
+      if (!tail) return;
+      const definitions = calculateIndicatorSeries(liveBollinger, tail.candles, visibleIndicatorTheme(settings));
+      for (const definition of definitions) {
+        const point = definition.data.at(-1);
+        const target = indicatorSeriesRefs.current.find(entry => entry.key === definition.key);
+        if (!point || !target || Math.round(point.time * 1000) !== candle.timestamp) continue;
+        try {
+          target.series.update({ ...point, time: chartTime });
+          const direct = target.bollingerDirectPoints ??= new Map();
+          direct.set(chartTime, point.value);
+          if (direct.size > 64) direct.delete(direct.keys().next().value!);
+        } catch {
+          // The historical overlay pass reconciles when the native series is replaced.
+        }
+      }
+    };
+    return () => { bollingerPaintRef.current = null; };
+  }, [liveBollinger, observedCandleScope, replayTimestampMs, settings]);
 
   const momentumOverlayScaleIds = [...new Set(calculatedIndicatorSeries.flatMap(definition =>
     definition.priceScaleId?.startsWith("momentum-") ? [definition.priceScaleId] : []))].join("\0");
