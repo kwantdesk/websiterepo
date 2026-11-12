@@ -14,7 +14,6 @@ import {
   CircleAlert,
   Clock3,
   ExternalLink,
-  Filter,
   Globe2,
   Info,
   Loader2,
@@ -31,7 +30,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import type { MacroNewsView } from "@/components/news/MacroWorkspace";
 import { economicCalendarDateKey as dateKey } from "@/lib/economicCalendarFormatting";
 import { economicEventLabel } from "@/lib/economicEventLabels";
-import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
+import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components/ui/TimeZoneSelect";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import KwantLoader from "@/components/KwantLoader";
 import {
@@ -630,56 +629,51 @@ function EconomicCalendarWorkspace() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex min-h-[58px] shrink-0 flex-wrap items-center gap-3 border-b border-border bg-panel px-3 py-2 lg:px-4">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Globe2 className="h-[17px] w-[17px]" /></span>
-        <div className="mr-auto">
-          <div className="text-[12px] font-semibold">Economic Calendar</div>
-          <div className="text-[9px] text-muted">Scheduled catalysts, forecasts and event risk</div>
+      <header className="@container shrink-0 border-b border-border bg-panel px-3 lg:px-4">
+        <div className="grid min-h-12 items-center gap-x-3 gap-y-1.5 py-1.5 @[64rem]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+          <div role="group" aria-label="Currency filters" className="flex flex-wrap items-center justify-center gap-1.5 @[64rem]:col-start-2">
+            {ECONOMIC_CALENDAR_CURRENCIES.map((currency) => {
+              const active = selectedCurrencies.includes(currency);
+              return (
+                <button
+                  key={currency}
+                  type="button"
+                  onClick={() => toggleCurrency(currency)}
+                  aria-pressed={active}
+                  className={`kwant-workspace-toolbar-control inline-flex h-7 shrink-0 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border px-2.5 text-[10px] font-semibold tracking-[0.075em] transition-colors ${
+                    active ? "border-primary bg-primary text-on-primary" : "border-border bg-transparent text-muted hover:border-primary/50 hover:text-foreground"
+                  }`}
+                >
+                  {currency}
+                </button>
+              );
+            })}
+            <button type="button" onClick={() => {
+              const next = selectedCurrencies.length === ECONOMIC_CALENDAR_CURRENCIES.length ? [] : [...ECONOMIC_CALENDAR_CURRENCIES];
+              setSelectedCurrencies(next);
+              writeLocalStorage(CURRENCIES_STORAGE_KEY, JSON.stringify(next));
+            }} className="kwant-workspace-toolbar-control inline-flex h-7 shrink-0 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border border-border px-2.5 text-[10px] font-semibold uppercase text-muted transition-colors hover:bg-surface hover:text-foreground">
+              {selectedCurrencies.length === ECONOMIC_CALENDAR_CURRENCIES.length ? "Clear" : "All"}
+            </button>
+          </div>
+          <div className="flex items-center justify-self-end gap-1.5">
+            <div className="kwant-workspace-toolbar-control inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[var(--kwant-control-radius,8px)] border border-border bg-background/35 px-2.5 text-[10px] font-semibold tabular-nums text-foreground">
+              <Clock3 className="h-3.5 w-3.5 text-muted" />
+              <span>{formatClock(clock, timeZone)}</span>
+            </div>
+            <TimeZoneSelect
+              value={timeZone}
+              onChange={changeTimeZone}
+              menuLabel="Economic calendar timezone"
+              compact
+              className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME}
+            />
+            <button type="button" onClick={() => void loadCalendar(true)} disabled={refreshing || loading} className="kwant-workspace-toolbar-control inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--kwant-control-radius,8px)] border border-border bg-background/35 text-muted transition-colors hover:bg-surface hover:text-foreground disabled:opacity-50" aria-label="Refresh calendar">
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>
-        <div className="hidden items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 md:flex">
-          <Clock3 className="h-3.5 w-3.5 text-primary" />
-          <span className="font-mono text-[10px] font-semibold">{formatClock(clock, timeZone)}</span>
-        </div>
-        <TimeZoneSelect
-          value={timeZone}
-          onChange={changeTimeZone}
-          menuLabel="Economic calendar timezone"
-          compact
-        />
-        <button type="button" onClick={() => void loadCalendar(true)} disabled={refreshing || loading} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-foreground disabled:opacity-50" aria-label="Refresh calendar">
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-        </button>
       </header>
-
-      <div className="shrink-0 border-b border-border bg-panel px-3 py-2">
-        <div className="flex items-center gap-1.5 overflow-x-auto">
-          <span className="mr-1 flex shrink-0 items-center gap-1.5 px-1 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted"><Filter className="h-3 w-3" /> Currencies</span>
-          {ECONOMIC_CALENDAR_CURRENCIES.map((currency) => {
-            const active = selectedCurrencies.includes(currency);
-            return (
-              <button
-                key={currency}
-                type="button"
-                onClick={() => toggleCurrency(currency)}
-                aria-pressed={active}
-                className={`flex h-8 shrink-0 items-center gap-2 rounded-xl border px-3 font-mono text-[10px] font-semibold transition-all ${
-                  active ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent bg-surface/50 text-muted hover:border-border hover:text-foreground"
-                }`}
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-primary shadow-[0_0_8px_var(--primary)]" : "bg-muted/40"}`} />
-                {currency}
-              </button>
-            );
-          })}
-          <button type="button" onClick={() => {
-            const next = selectedCurrencies.length === ECONOMIC_CALENDAR_CURRENCIES.length ? [] : [...ECONOMIC_CALENDAR_CURRENCIES];
-            setSelectedCurrencies(next);
-            writeLocalStorage(CURRENCIES_STORAGE_KEY, JSON.stringify(next));
-          }} className="ml-1 h-8 shrink-0 rounded-xl px-2.5 text-[9px] font-semibold text-muted hover:text-foreground">
-            {selectedCurrencies.length === ECONOMIC_CALENDAR_CURRENCIES.length ? "Clear" : "All"}
-          </button>
-        </div>
-      </div>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         {error && !payload ? <div className="border-b border-danger/20 bg-danger/10 px-4 py-2 text-center text-[10px] text-danger">{error}</div> : null}
