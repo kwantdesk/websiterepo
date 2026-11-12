@@ -74,10 +74,10 @@ assert.match(
   /\[\.\.\.tradingDates\]\.reverse\(\)\.forEach/,
   "the current trading date must be scheduled before historical dates",
 );
-assert.ok(
-  workspace.indexOf("await readCachedInstitutionalVolumeProfile(requestArgs)")
-    < workspace.indexOf("await fetchInstitutionalVolumeProfile(requestArgs)"),
-  "the exact cached profile must paint before authoritative network reconciliation",
+assert.match(
+  workspace,
+  /void readCachedInstitutionalVolumeProfile\(requestArgs\)\.then\([\s\S]*?if \(!fresh\) publish\(cached\);[\s\S]*?fresh = publish\(await fetchInstitutionalVolumeProfile\(requestArgs\)\)/,
+  "cache and network must start independently, with the first exact cache hit eligible to paint",
 );
 assert.doesNotMatch(
   workspace,
@@ -86,7 +86,7 @@ assert.doesNotMatch(
 );
 assert.match(
   workspace,
-  /const requiresExecutionStream = needsOrderFlowHistory\s*\|\| needsLiveVolumeProfiles\s*\|\| isEventBasedChartInterval\(pane\.timeframe\)/,
+  /const requiresExecutionStream = pane\.broker === "Databento"\s*\|\| needsOrderFlowHistory\s*\|\| needsLiveVolumeProfiles\s*\|\| isEventBasedChartInterval\(pane\.timeframe\)/,
   "volume-profile-only charts must open the shared Rithmic execution stream",
 );
 

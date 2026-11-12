@@ -21,8 +21,8 @@ assert.doesNotMatch(
 );
 assert.match(
   workspace,
-  /if \(!includeCompletedProfiles && tradingDate !== currentDailyTradingDate\) return/,
-  "recurring reconciliation must not reload every immutable historical session",
+  /if \(!includeCompletedProfiles && \(!isNewest \|\| completed && readyCompletedDailyProfiles\.has\(profileKey\)\)\) return/,
+  "recurring reconciliation retries missing newest sessions without reloading settled history",
 );
 assert.match(
   workspace,

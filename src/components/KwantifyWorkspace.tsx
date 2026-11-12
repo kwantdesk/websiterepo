@@ -9484,6 +9484,7 @@ function WorkspaceChartPaneComponent({
     let cancelled = false;
     let refreshTimer: number | null = null;
     let consecutiveCurrentProfileFailures = 0;
+    const readyCompletedDailyProfiles = new Set<string>();
     let nextCompletedProfilesRefreshAt = Date.now() + 5 * 60_000;
     const tradingDates = dailyTradingDateSignature
       ? dailyTradingDateSignature.split(",")
@@ -9624,7 +9625,7 @@ function WorkspaceChartPaneComponent({
           expectedTradingDate
           && profileTradingDateFor(profile) !== expectedTradingDate
         )
-      ) return;
+      ) return false;
       let replacement = profile;
       // A recorded historical checkpoint can trail the live Rithmic edge.
       // Reapply the current execution tape before replacing the profile so a
@@ -9651,11 +9652,14 @@ function WorkspaceChartPaneComponent({
         next.push(replacement);
         return next.sort((left, right) => left.startMs - right.startMs);
       });
+      return true;
     };
 
     const refreshExactProfiles = async (includeCompletedProfiles: boolean) => {
       const requests: Promise<unknown>[] = [];
-      let currentDailyProfileLoaded = !dailyProfileInstance;
+      const priorityDailyJobs: (() => Promise<boolean>)[] = [];
+      const olderDailyJobs: (() => Promise<boolean>)[] = [];
+      const newestSessionIds = new Set<string>();
       if (dailyProfileInstance) {
         const dailyFilterMode = sessionFilterModeFor(dailyProfileSettings);
         const requestedSplits = dailySessionSplitsFor(dailyProfileSettings);
@@ -9703,18 +9707,7 @@ function WorkspaceChartPaneComponent({
           ));
           return kept.length === current.length ? current : kept;
         });
-        tradingDates.forEach((tradingDate) => {
-          // Completed sessions are immutable. Load them once when the effect
-          // starts or settings change; recurring reconciliation only needs the
-          // developing session. Refetching every visible historical profile
-          // on every timer multiplied one outage into hundreds of thousands
-          // of identical Vercel invocations.
-          if (!includeCompletedProfiles && tradingDate !== currentDailyTradingDate) return;
-          // Splitting a day means one profile PER window, so Asia, London and
-          // New York stand beside each other. Each segment is requested as its
-          // own explicit span with no further filtering; the server then has
-          // nothing to merge.
-          const segments = segmentsByDate.get(tradingDate) ?? [];
+        for (const [tradingDate, segments] of segmentsByDate) {
           const jobs = segments.length
             ? segments.map((segment) => ({
                 startMs: segment.startMs,
@@ -9732,6 +9725,7 @@ function WorkspaceChartPaneComponent({
                 sessionId: undefined,
                 sessionLabel: undefined,
               }] : [];
+          jobs.sort((left, right) => (right.startMs ?? 0) - (left.startMs ?? 0));
           jobs.forEach((job) => {
             // A selected London/NY window that has not opened cannot have
             // executions yet. Do not queue known-empty future history ahead
@@ -9741,8 +9735,14 @@ function WorkspaceChartPaneComponent({
             const startMs = job.startMs ?? replaySession?.startMs;
             const endMs = replayProfileClockMs == null ? job.endMs : Math.min(job.endMs ?? replaySession?.endMs ?? profileClockMs, profileClockMs);
             if (startMs !== undefined && (startMs >= profileClockMs || endMs !== undefined && endMs <= startMs)) return;
+            const sessionId = job.sessionId ?? "";
+            const isNewest = !newestSessionIds.has(sessionId);
+            newestSessionIds.add(sessionId);
+            const completed = (job.endMs ?? cmeSessionWindowForDate(tradingDate)?.endMs ?? Infinity) <= profileClockMs;
+            const profileKey = `${tradingDate}:${sessionId}`;
+            if (!includeCompletedProfiles && (!isNewest || completed && readyCompletedDailyProfiles.has(profileKey))) return;
             const requestArgs = {
-              symbol: displayCmeSymbol(pane.symbol),
+              symbol: activeRoot,
               contractSymbol: resolvedContractSymbol ?? undefined,
               period: "daily",
               tradingDate: job.tradingDate,
@@ -9758,31 +9758,36 @@ function WorkspaceChartPaneComponent({
               sessionEndMinutes: Number(dailyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
               useEndSessionAsStartDay: dailyProfileSettings.useEndSessionAsStartDay === true,
             } as const;
-            requests.push((async () => {
-              // Paint the exact last-known profile first, then reconcile from
-              // the gateway. This read is keyed; it never scans the user's
-              // entire multi-instrument indicator cache.
-              const cachedProfile = await readCachedInstitutionalVolumeProfile(requestArgs);
-              replaceExactProfile(
-                cachedProfile && job.sessionId
-                  ? { ...cachedProfile, tradingDate, sessionId: job.sessionId, sessionLabel: job.sessionLabel }
-                  : cachedProfile,
-                tradingDate,
-              );
-              const profile = await fetchInstitutionalVolumeProfile(requestArgs);
-              if (tradingDate === currentDailyTradingDate && profile) {
-                currentDailyProfileLoaded = true;
-              }
-              replaceExactProfile(
+            const load = async () => {
+              const publish = (profile: InstitutionalVolumeProfile | null) => replaceExactProfile(
                 profile && job.sessionId
                   ? { ...profile, tradingDate, sessionId: job.sessionId, sessionLabel: job.sessionLabel }
                   : profile,
                 tradingDate,
               );
-            })());
+              // A cache hit can paint first, but a slow browser storage read
+              // must not delay the request or overwrite its fresher result.
+              let fresh = false;
+              void readCachedInstitutionalVolumeProfile(requestArgs).then((cached) => {
+                if (!fresh) publish(cached);
+              }).catch(() => {});
+              fresh = publish(await fetchInstitutionalVolumeProfile(requestArgs));
+              if (fresh && completed && isNewest) readyCompletedDailyProfiles.add(profileKey);
+              return fresh;
+            };
+            (isNewest ? priorityDailyJobs : olderDailyJobs).push(load);
           });
-        });
+        }
       }
+
+      // Give the newest opened window of each selected session the first
+      // network slots. Before the New York open that window is yesterday's.
+      const priorityResults = await Promise.allSettled(priorityDailyJobs.map((load) => load()));
+      if (cancelled) return;
+      const currentDailyProfileLoaded = priorityResults.every((result) =>
+        result.status === "fulfilled" && result.value,
+      );
+      requests.push(...olderDailyJobs.map((load) => load()));
       if (weeklyProfileInstance && includeCompletedProfiles) {
         const profileClockMs = replayProfileClockMs ?? Date.now();
         // Stock weekly behaviour is one rolling calculation over the latest
@@ -9851,7 +9856,9 @@ function WorkspaceChartPaneComponent({
           replaceExactProfile(await fetchInstitutionalVolumeProfile(compositeRequestArgs));
         })());
       }
-      await Promise.allSettled(requests);
+      // Older requests paint independently. They must not postpone retrying
+      // the newest profile if its first request missed.
+      void Promise.allSettled(requests);
       if (!cancelled) {
         setDailyProfileFailure(!dailyProfileInstance || currentDailyProfileLoaded ? null : {
           key: `${activeRoot}:${resolvedContractSymbol}:${dailyProfileInstance.instanceId}`,
