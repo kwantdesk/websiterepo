@@ -143,18 +143,18 @@ test("event charts request the canonical execution archive and share tape by con
   );
   assert.match(
     workspaceSource,
-    /return `\$\{symbol\}::\$\{currentCmeContract\(symbol\) \?\? "ROOT"\}::flow`;/,
+    /return `\$\{symbol\}::\$\{currentCmeContract\(symbol\) \?\? "ROOT"\}::flow::\$\{scope\}`;/,
   );
   assert.match(
     workspaceSource,
-    /function fetchWorkspaceHistoricalExecutions\(symbol: string\)/,
+    /function fetchWorkspaceHistoricalExecutions\(\s*symbol: string,/,
   );
   assert.match(
     workspaceSource,
-    /timeframe=1m&days=\$\{DEFAULT_CHART_HISTORY_CALENDAR_DAYS\}&orderFlow=1/,
+    /timeframe=1m&days=\$\{requestedDays\}&orderFlow=1/,
   );
   assert.match(
     workspaceSource,
-    /fetchWorkspaceHistoricalExecutions\(pane\.symbol\)/,
+    /fetchWorkspaceHistoricalExecutions\(pane\.symbol, historicalExecutionDays\)/,
   );
 });

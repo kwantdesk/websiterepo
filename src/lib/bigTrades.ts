@@ -16,6 +16,30 @@ export type BigTradePrint = {
 
 export type AnchoredBigTradePrint = BigTradePrint & { chartTimestamp: number };
 
+export function combineBigTradePrints(prints: Iterable<AnchoredBigTradePrint>, maximumPerBar = 50) {
+  const grouped = new Map<string, AnchoredBigTradePrint>();
+  for (const print of prints) {
+    const id = `bar-${print.chartTimestamp}-${print.side}`;
+    const existing = grouped.get(id);
+    if (!existing) {
+      grouped.set(id, { ...print, id });
+      continue;
+    }
+    const total = existing.volume + print.volume;
+    existing.price = (existing.price * existing.volume + print.price * print.volume) / total;
+    existing.volume = total;
+    existing.executions += print.executions;
+    existing.timestamp = Math.min(existing.timestamp, print.timestamp);
+  }
+  if (maximumPerBar !== 1) return [...grouped.values()];
+  const strongest = new Map<number, AnchoredBigTradePrint>();
+  for (const print of grouped.values()) {
+    const prior = strongest.get(print.chartTimestamp);
+    if (!prior || print.volume > prior.volume) strongest.set(print.chartTimestamp, print);
+  }
+  return [...strongest.values()];
+}
+
 /**
  * Reproduce the chart's unique time coordinate for event bars.
  *
@@ -488,11 +512,12 @@ export function advanceBigTradeLiveAccumulator(
 export function sizeBigTradePrint<T extends { timestamp: number; volume: number }>(
   candidate: T,
   context: BigTradeLiveContext,
+  aggregateScale?: { sizeFloor: number; visualCeiling: number } | null,
 ): T & { radius: number; opacity: number } {
-  const scale = context.scaleFor(candidate.timestamp);
+  const scale = aggregateScale ?? context.scaleFor(candidate.timestamp);
   const visualRange = Math.max(1, scale.visualCeiling - scale.sizeFloor);
   // Capped prints draw at the top of the scale rather than stretching it.
-  const sizingVolume = context.capActive && context.cappingMode === "size"
+  const sizingVolume = !aggregateScale && context.capActive && context.cappingMode === "size"
     ? Math.min(candidate.volume, context.cappingMaxVolume)
     : candidate.volume;
   const significance = clamp((sizingVolume - scale.sizeFloor) / visualRange, 0, 1);

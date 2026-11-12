@@ -11,6 +11,27 @@ export function indicatorSettingDisabledReason(
   if (key === "useThemeColors" && isVolumeProfileGradientActive(settings.gradientPreset)) {
     return "Turn the colour scheme Off to use theme colours.";
   }
+  if (id === "big-trades") {
+    if (["rthManualFilter", "rthFilterMode", "rthAutomaticIntensity", "rthStandardDeviation"].includes(key) && settings.sessionFilterEnabled === false) {
+      return "Enable the separate regular-hours filter to adjust these values.";
+    }
+    if (key === "automaticIntensity" && settings.filterMode !== "automatic"
+      || key === "rthAutomaticIntensity" && settings.rthFilterMode !== "automatic") {
+      return "Select Automatic filter mode to adjust its intensity.";
+    }
+    if (key === "adaptiveTimeframeFilter" && settings.combineByCandle !== true) {
+      return "Enable Combine By Candle to filter the combined markers.";
+    }
+    if (["clusterWindowMs", "clusterPriceTicks"].includes(key) && settings.enableClustering === false) {
+      return "Enable clustering to adjust how prints are grouped.";
+    }
+    if (["projectionLineWidth", "projectionOpacity", "projectionLineStyle"].includes(key) && settings.showProjection !== true) {
+      return "Enable price projections to adjust their appearance.";
+    }
+    if (key.startsWith("deep") && settings.showDeepContracts !== true) {
+      return "Enable Deep Contracts to adjust its boxes.";
+    }
+  }
   if (id === "deep-m-effort-nq") {
     if (["maAboveColor", "maBelowColor", "maLineWidth", "showValueLabel"].includes(key) && settings.showMovingAverage !== true) {
       return "Enable the moving average to adjust its appearance.";

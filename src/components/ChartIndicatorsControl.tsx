@@ -402,7 +402,8 @@ const isTpoIndicator = (id: string) => id === "tpo-chart" || id === "weekly-tpo"
 const hasOwnPaletteSection = (id: string) =>
   VOLUME_PROFILE_INDICATOR_IDS.has(id) || isTpoIndicator(id) || id === "deep-print-footprint";
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
-  indicatorId === "average-true-range-atr" && key === "lineWidth" ? "Style"
+  indicatorId === "big-trades" && /^(?:minimumOpacity|maximumOpacity|minimumSize|maximumSize|labelMinSize|projectionLineWidth|projectionOpacity|deepOpacity|deepLineWidth)$/.test(key) ? "Style"
+    : indicatorId === "average-true-range-atr" && key === "lineWidth" ? "Style"
     : indicatorId === "volume" ? "General" : indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
     : indicatorId === "pivot-points"
@@ -683,11 +684,12 @@ function bigTradeModeFor(
   indicatorId: string,
   key: string,
   value: number,
+  settings?: ChartIndicatorInstance["settings"],
 ): Record<string, string> {
   if (indicatorId !== "big-trades") return {};
   if (key === "manualFilter") return { filterMode: "manual" };
   if (key === "rthManualFilter") return { rthFilterMode: "manual" };
-  if (key === "cappingMaxVolume") return { cappingMode: value > 0 ? "size" : "off" };
+  if (key === "cappingMaxVolume") return { cappingMode: value <= 0 ? "off" : settings?.cappingMode === "reject" ? "reject" : "size" };
   return {};
 }
 
@@ -998,6 +1000,16 @@ function applyNumericIndicatorSetting(
     ...(currentSettings ?? {}),
     [key]: value,
   };
+  if (indicatorId === "big-trades") {
+    for (const [minimumKey, maximumKey, defaultMinimum, defaultMaximum] of [
+      ["minimumOpacity", "maximumOpacity", 25, 90],
+      ["minimumSize", "maximumSize", 6, 32],
+    ] as const) {
+      if (key === minimumKey && value > Number(next[maximumKey] ?? defaultMaximum)) next[maximumKey] = value;
+      if (key === maximumKey && value < Number(next[minimumKey] ?? defaultMinimum)) next[minimumKey] = value;
+    }
+    return next;
+  }
   if (indicatorId === "awesome-oscillator") {
     if (key === "fastLength" && value >= Number(next.slowLength ?? 34)) next.slowLength = value + 1;
     if (key === "slowLength" && value <= Number(next.fastLength ?? 5)) next.fastLength = value - 1;
@@ -6555,6 +6567,44 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "big-trades" ? (
+                <>
+                  {([
+                    ["Inputs", [
+                      { key: "filterMode", label: "Trade filter mode", fallback: "manual", options: [["manual", "Manual"], ["automatic", "Automatic"]] },
+                      { key: "automaticIntensity", label: "Automatic filter intensity", fallback: "medium", options: [["low", "Low"], ["medium", "Medium"], ["strong", "Strong"]] },
+                      { key: "rthFilterMode", label: "Regular hours filter mode", fallback: "manual", options: [["manual", "Manual"], ["automatic", "Automatic"]] },
+                      { key: "rthAutomaticIntensity", label: "Regular hours filter intensity", fallback: "medium", options: [["low", "Low"], ["medium", "Medium"], ["strong", "Strong"]] },
+                      { key: "cappingMode", label: "Oversized trades", fallback: "off", options: [["off", "No cap"], ["size", "Cap marker size"], ["reject", "Hide above cap"]] },
+                    ]],
+                    ["Style", [
+                      { key: "markerType", label: "Marker shape", fallback: "circle", options: [["circle", "Circle"], ["square", "Square"], ["diamond", "Diamond"], ["text", "Text"]] },
+                      { key: "informationMode", label: "Marker label", fallback: "volume", options: [["volume", "Contracts"], ["side-volume", "Side and contracts"], ["executions", "Executions"], ["full", "Side, contracts and executions"]] },
+                      { key: "projectionLineStyle", label: "Projection line style", fallback: "dashed", options: [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]] },
+                    ]],
+                  ] as const).map(([section, controls]) => (
+                    <div key={section} data-settings-section={section} className="space-y-3">
+                      {controls.map(({ key, label, fallback, options }) => (
+                        <label key={key} className="block space-y-1 text-[10px] text-muted">
+                          <span>{label}</span>
+                          <KwantSelect
+                            value={String(settingsInstance.settings?.[key] ?? fallback)}
+                            disabled={Boolean(indicatorSettingDisabledReason(settingsDefinition.id, key, settingsInstance.settings))}
+                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                              ...current, settings: { ...current.settings, [key]: event.target.value },
+                            }))}
+                            menuLabel={label}
+                            className="h-9 w-full border border-border bg-background px-3 text-foreground"
+                          >
+                            {options.map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+                          </KwantSelect>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </>
+              ) : null}
+
               {settingsDefinition.id === "deep-m-effort-nq" ? (
                 <>
                   <div data-settings-section="Style" className="space-y-3">
@@ -8238,7 +8288,7 @@ export default function ChartIndicatorsControl({
                       ...current,
                       settings: {
                         ...applyNumericIndicatorSetting(settingsDefinition.id, current.settings, setting.key, nextValue),
-                        ...bigTradeModeFor(settingsDefinition.id, setting.key, nextValue),
+                        ...bigTradeModeFor(settingsDefinition.id, setting.key, nextValue, current.settings),
                       },
                     }))}
                   />

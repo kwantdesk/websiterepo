@@ -207,6 +207,8 @@ import {
   retainBigTradePrints,
   type BigTradeLiveContext,
   type BigTradeLiveAccumulator,
+  combineBigTradePrints,
+  sizeBigTradePrint,
   type AnchoredBigTradePrint,
   type BigTradePrint,
 } from "@/lib/bigTrades";
@@ -12172,6 +12174,7 @@ function Chart({
     [indicatorSignature, indicators],
   );
   const retainedDeepContractsRef = useRef<DeepContractEvent[]>([]);
+  const deepContractRetentionScopeRef = useRef("");
   const deepContractFullScanIdentityRef = useRef("");
   const deepContractReplayClockRef = useRef<number | null>(null);
   const deepContractTapeWatermarkRef = useRef(0);
@@ -12197,9 +12200,13 @@ function Chart({
     if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return [];
     const settings = bigTradesIndicator.settings ?? {};
     const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}:${bigContractHistory.length}`;
+    const retentionScope = JSON.stringify([observedCandleScope, contractSymbol, priceFormat.minMove,
+      settings.deepMinimumTradeSize, settings.deepBoxTickRange, settings.deepTickMargin, settings.clusterWindowMs]);
+    const scopeChanged = deepContractRetentionScopeRef.current !== retentionScope;
+    deepContractRetentionScopeRef.current = retentionScope;
     const replayReset = replayRetentionMustReset(deepContractReplayClockRef.current, replayTimestampMs);
     deepContractReplayClockRef.current = replayTimestampMs;
-    const requiresFullScan = replayReset || deepContractFullScanIdentityRef.current !== fullScanIdentity;
+    const requiresFullScan = scopeChanged || replayReset || deepContractFullScanIdentityRef.current !== fullScanIdentity;
     deepContractFullScanIdentityRef.current = fullScanIdentity;
     const next = calculateDeepContractEvents(
       requiresFullScan ? mergeBigContractHistory(replayTimestampMs == null ? bigContractHistory : [], indicatorMarketTrades) : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
@@ -12214,14 +12221,14 @@ function Chart({
       Number(indicatorCandles.at(-1)?.timestamp ?? 0),
     );
     const retained = retainDeepContractEvents(
-      replayTimestampMs != null && requiresFullScan ? [] : retainedDeepContractsRef.current,
+      scopeChanged || replayTimestampMs != null && requiresFullScan ? [] : retainedDeepContractsRef.current,
       next,
       (newestKnown || Date.now()) - days * 86_400_000,
     );
     retainedDeepContractsRef.current = retained;
     return retained;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the coarse key is intentional; the live listener covers intervening executions
-  }, [bigTradeFullPassKey, bigTradesIndicator, priceFormat.minMove, replayTimestampMs]);
+  }, [bigTradeFullPassKey, bigTradesIndicator, priceFormat.minMove, replayTimestampMs, observedCandleScope, contractSymbol]);
   const depthOfMarketIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "depth-of-market") ?? null,
@@ -12242,6 +12249,9 @@ function Chart({
   // Prints already earned, kept across tape compaction. The raw execution tape
   // holds roughly four hours of exact prints; "Days to load" asks for days.
   const retainedBigTradePrintsRef = useRef<BigTradePrint[]>([]);
+  const bigTradeRetentionScopeRef = useRef("");
+  const bigTradeLiveCandleGroupsRef = useRef(new Map<number, Map<string, AnchoredBigTradePrint>>());
+  const bigTradeAggregateScaleRef = useRef<{ sizeFloor: number; visualCeiling: number } | null>(null);
   const bigTradeCommittedRef = useRef<{ markers: BigTradePrimitiveMarker[]; watermark: number }>({
     markers: [], watermark: 0,
   });
@@ -12256,9 +12266,13 @@ function Chart({
       }
       const settings = bigTradesIndicator.settings ?? {};
       const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}:${bigContractHistory.length}`;
+      const retentionScope = JSON.stringify([observedCandleScope, contractSymbol, priceFormat.minMove,
+        settings.enableClustering, settings.clusterWindowMs, settings.clusterPriceTicks]);
+      const scopeChanged = bigTradeRetentionScopeRef.current !== retentionScope;
+      bigTradeRetentionScopeRef.current = retentionScope;
       const replayReset = replayRetentionMustReset(bigTradeReplayClockRef.current, replayTimestampMs);
       bigTradeReplayClockRef.current = replayTimestampMs;
-      const requiresFullScan = replayReset || bigTradeFullScanIdentityRef.current !== fullScanIdentity;
+      const requiresFullScan = scopeChanged || replayReset || bigTradeFullScanIdentityRef.current !== fullScanIdentity;
       bigTradeFullScanIdentityRef.current = fullScanIdentity;
       const { prints, context } = calculateBigTradePrintsWithContext(
         indicatorCandles,
@@ -12297,7 +12311,7 @@ function Chart({
       );
       const anchor = newestKnown > 0 ? newestKnown : (replayTimestampMs ?? Date.now());
       const retained = retainBigTradePrints(
-        replayTimestampMs != null && requiresFullScan ? []
+        scopeChanged || replayTimestampMs != null && requiresFullScan ? []
           : retainedBigTradePrintsRef.current.filter(print => !catchup?.removedIds.has(print.id)),
         catchup ? [...prints.filter(print => !catchup.removedIds.has(print.id)), ...catchup.prints] : prints,
         context,
@@ -12307,12 +12321,14 @@ function Chart({
       return retained;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the coarse key is intentional; the live listener covers intervening executions
-    [bigTradeFullPassKey, bigTradesIndicator, priceFormat.minMove, replayTimestampMs],
+    [bigTradeFullPassKey, bigTradesIndicator, priceFormat.minMove, replayTimestampMs, observedCandleScope, contractSymbol],
   );
   const anchoredBigTradePrints = useMemo(() => {
     const liveSnapshot = bigTradeLatestLiveTapeRef.current;
     const anchorCandles = liveSnapshot?.scope === observedCandleScope
       ? liveSnapshot.candles ?? indicatorCandles : indicatorCandles;
+    bigTradeLiveCandleGroupsRef.current.clear();
+    bigTradeAggregateScaleRef.current = null;
     if (!anchorCandles.length || !bigTradePrints.length) return [];
     const anchored = anchorBigTradePrintsToCandles(
       bigTradePrints,
@@ -12352,29 +12368,15 @@ function Chart({
         .sort((left, right) => left.timestamp - right.timestamp);
     }
 
-    const grouped = new Map<string, AnchoredBigTradePrint>();
-    anchored.forEach((print) => {
-      const key = `${print.chartTimestamp}:${print.side}`;
-      const existing = grouped.get(key);
-      if (!existing) {
-        grouped.set(key, { ...print, id: `bar-${print.chartTimestamp}-${print.side}` });
-        return;
-      }
-      // The marker sits where the size it reports actually traded.
-      //
-      // Letting the first qualifying execution own the price put a marker
-      // carrying a whole bar's volume at whichever print happened to qualify
-      // first — measured 33 points away from the volume-weighted price of the
-      // 359 prints it represented. Weighting the price as volume accumulates
-      // is the same rule clustering already uses.
-      const combinedVolume = existing.volume + print.volume;
-      existing.price = combinedVolume > 0
-        ? (existing.price * existing.volume + print.price * print.volume) / combinedVolume
-        : existing.price;
-      existing.volume = combinedVolume;
-      existing.executions += print.executions;
-    });
-    const aggregates = Array.from(grouped.values());
+    const groups = bigTradeLiveCandleGroupsRef.current;
+    const recentFrom = (anchorCandles.at(-1)?.timestamp ?? Infinity) - candleIntervalMs;
+    for (const print of anchored) {
+      if (print.chartTimestamp < recentFrom) continue;
+      const bucket = groups.get(print.chartTimestamp) ?? new Map<string, AnchoredBigTradePrint>();
+      bucket.set(print.id, print);
+      groups.set(print.chartTimestamp, bucket);
+    }
+    const aggregates = combineBigTradePrints(anchored, Number(indicatorSettings.maxMarkersPerBar ?? 6));
     const intervalMinutes = candleIntervalMs / 60_000;
     const historical = aggregates.filter((print) =>
       print.chartTimestamp !== anchorCandles.at(-1)?.timestamp);
@@ -12403,6 +12405,7 @@ function Chart({
     const volumes = visible.map((print) => print.volume);
     const minimumVolume = Math.min(...volumes);
     const maximumVolume = Math.max(...volumes);
+    bigTradeAggregateScaleRef.current = { sizeFloor: minimumVolume, visualCeiling: maximumVolume };
     const visualRange = Math.max(1, maximumVolume - minimumVolume);
     const minimumSize = clamp(Number(indicatorSettings.minimumSize ?? 6), 1, 80);
     const maximumSize = Math.max(
@@ -12487,6 +12490,31 @@ function Chart({
       const anchored = anchorBigTradePrintsToCandles(
         fresh, detail.candles ?? sampledIndicatorCandlesRef.current, eventBars ? null : candleIntervalMs,
       );
+      if (!eventBars && candleIntervalMs != null && candleIntervalMs >= 60_000 && bigTradesIndicator.settings?.combineByCandle === true) {
+        const groups = bigTradeLiveCandleGroupsRef.current;
+        const changed = new Set<number>();
+        for (const [timestamp, bucket] of groups) {
+          for (const id of removedIds) if (bucket.delete(id)) changed.add(timestamp);
+        }
+        for (const print of anchored) {
+          const bucket = groups.get(print.chartTimestamp) ?? new Map<string, AnchoredBigTradePrint>();
+          bucket.set(print.id, print);
+          groups.set(print.chartTimestamp, bucket);
+          changed.add(print.chartTimestamp);
+        }
+        const retained = committed.markers.filter(marker => !changed.has(Number(marker.time) * 1_000));
+        for (const timestamp of changed) {
+          const bucket = groups.get(timestamp)!;
+          for (const print of combineBigTradePrints(bucket.values(), Number(bigTradesIndicator.settings?.maxMarkersPerBar ?? 6))) {
+            retained.push({ ...sizeBigTradePrint(print, context, bigTradeAggregateScaleRef.current), time: Math.floor(timestamp / 1_000) as Time });
+          }
+        }
+        const recentFrom = (detail.candles?.at(-1)?.timestamp ?? anchored.at(-1)?.chartTimestamp ?? -Infinity) - candleIntervalMs;
+        for (const timestamp of groups.keys()) if (timestamp < recentFrom) groups.delete(timestamp);
+        committed.markers = retained;
+        primitive.update(retained, options);
+        return;
+      }
       const batchChartTimes = eventBars && detail.candles ? buildEventBarChartTimeMap(detail.candles) : null;
       const markers = anchored.flatMap(print => {
         const eventTime = eventBars

@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { admitLiveBigTradePrints, advanceBigTradeLiveAccumulator, createBigTradeLiveAccumulator, calculateBigTradePrintsWithContext, mergeBigTradeLiveMarkers, anchorBigTradePrintsToCandles } from '../src/lib/bigTrades.ts';
+import { admitLiveBigTradePrints, advanceBigTradeLiveAccumulator, createBigTradeLiveAccumulator, calculateBigTradePrintsWithContext, mergeBigTradeLiveMarkers, anchorBigTradePrintsToCandles, combineBigTradePrints, sizeBigTradePrint } from '../src/lib/bigTrades.ts';
 const now=Date.UTC(2026,9,27,3);
 const trade=(id,timestamp,volume,extra={})=>({eventId:id,recordIndex:timestamp,timestamp,open:20000,high:20000,low:20000,close:20000,trades:1,volume,askVolume:volume,bidVolume:0,delta:volume,aggressor:'BUY',...extra});
 const settings={filterMode:'manual',manualFilter:50,enableClustering:false,sessionFilterEnabled:false};
@@ -50,4 +50,29 @@ test('actual chart live handler preserves a 50-contract marker through sampled r
  assert.equal(drawn.length,1);assert.equal(drawn[0].id,'real');assert.equal(drawn[0].time,now/1000);assert.equal(drawn[0].volume,50);
  const full=calculateBigTradePrintsWithContext([],tape,settings,now+3000).prints;
  assert.deepEqual(drawn.map(p=>p.id),full.map(p=>p.id));
+ runtime.bigTradesIndicator.settings.combineByCandle=true;
+ runtime.bigTradeCommittedRef.current.markers=[];
+ runtime.bigTradeLiveAccumulatorRef.current=createBigTradeLiveAccumulator(context(),[],now);
+ runtime.bigTradeLiveCandleGroupsRef={current:new Map()};
+ runtime.bigTradeAggregateScaleRef={current:{sizeFloor:50,visualCeiling:200}};
+ runtime.combineBigTradePrints=combineBigTradePrints;
+ runtime.sizeBigTradePrint=sizeBigTradePrint;
+ runtime.receive({detail:{key:'pane',tape}});
+ assert.equal(drawn.length,1);
+ assert.equal(drawn[0].id,`bar-${now}-ASK`);
+ const added=trade('another',now+4000,75,{close:20000.5});
+ runtime.receive({detail:{key:'pane',tape:[...tape,added]}});
+ assert.equal(drawn.length,1);
+ assert.equal(drawn[0].volume,125);
+ assert.equal(drawn[0].executions,2);
+ assert.ok(Math.abs(drawn[0].price-20000.3)<1e-8);
+});
+
+test('combined sides still obey a one-marker chart-bar cap', () => {
+  const prints = [
+    { id: 'ask', chartTimestamp: now, timestamp: now, price: 100, volume: 50, executions: 1, side: 'ASK' },
+    { id: 'bid', chartTimestamp: now, timestamp: now + 1, price: 99, volume: 75, executions: 1, side: 'BID' },
+  ];
+  assert.equal(combineBigTradePrints(prints, 2).length, 2);
+  assert.deepEqual(combineBigTradePrints(prints, 1).map(print => [print.side, print.volume]), [['BID', 75]]);
 });

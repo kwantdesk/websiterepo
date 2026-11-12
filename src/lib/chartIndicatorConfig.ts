@@ -1201,6 +1201,8 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     // 1 = always. Shrinking the markers used to silently erase the contract
     // counts, so the number now stays by default and hiding it is opt-in.
     { key: "labelMinSize", label: "Show number from marker size", defaultValue: 1, min: 1, max: 160 },
+    { key: "projectionLineWidth", label: "Projection line width", defaultValue: 1, min: 0.5, max: 4, step: 0.5 },
+    { key: "projectionOpacity", label: "Projection opacity (%)", defaultValue: 55, min: 0, max: 100 },
     { key: "deepMinimumTradeSize", label: "Deep contracts minimum trade size", defaultValue: 30, min: 1, max: 5000, step: 1 },
     { key: "deepBoxTickRange", label: "Deep contracts box height (ticks)", defaultValue: 4, min: 1, max: 100, step: 1 },
     { key: "deepTickMargin", label: "Deep contracts cluster margin (ticks)", defaultValue: 1, min: 0, max: 100, step: 1 },

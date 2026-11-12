@@ -7,15 +7,12 @@ const catalogSource = await fs.readFile(
   "utf8",
 );
 
-test("large execution indicators share the Big Contracts display name without changing saved IDs", () => {
+test("Big Contracts has one library entry and preserves the Big Trades ID", () => {
   assert.match(
     catalogSource,
     /indicator\("Big Contracts",[^\n]+"Big Trades"\)/,
   );
-  assert.match(
-    catalogSource,
-    /indicator\("Big Contracts",[^\n]+"Deep Trades"\)/,
-  );
+  assert.equal(catalogSource.match(/indicator\("Big Contracts"/g)?.length, 1);
   assert.doesNotMatch(catalogSource, /indicator\("Big \/ Deep Trades"/);
   assert.doesNotMatch(catalogSource, /indicator\("KWANT Trades"/);
 });
