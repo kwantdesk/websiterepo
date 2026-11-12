@@ -1,0 +1,26 @@
+# Commodity Channel Index overhaul
+
+Catalogue item 16. This release covers the calculation, settings, history, live delivery and replay paths. Live market capture across the full instrument universe and the DeepCharts desktop comparison remain open.
+
+## Findings and repairs
+
+- CCI previously waited on sampled indicator history and had no subscription to the chart's forming-candle events. Both placements now use the full loaded host candles, share the existing local candle and execution events, and coalesce bursts at 100 ms. The lower pane retains original event timestamps and the overlay maps to the chart's native event slots. This adds zero market-data requests.
+- The old rolling mean could carry a nonfinite price through all subsequent points. CCI now pauses its calculation across invalid OHLC, warms up again on a complete window and breaks the line over the invalid interval. Flat windows return zero. The 2–500 length is enforced in settings and calculation. Open-only candle corrections now reach the OHLC average source.
+- Initial history is calculated once per input. When a candle changes, only the affected suffix is calculated again, seeded by the necessary preceding bars. Full snapshot corrections and removed bars invalidate the affected suffix. Replay reads causal host candles, trims cached future points on rewind, and disables the live listener.
+- Kept the stock 20-bar HLC3 oscillator. Added Close, HL2 and OHLC average sources, an optional SMA, and optional symmetric thresholds with a zero line. SMA and level settings disable their dependent controls while off. Line widths, line style and independent colours share the existing settings shell, palette and theme handling. Saved placement is restored and the overlay has its own scale.
+
+## Verification
+
+- 26 focused checks passed. They cover known numeric values, warmup, flat candles, malformed geometry, all price sources, setting normalization and availability, replay, and agreement with a full calculation after a live batch, open-only change, earlier correction, candle deletion and rewind. The broader integration run passed 145 of 150 checks and reproduced the same five catalogue and replay source-assertion failures documented in the prior overhaul.
+- Across 2,860 supported instrument/interval fixture pairs, 11,440 source-specific formula, live append and replay comparisons passed. The 540 unsupported pairs remain excluded by source interval availability. The matrix uses generated candles with instrument tick sizes, so it measures compatibility and causal calculations.
+- Read-only VPS history returned 31 exact-contract 1-minute candles each for NQZ6, MNQZ6, ESZ6 and MESZ6 during the sampled November 11 cash-open window. All four matched an independent CCI calculation and the replay prefix. The isolated browser used a 2,500-bar NQ recording for clock charts and a synthetic 500-volume timestamp mapping to test event placement.
+- Four isolated browser variants observed a forming update in 110–132 ms from local dispatch. Clock and volume lower panes ignored injected live candles in replay. The browser exercised source selection, the disabled and enabled sliders, threshold and average toggles, widths and line style, save and settings normalization, with no browser errors. A 390 px screenshot confirms the settings layout.
+- A 15-second read-only NQZ6 stream returned 25 executions in 25 batches. An isolated 5-second chart used 127 recorded candles and the existing execution-to-candle reducer, then showed 12 distinct visible CCI path changes with no browser errors. This was one overnight futures sample.
+- In a synthetic Node benchmark with 100,000 bars, SMA and levels enabled, the update p95 was 8.5 ms at 20 periods and 8.7 ms at 500. Full first calculation took 64 ms and 281 ms respectively. These are computation measurements. Browser stress with several maximum-length CCI instances remains open.
+- The webpack production build passed.
+
+## Reference and outstanding coverage
+
+- TradingView documents HLC3, mean absolute deviation and the 0.015 constant, matching the stock calculation. DeepCharts documents input choice, averaging, levels and plot controls. KwantDesk retains its lower pane and optional independent overlay and supplies SMA smoothing. DeepCharts documents additional average types. [TradingView CCI](https://www.tradingview.com/support/solutions/43000502001-commodity-channel-index-cci/) [DeepCharts CCI](https://helpdesk.deepcharts.com/portal/en/kb/articles/commodity-channel-index)
+- Static REA identified `VolAnalysis.Properties.IndicatorDescriptions.get_CCI` in the installed Deepchart.dll. The retained view exposed zero decoded anchors for that getter and partial source metadata. A read-only type-name scan found no matching calculation type across Deepchart.dll, VolumetricaCore.dll and VolSysAPI.dll. The native calculation and its live, historical and settings behavior remain deferred for the desktop pass.
+- Actual live delivery cadence and historical recording coverage for every supported instrument and interval are still unverified. Local dispatch latency, the synthetic matrix and four sampled futures history windows support different parts of the checklist.

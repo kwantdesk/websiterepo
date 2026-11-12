@@ -406,6 +406,8 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
     : indicatorId === "classic-gex-profile" && ["profileWidth", "minBarWidth", "contrast"].includes(key) ? "Style"
     : indicatorId === "chaikin-accumulation-distribution"
       ? ["showAverage", "averageType", "averageLength"].includes(key) ? "Inputs" : "Style"
+    : indicatorId === "commodity-channel-index-cci"
+      ? ["length", "source", "showAverage", "averageLength", "showLevels", "levelValue"].includes(key) ? "Inputs" : "Style"
     : indicatorId === "average-true-range-atr" && key === "lineWidth" ? "Style"
     : indicatorId === "volume" ? "General" : indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
@@ -753,6 +755,10 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
  * already on screen so nothing else visibly jumps.
  */
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
+  if (indicatorId === "commodity-channel-index-cci") {
+    const { primary, secondary, muted } = visibleIndicatorTheme(chartSettings);
+    return { plotColor: primary, averageColor: secondary, levelColor: muted };
+  }
   if (indicatorId === "chaikin-accumulation-distribution") {
     const { primary, secondary } = visibleIndicatorTheme(chartSettings);
     return { plotColor: primary, averageColor: secondary };
@@ -6693,7 +6699,23 @@ export default function ChartIndicatorsControl({
                 </label>
               ) : null}
 
-              {(settingsDefinition.id === "average-directional-index-adx" || settingsDefinition.id === "average-true-range-atr") ? (
+              {settingsDefinition.id === "commodity-channel-index-cci" ? (
+                <label data-settings-section="Inputs" className="block space-y-1 text-[10px] text-muted">
+                  <span>Price source</span>
+                  <KwantSelect value={String(settingsInstance.settings?.source ?? "hlc3")} menuLabel="CCI price source"
+                    onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current, settings: { ...current.settings, source: event.target.value },
+                    }))}
+                    className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                    <option value="hlc3">Typical price (HLC3)</option>
+                    <option value="close">Close</option>
+                    <option value="hl2">Median price (HL2)</option>
+                    <option value="ohlc4">OHLC average</option>
+                  </KwantSelect>
+                </label>
+              ) : null}
+
+              {["average-directional-index-adx", "average-true-range-atr", "commodity-channel-index-cci"].includes(settingsDefinition.id) ? (
                 <label data-settings-section="Style" className="block space-y-1 text-[10px] text-muted">
                   <span>Line style</span>
                   <KwantSelect
@@ -6701,7 +6723,8 @@ export default function ChartIndicatorsControl({
                     onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                       ...current, settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
                     }))}
-                    menuLabel={settingsDefinition.id === "average-true-range-atr" ? "ATR line style" : "ADX line style"}
+                    menuLabel={settingsDefinition.id === "commodity-channel-index-cci" ? "CCI line style"
+                      : settingsDefinition.id === "average-true-range-atr" ? "ATR line style" : "ADX line style"}
                     className="h-9 w-full border border-border bg-background px-3 text-foreground"
                   >
                     <option value="solid">Solid</option>

@@ -238,7 +238,8 @@ export function mergeLiveIndicatorCandle(
     deltaClose: askVolume - bidVolume,
   };
   if (
-    merged.close === last.close
+    merged.open === last.open
+    && merged.close === last.close
     && merged.high === last.high
     && merged.low === last.low
     && merged.volume === previousVolume

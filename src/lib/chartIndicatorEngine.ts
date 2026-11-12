@@ -14,6 +14,7 @@ import { calculateIchimoku } from "@/lib/ichimoku";
 import type { IchimokuCloudOptions } from "@/lib/ichimokuCloudPrimitive";
 import type { ZigZagRetracementOptions } from "@/lib/zigZagRetracementPrimitive";
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
+import { calculateCci } from "@/lib/commodityChannelIndex";
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
 import { calculateRegressionChannel } from "@/lib/regressionChannel";
@@ -490,6 +491,26 @@ function computeIndicatorSeries(
   if (key === "inverse-cyber-cycle") return calculateInverseCyberCycle(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "ichimoku-indicator") return calculateIchimoku(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
+  if (key === "commodity-channel-index-cci") {
+    const { length, averageLength, data, averageData } = calculateCci(candles, instance.settings ?? {});
+    const series: CalculatedIndicatorSeries[] = [{
+      key, label: `CCI ${length}`, kind: "line", placement: "pane", color: theme.primary,
+      lineWidth: vwapLineWidth(instance, "lineWidth", 2), lineStyle: vwapLineStyle(instance, "lineStyle", "solid"), data,
+    }];
+    if (averageLength) series.push({
+      key: `${key}-average`, label: `CCI SMA ${averageLength}`, kind: "line", placement: "pane",
+      color: theme.secondary, lineWidth: vwapLineWidth(instance, "averageLineWidth", 1), data: averageData,
+    });
+    if (settingBoolean(instance, "showLevels", false)) {
+      const level = Math.min(500, Math.max(1, settingNumber(instance, "levelValue", 100)));
+      for (const value of [level, 0, -level]) series.push({
+        key: `${key}-level-${Math.sign(value)}`, label: value > 0 ? `+${value}` : String(value),
+        kind: "line", placement: "pane", color: theme.muted, lineWidth: 1, lineStyle: "dotted",
+        lastValueVisible: false, data: data.map(point => ({ ...point, value })),
+      });
+    }
+    return series;
+  }
   if (key === "parabolic-sar") return calculateParabolicSar(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "linear-regression") return calculateLinearRegression(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
   if (key === "regression-channel") return calculateRegressionChannel(candles, instance.settings ?? {}, theme, instance.instanceId, context.tickSize);
@@ -1111,7 +1132,6 @@ function computeIndicatorSeries(
   const closes = candles.map((candle) => candle.close);
   const highs = candles.map((candle) => candle.high);
   const lows = candles.map((candle) => candle.low);
-  const typical = candles.map((candle) => (candle.high + candle.low + candle.close) / 3);
 
   if (key === "relative-strength-index-rsi") {
     const length = Math.max(2, Math.round(settingNumber(instance, "length", 14)));
@@ -1355,26 +1375,6 @@ function computeIndicatorSeries(
         data: lineData(candles, middle.map((value, index) => atr[index] == null ? null : value - atr[index]! * multiplier)),
       },
     ];
-  }
-
-  if (key === "commodity-channel-index-cci") {
-    const length = Math.max(2, Math.round(settingNumber(instance, "length", 20)));
-    const mean = rollingMean(typical, length);
-    const values = typical.map((value, index) => {
-      if (index < length - 1 || mean[index] == null) return null;
-      const window = typical.slice(index - length + 1, index + 1);
-      const meanDeviation = window.reduce((sum, item) => sum + Math.abs(item - mean[index]!), 0) / length;
-      return meanDeviation === 0 ? 0 : (value - mean[index]!) / (0.015 * meanDeviation);
-    });
-    return [{
-      key,
-      label: `CCI ${length}`,
-      kind: "line",
-      placement: "pane",
-      color: theme.primary,
-      lineWidth: 2,
-      data: lineData(candles, values),
-    }];
   }
 
   if (key === "awesome-oscillator") {

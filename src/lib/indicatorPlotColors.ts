@@ -263,6 +263,8 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
   ],
   "commodity-channel-index-cci": [
     { key: "plotColor", role: "primary" },
+    { key: "averageColor", role: "secondary" },
+    { key: "levelColor", role: "muted" },
   ],
   "aroon-up-down": [
     { key: "upColor", role: "positive" },
@@ -326,6 +328,7 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
  * disagree about where a colour is stored.
  */
 export function indicatorSeriesColorKey(indicatorId: string, seriesKey: string): string {
+  if (indicatorId === "commodity-channel-index-cci" && seriesKey.startsWith(`${indicatorId}-level-`)) return "levelColor";
   if (indicatorId === "price-movement-levels") {
     if (seriesKey.includes("-support-")) return "supportLineColor";
     if (seriesKey.includes("-resistance-")) return "resistanceLineColor";

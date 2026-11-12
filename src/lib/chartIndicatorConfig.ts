@@ -1525,7 +1525,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "relative-strength-index-rsi": [{ key: "length", label: "Length", defaultValue: 14, min: 2, max: 500 }],
   "rate-of-change-roc": [{ key: "length", label: "Length", defaultValue: 12, min: 1, max: 500 }],
   "momentum-indicator": [{ key: "length", label: "Length", defaultValue: 10, min: 1, max: 500 }],
-  "commodity-channel-index-cci": [{ key: "length", label: "Length", defaultValue: 20, min: 2, max: 500 }],
+  "commodity-channel-index-cci": [
+    { key: "length", label: "Length", defaultValue: 20, min: 2, max: 500 },
+    { key: "averageLength", label: "SMA length", defaultValue: 9, min: 1, max: 500 },
+    { key: "levelValue", label: "Threshold", defaultValue: 100, min: 1, max: 500 },
+    { key: "lineWidth", label: "CCI line width", defaultValue: 2, min: 1, max: 4 },
+    { key: "averageLineWidth", label: "SMA line width", defaultValue: 1, min: 1, max: 4 },
+  ],
   "aroon-up-down": [{ key: "length", label: "Length", defaultValue: 25, min: 2, max: 500 }],
   "aroon-oscillator": [{ key: "length", label: "Length", defaultValue: 25, min: 2, max: 500 }],
   "standard-deviation": [{ key: "length", label: "Length", defaultValue: 20, min: 2, max: 500 }],
@@ -1719,6 +1725,8 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "average-true-range-atr" ? { lineStyle: "solid", useThemeColors: true } : {}),
   ...(indicatorId === "awesome-oscillator" ? { useThemeColors: true } : {}),
+  ...(indicatorId === "commodity-channel-index-cci"
+    ? { source: "hlc3", showAverage: false, showLevels: false, lineStyle: "solid", useThemeColors: true } : {}),
   ...(indicatorId === "chaikin-accumulation-distribution" ? { showAverage: false, averageType: "simple", useThemeColors: true } : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
@@ -4549,6 +4557,22 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (MOMENTUM_INDICATOR_IDS.has(normalized.indicatorId)) normalized = {
     ...normalized, settings: { ...normalized.settings, chartArea: instance.settings?.chartArea === "chart" ? "chart" : "pane" },
   };
+  if (normalized.indicatorId === "commodity-channel-index-cci") {
+    const settings: Record<string, number | string | boolean> = {
+      ...defaultIndicatorSettings(normalized.indicatorId), ...normalized.settings,
+    };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS[normalized.indicatorId]) {
+      const value = Number(settings[definition.key]);
+      settings[definition.key] = Number.isFinite(value)
+        ? Math.max(definition.min, Math.min(definition.max, Math.round(value))) : definition.defaultValue;
+    }
+    settings.source = ["hlc3", "close", "hl2", "ohlc4"].includes(String(settings.source)) ? settings.source : "hlc3";
+    settings.lineStyle = ["solid", "dashed", "dotted"].includes(String(settings.lineStyle)) ? settings.lineStyle : "solid";
+    settings.showAverage = settings.showAverage === true;
+    settings.showLevels = settings.showLevels === true;
+    settings.useThemeColors = settings.useThemeColors !== false;
+    normalized = { ...normalized, settings };
+  }
   if (normalized.indicatorId === "awesome-oscillator") {
     const settings = { ...normalized.settings };
     const readLength = (value: unknown, fallback: number) => {

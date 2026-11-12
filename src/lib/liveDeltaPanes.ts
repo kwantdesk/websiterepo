@@ -1,6 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import { calculateIndicatorSeries, type CalculatedIndicatorSeries, type IndicatorTheme } from "@/lib/chartIndicatorEngine";
 import { mergeLiveIndicatorTail } from "@/lib/chartLiveEvents";
+import { CCI_INDICATOR_ID, cciPeriods } from "@/lib/commodityChannelIndex";
 
 export const LIVE_DELTA_PANE_INTERVAL_MS = 200;
 export const isLiveDeltaPane = (id: string) => ["cumulative-volume-delta", "delta-cumulative-candlestick", "delta-cumulative-histogram", "delta-bar"].includes(id);
@@ -8,9 +9,74 @@ export const isLivePriceStudy = (id: string) => id === "standard-deviation"
   || id === "average-true-range-atr" || id === "average-directional-index-adx"
   || id === "awesome-oscillator";
 export const isLiveCumulativeVolumeStudy = (id: string) => id === "chaikin-accumulation-distribution";
+export const isFullHistoryPriceStudy = (id: string) => id === CCI_INDICATOR_ID;
 export type LiveDeltaGroup = { key: string; indicatorId: string; settings?: Record<string, number | string | boolean>; series: CalculatedIndicatorSeries[] };
 export type LiveDeltaInputs = { candles: Candle[]; preserveEarlierHistory?: boolean; volumeCandles?: Candle[]; priceCandles?: Candle[]; instrument: string; tickSize: number; theme: IndicatorTheme; mapTime?: (sourceTime: number) => number | undefined };
 export const deltaPaneIdentity = (group: LiveDeltaGroup) => JSON.stringify([group.indicatorId, group.settings ?? {}]);
+
+type CciHistory = { identity: string; candles: Candle[]; series: CalculatedIndicatorSeries[] };
+
+function sameCciCandle(previous: Candle, current: Candle) {
+  return previous === current || previous.timestamp === current.timestamp
+    && Object.is(previous.open, current.open) && Object.is(previous.high, current.high)
+    && Object.is(previous.low, current.low) && Object.is(previous.close, current.close);
+}
+
+function cciPointBoundary(data: CalculatedIndicatorSeries["data"], time: number, inclusive = false) {
+  let first = 0;
+  let end = data.length;
+  while (first < end) {
+    const middle = (first + end) >>> 1;
+    if (data[middle].time < time || (inclusive && data[middle].time === time)) first = middle + 1;
+    else end = middle;
+  }
+  return first;
+}
+
+/** CCI and its optional SMA only depend on a finite preceding candle window. */
+export class CciSeriesCache {
+  private readonly entries = new Map<string, CciHistory>();
+
+  retain(keys: readonly string[]) {
+    for (const key of this.entries.keys()) if (!keys.includes(key)) this.entries.delete(key);
+  }
+
+  calculate(group: Pick<LiveDeltaGroup, "key" | "indicatorId" | "settings">, candles: Candle[], theme: IndicatorTheme) {
+    const identity = JSON.stringify([group.indicatorId, group.settings ?? {}, theme]);
+    const instance = { indicatorId: group.indicatorId, instanceId: group.key, enabled: true, settings: group.settings ?? {} };
+    const prior = this.entries.get(group.key);
+    let changed = 0;
+    if (prior?.identity === identity) {
+      if (prior.candles === candles) return prior.series;
+      const shared = Math.min(prior.candles.length, candles.length);
+      while (changed < shared && sameCciCandle(prior.candles[changed], candles[changed])) changed++;
+    }
+    let series: CalculatedIndicatorSeries[];
+    if (!prior || changed === 0) {
+      series = calculateIndicatorSeries(instance, candles, theme);
+    } else if (changed === candles.length && changed === prior.candles.length) {
+      series = prior.series;
+    } else if (changed === candles.length) {
+      const end = candles[changed - 1].timestamp / 1_000;
+      series = prior.series.map(definition => ({
+        ...definition, data: definition.data.slice(0, cciPointBoundary(definition.data, end, true)),
+      }));
+    } else {
+      const { length, averageLength } = cciPeriods(instance.settings);
+      // Include the preceding window so an invalid candle at the splice can
+      // still mark the first valid point as a new line segment.
+      const seed = Math.max(0, changed - length - averageLength);
+      const cutoff = Math.min(candles[changed].timestamp, prior.candles[changed]?.timestamp ?? Infinity) / 1_000;
+      series = calculateIndicatorSeries(instance, candles.slice(seed), theme).map(definition => {
+        const previous = prior.series.find(item => item.key === definition.key)?.data ?? [];
+        const prefix = previous.slice(0, cciPointBoundary(previous, cutoff));
+        return { ...definition, data: prefix.concat(definition.data.slice(cciPointBoundary(definition.data, cutoff))) };
+      });
+    }
+    this.entries.set(group.key, { identity, candles, series });
+    return series;
+  }
+}
 
 /** Shares the price chart's execution-backed candle events, never another feed.
  * Keeps live bars across a delayed parent history render. Reuses the normal
@@ -20,6 +86,7 @@ export class LiveDeltaPaneModel {
   private live: Candle[] = [];
   private source: Candle[] | null = null;
   private preserveEarlierHistory = false;
+  readonly cciHistory = new CciSeriesCache();
   private readonly extendedSeries = new Map<string, {
     source: Candle[];
     identity: string;
@@ -53,13 +120,16 @@ export class LiveDeltaPaneModel {
     this.history = mergeLiveIndicatorTail(snapshot, this.live);
   }
   calculate(group: LiveDeltaGroup, inputs: LiveDeltaInputs) {
-    if (!isLiveDeltaPane(group.indicatorId) && group.indicatorId !== "volume" && !isLivePriceStudy(group.indicatorId) && !isLiveCumulativeVolumeStudy(group.indicatorId)) return group.series;
+    if (!isLiveDeltaPane(group.indicatorId) && group.indicatorId !== "volume" && !isLivePriceStudy(group.indicatorId)
+      && !isLiveCumulativeVolumeStudy(group.indicatorId) && !isFullHistoryPriceStudy(group.indicatorId)) return group.series;
     const instance = { indicatorId: group.indicatorId, instanceId: group.key, enabled: true, settings: group.settings ?? {} };
     const extended = inputs.preserveEarlierHistory && isLiveDeltaPane(group.indicatorId) && !inputs.mapTime;
     const identity = extended ? JSON.stringify([deltaPaneIdentity(group), inputs.theme]) : "";
     const cached = extended ? this.extendedSeries.get(group.key) : undefined;
     let series: CalculatedIndicatorSeries[];
-    if (cached && cached.source === this.source && cached.identity === identity) {
+    if (isFullHistoryPriceStudy(group.indicatorId)) {
+      series = this.cciHistory.calculate(group, this.history, inputs.theme);
+    } else if (cached && cached.source === this.source && cached.identity === identity) {
       const tail = this.history.slice(this.history.findIndex((candle) => candle.timestamp >= cached.start));
       series = calculateIndicatorSeries(instance, tail, inputs.theme, inputs).map((definition) => ({
         ...definition,

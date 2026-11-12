@@ -531,7 +531,8 @@ import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { adrHistoryDay, normalizeAverageDailyRangeTargetSettings, supportsAdrDailyHistory } from "@/lib/averageDailyRangeTarget";
 import { adrDailyHistoryDays, loadAdrDailyHistory } from "@/lib/adrDailyHistory";
 import { useLiveDeltaPanes } from "./useLiveDeltaPanes";
-import { isLiveCumulativeVolumeStudy, isLivePriceStudy } from "@/lib/liveDeltaPanes";
+import { CciSeriesCache, isFullHistoryPriceStudy, isLiveCumulativeVolumeStudy, isLivePriceStudy } from "@/lib/liveDeltaPanes";
+import { CCI_INDICATOR_ID } from "@/lib/commodityChannelIndex";
 import { BollingerLiveCandles } from "@/lib/bollingerLiveCandles";
 import { resolveVolumeProfileInputData, resolveVolumeProfileMode, volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import { resolveVolumeProfileOwner, volumeProfileOwnerKey } from "@/lib/volumeProfileOwnership";
@@ -8528,7 +8529,7 @@ function Chart({
         }
         return lines;
       }
-      if (isLivePriceStudy(instance.indicatorId)) return [];
+      if (isLivePriceStudy(instance.indicatorId) || isFullHistoryPriceStudy(instance.indicatorId)) return [];
       if (instance.indicatorId === "average-daily-range-target" && adrHistoryKey && !adrDailyCandles) return [];
       if (
         !orderFlowSeriesReady
@@ -8668,6 +8669,26 @@ function Chart({
         .map(series => ({ ...series, groupKey: instance.instanceId })) : []),
   [candles, indicatorSignature, indicators, instrument, priceFormat.minMove, replayTimestampMs,
     settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+  const cciCache = useRef(new CciSeriesCache());
+  const cciGroups = useMemo(() => {
+    const active = indicators.filter(instance => instance.enabled && isFullHistoryPriceStudy(instance.indicatorId));
+    cciCache.current.retain(active.map(instance => instance.instanceId));
+    if (!active.length) return [];
+    const source = replayCausalCandles(candles, replayTimestampMs);
+    const theme = visibleIndicatorTheme(settings);
+    return active.map(instance => {
+      const group = { key: instance.instanceId, indicatorId: instance.indicatorId, settings: instance.settings };
+      return { ...group, series: cciCache.current.calculate(group, source, theme)
+        .map(definition => ({ ...definition, groupKey: group.key })) };
+    });
+  }, [candles, indicators, replayTimestampMs, settings.backgroundColor, settings.borderDownColor,
+    settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+  const cciOverlayGroups = useMemo(() => cciGroups.filter(group => group.settings?.chartArea === "chart"), [cciGroups]);
+  const liveCciOverlays = useLiveDeltaPanes(cciOverlayGroups, observedCandleScope,
+    replayTimestampMs == null ? liveCandleEventKey ?? undefined : undefined,
+    cciOverlayGroups.length ? {
+      candles, instrument, tickSize: priceFormat.minMove, theme: visibleIndicatorTheme(settings),
+    } : undefined, "full-price");
   const chaikinOverlayGroups = useMemo(() => indicators.flatMap(instance =>
     instance.enabled && isLiveCumulativeVolumeStudy(instance.indicatorId) && momentumOnChart(instance)
       ? [{ key: instance.instanceId, indicatorId: instance.indicatorId, settings: instance.settings,
@@ -8684,17 +8705,26 @@ function Chart({
       ...baseCalculatedIndicatorSeries.filter(definition => !liveChaikinOverlays.some(group => group.key === definition.groupKey)),
       ...liveChaikinOverlays.flatMap(group => group.series),
       ...priceStudySeries,
+      ...cciGroups.filter(group => group.settings?.chartArea !== "chart").flatMap(group => group.series),
+      ...liveCciOverlays.flatMap(group => group.series),
     ], replayTimestampMs);
     if (!eventChartIndicatorTimeMap) return series;
     // The Chaikin lower pane crops by source time and maps its points to the
     // native event chart inside indicatorTimeToX. Mapping here crops it twice.
     const usesSourceTime = (definition: CalculatedIndicatorSeries) =>
-      definition.placement === "pane" && definition.key.startsWith("chaikin-accumulation-distribution");
+      definition.placement === "pane" && (definition.key.startsWith("chaikin-accumulation-distribution")
+        || definition.key.startsWith(CCI_INDICATOR_ID));
+    const cciOverlays = (definition: CalculatedIndicatorSeries) =>
+      definition.placement === "overlay" && definition.key.startsWith(CCI_INDICATOR_ID);
     return [
-      ...alignIndicatorSeriesToEventBars(series.filter(definition => !usesSourceTime(definition)), eventChartIndicatorTimeMap),
+      ...alignIndicatorSeriesToEventBars(series.filter(definition => !usesSourceTime(definition) && !cciOverlays(definition)), eventChartIndicatorTimeMap),
+      ...alignIndicatorSeriesToEventBars(series.filter(cciOverlays), {
+        ...eventChartIndicatorTimeMap, exact: eventChartTimeBySourceTimeRef.current,
+      }),
       ...series.filter(usesSourceTime),
     ];
-  }, [baseCalculatedIndicatorSeries, liveChaikinOverlays, priceStudySeries, eventChartIndicatorTimeMap, replayTimestampMs]);
+  }, [baseCalculatedIndicatorSeries, liveChaikinOverlays, priceStudySeries, cciGroups, liveCciOverlays,
+    eventChartIndicatorTimeMap, replayTimestampMs]);
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {

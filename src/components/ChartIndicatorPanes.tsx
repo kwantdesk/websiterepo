@@ -2,7 +2,7 @@
 
 import { indicatorHistogramWidth } from "@/lib/indicatorHistogramWidth";
 import { useLiveDeltaPanes } from "@/components/useLiveDeltaPanes";
-import { isLivePriceStudy, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
+import { isFullHistoryPriceStudy, isLivePriceStudy, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
 import { useSuperTrendLivePanes } from "@/components/useSuperTrendLivePanes";
 import SuperTrendPaneLabels from "@/components/SuperTrendPaneLabels";
 import { SuperTrendPaneScale } from "@/lib/superTrendPaneScale";
@@ -61,7 +61,7 @@ function compact(value: number) {
 }
 
 function formatPaneValue(value: number, indicatorId: string) {
-  return indicatorId === "standard-deviation" || indicatorId === "average-true-range-atr" || indicatorId === "awesome-oscillator"
+  return isFullHistoryPriceStudy(indicatorId) || indicatorId === "standard-deviation" || indicatorId === "average-true-range-atr" || indicatorId === "awesome-oscillator"
     ? Number(value.toPrecision(5)).toString()
     : compact(value);
 }
@@ -1473,7 +1473,9 @@ function ChartIndicatorPanes({
     [liveDeltaInputs?.priceCandles, priceStudyEnabled]);
   const priceGroups = useLiveDeltaPanes(volumeGroups, coordinateScope, liveChartKey,
     liveDeltaInputs && priceCandles ? { ...liveDeltaInputs, candles: priceCandles } : undefined, "price");
-  const cumulativeVolumeGroups = useLiveDeltaPanes(priceGroups, coordinateScope, liveChartKey,
+  const fullPriceGroups = useLiveDeltaPanes(priceGroups, coordinateScope, liveChartKey,
+    liveDeltaInputs?.priceCandles ? { ...liveDeltaInputs, candles: liveDeltaInputs.priceCandles, mapTime: undefined } : undefined, "full-price");
+  const cumulativeVolumeGroups = useLiveDeltaPanes(fullPriceGroups, coordinateScope, liveChartKey,
     liveDeltaInputs && liveDeltaInputs.volumeCandles
       ? { ...liveDeltaInputs, candles: liveDeltaInputs.volumeCandles, mapTime: undefined } : undefined, "cumulative-volume");
   const groups = useSuperTrendLivePanes(cumulativeVolumeGroups, liveChartKey);

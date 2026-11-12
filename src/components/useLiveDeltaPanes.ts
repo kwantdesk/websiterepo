@@ -1,16 +1,17 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { LIVE_CHART_CANDLE_EVENT, LIVE_CHART_EXECUTION_EVENT, type LiveChartCandleDetail, type LiveChartExecutionDetail } from "@/lib/chartLiveEvents";
-import { deltaPaneIdentity, isLiveCumulativeVolumeStudy, isLiveDeltaPane, isLivePriceStudy, LIVE_DELTA_PANE_INTERVAL_MS, LiveDeltaPaneModel, type LiveDeltaGroup, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
+import { deltaPaneIdentity, isFullHistoryPriceStudy, isLiveCumulativeVolumeStudy, isLiveDeltaPane, isLivePriceStudy, LIVE_DELTA_PANE_INTERVAL_MS, LiveDeltaPaneModel, type LiveDeltaGroup, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
 
 /** Only the lower panes rerender. Busy profile/footprint transitions in Chart
  * cannot defer an execution update for multiple bars. No extra network calls. */
-export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: string, chartKey?: string, inputs?: LiveDeltaInputs, mode: "delta" | "volume" | "price" | "cumulative-volume" = "delta"): T[] {
+export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: string, chartKey?: string, inputs?: LiveDeltaInputs, mode: "delta" | "volume" | "price" | "full-price" | "cumulative-volume" = "delta"): T[] {
   const accepts = (id: string) => mode === "price"
     ? isLivePriceStudy(id)
-    : mode === "cumulative-volume" ? isLiveCumulativeVolumeStudy(id)
+    : mode === "full-price" ? isFullHistoryPriceStudy(id)
+      : mode === "cumulative-volume" ? isLiveCumulativeVolumeStudy(id)
       : mode === "volume" ? id === "volume" : isLiveDeltaPane(id);
-  const usesCoalescedSnapshots = mode === "price" || mode === "cumulative-volume";
+  const usesCoalescedSnapshots = mode === "price" || mode === "full-price" || mode === "cumulative-volume";
   const state = useRef({ scope, model: new LiveDeltaPaneModel() });
   if (state.current.scope !== scope) state.current = { scope, model: new LiveDeltaPaneModel() };
   const current = useRef({ groups, inputs });
@@ -19,8 +20,9 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
   const ids = groups.filter(group => accepts(group.indicatorId)).map(group => group.key).join("\0");
   const hydrate = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (!chartKey || !inputs || !ids) return;
     const model = state.current.model;
+    if (mode === "full-price") model.cciHistory.retain(chartKey && ids ? ids.split("\0") : []);
+    if (!chartKey || !inputs || !ids) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let frame: number | null = null;
     let firstPaint = true;
@@ -33,7 +35,8 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
         frame = null;
         const latest = current.current;
         if (!latest.inputs) return;
-        model.hydrate(latest.inputs.candles, mode === "cumulative-volume" || mode === "delta" && latest.inputs.preserveEarlierHistory === true);
+        model.hydrate(latest.inputs.candles, mode === "full-price" || mode === "cumulative-volume"
+          || mode === "delta" && latest.inputs.preserveEarlierHistory === true);
         if (pendingSnapshot) {
           model.observeSnapshot(
             mode === "delta" && latest.inputs.preserveEarlierHistory ? pendingSnapshot.slice(-256) : pendingSnapshot,
@@ -102,7 +105,8 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
   if (!chartKey || !inputs || paint?.scope !== scope || paint.key !== chartKey) return groups;
   return groups.map(group => {
     const live = paint.values.get(group.key);
-    if (!live || live.identity !== deltaPaneIdentity(group) || !live.series.length || (mode !== "volume" && !live.series.some(series => series.data.length))) return group;
+    if (!live || live.identity !== deltaPaneIdentity(group) || !live.series.length
+      || (mode !== "volume" && mode !== "full-price" && !live.series.some(series => series.data.length))) return group;
     const statusLabel = group.indicatorId === "average-directional-index-adx"
       && !live.series.some(series => series.label === "ADX") ? "ADX warming up" : undefined;
     return { ...group, series: live.series, unavailableReason: undefined, statusLabel };
