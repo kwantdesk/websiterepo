@@ -23,6 +23,7 @@ import {
 } from "./trade-sse-continuity.mjs";
 import { BarFlowArchive } from "./bar-flow-archive.mjs";
 import { supplementArchivedBarFlow } from "./bar-flow-live-coverage.mjs";
+import { DevelopingProfileArchive } from "./developing-profile-archive.mjs";
 import { SessionProfileArchive } from "./session-profile-archive.mjs";
 import {
   combinedVolumeProfileCoverage,
@@ -229,6 +230,7 @@ const sessionProfiles = new SessionProfileArchive({
   maintenanceAllowed: () => !eventLoopLoadGuard.isOverloaded(),
 });
 sessionProfiles.startWarming();
+const developingProfiles = new DevelopingProfileArchive({ dir: config.recordDir });
 chartHistory.attach(client);
 /*
  * Range, volume, renko and tick bars cannot be built from minute bars: they
@@ -380,7 +382,7 @@ function requestedInstrument(url, body = {}, options = {}) {
   ));
   const resolved = exact || candidates[0];
   const fallbackExchange = requestedExchange || resolved?.exchange || exchangeForRoot(requestedOwnRoot);
-  const providerResolved = client.frontMonthCache.get(
+  const providerResolved = client.frontMonthCache?.get(
     instrumentKey(fallbackExchange, requestedOwnRoot),
   );
   // On an empty book, resolve micro requests through the PARENT root as well
@@ -2565,6 +2567,9 @@ const server = createServer(async (request, response) => {
       const minTradeVolume = Math.max(0, Number(url.searchParams.get("minTradeVolume") || 0));
       const maxTradeVolume = Math.max(0, Number(url.searchParams.get("maxTradeVolume") || 0));
       const priceTick = tickSize(instrument.symbol);
+      const developmentWindowEnd = Number(url.searchParams.get("developmentWindowEndMs"));
+      const includeDeveloping = url.searchParams.get("period") === "daily"
+        && developmentWindowEnd > startMs && developmentWindowEnd >= endMs;
       const rows = new Map();
       /*
        * The live in-memory ring only. Reading the recorded tape here instead
@@ -2613,6 +2618,7 @@ const server = createServer(async (request, response) => {
           // 20s warmer tick + 15s browser retry that made a cold weekly or
           // composite profile appear roughly thirty seconds after selection.
           waitForWarmMs: 8_000,
+          includeDeveloping,
         });
       const tailTrades = volumeProfileTailTrades(profileTrades, foldedProfile);
       const { coverageStartMs, coverageEndMs } = combinedVolumeProfileCoverage(
@@ -2699,6 +2705,28 @@ const server = createServer(async (request, response) => {
           selectedVolume += left;
         }
       }
+      const complete = startMs > 0
+        ? coverageStartMs !== null
+          && coverageStartMs <= startMs + 5 * 60_000
+          && !coverageHasGap
+          && !(foldedProfile?.missingSessionDates?.length)
+        : null;
+      const development = complete && includeDeveloping
+        ? await developingProfiles.load({
+          exchange: instrument.exchange, symbol: instrument.symbol, fromMs: startMs,
+          windowEndMs: developmentWindowEnd, cutoffMs: endMs, tickSize: priceTick,
+          groupTicks, valueAreaPercent, minTradeVolume, maxTradeVolume,
+          // The ordinary profile already checked archive-to-ring continuity.
+          // The bounded suffix can complete a developing minute without
+          // transferring a full archived session to the worker.
+          tailTrades: developmentWindowEnd > Date.now() && tailTrades.length <= 20_000
+            ? tailTrades.map((trade) => ({
+              timestamp: trade.timestampMs, price: trade.price, size: trade.size,
+              side: trade.aggressor === "BUY" ? 1 : trade.aggressor === "SELL" ? -1 : 0,
+            }))
+            : [],
+        })
+        : null;
       return json(response, 200, {
         schemaVersion: "kwantify-volume-profile-v1",
         provider: "Rithmic",
@@ -2727,12 +2755,7 @@ const server = createServer(async (request, response) => {
          * confident answer at the wrong prices. null when the request named no
          * start, since there is then nothing to have fallen short of.
          */
-        complete: startMs > 0
-          ? coverageStartMs !== null
-            && coverageStartMs <= startMs + 5 * 60_000
-            && !coverageHasGap
-            && !(foldedProfile?.missingSessionDates?.length)
-          : null,
+        complete,
         tickSize: priceTick,
         groupTicks,
         valueAreaPercent,
@@ -2752,6 +2775,7 @@ const server = createServer(async (request, response) => {
           : 0,
         levels,
         developingPoc: [],
+        ...development,
         historicalAvailable: false,
         asOf: new Date().toISOString(),
       });

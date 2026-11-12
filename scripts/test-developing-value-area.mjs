@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const { applyInstitutionalTradesToVolumeProfile } =
+const { applyInstitutionalTradesToVolumeProfile, retainLiveVolumeProfileDevelopment } =
   await import("../src/lib/institutionalMarketData.ts");
 const { defaultIndicatorSettings } = await import("../src/lib/chartIndicatorConfig.ts");
 
@@ -116,6 +116,22 @@ check("it stays off until asked for", () => {
   for (const id of ["kwant-profile", "weekly-volume-profile"]) {
     assert.equal(defaultIndicatorSettings(id)?.valueAreaDeveloping, "no", `${id} turns it on by default`);
   }
+});
+
+check("reconciliation retains only a newer live suffix for the same exact inputs", () => {
+  const start = Math.floor(START / 60_000) * 60_000;
+  const minute = 60_000;
+  const p = { ...baseProfile(), startMs: start };
+  const archived = { ...p, developingPoc: [{ timestamp: start + minute + 10, price: 100 }] };
+  const live = { ...p, developingPoc: [
+    { timestamp: start + 20, price: 90 },
+    { timestamp: start + minute + 20, price: 101 },
+    { timestamp: start + 2 * minute, price: 102 },
+    { timestamp: p.endMs, price: 103 },
+  ] };
+  assert.deepEqual(retainLiveVolumeProfileDevelopment(archived, live).developingPoc,
+    live.developingPoc.slice(1, 3));
+  assert.equal(retainLiveVolumeProfileDevelopment(archived, { ...live, minTradeVolume: 5 }), archived);
 });
 
 console.log(`\ndeveloping value area: ${passed}/${passed} checks passed`);

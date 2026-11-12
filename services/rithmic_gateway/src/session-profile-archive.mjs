@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { readFile, writeFile, rename } from "node:fs/promises";
+import { readFile, writeFile, rename, unlink } from "node:fs/promises";
 import { gzip, gunzip } from "node:zlib";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -48,7 +48,7 @@ const SESSION_PRINT_CEILING = 5_000_000;
 const LIVE_REBUILD_MS = 60_000;
 const PROFILE_FOLD_SCHEMA = 2;
 
-const profileFileName = (exchange, symbol) =>
+export const profileFileName = (exchange, symbol) =>
   `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.profile.json.gz`;
 
 /**
@@ -59,15 +59,16 @@ const profileFileName = (exchange, symbol) =>
  * to be a map key - two prints at the same price landing in two rows would
  * split a level and move the POC.
  */
-export function foldPrintsToMinuteLevels(trades, tickSize) {
+export function createMinuteLevelFold(tickSize) {
   const tick = Number(tickSize) > 0 ? Number(tickSize) : 0.25;
   const minutes = new Map();
   const minuteLastTrade = new Map();
-  for (const trade of trades) {
+  function add(trade) {
     const size = Number(trade.size) || 0;
-    if (size <= 0) continue;
+    if (size <= 0) return;
     const priceTicks = Math.round(Number(trade.price) / tick);
-    if (!Number.isFinite(priceTicks)) continue;
+    if (!Number.isFinite(priceTicks)) return;
+    if (!Number.isFinite(trade.timestamp)) return;
     const bucket = Math.floor(trade.timestamp / MINUTE_MS) * MINUTE_MS;
     minuteLastTrade.set(bucket, Math.max(minuteLastTrade.get(bucket) ?? bucket, trade.timestamp));
     let levels = minutes.get(bucket);
@@ -97,28 +98,37 @@ export function foldPrintsToMinuteLevels(trades, tickSize) {
     else if (side < 0) sized.bid += 1;
     else sized.unknown += 1;
   }
-  return [...minutes.entries()]
-    .sort((left, right) => left[0] - right[0])
-    .map(([t, levels]) => ({
-      t,
-      last: minuteLastTrade.get(t) ?? t,
-      // Compact rows: [priceTicks, volume, askVolume, bidVolume, trades].
-      levels: [...levels.entries()]
-        .sort((left, right) => left[0] - right[0])
-        .map(([priceTicks, row]) => [
-          priceTicks,
-          row.volume,
-          row.askVolume,
-          row.bidVolume,
-          row.trades,
-          // Exact individual-print size distribution. Without this, applying
-          // Filter min/max to a completed session was impossible: the fold had
-          // already merged every print and the route returned no profile.
-          [...row.sizes.entries()]
-            .sort((left, right) => left[0] - right[0])
-            .map(([size, counts]) => [size, counts.ask, counts.bid, counts.unknown]),
-        ]),
-    }));
+  function result() {
+    return [...minutes.entries()]
+      .sort((left, right) => left[0] - right[0])
+      .map(([t, levels]) => ({
+        t,
+        last: minuteLastTrade.get(t) ?? t,
+        // Compact rows: [priceTicks, volume, askVolume, bidVolume, trades].
+        levels: [...levels.entries()]
+          .sort((left, right) => left[0] - right[0])
+          .map(([priceTicks, row]) => [
+            priceTicks,
+            row.volume,
+            row.askVolume,
+            row.bidVolume,
+            row.trades,
+            // Exact individual-print size distribution. Without this, applying
+            // Filter min/max to a completed session was impossible: the fold had
+            // already merged every print and the route returned no profile.
+            [...row.sizes.entries()]
+              .sort((left, right) => left[0] - right[0])
+              .map(([size, counts]) => [size, counts.ask, counts.bid, counts.unknown]),
+          ]),
+      }));
+  }
+  return { add, result };
+}
+
+export function foldPrintsToMinuteLevels(trades, tickSize) {
+  const fold = createMinuteLevelFold(tickSize);
+  for (const trade of trades) fold.add(trade);
+  return fold.result();
 }
 
 /**
@@ -236,6 +246,8 @@ export class SessionProfileArchive {
     this.enabled = options.enabled !== false;
     this.memory = new Map();
     this.pending = new Set();
+    this.developingSessionKeys = new Set();
+    this.developingSessionDate = null;
     this.warmTimer = null;
     this.warmKickTimer = null;
     this.warmTick = null;
@@ -380,6 +392,8 @@ export class SessionProfileArchive {
       tradingDate,
       tickSize,
       ceiling: SESSION_PRINT_CEILING,
+      activeSnapshotFile: live && !historyPlant && this.developingSessionKeys.has(key)
+        ? file + ".active" : undefined,
     });
     built.historyPlant = historyPlant;
     const entry = { ...built, schemaVersion: PROFILE_FOLD_SCHEMA, builtAt: Date.now() };
@@ -399,6 +413,7 @@ export class SessionProfileArchive {
         const temporary = `${file}.tmp`;
         await writeFile(temporary, await gzipAsync(Buffer.from(JSON.stringify(built)), { level: 6 }));
         await rename(temporary, file);
+        await unlink(file + ".active").catch(() => undefined);
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
       }
@@ -423,6 +438,7 @@ export class SessionProfileArchive {
     minTradeVolume = 0,
     maxTradeVolume = 0,
     waitForWarmMs = 0,
+    includeDeveloping = false,
   }) {
     if (!this.enabled) return null;
     const upper = String(exchange || "").toUpperCase();
@@ -437,6 +453,15 @@ export class SessionProfileArchive {
       (tradingDate) => this.#tapeFiles(tradingDate, upper, upperSymbol).length,
     );
     const keys = availableDates.map((tradingDate) => `${upper}:${upperSymbol}:${tradingDate}:${tick}`);
+    if (includeDeveloping) {
+      const currentDate = chicagoTradingDate(Date.now());
+      if (this.developingSessionDate !== currentDate) {
+        this.developingSessionKeys.clear();
+        this.developingSessionDate = currentDate;
+      }
+      const liveKey = keys[availableDates.indexOf(currentDate)];
+      if (liveKey) this.developingSessionKeys.add(liveKey);
+    }
     const authoritativeIntervals = [];
     const readyDates = new Set();
     const sessions = (await Promise.all(
@@ -462,6 +487,7 @@ export class SessionProfileArchive {
         minTradeVolume,
         maxTradeVolume,
         waitForWarmMs: 0,
+        includeDeveloping,
       });
     }
     if (!sessions.length) return null;

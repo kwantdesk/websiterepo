@@ -65,7 +65,7 @@ check("refresh replaces only the same owner, date and session", () => {
   assert.equal(isSameDailyVolumeProfileWindow(profile, { ...profile, ownerInstanceId: "daily" }, date, date), false);
   assert.equal(isSameDailyVolumeProfileWindow(profile, { ...profile, sessionId: "tokyo" }, date, date), false);
   assert.equal(isSameDailyVolumeProfileWindow(profile, profile, date, "2026-11-13"), false);
-  assert.match(workspace, /return !isSameDailyVolumeProfileWindow\(/);
+  assert.match(workspace, /const sameWindow = isSameDailyVolumeProfileWindow\(/);
 });
 
 check("a session the trader unticked is omitted, not folded away", () => {

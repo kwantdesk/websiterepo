@@ -226,6 +226,7 @@ import {
   applyInstitutionalTradesToCandles,
   buildChartVolumeProfile,
   applyInstitutionalTradesToVolumeProfile,
+  retainLiveVolumeProfileDevelopment,
   enrichCandlesWithInstitutionalCandleFlow,
   mergeMonthlyRecordedFlow,
   healClosedCandleIntegrity,
@@ -5854,10 +5855,16 @@ function WorkspaceChartPaneComponent({
   const dailyProfileInstance = dailyProfileInstances[0];
   // Only data settings participate in the request lifecycle. Colour, width,
   // and other display changes should never restart archive requests.
-  const dailyFuturesProfileSignature = JSON.stringify(dailyProfileInstances.map(({ instanceId, settings = {} }) => ({
+  const dailyFuturesProfileSignature = JSON.stringify(dailyProfileInstances.map(({ instanceId, indicatorId, settings = {} }) => ({
     instanceId,
     settings: {
       numberOfProfiles: settings.numberOfProfiles,
+      includeDevelopingHistory: indicatorId === "ask-bid-volume-profile" && (
+        settings.showDevelopingPoc === true || settings.pocLineMode === "developing"
+        || settings.pocLineMode === "extend-shifted"
+        || settings.valueAreaDeveloping === "dash" || settings.valueAreaDeveloping === "solid"
+        || (settings.vwapEnabled === true && settings.showDevelopingVwap === true)
+      ),
       filterMode: settings.filterMode,
       filterTime: settings.filterTime,
       sessionStartMinutes: settings.sessionStartMinutes,
@@ -9398,19 +9405,24 @@ function WorkspaceChartPaneComponent({
         latestMarketTradesRef.current,
       );
       setVolumeProfiles((current) => {
+        let previousDaily: InstitutionalVolumeProfile | undefined;
         const next = current.filter((candidate) => {
           if (candidate.period !== replacement.period) return true;
           if (replacement.period === "daily") {
-            return !isSameDailyVolumeProfileWindow(
+            const sameWindow = isSameDailyVolumeProfileWindow(
               candidate,
               replacement,
               profileTradingDateFor(candidate),
               profileTradingDateFor(replacement),
             );
+            if (sameWindow) previousDaily = candidate;
+            return !sameWindow;
           }
           return false;
         });
-        next.push(replacement);
+        next.push(previousDaily && replayProfileClockMs == null
+          ? retainLiveVolumeProfileDevelopment(replacement, previousDaily)
+          : replacement);
         return next.sort((left, right) => left.startMs - right.startMs);
       });
       return true;
@@ -9495,7 +9507,8 @@ function WorkspaceChartPaneComponent({
             // executions yet. Do not queue known-empty future history ahead
             // of the developing Asia profile (or cache it as a failure).
             const profileClockMs = replayProfileClockMs ?? Date.now();
-            const replaySession = replayProfileClockMs == null ? null : cmeSessionWindowForDate(tradingDate);
+            const session = cmeSessionWindowForDate(tradingDate);
+            const replaySession = replayProfileClockMs == null ? null : session;
             const startMs = job.startMs ?? replaySession?.startMs;
             const endMs = replayProfileClockMs == null ? job.endMs : Math.min(job.endMs ?? replaySession?.endMs ?? profileClockMs, profileClockMs);
             if (startMs !== undefined && (startMs >= profileClockMs || endMs !== undefined && endMs <= startMs)) return;
@@ -9512,6 +9525,9 @@ function WorkspaceChartPaneComponent({
               tradingDate: job.tradingDate,
               startMs,
               endMs,
+              developmentWindowEndMs: dailyProfileSettings.includeDevelopingHistory === true
+                ? job.endMs ?? session?.endMs
+                : undefined,
               groupTicks: requestedDailyGroupTicks,
               valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
               minTradeVolume: owner.minVolume,

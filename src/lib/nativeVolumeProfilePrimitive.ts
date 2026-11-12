@@ -1712,12 +1712,6 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // a step trail because the POC holds a price until enough volume moves
         // it, so interpolating between points would invent migration that
         // never happened.
-        const developingStartMs = Number(style.developingPocStartMs ?? 0);
-        const withinDevelopingWindow = <T extends { timestamp: number }>(trail: readonly T[]) => (
-          developingStartMs > 0
-            ? trail.filter((point) => point.timestamp >= developingStartMs)
-            : trail
-        );
         const drawDevelopingTrail = (
           trail: readonly { timestamp: number; price: number }[],
           colour: string,
@@ -1758,7 +1752,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
            * is the identity, which is the untouched behaviour.
            */
           const shiftTicks = Math.max(1, Math.round(Number(style.shiftedPocTicks ?? 1)));
-          const trail = withinDevelopingWindow(profile.developingPoc);
+          const startOffsetMs = Number(style.developingPocStartMs ?? 0);
+          const startMs = profile.startMs + startOffsetMs;
+          const trail = startOffsetMs > 0
+            ? profile.developingPoc.filter((point) => point.timestamp >= startMs)
+            : profile.developingPoc;
           const grouped = style.developingPocMode === "extend-shifted" && shiftTicks > 1
             ? trail.map((point) => ({
               timestamp: point.timestamp,
@@ -1790,7 +1788,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           && style.developingValueArea !== "no"
           && (profile.developingValueArea?.length ?? 0) > 1
         ) {
-          const trail = withinDevelopingWindow(profile.developingValueArea ?? []);
+          const trail = profile.developingValueArea ?? [];
           const width = Number(style.valueAreaLineWidth ?? 1);
           const dash = style.developingValueArea === "dash" ? [3, 3] : [];
           for (const edge of ["vah", "val"] as const) {
@@ -1893,7 +1891,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             }
             if (style.showDevelopingVwap && (profile.developingVwap?.length ?? 0) > 1) {
               drawDevelopingTrail(
-                withinDevelopingWindow(profile.developingVwap ?? []),
+                profile.developingVwap ?? [],
                 style.vwapColor ?? style.pocColor,
                 Number(style.vwapLineWidth ?? 1),
                 style.vwapDash ?? [6, 3],

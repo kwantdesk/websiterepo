@@ -970,6 +970,7 @@ export type InstitutionalVolumeProfileRequest = {
   valueAreaPercent?: number;
   minTradeVolume?: number;
   maxTradeVolume?: number;
+  developmentWindowEndMs?: number;
   /** Filter/Split Time. Defaults reproduce the unfiltered whole-session profile. */
   filterMode?: "none" | "filter" | "splitted" | "triple";
   filterTime?: "rth" | "eth" | "custom";
@@ -1002,6 +1003,7 @@ export function institutionalVolumeProfileRequest(args: InstitutionalVolumeProfi
   if (Number.isFinite(args.sessionEndMinutes)) {
     query.set("sessionEndMinutes", String(args.sessionEndMinutes));
   }
+  if (Number.isFinite(args.developmentWindowEndMs)) query.set("developmentWindowEndMs", String(args.developmentWindowEndMs));
   if (args.useEndSessionAsStartDay) query.set("useEndSessionAsStartDay", "true");
   if (args.contractSymbol) query.set("contractSymbol", args.contractSymbol);
   if (/^\d{4}-\d{2}-\d{2}$/.test(args.tradingDate ?? "")) query.set("tradingDate", args.tradingDate!);
@@ -1347,24 +1349,24 @@ export function applyInstitutionalTradesToVolumeProfile(
     ? Math.max(0, weightedSquaredPrice / totalVolume - nextVwap * nextVwap)
     : 0;
   const latestTimestamp = eligibleRecords.at(-1)?.timestamp ?? profile.endMs;
-  const latestMinute = Math.floor(latestTimestamp / 60_000) * 60_000;
+  const latestMinute = Math.floor(latestTimestamp / 60_000);
   const developingPoc = [...profile.developingPoc];
   if (valueArea.poc !== null) {
-    if (developingPoc.at(-1)?.timestamp === latestMinute) developingPoc[developingPoc.length - 1] = { timestamp: latestMinute, price: valueArea.poc };
-    else developingPoc.push({ timestamp: latestMinute, price: valueArea.poc });
+    if (Math.floor(Number(developingPoc.at(-1)?.timestamp) / 60_000) === latestMinute) developingPoc[developingPoc.length - 1] = { timestamp: latestTimestamp, price: valueArea.poc };
+    else developingPoc.push({ timestamp: latestTimestamp, price: valueArea.poc });
   }
   // The same minute, the same rule: the newest sample replaces the one for the
   // minute still building rather than stacking a second point on it.
   const developingValueArea = [...(profile.developingValueArea ?? [])];
   if (valueArea.vah !== null && valueArea.val !== null) {
-    const sample = { timestamp: latestMinute, vah: valueArea.vah, val: valueArea.val };
-    if (developingValueArea.at(-1)?.timestamp === latestMinute) developingValueArea[developingValueArea.length - 1] = sample;
+    const sample = { timestamp: latestTimestamp, vah: valueArea.vah, val: valueArea.val };
+    if (Math.floor(Number(developingValueArea.at(-1)?.timestamp) / 60_000) === latestMinute) developingValueArea[developingValueArea.length - 1] = sample;
     else developingValueArea.push(sample);
   }
   const developingVwap = [...(profile.developingVwap ?? [])];
   if (nextVwap !== null) {
-    const sample = { timestamp: latestMinute, price: nextVwap };
-    if (developingVwap.at(-1)?.timestamp === latestMinute) developingVwap[developingVwap.length - 1] = sample;
+    const sample = { timestamp: latestTimestamp, price: nextVwap };
+    if (Math.floor(Number(developingVwap.at(-1)?.timestamp) / 60_000) === latestMinute) developingVwap[developingVwap.length - 1] = sample;
     else developingVwap.push(sample);
   }
   return {
@@ -1633,6 +1635,34 @@ export function applyInstitutionalTradesToCandles(
 
   const retainedLimit = Math.max(1, limit);
   return next.length > retainedLimit ? next.slice(-retainedLimit) : next;
+}
+
+/** Keep exact live observations beyond the latest archived checkpoint. */
+export function retainLiveVolumeProfileDevelopment(
+  profile: InstitutionalVolumeProfile,
+  previous: InstitutionalVolumeProfile,
+): InstitutionalVolumeProfile {
+  if (previous.contractSymbol !== profile.contractSymbol
+    || previous.startMs !== profile.startMs
+    || previous.groupTicks !== profile.groupTicks
+    || previous.minTradeVolume !== profile.minTradeVolume
+    || previous.maxTradeVolume !== profile.maxTradeVolume
+    || previous.valueAreaPercent !== profile.valueAreaPercent) return profile;
+  const append = <T extends { timestamp: number }>(archive: T[] = [], live: T[] = []) => {
+    const newest = archive.at(-1)?.timestamp ?? profile.startMs - 1;
+    const newestMinute = Math.floor(newest / 60_000);
+    const suffix = live.filter(({ timestamp }) => timestamp > newest
+      && timestamp < profile.endMs);
+    if (!suffix.length) return archive;
+    const sameMinute = archive.length && Math.floor(suffix[0].timestamp / 60_000) === newestMinute;
+    return [...(sameMinute ? archive.slice(0, -1) : archive), ...suffix].slice(-2_000);
+  };
+  return {
+    ...profile,
+    developingPoc: append(profile.developingPoc, previous.developingPoc),
+    developingValueArea: append(profile.developingValueArea, previous.developingValueArea),
+    developingVwap: append(profile.developingVwap, previous.developingVwap),
+  };
 }
 
 export function mergeInstitutionalVolumeProfiles(
