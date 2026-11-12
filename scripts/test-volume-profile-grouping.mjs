@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { resolveVolumeProfileRenderGrouping } from "../src/lib/volumeProfileMath.ts";
 
 const primitive = readFileSync("src/lib/nativeVolumeProfilePrimitive.ts", "utf8");
 
@@ -16,8 +17,10 @@ const MIN_ROW_PIXELS = Number(
 assert.ok(MIN_ROW_PIXELS > 0, "row-pixel floor must be readable from the source");
 
 function multiplier({ automaticGrouping, autoGroupFactor, sourceRowPixels }) {
-  const floorFactor = automaticGrouping ? autoGroupFactor : 1;
-  return Math.max(1, Math.ceil((MIN_ROW_PIXELS * floorFactor) / sourceRowPixels));
+  return resolveVolumeProfileRenderGrouping({
+    sourceGroupTicks: 1, sourceRowPixels, automatic: automaticGrouping, autoGroupFactor,
+    minimumRowPixels: MIN_ROW_PIXELS,
+  }).groupedTicks;
 }
 
 const manual = (sourceRowPixels) =>
@@ -56,7 +59,7 @@ assert.doesNotMatch(
   /automaticMultiplier = style\.automaticGrouping\s*\r?\n?\s*\?[^;]*\r?\n?\s*: 1;/,
   "manual grouping must not skip the legibility floor again",
 );
-assert.match(primitive, /groupingFloorFactor/);
+assert.match(primitive, /resolveVolumeProfileRenderGrouping\(\{/);
 
 // 6. The value area must be measured at the TRADER-REQUESTED grouping, never
 //    at the display-collapsed grouping. Row size genuinely changes the answer, so

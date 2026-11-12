@@ -43,9 +43,9 @@ const segments = segmentsForTradingDate(DATE, true);
 
 // 1. DeepChart's triple split must produce its three distinct windows, not one
 //    merged profile or a KwantDesk-only fourth Globex window.
-assert.equal(segments.length, 3, `expected Asia/London/New York, got ${segments.length}`);
-assert.deepEqual(segments.map((s) => s.id), ["asia", "london", "newyork"]);
-assert.deepEqual(segments.map((s) => s.label), ["Asia", "London", "New York"]);
+assert.equal(segments.length, 4, `expected Globex/Asia/London/New York, got ${segments.length}`);
+assert.deepEqual(segments.map((s) => s.id), ["asia", "tokyo", "london", "newyork"]);
+assert.deepEqual(segments.map((s) => s.label), ["Globex", "Asia", "London", "New York"]);
 
 // 2. The windows must start at DIFFERENT instants.
 //
@@ -84,12 +84,12 @@ for (const segment of segments) {
 //    Attribution here is the CME session key, not the calendar date: Globex
 //    runs 17:00-19:00 and never crosses midnight, so its own calendar date is
 //    the previous day and only the 17:00 roll puts it on the right session.
-const [asia] = segments;
+const [globex, asia] = segments;
 //    The yardstick is the cash open, not UTC midnight: 19:00 Chicago is
 //    already 00:00Z the next day, so comparing Asia's start against UTC
 //    midnight measures the timezone rather than the session.
 const cashOpenMs = Date.parse(`${DATE}T13:30:00.000Z`);
-for (const segment of [asia]) {
+for (const segment of [globex, asia]) {
   assert.ok(
     segment.endMs <= cashOpenMs,
     `${segment.label} must finish before the ${DATE} cash open`,
@@ -106,10 +106,10 @@ assert.equal(sessionTradingDate(asia, true), DATE);
 //     profile and only London and New York appeared.
 for (const useEnd of [false, true]) {
   const both = segmentsForTradingDate(DATE, useEnd);
-  assert.equal(both.length, 3, `toggle=${useEnd} produced ${both.length} windows`);
+  assert.equal(both.length, 4, `toggle=${useEnd} produced ${both.length} windows`);
   assert.deepEqual(
     both.map((s) => s.id),
-    ["asia", "london", "newyork"],
+    ["asia", "tokyo", "london", "newyork"],
     `toggle=${useEnd} lost or reordered a session`,
   );
   assert.ok(
@@ -127,7 +127,7 @@ for (const useEnd of [false, true]) {
 //    would still put it on the wrong profile day.
 for (const date of ["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20"]) {
   const daily = segmentsForTradingDate(date, true);
-  assert.equal(daily.length, 3, `${date} resolved ${daily.length} windows`);
+  assert.equal(daily.length, 4, `${date} resolved ${daily.length} windows`);
   for (const segment of daily) {
     assert.equal(cmeSessionDateKey(segment.startMs), date, `${segment.label} escaped ${date}`);
   }

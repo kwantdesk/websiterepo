@@ -99,7 +99,7 @@ check("the chart sends every filtered daily profile as an explicit exchange-time
 check("choosing or editing a custom clock cannot leave filtering disabled", () => {
   assert.match(control, /key === "filterTime" && nextValue === "custom"/);
   assert.match(control, /settings\.filterMode = "filter"/);
-  assert.match(control, /filterMode: "filter",\s*\n\s*filterTime: "custom",/);
+  assert.match(control, /filterMode: tpo \? current\.settings\?\.filterMode \?\? "filter" : "filter",\s*\n\s*filterTime: "custom",/);
 });
 
 check("the execution builder keeps its own filtering, keyed by the windows", () => {

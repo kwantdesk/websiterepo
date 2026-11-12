@@ -149,6 +149,11 @@ export function calculateVolumeProfileValueArea(
 
 export type VolumeProfileInputData = "volume" | "trades";
 
+/** The archive supplies total trade counts and aggressor-side contract volumes. */
+export function resolveVolumeProfileInputData(mode: unknown, inputData: unknown): VolumeProfileInputData {
+  return (mode == null || mode === "volume") && inputData === "trades" ? "trades" : "volume";
+}
+
 /**
  * Applies the Data Settings "Input data" choice to a profile.
  *

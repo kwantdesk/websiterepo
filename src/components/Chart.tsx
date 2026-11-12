@@ -523,7 +523,7 @@ import {
 } from "@/lib/gexMapPalette";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
-import { volumeProfileWithInputData } from "@/lib/volumeProfileMath";
+import { resolveVolumeProfileInputData, volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import { resolveVolumeProfileOwner, volumeProfileOwnerKey } from "@/lib/volumeProfileOwnership";
 import {
   buildMagnetCandles,
@@ -17582,7 +17582,7 @@ function Chart({
       // the reference stays stable for the render memo below.
       const rendered = volumeProfileWithInputData(
         profile,
-        String(profileSettings.inputData) === "trades" ? "trades" : "volume",
+        resolveVolumeProfileInputData(profileMode, profileSettings.inputData),
       );
       return [{
         id: `${volumeProfileOwnerKey(profile)}:${profile.startMs}`,
