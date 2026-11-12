@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { resolveBounceGexMapColumn } from "../src/lib/bounceGexMapSource.ts";
+import { DEFAULT_LINKED_GEX_MAP_SETTINGS } from "../src/lib/gexMapLinkedSettings.ts";
+import { linkPaneIndicatorStateToTheme } from "../src/lib/chartIndicatorConfig.ts";
 
 const controls = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
 const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
@@ -54,9 +57,16 @@ test("GEX Bounce role toggles filter the exposure field that is actually painted
 });
 
 test("saved custom GEX Bounce colours survive workspace theme relinking", () => {
-  assert.match(config, /const preserveBounceOverride = instance\.indicatorId === "bounce-levels"/);
-  assert.match(config, /useThemeColors: preserveBounceOverride \? false : true/);
-  assert.match(config, /bounceLevelsSettingsVersion: 5/);
+  const custom = {
+    instanceId: "bounce",
+    indicatorId: "bounce-levels",
+    enabled: true,
+    settings: { useThemeColors: false, supportColor: "#19A7FE", resistanceColor: "#F34CB7" },
+  };
+  const following = { ...custom, instanceId: "following", settings: {} };
+  const relinked = linkPaneIndicatorStateToTheme({ pane: [custom, following] });
+  assert.deepEqual(relinked.pane[0], custom);
+  assert.equal(relinked.pane[1].settings.useThemeColors, true);
 });
 
 test("Bounce Levels exposes every data-shaping dropdown above the settings dialog", () => {
@@ -90,4 +100,15 @@ test("historical Bounce Levels bypass Next's two-megabyte incremental cache limi
   assert.doesNotMatch(route, /unstable_cache/);
   assert.match(route, /historicalIntervalPromise = historyRequest\(\)/);
   assert.match(route, /Next rejects[\s\S]*cache entries over 2 MB/);
+});
+
+test("linked Bounce Levels without a matching map column requests the metric shown in settings", () => {
+  const settings = DEFAULT_LINKED_GEX_MAP_SETTINGS;
+  const config = { sourceTicker: "NDX", greekMode: "CHARM" };
+  const linked = resolveBounceGexMapColumn("NQ", settings, config);
+  assert.equal(linked.symbol, "NDX");
+  assert.equal(linked.greek, "GAMMA");
+  assert.equal(resolveBounceGexMapColumn("NQ", settings, { ...config, linkGexMapSettings: false }).greek, "CHARM");
+  const withColumn = { ...settings, panels: [...settings.panels, { id: "ndx", symbol: "NDX", greekMode: "DELTA" }] };
+  assert.equal(resolveBounceGexMapColumn("NQ", withColumn, { ...config, mapColumnId: "ndx" }).greek, "DELTA");
 });

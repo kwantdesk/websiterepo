@@ -1,18 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLinkedGexMapSettingsState } from "./useLinkedGexMapSettings";
-import { effectiveLinkedGexMapModel, linkedGexMapPanel, normalizeLinkedGexMapSettings, readLocalGexMapStarSettings } from "@/lib/gexMapLinkedSettings";
+import { effectiveLinkedGexMapModel, normalizeLinkedGexMapSettings, readLocalGexMapStarSettings } from "@/lib/gexMapLinkedSettings";
 import { isGexMapSurfaceFor, hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
 import { compactGexMapLiveCacheKey, fetchWorkspaceData, gexMapCacheKey, gexMapReplayCacheMaxAge, readWorkspaceData } from "@/lib/workspaceDataCache";
 import { subscribeGexMapSurface, publishGexMapSurface } from "@/lib/gexMapSurfaceBus";
 import { GEX_MAP_PALETTE_CHANGE_EVENT, gexMapSignedScaleHex, loadGexMapPalette } from "@/lib/gexMapPalette";
 import { prepareBounceGexMirror, selectBounceGexMirror } from "@/lib/bounceGexMapMirror";
 import { mergeBounceGexMapHistory } from "@/lib/bounceGexMapHistory";
-import { resolveBounceGexMapSource } from "@/lib/bounceGexMapSource";
+import { resolveBounceGexMapColumn } from "@/lib/bounceGexMapSource";
 import { getBounceGexMapPreview, subscribeBounceGexMapPreview } from "@/lib/bounceGexMapPreview";
 import { useBounceMappingHistory } from "./useBounceMappingHistory";
 import type { Candle } from "@/lib/backtester";
-import type { GreekMode } from "@/lib/optionsFlow";
 
 const nyDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 export function useBounceGexMapMirror(input: {
@@ -29,10 +28,7 @@ export function useBounceGexMapMirror(input: {
     viewMode: cfg.mapViewMode ?? shared.viewMode, stepMinutes: cfg.mapStepMinutes ?? shared.stepMinutes,
     starSettings: readLocalGexMapStarSettings(cfg.mapStarSettings, shared.starSettings),
   }), [linked, shared, profileDraft, cfg.mapExpiryScope, cfg.mapRepresentation, cfg.mapExposureModel, cfg.mapViewMode, cfg.mapStepMinutes, cfg.mapStarSettings]);
-  const { display, source } = resolveBounceGexMapSource(input.instrument, profile, cfg.sourceTicker);
-  const panel = linkedGexMapPanel(profile, source, typeof cfg.mapColumnId === "string" ? cfg.mapColumnId : undefined);
-  const symbol = linked ? panel?.symbol ?? source : source;
-  const greek = (linked ? panel?.greekMode ?? cfg.greekMode ?? "GAMMA" : cfg.greekMode ?? "GAMMA") as GreekMode;
+  const { display, source, symbol, greek } = resolveBounceGexMapColumn(input.instrument, profile, cfg);
   const model = effectiveLinkedGexMapModel(profile, greek);
   const sessionDate = input.timestampMs === null ? "" : nyDay.format(input.timestampMs);
   const key = (sessionDate ? gexMapCacheKey(symbol, greek, sessionDate, profile.expiryScope, profile.representation)

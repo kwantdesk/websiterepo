@@ -163,6 +163,7 @@ export default function GexMapSettingsDialog({
   open,
   future,
   embedded = false,
+  showMapTableSettings = true,
   section = "all",
   settings,
   palette,
@@ -180,6 +181,7 @@ export default function GexMapSettingsDialog({
     onChange: (settings: GexMapFutureSettings) => void;
   };
   embedded?: boolean;
+  showMapTableSettings?: boolean;
   section?: "all" | "colours" | "settings";
   settings: GexMapStarSettings;
   palette: GexMapPalette;
@@ -305,7 +307,7 @@ export default function GexMapSettingsDialog({
   </> : null;
   const viewControls = <>
           <div className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">View</span><span className="text-[8px] text-muted">Full = every strike raw · Ninja = structural nodes · Star = only the Star node</span></span>
+            <span><span className="block text-[10px] text-foreground">View</span><span className="text-[8px] text-muted">{embedded ? "Emphasise every strike, structural nodes or the Star node." : "Full = every strike raw · Ninja = structural nodes · Star = only the Star node"}</span></span>
             <div className="flex h-7 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map view">
               {([["full", "Full"], ["ninja", "Ninja"], ["star", "Star"]] as const).map(([mode, label]) => (
                 <button
@@ -320,7 +322,7 @@ export default function GexMapSettingsDialog({
               ))}
             </div>
           </div>
-          <div className={rowClass}>
+          {showMapTableSettings ? <div className={rowClass}>
             <span><span className="block text-[10px] text-foreground">Values</span><span className="text-[8px] text-muted">The numbers beside each strike — colours stay identical</span></span>
             <div className="flex h-7 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map value mode">
               {([["signed", "Signed"], ["star-percent", "% of Star"]] as const).map(([mode, label]) => (
@@ -335,14 +337,14 @@ export default function GexMapSettingsDialog({
                 </button>
               ))}
             </div>
-          </div>
+          </div> : null}
           {viewMode !== "full" ? (
             <>
               <label className={rowClass}>
                 <span><span className="block text-[10px] text-foreground">Dimmed-row intensity</span><span className="text-[8px] text-muted">{Math.round(settings.dimOpacity * 100)}%</span></span>
                 <input type="range" min="0.02" max="0.3" step="0.01" value={settings.dimOpacity} onChange={(event) => update("dimOpacity", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
               </label>
-              {([
+              {showMapTableSettings && ([
                 ["showRawValues", "Show raw exposure values"],
                 ["animateChanges", "Animate live changes"],
               ] as const).map(([key, label]) => (
@@ -379,7 +381,7 @@ export default function GexMapSettingsDialog({
                 "showRoleLabels", "Show role labels",
               ], [
                 "showAirPocketLabels", "Show air-pocket labels",
-              ]] as const).map(([key, label]) => (
+              ]] as const).filter(([key]) => showMapTableSettings || key === "showAirPocketLabels").map(([key, label]) => (
                 <label key={key} className={rowClass}>
                   <span className="text-[10px] text-foreground">{label}</span>
                   <input type="checkbox" checked={settings[key]} onChange={(event) => update(key, event.target.checked)} className="ml-auto h-4 w-4 accent-[var(--primary)]" />

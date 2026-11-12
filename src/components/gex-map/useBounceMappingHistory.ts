@@ -13,21 +13,29 @@ export function useBounceMappingHistory(input: {
   const key = "bounce-map-1m-price:" + input.instrument + ":" + input.sessionDate;
   const [state, setState] = useState<MappingState>({ key: "", points: [], epoch: 0 });
   const current = useRef(state); current.current = state;
+  const latestFrame = useRef(input.latestFrame); latestFrame.current = input.latestFrame;
   useEffect(() => {
     if (!input.enabled || !/^\d{4}-\d{2}-\d{2}$/.test(input.sessionDate)) return;
     let cancelled = false, retry: ReturnType<typeof setTimeout> | null = null;
+    let coveredMinute = -Infinity;
+    const sessionEnd = newYorkSessionTimestamp(input.sessionDate, 17 * 60);
     const load = async () => {
       if (cancelled) return;
       if (document.visibilityState === "hidden") { retry = setTimeout(load, 60_000); return; }
       const from = newYorkSessionTimestamp(input.sessionDate, 8 * 60);
       // The owned-history API rejects future range ends. During the session,
       // asking through 17:00 ET left futures mapping permanently empty.
-      const to = Math.min(Date.now(), newYorkSessionTimestamp(input.sessionDate, 17 * 60));
+      const to = Math.min(Date.now(), sessionEnd);
       if (to <= from) return;
+      const frameMinute = Math.floor(latestFrame.current / 60_000);
+      if (!input.historical && frameMinute <= coveredMinute) {
+        if (to < sessionEnd) retry = setTimeout(load, 5_000);
+        return;
+      }
       const query = new URLSearchParams({ symbol: input.instrument, timeframe: "1m", days: "1", from: String(from), to: String(to) });
       try {
         const response = await fetchWorkspaceData<{ candles: PricePoint[] }>(key, "/api/cme-history?" + query, {
-          maxAgeMs: input.historical ? 6 * 60 * 60_000 : 45_000, timeoutMs: 45_000,
+          maxAgeMs: input.historical ? 6 * 60 * 60_000 : 12_000, timeoutMs: 45_000,
           validate: (p) => Boolean(p && typeof p === "object" && Array.isArray((p as { candles?: unknown }).candles)),
         });
         if (cancelled) return;
@@ -43,12 +51,22 @@ export function useBounceMappingHistory(input: {
           merged.set(timestamp, { timestamp, open });
         }
         const next = { key, points: [...merged.values()].sort((a, b) => a.timestamp - b.timestamp), epoch: prior.epoch + Number(revised) };
-        current.current = next; setState(next);
+        if (prior.key !== current.current.key || revised || next.points.length !== prior.points.length) {
+          current.current = next;
+          setState(next);
+        }
+        if (!input.historical && to < sessionEnd) {
+          const through = (next.points.at(-1)?.timestamp ?? -Infinity) + 59_999;
+          coveredMinute = Math.floor(through / 60_000);
+          // Let an in-flight read finish even if exposure advances. Retry
+          // missing minutes at the shared history cache cadence.
+          retry = setTimeout(load, through < latestFrame.current ? 12_000 : 5_000);
+        }
       } catch { if (!cancelled) retry = setTimeout(load, 60_000); }
     };
     void load();
     return () => { cancelled = true; if (retry) clearTimeout(retry); };
-  }, [input.enabled, input.instrument, input.sessionDate, input.latestFrame, input.historical, key]);
+  }, [input.enabled, input.instrument, input.sessionDate, input.historical, key]);
   const scoped = state.key === key ? state : null;
   return { key: key + ":" + (scoped?.epoch ?? 0), points: scoped?.points ?? EMPTY_POINTS, through: (scoped?.points.at(-1)?.timestamp ?? -Infinity) + 59_999 };
 }

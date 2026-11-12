@@ -5,11 +5,11 @@ import { Link2 } from "lucide-react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 import { GEX_MAP_PALETTE_CHANGE_EVENT, gexMapPalettesEqual, loadGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
-import { linkedGexMapPanel, normalizeLinkedGexMapSettings, readLocalGexMapStarSettings, type LinkedGexMapSettings } from "@/lib/gexMapLinkedSettings";
+import { normalizeLinkedGexMapSettings, readLocalGexMapStarSettings, type LinkedGexMapSettings } from "@/lib/gexMapLinkedSettings";
 import type { BounceGexMapDraft } from "@/lib/bounceGexMapPreview";
 import GexMapSettingsDialog from "./GexMapSettingsDialog";
 import { useLinkedGexMapSettings } from "./useLinkedGexMapSettings";
-import { resolveBounceGexMapSource } from "@/lib/bounceGexMapSource";
+import { resolveBounceGexMapColumn } from "@/lib/bounceGexMapSource";
 
 type Settings = Record<string, string | number | boolean>;
 const coreFields = {
@@ -48,10 +48,8 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
     };
   }, []);
   const source = String(settings.sourceTicker ?? "AUTO");
-  const resolved = resolveBounceGexMapSource(instrument, profile, source);
-  const column = linkedGexMapPanel(profile, resolved.source, String(settings.mapColumnId ?? ""));
-  const metric = linked ? column?.greekMode ?? "GAMMA"
-    : String(settings.greekMode ?? "GAMMA");
+  const resolved = resolveBounceGexMapColumn(instrument, profile, settings);
+  const { column, greek: metric } = resolved;
   const update = (patch: Partial<LinkedGexMapSettings>) => {
     const next = normalizeLinkedGexMapSettings({ ...profile, ...patch });
     if (linked) onDraftChange({ profile: patch });
@@ -71,7 +69,7 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
       </KwantSelect>
     </label>
   );
-  const mapControls = <GexMapSettingsDialog embedded open section={section} settings={profile.starSettings} palette={draft?.palette ?? savedPalette}
+  const mapControls = <GexMapSettingsDialog embedded open section={section} showMapTableSettings={linked} settings={profile.starSettings} palette={draft?.palette ?? savedPalette}
     viewMode={profile.viewMode}
     onViewModeChange={(viewMode) => update({ viewMode })} onChange={(starSettings) => update({ starSettings })}
     onPaletteChange={(next) => onDraftChange({ palette: gexMapPalettesEqual(next, savedPalette) ? undefined : next })} />;
@@ -142,7 +140,7 @@ export default function BounceGexMapSettings({ instrument = "", settings, onChan
         {!linked ? select("Data time", String(settings.priceMode ?? "live"), [["live", "Live / chart replay"], ["eod", "Last completed session"]],
           (v) => onChange({ priceMode: v })) : null}
       </div>
-      {profile.exposureModel === "DEALER_INVENTORY" && metric !== "AUTO" && metric !== "GAMMA" ? (
+      {profile.exposureModel === "DEALER_INVENTORY" && metric !== "GAMMA" ? (
         <p className="text-[11px] leading-5 text-muted">Dealer inventory applies to Gamma. {metric} uses Structural OI, matching GEX Map.</p>
       ) : null}
       {mapControls}

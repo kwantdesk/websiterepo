@@ -195,7 +195,9 @@ check("missing historical mapping prices cannot be replaced with future live pri
   const p = payload();
   const prepared = prepare(p, settings, { displayInstrument: "ES", displayPriceAt: () => null, liveDisplayPrice: 9000 });
   assert.equal(selectBounceGexMirror(prepared, t + minute), null);
-  assert.ok(selectBounceGexMirror(prepared, null));
+  assert.equal(selectBounceGexMirror(prepared, null), null);
+  const paired = prepare(p, settings, { displayInstrument: "ES", displayPriceAt: () => 7500, liveDisplayPrice: 9000 });
+  assert.ok(selectBounceGexMirror(paired, null));
 });
 check("every palette uses exactly the Map's independent signed peak scale", () => {
   const p = payload(), range = gexMapExposureRange(p.latestStrikes.map((r) => r.net));

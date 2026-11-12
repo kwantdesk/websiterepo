@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { supportsChartInterval } from '../src/lib/chartIntervals.ts';
+import { getChartInterval, supportsChartInterval } from '../src/lib/chartIntervals.ts';
+import { scopedFuturesContract } from '../src/lib/futuresInstrumentIdentity.ts';
 import { newYorkSessionTimestamp } from '../src/lib/gexVueReplay.ts';
 import { prepareBounceGexMirror, selectBounceGexMirror } from '../src/lib/bounceGexMapMirror.ts';
 import { normalizeLinkedGexMapSettings, DEFAULT_LINKED_GEX_MAP_SETTINGS } from '../src/lib/gexMapLinkedSettings.ts';
@@ -25,7 +26,8 @@ function historyRoute(now) {
         return [{ timestamp: now - 60000, open: 28000 }];
       } };
       if (name === '@/lib/chartHistoryWindow') return { DEFAULT_CHART_HISTORY_CALENDAR_DAYS: 10 };
-      if (name === '@/lib/chartIntervals') return { isEventBasedChartInterval: () => false, supportsChartInterval };
+      if (name === '@/lib/chartIntervals') return { getChartInterval, isEventBasedChartInterval: () => false, supportsChartInterval };
+      if (name === '@/lib/futuresInstrumentIdentity') return { scopedFuturesContract };
       if (name === '@/lib/providerErrorMessage') return { logProviderError: () => {}, providerErrorMessage: e => String(e) };
       return {};
     },
@@ -34,15 +36,20 @@ function historyRoute(now) {
   return { get: context.exports.GET, reads };
 }
 
-async function mappingHook({ now, sessionDate, instrument, historical = false }) {
+async function mappingHook({ now, sessionDate, instrument, historical = false, advanceFrame = false }) {
   const route = historyRoute(now), requests = [], effects = [], jobs = [], timers = [], refs = [];
-  let state, refIndex = 0;
+  let state, refIndex = 0, dependencies, cleanup;
   const context = { exports: {}, URLSearchParams, Date: class extends Date { static now() { return now; } },
     document: { visibilityState: 'visible' }, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
     require: name => {
       if (name === 'react') return {
         useState: initial => [state ??= initial, next => { state = next; }],
-        useRef: value => refs[refIndex++] ??= { current: value }, useEffect: effect => effects.push(effect),
+        useRef: value => refs[refIndex++] ??= { current: value }, useEffect: (effect, next) => {
+          if (!dependencies || next.some((value, index) => value !== dependencies[index])) {
+            dependencies = next;
+            effects.push(effect);
+          }
+        },
       };
       if (name === '@/lib/gexVueReplay') return { newYorkSessionTimestamp };
       if (name === '@/lib/workspaceDataCache') return { fetchWorkspaceData: (_key, url) => {
@@ -59,13 +66,24 @@ async function mappingHook({ now, sessionDate, instrument, historical = false })
   };
   vm.runInNewContext(compile(hookSource), context);
   const input = { enabled: true, instrument, sessionDate, latestFrame: now, historical };
-  context.exports.useBounceMappingHistory(input);
-  const cleanups = effects.map(effect => effect());
+  const render = () => {
+    refIndex = 0;
+    const result = context.exports.useBounceMappingHistory(input);
+    for (const effect of effects.splice(0)) {
+      cleanup?.();
+      cleanup = effect();
+    }
+    return result;
+  };
+  render();
+  if (advanceFrame) {
+    input.latestFrame += 60_000;
+    render();
+  }
   await Promise.all(jobs);
   await new Promise(setImmediate);
-  refIndex = 0;
-  const result = context.exports.useBounceMappingHistory(input);
-  cleanups.forEach(fn => fn?.());
+  const result = render();
+  cleanup?.();
   return { result, requests, reads: route.reads, timers };
 }
 
@@ -87,9 +105,18 @@ for (const instrument of ['NQ', 'MNQ', 'ES', 'MES', 'RTY', 'M2K']) {
     assert.equal(result.points.length, 1);
     assert.equal(result.points[0].open, 28000);
     assert.equal(result.through, now - 1);
-    assert.equal(timers.length, 0, 'successful history must not enter the failure retry loop');
+    assert.equal(timers.length, 1, 'a live read schedules its next coverage check');
   });
 }
+
+test('a new live exposure frame does not discard an in-flight futures mapping read', async () => {
+  const day = '2026-11-05', now = newYorkSessionTimestamp(day, 10 * 60);
+  const { result, reads, timers } = await mappingHook({ now, sessionDate: day, instrument: 'NQ', advanceFrame: true });
+  assert.equal(reads.length, 1);
+  assert.equal(result.points.length, 1);
+  assert.equal(result.points[0].open, 28000);
+  assert.equal(timers.length, 1);
+});
 
 test('completed-session replay retains the full real session endpoint', async () => {
   const day = '2026-11-05', now = newYorkSessionTimestamp(day, 19 * 60);
