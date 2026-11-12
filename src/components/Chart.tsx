@@ -606,7 +606,6 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  */
 const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
-  "aroon-oscillator",
   "inverse-cyber-cycle",
   "ichimoku-indicator",
   // Linear recurrence: measured 20k-bar p95 ~4.3ms; live updates are incremental.
@@ -3467,6 +3466,7 @@ function Chart({
       applyOptions: (options: Record<string, unknown>) => void;
     };
     dataSnapshot: LightweightSeriesDataSnapshot;
+    aroonPoints?: CalculatedIndicatorSeries["data"];
     optionsSignature: string;
   }>>([]);
   const superTrendPlotBuffersRef = useRef(new Map<string, SuperTrendPlotBuffer>());
@@ -8478,7 +8478,9 @@ function Chart({
         && !CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId)
       ) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
-      const studyCandles = instance.indicatorId === "volume" ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
+      // Aroon uses candle extrema and a linear rolling window across loaded history.
+      const studyCandles = instance.indicatorId === "aroon-oscillator" ? sampledIndicatorCandles
+        : instance.indicatorId === "volume" ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
         : CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId) ? deltaPaneCandles
         : requiresOrderFlowWindow
         ? indicatorCandles
@@ -18325,7 +18327,19 @@ function Chart({
             } : {}),
           };
       const data = lightweightIndicatorData(definition);
-      const dataSnapshot = buildLightweightSeriesDataSnapshot(data, existing?.dataSnapshot ?? null);
+      const aroonPoints = definition.key === "aroon-oscillator" ? definition.data : undefined;
+      const previousAroonPoints = existing?.aroonPoints;
+      // A late candle can change an interior Aroon window with the tail intact.
+      // Check its prefix before allowing the series sync to assume a tail-only update.
+      const unchangedAroon = aroonPoints !== undefined && aroonPoints === previousAroonPoints;
+      const correctedAroonHistory = !unchangedAroon && aroonPoints && previousAroonPoints
+        && aroonPoints.some((point, index) => {
+          if (index === aroonPoints.length - 1) return false;
+          const previous = previousAroonPoints[index];
+          return point !== previous && (point.time !== previous?.time || point.value !== previous?.value);
+        });
+      const dataSnapshot = unchangedAroon && existing ? existing.dataSnapshot
+        : buildLightweightSeriesDataSnapshot(data, correctedAroonHistory ? null : existing?.dataSnapshot ?? null);
       const optionsSignature = stableSeriesOptionsSignature(options);
       if (existing && existing.kind === kind) {
         if (definition.superTrendLabels) existing.superTrendLabels?.update(definition.data, definition.superTrendLabels,
@@ -18342,14 +18356,14 @@ function Chart({
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
-        const syncPlan = planLightweightSeriesDataSync(existing.dataSnapshot, dataSnapshot);
+        const syncPlan = unchangedAroon ? "none" : planLightweightSeriesDataSync(existing.dataSnapshot, dataSnapshot);
         if (syncPlan === "append" || syncPlan === "update-last") {
           const latestPoint = data.at(-1);
           if (latestPoint) existing.series.update(latestPoint);
         } else if (syncPlan === "replace") {
           existing.series.setData(data);
         }
-        return { ...existing, dataSnapshot, optionsSignature, superTrendDefinition: definition.superTrendStyleKey ? definition : undefined };
+        return { ...existing, dataSnapshot, aroonPoints, optionsSignature, superTrendDefinition: definition.superTrendStyleKey ? definition : undefined };
       }
       const series = kind === "histogram"
         ? chart.addHistogramSeries({
@@ -18432,6 +18446,7 @@ function Chart({
           applyOptions: (options: Record<string, unknown>) => void;
         },
         dataSnapshot,
+        aroonPoints,
         optionsSignature,
       };
     });

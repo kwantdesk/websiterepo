@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { calculateIndicatorSeries } from "../src/lib/chartIndicatorEngine.ts";
-import { replayIndicatorCandles } from "../src/lib/replayChartHistory.ts";
 
 const theme = { primary: "#ffffff", secondary: "#aaaaaa", positive: "#00ff00", negative: "#ff0000", muted: "#888888" };
 const context = { instrument: "NQ", tickSize: 0.25 };
-const candles = Array.from({ length: 2_400 }, (_, index) => ({
+const candles = Array.from({ length: 30_656 }, (_, index) => ({
   timestamp: 1_700_000_000_000 + index * 60_000,
   open: 20_000,
   high: 20_010 + ((index * 31) % 37),
@@ -17,12 +16,8 @@ const instance = (length, settings = {}) => ({
   instanceId: "aroon-test", indicatorId: "aroon-oscillator", enabled: true, settings: { length, ...settings },
 });
 const source = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-const deepHistory = /const DEEP_HISTORY_INDICATOR_IDS = new Set\(\[([\s\S]*?)\]\)/.exec(source)?.[1] ?? "";
-assert.match(deepHistory, /"aroon-oscillator"/);
-assert.doesNotMatch(deepHistory, /"aroon-up-down"/);
-const historyLimit = Number(/const DEEP_HISTORY_INDICATOR_MAX_BARS = ([\d_]+)/.exec(source)?.[1].replaceAll("_", ""));
-const loaded = replayIndicatorCandles(candles, historyLimit, null);
-assert.equal(loaded.length, candles.length);
+assert(source.includes('const studyCandles = instance.indicatorId === "aroon-oscillator" ? sampledIndicatorCandles'));
+const loaded = candles;
 
 function expectedAroon(bars, length) {
   return bars.slice(length).map((candle, offset) => {
@@ -50,6 +45,21 @@ changed[changed.length - 1] = { ...changed.at(-1), high: 20_100, low: 19_900 };
 const [live] = calculateIndicatorSeries(instance(25), changed, theme, context);
 assert.deepEqual(live.data.slice(0, -1), base.data.slice(0, -1));
 assert.notEqual(live.data.at(-1).value, base.data.at(-1).value);
-assert.equal(base.data.length, 2_375);
+assert.equal(base.data.length, 30_631);
+
+const streaming = instance(25);
+const cached = calculateIndicatorSeries(streaming, loaded, theme, context)[0].data;
+assert.strictEqual(calculateIndicatorSeries(streaming, loaded, theme, context)[0].data, cached);
+const correction = loaded.slice();
+const oldBar = correction[correction.length - 101];
+correction[correction.length - 101] = { ...oldBar, high: oldBar.high + 500 };
+const corrected = calculateIndicatorSeries(streaming, correction, theme, context)[0].data;
+assert.deepEqual(corrected, expectedAroon(correction, 25));
+assert.notDeepEqual(corrected, cached);
+assert.deepEqual(corrected.at(-1), cached.at(-1));
+const shortened = correction.slice(0, 12_000);
+assert.deepEqual(calculateIndicatorSeries(streaming, shortened, theme, context)[0].data, expectedAroon(shortened, 25));
+const appended = [...shortened, correction[12_000]];
+assert.deepEqual(calculateIndicatorSeries(streaming, appended, theme, context)[0].data, expectedAroon(appended, 25));
 
 console.log("Aroon Oscillator history, rolling extremes, five lookbacks, causal replay and forming candle checks passed.");

@@ -239,6 +239,44 @@ function aroonExtremeAges(values: number[], length: number, high: boolean): Int3
   return ages;
 }
 
+function aroonScore(length: number, age: number) {
+  return ((length - age) / length) * 100;
+}
+
+const aroonOscillatorCache = new WeakMap<ChartIndicatorInstance, {
+  candles: Candle[];
+  length: number;
+  points: CalculatedIndicatorSeries["data"];
+}>();
+
+function aroonOscillatorData(instance: ChartIndicatorInstance, candles: Candle[], length: number) {
+  const previous = aroonOscillatorCache.get(instance);
+  let matching = 0;
+  if (previous?.length === length) {
+    const count = Math.min(candles.length, previous.candles.length);
+    // Chart candle updates replace changed bars and preserve the settled prefix.
+    while (matching < count) {
+      const bar = candles[matching];
+      const old = previous.candles[matching];
+      if (bar !== old && (bar.timestamp !== old.timestamp || bar.high !== old.high || bar.low !== old.low)) break;
+      matching += 1;
+    }
+    if (matching === candles.length && matching === previous.candles.length) return previous.points;
+  }
+
+  const firstOutput = Math.max(length, matching);
+  const remainder = matching <= length ? candles : candles.slice(matching - length);
+  const highs = aroonExtremeAges(remainder.map(bar => bar.high), length, true);
+  const lows = aroonExtremeAges(remainder.map(bar => bar.low), length, false);
+  const points = matching > length ? previous!.points.slice(0, matching - length) : [];
+  for (let index = firstOutput; index < candles.length; index += 1) {
+    const offset = length + index - firstOutput;
+    points.push({ time: candles[index].timestamp / 1000, value: aroonScore(length, highs[offset]) - aroonScore(length, lows[offset]) });
+  }
+  aroonOscillatorCache.set(instance, { candles, length, points });
+  return points;
+}
+
 function rollingMean(values: number[], length: number) {
   const output = Array<number | null>(values.length).fill(null);
   let sum = 0;
@@ -1032,6 +1070,36 @@ function computeIndicatorSeries(
     ];
   }
 
+  if (key === "aroon-oscillator") {
+    const length = Math.max(2, Math.round(settingNumber(instance, "length", 25)));
+    return [{
+      key,
+      label: `Aroon Osc ${length}`,
+      kind: "line",
+      placement: "pane",
+      color: theme.primary,
+      lineWidth: 2,
+      data: aroonOscillatorData(instance, candles, length),
+    }];
+  }
+
+  if (key === "aroon-up-down") {
+    const length = Math.max(2, Math.round(settingNumber(instance, "length", 25)));
+    const upAges = aroonExtremeAges(candles.map(candle => candle.high), length, true);
+    const downAges = aroonExtremeAges(candles.map(candle => candle.low), length, false);
+    const points = (ages: Int32Array) => {
+      const data: { time: number; value: number }[] = [];
+      for (let index = length; index < candles.length; index += 1) {
+        data.push({ time: candles[index].timestamp / 1000, value: aroonScore(length, ages[index]) });
+      }
+      return data;
+    };
+    return [
+      { key: `${key}-up`, label: "Aroon Up", kind: "line", placement: "pane", color: theme.positive, lineWidth: 2, data: points(upAges) },
+      { key: `${key}-down`, label: "Aroon Down", kind: "line", placement: "pane", color: theme.negative, lineWidth: 2, data: points(downAges) },
+    ];
+  }
+
   const closes = candles.map((candle) => candle.close);
   const highs = candles.map((candle) => candle.high);
   const lows = candles.map((candle) => candle.low);
@@ -1273,35 +1341,6 @@ function computeIndicatorSeries(
       lineWidth: 2,
       data: lineData(candles, values),
     }];
-  }
-
-  if (key === "aroon-up-down" || key === "aroon-oscillator") {
-    const length = Math.max(2, Math.round(settingNumber(instance, "length", 25)));
-    const upAges = aroonExtremeAges(highs, length, true);
-    const downAges = aroonExtremeAges(lows, length, false);
-    const score = (age: number) => ((length - age) / length) * 100;
-    const points = (valueAt: (index: number) => number) => {
-      const data: { time: number; value: number }[] = [];
-      for (let index = length; index < candles.length; index += 1) {
-        data.push({ time: candles[index].timestamp / 1000, value: valueAt(index) });
-      }
-      return data;
-    };
-    if (key === "aroon-oscillator") {
-      return [{
-        key,
-        label: `Aroon Osc ${length}`,
-        kind: "line",
-        placement: "pane",
-        color: theme.primary,
-        lineWidth: 2,
-        data: points((index) => score(upAges[index]) - score(downAges[index])),
-      }];
-    }
-    return [
-      { key: `${key}-up`, label: "Aroon Up", kind: "line", placement: "pane", color: theme.positive, lineWidth: 2, data: points((index) => score(upAges[index])) },
-      { key: `${key}-down`, label: "Aroon Down", kind: "line", placement: "pane", color: theme.negative, lineWidth: 2, data: points((index) => score(downAges[index])) },
-    ];
   }
 
   if (key === "awesome-oscillator") {
