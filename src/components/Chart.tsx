@@ -523,6 +523,8 @@ import {
 } from "@/lib/gexMapPalette";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
+import { adrHistoryDay, normalizeAverageDailyRangeTargetSettings, supportsAdrDailyHistory } from "@/lib/averageDailyRangeTarget";
+import { adrDailyHistoryDays, loadAdrDailyHistory } from "@/lib/adrDailyHistory";
 import { resolveVolumeProfileInputData, resolveVolumeProfileMode, volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import { resolveVolumeProfileOwner, volumeProfileOwnerKey } from "@/lib/volumeProfileOwnership";
 import {
@@ -8447,6 +8449,31 @@ function Chart({
   const optionsVwapState = useOptionsVwapHistory(indicators.some(item=>item.enabled && item.indicatorId === "options-vwap"), instrument,
     sampledIndicatorCandles[0]?.timestamp ?? NaN, sampledIndicatorCandles.at(-1)?.timestamp ?? NaN,replayTimestampMs !== null);
   const optionsVwapHistory = optionsVwapState.payload;
+  const adrHost = sampledIndicatorCandles.at(-1);
+  const adrIntervalMs = timeframeToMs(timeframe);
+  const adrCoarseHost = adrIntervalMs === null || adrIntervalMs > 60_000;
+  const adrHistoryDays = indicators.reduce((days, instance) => {
+    if (!instance.enabled || instance.indicatorId !== "average-daily-range-target") return days;
+    const target = normalizeAverageDailyRangeTargetSettings(instance.settings);
+    return adrCoarseHost || target.lengthType !== "daily" || target.length > 5
+      ? Math.max(days, adrDailyHistoryDays(target.lengthType, target.length)) : days;
+  }, 0);
+  const adrAsOf = !adrHistoryDays ? undefined : replayTimestampMs ?? adrHost?.sourceEndTimestamp
+    ?? (adrHost && timeframe && /^1[DWM]$/.test(timeframe) && marketIsActive ? Date.now() : adrHost?.timestamp);
+  const adrRequestDay = adrAsOf === undefined ? null : adrHistoryDay(adrAsOf, instrument);
+  const adrHistoryKey = adrHistoryDays && adrRequestDay !== null && supportsAdrDailyHistory(instrument)
+    ? `${instrument}:${adrRequestDay}:${adrHistoryDays}` : null;
+  const [adrHistory, setAdrHistory] = useState<{ key: string; candles: Candle[] } | null>(null);
+  useEffect(() => {
+    if (!adrHistoryKey || adrRequestDay === null) return;
+    let mounted = true;
+    void loadAdrDailyHistory(instrument, adrHistoryDays, adrRequestDay).then(
+      daily => { if (mounted) setAdrHistory({ key: adrHistoryKey, candles: daily }); },
+      () => { if (mounted) setAdrHistory({ key: adrHistoryKey, candles: [] }); },
+    );
+    return () => { mounted = false; };
+  }, [instrument, adrHistoryDays, adrHistoryKey, adrRequestDay]);
+  const adrDailyCandles = adrHistoryKey && adrHistory?.key === adrHistoryKey ? adrHistory.candles : undefined;
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (instance.indicatorId === "options-vwap") {
@@ -8472,6 +8499,7 @@ function Chart({
         return lines;
       }
       if (instance.indicatorId === "standard-deviation" || instance.indicatorId === "average-true-range-atr") return [];
+      if (instance.indicatorId === "average-daily-range-target" && adrHistoryKey && !adrDailyCandles) return [];
       if (
         !orderFlowSeriesReady
         && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId)
@@ -8494,7 +8522,10 @@ function Chart({
         // Resolved so a study is never painted the chart's own colour: a
         // hollow-candle theme makes downColor the background.
         visibleIndicatorTheme(settings),
-        { instrument, tickSize: priceFormat.minMove, replayTimestampMs, footprintBars: instance.indicatorId === "shift-candle" || instance.indicatorId === "important-levels" ? shiftCandleBars : undefined },
+        { instrument, timeframe, tickSize: priceFormat.minMove, replayTimestampMs,
+          ...(instance.indicatorId === "average-daily-range-target" && adrHistoryKey
+            ? { adrDailyCandles, adrAsOfMs: adrAsOf } : {}),
+          footprintBars: instance.indicatorId === "shift-candle" || instance.indicatorId === "important-levels" ? shiftCandleBars : undefined },
       ).map((series) => ({ ...series, groupKey: instance.instanceId }));
     }),
     [
@@ -8505,6 +8536,9 @@ function Chart({
       indicatorSignature,
       sampledIndicatorCandles,
       optionsVwapHistory,
+      adrAsOf,
+      adrDailyCandles,
+      adrHistoryKey,
       timeframe,
       replayTimestampMs,
       indicators,

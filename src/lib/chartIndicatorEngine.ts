@@ -421,11 +421,21 @@ export function calculateDeltaPercentHighlights(
  * here, once, rather than threaded through twenty-six separate branches — an
  * untouched indicator returns exactly what it always did.
  */
+type IndicatorCalculationContext = {
+  instrument?: string;
+  timeframe?: string;
+  tickSize?: number;
+  footprintBars?: readonly FootprintBarModel[];
+  replayTimestampMs?: number | null;
+  adrDailyCandles?: readonly Candle[];
+  adrAsOfMs?: number;
+};
+
 export function calculateIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
   theme: IndicatorTheme,
-  context: { instrument?: string; tickSize?: number; footprintBars?: readonly FootprintBarModel[]; replayTimestampMs?: number | null } = {},
+  context: IndicatorCalculationContext = {},
 ): CalculatedIndicatorSeries[] {
   const clock = context.replayTimestampMs;
   const [safeInstance] = replaySafeIndicators([instance], clock);
@@ -441,7 +451,7 @@ function calculateUnclippedIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
   theme: IndicatorTheme,
-  context: { instrument?: string; tickSize?: number; footprintBars?: readonly FootprintBarModel[] } = {},
+  context: IndicatorCalculationContext = {},
 ): CalculatedIndicatorSeries[] {
   // KST owns both slope colours per plot. The generic post-colour pass would
   // flatten those deliberate two-colour paths into one custom swatch.
@@ -465,7 +475,7 @@ function computeIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
   theme: IndicatorTheme,
-  context: { instrument?: string; tickSize?: number; footprintBars?: readonly FootprintBarModel[] } = {},
+  context: IndicatorCalculationContext = {},
 ): CalculatedIndicatorSeries[] {
   if (!instance.enabled || candles.length === 0) return [];
   const key = instance.indicatorId;
@@ -484,7 +494,7 @@ function computeIndicatorSeries(
   if (key === "swing-point") return calculateSwingPoints(candles, instance.settings ?? {}, theme, context.tickSize);
   if (key === "text-on-chart") return calculateTextOnChart(candles, instance.settings ?? {}, theme);
   if (key === "price-movement-levels") return calculatePriceMovementLevels(candles, instance.settings ?? {}, theme, context.tickSize);
-  if (key === "average-daily-range-target") return calculateAverageDailyRangeTarget(candles, instance.settings ?? {}, theme);
+  if (key === "average-daily-range-target") return calculateAverageDailyRangeTarget(candles, instance.settings ?? {}, theme, context);
   if (key === "volume-delta-sprint") return calculateVolumeDeltaSprint(candles, instance.settings ?? {}, theme);
   if (key === "overlay-timeframe-highlight") return calculateOverlayTimeframeHighlight(candles, instance.settings ?? {}, theme);
   if (key === "shift-candle") return calculateShiftCandleSeries(candles, context.footprintBars ?? [], instance.settings ?? {}, theme, context.tickSize);
