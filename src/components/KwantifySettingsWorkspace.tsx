@@ -8,6 +8,7 @@ import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
 import UserAvatar from "@/components/socials/UserAvatar";
 import AccountAvatarSettings from "@/components/socials/AccountAvatarSettings";
+import SupportDeskPanel from "@/components/support/SupportDeskPanel";
 import {
   BarChart3,
   Bell,
@@ -64,7 +65,8 @@ type SettingsTab =
   | "Payment methods"
   | "Billing history"
   | "Alerts delivery"
-  | "Email subscriptions";
+  | "Email subscriptions"
+  | "Help";
 
 type HandleCheckState = {
   state: "idle" | "checking" | "available" | "taken" | "invalid" | "error";
@@ -81,6 +83,7 @@ const navSections: { title: string; items: SettingsTab[] }[] = [
   { title: "Appearance", items: ["Theme & Colors", "Chart defaults"] },
   { title: "Billing", items: ["Subscriptions", "Payment methods", "Billing history"] },
   { title: "Notifications", items: ["Alerts delivery", "Email subscriptions"] },
+  { title: "Support", items: ["Help"] },
 ];
 
 const presetColors = ["#B6FF00", "#4361FF", "#FFFFFF", "#00F5A0", "#22C55E", "#8B5CF6", "#EC4899", "#EF4444", "#F97316", "#EAB308", "#71717A", "#000000"];
@@ -762,16 +765,17 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
   const handleInput = `${inputBase} ps-8 pe-10`;
   const secondaryButton = "rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground";
   const sectionTitle = "mb-4 text-[11px] font-semibold uppercase tracking-wider text-muted";
+  const helpOpen = activeTab === "Help";
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-background font-sans text-foreground">
       <AppSidebar activeItem="settings" orientation="horizontal" navigationMode={navigationMode} />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="w-[220px] shrink-0 overflow-y-auto border-r border-border bg-panel p-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+        <nav aria-label="Settings sections" className="flex shrink-0 gap-3 overflow-x-auto border-b border-border bg-panel p-3 sm:block sm:w-[220px] sm:overflow-y-auto sm:border-b-0 sm:border-r sm:p-4">
         {navSections.map((section) => (
-          <div key={section.title} className="mb-6">
-            <div className="mb-2 text-[11px] uppercase tracking-wider text-muted">{section.title}</div>
-            <div className="space-y-1">
+          <div key={section.title} className="shrink-0 sm:mb-6">
+            <div className="mb-2 hidden text-[11px] uppercase tracking-wider text-muted sm:block">{section.title}</div>
+            <div className="flex gap-1 sm:block sm:space-y-1">
               {section.items.map((item) => (
                 <button
                   key={item}
@@ -780,7 +784,8 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
                     if (event.button === 0) selectSettingsTab(item);
                   }}
                   onClick={() => selectSettingsTab(item)}
-                  className={`w-full touch-manipulation cursor-pointer rounded-lg px-3 py-2 text-left text-[13px] ${activeTab === item ? "border-l-2 border-primary bg-surface font-medium text-foreground" : "text-muted hover:text-foreground"}`}
+                  aria-current={activeTab === item ? "page" : undefined}
+                  className={`w-full whitespace-nowrap touch-manipulation cursor-pointer rounded-lg px-3 py-2 text-left text-[13px] ${activeTab === item ? "border-l-2 border-primary bg-surface font-medium text-foreground" : "text-muted hover:text-foreground"}`}
                 >
                   {item}
                 </button>
@@ -788,8 +793,18 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
             </div>
           </div>
         ))}
-      </aside>
-      <section className="min-w-0 flex-1 overflow-y-auto p-8">
+      </nav>
+      {helpOpen ? (
+        <section aria-labelledby="settings-help-heading" className="min-h-0 min-w-0 flex-1 p-3 pb-16 sm:p-8 sm:pb-16">
+          <div className="mx-auto flex h-full min-h-0 max-w-4xl flex-col gap-4">
+            <h1 id="settings-help-heading" className="shrink-0 text-2xl font-semibold">Help</h1>
+            <div className="min-h-0 flex-1">
+              <SupportDeskPanel page sourcePath="/settings" />
+            </div>
+          </div>
+        </section>
+      ) : (
+      <section className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-8">
         <div className="mx-auto max-w-4xl">
           <h1 className="text-2xl font-semibold">{activeTab}</h1>
           <p className="mt-2 text-[13px] text-muted">Manage your Kwant Desk identity, appearance, billing, and notifications.</p>
@@ -1125,6 +1140,7 @@ export default function SettingsPage({ navigationMode = "native" }: { navigation
           {activeTab === "Email subscriptions" && <div className="mt-8 rounded-2xl border border-border bg-panel p-6"><div className="space-y-4">{[["Weekly market digest", "weekly"], ["Strategy performance updates", "performance"], ["New features and updates", "features"], ["Community activity", "community"], ["Promotional offers", "promo"]].map(([label, key]) => <div key={key} className="flex items-center justify-between"><span>{label}</span><Toggle checked={toggles[key]} onChange={() => toggle(key)} /></div>)}<button className="pt-3 text-[13px] font-semibold text-danger">Unsubscribe from all</button></div></div>}
         </div>
         </section>
+      )}
       </div>
     </main>
   );

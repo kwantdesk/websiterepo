@@ -69,12 +69,14 @@ const status = (v: string, staff = false) => v === "waiting" ? (staff ? "Waiting
 const greeting: Message = { role: "assistant", content: "How can I help with KwantDesk? Ask a product question, or report a problem for the support team." };
 async function api<T>(path: string, input?: unknown): Promise<T> { const r = await fetch("/api/support/" + path, { method: input === undefined ? "GET" : "POST", credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30000), ...(input === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }) }); const data = (r.headers.get("content-type") || "").includes("json") ? await r.json() : {}; if (!r.ok)
     throw Object.assign(Error(data.error || "Support could not be reached. Please try again."), { status: r.status }); return data as T; }
-export default function SupportDeskPanel({ onClose, page = false }: {
+export default function SupportDeskPanel({ onClose, page = false, sourcePath }: {
     onClose?: () => void;
     page?: boolean;
+    sourcePath?: string;
 }) {
+    const reportPath = () => sourcePath ?? (page ? new URLSearchParams(location.search).get("from") || "/support" : location.pathname);
     const [session, setSession] = useState<Session | null>(null), [authNeeded, setAuthNeeded] = useState(false), [opening, setOpening] = useState(true), [tab, setTab] = useState<Tab>("help"), [error, setError] = useState(""), [busy, setBusy] = useState(false);
-    const [messages, setMessages] = useState<Message[]>([greeting]), [question, setQuestion] = useState(""), [subject, setSubject] = useState(""), [description, setDescription] = useState(""), [category, setCategory] = useState(() => typeof location === "undefined" ? "other" : supportAreaForLocation(page ? new URLSearchParams(location.search).get("from") || "/support" : location.pathname, location.search)), [picture, setPicture] = useState(""), [includeChat, setIncludeChat] = useState(true);
+    const [messages, setMessages] = useState<Message[]>([greeting]), [question, setQuestion] = useState(""), [subject, setSubject] = useState(""), [description, setDescription] = useState(""), [category, setCategory] = useState(() => sourcePath ? supportAreaForLocation(sourcePath) : typeof location === "undefined" ? "other" : supportAreaForLocation(reportPath(), location.search)), [picture, setPicture] = useState(""), [includeChat, setIncludeChat] = useState(true);
     const [tickets, setTickets] = useState<Ticket[]>([]), [next, setNext] = useState<string | null>(null), [filter, setFilter] = useState(""), [search, setSearch] = useState(""), [debouncedSearch, setDebouncedSearch] = useState(""), [thread, setThread] = useState<Thread | null>(null), [reply, setReply] = useState(""), [claim, setClaim] = useState(""), [team, setTeam] = useState<Team>({ staff: [], invites: [] }), [invite, setInvite] = useState("");
     const [emailConsent, setEmailConsent] = useState(false);
     const clientId = useRef(""), identity = useRef(""), lastRead = useRef(0), content = useRef<HTMLDivElement>(null);
@@ -191,7 +193,7 @@ export default function SupportDeskPanel({ onClose, page = false }: {
         return; const history = [...messages, { role: "user" as const, content: value }].slice(-10); setMessages(history); setQuestion(""); void action(async () => { const data = await api<{
         response: string;
     }>("ai", { messages: history, page: location.pathname }); setMessages([...history, { role: "assistant", content: data.response }]); }); }
-    function sendReport() { if (!session) return; void action(async () => { clientId.current ||= crypto.randomUUID(); const data = await api<Thread>("tickets", { clientId: clientId.current, subject, description, category, emailConsent, page: page ? new URLSearchParams(location.search).get("from") || "/support" : location.pathname, browser: navigator.userAgent, viewport: `${innerWidth} × ${innerHeight}`, conversation: includeChat ? messages : [], screenshot: picture || undefined }); clientId.current = ""; setSubject(""); setDescription(""); setPicture(""); setEmailConsent(false); setTab("reports"); setThread(data); }); }
+    function sendReport() { if (!session) return; void action(async () => { clientId.current ||= crypto.randomUUID(); const data = await api<Thread>("tickets", { clientId: clientId.current, subject, description, category, emailConsent, page: reportPath(), browser: navigator.userAgent, viewport: `${innerWidth} × ${innerHeight}`, conversation: includeChat ? messages : [], screenshot: picture || undefined }); clientId.current = ""; setSubject(""); setDescription(""); setPicture(""); setEmailConsent(false); setTab("reports"); setThread(data); }); }
     function choosePicture(file?: File) { if (!file)
         return; if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 1024 * 1024) {
         setError("Choose a PNG, JPEG or WebP screenshot up to 1 MB.");
