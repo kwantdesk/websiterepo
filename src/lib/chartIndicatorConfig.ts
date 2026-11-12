@@ -21,7 +21,7 @@ import { TILLSON_T3_DEFAULTS } from "@/lib/tillsonT3";
 import { SUPER_TREND_DEFAULTS, SUPER_TREND_DIFFERENCE_DEFAULTS, superTrendNumericSettings } from "@/lib/superTrendSettings";
 import { KST_DEFAULTS, KST_NUMERIC_SETTINGS } from "@/lib/knowSureThingSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
-import { canonicalChartIndicatorId } from "@/lib/chartIndicatorCatalog";
+import { canonicalChartIndicatorId, CHART_INDICATOR_BY_ID } from "@/lib/chartIndicatorCatalog";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { VOLUME_PROFILE_GRADIENT_OFF, VOLUME_PROFILE_GRADIENTS } from "@/lib/volumeProfileGradients";
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
@@ -93,10 +93,6 @@ import {
   DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS,
   normalizeConfluenceIdentifierSettings,
 } from "@/lib/confluenceIdentifier";
-import {
-  KWANT_LEVELS_SETTINGS_VERSION,
-  normalizeKwantLevelsSettings,
-} from "@/lib/kwantLevels";
 import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 import { FAIR_VALUE_GAP_DEFAULTS, normalizeFairValueGapSettings } from "@/lib/fairValueGap";
@@ -198,7 +194,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "deep-print-footprint",
   "kwant-stats",
   "on-candle-stats",
-  "gamma-levels",
   "classic-gex-profile",
   "expected-move",
   "divergence-detector",
@@ -1413,10 +1408,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "smallerFontSize", label: "Smaller font size", defaultValue: 6, min: 4, max: 18, step: 1 },
     { key: "maxRatio", label: "Maximum opacity ratio (%)", defaultValue: 100, min: 1, max: 1000, step: 1 },
     { key: "tickOffset", label: "Price offset (ticks)", defaultValue: 2, min: 0, max: 100, step: 1 },
-  ],
-  "gamma-levels": [
-    { key: "maxLevels", label: "Maximum displayed levels", defaultValue: 14, min: 4, max: 24, step: 1 },
-    { key: "lineWidth", label: "Base line width", defaultValue: 1, min: 1, max: 4, step: 1 },
   ],
   "overlay-chart": [
     { key: "maxVolumeWidthPercent", label: "Maximum width based on volume (%)", defaultValue: 100, min: 10, max: 200, step: 1 },
@@ -2871,19 +2862,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     vwapColor: "#22D3EE",
     footprintSettingsVersion: FOOTPRINT_SETTINGS_SCHEMA_VERSION,
   } : {}),
-  ...(indicatorId === "gamma-levels" ? {
-    conversion: "AUTO",
-    dataSource: "GEX_CALL_MINUS_PUT",
-    showLabels: true,
-    showEnvironment: true,
-    useThemeColors: true,
-    lineStyle: "dashed",
-    positiveColor: theme?.upColor ?? "#22C55E",
-    negativeColor: theme?.downColor ?? "#EF4444",
-    magnetColor: "#8B5CF6",
-    centreColor: "#06B6D4",
-    gammaSettingsVersion: KWANT_LEVELS_SETTINGS_VERSION,
-  } : {}),
   ...(["overlay-chart", "overlay-symbol"].includes(indicatorId) ? {
     symbol: "AUTO",
     timeframe: "AUTO",
@@ -4311,23 +4289,6 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
     }
     return { ...normalizedInstance, settings };
   }
-  if (
-    normalizedInstance.indicatorId === "gamma-levels"
-  ) {
-    const settings = normalizeKwantLevelsSettings(normalizedInstance.settings, {
-      upColor: "#22C55E",
-      downColor: "#EF4444",
-    });
-    return {
-      ...normalizedInstance,
-      settings: {
-        ...defaultIndicatorSettings("gamma-levels"),
-        ...(normalizedInstance.settings ?? {}),
-        ...settings,
-        gammaSettingsVersion: KWANT_LEVELS_SETTINGS_VERSION,
-      },
-    };
-  }
   if (normalizedInstance.indicatorId === "gamma-environment") {
     const defaults = defaultIndicatorSettings("gamma-environment");
     const settings = { ...defaults, ...(normalizedInstance.settings ?? {}) };
@@ -4651,22 +4612,19 @@ export function linkStoredPaneIndicatorsToTheme() {
   }
 }
 
+export function normalizeStoredIndicatorList(value: unknown): ChartIndicatorInstance[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((instance): instance is ChartIndicatorInstance =>
+      Boolean(instance && typeof instance === "object" && typeof instance.indicatorId === "string"))
+    .map(normalizeStoredIndicator)
+    .filter((instance) => CHART_INDICATOR_BY_ID.has(instance.indicatorId)
+      && LIVE_CHART_INDICATOR_IDS.has(instance.indicatorId));
+}
+
 export const normalizePaneIndicatorState = (value: unknown): Record<string, ChartIndicatorInstance[]> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(
-    Object.entries(value).map(([paneId, instances]) => [
-      paneId,
-      Array.isArray(instances)
-        ? instances
-          .filter((instance): instance is ChartIndicatorInstance =>
-            Boolean(
-              instance
-              && typeof instance === "object"
-              && "indicatorId" in instance,
-            ))
-          .map(normalizeStoredIndicator)
-          .filter((instance) => LIVE_CHART_INDICATOR_IDS.has(instance.indicatorId))
-        : [],
-    ]),
+    Object.entries(value).map(([paneId, instances]) => [paneId, normalizeStoredIndicatorList(instances)]),
   );
 };

@@ -50,7 +50,7 @@ import {
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
-import { defaultIndicatorSettings, normalizeStoredIndicator, resolveDailyVolumeProfileCount } from "@/lib/chartIndicatorConfig";
+import { defaultIndicatorSettings, normalizeStoredIndicatorList, resolveDailyVolumeProfileCount } from "@/lib/chartIndicatorConfig";
 import {
   readCachedInstitutionalVolumeProfile,
   fetchInstitutionalVolumeProfile,
@@ -149,15 +149,7 @@ function loadReplayIndicators(theme: ChartSettings): ChartIndicatorInstance[] {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(REPLAY_INDICATORS_STORAGE_KEY) ?? "null") as unknown;
     if (!Array.isArray(parsed)) return defaultReplayIndicators(theme);
-    const normalized = parsed
-      .filter((value): value is ChartIndicatorInstance => Boolean(
-        value
-        && typeof value === "object"
-        && typeof (value as ChartIndicatorInstance).instanceId === "string"
-        && typeof (value as ChartIndicatorInstance).indicatorId === "string",
-      ))
-      .map(normalizeStoredIndicator);
-    return normalized;
+    return normalizeStoredIndicatorList(parsed).filter((instance) => typeof instance.instanceId === "string");
   } catch {
     return defaultReplayIndicators(theme);
   }

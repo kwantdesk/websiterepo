@@ -38,9 +38,6 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk-chart-indicators",
   "kwantdesk-chart-indicator-favourites",
   "kwantdesk-source-code-indicators:v1",
-  "kwantdesk:chart-gamma-levels-enabled:v1",
-  "kwantdesk:chart-value-area-levels-enabled:v1",
-  "kwantdesk:chart-pane-level-visibility:v1",
   "kwantdesk:volume-profile-templates:v1",
   "kwantdesk:indicator-templates:v1",
   "kwantdesk:footprint:templates:v1",
@@ -111,7 +108,16 @@ const TRACKED_STORAGE_PREFIXES = [
   "kwantdesk:precision-toolbar:v1:",
 ];
 
+const RETIRED_CHART_LEVEL_KEYS = new Set([
+  "kwantdesk:chart-gamma-levels-enabled:v1",
+  "kwantdesk:chart-value-area-levels-enabled:v1",
+  "kwantdesk:chart-historical-structure-enabled:v1",
+  "kwantdesk:chart-pane-level-visibility:v1",
+]);
+
 export function isTrackedStorageKey(key: string) {
+  const unscopedKey = key.replace(/^kwantdesk:(?:algo|gamma)-charting:/, "");
+  if (RETIRED_CHART_LEVEL_KEYS.has(unscopedKey)) return false;
   return TRACKED_STORAGE_KEYS.has(key)
     || TRACKED_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
 }

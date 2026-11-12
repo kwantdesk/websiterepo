@@ -2,37 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const workspaceSource = readFileSync(
-  new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url),
-  "utf8",
-);
+const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 
-test("Kwant-zone cache is rendered only when the individual pane enables it", () => {
-  assert.match(
-    workspaceSource,
-    /buildGameplanChartDecorations\(kwantLevelsEnabled \? gameplanOverlay : null, settings\)/,
-  );
-  assert.match(
-    workspaceSource,
-    /gameplanOverlay=\{paneLevelState\.kwant && gameplanRoot/,
-  );
-  assert.doesNotMatch(
-    workspaceSource,
-    /gameplanOverlay=\{gameplanRoot \? gameplanChartOverlays/,
-  );
+test("standard chart workspaces do not restore or paint cached legacy level overlays", () => {
+  assert.doesNotMatch(workspace, /setPaneLevelVisibility|buildGameplanChartDecorations|backgroundLevels=|backgroundZones=|chartLevels\}/);
 });
 
-test("pane controls mutate and clear only the chart pane they belong to", () => {
-  assert.match(
-    workspaceSource,
-    /setPaneIndicators\(\(current\) => \(\{ \.\.\.current, \[paneId\]: \[\] \}\)\)/,
-  );
-  assert.match(
-    workspaceSource,
-    /onRemoveAllIndicators=\{\(\) => removeAllIndicatorsFromPane\(pane\.id\)\}/,
-  );
-  assert.match(
-    workspaceSource,
-    /setPaneLevelVisible\(pane\.id, "kwant", false\)/,
-  );
+test("removing all indicators clears the owning pane indicator list", () => {
+  assert.match(workspace, /setPaneIndicators\(\(current\) => \(\{ \.\.\.current, \[paneId\]: \[\] \}\), true\)/);
+  assert.match(workspace, /onRemoveAllIndicators=\{\(\) => removeAllIndicatorsFromPane\(pane\.id\)\}/);
 });

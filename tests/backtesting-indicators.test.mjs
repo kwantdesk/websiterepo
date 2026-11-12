@@ -16,6 +16,7 @@ test("historical replay exposes the shared chart indicator library", () => {
   assert.match(replay, /<ChartIndicatorsControl[\s\S]*?indicators=\{replayIndicators\}/);
   assert.match(replay, /<Chart[\s\S]*?indicators=\{replayIndicators\}/);
   assert.match(replay, /REPLAY_INDICATORS_STORAGE_KEY/);
+  assert.match(replay, /return normalizeStoredIndicatorList\(parsed\)/);
 });
 
 test("historical replay starts with a no-lookahead New York 30m initial balance", () => {
