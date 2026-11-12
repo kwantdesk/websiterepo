@@ -4,7 +4,7 @@ import type {
   InstitutionalVolumeProfile,
   InstitutionalVolumeProfileLevel,
 } from "./institutionalMarketData.ts";
-import { calculateVolumeProfileValueArea } from "./volumeProfileMath.ts";
+import { calculateVolumeProfileValueArea, DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "./volumeProfileMath.ts";
 import { exchangeMidnightMs, exchangeMinuteOfDay } from "./volumeProfileSessions.ts";
 
 export const DEEP_PROFILE_VALUES_SETTINGS_VERSION = 2;
@@ -94,7 +94,7 @@ export const DEFAULT_DEEP_PROFILE_VALUES_SETTINGS: DeepProfileValuesSettings = {
   autoGroupFactor: 1,
   groupTicks: 4,
   numberOfProfiles: 6,
-  valueAreaPercent: 68,
+  valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   filterMode: "none",
   sessionStartMinutes: 8 * 60 + 30,
   sessionEndMinutes: 15 * 60 + 15,
@@ -182,7 +182,7 @@ export function normalizeDeepProfileValuesSettings(input?: Record<string, unknow
   result.autoGroupFactor = clamp(finite(source.autoGroupFactor, 1), 0.5, 4);
   result.groupTicks = integer(source.groupTicks, 4, 1, 500);
   result.numberOfProfiles = integer(source.numberOfProfiles, 6, 1, 250);
-  result.valueAreaPercent = clamp(finite(source.valueAreaPercent, 68), 1, 100);
+  result.valueAreaPercent = clamp(finite(source.valueAreaPercent, DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT), 1, 100);
   result.sessionStartMinutes = integer(source.sessionStartMinutes, 510, 0, 1439);
   result.sessionEndMinutes = integer(source.sessionEndMinutes, 915, 0, 1439);
   result.developingPocStartMinutes = integer(source.developingPocStartMinutes, 0, 0, 1439);

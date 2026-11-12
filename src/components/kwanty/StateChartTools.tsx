@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import EmojiPicker from "@/components/ChartEmojiPicker";
@@ -119,7 +120,7 @@ function StateTools({ session }: { session: Session }) {
         const window = stateProfileWindow(drawing, frame);
         const profile = contract && window ? await session.dependencies.profile({
           symbol: source, contractSymbol: contract.contractSymbol, period: "custom", ...window,
-          groupTicks: drawing.style.profileGroupTicks ?? 4, valueAreaPercent: drawing.style.valueAreaPercent ?? 68,
+          groupTicks: drawing.style.profileGroupTicks ?? 4, valueAreaPercent: drawing.style.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
           minTradeVolume: drawing.style.profileMinTradeVolume ?? 0, maxTradeVolume: drawing.style.profileMaxTradeVolume ?? 0,
         }) : null;
         if (cancelled) return;

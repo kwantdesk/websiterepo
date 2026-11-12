@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { isInsideKwantDatePicker } from "@/components/ui/KwantDatePicker";
 import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
 import { ABSOLUTE_LEVEL_REFERENCE_EVENT, absoluteLevelInitialPrices, type AbsoluteLevelReferenceRequest } from "@/lib/absoluteLevels";
@@ -3449,7 +3450,7 @@ export default function ChartIndicatorsControl({
                     min={1}
                     max={100}
                     step={1}
-                    value={Number(settingsInstance.settings?.valueAreaPercent ?? 68)}
+                    value={Number(settingsInstance.settings?.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT)}
                     className="sm:col-span-2"
                     onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
                       ...current,

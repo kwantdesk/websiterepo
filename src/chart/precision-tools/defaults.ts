@@ -1,3 +1,4 @@
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { PRECISION_TOOL_IDS, type PrecisionLabelOptions, type PrecisionObject, type PrecisionStyle, type PrecisionToolConfig, type PrecisionToolId, type PrecisionToolbarState } from "./types";
 
 export const DEFAULT_FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as const;
@@ -44,7 +45,7 @@ export function defaultToolOptions(toolId: PrecisionToolId): PrecisionObject["op
         automaticGroupingFactor: 1, manualTicksPerRow: 1, showValues: false,
         numberFormat: "automatic", summaryEnabled: true, showPoc: true,
         pocLineEnabled: true, pocExtendMode: "selection", displayPocValue: true,
-        showValueArea: true, valueAreaPercent: 68, valueAreaLines: true,
+        showValueArea: true, valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT, valueAreaLines: true,
         valueAreaExtendMode: "selection", peakValleyEnabled: false,
         peakSensitivity: 0.65, peakMinimumVolume: 0, valleyMaximumVolume: 0,
       };

@@ -1,6 +1,6 @@
 import type { FootprintBar } from "./footprint.ts";
 import type { InstitutionalTrade, InstitutionalVolumeProfile, InstitutionalVolumeProfileLevel } from "./institutionalMarketData.ts";
-import { calculateVolumeProfileValueArea } from "./volumeProfileMath.ts";
+import { calculateVolumeProfileValueArea, DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "./volumeProfileMath.ts";
 
 export const DEEP_PROFILE_SWING_SETTINGS_VERSION = 1;
 
@@ -82,7 +82,7 @@ export const DEFAULT_DEEP_PROFILE_SWING_SETTINGS: DeepProfileSwingSettings = {
   groupingMode: "automatic",
   autoGroupFactor: 1,
   groupTicks: 4,
-  valueAreaPercent: 68,
+  valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   maxProfiles: 12,
   profileWidth: 34,
   opacity: 100,
@@ -131,7 +131,7 @@ export function normalizeDeepProfileSwingSettings(input?: Record<string, unknown
   result.filterMax = clamp(finite(source.filterMax, 0), 0, 10_000_000);
   result.autoGroupFactor = clamp(finite(source.autoGroupFactor, 1), 0.5, 4);
   result.groupTicks = integer(source.groupTicks, 4, 1, 500);
-  result.valueAreaPercent = clamp(finite(source.valueAreaPercent, 68), 1, 100);
+  result.valueAreaPercent = clamp(finite(source.valueAreaPercent, DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT), 1, 100);
   result.maxProfiles = integer(source.maxProfiles, 12, 1, 100);
   result.profileWidth = clamp(finite(source.profileWidth, 34), 1, 100);
   result.opacity = clamp(finite(source.opacity, 100), 0, 100);

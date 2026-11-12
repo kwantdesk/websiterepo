@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import dynamic from "next/dynamic";
 import {
   Activity,
@@ -1012,7 +1013,7 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
     period: "daily",
     tradingDate: chicagoTradingDate(Date.now()),
     groupTicks: 4,
-    valueAreaPercent: 68,
+    valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   });
   const [payload, cachedDeveloping] = await Promise.all([
     requestJson<ValueAreaPayload>(

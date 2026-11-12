@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { useEffect, useRef, useState } from "react";
 import { emojiRotation } from "@/lib/chartEmojiTransform";
 import type { DrawingProfileTheme } from "@/lib/drawingVolumeProfileStyle";
@@ -80,7 +81,6 @@ export default function ChartDrawSettings({
   const isFillArrow = drawing.tool === "entryArrow" || drawing.tool === "exitArrow";
   const isProfile = PROFILE_TOOLS.includes(drawing.tool);
   const fixedProfile = drawing.tool === "fixedRangeVolumeProfile";
-  const profileValueAreaDefault = fixedProfile ? 70 : 68;
   const profileGradientLocked = isProfile && isVolumeProfileGradientActive(drawing.style.profileGradient);
   const isAnchoredVwap = drawing.tool === "anchoredVwap";
   const isPosition = POSITION_TOOLS.includes(drawing.tool);
@@ -225,8 +225,8 @@ export default function ChartDrawSettings({
                   <Row label={`Maximum trade · ${drawing.style.profileMaxTradeVolume ?? 0}${(drawing.style.profileMaxTradeVolume ?? 0) === 0 ? " (off)" : ""}`}>
                     <input type="range" min={0} max={5000} step={10} value={drawing.style.profileMaxTradeVolume ?? 0} onChange={(e) => patchStyle({ profileMaxTradeVolume: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
-                  <Row label={`Value area · ${drawing.style.valueAreaPercent ?? profileValueAreaDefault}%`}>
-                    <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? 70} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
+                  <Row label={`Value area · ${drawing.style.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT}%`}>
+                    <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
                   <Row label={`Profile width · ${drawing.style.profileWidthPercent ?? 32}%`}>
                     <input type="range" min={1} max={80} step={1} value={drawing.style.profileWidthPercent ?? 32} onChange={(e) => patchStyle({ profileWidthPercent: Number(e.target.value) })} className="w-40 accent-primary" />

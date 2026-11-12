@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 
 const { calculateVolumeProfileValueArea, STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } =
   await import("../src/lib/volumeProfileMath.ts");
-const { buildChartVolumeProfile } = await import("../src/lib/institutionalMarketData.ts");
+const { buildChartVolumeProfile, institutionalVolumeProfileRequest } = await import("../src/lib/institutionalMarketData.ts");
+
+const { defaultIndicatorSettings, normalizeStoredIndicatorList } = await import("../src/lib/chartIndicatorConfig.ts");
 
 /**
  * The trader's own value-area percentage, all the way to the screen.
@@ -110,8 +112,12 @@ check("the fetch keeps the percentage the profile was built at", () => {
     !recompute.slice(0, 260).includes("STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT"),
     "the fetch still recomputes the value area at 70%",
   );
-  // The request itself must still carry what the trader asked for.
-  assert.match(body, /valueAreaPercent: String\(askedValueAreaPercent\)/, "the request no longer sends the setting");
+});
+
+check("requests use 70% by default and carry an explicit 68%", () => {
+  const request = { symbol: "NQ", period: "session" };
+  assert.equal(institutionalVolumeProfileRequest(request).query.get("valueAreaPercent"), "70");
+  assert.equal(institutionalVolumeProfileRequest({ ...request, valueAreaPercent: 68 }).query.get("valueAreaPercent"), "68");
 });
 
 check("the candle-volume fallback honours the configured percentage", () => {
@@ -142,6 +148,17 @@ check("an absent percentage still falls back to the convention", () => {
     new URL("../src/lib/institutionalMarketData.ts", import.meta.url), "utf8",
   );
   assert.match(source, /: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;/, "there is no fallback");
+});
+
+check("new chart profiles start at 70% and saved settings retain 68%", () => {
+  for (const indicatorId of ["kwant-profile", "weekly-volume-profile", "tpo-chart", "weekly-tpo"]) {
+    const settings = defaultIndicatorSettings(indicatorId);
+    assert.equal(settings.valueAreaPercent, 70, indicatorId);
+    const [saved] = normalizeStoredIndicatorList([
+      { id: indicatorId, indicatorId, settings: { ...settings, valueAreaPercent: 68 } },
+    ]);
+    assert.equal(saved?.settings.valueAreaPercent, 68, indicatorId);
+  }
 });
 
 console.log(`\nvalue area percent: ${passed}/${passed} checks passed`);

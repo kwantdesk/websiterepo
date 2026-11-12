@@ -1,4 +1,5 @@
 "use client";
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { lineTextGeometry } from "@/lib/chartLineText";
 
 import { chartSvgHitTargets, chartSvgBodyHit } from "@/lib/chartSvgHitTargets";
@@ -750,7 +751,7 @@ export default function ChartDrawLayer({
           t0,
           t1,
           drawing.style.profileRows ?? 80,
-          drawing.style.valueAreaPercent ?? 68,
+          drawing.style.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
         )));
     }
     return cache;
@@ -1629,7 +1630,7 @@ export default function ChartDrawLayer({
           if (x0 == null || x1 == null) return null;
           const exactRequired = requireExactVolumeProfiles || (requireExactFixedVolumeProfiles && !anchored);
           const rows = style.profileRows ?? 80;
-          const valueArea = style.valueAreaPercent ?? 68;
+          const valueArea = style.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT;
           // Committed drawings read the memoized histogram (recomputed only when
           // candles/anchors/settings change); the live preview recomputes only
           // when the cursor crosses a bar, never per pixel.
@@ -2023,7 +2024,7 @@ export function anchoredVwapSeries(candles: DrawCandle[], from: number, source: 
   return series;
 }
 
-function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount = 80, valueAreaPercent = 70) {
+function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount = 80, valueAreaPercent = DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT) {
   const inRange = candles.filter((c) => c.time >= t0 && c.time <= t1);
   if (inRange.length < 2) return null;
   let priceMin = Infinity; let priceMax = -Infinity;

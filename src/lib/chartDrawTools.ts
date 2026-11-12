@@ -174,7 +174,7 @@ export type DrawStyle = {
   profileGroupTicks?: number;  // exact Rithmic price grouping, 1..500 (default 4)
   profileMinTradeVolume?: number; // execution-size filter; 0 disables
   profileMaxTradeVolume?: number; // execution-size ceiling; 0 disables
-  valueAreaPercent?: number;   // 50..95 (default 68)
+  valueAreaPercent?: number;   // 50..95
   showPoc?: boolean;           // POC line + label (default true)
   showValueAreaLines?: boolean; // VAH + VAL lines and labels (default true)
   pocColor?: string;           // optional POC line override; absent follows drawing colour

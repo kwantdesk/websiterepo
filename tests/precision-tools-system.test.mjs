@@ -11,6 +11,7 @@ import {
   simplifyRdp,
   snapPrice,
 } from "../src/chart/precision-tools/math.ts";
+import { defaultToolOptions } from "../src/chart/precision-tools/defaults.ts";
 import { PRECISION_TOOL_GROUPS, PRECISION_TOOL_REGISTRY } from "../src/chart/precision-tools/registry.ts";
 import {
   PRECISION_CANVAS_MAX_DEVICE_PIXELS,
@@ -48,9 +49,7 @@ test("every Precision tool owns exactly nine complete configuration slots", () =
   const defaults = read("src/chart/precision-tools/defaults.ts");
   assert.match(defaults, /Array\.from\(\{ length: 9 \}/);
   assert.match(defaults, /mode: "volume-and-delta"/);
-  // a5ae6acc deliberately moved every profile to a 68% value area to match the
-  // reference platform; this assertion was left on the old 70% convention.
-  assert.match(defaults, /valueAreaPercent: 68/);
+  assert.equal(defaultToolOptions("precision-volume-profile").valueAreaPercent, 70);
   assert.match(defaults, /band5Multiplier: 5/);
   assert.match(defaults, /band5Enabled: false/);
 });
