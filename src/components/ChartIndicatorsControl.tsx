@@ -692,6 +692,8 @@ function bigTradeModeFor(
 }
 
 function titleFromKey(key: string, indicatorId?: string) {
+  if (indicatorId === "awesome-oscillator" && key === "plotUpColor") return "Growing";
+  if (indicatorId === "awesome-oscillator" && key === "plotDownColor") return "Falling";
   if (indicatorId === "session-highs-lows" && key === "showTokyo") return "Show Asia";
   if (indicatorId === "fvg-identifier" && key === "resetStartDay") return "Reset Start Day";
   if (indicatorId === "fvg-identifier" && key === "removeOnShadowTriggered") return "Remove Line On Shadow Triggered";
@@ -989,6 +991,11 @@ function applyNumericIndicatorSetting(
     ...(currentSettings ?? {}),
     [key]: value,
   };
+  if (indicatorId === "awesome-oscillator") {
+    if (key === "fastLength" && value >= Number(next.slowLength ?? 34)) next.slowLength = value + 1;
+    if (key === "slowLength" && value <= Number(next.fastLength ?? 5)) next.fastLength = value - 1;
+    return next;
+  }
   if (indicatorId === "deep-delta") {
     const match = /^range([1-4])(Minimum|Maximum)$/.exec(key);
     if (match) {
@@ -8212,6 +8219,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "pulling-stacking" && (key === "includeOwnOrders" || key === "includeImpliedOrders"))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
+                    && !(settingsDefinition.id === "awesome-oscillator" && key === "plotColor")
                     && (typeof value === "boolean" || isColourSetting(key, value)))
                   .map(([key, value]) => [key, value, sectionForSetting(settingsDefinition.id, key, "Style")] as const);
                 const bySection = new Map<string, Array<readonly [string, unknown, string]>>();

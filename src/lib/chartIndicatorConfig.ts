@@ -1712,6 +1712,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "ichimoku-indicator" ? ICHIMOKU_DEFAULTS : {}),
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "average-true-range-atr" ? { lineStyle: "solid", useThemeColors: true } : {}),
+  ...(indicatorId === "awesome-oscillator" ? { useThemeColors: true } : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
   ...(indicatorId === "regression-channel" ? REGRESSION_CHANNEL_DEFAULTS : {}),
@@ -4541,6 +4542,21 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (MOMENTUM_INDICATOR_IDS.has(normalized.indicatorId)) normalized = {
     ...normalized, settings: { ...normalized.settings, chartArea: instance.settings?.chartArea === "chart" ? "chart" : "pane" },
   };
+  if (normalized.indicatorId === "awesome-oscillator") {
+    const settings = { ...normalized.settings };
+    const readLength = (value: unknown, fallback: number) => {
+      const number = typeof value === "string" && value.trim() ? Number(value) : value;
+      return typeof number === "number" && Number.isFinite(number) ? Math.round(number) : fallback;
+    };
+    const fast = Math.max(1, Math.min(500, readLength(settings.fastLength, 5)));
+    settings.fastLength = fast;
+    settings.slowLength = Math.max(fast + 1, Math.min(1000, readLength(settings.slowLength, 34)));
+    if (settings.useThemeColors === false && typeof settings.plotColor === "string") {
+      settings.plotUpColor ??= settings.plotColor;
+      settings.plotDownColor ??= settings.plotColor;
+    }
+    normalized = { ...normalized, settings };
+  }
   const requested = instance.settings?.gradientPreset;
   if (requested === undefined) return normalized;
   const gradientPreset = requested === VOLUME_PROFILE_GRADIENT_OFF

@@ -1359,8 +1359,8 @@ function computeIndicatorSeries(
   }
 
   if (key === "awesome-oscillator") {
-    const fast = Math.max(1, Math.round(settingNumber(instance, "fastLength", 5)));
-    const slow = Math.max(fast + 1, Math.round(settingNumber(instance, "slowLength", 34)));
+    const fast = Math.max(1, Math.min(500, Math.round(settingNumber(instance, "fastLength", 5))));
+    const slow = Math.max(fast + 1, Math.min(1000, Math.round(settingNumber(instance, "slowLength", 34))));
     const median = candles.map((candle) => (candle.high + candle.low) / 2);
     const fastMean = rollingMean(median, fast);
     const slowMean = rollingMean(median, slow);
@@ -1370,8 +1370,12 @@ function computeIndicatorSeries(
       label: "Awesome Oscillator",
       kind: "histogram",
       placement: "pane",
+      includeZeroInScale: true,
       color: theme.primary,
-      data: lineData(candles, values).map((row) => ({ ...row, color: row.value >= 0 ? theme.positive : theme.negative })),
+      data: lineData(candles, values).map((row, index, points) => ({
+        ...row,
+        color: index === 0 || row.value >= points[index - 1].value ? theme.positive : theme.negative,
+      })),
     }];
   }
 

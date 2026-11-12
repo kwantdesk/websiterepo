@@ -61,7 +61,7 @@ function compact(value: number) {
 }
 
 function formatPaneValue(value: number, indicatorId: string) {
-  return indicatorId === "standard-deviation" || indicatorId === "average-true-range-atr"
+  return indicatorId === "standard-deviation" || indicatorId === "average-true-range-atr" || indicatorId === "awesome-oscillator"
     ? Number(value.toPrecision(5)).toString()
     : compact(value);
 }

@@ -272,7 +272,7 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "plotColor", role: "primary" },
   ],
   "awesome-oscillator": [
-    { key: "plotColor", role: "primary" },
+    { key: "plotColor", role: "primary", upRole: "positive", downRole: "negative" },
   ],
   "stochastic-oscillator": [
     { key: "kColor", role: "primary" },
