@@ -525,6 +525,7 @@ import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { adrHistoryDay, normalizeAverageDailyRangeTargetSettings, supportsAdrDailyHistory } from "@/lib/averageDailyRangeTarget";
 import { adrDailyHistoryDays, loadAdrDailyHistory } from "@/lib/adrDailyHistory";
+import { isLivePriceStudy } from "@/lib/liveDeltaPanes";
 import { resolveVolumeProfileInputData, resolveVolumeProfileMode, volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import { resolveVolumeProfileOwner, volumeProfileOwnerKey } from "@/lib/volumeProfileOwnership";
 import {
@@ -8498,7 +8499,7 @@ function Chart({
         }
         return lines;
       }
-      if (instance.indicatorId === "standard-deviation" || instance.indicatorId === "average-true-range-atr") return [];
+      if (isLivePriceStudy(instance.indicatorId)) return [];
       if (instance.indicatorId === "average-daily-range-target" && adrHistoryKey && !adrDailyCandles) return [];
       if (
         !orderFlowSeriesReady
@@ -8631,7 +8632,7 @@ function Chart({
   // Price-only studies hydrate directly from already loaded candles. They must
   // not wait for the slower execution/indicator history sampler after Add.
   const priceStudySeries = useMemo(() => indicators.flatMap(instance =>
-    instance.indicatorId === "standard-deviation" || instance.indicatorId === "average-true-range-atr"
+    isLivePriceStudy(instance.indicatorId)
       ? calculateIndicatorSeries(instance, replayIndicatorCandles(candles, DEEP_HISTORY_INDICATOR_MAX_BARS, replayTimestampMs),
         visibleIndicatorTheme(settings), { instrument, tickSize: priceFormat.minMove, replayTimestampMs })
         .map(series => ({ ...series, groupKey: instance.instanceId })) : []),

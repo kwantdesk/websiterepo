@@ -1,13 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { LIVE_CHART_CANDLE_EVENT, LIVE_CHART_EXECUTION_EVENT, type LiveChartCandleDetail, type LiveChartExecutionDetail } from "@/lib/chartLiveEvents";
-import { deltaPaneIdentity, isLiveDeltaPane, LIVE_DELTA_PANE_INTERVAL_MS, LiveDeltaPaneModel, type LiveDeltaGroup, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
+import { deltaPaneIdentity, isLiveDeltaPane, isLivePriceStudy, LIVE_DELTA_PANE_INTERVAL_MS, LiveDeltaPaneModel, type LiveDeltaGroup, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
 
 /** Only the lower panes rerender. Busy profile/footprint transitions in Chart
  * cannot defer an execution update for multiple bars. No extra network calls. */
 export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: string, chartKey?: string, inputs?: LiveDeltaInputs, mode: "delta" | "volume" | "price" = "delta"): T[] {
   const accepts = (id: string) => mode === "price"
-    ? id === "standard-deviation" || id === "average-true-range-atr"
+    ? isLivePriceStudy(id)
     : mode === "volume" ? id === "volume" : isLiveDeltaPane(id);
   const state = useRef({ scope, model: new LiveDeltaPaneModel() });
   if (state.current.scope !== scope) state.current = { scope, model: new LiveDeltaPaneModel() };
@@ -101,6 +101,8 @@ export function useLiveDeltaPanes<T extends LiveDeltaGroup>(groups: T[], scope: 
   return groups.map(group => {
     const live = paint.values.get(group.key);
     if (!live || live.identity !== deltaPaneIdentity(group) || !live.series.length || (mode !== "volume" && !live.series.some(series => series.data.length))) return group;
-    return { ...group, series: live.series, unavailableReason: undefined, statusLabel: undefined };
+    const statusLabel = group.indicatorId === "average-directional-index-adx"
+      && !live.series.some(series => series.label === "ADX") ? "ADX warming up" : undefined;
+    return { ...group, series: live.series, unavailableReason: undefined, statusLabel };
   });
 }

@@ -4,6 +4,7 @@ import { calculateAverageDirectionalIndex } from "../src/lib/averageDirectionalI
 import { calculateIndicatorSeries } from "../src/lib/chartIndicatorEngine.ts";
 import { defaultIndicatorSettings, normalizePaneIndicatorState } from "../src/lib/chartIndicatorConfig.ts";
 import { auditIndicatorLibrary } from "../scripts/audit-indicator-library.mjs";
+import { isLivePriceStudy, LiveDeltaPaneModel } from "../src/lib/liveDeltaPanes.ts";
 const theme = { primary: "#11ff44", secondary: "#ffaa22", positive: "#44ff66", negative: "#ff7777", muted: "#bbbbbb" };
 const bar = (i, high, low, close) => ({ timestamp: 1700000000000 + i * 60000, open: close, high, low, close });
 const up = count => Array.from({ length: count }, (_, i) => bar(i, 102 + i, 100 + i, 101 + i));
@@ -84,4 +85,25 @@ test("out-of-order input cannot produce invalid chart ordering or duplicate plot
   candles[30] = { ...candles[30], timestamp: candles[10].timestamp };
   const result = calculateAverageDirectionalIndex(candles, { period: 3 }, theme);
   for (const series of result) for (let i = 1; i < series.data.length; i++) assert.ok(series.data[i].time > series.data[i - 1].time);
+});
+
+test("the price-event pane retains the maximum ADX lookback and updates the forming bar", () => {
+  const candles = up(2500);
+  const settings = { period: 1000 };
+  const group = { key: "adx-live", indicatorId: "average-directional-index-adx", settings, series: [] };
+  const inputs = { candles, instrument: "NQ", tickSize: 0.25, theme };
+  assert.equal(isLivePriceStudy(group.indicatorId), true);
+  const model = new LiveDeltaPaneModel();
+  model.hydrate(candles);
+  const before = model.calculate(group, inputs);
+  assert.equal(find(before, "ADX").length, 501);
+  const last = candles.at(-1);
+  const forming = { ...last, high: last.high + 3 };
+  model.observe(forming);
+  const after = model.calculate(group, inputs);
+  assert.deepEqual(find(after, "+DI").slice(0, -1), find(before, "+DI").slice(0, -1));
+  assert.notEqual(find(after, "+DI").at(-1).value, find(before, "+DI").at(-1).value);
+  assert.deepEqual(find(after, "+DI"), find(calculateAverageDirectionalIndex(
+    [...candles.slice(0, -1), forming], settings, theme,
+  ), "+DI"));
 });

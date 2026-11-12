@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { LiveDeltaPaneModel, LIVE_DELTA_PANE_INTERVAL_MS, isLiveDeltaPane, deltaPaneIdentity } from '../src/lib/liveDeltaPanes.ts';
+import { LiveDeltaPaneModel, LIVE_DELTA_PANE_INTERVAL_MS, isLiveDeltaPane, isLivePriceStudy, deltaPaneIdentity } from '../src/lib/liveDeltaPanes.ts';
 import { calculateIndicatorSeries } from '../src/lib/chartIndicatorEngine.ts';
 import { LIVE_CHART_CANDLE_EVENT, LIVE_CHART_EXECUTION_EVENT } from '../src/lib/chartLiveEvents.ts';
 import { mergeMonthlyRecordedFlow } from '../src/lib/institutionalMarketData.ts';
@@ -124,7 +124,7 @@ function harness(groups,inputs,mode="delta"){
  const useRef=value=>{const i=cursor++;return refs[i]??=( {current:value} );};
  const useState=value=>{const i=cursor++;if(!(i in states))states[i]=value;return[states[i],v=>{states[i]=typeof v==='function'?v(states[i]):v;render();}];};
  const useEffect=(fn,deps)=>{const i=cursor++;if(!equal(effects[i]?.deps,deps))queued.push(()=>{effects[i]?.cleanup?.();effects[i]={deps,cleanup:fn()};});};
- const hook=new Function('useEffect','useRef','useState','LIVE_CHART_CANDLE_EVENT','LIVE_CHART_EXECUTION_EVENT','deltaPaneIdentity','isLiveDeltaPane','LIVE_DELTA_PANE_INTERVAL_MS','LiveDeltaPaneModel','window','setTimeout','clearTimeout','requestAnimationFrame','cancelAnimationFrame',code+';return useLiveDeltaPanes;')(useEffect,useRef,useState,LIVE_CHART_CANDLE_EVENT,LIVE_CHART_EXECUTION_EVENT,deltaPaneIdentity,isLiveDeltaPane,LIVE_DELTA_PANE_INTERVAL_MS,LiveDeltaPaneModel,window,(fn,ms)=>{const id=++next;timers.set(id,{fn,ms});return id;},id=>timers.delete(id),fn=>{const id=++next;timers.set(id,{fn,ms:0});return id;},id=>timers.delete(id));
+ const hook=new Function('useEffect','useRef','useState','LIVE_CHART_CANDLE_EVENT','LIVE_CHART_EXECUTION_EVENT','deltaPaneIdentity','isLiveDeltaPane','isLivePriceStudy','LIVE_DELTA_PANE_INTERVAL_MS','LiveDeltaPaneModel','window','setTimeout','clearTimeout','requestAnimationFrame','cancelAnimationFrame',code+';return useLiveDeltaPanes;')(useEffect,useRef,useState,LIVE_CHART_CANDLE_EVENT,LIVE_CHART_EXECUTION_EVENT,deltaPaneIdentity,isLiveDeltaPane,isLivePriceStudy,LIVE_DELTA_PANE_INTERVAL_MS,LiveDeltaPaneModel,window,(fn,ms)=>{const id=++next;timers.set(id,{fn,ms});return id;},id=>timers.delete(id),fn=>{const id=++next;timers.set(id,{fn,ms:0});return id;},id=>timers.delete(id));
  function render(){cursor=0;output=hook(props.groups,props.scope,props.key,props.inputs,mode);const q=queued;queued=[];for(const effect of q)effect();}
  render();return {get output(){return output;},get timers(){return timers;},emit(c,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT,{detail:{key,candle:c}}));},executions(candles,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT,{detail:{key,candles,records:[],tape:[],continuity:'continuous'}}));},flush(){const q=[...timers.values()];timers.clear();for(const t of q)t.fn();},update(p){props={...props,...p};render();},dispose(){for(const effect of effects)effect?.cleanup?.();}};
 }

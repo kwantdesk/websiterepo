@@ -2,7 +2,7 @@
 
 import { indicatorHistogramWidth } from "@/lib/indicatorHistogramWidth";
 import { useLiveDeltaPanes } from "@/components/useLiveDeltaPanes";
-import type { LiveDeltaInputs } from "@/lib/liveDeltaPanes";
+import { isLivePriceStudy, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
 import { useSuperTrendLivePanes } from "@/components/useSuperTrendLivePanes";
 import SuperTrendPaneLabels from "@/components/SuperTrendPaneLabels";
 import { SuperTrendPaneScale } from "@/lib/superTrendPaneScale";
@@ -1306,6 +1306,7 @@ function ChartVerticalIndicatorPaneSurface({
                         fill="none"
                         stroke={definition.color}
                         strokeWidth={definition.lineWidth ?? 2}
+                        strokeDasharray={definition.lineStyle === "dashed" ? "6 4" : definition.lineStyle === "dotted" ? "2 3" : undefined}
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         vectorEffect="non-scaling-stroke"
@@ -1467,7 +1468,7 @@ function ChartIndicatorPanes({
   const deltaGroups = useLiveDeltaPanes(continuityGroups, coordinateScope, liveChartKey, liveDeltaInputs);
   const volumeGroups = useLiveDeltaPanes(deltaGroups, coordinateScope, liveChartKey,
     liveDeltaInputs ? { ...liveDeltaInputs, candles: liveDeltaInputs.volumeCandles ?? liveDeltaInputs.candles } : undefined, "volume");
-  const priceStudyEnabled = volumeGroups.some(group => group.indicatorId === "standard-deviation" || group.indicatorId === "average-true-range-atr");
+  const priceStudyEnabled = volumeGroups.some(group => isLivePriceStudy(group.indicatorId));
   const priceCandles = useMemo(() => priceStudyEnabled ? liveDeltaInputs?.priceCandles?.slice(-20_000) : undefined,
     [liveDeltaInputs?.priceCandles, priceStudyEnabled]);
   const priceGroups = useLiveDeltaPanes(volumeGroups, coordinateScope, liveChartKey,
