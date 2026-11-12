@@ -8479,7 +8479,8 @@ function Chart({
       ) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
       // Aroon uses candle extrema and a linear rolling window across loaded history.
-      const studyCandles = instance.indicatorId === "aroon-oscillator" ? sampledIndicatorCandles
+      const studyCandles = instance.indicatorId === "aroon-oscillator" || instance.indicatorId === "aroon-up-down"
+        ? sampledIndicatorCandles
         : instance.indicatorId === "volume" ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
         : CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId) ? deltaPaneCandles
         : requiresOrderFlowWindow
@@ -18327,7 +18328,8 @@ function Chart({
             } : {}),
           };
       const data = lightweightIndicatorData(definition);
-      const aroonPoints = definition.key === "aroon-oscillator" ? definition.data : undefined;
+      const aroonPoints = definition.key === "aroon-oscillator" || definition.key.startsWith("aroon-up-down-")
+        ? definition.data : undefined;
       const previousAroonPoints = existing?.aroonPoints;
       // A late candle can change an interior Aroon window with the tail intact.
       // Check its prefix before allowing the series sync to assume a tail-only update.

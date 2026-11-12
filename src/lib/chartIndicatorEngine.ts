@@ -243,14 +243,14 @@ function aroonScore(length: number, age: number) {
   return ((length - age) / length) * 100;
 }
 
-const aroonOscillatorCache = new WeakMap<ChartIndicatorInstance, {
+const aroonDataCache = new WeakMap<ChartIndicatorInstance, {
   candles: Candle[];
   length: number;
-  points: CalculatedIndicatorSeries["data"];
+  series: CalculatedIndicatorSeries["data"][];
 }>();
 
-function aroonOscillatorData(instance: ChartIndicatorInstance, candles: Candle[], length: number) {
-  const previous = aroonOscillatorCache.get(instance);
+function aroonData(instance: ChartIndicatorInstance, candles: Candle[], length: number) {
+  const previous = aroonDataCache.get(instance);
   let matching = 0;
   if (previous?.length === length) {
     const count = Math.min(candles.length, previous.candles.length);
@@ -261,20 +261,31 @@ function aroonOscillatorData(instance: ChartIndicatorInstance, candles: Candle[]
       if (bar !== old && (bar.timestamp !== old.timestamp || bar.high !== old.high || bar.low !== old.low)) break;
       matching += 1;
     }
-    if (matching === candles.length && matching === previous.candles.length) return previous.points;
+    if (matching === candles.length && matching === previous.candles.length) return previous.series;
   }
 
   const firstOutput = Math.max(length, matching);
   const remainder = matching <= length ? candles : candles.slice(matching - length);
   const highs = aroonExtremeAges(remainder.map(bar => bar.high), length, true);
   const lows = aroonExtremeAges(remainder.map(bar => bar.low), length, false);
-  const points = matching > length ? previous!.points.slice(0, matching - length) : [];
+  const oscillator = instance.indicatorId === "aroon-oscillator";
+  const series: CalculatedIndicatorSeries["data"][] = matching > length && previous
+    ? previous.series.map(points => points.slice(0, matching - length))
+    : oscillator ? [[]] : [[], []];
   for (let index = firstOutput; index < candles.length; index += 1) {
     const offset = length + index - firstOutput;
-    points.push({ time: candles[index].timestamp / 1000, value: aroonScore(length, highs[offset]) - aroonScore(length, lows[offset]) });
+    const time = candles[index].timestamp / 1000;
+    const up = aroonScore(length, highs[offset]);
+    const down = aroonScore(length, lows[offset]);
+    if (oscillator) {
+      series[0].push({ time, value: up - down });
+    } else {
+      series[0].push({ time, value: up });
+      series[1].push({ time, value: down });
+    }
   }
-  aroonOscillatorCache.set(instance, { candles, length, points });
-  return points;
+  aroonDataCache.set(instance, { candles, length, series });
+  return series;
 }
 
 function rollingMean(values: number[], length: number) {
@@ -1079,24 +1090,16 @@ function computeIndicatorSeries(
       placement: "pane",
       color: theme.primary,
       lineWidth: 2,
-      data: aroonOscillatorData(instance, candles, length),
+      data: aroonData(instance, candles, length)[0],
     }];
   }
 
   if (key === "aroon-up-down") {
     const length = Math.max(2, Math.round(settingNumber(instance, "length", 25)));
-    const upAges = aroonExtremeAges(candles.map(candle => candle.high), length, true);
-    const downAges = aroonExtremeAges(candles.map(candle => candle.low), length, false);
-    const points = (ages: Int32Array) => {
-      const data: { time: number; value: number }[] = [];
-      for (let index = length; index < candles.length; index += 1) {
-        data.push({ time: candles[index].timestamp / 1000, value: aroonScore(length, ages[index]) });
-      }
-      return data;
-    };
+    const [up, down] = aroonData(instance, candles, length);
     return [
-      { key: `${key}-up`, label: "Aroon Up", kind: "line", placement: "pane", color: theme.positive, lineWidth: 2, data: points(upAges) },
-      { key: `${key}-down`, label: "Aroon Down", kind: "line", placement: "pane", color: theme.negative, lineWidth: 2, data: points(downAges) },
+      { key: `${key}-up`, label: "Aroon Up", kind: "line", placement: "pane", color: theme.positive, lineWidth: 2, data: up },
+      { key: `${key}-down`, label: "Aroon Down", kind: "line", placement: "pane", color: theme.negative, lineWidth: 2, data: down },
     ];
   }
 
