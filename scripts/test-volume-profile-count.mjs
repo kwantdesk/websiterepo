@@ -71,7 +71,7 @@ check("the trading-date slice is what asks", () => {
    */
   assert.match(
     workspace,
-    /const dailyProfileCount = resolveDailyVolumeProfileCount\(dailyProfileSettings\.numberOfProfiles\);/,
+    /const dates = tradingDates\.slice\(-resolveDailyVolumeProfileCount\(settings\.numberOfProfiles\)\);/,
     "the workspace no longer resolves the count",
   );
   assert.match(
@@ -90,7 +90,7 @@ check("recomputing when the count changes", () => {
   // some unrelated candle arrived - the same class of bug all over again.
   assert.match(
     workspace,
-    /\}, \[candles, currentDailyTradingDate, dailyProfileCount\]\);/,
+    /\}, \[candles, currentDailyTradingDate, dailyProfileCount, filterFutureProfileDates\]\);/,
     "dailyProfileCount is missing from the memo dependencies",
   );
 });

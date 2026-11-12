@@ -22,3 +22,15 @@ export function volumeProfileOwnerKey(profile: Pick<InstitutionalVolumeProfile, 
     ? JSON.stringify([profile.ownerInstanceId, profile.root, profile.period])
     : `${profile.root}:${profile.period}`;
 }
+
+/** A split daily profile occupies one window for one indicator instance. */
+export function isSameDailyVolumeProfileWindow(
+  candidate: Pick<InstitutionalVolumeProfile, "ownerInstanceId" | "sessionId">,
+  replacement: Pick<InstitutionalVolumeProfile, "ownerInstanceId" | "sessionId">,
+  candidateTradingDate: string,
+  replacementTradingDate: string,
+): boolean {
+  return candidate.ownerInstanceId === replacement.ownerInstanceId
+    && (candidate.sessionId ?? "") === (replacement.sessionId ?? "")
+    && candidateTradingDate === replacementTradingDate;
+}

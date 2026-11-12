@@ -22,7 +22,7 @@ import { SUPER_TREND_DEFAULTS, SUPER_TREND_DIFFERENCE_DEFAULTS, superTrendNumeri
 import { KST_DEFAULTS, KST_NUMERIC_SETTINGS } from "@/lib/knowSureThingSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { canonicalChartIndicatorId, CHART_INDICATOR_BY_ID } from "@/lib/chartIndicatorCatalog";
-import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT, resolveVolumeProfileMode } from "@/lib/volumeProfileMath";
 import { VOLUME_PROFILE_GRADIENT_OFF, VOLUME_PROFILE_GRADIENTS } from "@/lib/volumeProfileGradients";
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
 import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
@@ -3082,11 +3082,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     // A volume profile measures volume. Delta is an overlay the trader turns
     // on, not part of the standard picture — the dedicated delta and bid/ask
     // variants still open in their own mode.
-    profileMode: indicatorId === "ask-bid-volume-profile"
-      ? "bid-ask"
-      : indicatorId === "delta-profile"
-        ? "delta"
-        : "volume",
+    profileMode: resolveVolumeProfileMode(indicatorId),
     // Manual 4-tick rows are the desk standard: automatic grouping re-derived
     // the row height from each session's range, so the same instrument drew a
     // different profile granularity day to day.
@@ -4070,7 +4066,7 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
         // a real choice in the dropdown and must survive. Coercing it back to
         // plain volume here meant the setting silently reverted every time the
         // settings version moved, so picking it appeared to do nothing.
-        profileMode: normalizedInstance.settings?.profileMode ?? "volume",
+        profileMode: resolveVolumeProfileMode(normalizedInstance.indicatorId, normalizedInstance.settings?.profileMode),
         levelLabelSide: normalizedInstance.settings?.levelLabelSide ?? "right",
         showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
@@ -4160,7 +4156,7 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
         // a real choice in the dropdown and must survive. Coercing it back to
         // plain volume here meant the setting silently reverted every time the
         // settings version moved, so picking it appeared to do nothing.
-        profileMode: normalizedInstance.settings?.profileMode ?? "volume",
+        profileMode: resolveVolumeProfileMode(normalizedInstance.indicatorId, normalizedInstance.settings?.profileMode),
         levelLabelSide: normalizedInstance.settings?.levelLabelSide ?? "right",
         showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",

@@ -53,16 +53,14 @@ check("the original windows remain and Tokyo has its independent control", () =>
   assert.match(block, /id: "asia".*start: 17 \* 60, end: 26 \* 60/);
 });
 
-check("the toggles are in the effect's dependency array", () => {
-  // THE FIRST BUG. Without these the click is inert.
-  const deps = workspace.slice(
-    workspace.indexOf("dailyProfileSettings.useEndSessionAsStartDay,"),
-    workspace.indexOf("weeklyProfileSettings.minTradeVolume,"),
-  );
-  assert.ok(deps.length > 0 && deps.length < 2_000, `dependency slice looks wrong: ${deps.length}`);
+check("the toggles participate in each owner's request signature", () => {
+  const start = workspace.indexOf("const dailyFuturesProfileSignature");
+  const signature = workspace.slice(start, workspace.indexOf("const weeklyProfileInstance", start));
+  assert.ok(signature.length > 0 && signature.length < 2_000);
   for (const key of SESSION_KEYS) {
-    assert.ok(deps.includes(`dailyProfileSettings.${key},`), `${key} must re-run the profile effect`);
+    assert.ok(signature.includes(key + ": settings." + key + ","), key + " must re-run the profile effect");
   }
+  assert.match(workspace, /dailyFuturesProfileSignature,\s+replayProfileClockMs,/);
 });
 
 check("a deselected session's profile is removed from state", () => {
@@ -74,7 +72,7 @@ check("a deselected session's profile is removed from state", () => {
   const refresh = workspace.slice(start, workspace.indexOf("      if (weeklyProfileInstance) {", start));
   assert.ok(refresh.length > 0, "refreshExactProfiles is missing");
   assert.match(refresh, /const drawnSessionIds = new Set<string>\(/);
-  assert.match(refresh, /candidate\.period !== "daily" \|\| drawnSessionIds\.has\(candidate\.sessionId \?\? ""\)/,
+  assert.match(refresh, /candidate\.period !== "daily"\s+\|\| candidate\.ownerInstanceId !== ownerId\s+\|\| drawnSessionIds\.has\(candidate\.sessionId \?\? ""\)/,
     "daily profiles outside the requested sessions must be dropped");
   // An unsplit study draws exactly one profile with no session identity, so the
   // allowed set must still admit it or the whole study would vanish.

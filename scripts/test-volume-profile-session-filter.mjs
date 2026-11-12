@@ -91,7 +91,7 @@ check("the chart sends every filtered daily profile as an explicit exchange-time
   assert.match(workspace, /filterMode: "none" as const,\s*\n\s*sessionId: segment\.id,/);
   assert.match(
     workspace,
-    /\{ \.\.\.profile, tradingDate, sessionId: job\.sessionId, sessionLabel: job\.sessionLabel \}/,
+    /\.\.\.profile, ownerInstanceId: ownerId, tradingDate, sessionId: job\.sessionId, sessionLabel: job\.sessionLabel/,
     "the bounded response has no stable session/date identity",
   );
 });

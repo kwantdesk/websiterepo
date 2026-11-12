@@ -523,7 +523,7 @@ import {
 } from "@/lib/gexMapPalette";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
-import { resolveVolumeProfileInputData, volumeProfileWithInputData } from "@/lib/volumeProfileMath";
+import { resolveVolumeProfileInputData, resolveVolumeProfileMode, volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import { resolveVolumeProfileOwner, volumeProfileOwnerKey } from "@/lib/volumeProfileOwnership";
 import {
   buildMagnetCandles,
@@ -17561,7 +17561,6 @@ function Chart({
           ? String(profileSettings.snapMode)
           : profile.period === "weekly" ? "left" : "off"
       ) as "off" | "left" | "right";
-      const requestedProfileMode = String(profileSettings.profileMode);
       const requestedWidthMode = ["automatic", "period-percent", "window-percent", "fixed-bars"]
         .includes(String(profileSettings.widthMode))
         ? String(profileSettings.widthMode)
@@ -17572,11 +17571,7 @@ function Chart({
       const vwapEnabled = profileSettings.vwapEnabled === true
         || (profileSettings.vwapEnabled == null
           && (profileSettings.showVwapLine === true || profileSettings.showVwapBands === true));
-      const profileMode = (
-        ["volume", "delta-volume", "bid-ask", "delta", "delta-percentage"].includes(requestedProfileMode)
-          ? requestedProfileMode
-          : "volume"
-      ) as "volume" | "delta-volume" | "bid-ask" | "delta" | "delta-percentage";
+      const profileMode = resolveVolumeProfileMode(instance.indicatorId, profileSettings.profileMode);
       // Data Settings > Input data. Trades mode re-expresses each row as its
       // executed trade count; volume mode returns the profile untouched, so
       // the reference stays stable for the render memo below.

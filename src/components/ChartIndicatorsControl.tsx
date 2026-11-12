@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT, resolveVolumeProfileInputData } from "@/lib/volumeProfileMath";
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT, resolveVolumeProfileInputData, resolveVolumeProfileMode } from "@/lib/volumeProfileMath";
 import { isInsideKwantDatePicker } from "@/components/ui/KwantDatePicker";
 import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
 import { ABSOLUTE_LEVEL_REFERENCE_EVENT, absoluteLevelInitialPrices, type AbsoluteLevelReferenceRequest } from "@/lib/absoluteLevels";
@@ -2310,7 +2310,7 @@ export default function ChartIndicatorsControl({
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Profile type</span>
                     <KwantSelect
-                      value={String(settingsInstance.settings?.profileMode ?? "volume")}
+                      value={resolveVolumeProfileMode(settingsInstance.indicatorId, settingsInstance.settings?.profileMode)}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                         ...current,
                         settings: { ...(current.settings ?? {}), profileMode: event.target.value },
@@ -2675,7 +2675,7 @@ export default function ChartIndicatorsControl({
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Input data</span>
                     <KwantSelect
-                      value={resolveVolumeProfileInputData(settingsInstance.settings?.profileMode, settingsInstance.settings?.inputData)}
+                      value={resolveVolumeProfileInputData(resolveVolumeProfileMode(settingsInstance.indicatorId, settingsInstance.settings?.profileMode), settingsInstance.settings?.inputData)}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                         ...current,
                         settings: { ...(current.settings ?? {}), inputData: event.target.value },
@@ -2684,7 +2684,7 @@ export default function ChartIndicatorsControl({
                       menuLabel="Input data"
                     >
                       <option value="volume">Volume</option>
-                      <option value="trades" disabled={resolveVolumeProfileInputData(settingsInstance.settings?.profileMode, "trades") !== "trades"}>Number of trades (Volume profile type)</option>
+                      <option value="trades" disabled={resolveVolumeProfileInputData(resolveVolumeProfileMode(settingsInstance.indicatorId, settingsInstance.settings?.profileMode), "trades") !== "trades"}>Number of trades (Volume profile type)</option>
                     </KwantSelect>
                   </label>
                   {([

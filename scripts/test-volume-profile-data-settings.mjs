@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { groupVolumeProfileLevels, resolveVolumeProfileInputData, resolveVolumeProfileRenderGrouping, volumeProfileBinTick, volumeProfileWithInputData } from "../src/lib/volumeProfileMath.ts";
+import { groupVolumeProfileLevels, resolveVolumeProfileInputData, resolveVolumeProfileMode, resolveVolumeProfileRenderGrouping, volumeProfileBinTick, volumeProfileWithInputData } from "../src/lib/volumeProfileMath.ts";
 
 /**
  * Data Settings parity with DeepChart's DP: DeltaVol tab — tick grouping
@@ -212,6 +212,11 @@ console.log("Volume profile level chaining tests passed.");
     totalVolume: 120,
     levels: [{ price: 100, volume: 120, trades: 3, bidVolume: 20, askVolume: 100, delta: 80 }],
   };
+  assert.equal(resolveVolumeProfileMode("ask-bid-volume-profile"), "bid-ask");
+  assert.equal(resolveVolumeProfileMode("delta-profile"), "delta");
+  assert.equal(resolveVolumeProfileMode("kwant-profile"), "volume");
+  assert.equal(resolveVolumeProfileMode("ask-bid-volume-profile", "volume"), "volume");
+  assert.equal(resolveVolumeProfileInputData(resolveVolumeProfileMode("ask-bid-volume-profile", "bad-setting"), "trades"), "volume");
   const count = resolveVolumeProfileInputData("volume", "trades");
   assert.equal(volumeProfileWithInputData(profile, count).totalVolume, 3);
   for (const mode of ["bid-ask", "delta", "delta-volume", "delta-percentage"]) {

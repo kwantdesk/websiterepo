@@ -1,4 +1,5 @@
 import { VOLUME_PROFILE_INDICATOR_IDS } from "@/lib/chartIndicatorConfig";
+import { resolveVolumeProfileMode } from "@/lib/volumeProfileMath";
 import { isVolumeProfileGradientActive } from "@/lib/volumeProfileGradients";
 
 /** Explain a real dependency instead of offering an apparently inert control. */
@@ -11,7 +12,7 @@ export function indicatorSettingDisabledReason(
     return "Turn the colour scheme Off to use theme colours.";
   }
   if (VOLUME_PROFILE_INDICATOR_IDS.has(id)) {
-    const mode = settings.profileMode ?? "volume";
+    const mode = resolveVolumeProfileMode(id, settings.profileMode);
     if (key === "showDelta" && (mode === "volume" || mode === "bid-ask")) {
       return "Select a Delta profile type to show or hide the delta plot.";
     }

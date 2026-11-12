@@ -150,6 +150,21 @@ export function calculateVolumeProfileValueArea(
 export type VolumeProfileInputData = "volume" | "trades";
 
 /** The archive supplies total trade counts and aggressor-side contract volumes. */
+export function resolveVolumeProfileMode(indicatorId: string, configuredMode?: unknown) {
+  switch (configuredMode) {
+    case "volume":
+    case "bid-ask":
+    case "delta":
+    case "delta-volume":
+    case "delta-percentage":
+      return configuredMode;
+    default:
+      return indicatorId === "ask-bid-volume-profile" ? "bid-ask"
+        : indicatorId === "delta-profile" ? "delta"
+        : "volume";
+  }
+}
+
 export function resolveVolumeProfileInputData(mode: unknown, inputData: unknown): VolumeProfileInputData {
   return (mode == null || mode === "volume") && inputData === "trades" ? "trades" : "volume";
 }

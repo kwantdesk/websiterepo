@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+const { isSameDailyVolumeProfileWindow } = await import("../src/lib/volumeProfileOwnership.ts");
 const { resolveSessionSegments } = await import("../src/lib/volumeProfileSessions.ts");
 const { applyInstitutionalTradesToVolumeProfile } = await import("../src/lib/institutionalMarketData.ts");
 
@@ -57,30 +58,14 @@ check("none means no windows at all", () => {
   assert.deepEqual(resolveSessionSegments(DAY_START, DAY_END, { mode: "none", window: "rth" }), []);
 });
 
-check("the session is part of a daily profile's identity", () => {
-  /*
-   * Without this, four session profiles for one date are one map entry and
-   * three are dropped - which is exactly "I select them all and nothing
-   * changes".
-   */
-  assert.match(
-    workspace,
-    /const profileSessionKey = \(profile: InstitutionalVolumeProfile\) =>\s*\n\s*`\$\{profile\.period\}:\$\{profile\.period === "daily" \? profileTradingDateFor\(profile\) : "weekly"\}:\$\{profile\.sessionId \?\? ""\}`/,
-    "the cached profile key still ignores the session",
-  );
-});
-
-check("both merge paths agree on that identity", () => {
-  /*
-   * The live path already keyed on the session; the cached one did not, and it
-   * rebuilds the map from the current profiles - so it could flatten correctly
-   * split profiles after they had arrived. Two paths, one identity.
-   */
-  assert.match(
-    workspace,
-    /if \(\(candidate\.sessionId \?\? ""\) !== \(replacement\.sessionId \?\? ""\)\) return true;/,
-    "the live replace path lost its session check",
-  );
+check("refresh replaces only the same owner, date and session", () => {
+  const profile = { ownerInstanceId: "ask-bid", sessionId: "asia" };
+  const date = "2026-11-12";
+  assert.equal(isSameDailyVolumeProfileWindow(profile, { ...profile }, date, date), true);
+  assert.equal(isSameDailyVolumeProfileWindow(profile, { ...profile, ownerInstanceId: "daily" }, date, date), false);
+  assert.equal(isSameDailyVolumeProfileWindow(profile, { ...profile, sessionId: "tokyo" }, date, date), false);
+  assert.equal(isSameDailyVolumeProfileWindow(profile, profile, date, "2026-11-13"), false);
+  assert.match(workspace, /return !isSameDailyVolumeProfileWindow\(/);
 });
 
 check("a session the trader unticked is omitted, not folded away", () => {

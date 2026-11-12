@@ -91,7 +91,7 @@ check("the prune still removes a session that was turned off", () => {
   // The fallback must not have cost the original behaviour: unticking Asia
   // has to take Asia's profile off the chart immediately.
   assert.match(workspace, /const drawnSessionIds = new Set<string>\(/);
-  assert.match(workspace, /candidate\.period !== "daily" \|\| drawnSessionIds\.has\(candidate\.sessionId \?\? ""\)/);
+  assert.match(workspace, /candidate\.period !== "daily"\s+\|\| candidate\.ownerInstanceId !== ownerId\s+\|\| drawnSessionIds\.has\(candidate\.sessionId \?\? ""\)/);
 });
 
 check("London and New York overlap, and it is measured not assumed", () => {
