@@ -35,6 +35,7 @@ export type GexFlowContractRatio = {
 
 export type GexFlowRow = {
   id: string;
+  originalTradeId?: string;
   parentId: string | null;
   childCount: number;
   ticker: string;

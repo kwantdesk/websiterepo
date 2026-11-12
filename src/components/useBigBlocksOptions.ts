@@ -6,6 +6,8 @@ import type { ChartSettings } from "@/lib/chartSettings";
 import { BigOptionsTape, normalizeBigOptionsSettings } from "@/lib/bigBlocksOptions";
 import { BigBlocksOptionsPrimitive } from "@/lib/bigBlocksOptionsPrimitive";
 import { bigOptionsFeed } from "@/lib/bigBlocksOptionsFeed";
+import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
+import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 
 export function useBigBlocksOptions(args: {
   seriesRef: { current: ReturnType<IChartApi["addCandlestickSeries"]> | null };
@@ -30,7 +32,7 @@ export function useBigBlocksOptions(args: {
     const symbol = args.instrument.trim().toUpperCase();
     if (ledger.current.symbol !== symbol) ledger.current = { symbol, tape: new BigOptionsTape() };
     const tape = ledger.current.tape;
-    let status = "Loading observed executions", clock = Date.now(), active = true;
+    let status = "Loading observed executions", active = true;
     const paint = () => {
       if (!active) return;
       const ids = new Set(latest.current.instances.map(instance => instance.instanceId));
@@ -39,10 +41,11 @@ export function useBigBlocksOptions(args: {
         let item = primitives.get(instance.instanceId);
         if (!item) { item = primitives.size ? new BigBlocksOptionsPrimitive() : primitive; primitives.set(instance.instanceId, item); series.attachPrimitive(item); }
         const settings = normalizeBigOptionsSettings(instance.settings);
-        const theme = latest.current.theme;
-        item.update({ levels: args.replayTimestampMs !== null ? [] : tape.levels(symbol, settings, clock), settings,
-          callColor: settings.useThemeColors ? theme.upColor : settings.callColor,
-          putColor: settings.useThemeColors ? theme.downColor : settings.putColor,
+        const theme = visibleIndicatorTheme(latest.current.theme);
+        const gradient = resolveVolumeProfileGradient(instance.settings?.gradientPreset);
+        item.update({ levels: args.replayTimestampMs !== null ? [] : tape.levels(symbol, settings, tape.observationTime), settings,
+          callColor: gradient?.to ?? (settings.useThemeColors ? theme.positive : settings.callColor),
+          putColor: gradient?.from ?? (settings.useThemeColors ? theme.negative : settings.putColor),
           textColor: window.getComputedStyle(document.body).color, fontFamily: "'Aleph', sans-serif",
           status: `${status}${tape.truncated ? " · 5K retention limit" : ""}` });
       }
@@ -55,8 +58,7 @@ export function useBigBlocksOptions(args: {
     else release = bigOptionsFeed.subscribe(symbol, (payload, error) => {
       if (!active) return;
       if (payload) {
-        clock = Date.parse(payload.asOf);
-        tape.update(payload.sessionDate, payload.rows);
+        if (!tape.update(payload.sessionDate, payload.rows, Date.parse(payload.asOf))) return;
       }
       status = error ? payload ? "Refresh delayed · last observed flow" : "Options flow unavailable" : payload
         ? `${payload.stale ? "STALE" : payload.status.replaceAll("_", " ")} · observed tape · latest 100 per refresh`

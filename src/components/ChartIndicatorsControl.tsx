@@ -965,7 +965,10 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   // down colours (see the primitive updates in Chart.tsx), so the swatches must
   // show those while theme mode is on rather than the values stored when the
   // indicator was added.
-  if (indicatorId === "big-blocks-options") return { callColor: chartSettings.upColor, putColor: chartSettings.downColor };
+  if (indicatorId === "big-blocks-options") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { callColor: visible.positive, putColor: visible.negative };
+  }
   if (indicatorId === "deep-m-effort-nq") {
     const visible = visibleIndicatorTheme(chartSettings);
     return { askColor: chartSettings.upColor, bidColor: chartSettings.downColor, maAboveColor: visible.positive, maBelowColor: visible.negative };

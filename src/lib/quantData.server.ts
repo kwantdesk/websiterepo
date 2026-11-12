@@ -5239,8 +5239,10 @@ function gexFlowRows(payload: unknown, sourceKind: "CONSOLIDATED" | "RAW"): GexF
         : underlyingTypeText.includes("STOCK") || underlyingTypeText.includes("EQUITY")
           ? "STOCK"
           : "UNKNOWN";
+    const originalTradeId = gexFlowText(value, "originalTradeId", "originalId");
     const row: GexFlowRow = {
       id,
+      ...(originalTradeId ? { originalTradeId } : {}),
       parentId: gexFlowText(value, "parentId", "consolidatedId", "groupId") || null,
       childCount,
       ticker,

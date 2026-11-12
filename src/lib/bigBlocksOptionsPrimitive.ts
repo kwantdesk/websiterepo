@@ -7,7 +7,7 @@ const compactFormatter = new Intl.NumberFormat("en", { notation: "compact", maxi
 export function bigOptionsBarLayout(frame: BigOptionsFrame, width: number, height: number, coordinate: (price: number) => number | null) {
   const mapped = frame.levels.map(level => ({ level, y: coordinate(level.price) }))
     .filter((entry): entry is { level: BigOptionsLevel; y: number } => entry.y !== null && entry.y >= 0 && entry.y <= height);
-  const maximum = Math.max(1, ...mapped.flatMap(({ level }) => [level.call, level.put]));
+  const maximum = Math.max(1, ...frame.levels.flatMap(level => [level.call, level.put]));
   const capacity = Math.min(frame.settings.widthPx, Math.max(0, width - 16));
   mapped.sort((a, b) => a.y - b.y);
   return mapped.map(({ level, y }, index) => {

@@ -150,3 +150,32 @@ test("chart is wired to the dedicated hook, not the futures Big Blocks engine", 
   assert.match(hook, /const ledger = useRef\(/);
   assert.match(hook, /if \(ledger\.current\.symbol !== symbol\)/);
 });
+
+test('cancelled parent prints disappear and stale snapshots cannot resurrect or replace them', () => {
+  const tape = new BigOptionsTape();
+  tape.update('2026-10-19', [row('a'), row('b')], clock);
+  assert.equal(tape.size(), 2);
+  tape.update('2026-10-19', [row('cancel-a', { tradeType: 'CANCEL', originalTradeId: 'a' }), row('a')], clock + 1000);
+  assert.equal(tape.size(), 1);
+  assert.equal(tape.update('2026-10-19', [row('b', { size: 400 })], clock), false);
+  assert.equal(tape.update('2026-10-16', [row('c')], clock + 2000), false);
+  assert.equal(tape.observationTime, clock + 1000);
+  tape.update('2026-10-19', [row('a')], clock + 3000);
+  assert.deepEqual(tape.levels('QQQ', settings, tape.observationTime).map(level => level.call), [100]);
+  tape.update('2026-10-20', [row('a', { tradeTime: clock + 86_400_000 })], clock + 86_400_000);
+  assert.equal(tape.size(), 1);
+});
+
+test('bar widths stay comparable when a larger level pans off screen', () => {
+  const frame = { settings, levels: levels([row('a'), row('b', { stockPrice: 520, size: 400 })]) };
+  const all = bigOptionsBarLayout(frame, 800, 500, price => price - 250);
+  const visible = bigOptionsBarLayout(frame, 800, 500, price => price === 500 ? 200 : null);
+  assert.equal(visible[0].callWidth, 37.5);
+  assert.equal(visible[0].callWidth, all.find(bar => bar.level.price === 500).callWidth);
+});
+
+test('unknown zero premium still counts as contracts but cannot consume a premium-priced level', () => {
+  const prints = [row('a', { premium: 0 })];
+  assert.equal(levels(prints).length, 1);
+  assert.deepEqual(levels(prints, { sizeByPremium: true }), []);
+});

@@ -31,10 +31,28 @@ type RetainedPrint = Pick<GexFlowRow, "id" | "ticker" | "contractType" | "size" 
 export class BigOptionsTape {
   private session = "";
   private records = new Map<string, RetainedPrint>();
+  private cancelled = new Set<string>();
+  private observedAt = -Infinity;
   truncated = false;
-  update(session: string, rows: readonly GexFlowRow[]) {
-    if (session !== this.session) { this.records.clear(); this.session = session; this.truncated = false; }
+  get observationTime() { return this.observedAt; }
+  update(session: string, rows: readonly GexFlowRow[], asOf = this.observedAt) {
+    if (session < this.session || (session === this.session && asOf < this.observedAt)) return false;
+    if (session !== this.session) {
+      this.records.clear();
+      this.cancelled.clear();
+      this.session = session;
+      this.truncated = false;
+    }
+    this.observedAt = asOf;
     for (const row of rows) if (row && typeof row.id === "string" && row.id && !row.parentId && Number.isFinite(row.tradeTime)) {
+      if (/^CANCEL(?:LATION|LED)?$/i.test(row.tradeType)) {
+        const cancelledId = row.originalTradeId || row.id;
+        this.records.delete(cancelledId);
+        this.cancelled.add(cancelledId);
+        if (this.cancelled.size > 5000) this.cancelled.delete(this.cancelled.values().next().value!);
+        continue;
+      }
+      if (this.cancelled.has(row.id)) continue;
       // Do not retain the tape's large Greeks/ratio/enrichment objects per pane.
       const { id, ticker, contractType, size, premium, stockPrice, strikePrice, tradeTime, multiLeg } = row;
       this.records.set(id, { id, ticker, contractType, size, premium, stockPrice, strikePrice, tradeTime, multiLeg });
@@ -44,6 +62,7 @@ export class BigOptionsTape {
       this.records = new Map(retained.map(row => [row.id, row]));
       this.truncated = true;
     }
+    return true;
   }
   size() { return this.records.size; }
   levels(symbol: string, settings: BigOptionsSettings, clockMs: number): BigOptionsLevel[] {
@@ -52,7 +71,7 @@ export class BigOptionsTape {
     for (const row of this.records.values()) {
       if (row.ticker !== symbol || row.tradeTime > clockMs || row.tradeTime < cutoff
         || !Number.isFinite(row.size) || row.size <= 0 || row.size < settings.minContracts
-        || !Number.isFinite(row.premium) || row.premium < settings.minPremium
+        || !Number.isFinite(row.premium) || row.premium < settings.minPremium || (settings.sizeByPremium && row.premium <= 0)
         || (!settings.includeMultiLeg && row.multiLeg)
         || (row.contractType !== "CALL" && row.contractType !== "PUT")) continue;
       if ((row.contractType === "CALL" && !settings.showCalls) || (row.contractType === "PUT" && !settings.showPuts)) continue;
