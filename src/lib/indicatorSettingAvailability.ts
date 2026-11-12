@@ -19,6 +19,9 @@ export function indicatorSettingDisabledReason(
       return "Enable Show Marker to adjust the threshold.";
     }
   }
+  if (id === "chaikin-accumulation-distribution" && /^average(?:Length|Type|Color|LineWidth)$/.test(key) && settings.showAverage !== true) {
+    return "Enable Show Average to adjust the average plot.";
+  }
   if (id === "big-trades") {
     if (["rthManualFilter", "rthFilterMode", "rthAutomaticIntensity", "rthStandardDeviation"].includes(key) && settings.sessionFilterEnabled === false) {
       return "Enable the separate regular-hours filter to adjust these values.";

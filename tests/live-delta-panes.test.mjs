@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { LiveDeltaPaneModel, LIVE_DELTA_PANE_INTERVAL_MS, isLiveDeltaPane, isLivePriceStudy, deltaPaneIdentity } from '../src/lib/liveDeltaPanes.ts';
+import { LiveDeltaPaneModel, LIVE_DELTA_PANE_INTERVAL_MS, isLiveCumulativeVolumeStudy, isLiveDeltaPane, isLivePriceStudy, deltaPaneIdentity } from '../src/lib/liveDeltaPanes.ts';
 import { calculateIndicatorSeries } from '../src/lib/chartIndicatorEngine.ts';
 import { LIVE_CHART_CANDLE_EVENT, LIVE_CHART_EXECUTION_EVENT } from '../src/lib/chartLiveEvents.ts';
 import { mergeMonthlyRecordedFlow } from '../src/lib/institutionalMarketData.ts';
@@ -124,7 +124,7 @@ function harness(groups,inputs,mode="delta"){
  const useRef=value=>{const i=cursor++;return refs[i]??=( {current:value} );};
  const useState=value=>{const i=cursor++;if(!(i in states))states[i]=value;return[states[i],v=>{states[i]=typeof v==='function'?v(states[i]):v;render();}];};
  const useEffect=(fn,deps)=>{const i=cursor++;if(!equal(effects[i]?.deps,deps))queued.push(()=>{effects[i]?.cleanup?.();effects[i]={deps,cleanup:fn()};});};
- const hook=new Function('useEffect','useRef','useState','LIVE_CHART_CANDLE_EVENT','LIVE_CHART_EXECUTION_EVENT','deltaPaneIdentity','isLiveDeltaPane','isLivePriceStudy','LIVE_DELTA_PANE_INTERVAL_MS','LiveDeltaPaneModel','window','setTimeout','clearTimeout','requestAnimationFrame','cancelAnimationFrame',code+';return useLiveDeltaPanes;')(useEffect,useRef,useState,LIVE_CHART_CANDLE_EVENT,LIVE_CHART_EXECUTION_EVENT,deltaPaneIdentity,isLiveDeltaPane,isLivePriceStudy,LIVE_DELTA_PANE_INTERVAL_MS,LiveDeltaPaneModel,window,(fn,ms)=>{const id=++next;timers.set(id,{fn,ms});return id;},id=>timers.delete(id),fn=>{const id=++next;timers.set(id,{fn,ms:0});return id;},id=>timers.delete(id));
+ const hook=new Function('useEffect','useRef','useState','LIVE_CHART_CANDLE_EVENT','LIVE_CHART_EXECUTION_EVENT','deltaPaneIdentity','isLiveCumulativeVolumeStudy','isLiveDeltaPane','isLivePriceStudy','LIVE_DELTA_PANE_INTERVAL_MS','LiveDeltaPaneModel','window','setTimeout','clearTimeout','requestAnimationFrame','cancelAnimationFrame',code+';return useLiveDeltaPanes;')(useEffect,useRef,useState,LIVE_CHART_CANDLE_EVENT,LIVE_CHART_EXECUTION_EVENT,deltaPaneIdentity,isLiveCumulativeVolumeStudy,isLiveDeltaPane,isLivePriceStudy,LIVE_DELTA_PANE_INTERVAL_MS,LiveDeltaPaneModel,window,(fn,ms)=>{const id=++next;timers.set(id,{fn,ms});return id;},id=>timers.delete(id),fn=>{const id=++next;timers.set(id,{fn,ms:0});return id;},id=>timers.delete(id));
  function render(){cursor=0;output=hook(props.groups,props.scope,props.key,props.inputs,mode);const q=queued;queued=[];for(const effect of q)effect();}
  render();return {get output(){return output;},get timers(){return timers;},emit(c,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT,{detail:{key,candle:c}}));},executions(candles,key='pane'){window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT,{detail:{key,candles,records:[],tape:[],continuity:'continuous'}}));},flush(){const q=[...timers.values()];timers.clear();for(const t of q)t.fn();},update(p){props={...props,...p};render();},dispose(){for(const effect of effects)effect?.cleanup?.();}};
 }
@@ -169,4 +169,28 @@ test('Volume paints on the next animation frame, keeps every received bar, and h
  h.emit(candle(1000,20,2),'other');assert.equal(h.timers.size,0);
  h.update({key:undefined,scope:'replay'});h.emit(candle(1001));assert.equal(h.timers.size,0);
  }finally{h.dispose();}
+});
+
+test("Chaikin follows execution and candle events, preserves the cumulative seed, and detaches in replay", () => {
+  const study = group("chaikin-accumulation-distribution", { showAverage: true, averageType: "weighted", averageLength: 5 });
+  const bars = Array.from({ length: 4500 }, (_, index) => ({ ...candle(index, 10 + index % 7), close: index % 2 ? 100.5 : 99.75 }));
+  const h = harness([study], input(bars), "cumulative-volume");
+  try {
+    assert.equal([...h.timers.values()][0].ms, 0);
+    h.flush();
+    const appended = { ...candle(bars.length, 50, 20), close: 101 };
+    const forming = { ...appended, volume: 75, askVolume: 55, close: 100.5 };
+    h.executions([...bars.slice(-36), appended]);
+    h.emit(forming);
+    assert.equal(h.timers.size, 1);
+    assert.equal([...h.timers.values()][0].ms, 100);
+    h.flush();
+    const expected = calculateIndicatorSeries({ ...study, instanceId: study.key, enabled: true }, [...bars, forming], theme);
+    assert.deepEqual(h.output[0].series.map(series => series.data), expected.map(series => series.data));
+    h.executions([appended], "another-chart");
+    assert.equal(h.timers.size, 0);
+    h.update({ key: undefined, scope: "replay" });
+    h.emit(forming);
+    assert.equal(h.timers.size, 0);
+  } finally { h.dispose(); }
 });

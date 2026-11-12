@@ -403,6 +403,8 @@ const hasOwnPaletteSection = (id: string) =>
   VOLUME_PROFILE_INDICATOR_IDS.has(id) || isTpoIndicator(id) || id === "deep-print-footprint";
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
   indicatorId === "big-trades" && /^(?:minimumOpacity|maximumOpacity|minimumSize|maximumSize|labelMinSize|projectionLineWidth|projectionOpacity|deepOpacity|deepLineWidth)$/.test(key) ? "Style"
+    : indicatorId === "chaikin-accumulation-distribution"
+      ? ["showAverage", "averageType", "averageLength"].includes(key) ? "Inputs" : "Style"
     : indicatorId === "average-true-range-atr" && key === "lineWidth" ? "Style"
     : indicatorId === "volume" ? "General" : indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
@@ -750,6 +752,10 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
  * already on screen so nothing else visibly jumps.
  */
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
+  if (indicatorId === "chaikin-accumulation-distribution") {
+    const { primary, secondary } = visibleIndicatorTheme(chartSettings);
+    return { plotColor: primary, averageColor: secondary };
+  }
   if (indicatorId === "auction-gap-tracker") return auctionGapThemeColors(chartSettings) as Record<string, string>;
   if (indicatorId === "bounce-levels") return bounceThemeColours(chartSettings) as Record<string, string>;
   if (indicatorId === "session-marker") {
@@ -6666,6 +6672,25 @@ export default function ChartIndicatorsControl({
                     }))} />
                 </div>
               )) : null}
+
+              {settingsDefinition.id === "chaikin-accumulation-distribution" ? (
+                <label data-settings-section="Inputs" className="block space-y-1 text-[10px] text-muted">
+                  <span>Average type</span>
+                  <KwantSelect value={String(settingsInstance.settings?.averageType ?? "simple")}
+                    disabled={settingsInstance.settings?.showAverage !== true}
+                    title={indicatorSettingDisabledReason(settingsDefinition.id, "averageType", settingsInstance.settings)}
+                    menuLabel="Average type"
+                    onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current, settings: { ...(current.settings ?? {}), averageType: event.target.value },
+                    }))}
+                    className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                    <option value="simple">Simple</option>
+                    <option value="exponential">Exponential</option>
+                    <option value="triangular">Triangular</option>
+                    <option value="weighted">Weighted</option>
+                  </KwantSelect>
+                </label>
+              ) : null}
 
               {(settingsDefinition.id === "average-directional-index-adx" || settingsDefinition.id === "average-true-range-atr") ? (
                 <label data-settings-section="Style" className="block space-y-1 text-[10px] text-muted">

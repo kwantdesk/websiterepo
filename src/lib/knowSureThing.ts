@@ -18,7 +18,7 @@ export const KST_PARAMETERS: KstParameters = {
 };
 
 /** Fixed-size, full-window-seeded smoother; one update per observed bar. */
-function smoother(length: number, type: KstAverage): { reset(): void; push(value: number): number | undefined } {
+export function smoother(length: number, type: KstAverage): { reset(): void; push(value: number): number | undefined } {
   if (type === "triangular") {
     const first = smoother(Math.ceil((length + 1) / 2), "simple");
     const second = smoother(Math.floor((length + 1) / 2), "simple");

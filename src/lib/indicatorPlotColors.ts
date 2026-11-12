@@ -283,6 +283,7 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
   ],
   "chaikin-accumulation-distribution": [
     { key: "plotColor", role: "primary" },
+    { key: "averageColor", role: "secondary" },
   ],
   "standard-deviation": [
     { key: "plotColor", role: "primary" },

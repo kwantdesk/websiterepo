@@ -530,7 +530,8 @@ import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { adrHistoryDay, normalizeAverageDailyRangeTargetSettings, supportsAdrDailyHistory } from "@/lib/averageDailyRangeTarget";
 import { adrDailyHistoryDays, loadAdrDailyHistory } from "@/lib/adrDailyHistory";
-import { isLivePriceStudy } from "@/lib/liveDeltaPanes";
+import { useLiveDeltaPanes } from "./useLiveDeltaPanes";
+import { isLiveCumulativeVolumeStudy, isLivePriceStudy } from "@/lib/liveDeltaPanes";
 import { BollingerLiveCandles } from "@/lib/bollingerLiveCandles";
 import { resolveVolumeProfileInputData, resolveVolumeProfileMode, volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import { resolveVolumeProfileOwner, volumeProfileOwnerKey } from "@/lib/volumeProfileOwnership";
@@ -8534,7 +8535,8 @@ function Chart({
       // Aroon uses candle extrema and a linear rolling window across loaded history.
       const studyCandles = instance.indicatorId === "aroon-oscillator" || instance.indicatorId === "aroon-up-down"
         ? sampledIndicatorCandles
-        : instance.indicatorId === "volume" ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
+        : instance.indicatorId === "volume" || instance.indicatorId === "chaikin-accumulation-distribution"
+        ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
         : CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId) ? deltaPaneCandles
         : requiresOrderFlowWindow
         ? indicatorCandles
@@ -8662,12 +8664,33 @@ function Chart({
         .map(series => ({ ...series, groupKey: instance.instanceId })) : []),
   [candles, indicatorSignature, indicators, instrument, priceFormat.minMove, replayTimestampMs,
     settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+  const chaikinOverlayGroups = useMemo(() => indicators.flatMap(instance =>
+    instance.enabled && isLiveCumulativeVolumeStudy(instance.indicatorId) && momentumOnChart(instance)
+      ? [{ key: instance.instanceId, indicatorId: instance.indicatorId, settings: instance.settings,
+        series: baseCalculatedIndicatorSeries.filter(definition => definition.groupKey === instance.instanceId) }]
+      : []), [baseCalculatedIndicatorSeries, indicators]);
+  const liveChaikinOverlays = useLiveDeltaPanes(chaikinOverlayGroups, observedCandleScope,
+    replayTimestampMs == null ? liveCandleEventKey ?? undefined : undefined,
+    chaikinOverlayGroups.length ? {
+      candles: sampledIndicatorCandles, instrument, tickSize: priceFormat.minMove,
+      theme: visibleIndicatorTheme(settings),
+    } : undefined, "cumulative-volume");
   const chartAlignedIndicatorSeries = useMemo(() => {
-    return alignIndicatorSeriesToEventBars(
-      clipReplayIndicatorSeries([...baseCalculatedIndicatorSeries, ...priceStudySeries], replayTimestampMs),
-      eventChartIndicatorTimeMap,
-    );
-  }, [baseCalculatedIndicatorSeries, priceStudySeries, eventChartIndicatorTimeMap, replayTimestampMs]);
+    const series = clipReplayIndicatorSeries([
+      ...baseCalculatedIndicatorSeries.filter(definition => !liveChaikinOverlays.some(group => group.key === definition.groupKey)),
+      ...liveChaikinOverlays.flatMap(group => group.series),
+      ...priceStudySeries,
+    ], replayTimestampMs);
+    if (!eventChartIndicatorTimeMap) return series;
+    // The Chaikin lower pane crops by source time and maps its points to the
+    // native event chart inside indicatorTimeToX. Mapping here crops it twice.
+    const usesSourceTime = (definition: CalculatedIndicatorSeries) =>
+      definition.placement === "pane" && definition.key.startsWith("chaikin-accumulation-distribution");
+    return [
+      ...alignIndicatorSeriesToEventBars(series.filter(definition => !usesSourceTime(definition)), eventChartIndicatorTimeMap),
+      ...series.filter(usesSourceTime),
+    ];
+  }, [baseCalculatedIndicatorSeries, liveChaikinOverlays, priceStudySeries, eventChartIndicatorTimeMap, replayTimestampMs]);
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {

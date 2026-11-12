@@ -34,6 +34,7 @@ import type { TextOnChartOptions } from "@/lib/textOnChartPrimitive";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
 import type { SuperTrendLabelOptions } from "@/lib/superTrendLabels";
+import { smoother, type KstAverage } from "@/lib/knowSureThing";
 import { calculateKstSeries, type KstPanePresentation } from "@/lib/knowSureThingSeries";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
@@ -1421,23 +1422,41 @@ function computeIndicatorSeries(
   }
 
   if (key === "chaikin-accumulation-distribution") {
-    if (!volumeAvailable(candles)) return [];
+    const width = (field: string, fallback: number) =>
+      Math.max(1, Math.min(4, Math.round(settingNumber(instance, field, fallback)))) as 1 | 2 | 3 | 4;
+    const showAverage = settingBoolean(instance, "showAverage", false);
+    const length = Math.max(1, Math.min(1000, Math.round(settingNumber(instance, "averageLength", 20))));
+    const requested = settingString(instance, "averageType", "simple");
+    const type: KstAverage = requested === "exponential" || requested === "triangular" || requested === "weighted" ? requested : "simple";
+    const average = showAverage ? smoother(length, type) : null;
+    const data: CalculatedIndicatorSeries["data"] = [];
+    const averageData: CalculatedIndicatorSeries["data"] = [];
+    let hasVolume = false;
     let cumulative = 0;
-    const values = candles.map((candle) => {
-      const range = candle.high - candle.low;
-      const multiplier = range === 0 ? 0 : ((candle.close - candle.low) - (candle.high - candle.close)) / range;
-      cumulative += multiplier * Math.max(0, finite(candle.volume));
-      return cumulative;
-    });
-    return [{
-      key,
-      label: "Chaikin A/D",
-      kind: "line",
-      placement: "pane",
-      color: theme.primary,
-      lineWidth: 2,
-      data: lineData(candles, values),
+    for (const candle of candles) {
+      const { high, low, close } = candle;
+      const reported = Math.max(0, finite(candle.volume));
+      const volume = reported || Math.max(0, finite(candle.askVolume)) + Math.max(0, finite(candle.bidVolume));
+      hasVolume ||= volume > 0;
+      const range = high - low;
+      if (Number.isFinite(range) && range > 0 && close >= low && close <= high) {
+        cumulative += ((close - low) - (high - close)) / range * volume;
+      }
+      const time = candle.timestamp / 1000;
+      data.push({ time, value: cumulative });
+      const smoothed = average?.push(cumulative);
+      if (smoothed !== undefined) averageData.push({ time, value: smoothed });
+    }
+    if (!hasVolume) return [];
+    const series: CalculatedIndicatorSeries[] = [{
+      key, label: "Chaikin A/D", kind: "line", placement: "pane",
+      color: theme.primary, lineWidth: width("lineWidth", 2), data,
     }];
+    if (average) series.push({
+      key: `${key}-average`, label: `Average ${length}`, kind: "line", placement: "pane",
+      color: theme.secondary, lineWidth: width("averageLineWidth", 1), data: averageData,
+    });
+    return series;
   }
 
   if (key === "vwap" || key === "vwap-envelopes") {

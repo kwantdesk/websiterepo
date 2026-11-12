@@ -7,6 +7,7 @@ export const isLiveDeltaPane = (id: string) => ["cumulative-volume-delta", "delt
 export const isLivePriceStudy = (id: string) => id === "standard-deviation"
   || id === "average-true-range-atr" || id === "average-directional-index-adx"
   || id === "awesome-oscillator";
+export const isLiveCumulativeVolumeStudy = (id: string) => id === "chaikin-accumulation-distribution";
 export type LiveDeltaGroup = { key: string; indicatorId: string; settings?: Record<string, number | string | boolean>; series: CalculatedIndicatorSeries[] };
 export type LiveDeltaInputs = { candles: Candle[]; preserveEarlierHistory?: boolean; volumeCandles?: Candle[]; priceCandles?: Candle[]; instrument: string; tickSize: number; theme: IndicatorTheme; mapTime?: (sourceTime: number) => number | undefined };
 export const deltaPaneIdentity = (group: LiveDeltaGroup) => JSON.stringify([group.indicatorId, group.settings ?? {}]);
@@ -52,7 +53,7 @@ export class LiveDeltaPaneModel {
     this.history = mergeLiveIndicatorTail(snapshot, this.live);
   }
   calculate(group: LiveDeltaGroup, inputs: LiveDeltaInputs) {
-    if (!isLiveDeltaPane(group.indicatorId) && group.indicatorId !== "volume" && !isLivePriceStudy(group.indicatorId)) return group.series;
+    if (!isLiveDeltaPane(group.indicatorId) && group.indicatorId !== "volume" && !isLivePriceStudy(group.indicatorId) && !isLiveCumulativeVolumeStudy(group.indicatorId)) return group.series;
     const instance = { indicatorId: group.indicatorId, instanceId: group.key, enabled: true, settings: group.settings ?? {} };
     const extended = inputs.preserveEarlierHistory && isLiveDeltaPane(group.indicatorId) && !inputs.mapTime;
     const identity = extended ? JSON.stringify([deltaPaneIdentity(group), inputs.theme]) : "";

@@ -1535,7 +1535,11 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   ],
   "donchian-channel": [{ key: "length", label: "Length", defaultValue: 20, min: 2, max: 500 }],
   "williams-r": [{ key: "length", label: "Length", defaultValue: 14, min: 2, max: 500 }],
-  "chaikin-accumulation-distribution": [],
+  "chaikin-accumulation-distribution": [
+    { key: "averageLength", label: "Average length", defaultValue: 20, min: 1, max: 1000 },
+    { key: "lineWidth", label: "A/D line width", defaultValue: 2, min: 1, max: 4 },
+    { key: "averageLineWidth", label: "Average line width", defaultValue: 1, min: 1, max: 4 },
+  ],
   "macd-indicator": [
     { key: "fastLength", label: "Fast length", defaultValue: 12, min: 1, max: 500 },
     { key: "slowLength", label: "Slow length", defaultValue: 26, min: 2, max: 1000 },
@@ -1715,6 +1719,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "average-true-range-atr" ? { lineStyle: "solid", useThemeColors: true } : {}),
   ...(indicatorId === "awesome-oscillator" ? { useThemeColors: true } : {}),
+  ...(indicatorId === "chaikin-accumulation-distribution" ? { showAverage: false, averageType: "simple", useThemeColors: true } : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
   ...(indicatorId === "regression-channel" ? REGRESSION_CHANNEL_DEFAULTS : {}),

@@ -1473,7 +1473,10 @@ function ChartIndicatorPanes({
     [liveDeltaInputs?.priceCandles, priceStudyEnabled]);
   const priceGroups = useLiveDeltaPanes(volumeGroups, coordinateScope, liveChartKey,
     liveDeltaInputs && priceCandles ? { ...liveDeltaInputs, candles: priceCandles } : undefined, "price");
-  const groups = useSuperTrendLivePanes(priceGroups, liveChartKey);
+  const cumulativeVolumeGroups = useLiveDeltaPanes(priceGroups, coordinateScope, liveChartKey,
+    liveDeltaInputs && liveDeltaInputs.volumeCandles
+      ? { ...liveDeltaInputs, candles: liveDeltaInputs.volumeCandles, mapTime: undefined } : undefined, "cumulative-volume");
+  const groups = useSuperTrendLivePanes(cumulativeVolumeGroups, liveChartKey);
   const superTrendScale = useRef(new SuperTrendPaneScale());
   superTrendScale.current.retain(liveChartKey, groups.filter(g => g.indicatorId === "super-trend" || g.indicatorId === "super-trend-difference").map(g => g.key));
   const rootRef = useRef<HTMLDivElement>(null);
