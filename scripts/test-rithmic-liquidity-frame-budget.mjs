@@ -41,6 +41,16 @@ class MockEventSource {
   }
 }
 globalThis.EventSource = MockEventSource;
+globalThis.fetch = async (url) => {
+  const request = new URL(url, "https://www.kwantdesk.com");
+  assert.equal(request.pathname, "/api/institutional-market-data/v1/heatmap/stream");
+  assert.equal(request.searchParams.get("streamLease"), "1");
+  return { ok: true, json: async () => ({
+    transport: "direct-vps",
+    url: "https://feed.kwantdesk.com/browser-stream?ticket=fixture",
+    expiresAt: Date.now() + 60_000,
+  }) };
+};
 
 const { subscribeRithmicLiquidity } = await import("../src/lib/rithmicLiquidityStream.ts");
 
@@ -54,6 +64,7 @@ const unsubscribe = subscribeRithmicLiquidity({
   },
 });
 
+await new Promise(resolve => setImmediate(resolve));
 assert.ok(latestSource, "the shared market-data stream must connect");
 
 for (let index = 1; index <= 500; index += 1) {
@@ -98,6 +109,8 @@ animationFrames.clear();
 flushDepth(performance.now());
 
 assert.equal(snapshots.length, 1, "the full live burst must publish one authoritative depth frame");
+assert.equal(snapshots[0].depthUpdated, true);
+assert.equal(Date.parse(snapshots[0].depthAsOf), 1_786_400_000_500);
 assert.equal(snapshots[0].trades.length, 500, "every intervening execution must be retained");
 assert.equal(snapshots[0].orderEvents.length, 500, "every intervening lifecycle event must be retained");
 assert.equal(snapshots[0].lastPrice, (120_001 + 500) * 0.25, "the newest live price must win");
@@ -118,6 +131,8 @@ animationFrames.clear();
 flushTick(performance.now());
 
 assert.equal(snapshots.length, 2, "the tick burst must publish only its newest price");
+assert.equal(snapshots[1].depthUpdated, false);
+assert.equal(snapshots[1].depthAsOf, snapshots[0].depthAsOf);
 assert.equal(snapshots[1].lastPrice, (120_500 + 500) * 0.25);
 assert.equal(snapshots[1].levels, depthRows, "price-only frames must reuse the immutable depth rows");
 assert.deepEqual(snapshots[1].trades, [], "price frames must not replay old executions");

@@ -7740,12 +7740,15 @@ export default function ChartIndicatorsControl({
                       <option value="seconds">Seconds</option><option value="tick-reversal">Tick reversal</option>
                     </KwantSelect>
                   </label>
-                  {[["Show average", "showAverage"], ["Show marker", "showMarker"]].map(([label, key]) => (
-                    <button key={key} type="button" aria-pressed={settingsInstance.settings?.[key] !== false} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: current.settings?.[key] === false } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted">
-                      <span>{label}</span><span className={settingsInstance.settings?.[key] === false ? "text-muted" : "text-primary"}>{settingsInstance.settings?.[key] === false ? "Off" : "On"}</span>
+                  {[["Show average", "showAverage"], ["Show marker", "showMarker"]].map(([label, key]) => {
+                    const enabled = settingsInstance.settings?.[key] ?? (key === "showAverage");
+                    return (
+                    <button key={key} type="button" aria-pressed={enabled === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !enabled } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted">
+                      <span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span>
                     </button>
-                  ))}
-                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">A price level counts only after the Rithmic book exhausts it and the same frame confirms an aggressive execution at that price. Bid consumption plots above zero and Ask consumption below it; pulls and cancellations are excluded.</p>
+                    );
+                  })}
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">A price level counts only after the Rithmic book exhausts it and same-frame aggressive trades cover its previously displayed size at that price. Bid consumption plots above zero and Ask consumption below it; pulls and cancellations are excluded.</p>
                 </div>
               ) : null}
 

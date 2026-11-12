@@ -1,4 +1,21 @@
+import { futuresInstrumentRoot, scopedFuturesContract } from "@/lib/futuresInstrumentIdentity";
+import type { Candle } from "@/lib/backtester";
 import type { RithmicLiquiditySnapshot } from "@/lib/structureLevels";
+
+export function bookSpeedSource(instrument: string, contractSymbol?: string | null) {
+  const root = futuresInstrumentRoot(instrument);
+  const contract = scopedFuturesContract(root, instrument) ?? scopedFuturesContract(root, contractSymbol);
+  return { root, contract };
+}
+
+export function matchesBookSpeedContract(root: string, expected: string | null, received: string) {
+  const contract = scopedFuturesContract(root, received);
+  if (!contract) return false;
+  if (!expected) return true;
+  const code = contract.slice(root.length);
+  const requested = expected.slice(root.length);
+  return code === requested || (code.length !== requested.length && code[0] === requested[0] && code.at(-1) === requested.at(-1));
+}
 
 export const BOOK_SPEED_SETTINGS_VERSION = 1;
 
@@ -94,16 +111,9 @@ function levelKey(side: "BID" | "ASK", price: number, tickSize: number) {
   return `${side}:${Math.round(price / tickSize)}`;
 }
 
-function movingAverage(values: number[], length: number, index: number) {
-  const start = Math.max(0, index - length + 1);
-  let total = 0;
-  for (let cursor = start; cursor <= index; cursor += 1) total += values[cursor];
-  return total / Math.max(1, index - start + 1);
-}
-
 /**
  * Counts a level only when displayed liquidity is actually exhausted and the
- * same market frame carries aggressive executions through that price. A
+ * same market frame carries sufficient aggressive executions at that price. A
  * cancellation or pull can therefore never masquerade as book consumption.
  */
 export class BookSpeedEngine {
@@ -117,18 +127,30 @@ export class BookSpeedEngine {
   private lastPrice: number | null = null;
   private extremePrice: number | null = null;
   private warmed = false;
+  private observation: { timestamp: number; bookUsable: boolean; stale: boolean; fullDepth: boolean } | null = null;
+  private completedSinceSeed = false;
 
   reset() {
     this.instrument = "";
-    this.previous.clear();
     this.seenTrades.clear();
     this.seenTradeQueue = [];
     this.completed = [];
+    this.observation = null;
+    this.breakContinuity();
+  }
+
+  interrupt() {
+    this.breakContinuity();
+  }
+
+  private breakContinuity() {
+    this.previous.clear();
     this.active = null;
     this.direction = 0;
     this.lastPrice = null;
     this.extremePrice = null;
     this.warmed = false;
+    this.completedSinceSeed = false;
   }
 
   private startBucket(timestamp: number, settings: BookSpeedSettings): MutableBucket {
@@ -142,15 +164,19 @@ export class BookSpeedEngine {
     if (!this.active) return;
     this.active.endMs = timestamp;
     this.completed.push({ ...this.active, provisional: false });
-    if (this.completed.length > settings.historyBuckets) this.completed.splice(0, this.completed.length - settings.historyBuckets);
+    this.completedSinceSeed = true;
+    if (this.completed.length > 11_000) this.completed.shift();
     this.active = this.startBucket(timestamp, settings);
   }
 
   private rollSeconds(timestamp: number, settings: BookSpeedSettings) {
     const nextStart = Math.floor(timestamp / (settings.parameterValue * 1_000)) * settings.parameterValue * 1_000;
     if (!this.active) this.active = this.startBucket(timestamp, settings);
-    while (this.active.startMs < nextStart) {
-      const boundary = this.active.startMs + settings.parameterValue * 1_000;
+    const boundary = this.active.startMs + settings.parameterValue * 1_000;
+    if (nextStart > boundary) {
+      this.breakContinuity();
+      this.active = this.startBucket(timestamp, settings);
+    } else if (nextStart === boundary) {
       this.commit(boundary, settings);
     }
     this.active.endMs = timestamp;
@@ -158,32 +184,33 @@ export class BookSpeedEngine {
 
   private rollTickReversal(timestamp: number, price: number | null, tickSize: number, settings: BookSpeedSettings) {
     if (!this.active) this.active = this.startBucket(timestamp, settings);
+    this.active.endMs = timestamp;
     if (price == null || !Number.isFinite(price)) return;
+    const priceTick = Math.round(price / tickSize);
     if (this.lastPrice == null || this.extremePrice == null) {
-      this.lastPrice = price;
-      this.extremePrice = price;
+      this.lastPrice = priceTick;
+      this.extremePrice = priceTick;
       return;
     }
-    if (this.direction === 0 && price !== this.lastPrice) {
-      this.direction = price > this.lastPrice ? 1 : -1;
-      this.extremePrice = price;
+    if (this.direction === 0 && priceTick !== this.lastPrice) {
+      this.direction = priceTick > this.lastPrice ? 1 : -1;
+      this.extremePrice = priceTick;
     } else if (this.direction === 1) {
-      this.extremePrice = Math.max(this.extremePrice, price);
-      if (price <= this.extremePrice - settings.parameterValue * tickSize) {
+      this.extremePrice = Math.max(this.extremePrice, priceTick);
+      if (priceTick <= this.extremePrice - settings.parameterValue) {
         this.commit(timestamp, settings);
         this.direction = -1;
-        this.extremePrice = price;
+        this.extremePrice = priceTick;
       }
     } else if (this.direction === -1) {
-      this.extremePrice = Math.min(this.extremePrice, price);
-      if (price >= this.extremePrice + settings.parameterValue * tickSize) {
+      this.extremePrice = Math.min(this.extremePrice, priceTick);
+      if (priceTick >= this.extremePrice + settings.parameterValue) {
         this.commit(timestamp, settings);
         this.direction = 1;
-        this.extremePrice = price;
+        this.extremePrice = priceTick;
       }
     }
-    this.lastPrice = price;
-    this.active.endMs = timestamp;
+    this.lastPrice = priceTick;
   }
 
   private freshTrades(snapshot: RithmicLiquiditySnapshot) {
@@ -199,58 +226,123 @@ export class BookSpeedEngine {
 
   apply(snapshot: RithmicLiquiditySnapshot, rawSettings?: BookSpeedSettings | Record<string, unknown>): BookSpeedFrame {
     const settings = normalizeBookSpeedSettings(rawSettings as Record<string, unknown>);
-    const timestamp = Date.parse(snapshot.asOf) || Date.now();
+    this.observe(snapshot, settings);
+    return this.frame(settings);
+  }
+
+  observe(snapshot: RithmicLiquiditySnapshot, settings: BookSpeedSettings) {
+    const observedAt = Date.parse(snapshot.depthAsOf ?? snapshot.asOf);
     const instrument = snapshot.contractSymbol || "UNKNOWN";
     if (this.instrument && instrument !== this.instrument) this.reset();
     this.instrument = instrument;
+    if (snapshot.depthUpdated === false || (this.observation
+      && (!Number.isFinite(observedAt) || observedAt < this.observation.timestamp))) return;
+    const timestamp = Number.isFinite(observedAt) ? observedAt : 0;
+    const stale = snapshot.ageMs != null && snapshot.ageMs > 5_000;
+    const bookUsable = Number.isFinite(observedAt) && (snapshot.depthBookValid ?? snapshot.bookValid) && !stale;
+    if (!bookUsable) {
+      this.breakContinuity();
+    }
     const tickSize = Math.max(Number.EPSILON, snapshot.tickSize || 1);
-    if (settings.parameterMode === "seconds") this.rollSeconds(timestamp, settings);
-    else this.rollTickReversal(timestamp, snapshot.lastPrice ?? snapshot.microPrice ?? null, tickSize, settings);
+    if (bookUsable) {
+      if (settings.parameterMode === "seconds") this.rollSeconds(timestamp, settings);
+      else this.rollTickReversal(timestamp, snapshot.depthLastPrice === undefined ? snapshot.lastPrice ?? null : snapshot.depthLastPrice, tickSize, settings);
+    }
 
     const current = new Map<string, number>();
     for (const level of snapshot.levels) current.set(levelKey(level.side, level.price, tickSize), Math.max(0, level.size));
     const trades = this.freshTrades(snapshot);
-    const buyTicks = new Set(trades.filter((trade) => trade.side === "BUY").map((trade) => Math.round(trade.price / tickSize)));
-    const sellTicks = new Set(trades.filter((trade) => trade.side === "SELL").map((trade) => Math.round(trade.price / tickSize)));
+    const aggressiveVolume = new Map<string, number>();
+    for (const trade of trades) {
+      if (!Number.isFinite(trade.price) || !Number.isFinite(trade.size) || trade.size <= 0) continue;
+      const key = levelKey(trade.side === "BUY" ? "ASK" : "BID", trade.price, tickSize);
+      aggressiveVolume.set(key, (aggressiveVolume.get(key) ?? 0) + trade.size);
+    }
     let consumedBid = 0;
     let consumedAsk = 0;
-    if (this.warmed && snapshot.bookValid && this.active) {
+    if (this.warmed && bookUsable && this.active) {
       for (const [key, previousSize] of this.previous) {
         if (previousSize <= 0 || (current.get(key) ?? 0) > 0) continue;
-        const [side, tickText] = key.split(":") as ["BID" | "ASK", string];
-        const tick = Number(tickText);
-        if (side === "ASK" && buyTicks.has(tick)) consumedAsk += 1;
-        if (side === "BID" && sellTicks.has(tick)) consumedBid += 1;
+        if ((aggressiveVolume.get(key) ?? 0) < previousSize) continue;
+        if (key.startsWith("ASK:")) consumedAsk += 1;
+        else consumedBid += 1;
       }
       this.active.bidLevels += consumedBid;
       this.active.askLevels += consumedAsk;
     }
-    this.previous = current;
-    this.warmed = this.warmed || snapshot.bookValid;
+    if (bookUsable) {
+      this.previous = current;
+      this.warmed = true;
+    }
 
-    const rawBuckets = [...this.completed, ...(this.active ? [{ ...this.active }] : [])].slice(-settings.historyBuckets);
-    const bids = rawBuckets.map((bucket) => bucket.bidLevels);
-    const asks = rawBuckets.map((bucket) => -bucket.askLevels);
-    const buckets = rawBuckets.map((bucket, index): BookSpeedBucket => ({
-      ...bucket,
-      averageBid: movingAverage(bids, settings.averageLength, index),
-      averageAsk: movingAverage(asks, settings.averageLength, index),
-    }));
-    const stale = snapshot.ageMs != null && snapshot.ageMs > 5_000;
+    this.observation = { timestamp, bookUsable, stale, fullDepth: snapshot.fullDepth };
+  }
+
+  frame(settings: BookSpeedSettings): BookSpeedFrame {
+    const rawBuckets = [...this.completed.slice(-(settings.historyBuckets + settings.averageLength)),
+      ...(this.active ? [this.active] : [])];
+    const buckets: BookSpeedBucket[] = [];
+    const visibleFrom = Math.max(0, rawBuckets.length - settings.historyBuckets);
+    let bid = 0;
+    let ask = 0;
+    rawBuckets.forEach((bucket, index) => {
+      bid += bucket.bidLevels;
+      ask -= bucket.askLevels;
+      if (index >= settings.averageLength) {
+        const outgoing = rawBuckets[index - settings.averageLength];
+        bid -= outgoing.bidLevels;
+        ask += outgoing.askLevels;
+      }
+      if (index >= visibleFrom) {
+        const count = Math.min(index + 1, settings.averageLength);
+        buckets.push({ ...bucket, averageBid: bid / count, averageAsk: ask / count });
+      }
+    });
     const hasConsumption = buckets.some((bucket) => bucket.bidLevels || bucket.askLevels);
-    const status: BookSpeedFrameStatus = !snapshot.bookValid ? "BOOK UNAVAILABLE" : stale ? "STALE" : !this.warmed ? "CONNECTING" : rawBuckets.length < 2 ? "WARM-UP" : hasConsumption ? "LIVE" : "NO CONSUMPTION";
+    const status: BookSpeedFrameStatus = !this.observation ? "CONNECTING" : this.observation.stale ? "STALE"
+      : !this.observation.bookUsable ? "BOOK UNAVAILABLE" : !this.completedSinceSeed ? "WARM-UP"
+      : hasConsumption ? "LIVE" : "NO CONSUMPTION";
+    const fullDepth = this.observation?.fullDepth ?? false;
     return {
-      generatedAt: timestamp,
+      generatedAt: this.observation?.timestamp ?? 0,
       status,
       statusMessage: status === "BOOK UNAVAILABLE" ? "Rithmic order book is rebuilding." : status === "STALE" ? "Rithmic order book is stale." : status === "WARM-UP" || status === "CONNECTING" ? "Building the first complete measurement window." : status === "NO CONSUMPTION" ? "No fully consumed book levels in the loaded window." : "Counting execution-confirmed consumed price levels.",
       buckets,
       currentBid: buckets.at(-1)?.bidLevels ?? 0,
       currentAsk: buckets.at(-1)?.askLevels ?? 0,
-      fullDepth: snapshot.fullDepth,
+      fullDepth,
       limitations: [
-        "A level counts only when it disappears from the displayed book with a same-frame aggressive execution at that exact price; pulls and cancellations do not count.",
-        ...(snapshot.fullDepth ? [] : ["The gateway currently supplies a price-level book window rather than the complete exchange depth."]),
+        "A level counts only when it disappears from the displayed book with enough same-frame aggressive volume at that exact price to cover the previously displayed size.",
+        ...(fullDepth ? [] : ["The gateway currently supplies a price-level book window rather than the complete exchange depth."]),
       ],
     };
   }
+}
+
+/** Keep every measured window when the chart interval is wider than a book window. */
+export function projectBookSpeedBuckets(
+  buckets: readonly BookSpeedBucket[],
+  candles: readonly Candle[],
+  chartTime: (sourceTimestamp: number) => number | undefined,
+  intervalMs: number | null,
+) {
+  const grouped = new Map<number, BookSpeedBucket & { time: number; windows: number }>();
+  let candleIndex = 0;
+  for (const bucket of buckets) {
+    const timestamp = bucket.provisional ? bucket.endMs : Math.max(bucket.startMs, bucket.endMs - 1);
+    if (timestamp < (candles[0]?.timestamp ?? Infinity)) continue;
+    while (candleIndex + 1 < candles.length && candles[candleIndex + 1].timestamp <= timestamp) candleIndex++;
+    const sourceTime = candles[candleIndex].timestamp;
+    if (intervalMs !== null && timestamp >= sourceTime + intervalMs) continue;
+    const time = chartTime(sourceTime);
+    if (time === undefined) continue;
+    const earlier = grouped.get(time);
+    grouped.set(time, {
+      ...bucket, time, windows: (earlier?.windows ?? 0) + 1,
+      startMs: earlier?.startMs ?? bucket.startMs,
+      bidLevels: (earlier?.bidLevels ?? 0) + bucket.bidLevels,
+      askLevels: (earlier?.askLevels ?? 0) + bucket.askLevels,
+    });
+  }
+  return [...grouped.values()];
 }

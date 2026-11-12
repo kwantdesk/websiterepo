@@ -34,6 +34,11 @@ export type RithmicOrderLifecycleEvent = {
 
 export type RithmicLiquiditySnapshot = {
   asOf: string;
+  /** Time of the underlying book, independent of presentation-only ticks. */
+  depthAsOf?: string;
+  depthUpdated?: boolean;
+  depthBookValid?: boolean;
+  depthLastPrice?: number | null;
   contractSymbol: string;
   tickSize: number;
   fullDepth: boolean;

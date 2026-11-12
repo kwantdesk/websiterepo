@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { BookSpeedEngine, normalizeBookSpeedSettings } from "../src/lib/bookSpeed.ts";
+import { BookSpeedEngine, bookSpeedSource, matchesBookSpeedContract, normalizeBookSpeedSettings, projectBookSpeedBuckets } from "../src/lib/bookSpeed.ts";
 
 const level = (side, price, size) => ({ side, price, size, orders: 1, emaSize: size, peakSize: size, observations: 1, stableObservations: 1, persistenceMs: 1_000, addedSize: 0, removedSize: 0 });
 const snapshot = (timestamp, levels, trades = [], extra = {}) => ({
@@ -52,5 +52,57 @@ for (let index = 0; index < 5_000; index += 1) {
 }
 assert.ok(frame.buckets.length <= 100, "live history remains bounded");
 assert.ok(performance.now() - started < 5_000, "five thousand order-book frames stay inside the calculation budget");
+
+const continuity = new BookSpeedEngine();
+const ask = level("ASK", 100, 100);
+continuity.apply(snapshot(20_000, [ask]), settings);
+frame = continuity.apply(snapshot(19_000, [], [{ id: 4, timestamp: 19_000, price: 100, size: 100, side: "BUY" }]), settings);
+assert.equal(frame.generatedAt, 20_000, "older snapshots cannot move the frame backwards");
+frame = continuity.apply(snapshot(21_000, [], [{ id: 5, timestamp: 21_000, price: 100, size: 1, side: "BUY" }]), settings);
+assert.equal(frame.currentAsk, 0, "a one-lot buy does not confirm depletion of a hundred-lot level");
+continuity.apply(snapshot(22_000, [ask], [], { bookValid: false }), settings);
+frame = continuity.apply(snapshot(23_000, [], [{ id: 6, timestamp: 23_000, price: 100, size: 100, side: "BUY" }]), settings);
+assert.equal(frame.currentAsk, 0, "the first healthy frame only seeds depth after an invalid book");
+frame = continuity.apply(snapshot(180_000, [], [], { ageMs: 157_000 }), settings);
+assert.equal(frame.status, "STALE");
+assert.equal(frame.buckets.length, 0, "a stale feed does not add completed zero buckets");
+const skipped = new BookSpeedEngine();
+skipped.apply(snapshot(10_000, [ask]), settings);
+frame = skipped.apply(snapshot(40_000, [], [{ id: 7, timestamp: 40_000, price: 100, size: 100, side: "BUY" }]), settings);
+assert.equal(frame.currentAsk, 0, "missing windows must not supply a comparison depth baseline");
+assert.equal(frame.buckets.length, 1, "only the newly observed window is present after a gap");
+
+const source = bookSpeedSource("MNQ.v.0", "NQZ6");
+assert.deepEqual(source, { root: "MNQ", contract: null });
+assert.deepEqual(bookSpeedSource("MESZ6", "MESU6"), { root: "MES", contract: "MESZ6" });
+assert.equal(matchesBookSpeedContract("MNQ", null, "NQZ6"), false);
+assert.equal(matchesBookSpeedContract("MNQ", "MNQZ26", "MNQZ6"), true);
+assert.equal(matchesBookSpeedContract("MNQ", "MNQZ26", "MNQU6"), false);
+
+const timestamps = new BookSpeedEngine();
+frame = timestamps.apply(snapshot(20_000, [ask], [], { depthAsOf: new Date(10_000).toISOString() }), settings);
+assert.equal(frame.generatedAt, 10_000, "presentation time cannot advance depth time");
+frame = timestamps.apply(snapshot(30_000, [], [], { depthUpdated: false }), settings);
+assert.equal(frame.generatedAt, 10_000, "quote-only frames cannot create measurement windows");
+frame = timestamps.apply(snapshot(11_000, [], [
+  { id: 8, timestamp: 11_000, price: 100, size: 40, side: "BUY" },
+  { id: 9, timestamp: 11_000, price: 100, size: 60, side: "BUY" },
+]), settings);
+assert.equal(frame.currentAsk, 1, "same-price execution quantities add up");
+timestamps.interrupt();
+frame = timestamps.apply(snapshot(13_000, [ask]), settings);
+assert.equal(frame.currentAsk, 0, "reconnect cannot carry an old provisional count");
+
+const window = (startMs, endMs, bidLevels, askLevels, provisional = false) =>
+  ({ startMs, endMs, bidLevels, askLevels, provisional, averageBid: bidLevels, averageAsk: -askLevels });
+const windows = [window(10_000, 20_000, 1, 2), window(20_000, 30_000, 3, 4),
+  window(30_000, 60_000, 2, 5), window(60_000, 65_000, 1, 0, true)];
+const projected = projectBookSpeedBuckets(windows, [{ timestamp: 0 }, { timestamp: 60_000 }], time => time / 1000, 60_000);
+assert.deepEqual(projected.map(({ time, bidLevels, askLevels, windows }) => [time, bidLevels, askLevels, windows]),
+  [[0, 6, 11, 3], [60, 1, 0, 1]], "counts in every seconds window appear on the same host candle");
+const event = projectBookSpeedBuckets([window(10_000, 10_480, 1, 2), window(10_480, 10_810, 3, 4)],
+  [{ timestamp: 10_010 }, { timestamp: 10_500 }], time => time === 10_010 ? 10 : 11, null);
+assert.deepEqual(event.map(({ time, bidLevels, askLevels }) => [time, bidLevels, askLevels]),
+  [[10, 1, 2], [11, 3, 4]], "event bars in one wall-clock second retain distinct chart times");
 
 console.log("Book Speed tests passed");

@@ -11,6 +11,14 @@ export function indicatorSettingDisabledReason(
   if (key === "useThemeColors" && isVolumeProfileGradientActive(settings.gradientPreset)) {
     return "Turn the colour scheme Off to use theme colours.";
   }
+  if (id === "book-speed") {
+    if ((key === "averageLength" || /^average(?:Bid|Ask)Color$/.test(key)) && settings.showAverage === false) {
+      return "Enable Show Average to adjust the average plot.";
+    }
+    if (/^marker(?:Value|BidColor|AskColor)$/.test(key) && settings.showMarker !== true) {
+      return "Enable Show Marker to adjust the threshold.";
+    }
+  }
   if (id === "big-trades") {
     if (["rthManualFilter", "rthFilterMode", "rthAutomaticIntensity", "rthStandardDeviation"].includes(key) && settings.sessionFilterEnabled === false) {
       return "Enable the separate regular-hours filter to adjust these values.";

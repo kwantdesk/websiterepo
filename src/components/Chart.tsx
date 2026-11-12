@@ -412,7 +412,10 @@ import {
 } from "@/lib/cumulativeIcebergStop";
 import {
   BookSpeedEngine,
+  bookSpeedSource,
+  matchesBookSpeedContract,
   normalizeBookSpeedSettings,
+  projectBookSpeedBuckets,
   type BookSpeedFrame,
 } from "@/lib/bookSpeed";
 import {
@@ -4322,7 +4325,7 @@ function Chart({
   const [cumulativeIcebergStopStreamStatus, setCumulativeIcebergStopStreamStatus] = useState<RithmicLiquidityStatus>("checking");
   const [cumulativeIcebergStopFrame, setCumulativeIcebergStopFrame] = useReplayFrameState<CumulativeIcebergStopFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [bookSpeedStreamStatus, setBookSpeedStreamStatus] = useState<RithmicLiquidityStatus>("checking");
-  const [bookSpeedFrame, setBookSpeedFrame] = useReplayFrameState<BookSpeedFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
+  const [bookSpeedFrame, setBookSpeedFrame] = useReplayFrameState<BookSpeedFrame | null>(replayTimestampMs, null, `${instrument}:${contractSymbol ?? ""}`);
   const [pocAuctionFrame, setPocAuctionFrame] = useReplayFrameState<PocAuctionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const pocAuctionReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
   const stackedImbalanceReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
@@ -6667,31 +6670,37 @@ function Chart({
       setBookSpeedFrame(null);
       return;
     }
-    const normalized = String(contractSymbol || instrument || "NQ").trim().toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
-    const explicitContract = /[FGHJKMNQUVXZ]\d{1,2}$/i.test(normalized) ? normalized : null;
-    const chartRoot = normalized.replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "") || "NQ";
-    const microParents: Record<string, string> = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL", MBT: "BTC", MET: "ETH" };
-    const root = microParents[chartRoot] ?? chartRoot;
+    const { root, contract } = bookSpeedSource(instrument, contractSymbol);
+    if (!root || isMarketIndexSymbol(instrument)) {
+      setBookSpeedFrame(null);
+      setBookSpeedStreamStatus("unavailable");
+      return;
+    }
     bookSpeedEngineRef.current.reset();
     setBookSpeedFrame(null);
     setBookSpeedStreamStatus("checking");
     let publishTimer: number | null = null;
     let lastPublishedAt = 0;
-    let latestFrame: BookSpeedFrame | null = null;
     const publish = () => {
       publishTimer = null;
-      if (!latestFrame) return;
       lastPublishedAt = performance.now();
-      setBookSpeedFrame(latestFrame);
+      setBookSpeedFrame(bookSpeedEngineRef.current.frame(bookSpeedSettingsRef.current));
     };
     const unsubscribe = subscribeRithmicLiquidity({
       root,
-      contractSymbol: explicitContract,
+      contractSymbol: contract,
       exchange: futuresVenue(root),
       replayHistory: true,
-      onStatus: setBookSpeedStreamStatus,
+      onStatus: (status) => {
+        if (status === "unavailable") {
+          bookSpeedEngineRef.current.interrupt();
+          setBookSpeedFrame(bookSpeedEngineRef.current.frame(bookSpeedSettingsRef.current));
+        }
+        setBookSpeedStreamStatus(status);
+      },
       onSnapshot: (snapshot) => {
-        latestFrame = bookSpeedEngineRef.current.apply(snapshot, bookSpeedSettingsRef.current);
+        if (snapshot.depthUpdated === false || !matchesBookSpeedContract(root, contract, snapshot.contractSymbol)) return;
+        bookSpeedEngineRef.current.observe(snapshot, bookSpeedSettingsRef.current);
         const elapsed = performance.now() - lastPublishedAt;
         if (elapsed >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) publish();
         else if (publishTimer === null) publishTimer = window.setTimeout(publish, Math.max(16, LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS - elapsed));
@@ -6699,6 +6708,11 @@ function Chart({
     });
     return () => { unsubscribe(); if (publishTimer !== null) window.clearTimeout(publishTimer); };
   }, [bookSpeedIndicator?.instanceId, bookSpeedSettings.parameterMode, bookSpeedSettings.parameterValue, contractSymbol, instrument]);
+  useEffect(() => {
+    if (!bookSpeedIndicator) return;
+    const frame = bookSpeedEngineRef.current.frame(bookSpeedSettingsRef.current);
+    if (frame.generatedAt) setBookSpeedFrame(frame);
+  }, [bookSpeedIndicator?.instanceId, bookSpeedSettings.averageLength, bookSpeedSettings.historyBuckets]);
 
   useEffect(() => {
     if (!cumulativeIcebergStopIndicator) {
@@ -8824,26 +8838,14 @@ function Chart({
       if (instance.indicatorId === "speed-of-tape") return [];
       if (instance.indicatorId === "book-speed") {
         const source = bookSpeedSettings;
-        const chartTimeFor = (timestampMs: number) => {
-          if (!timeframe || !isEventBasedChartInterval(timeframe)) return Math.floor(timestampMs / 1_000);
-          if (!indicatorCandles.length) return null;
-          let low = 0;
-          let high = indicatorCandles.length - 1;
-          while (low < high) {
-            const middle = Math.ceil((low + high) / 2);
-            if (indicatorCandles[middle].timestamp <= timestampMs) low = middle;
-            else high = middle - 1;
-          }
-          return eventChartIndicatorTimeMap?.exact.get(indicatorCandles[low].timestamp) ?? null;
-        };
-        const mapped = (read: (bucket: NonNullable<typeof bookSpeedFrame>["buckets"][number]) => number) => {
-          const points = new Map<number, { time: number; value: number }>();
-          for (const bucket of bookSpeedFrame?.buckets ?? []) {
-            const time = chartTimeFor(bucket.endMs);
-            if (time != null) points.set(time, { time, value: read(bucket) });
-          }
-          return [...points.values()].sort((left, right) => left.time - right.time);
-        };
+        const eventInterval = Boolean(timeframe && isEventBasedChartInterval(timeframe));
+        const buckets = projectBookSpeedBuckets(
+          bookSpeedFrame?.buckets ?? [], sampledIndicatorCandles,
+          timestamp => eventInterval ? eventChartIndicatorTimeMap?.exact.get(timestamp) : Math.floor(timestamp / 1_000),
+          eventInterval ? null : timeframeToMs(timeframe),
+        );
+        const mapped = (read: (bucket: typeof buckets[number]) => number) =>
+          buckets.map(bucket => ({ time: bucket.time, value: read(bucket) }));
         const bid = mapped((bucket) => bucket.bidLevels);
         const ask = mapped((bucket) => -bucket.askLevels);
         const series: CalculatedIndicatorSeries[] = [
@@ -8886,16 +8888,14 @@ function Chart({
           minimumHeight: 120,
           maximumHeight: 520,
           unavailableReason,
-          tooltipPoints: (bookSpeedFrame?.buckets ?? []).flatMap((bucket) => {
-            const time = chartTimeFor(bucket.endMs);
-            return time == null ? [] : [{ time, rows: [
-              { label: "Window", value: `${new Date(bucket.startMs).toLocaleTimeString()}–${new Date(bucket.endMs).toLocaleTimeString()}` },
-              { label: "Bid levels consumed", value: bucket.bidLevels.toLocaleString() },
-              { label: "Ask levels consumed", value: bucket.askLevels.toLocaleString() },
-              { label: "Average Bid / Ask", value: `${bucket.averageBid.toFixed(1)} / ${Math.abs(bucket.averageAsk).toFixed(1)}` },
-              { label: "State", value: bucket.provisional ? "Forming" : "Complete" },
-            ] }];
-          }),
+          tooltipPoints: buckets.map(bucket => ({ time: bucket.time, rows: [
+            { label: "Window", value: `${formatChartTimestamp(Math.floor(bucket.startMs / 1_000) as Time, settings.timezone, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}–${formatChartTimestamp(Math.floor(bucket.endMs / 1_000) as Time, settings.timezone, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` },
+            { label: "Windows", value: bucket.windows.toLocaleString() },
+            { label: "Bid levels consumed", value: bucket.bidLevels.toLocaleString() },
+            { label: "Ask levels consumed", value: bucket.askLevels.toLocaleString() },
+            { label: "Average Bid / Ask per window", value: `${bucket.averageBid.toFixed(1)} / ${Math.abs(bucket.averageAsk).toFixed(1)}` },
+            { label: "State", value: bucket.provisional ? "Forming" : "Complete" },
+          ] })),
         }];
       }
       if (instance.indicatorId === "cumulative-iceberg-stop") {
@@ -9285,6 +9285,8 @@ function Chart({
     bookSpeedFrame,
     bookSpeedSettings,
     bookSpeedStreamStatus,
+    sampledIndicatorCandles,
+    settings.timezone,
     cumulativeIcebergStopFrame,
     cumulativeIcebergStopSettings,
     cumulativeIcebergStopStreamStatus,

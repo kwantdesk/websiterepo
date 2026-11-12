@@ -28,6 +28,8 @@ type RawPayload = {
   snapshot?: {
     id?: number;
     timestamp?: number;
+    depthTimestamp?: number;
+    depthLastTick?: number | null;
     tickSize?: number;
     bids?: unknown;
     asks?: unknown;
@@ -228,8 +230,14 @@ function updateTrackers(
   const bestAskTick = Number(payload.snapshot?.bestAsk);
   const lastTick = Number(payload.snapshot?.lastTick);
   const microTick = Number(payload.snapshot?.microTick);
+  const depthTimestamp = Number(payload.snapshot?.depthTimestamp ?? timestamp);
+  const depthLastTick = payload.snapshot?.depthLastTick === undefined ? lastTick : payload.snapshot.depthLastTick;
   const snapshot: RithmicLiquiditySnapshot = {
     asOf: new Date(Number.isFinite(timestamp) ? timestamp : now).toISOString(),
+    depthAsOf: Number.isFinite(depthTimestamp) ? new Date(depthTimestamp).toISOString() : undefined,
+    depthUpdated: true,
+    depthBookValid: payload.snapshot?.bookValid ?? payload.status?.bookValid,
+    depthLastPrice: typeof depthLastTick === "number" && Number.isFinite(depthLastTick) && depthLastTick !== 0 ? depthLastTick * tickSize : null,
     contractSymbol: String(payload.status?.contractSymbol || payload.snapshot?.contractSymbol || stream.contractSymbol || stream.root),
     tickSize,
     fullDepth: Boolean(payload.status?.fullDepth ?? payload.snapshot?.fullDepth),
@@ -291,6 +299,8 @@ function flushPendingMarketFrame(stream: SharedPoll) {
       status: pendingDepth.status,
       snapshot: {
         ...pendingDepth.snapshot,
+        depthTimestamp: pendingDepth.snapshot.timestamp,
+        depthLastTick: pendingDepth.snapshot.lastTick ?? null,
         trades,
         orderEvents,
         ...(Number.isFinite(tick) && tick > 0 ? { lastTick: tick } : {}),
@@ -311,6 +321,7 @@ function flushPendingMarketFrame(stream: SharedPoll) {
     contractSymbol: String(pendingTick?.contractSymbol || stream.latestSnapshot.contractSymbol),
     lastPrice: tick * stream.latestSnapshot.tickSize,
     ageMs: 0,
+    depthUpdated: false,
     // A price-only update must never replay the last trade batch into detector
     // engines. The immutable book rows are intentionally shared until the next
     // depth frame instead of being cloned for every tick.
