@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
-import {sameSnapshotScope,createSnapshotFrameCache} from '../public/gex-data-app/snapshot-frame-cache.js';
+import {sameSnapshotScope,createSnapshotFrameCache,createSnapshotScrubber} from '../public/gex-data-app/snapshot-frame-cache.js';
 const key=(scope,time)=>JSON.stringify(['market-map',scope,time]);
 test('only time changes retain a map: instrument, dates and filters remain isolated',()=>{const scope={sessionDate:'2026-11-06',filter:{sector:'TECHNOLOGY'}};assert(sameSnapshotScope(key(scope,1),key(scope,2)));assert(!sameSnapshotScope(key(scope,1),key({...scope,sessionDate:'2026-11-05'},2)));assert(!sameSnapshotScope(key(scope,1),key({...scope,filter:{sector:'ENERGY'}},2)));assert(!sameSnapshotScope(null,key(scope,2)));assert(!sameSnapshotScope('{}',key(scope,2)));});
 test('cache returns only observed exact frames and bounds frame count with LRU eviction',()=>{const cache=createSnapshotFrameCache({maxFrames:2});const frame={data:{AAA:{currentValue:100}}};assert.equal(cache.get('missing'),null);cache.put('a',frame);cache.put('b',{data:{}});assert.equal(cache.get('a'),frame);cache.put('c',{data:{}});assert.equal(cache.get('b'),null);assert.equal(cache.get('a'),frame);});
@@ -31,4 +31,53 @@ test('explicit historical and replay Market Map dates keep their requested scope
   const controls={mode:'historical',date:'2026-11-06'};
   assert.equal(sessionState({controls}),'2026-11-06,false');
   assert.equal(sessionState({controls,masterReplay:{sessionDate:'2026-11-09'}}),'2026-11-09,false');
+});
+test('Market Map paints during a held drag and requests the latest queued minute at a bounded rate', async () => {
+  let time = 0;
+  let scheduled;
+  let settle;
+  const requested = [];
+  const painted = [];
+  const frames = new Set();
+  const scrubber = createSnapshotScrubber({
+    now: () => time,
+    setTimer: (callback, delay) => (scheduled = {callback, delay}),
+    clearTimer: () => { scheduled = null; },
+  });
+  function seek(key) {
+    scrubber.seek(key, async () => {
+      if (!frames.has(key)) {
+        requested.push(key);
+        await new Promise((resolve, reject) => { settle = {resolve, reject}; });
+        frames.add(key);
+      }
+      painted.push(key);
+    }, () => frames.has(key));
+  }
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+
+  seek('09:31');
+  await flush();
+  assert.deepEqual(requested, ['09:31']);
+  time = 100;
+  seek('09:32');
+  seek('09:33');
+  settle.resolve();
+  await flush();
+  assert.deepEqual(painted, ['09:31']);
+  assert.equal(scheduled.delay, 400);
+  time = 200;
+  seek('09:34');
+  assert.equal(scheduled.delay, 300);
+  time = 500;
+  scheduled.callback();
+  await flush();
+  assert.deepEqual(requested, ['09:31','09:34']);
+
+  seek('09:31');
+  settle.reject(new Error('Unavailable frame'));
+  await flush();
+  assert.deepEqual(painted, ['09:31','09:31']);
+  assert.equal(scrubber.busy(), false);
+  assert.deepEqual(requested, ['09:31','09:34']);
 });

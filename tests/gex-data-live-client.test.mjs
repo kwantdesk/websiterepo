@@ -77,3 +77,20 @@ for(const tool of ['order-flow-consolidated','order-flow-unconsolidated'])test(`
  assert.equal((await(await client.request(url,options(body),'flow')).json()).data[0].id,'two');
  assert.equal(client.request(url,options({...body,sort:{field:'PREMIUM',direction:'DESCENDING'}}),'flow'),null);assert.equal(sources[0].closed,true);client.dispose();
 });
+
+test('historical Market Map snapshots use finite reads and Latest can resume streaming', async () => {
+  const {client,sources}=fixture(), url='/api/gex-data/market-map';
+  const body={sessionDate:'2026-11-09'};
+  const first=client.request(url,options(body),'map');
+  sources[0].frame('latest',1000,{AAA:{size:5}});
+  await first;
+  assert.equal(client.request(url,options({snapshotTime:'2026-11-09T14:31:00Z'}),'map'),null);
+  assert.equal(sources.length,1);
+  assert.equal(sources[0].closed,true);
+  assert.equal(client.request(url,options({snapshotTime:'2026-11-09T14:32:00Z'}),'map'),null);
+  const resumed=client.request(url,options(body),'map');
+  assert.equal(sources.length,2);
+  sources[1].frame('resumed',2000,{AAA:{size:8}});
+  assert.equal((await (await resumed).json()).data.AAA.size,8);
+  client.dispose();
+});

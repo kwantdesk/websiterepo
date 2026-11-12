@@ -9,3 +9,36 @@ export function createSnapshotFrameCache({maxFrames=32,maxBytes=8*1024*1024}={})
     put(key,payload){const size=JSON.stringify(payload).length*2;if(size>maxBytes)return;const old=frames.get(key);if(old){bytes-=old.size;frames.delete(key);}frames.set(key,{payload,size});bytes+=size;while(frames.size>maxFrames||bytes>maxBytes){const first=frames.keys().next().value;bytes-=frames.get(first).size;frames.delete(first);}},
   };
 }
+
+/** Sample a moving cursor without cancelling the frame already being fetched. */
+export function createSnapshotScrubber({ intervalMs = 500, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+  let queued = null;
+  let running = null;
+  let timer = null;
+  let lastRequestAt = -Infinity;
+
+  function drain() {
+    if (running || !queued) return;
+    const wait = queued.cached() ? 0 : Math.max(0, lastRequestAt + intervalMs - now());
+    if (wait > 0) {
+      timer = setTimer(() => { timer = null; drain(); }, wait);
+      return;
+    }
+    const next = queued;
+    queued = null;
+    running = next;
+    if (!next.cached()) lastRequestAt = now();
+    const finish = () => { running = null; drain(); };
+    Promise.resolve().then(next.load).then(finish, finish);
+  }
+
+  return {
+    seek(key, load, cached) {
+      clearTimer(timer);
+      timer = null;
+      queued = running?.key === key ? null : { key, load, cached };
+      drain();
+    },
+    busy: () => !!(running || queued),
+  };
+}

@@ -208,7 +208,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "20261112-workspace-loader"); params.set("hostTimezone", "1");
+  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "20261112-market-map-scrub"); params.set("hostTimezone", "1");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
   const frameKey = `${accountKey}:${generation}:${src}`;
   const frameLoading = !ready || loadedFrame !== frameKey;

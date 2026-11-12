@@ -30,6 +30,8 @@ export function createGexDataLiveClient({ createSource, onFrame = () => {}, setT
       if (!body || typeof body !== 'object' || Array.isArray(body)) return fallback();
       // Older pages are finite REST requests. They do not close the same
       // selection's first-page live channel while the user scrolls back.
+      // A pinned Market Map minute is a finite read, never a live subscription.
+      if (tool === 'market-map' && body.snapshotTime) return fallback();
       if (body.searchAfter) return ['equity-prints','exchange-notifications','order-flow-consolidated','order-flow-unconsolidated'].includes(tool) ? null : fallback();
       const chronologicalField=['equity-prints','order-flow-consolidated','order-flow-unconsolidated'].includes(tool)?'TRADE_TIME':tool==='exchange-notifications'?'CREATED_TIME':null;
       if (chronologicalField && (body.sort?.field !== chronologicalField || body.sort?.direction !== 'DESCENDING')) return fallback();
