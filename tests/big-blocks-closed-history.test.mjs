@@ -93,3 +93,10 @@ test('the actual snapshot paint effect retains a real calculated ten-bar-old sig
   context.indicatorCandles=original.slice(0,30);context.bigBlockRenderZones=[];vm.runInContext(code,context);
   assert.equal(paints.at(-1).length,0);
 });
+
+test('hiding zones does not record closed no-signal decisions', () => {
+  const state = new BigBlocksLiveState('NQ:1m');
+  state.synchronizeSnapshot(candles(), [], 20, false);
+  state.synchronizeSnapshot(candles(), [tagged(34)], 20, true);
+  assert.deepEqual(state.display([]), [tagged(34).zone]);
+});

@@ -116,7 +116,9 @@ function mountedLiveEffect(){
   const source=readFileSync(new URL('../src/components/Chart.tsx',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const start=source.indexOf('  useEffect(() => {\n    if (!deepEffortZonesVisible) return;');
   assert.ok(start>=0);
-  const effect=source.slice(start,source.indexOf('  const imbalanceTracker =',start));
+  const end=source.indexOf('  useEffect(() => {\n    const instance = deepEffortIndicator;',start);
+  assert.ok(end>start);
+  const effect=source.slice(start,end);
   const code=ts.transpileModule(effect,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   const frames=new Map(),listeners=new Map();let nextFrame=0,cleanup;
   const painted=[];
@@ -186,4 +188,15 @@ test('chart calculation identity includes timeframe and instance, while ordinary
   const identity=chart.slice(chart.indexOf('  const bigBlocksLiveIdentity ='),chart.indexOf('  const bigBlocksLiveState ='));
   for(const key of ['liveCandleEventKey','instrument','timeframe','priceFormat.minMove','instanceId','replayTimestampMs','deepEffortOptions'])assert.ok(identity.includes(key),key);
   assert.doesNotMatch(identity,/themeVersion|zoneOpacity|askColor|bidColor/);
+});
+
+test('an unclassified update cannot erase the last valid forming decision before close', () => {
+  const state = new BigBlocksLiveState('NQ:1m');
+  state.update(time, [tagged(time)]);
+  state.update(time, [], false);
+  assert.deepEqual(state.display([]), [tagged(time).zone]);
+  state.update(time + 60_000, [], false);
+  assert.deepEqual(state.display([]), [tagged(time).zone]);
+  state.update(time + 60_000, [tagged(time + 60_000)], true);
+  assert.equal(state.display([]).length, 2);
 });

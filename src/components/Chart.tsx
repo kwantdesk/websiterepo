@@ -270,7 +270,7 @@ import { footprintGroupTicks } from "@/lib/footprintGrouping";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { mergeFootprintHistoryRecords } from '@/lib/footprintHistoryMerge';
 import { footprintProfileGranularityTicks } from "@/lib/footprintSettings";
-import { calculateDeepEffort } from "@/lib/deepEffort";
+import { calculateDeepEffort, calculateDeepEffortAverage } from "@/lib/deepEffort";
 import { cancelChartFrameWork, queueChartFrameWork } from "@/lib/chartFrameWork";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
@@ -12847,10 +12847,10 @@ function Chart({
       opacity: clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1),
       lineWidth: clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4),
     };
-    bigBlocksLiveState.synchronizeSnapshot(indicatorCandles, bigBlockRenderZones, deepEffortOptions.minimumBars, !liveReplayActiveRef.current);
+    const visible = deepEffortIndicator && effortSettings.showZones !== false;
+    bigBlocksLiveState.synchronizeSnapshot(indicatorCandles, bigBlockRenderZones, deepEffortOptions.minimumBars, Boolean(visible) && !liveReplayActiveRef.current);
     bigBlocksPrimitiveOptionsRef.current = options;
     bigBlocksSnapshotZonesRef.current = bigBlockRenderZones;
-    const visible = deepEffortIndicator && effortSettings.showZones !== false;
     bigBlocksPrimitiveRef.current?.update(visible ? bigBlocksLiveState.display(bigBlockRenderZones, eventChartTimeBySourceTimeRef.current) : [], options);
   }, [
     bigBlockRenderZones,
@@ -12936,7 +12936,7 @@ function Chart({
     const settings = instance?.settings ?? {};
     if (!instance || (settings.enableAlertSound !== true && settings.enableMessage !== true) || !liveCandleEventKey) return;
     let source = sampledIndicatorCandlesRef.current.slice(-240);
-    let bias = calculateDeepEffort(source, deepEffortOptions).average.at(-1)?.bias;
+    let bias = calculateDeepEffortAverage(source, deepEffortOptions.averageLength, instrument).at(-1)?.bias;
     let lastTimestamp = source.at(-1)?.timestamp ?? -Infinity;
     const emitted = new Set<string>();
     const receive = (event: Event) => {
@@ -12945,7 +12945,7 @@ function Chart({
       const observed = Number(detail.sourceTimestampMs);
       if (!Number.isFinite(observed) || Date.now() - observed > 15000 || observed > Date.now() + 1000 || detail.candle.timestamp < lastTimestamp) return;
       source = mergeLiveIndicatorCandle(source, detail.candle).slice(-240);
-      const next = calculateDeepEffort(source, deepEffortOptions).average.at(-1)?.bias;
+      const next = calculateDeepEffortAverage(source, deepEffortOptions.averageLength, instrument).at(-1)?.bias;
       if (detail.candle.timestamp !== lastTimestamp) emitted.clear();
       lastTimestamp = detail.candle.timestamp;
       const changed = bias !== undefined && next !== undefined && next !== bias;

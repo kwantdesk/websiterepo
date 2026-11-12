@@ -140,6 +140,12 @@ function kaufmanAverage(candles: Candle[], length = 21, fastLength = 2, slowLeng
   });
 }
 
+export function calculateDeepEffortAverage(candles: Candle[], averageLength?: number, instrument?: string) {
+  const defaultLength = resolveEffortInstrumentProfile(instrument).averageLength;
+  const length = Math.max(2, Math.min(200, Math.round(finite(averageLength, defaultLength))));
+  return kaufmanAverage(candles, length);
+}
+
 /**
  * Transparent effort-versus-result model for the KWANT overlay.
  *
@@ -161,10 +167,9 @@ export function calculateDeepEffort(
   const minimumDeltaShare = clamp(finite(options.minimumDeltaPercent, 20) / 100, 0, 1);
   const maximumDeltaShare = clamp(finite(options.maximumDeltaPercent, 100) / 100, minimumDeltaShare, 1);
   const maximumDeltaEffort = Math.max(0, finite(options.maximumDeltaEffort));
-  const averageLength = Math.max(2, Math.min(200, Math.round(options.averageLength ?? profile.averageLength)));
   const entryZoneRange = clamp(finite(options.entryZoneRangePercent, profile.rangeThicknessFactor * 100) / 100, 0.05, 1);
   const tickSize = profile.tickSize;
-  const average = kaufmanAverage(candles, averageLength);
+  const average = calculateDeepEffortAverage(candles, options.averageLength, options.instrument);
   const hasOrderFlow = candles.some((candle) => {
     const ask = finite(candle.askVolume);
     const bid = finite(candle.bidVolume);

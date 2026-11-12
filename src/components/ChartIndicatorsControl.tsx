@@ -966,7 +966,11 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   // show those while theme mode is on rather than the values stored when the
   // indicator was added.
   if (indicatorId === "big-blocks-options") return { callColor: chartSettings.upColor, putColor: chartSettings.downColor };
-  if (indicatorId === "big-trades" || indicatorId === "deep-m-effort-nq") {
+  if (indicatorId === "deep-m-effort-nq") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { askColor: chartSettings.upColor, bidColor: chartSettings.downColor, maAboveColor: visible.positive, maBelowColor: visible.negative };
+  }
+  if (indicatorId === "big-trades") {
     return {
       askColor: chartSettings.upColor,
       bidColor: chartSettings.downColor,
@@ -994,6 +998,11 @@ function applyNumericIndicatorSetting(
   if (indicatorId === "awesome-oscillator") {
     if (key === "fastLength" && value >= Number(next.slowLength ?? 34)) next.slowLength = value + 1;
     if (key === "slowLength" && value <= Number(next.fastLength ?? 5)) next.fastLength = value - 1;
+    return next;
+  }
+  if (indicatorId === "deep-m-effort-nq") {
+    if (key === "minimumDeltaPercent" && value > Number(next.maximumDeltaPercent ?? 100)) next.maximumDeltaPercent = value;
+    if (key === "maximumDeltaPercent" && value < Number(next.minimumDeltaPercent ?? 20)) next.minimumDeltaPercent = value;
     return next;
   }
   if (indicatorId === "deep-delta") {
@@ -6543,6 +6552,59 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "deep-m-effort-nq" ? (
+                <>
+                  <div data-settings-section="Style" className="space-y-3">
+                    {[
+                      { key: "maAutoColor", label: "Moving average colour mode", fallback: "price", options: [["price", "Price relative to average"], ["none", "Single colour"]] },
+                      { key: "maLineStyle", label: "Moving average line style", fallback: "solid", options: [["solid", "Solid"], ["dashed", "Dashed"]] },
+                    ].map(({ key, label, fallback, options }) => (
+                      <label key={key} className="block space-y-1 text-[10px] text-muted">
+                        <span>{label}</span>
+                        <KwantSelect
+                          value={String(settingsInstance.settings?.[key] ?? fallback)}
+                          disabled={settingsInstance.settings?.showMovingAverage !== true}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current, settings: { ...current.settings, [key]: event.target.value },
+                          }))}
+                          menuLabel={label}
+                          className="h-9 w-full border border-border bg-background px-3 text-foreground"
+                        >
+                          {options.map(([value, option]) => <option key={value} value={value}>{option}</option>)}
+                        </KwantSelect>
+                      </label>
+                    ))}
+                  </div>
+                  <div data-settings-section="Alerts" className="space-y-3">
+                    {[
+                      ["enableAlertSound", "Enable alert sound"],
+                      ["enableMessage", "Enable message"],
+                    ].map(([key, label]) => (
+                      <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[10px] text-muted">
+                        <input type="checkbox" checked={settingsInstance.settings?.[key] === true}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current, settings: { ...current.settings, [key]: event.target.checked },
+                          }))}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    <label className="block space-y-1 text-[10px] text-muted">
+                      <span>Alert message</span>
+                      <input
+                        value={String(settingsInstance.settings?.alertMessage ?? "Big Blocks directional bias changed")}
+                        disabled={settingsInstance.settings?.enableMessage !== true}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...current.settings, alertMessage: event.target.value },
+                        }))}
+                        maxLength={160}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-foreground"
+                      />
+                    </label>
+                  </div>
+                </>
+              ) : null}
+
               {settingsDefinition.id === "auction-gap-tracker" ? (["Inputs", "Style", "Alerts"] as const).map(section => (
                 <div key={section} data-settings-section={section}>
                   <AuctionGapIndicatorSettings section={section} settings={settingsInstance.settings ?? {}}
@@ -8220,6 +8282,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
                     && !(settingsDefinition.id === "awesome-oscillator" && key === "plotColor")
+                    && !(settingsDefinition.id === "deep-m-effort-nq" && ["showNameLabel", "nameBackground", "valueBackground", "enableAlertSound", "enableMessage"].includes(key))
                     && (typeof value === "boolean" || isColourSetting(key, value)))
                   .map(([key, value]) => [key, value, sectionForSetting(settingsDefinition.id, key, "Style")] as const);
                 const bySection = new Map<string, Array<readonly [string, unknown, string]>>();

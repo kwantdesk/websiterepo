@@ -37,7 +37,8 @@ import type { SuperTrendLabelOptions } from "@/lib/superTrendLabels";
 import { calculateKstSeries, type KstPanePresentation } from "@/lib/knowSureThingSeries";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
-import { calculateDeepEffort } from "@/lib/deepEffort";
+import { calculateDeepEffortAverage } from "@/lib/deepEffort";
+import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
 import { applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
@@ -513,22 +514,15 @@ function computeIndicatorSeries(
   if (key === "deep-m-effort-nq") {
     const useThemeColors = settingBoolean(instance, "useThemeColors", true);
     const autoColor = settingString(instance, "maAutoColor", "price");
-    const primaryColor = useThemeColors
-      ? theme.positive
-      : settingString(instance, "maAboveColor", theme.positive);
-    const secondaryColor = useThemeColors
-      ? theme.negative
-      : settingString(instance, "maBelowColor", theme.negative);
+    const gradient = resolveVolumeProfileGradient(instance.settings?.gradientPreset);
+    const primaryColor = gradient?.to ?? (useThemeColors ? theme.positive : settingString(instance, "maAboveColor", theme.positive));
+    const secondaryColor = gradient?.from ?? (useThemeColors ? theme.negative : settingString(instance, "maBelowColor", theme.negative));
     const lineWidth = Math.min(
       4,
       Math.max(1, Math.round(settingNumber(instance, "maLineWidth", 2))),
     ) as 1 | 2 | 3 | 4;
-    const effort = calculateDeepEffort(candles, {
-      zoneBars: settingNumber(instance, "zoneBars", 22),
-      tickSize: context.tickSize,
-      instrument: context.instrument,
-    });
-    if (!settingBoolean(instance, "showMovingAverage", true)) return [];
+    if (!settingBoolean(instance, "showMovingAverage", false)) return [];
+    const average = calculateDeepEffortAverage(candles, settingNumber(instance, "averageLength", 21), context.instrument);
     return [{
       key: `${key}-average`,
       label: settingString(instance, "shortName", "Big Blocks"),
@@ -538,7 +532,7 @@ function computeIndicatorSeries(
       lineWidth,
       lineStyle: settingString(instance, "maLineStyle", "solid") === "dashed" ? "dashed" : "solid",
       lastValueVisible: settingBoolean(instance, "showValueLabel", true),
-      data: effort.average.map((point) => ({
+      data: average.map((point) => ({
         time: point.time,
         value: point.value,
         color: autoColor === "none"

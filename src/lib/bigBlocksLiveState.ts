@@ -67,17 +67,17 @@ export class BigBlocksLiveState {
       || (this.latestLiveTimestamp !== null && timestamp < this.latestLiveTimestamp)) return;
     if (this.latestLiveTimestamp !== null && timestamp > this.latestLiveTimestamp) {
       for (const item of this.forming) this.confirmed.set(item.zone.id, item);
+      this.forming = [];
     }
     this.latestLiveTimestamp = timestamp;
-    if (hasInputs) {
-      this.observed.add(timestamp);
-    }
+    if (!hasInputs) return;
+    this.observed.add(timestamp);
     // Bound negative decisions as well as positive ones. Older discarded live
     // decisions stay excluded; genuine unobserved gaps in the retained window
     // can still receive ordinary historical backfill after a reconnect.
     // A faded condition or a direction reversal removes/replaces the preview,
     // rather than retaining every side that ever qualified during this bar.
-    this.forming = (hasInputs ? candidates : []).filter(item => item.sourceTimestamp === timestamp)
+    this.forming = candidates.filter(item => item.sourceTimestamp === timestamp)
       .map(item => ({ ...item, zone: { ...item.zone } }));
     // Existing projection expiry/close-cross still works. Only its right edge
     // can change after confirmation; origin, side and price bounds are frozen.

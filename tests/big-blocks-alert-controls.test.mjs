@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { calculateDeepEffort } from '../src/lib/deepEffort.ts';
+import { calculateDeepEffortAverage } from '../src/lib/deepEffort.ts';
 import { mergeLiveIndicatorCandle, LIVE_CHART_CANDLE_EVENT } from '../src/lib/chartLiveEvents.ts';
-const chart = fs.readFileSync('src/components/Chart.tsx', 'utf8');
+const chart = fs.readFileSync('src/components/Chart.tsx', 'utf8').replace(/\r\n/g, '\n');
 const start = chart.indexOf('  useEffect(() => {\n    const instance = deepEffortIndicator;');
 const end = chart.indexOf('\n  const imbalanceTracker = useMemo', start);
 assert.ok(start > 0 && end > start);
 function fixture(settings = { enableAlertSound: true, enableMessage: true, alertMessage: 'Bias change' }) {
     const window = new EventTarget(), messages = [], now = Date.now(), base = { timestamp: now - 60000, open: 100, high: 101, low: 99, close: 100, volume: 20 }, replay = { current: false };
     let cleanup;
-    const context = { LIVE_CHART_CANDLE_EVENT, useEffect: effect => { cleanup = effect(); }, deepEffortIndicator: { instanceId: 'blocks', indicatorId: 'deep-effort', settings }, deepEffortOptions: { averageLength: 3 }, sampledIndicatorCandlesRef: { current: [{ ...base, timestamp: now - 180000 }, { ...base, timestamp: now - 120000 }, base] }, liveCandleEventKey: 'NQ:1m', liveReplayActiveRef: replay, calculateDeepEffort, mergeLiveIndicatorCandle, window, Event, CustomEvent: class extends Event {
+    const context = { LIVE_CHART_CANDLE_EVENT, useEffect: effect => { cleanup = effect(); }, deepEffortIndicator: { instanceId: 'blocks', indicatorId: 'deep-effort', settings }, deepEffortOptions: { averageLength: 3 }, sampledIndicatorCandlesRef: { current: [{ ...base, timestamp: now - 180000 }, { ...base, timestamp: now - 120000 }, base] }, liveCandleEventKey: 'NQ:1m', liveReplayActiveRef: replay, calculateDeepEffortAverage, mergeLiveIndicatorCandle, window, Event, CustomEvent: class extends Event {
             constructor(type, args) { super(type); this.detail = args.detail; }
         }, instrument: 'NQ' };
     window.addEventListener('kwantdesk:chart-indicator-alert', event => messages.push(event.detail));

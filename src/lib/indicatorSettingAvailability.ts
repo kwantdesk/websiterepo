@@ -11,6 +11,17 @@ export function indicatorSettingDisabledReason(
   if (key === "useThemeColors" && isVolumeProfileGradientActive(settings.gradientPreset)) {
     return "Turn the colour scheme Off to use theme colours.";
   }
+  if (id === "deep-m-effort-nq") {
+    if (["maAboveColor", "maBelowColor", "maLineWidth", "showValueLabel"].includes(key) && settings.showMovingAverage !== true) {
+      return "Enable the moving average to adjust its appearance.";
+    }
+    if (key === "maBelowColor" && settings.maAutoColor === "none") {
+      return "Select price-relative colours to use a separate below-average colour.";
+    }
+    if (["askColor", "bidColor", "zoneOpacity", "zoneLineWidth", "zoneBars", "entryZoneRangePercent"].includes(key) && settings.showZones === false) {
+      return "Enable zones to adjust their appearance.";
+    }
+  }
   if (VOLUME_PROFILE_INDICATOR_IDS.has(id)) {
     const mode = resolveVolumeProfileMode(id, settings.profileMode);
     if (key === "showDelta" && (mode === "volume" || mode === "bid-ask")) {
