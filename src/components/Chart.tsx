@@ -17587,6 +17587,7 @@ function Chart({
       return [{
         id: `${volumeProfileOwnerKey(profile)}:${profile.startMs}`,
         profile: rendered,
+        executionLevels: profile.levels,
         lastCandleTime,
         intervalSeconds,
         maxVolume: Math.max(1, ...rendered.levels.map((level) => level.volume)),

@@ -4,14 +4,14 @@ import { placeVolumeProfileLabelBoxes } from "../src/lib/nativeVolumeProfilePrim
 
 const bounds = { left: 40, top: 2, right: 640, bottom: 300 };
 
-// A profile extending above or below the viewport still owns a visible label.
+// Labels anchored outside the pane stay offscreen.
 {
   const [above, below] = placeVolumeProfileLabelBoxes([
     { id: "above", preferredLeft: 80, preferredTop: -120, width: 90, height: 11 },
     { id: "below", preferredLeft: 320, preferredTop: 900, width: 90, height: 11 },
   ], bounds);
-  assert.equal(above.top, bounds.top);
-  assert.equal(below.top, bounds.bottom - below.height);
+  assert.equal(above, null);
+  assert.equal(below, null);
 }
 
 // Split sessions and summaries can share an anchor/high. They must be placed

@@ -189,7 +189,7 @@ console.log("Volume profile Data Settings (grouping + filters) tests passed.");
   // Level lines start at the profile body's forward edge.
   assert.match(
     primitive,
-    /context\.moveTo\(lineSegment\.startX, y\)/,
+    /let lineStartX = lineSegment\?\.startX \?\? sourceFrontX/,
     "levels must not emerge backwards through their own profile",
   );
   // Candle touches must not produce arbitrary mid-session cutoffs. Structural

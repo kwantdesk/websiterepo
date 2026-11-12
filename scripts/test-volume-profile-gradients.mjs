@@ -81,14 +81,19 @@ assert.match(primitive, /bodyColor\(style\.outsideValueAreaColor\)/);
 
 // 7. The pickers must be locked while a scheme owns the colours.
 const control = readFileSync("src/components/ChartIndicatorsControl.tsx", "utf8");
-assert.match(control, /const gradientLocked = \(/);
-assert.match(control, /disabled=\{gradientLocked\}/);
+assert.match(control, /const gradientLocked = [^;]+;/);
+assert.match(control, /disabled=\{gradientLocked \|\| Boolean\(indicatorSettingDisabledReason/);
 // Both profile families share the schemes, so a TPO and a volume profile on
 // one chart can be given the same look.
-assert.ok(
-  /isTpoIndicator\(settingsDefinition\.id\)\s+\) && isVolumeProfileGradientActive/.test(control),
-  "TPO must share the gradient schemes with the volume profiles",
+const registryBundle = join(outDir, "palette-registry.mjs");
+execSync(
+  `npx esbuild src/lib/indicatorPaletteRegistry.ts --bundle --format=esm --platform=node --alias:@=./src --outfile="${registryBundle}"`,
+  { stdio: "pipe" },
 );
+const { supportsPalette } = await import(`file://${registryBundle.replaceAll("\\", "/")}`);
+for (const id of ["tpo-chart", "weekly-tpo", "ask-bid-volume-profile"]) {
+  assert.ok(supportsPalette(id), `${id} must expose the shared gradient palette`);
+}
 const tpo = readFileSync("src/lib/tpo/primitive.ts", "utf8");
 assert.match(tpo, /resolveVolumeProfileGradient\(settings\.gradientPreset\)/);
 assert.match(tpo, /context\.fillStyle = schemeFill \?\? cellColor;/);

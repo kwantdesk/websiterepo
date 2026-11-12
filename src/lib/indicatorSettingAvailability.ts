@@ -1,3 +1,4 @@
+import { VOLUME_PROFILE_INDICATOR_IDS } from "@/lib/chartIndicatorConfig";
 import { isVolumeProfileGradientActive } from "@/lib/volumeProfileGradients";
 
 /** Explain a real dependency instead of offering an apparently inert control. */
@@ -8,6 +9,18 @@ export function indicatorSettingDisabledReason(
 ): string | undefined {
   if (key === "useThemeColors" && isVolumeProfileGradientActive(settings.gradientPreset)) {
     return "Turn the colour scheme Off to use theme colours.";
+  }
+  if (VOLUME_PROFILE_INDICATOR_IDS.has(id)) {
+    const mode = settings.profileMode ?? "volume";
+    if (key === "showDelta" && (mode === "volume" || mode === "bid-ask")) {
+      return "Select a Delta profile type to show or hide the delta plot.";
+    }
+    if (key === "showValueArea" && mode !== "volume" && mode !== "delta-volume") {
+      return "Select a profile type with a total-volume plot to shade its value area. Value-area lines can still be shown.";
+    }
+    if (key === "showProfileOutline" && settings.visualStyle === "line") {
+      return "Line appearance draws the profile contour. Choose another appearance to outline each row.";
+    }
   }
   if (["cumulative-volume-delta", "delta-cumulative-candlestick", "delta-cumulative-histogram"].includes(id)) {
     const style = settings.displayStyle ?? (id === "delta-cumulative-histogram" ? "bars" : "candles");

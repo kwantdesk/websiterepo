@@ -552,6 +552,7 @@ export type NativeVolumeProfileStyle = {
 export type NativeVolumeProfileModel = {
   id: string;
   profile: InstitutionalVolumeProfile;
+  executionLevels?: InstitutionalVolumeProfile["levels"];
   style: NativeVolumeProfileStyle;
   lastCandleTime: number | null;
   intervalSeconds: number | null;
@@ -630,7 +631,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
    * expansion, per profile, several times a second. With a daily, a weekly and
    * the split sessions on one chart that is the bulk of the profile's cost.
    */
-  private derived = new Map<string, { key: string; value: ProfileDerived }>();
+  private derived = new Map<string, {
+    key: string;
+    sourceLevels: InstitutionalVolumeProfile["levels"];
+    executionLevels: InstitutionalVolumeProfile["levels"];
+    value: ProfileDerived;
+  }>();
   private paneInsets = { left: 0, right: 0 };
   private readonly paneView = {
     // Volume distributions are chart context, not foreground annotations.
@@ -1069,8 +1075,13 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           style.showVwap === true,
           (style.vwapBandDeviations ?? []).join(","),
         ].join(":");
+        const executionLevels = model.executionLevels ?? sourceLevels;
         const cachedDerived = this.derived.get(model.id);
-        let derived = cachedDerived?.key === derivedKey ? cachedDerived.value : null;
+        let derived = cachedDerived?.key === derivedKey
+          && cachedDerived.sourceLevels === sourceLevels
+          && cachedDerived.executionLevels === executionLevels
+          ? cachedDerived.value
+          : null;
         if (!derived) {
           // Group whenever the row requested by the trader is coarser than
           // the data that arrived. The old condition looked only at the
@@ -1133,11 +1144,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 )
               : null,
             vwap: style.showVwap
-              ? calculateVolumeProfileVwap(levels, style.vwapBandDeviations ?? [])
+              ? calculateVolumeProfileVwap(executionLevels, style.vwapBandDeviations ?? [])
               : null,
-            summary: summarizeVolumeProfile(levels),
+            summary: summarizeVolumeProfile(executionLevels),
           };
-          this.derived.set(model.id, { key: derivedKey, value: derived });
+          this.derived.set(model.id, { key: derivedKey, sourceLevels, executionLevels, value: derived });
         }
         const levels = derived.levels;
         const groupedMaxVolume = derived.maxVolume;
@@ -1216,16 +1227,38 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const bidVolumePath = this.createPath();
         const outlinePath = this.createPath();
         const pocPath = this.createPath();
+        const rowLabels: Array<{ text: string; x: number; y: number; width: number }> = [];
         const addComponentBar = (
           component: "volume" | "positiveDelta" | "negativeDelta" | "ask" | "bid",
           path: Path2D, row: number, x: number, y: number, width: number, height: number,
           side: "left" | "right" | "both",
         ) => {
           if (!(width > 0) || !(height > 0)) return;
+          if (style.showText && height >= 11 && width >= 18) {
+            const level = levels[row];
+            const measurement = component === "ask" ? level.askVolume
+              : component === "bid" ? level.bidVolume
+              : component === "volume" ? level.volume : level.delta;
+            const isPercent = style.mode === "delta-percentage";
+            const value = isPercent ? (level.volume > 0 ? measurement / level.volume * 100 : 0) : measurement;
+            const text = Number(value.toFixed(isPercent ? 1 : 2)).toString() + (isPercent ? "%" : "");
+            const centerY = y + height / 2;
+            const previous = rowLabels.at(-1);
+            if (previous && Math.abs(previous.y - centerY) < 2 && x < previous.x + previous.width && previous.x < x + width) {
+              const left = Math.min(previous.x, x);
+              const right = Math.max(previous.x + previous.width, x + width);
+              previous.text += " / " + text;
+              previous.x = left;
+              previous.width = right - left;
+            } else {
+              rowLabels.push({ text, x, y: centerY, width });
+            }
+          }
           if (contourSteps) {
             contourSteps[component].push({row, x, y, width, height, side});
           } else {
             addBar(path, x, y, width, height, side);
+            if (style.showProfileOutline && height >= 2.2) addBar(outlinePath, x, y, width, height, side);
           }
         };
         const levelFrontRows: Array<{ price: number; frontX: number }> = [];
@@ -1296,16 +1329,6 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               height,
               facesLeft ? "left" : "right",
             );
-            if (style.showProfileOutline && height >= 2.2) {
-              const radius = Math.min(2.25, height / 2, volumeWidth / 2);
-              outlinePath.roundRect(
-                facesLeft ? anchorX - volumeWidth : anchorX,
-                y,
-                volumeWidth,
-                height,
-                facesLeft ? [radius, 0, 0, radius] : [0, radius, radius, 0],
-              );
-            }
             if (style.mode !== "volume" && style.showDelta) {
               // Delta normally sits BEHIND the volume half, on the opposite
               // side of the spine. Docked to the screen edge there is no room
@@ -1512,6 +1535,24 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           }
         }
 
+        if (rowLabels.length > 0) {
+          context.save();
+          context.globalAlpha = 1;
+          context.font = "10px sans-serif";
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          context.strokeStyle = "#151515";
+          context.fillStyle = "#ffffff";
+          context.lineWidth = 2;
+          context.setLineDash([]);
+          for (const { text, x, y, width } of rowLabels) {
+            if (context.measureText(text).width + 6 > width) continue;
+            context.strokeText(text, x + width / 2, y);
+            context.fillText(text, x + width / 2, y);
+          }
+          context.restore();
+        }
+
         const high = levels.at(-1)?.price ?? null;
         const low = levels[0]?.price ?? null;
         const top = high == null ? null : params.series.priceToCoordinate(
@@ -1582,7 +1623,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           label: string | null,
           lineWidth?: number,
           extensionMode: "none" | "until-first-interaction" | "to-window-end" | "to-profile-end" = "to-window-end",
-          ownDash = false,
+          isVwapLevel = false,
         ) => {
           if (price == null) return;
           const y = params.series.priceToCoordinate(price);
@@ -1608,9 +1649,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             rightEdge,
             [...drawnBodySpans.values()],
           );
+          let lineStartX = lineSegment?.startX ?? sourceFrontX;
           let lineEndX = lineSegment?.endX ?? sourceFrontX;
           if (extensionMode === "none") {
-            lineEndX = sourceFrontX;
+            // VWAP stays over its own profile when forward extension is off.
+            lineStartX = isVwapLevel ? Math.max(0, sourceBody.leftX) : sourceFrontX;
+            lineEndX = isVwapLevel ? Math.min(rightEdge, sourceBody.rightX) : sourceFrontX;
           } else if (extensionMode === "to-profile-end") {
             lineEndX = Math.min(lineEndX, Math.max(sourceFrontX, sessionEndX));
           } else if (extensionMode === "until-first-interaction" && lineSegment) {
@@ -1620,13 +1664,13 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               if (touchX != null && touchX > sourceFrontX) lineEndX = Math.min(lineEndX, touchX);
             }
           }
-          if (lineSegment && lineEndX > sourceFrontX + 0.5) {
+          if (lineEndX > lineStartX + 0.5) {
             context.globalAlpha = 0.82;
             context.strokeStyle = color;
             context.lineWidth = Math.max(0.5, Number.isFinite(lineWidth) ? Number(lineWidth) : 1);
-            context.setLineDash(ownDash ? dash : style.levelDash ?? dash);
+            context.setLineDash(isVwapLevel ? dash : style.levelDash ?? dash);
             context.beginPath();
-            context.moveTo(lineSegment.startX, y);
+            context.moveTo(lineStartX, y);
             context.lineTo(lineEndX, y);
             context.stroke();
           }
@@ -1826,7 +1870,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // DeepCharts has a master Enable switch above those controls; no
         // child may paint while it is off.
         if (style.showVwap) {
-          const vwap = derived.vwap ?? calculateVolumeProfileVwap(levels, style.vwapBandDeviations ?? []);
+          const vwap = derived.vwap ?? calculateVolumeProfileVwap(executionLevels, style.vwapBandDeviations ?? []);
           if (vwap.vwap !== null) {
             if (style.showVwapHighlight) {
               const sourceBody = drawnBodySpans.get(model.id);

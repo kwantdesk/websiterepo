@@ -2749,7 +2749,7 @@ export default function ChartIndicatorsControl({
                     );
                   })}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    This profile is calculated from Rithmic executions. Volume and number of trades are fully supported. Rithmic MBO powers the DOM and liquidity tools, but order-profile modes are not shown here until their live and historical calculations are complete. Filter min and max bound individual execution sizes; max 0 means no upper bound. Automatic sizes rows from the profile range and group factor. Manual pins every row to a fixed number of ticks.
+                    This profile is calculated from Rithmic executions. Number of trades is available with the Volume profile type. Directional profiles use contract volume. Rithmic MBO powers the DOM and liquidity tools, but order-profile modes are not shown here until their live and historical calculations are complete. Filter min and max bound individual execution sizes; max 0 means no upper bound. Automatic sizes rows from the profile range and group factor. Manual pins every row to a fixed number of ticks.
                   </div>
                 </div>
               ) : null}

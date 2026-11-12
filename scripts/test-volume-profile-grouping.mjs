@@ -104,7 +104,7 @@ assert.ok(
 
 // 7. The derived data must be cached per change, not recomputed per repaint.
 //    draw() runs on every crosshair move and every live tick.
-assert.match(primitive, /private derived = new Map<string, \{ key: string; value: ProfileDerived \}>\(\);/);
+assert.match(primitive, /cachedDerived\.sourceLevels === sourceLevels/);
 assert.match(primitive, /cachedDerived\?\.key === derivedKey/);
 // The cache key must carry everything that can change the result.
 for (const part of ["profile.asOf", "groupedTicks", "profile.groupTicks", "requestedValueAreaPercent"]) {
