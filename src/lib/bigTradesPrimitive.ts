@@ -196,15 +196,46 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
         }
 
         const color = marker.side === "ASK" ? options.askColor : options.bidColor;
-        const radius = marker.radius;
-        const strokeWidth = Math.max(1, radius * 0.065);
         const showLabel = labelsFitFrameBudget && (
           options.markerType === "text"
-          || (options.showLabels && radius >= options.labelMinSize)
+          || (options.showLabels && marker.radius >= options.labelMinSize)
         );
         const drawTextFallback = options.markerType === "text" && !showLabel;
+        const fontSize = Math.max(7, Math.min(11, marker.radius * 0.48));
+        let radius = marker.radius;
+        let text: string | undefined;
+        let textWidth = 0;
 
         context.save();
+        if (showLabel) {
+          const labelKey = `${marker.id}:${options.informationMode}:${marker.volume}:${marker.executions}`;
+          text = this.labelCache.get(labelKey);
+          if (text === undefined) {
+            text = markerLabel(marker, options.informationMode);
+            if (this.labelCache.size > 4_096) this.labelCache.clear();
+            this.labelCache.set(labelKey, text);
+          }
+          context.font = `800 ${fontSize}px 'Aleph', monospace`;
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          context.lineJoin = "round";
+          const textWidthKey = `${fontSize}:${text}`;
+          const cachedWidth = this.textWidthCache.get(textWidthKey);
+          if (cachedWidth !== undefined) {
+            textWidth = cachedWidth;
+          } else {
+            textWidth = context.measureText(text).width;
+            if (this.textWidthCache.size > 4_096) this.textWidthCache.clear();
+            this.textWidthCache.set(textWidthKey, textWidth);
+          }
+          // Let small squares fit short counts at the execution price.
+          if (options.markerType === "square") {
+            const labelRadius = Math.max((textWidth + 4) / 1.9, (fontSize + 4) / 2);
+            radius = Math.max(radius, Math.min(12, labelRadius));
+          }
+        }
+
+        const strokeWidth = Math.max(1, radius * 0.065);
         if (!options.hollowFill && options.markerType !== "text") {
           context.globalAlpha = marker.opacity * 0.13;
           context.fillStyle = color;
@@ -263,35 +294,21 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
           context.stroke();
         }
 
-        if (showLabel) {
-          const fontSize = Math.max(7, Math.min(11, radius * 0.48));
-          const labelKey = `${marker.id}:${options.informationMode}:${marker.volume}:${marker.executions}`;
-          let text = this.labelCache.get(labelKey);
-          if (text === undefined) {
-            text = markerLabel(marker, options.informationMode);
-            if (this.labelCache.size > 4_096) this.labelCache.clear();
-            this.labelCache.set(labelKey, text);
-          }
-          context.globalAlpha = marker.opacity;
-          context.font = `800 ${fontSize}px 'Aleph', monospace`;
-          context.textAlign = "center";
-          context.textBaseline = "middle";
-          context.lineJoin = "round";
-          // A small marker cannot hold its own number, and dropping the number
-          // is the wrong answer — the contract count is the reason the marker
-          // is there. When the text will not fit inside the shape it is lifted
-          // just above it, with the same halo, so shrinking the markers keeps
-          // every number readable instead of erasing it.
-          const textWidthKey = `${fontSize}:${text}`;
-          let textWidth = this.textWidthCache.get(textWidthKey);
-          if (textWidth === undefined) {
-            textWidth = context.measureText(text).width;
-            if (this.textWidthCache.size > 4_096) this.textWidthCache.clear();
-            this.textWidthCache.set(textWidthKey, textWidth);
-          }
+        if (text !== undefined) {
           const fitsInside = textWidth + 2 <= radius * (options.markerType === "diamond" ? 1.4 : 1.9)
             && fontSize + 2 <= radius * 2;
           const labelY = fitsInside ? y : y - radius - fontSize * 0.75;
+          context.globalAlpha = marker.opacity;
+          if (!fitsInside && options.markerType === "square" && !options.hollowFill) {
+            // Keep a backing for labels that are too long for the square.
+            context.beginPath();
+            context.roundRect(x - textWidth / 2 - 2, labelY - fontSize / 2 - 1, textWidth + 4, fontSize + 2, 2);
+            context.fillStyle = options.backgroundColor;
+            context.fill();
+            context.strokeStyle = color;
+            context.lineWidth = 1;
+            context.stroke();
+          }
           context.strokeStyle = options.backgroundColor;
           context.lineWidth = 2.5;
           context.strokeText(text, x, labelY);
