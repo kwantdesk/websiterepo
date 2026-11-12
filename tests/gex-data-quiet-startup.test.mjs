@@ -22,13 +22,13 @@ test('startup has no legacy connection banner before or after modules initialize
 test('every catalogue tool opens and loads with the retired banner absent; board restores',async()=>{
   const app=read('public/gex-data-app/app.js');
   const catalogue=app.slice(app.indexOf('const TOOL_DEFINITIONS = ['),app.indexOf('const FILTER_GROUP_TOOLS='));
-  const functions=app.slice(app.indexOf('function showBoard()'),app.indexOf('function requestBase()'));
+  const functions=app.slice(app.indexOf('function showBoard()'),app.indexOf('function currentToolSessionDate('));
   const nodes=new Map(['#tableSearch','#toolSearch','#toolGroup','#toolTitle','#toolDescription'].map(key=>[key,{value:'',textContent:''}]));
   const calls=[],context={
     toolView:{hidden:true},dashboard:{hidden:false},location:{hash:''},
     activeTool:null,toolPayload:null,toolCursor:null,tableRows:[],pollTimer:null,activeController:null,
     VIEW_PARAMETERS:new URLSearchParams(),snapshotSelections:new Map(),
-    clearTimeout(){},onControlsChanged(){},resetStage:()=>calls.push('reset'),
+    clearTimeout(){},releaseGexDataConsumer(){},onControlsChanged(){},resetStage:()=>calls.push('reset'),
     workspaceController:{visibility:value=>calls.push(['visibility',value])},
     q:selector=>nodes.get(selector)??null,
     openLibrary:()=>{},renderControls:tool=>calls.push(['controls',tool.id]),
@@ -65,7 +65,7 @@ test('blocking bootstrap seeds the current host theme before prototype palette C
   // neither paints a page palette. Reject any other preceding stylesheet.
   const before=html.slice(0,at),earlyStyles=[...before.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)].map(match=>new URL(match[1],'https://fixture.invalid').pathname);
   for(const path of earlyStyles){
-    assert.ok(['/fonts/aleph/aleph.css','/gex-data-app/range-input.css'].includes(path),path);
+    assert.ok(['/fonts/aleph/aleph.css','/gex-data-app/range-input.css','/gex-data-app/number-input.css','/gex-data-app/dropdown-trigger.css'].includes(path),path);
     const css=read('public'+path);
     if(path.endsWith('/aleph.css'))assert.equal(css.replace(/@font-face\s*\{[^}]*\}/g,'').trim(),'','early font CSS must contain no page styling');
     else{assert.doesNotMatch(css,/\b(?:html|body)\s*[,\{]/);for(const match of css.matchAll(/(?:background(?:-color)?|(?<![-\w])color)\s*:\s*([^;}]+)/g))assert.match(match[1],/^(?:transparent|var\(|currentColor)/);}
@@ -113,21 +113,19 @@ test('theme surface changes synchronously while one shared colour download is pe
   await context.install({background:'#001b20'});assert.equal(requests,1);
 });
 
-test('page startup stays on the themed surface without a loading splash',()=>{
+test('GEX Data and News use the same startup spinner without the retired splash copy',()=>{
   const workspace=read('src/components/KwantifyWorkspace.tsx');
   const host=read('src/components/gex-data/GexDataWorkspace.tsx');
-  for(const name of ['GexDataWorkspace','KwantyWorkspace']){
-    const dynamicBlock=workspace.match(new RegExp(`const ${name} = dynamic\\([\\s\\S]*?\\n\\}\\);`))?.[0];
-    assert.ok(dynamicBlock);
-    assert.match(dynamicBlock,/loading: \(\) => <div className="h-full min-h-0 flex-1 bg-background" \/>/);
-    assert.doesNotMatch(dynamicBlock,/workspaceLoader|KwantLoader/);
-  }
-  assert.doesNotMatch(host,/KwantLoader|Opening GEX DATA|Loading GEX DATA/);
-  assert.match(host,/overflow-hidden bg-background/);
-  const kwanty=read('src/components/kwanty/KwantyWorkspace.tsx');
-  assert.doesNotMatch(kwanty,/KwantLoader|Loading calendar|Opening KWANTY/);
+  const html=read('public/gex-data-app/index.html');
+  const app=read('public/gex-data-app/app.js');
+  assert.match(workspace,/const GexDataWorkspace = dynamic\([\s\S]*?loading: \(\) => workspaceLoader\("Loading GEX Data"/);
+  assert.match(host,/frameLoading[\s\S]+<KwantLoader page screen title="Loading GEX Data"/);
+  assert.match(host,/event.source !== frame.current\?\.contentWindow/);
+  assert.match(html,/workspaceStylesReady==='true'&&root.dataset.workspaceUiReady==='true'/);
+  assert.match(html,/id="gexDataStartup" class="site-workspace-loader"/);
+  assert.match(app,/document.documentElement.dataset.workspaceUiReady = "true"/);
   const news=read('src/components/news/NewsWorkspace.tsx');
-  assert.match(news,/OptionsExpirationCalendar = dynamic\([^\n]+loading: \(\) => null/);
-  assert.match(news,/FuturesExpirationCalendar = dynamic\([^\n]+loading: \(\) => null/);
-  assert.match(kwanty,/overflow-hidden bg-background/);
+  assert.match(news,/const newsLoader = \(\) => <KwantLoader page screen/);
+  assert.match(news,/OptionsExpirationCalendar = dynamic\([^\n]+loading: newsLoader/);
+  assert.match(news,/FuturesExpirationCalendar = dynamic\([^\n]+loading: newsLoader/);
 });

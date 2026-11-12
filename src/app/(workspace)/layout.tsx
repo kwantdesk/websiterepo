@@ -8,6 +8,7 @@ import { activeWorkspaceSection, isWorkspaceFeatureArchived } from "@/lib/archiv
 
 import type { PrimaryWorkspaceSection } from "@/components/KwantifyWorkspace";
 import AppSidebar from "@/components/AppSidebar";
+import KwantLoader from "@/components/KwantLoader";
 import WorkspaceFailureBoundary from "@/components/WorkspaceFailureBoundary";
 
 const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
@@ -58,7 +59,9 @@ function WorkspaceNavigationShell() {
   const location = workspaceLocation(pathname);
   return <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
     <AppSidebar activeItem={location.section} orientation="horizontal" navigationMode="persistent" />
-    <main className="min-h-0 flex-1 bg-background" aria-label={`${location.section} workspace`} aria-busy="true" />
+    <main className="min-h-0 flex-1 bg-background">
+      <KwantLoader page screen quiet={location.section === "gamvue"} title="Loading workspace" />
+    </main>
   </div>;
 }
 
@@ -73,7 +76,9 @@ const KwantifySettingsWorkspace = dynamic(() => import("@/components/KwantifySet
   ssr: false,
   loading: () => <div className="flex h-screen flex-col bg-background text-foreground">
     <AppSidebar activeItem="settings" orientation="horizontal" navigationMode="persistent" />
-    <main className="min-h-0 flex-1 bg-background" aria-label="Settings" aria-busy="true" />
+    <main className="min-h-0 flex-1 bg-background">
+      <KwantLoader page screen title="Loading settings" />
+    </main>
   </div>,
 });
 

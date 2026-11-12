@@ -19581,7 +19581,7 @@ function Chart({
             className="h-full w-full"
             style={{ backgroundColor: settings.backgroundColor }}
             quiet={quietLoading}
-            icon={ChartColumnIncreasing}
+            screen
             title="Loading chart"
             detail={`${instrument} · fitting history and price scale`}
           />

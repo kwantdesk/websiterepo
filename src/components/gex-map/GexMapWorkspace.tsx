@@ -779,8 +779,7 @@ function ExposurePanel({
         {loading && !payload ? (
           <KwantLoader
             className="h-full"
-            compact
-            icon={ScanLine}
+            screen
             title={`Loading ${greek.short}`}
             detail="Restoring the latest exposure frames"
           />
@@ -1061,8 +1060,7 @@ function ExposurePanel({
           <div className="pointer-events-none absolute inset-0 z-10">
             <KwantLoader
               className="h-full w-full"
-              compact
-              icon={ScanLine}
+              screen
               title={`Loading ${greek.short}`}
               detail="Painting the latest strike ladder"
             />
@@ -2119,6 +2117,7 @@ function GexMapWorkspace({
       {initialSurfacePending ? (
         <div className="pointer-events-none absolute inset-0 z-50">
           <KwantLoader
+            screen
             title="Loading GEX MAP"
             detail="Restoring the latest exposure surfaces."
             className="h-full w-full bg-chart-background"

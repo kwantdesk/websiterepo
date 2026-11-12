@@ -3,7 +3,7 @@ import {orderflowMajorLevels} from './orderflow-major-levels.js?v=20261104';
 import {LIVE_SNAPSHOT_INTERVAL_MS,FAILED_SNAPSHOT_INTERVAL_MS} from './cadence.js';
 import {themePaint,themeIsLight} from './site-theme.js';
 import {mountWorkspaceChrome,arrangeWorkspacePanels,reorderWorkspacePanels} from './workspace-chrome.js?v=2';
-import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
+import {showWorkspaceLoading} from '../workspace-loading.js?v=2';
 import {syncThemeSettings} from './theme-settings.js';
 import {botStorage,botFetch,botTheme,botTimeZone,botPriceHistory,botSubscribePrice,botWorkspaceReplay} from './site-runtime.js?v=2';
 import {createReplayPrefixReader} from './replay-cursor.js?v=1';

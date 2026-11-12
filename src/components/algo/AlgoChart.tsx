@@ -7,7 +7,7 @@ import type { AlgoChartIntegration } from "@/lib/algoChartIntegration";
 import KwantLoader from "@/components/KwantLoader";
 
 const NormalCharts = dynamic(() => import("@/components/KwantifyWorkspace"), {
-  ssr: false, loading: () => <KwantLoader title="Opening charts" />,
+  ssr: false, loading: () => <KwantLoader screen className="h-full w-full" title="Loading chart" />,
 });
 
 /** The normal chart engine with independently saved Algo workspaces. */

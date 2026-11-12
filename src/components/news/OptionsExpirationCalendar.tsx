@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {CalendarDays,ChevronLeft,ChevronRight,ExternalLink,RefreshCw} from 'lucide-react';
 import KwantSelect from '@/components/ui/KwantSelect';
+import KwantLoader from '@/components/KwantLoader';
 import {writeProtectedItem} from '@/lib/browserStorageQuota';
 import {PREFERENCES_HYDRATED_EVENT} from '@/lib/userPreferences';
 import verifiedSnapshot from '@/data/cboe-options-2026.json';
@@ -62,6 +63,7 @@ export default function OptionsExpirationCalendar({accountKey,active=true}:{acco
       </button>;
     })}</div>
   </section>;
+  if (loading && !calendar) return <KwantLoader page screen title="Loading the options expiration calendar" />;
   return <section className="flex h-full min-h-0 flex-col bg-background text-foreground" aria-label="Options expiration calendar">
     <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-panel px-4 py-3">
       <CalendarDays className="h-5 w-5 text-primary"/><h1 className="text-lg">Options Expiration Calendar</h1>
@@ -102,7 +104,7 @@ export default function OptionsExpirationCalendar({accountKey,active=true}:{acco
           <p className="text-xs leading-relaxed text-muted">Schedule reference, not a live options chain. Actual listed series, settlement style, trading hours and broker cutoffs must be checked for the contract. Newly announced series may not yet appear in the annual PDF. Dates are subject to change.</p>
           <a href={CBOE_CALENDAR_URL} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs text-primary">Cboe hours and holidays <ExternalLink size={12}/></a>
         </aside>
-      </div>:<div className="p-8 text-sm text-muted">{loading?'Loading the verified calendar…':'No verified calendar is available for this year. Choose a published year or open Cboe’s source.'}</div>}
+      </div>:<div className="p-8 text-sm text-muted">No verified calendar is available for this year. Choose a published year or open Cboe’s source.</div>}
       <footer className="border-t border-border px-4 py-3 text-xs text-muted">Calendar dates and colour key sourced from Cboe. Semantic colours intentionally stay consistent across site themes. No live market-data subscription is required.</footer>
     </div>
   </section>;

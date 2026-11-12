@@ -799,7 +799,7 @@ function LoadingScreen() {
     <KwantLoader
       page
       style={{ minHeight: 0, height: "auto" }}
-      icon={Waves}
+      screen
       title="Loading live options positioning"
       detail="Exposure, volatility, flow and price"
     />

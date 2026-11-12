@@ -72,7 +72,7 @@ import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
-  loading: () => <KwantLoader className="h-full" compact title="Opening replay chart" detail="Preparing the historical workspace." />,
+  loading: () => <KwantLoader className="h-full" screen title="Opening replay chart" detail="Preparing the historical workspace." />,
 });
 
 type ReplayInstrument = "NQ" | "MNQ" | "ES" | "MES";
@@ -2113,7 +2113,7 @@ export default function BacktestingWorkspace({
 
           {loading ? (
           <div className="absolute inset-0 z-40 bg-background/90">
-            <KwantLoader className="h-full" title="Building replay" detail="Loading one week of CME context and the selected replay session." />
+            <KwantLoader className="h-full" screen title="Building replay" detail="Loading one week of CME context and the selected replay session." />
           </div>
           ) : null}
 

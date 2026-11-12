@@ -3,7 +3,7 @@ import { revalidatePrivateTool } from "@/lib/privateToolRevalidation";
 import { createLeasedMarketSource } from "../../../public/browser-market-stream.js";
 import { createGexDataLiveClient } from "../../../public/gex-data-live-client.js";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, defaultChartSettings, loadStoredChartSettings } from "@/lib/chartSettings";
@@ -12,6 +12,7 @@ import TimeZoneSelect, { CHART_TIME_ZONE_TRIGGER_CLASS_NAME } from "@/components
 import { GEX_DATA_TIME_ZONE_CHANGE_EVENT, normalizeTimeZone } from "@/lib/timeZones";
 import { sanitizeToolConfiguration } from "../../../public/gex-data-app/tool-configuration.js";
 import GexPaletteSettings from "./GexPaletteSettings";
+import KwantLoader from "@/components/KwantLoader";
 import { GEX_MAP_PALETTE_PRESETS } from "@/lib/gexMapPalette";
 import { resolveGexBoxRoles } from "@/lib/gexBoxTheme";
 
@@ -48,6 +49,8 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   const lastFrameWindow = useRef<Window | null>(null);
   const [ready, setReady] = useState(false);
   const [generation, setGeneration] = useState(0);
+  const [loadedFrame, setLoadedFrame] = useState<string | null>(null);
+  const [failedFrame, setFailedFrame] = useState<string | null>(null);
   const [timeZone, setTimeZone] = useState(defaultChartSettings.timezone);
   const [showPalette, setShowPalette] = useState(false);
   const [paletteId, setPaletteId] = useState("site");
@@ -205,8 +208,26 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "20261027-stable-font"); params.set("hostTimezone", "1");
+  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "20261112-workspace-loader"); params.set("hostTimezone", "1");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
+  const frameKey = `${accountKey}:${generation}:${src}`;
+  const frameLoading = !ready || loadedFrame !== frameKey;
+  useLayoutEffect(() => {
+    if (!ready) return;
+    const onReady = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== frame.current?.contentWindow
+        || event.data?.type !== "gex-data-workspace-ready") return;
+      setLoadedFrame(frameKey);
+    };
+    window.addEventListener("message", onReady);
+    return () => window.removeEventListener("message", onReady);
+  }, [frameKey, ready]);
+
+  useEffect(() => {
+    if (!ready || !frameLoading) return;
+    const deadline = window.setTimeout(() => setFailedFrame(frameKey), 45_000);
+    return () => window.clearTimeout(deadline);
+  }, [frameKey, frameLoading, ready]);
   return <section className="relative h-full min-h-0 flex-1 overflow-hidden bg-background" aria-label="GEX DATA workspace">
     {showPalette && <GexPaletteSettings includeSiteTheme paletteId={paletteId}
       displaySettings={sanitizeToolConfiguration((() => { try { return JSON.parse(window.__kwantGexDataHost?.read(CONFIGURATION_KEY) || "{}"); } catch { return {}; } })())}
@@ -214,13 +235,26 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
       onPreview={id => { paletteRef.current = id; broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme"); }}
       onSave={(id, configuration) => { window.__kwantGexDataHost?.write(PALETTE_KEY, id); if (configuration) window.__kwantGexDataHost?.write(CONFIGURATION_KEY, JSON.stringify(configuration)); configurationPreviewRef.current = null; broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme"); setShowPalette(false); }}
       onClose={() => { configurationPreviewRef.current = null; broadcast(frame.current?.contentWindow ?? null, "gex-data-site-theme"); setShowPalette(false); }} />}
-    {ready && <div className="absolute right-2 top-[6px] z-30 flex h-7 items-center bg-panel md:top-[8px]">
+    {!frameLoading && <div className="absolute right-2 top-[6px] z-30 flex h-7 items-center bg-panel md:top-[8px]">
       <TimeZoneSelect value={timeZone} onChange={next => window.__kwantGexDataHost?.write(TIME_ZONE_KEY, normalizeTimeZone(next))}
         menuLabel="Chart timezone" compact className={CHART_TIME_ZONE_TRIGGER_CLASS_NAME} />
     </div>}
-    {ready ? <iframe key={`${accountKey}:${generation}`} ref={node => { frame.current = node; if (node?.contentWindow) lastFrameWindow.current = node.contentWindow; }} src={src}
-      title="GEX DATA tools and workspace" className="h-full w-full border-0" allow="fullscreen"
-      onLoad={() => broadcast(frame.current?.contentWindow ?? null, "gex-data-site-activity", { active: activeRef.current })} />
+    {ready ? <iframe key={frameKey} ref={node => { frame.current = node; if (node?.contentWindow) lastFrameWindow.current = node.contentWindow; }} src={src}
+      title="GEX DATA tools and workspace" className="block h-full w-full border-0" allow="fullscreen"
+      inert={frameLoading}
+      onLoad={event => {
+        if (frame.current !== event.currentTarget) return;
+        broadcast(event.currentTarget.contentWindow, "gex-data-site-activity", { active: activeRef.current });
+      }} />
       : null}
+    {frameLoading && <div className="absolute inset-0 z-20">
+      {failedFrame === frameKey ? (
+        <div className="flex h-full flex-col items-center justify-center gap-3 bg-background p-4 text-center">
+          <p role="status" className="text-sm text-muted">GEX Data is taking too long to open.</p>
+          <button type="button" onClick={() => setGeneration(value => value + 1)}
+            className="rounded-xl border border-border bg-surface px-4 py-2 text-xs text-foreground">Try again</button>
+        </div>
+      ) : <KwantLoader page screen title="Loading GEX Data" />}
+    </div>}
   </section>;
 }

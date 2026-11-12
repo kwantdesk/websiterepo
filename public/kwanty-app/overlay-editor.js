@@ -1,5 +1,5 @@
 import {themePaint} from './site-theme.js';
-import {showWorkspaceLoading} from '../workspace-loading.js?v=1';
+import {showWorkspaceLoading} from '../workspace-loading.js?v=2';
 import {botStorage,botFetch} from './site-runtime.js';
 import {trimSnapshotRows} from './retention.js';
 import {snapshotInterval} from './cadence.js';

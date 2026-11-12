@@ -2759,7 +2759,7 @@ export default function JournalWorkspace({ accountKey, paperBalanceSource, onLin
     return (
       <KwantLoader
         page
-        icon={NotebookPen}
+        screen
         title="Loading Journal memory"
         detail="Restoring accounts, records and saved evidence"
       />

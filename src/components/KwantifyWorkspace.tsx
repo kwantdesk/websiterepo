@@ -452,7 +452,7 @@ function workspaceLoader(title: string, detail: string, quiet = false) {
   return (
     <KwantLoader
       className="h-full min-h-0 flex-1"
-      compact
+      screen
       quiet={quiet}
       title={title}
       detail={detail}
@@ -518,6 +518,10 @@ const OptionsFlowToolPanel = dynamic(() => import("@/components/options-flow/Opt
 
 const Chart = dynamic(loadChartWorkspace, {
   ssr: false,
+  loading: () => workspaceLoader("Loading chart", "Restoring cached candles and layout."),
+});
+const QuietChart = dynamic(loadChartWorkspace, {
+  ssr: false,
   loading: () => workspaceLoader("Loading chart", "Restoring cached candles and layout.", true),
 });
 const GammaWorkspace = dynamic(loadGammaWorkspace, {
@@ -554,7 +558,7 @@ const OptionsHeatmapWorkspace = dynamic(loadOptionsHeatmapWorkspace, {
 });
 const GexDataWorkspace = dynamic(loadGexDataWorkspace, {
   ssr: false,
-  loading: () => <div className="h-full min-h-0 flex-1 bg-background" />,
+  loading: () => workspaceLoader("Loading GEX Data", "Restoring the workspace."),
 });
 const KwantyWorkspace = dynamic(loadKwantyWorkspace, {
   ssr: false,
@@ -6264,6 +6268,7 @@ function WorkspaceChartPaneComponent({
     period,
     historicalRangeKey: replayHistoryRange?.key,
   });
+  const ChartSurface = quietLoading ? QuietChart : Chart;
   const chartIsLoading = chartNeedsLoadingCover({
     requestKey: requestedChartHydrationKey,
     settledRequestKey: settledChartRequestKey,
@@ -10052,7 +10057,7 @@ function WorkspaceChartPaneComponent({
             className="h-full w-full"
             style={{ backgroundColor: settings.backgroundColor }}
             quiet={quietLoading}
-            icon={BarChart3}
+            screen
             title="Loading chart"
             detail={`${displayCmeSymbol(pane.symbol)} · restoring ${formatChartInterval(pane.timeframe)} candles`}
           />
@@ -10060,7 +10065,7 @@ function WorkspaceChartPaneComponent({
       ) : error ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (
-        <Chart
+        <ChartSurface
           onHistoryEdgeReached={pane.broker === "Databento"
             && (isEventBasedChartInterval(pane.timeframe) || getChartInterval(pane.timeframe)?.kind === "second")
             ? loadEarlierRecordedHistory : undefined}
@@ -19050,7 +19055,6 @@ export default function KwantifyWorkspace({
       ? ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === workspacePanelTransition.content)
       : null;
     if (pendingPanel) {
-      const PendingIcon = pendingPanel.icon;
       return (
         <div
           className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} min-h-0 bg-background/95 backdrop-blur-xl`}
@@ -19058,8 +19062,7 @@ export default function KwantifyWorkspace({
         >
           <KwantLoader
             className="h-full w-full"
-            compact
-            icon={PendingIcon}
+            screen
             quiet={chartWorkspaceScope === "gamma"}
             title={`Loading ${pendingPanel.label}`}
             detail="Preparing this workspace panel."
@@ -20310,6 +20313,7 @@ export default function KwantifyWorkspace({
               title="Loading workspace"
               detail="Starting this live panel without blocking the others."
               className="h-full w-full bg-chart-background"
+              screen
               quiet={chartWorkspaceScope === "gamma"}
             />
           )}
@@ -21698,6 +21702,7 @@ export default function KwantifyWorkspace({
                           title="Loading workspace"
                           detail="Starting this live panel without blocking the others."
                           className="h-full w-full bg-chart-background"
+                          screen
                           quiet={chartWorkspaceScope === "gamma"}
                         />
                       )}

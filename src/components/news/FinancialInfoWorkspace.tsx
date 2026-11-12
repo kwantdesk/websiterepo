@@ -5,6 +5,7 @@ import { ExternalLink, Newspaper, Pause, Play, Search } from "lucide-react";
 import { financialInfoUnavailable, parseFinancialInfo, type FinancialInfoPayload } from "@/lib/financialInfo";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
+import KwantLoader from "@/components/KwantLoader";
 import { browserTimeZone } from "@/lib/timeZones";
 
 export default function FinancialInfoWorkspace() {
@@ -61,7 +62,8 @@ export default function FinancialInfoWorkspace() {
   const clock = useMemo(() => new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }), [timeZone]);
   const date = useMemo(() => new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short", day: "2-digit", month: "short", year: "numeric" }), [timeZone]);
   const stale = Boolean(payload?.stale || connectionError || (payload?.collectedAt && now - Date.parse(payload.collectedAt) > 300_000));
-  const status = paused ? "Paused" : !payload ? "Connecting" : !payload.configured ? "Not connected" : stale ? "Delayed / unavailable" : "Auto-updating RSS";
+  if (!payload) return <KwantLoader page screen title="Loading Financial Info" />;
+  const status = paused ? "Paused" : !payload.configured ? "Not connected" : stale ? "Delayed / unavailable" : "Auto-updating RSS";
   return (
     <section className="flex h-full min-h-0 flex-col bg-background text-foreground" aria-label="Financial Info">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
@@ -83,7 +85,6 @@ export default function FinancialInfoWorkspace() {
       {pendingPayload ? <button type="button" className="border-b border-primary/30 bg-primary/10 px-4 py-2 text-xs text-primary" onClick={() => { setPayload(pendingPayload); setPendingPayload(null); atTop.current = true; list.current?.scrollTo({ top: 0 }); }}>Latest update available — return to newest</button> : null}
       <div className="flex min-h-0 flex-1">
         <div ref={list} onScroll={event => { atTop.current = event.currentTarget.scrollTop < 24; }} className="min-w-0 flex-1 overflow-y-auto" aria-label="Financial headlines">
-          {!payload ? <p className="p-6 text-sm text-muted" role="status">Connecting to the shared news feed…</p> : null}
           {payload && !payload.configured ? <div className="mx-auto max-w-xl px-6 py-12"><Newspaper className="mb-4 h-8 w-8 text-muted" /><h3 className="mb-2 text-base font-semibold">Your financial news wire is ready to connect</h3><p className="text-sm leading-relaxed text-muted">No news source is connected yet. The shared scraper needs an Apify account and a scheduled feed. Once connected, new headlines appear here automatically, even when collection runs without this page open.</p><p className="mt-3 text-xs text-muted">A spending limit and source usage permissions must be confirmed before enabling collection. This page never starts paid scraper runs.</p></div> : null}
           {payload?.configured && !visible.length ? <p className="p-6 text-sm text-muted">{payload.items.length ? "No headlines match your filters." : payload.note}</p> : null}
           {visible.map((item, index) => {

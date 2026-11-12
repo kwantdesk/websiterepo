@@ -33,6 +33,7 @@ import { economicCalendarDateKey as dateKey } from "@/lib/economicCalendarFormat
 import { economicEventLabel } from "@/lib/economicEventLabels";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
+import KwantLoader from "@/components/KwantLoader";
 import {
   ECONOMIC_CALENDAR_CURRENCIES,
   ECONOMIC_CALENDAR_TIME_ZONE_CHANGE_EVENT,
@@ -49,10 +50,12 @@ import {
 } from "@/lib/timeZones";
 import type { FriendSummary, FriendsPayload } from "@/lib/friends";
 
-const OptionsExpirationCalendar = dynamic(() => import("./OptionsExpirationCalendar"), { ssr: false, loading: () => null });
-const FuturesExpirationCalendar = dynamic(() => import("./FuturesExpirationCalendar"), { ssr: false, loading: () => null });
-const MacroWorkspace = dynamic(() => import("./MacroWorkspace"), { ssr: false, loading: () => null });
-const FinancialInfoWorkspace = dynamic(() => import("./FinancialInfoWorkspace"), { ssr: false, loading: () => null });
+const newsLoader = () => <KwantLoader page screen title="Loading News" />;
+
+const OptionsExpirationCalendar = dynamic(() => import("./OptionsExpirationCalendar"), { ssr: false, loading: newsLoader });
+const FuturesExpirationCalendar = dynamic(() => import("./FuturesExpirationCalendar"), { ssr: false, loading: newsLoader });
+const MacroWorkspace = dynamic(() => import("./MacroWorkspace"), { ssr: false, loading: newsLoader });
+const FinancialInfoWorkspace = dynamic(() => import("./FinancialInfoWorkspace"), { ssr: false, loading: newsLoader });
 
 const ALERTS_STORAGE_KEY = "kwantdesk:economic-calendar-alerts:v1";
 const CURRENCIES_STORAGE_KEY = "kwantdesk:economic-calendar-currencies:v1";
@@ -623,6 +626,8 @@ function EconomicCalendarWorkspace() {
     window.setTimeout(() => setShareEvent(null), 650);
   };
 
+  if (loading && !payload) return <KwantLoader page screen title="Loading the economic calendar" />;
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <header className="flex min-h-[58px] shrink-0 flex-wrap items-center gap-3 border-b border-border bg-panel px-3 py-2 lg:px-4">
@@ -739,11 +744,7 @@ function EconomicCalendarWorkspace() {
             <div className="grid grid-cols-[88px_72px_72px_minmax(220px,1fr)_86px_78px] gap-3 border-b border-border bg-surface/35 px-4 py-2.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted max-lg:hidden">
               <span>Date</span><span>Time</span><span>Currency</span><span>Impact · Event</span><span className="text-center">Alert · Send</span><span className="text-right">Details</span>
             </div>
-            {loading && !payload ? (
-              <div role="status" aria-label="Calendar events" aria-busy="true" className="space-y-3 px-4 py-5">
-                {[0, 1, 2, 3].map(row => <div key={row} className="h-10 rounded-lg bg-surface" />)}
-              </div>
-            ) : filteredEvents.length ? (
+            {filteredEvents.length ? (
               filteredEvents.map((event, index) => {
                 const expanded = expandedEvent === event.id;
                 const alertActive = alerts.includes(event.id);

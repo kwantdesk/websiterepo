@@ -24,7 +24,7 @@ test('quiet startup renders only an accessible theme surface, with no visual ani
 test('quiet startup preserves full-page dimensions and explicit custom chart backgrounds',()=>{
  for(const color of ['#ffffff','#10051f','#001b20']){
   const html=render({quiet:true,page:true,style:{backgroundColor:color}});
-  assert.match(html,/min-h-\[70vh\]/);assert.ok(html.includes(`background-color:${color}`));
+  assert.match(html,/h-full w-full grow self-stretch/);assert.ok(html.includes(`background-color:${color}`));
   assert.doesNotMatch(html,/#000000|radial-gradient|kwant-loader/);
  }
  assert.match(render({}),/kwant-loader-orbit/); // Existing non-GEX callers retain their presentation.
@@ -36,9 +36,9 @@ test('every GEX VUE startup phase is quiet without bypassing chart or preference
  assert.match(workspace,/quietLoading=\{chartWorkspaceScope === "gamma"\}/);
  assert.match(workspace,/quietLoading=\{quietLoading\}/);
  assert.match(workspace,/data-chart-loading="true"[\s\S]{0,400}quiet=\{quietLoading\}/);
- assert.match(chart,/!chartVisualReady \? \([\s\S]{0,400}quiet=\{quietLoading\}/);
- assert.match(workspace,/loading: \(\) => workspaceLoader\("Loading chart",[^\n]+true\)/);
- assert.match(workspace,/!preferencesReady \? \(/);assert.match(workspace,/chartIsLoading \? \(/);
+ assert.match(chart,/!chartVisualReady \|\| footprintAwaitInitialHistory \? \([\s\S]{0,400}quiet=\{quietLoading\}/);
+ assert.match(workspace,/const QuietChart = dynamic\([\s\S]*?loading: \(\) => workspaceLoader\("Loading chart",[^\n]+true\)/);
+ assert.match(workspace,/!preferencesReady && !ownedWorkspaceDisplayReady \? \(/);assert.match(workspace,/chartIsLoading \? \(/);
  assert.match(workspace,/\) : error \? \(/);
  assert.match(workspace,/data-chart-workspace-scope=\{chartWorkspaceScope\}[\s\S]{0,100}bg-chart-background/);
 });

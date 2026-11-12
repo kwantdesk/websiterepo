@@ -398,6 +398,7 @@ function LiquidityMapWorkspace({
       {!isReady && !inspectorOpen ? (
         <div className="pointer-events-none absolute inset-0 z-10">
           <KwantLoader
+            screen
             title="Loading LIQ MAP"
             detail="Restoring live depth and recent liquidity history."
             className="h-full w-full bg-chart-background"
