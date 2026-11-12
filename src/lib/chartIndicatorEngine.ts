@@ -207,15 +207,36 @@ function windowMin(values: number[], start: number, endInclusive: number): numbe
   for (let i = start; i <= endInclusive; i += 1) if (values[i] < min) min = values[i];
   return min;
 }
-function windowArgMax(values: number[], start: number, endInclusive: number): number {
-  let idx = start; let max = values[start];
-  for (let i = start; i <= endInclusive; i += 1) if (values[i] >= max) { max = values[i]; idx = i; }
-  return idx;
-}
-function windowArgMin(values: number[], start: number, endInclusive: number): number {
-  let idx = start; let min = values[start];
-  for (let i = start; i <= endInclusive; i += 1) if (values[i] <= min) { min = values[i]; idx = i; }
-  return idx;
+function aroonExtremeAges(values: number[], length: number, high: boolean): Int32Array {
+  const ages = new Int32Array(values.length);
+  const capacity = Math.min(values.length, length + 1);
+  const queue = new Int32Array(capacity);
+  let head = 0;
+  let count = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    const start = index - length;
+    if (count && queue[head] < start) {
+      head = (head + 1) % capacity;
+      count -= 1;
+    }
+    const value = values[index];
+    if (!Number.isNaN(value)) {
+      while (count) {
+        const tail = (head + count - 1) % capacity;
+        const previous = values[queue[tail]];
+        if (high ? previous > value : previous < value) break;
+        // Equal extremes use the most recent candle.
+        count -= 1;
+      }
+      queue[(head + count) % capacity] = index;
+      count += 1;
+    }
+    if (start >= 0) {
+      const extreme = Number.isNaN(values[start]) ? start : queue[head];
+      ages[index] = index - extreme;
+    }
+  }
+  return ages;
 }
 
 function rollingMean(values: number[], length: number) {
@@ -1256,16 +1277,16 @@ function computeIndicatorSeries(
 
   if (key === "aroon-up-down" || key === "aroon-oscillator") {
     const length = Math.max(2, Math.round(settingNumber(instance, "length", 25)));
-    const up = highs.map((_, index) => {
-      if (index < length) return null;
-      const periodsSince = index - windowArgMax(highs, index - length, index);
-      return ((length - periodsSince) / length) * 100;
-    });
-    const down = lows.map((_, index) => {
-      if (index < length) return null;
-      const periodsSince = index - windowArgMin(lows, index - length, index);
-      return ((length - periodsSince) / length) * 100;
-    });
+    const upAges = aroonExtremeAges(highs, length, true);
+    const downAges = aroonExtremeAges(lows, length, false);
+    const score = (age: number) => ((length - age) / length) * 100;
+    const points = (valueAt: (index: number) => number) => {
+      const data: { time: number; value: number }[] = [];
+      for (let index = length; index < candles.length; index += 1) {
+        data.push({ time: candles[index].timestamp / 1000, value: valueAt(index) });
+      }
+      return data;
+    };
     if (key === "aroon-oscillator") {
       return [{
         key,
@@ -1274,12 +1295,12 @@ function computeIndicatorSeries(
         placement: "pane",
         color: theme.primary,
         lineWidth: 2,
-        data: lineData(candles, up.map((value, index) => value == null || down[index] == null ? null : value - down[index]!)),
+        data: points((index) => score(upAges[index]) - score(downAges[index])),
       }];
     }
     return [
-      { key: `${key}-up`, label: "Aroon Up", kind: "line", placement: "pane", color: theme.positive, lineWidth: 2, data: lineData(candles, up) },
-      { key: `${key}-down`, label: "Aroon Down", kind: "line", placement: "pane", color: theme.negative, lineWidth: 2, data: lineData(candles, down) },
+      { key: `${key}-up`, label: "Aroon Up", kind: "line", placement: "pane", color: theme.positive, lineWidth: 2, data: points((index) => score(upAges[index])) },
+      { key: `${key}-down`, label: "Aroon Down", kind: "line", placement: "pane", color: theme.negative, lineWidth: 2, data: points((index) => score(downAges[index])) },
     ];
   }
 

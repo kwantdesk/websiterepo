@@ -606,6 +606,7 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  */
 const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
+  "aroon-oscillator",
   "inverse-cyber-cycle",
   "ichimoku-indicator",
   // Linear recurrence: measured 20k-bar p95 ~4.3ms; live updates are incremental.
