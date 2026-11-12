@@ -1,0 +1,31 @@
+# Deploy with the existing gateway Compose project and --no-deps. The
+# developing-profile source is mounted from a pinned release checkout.
+services:
+  developing-profile:
+    image: ${PROFILE_GATEWAY_IMAGE:?Set the existing gateway image}
+    command: [node, /app/src/developing-profile-server.mjs]
+    environment:
+      PROFILE_GATEWAY_ORIGIN: http://gateway:8793
+      RITHMIC_RECORD_DIR: /recordings
+      DEVELOPING_PROFILE_PORT: 8799
+      NODE_OPTIONS: --max-old-space-size=256
+    volumes:
+      - ${PROFILE_RELEASE_DIR:?Set the pinned gateway src directory}:/app/src:ro
+      - /srv/kwantdesk-recordings:/recordings:ro
+    expose: ["8799"]
+    restart: unless-stopped
+    mem_limit: 448m
+    memswap_limit: 448m
+    cpus: 0.35
+    pids_limit: 48
+    init: true
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8799/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "2m", max-file: "2"}

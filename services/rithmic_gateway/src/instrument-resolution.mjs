@@ -60,3 +60,11 @@ export function selectReferenceContract(rows,{exchange,root,now=Date.now(),activ
   return [{symbol,expiration}];
  }).sort((a,b)=>Math.max(0,Number(activityBySymbol[b.symbol])||0)-Math.max(0,Number(activityBySymbol[a.symbol])||0)||a.expiration.localeCompare(b.expiration)||a.symbol.localeCompare(b.symbol))[0]??null;
 }
+
+
+export function exchangeForRoot(root) {
+  if (["GC", "MGC", "SI", "SIL", "HG"].includes(root)) return "COMEX";
+  if (["CL", "MCL", "QM", "NG", "QG", "HO", "RB", "PL", "PA"].includes(root)) return "NYMEX";
+  if (["YM", "MYM", "ZN", "TN", "ZB", "UB", "ZF", "ZT", "10Y", "ZC", "ZS", "ZW", "ZM", "ZL"].includes(root)) return "CBOT";
+  return "CME";
+}

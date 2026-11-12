@@ -30,7 +30,7 @@ import {
   volumeProfileSourcesHaveGap,
   volumeProfileTailTrades,
 } from "./volume-profile-fold-merge.mjs";
-import { compareInstrumentCandidates } from "./instrument-resolution.mjs";
+import { compareInstrumentCandidates, exchangeForRoot } from "./instrument-resolution.mjs";
 import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
 import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
 import { createDesktopStreamGuard } from "./desktop-stream-guard.mjs";
@@ -668,13 +668,6 @@ const HEATMAP_HISTORY_CHUNK_SIZE = 24;
 
 function parentRoot(root) {
   return MICRO_PARENT_ROOTS[root] || root;
-}
-
-function exchangeForRoot(root) {
-  if (["GC", "MGC", "SI", "SIL", "HG"].includes(root)) return "COMEX";
-  if (["CL", "MCL", "QM", "NG", "QG", "HO", "RB", "PL", "PA"].includes(root)) return "NYMEX";
-  if (["YM", "MYM", "ZN", "TN", "ZB", "UB", "ZF", "ZT", "10Y", "ZC", "ZS", "ZW", "ZM", "ZL"].includes(root)) return "CBOT";
-  return "CME";
 }
 
 function contractMetadata(symbol) {
@@ -2524,6 +2517,7 @@ const server = createServer(async (request, response) => {
         schemaVersion: "kwantify-market-data-v3",
         provider: "Rithmic",
         source: "Rithmic Ticker Plant trades",
+        exchange: instrument.exchange,
         root: instrument.symbol.replace(/[FGHJKMNQUVXZ]\d{1,2}$/, ""),
         contractSymbol: instrument.symbol,
         interval,
