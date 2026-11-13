@@ -240,7 +240,7 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
           context.globalAlpha = marker.opacity * 0.13;
           context.fillStyle = color;
           context.beginPath();
-          context.arc(x, y, radius * 1.22, 0, Math.PI * 2);
+          context.arc(x, y, radius * 1.10, 0, Math.PI * 2);
           context.fill();
         }
 

@@ -200,6 +200,7 @@ import KwantLoader from "@/components/KwantLoader";
 import {
   anchorBigTradePrintsToCandles,
   buildEventBarChartTimeMap,
+  bigContractMarkerSizes,
   advanceBigTradeLiveAccumulator,
   createBigTradeLiveAccumulator,
   mergeBigTradeLiveMarkers,
@@ -12468,11 +12469,7 @@ function Chart({
     const maximumVolume = Math.max(...volumes);
     bigTradeAggregateScaleRef.current = { sizeFloor: minimumVolume, visualCeiling: maximumVolume };
     const visualRange = Math.max(1, maximumVolume - minimumVolume);
-    const minimumSize = clamp(Number(indicatorSettings.minimumSize ?? 6), 1, 80);
-    const maximumSize = Math.max(
-      minimumSize,
-      clamp(Number(indicatorSettings.maximumSize ?? 32), 1, 160),
-    );
+    const { minSize, maxSize } = bigContractMarkerSizes(indicatorSettings);
     const minimumOpacity = clamp(Number(indicatorSettings.minimumOpacity ?? 25) / 100, 0, 1);
     const maximumOpacity = Math.max(
       minimumOpacity,
@@ -12486,7 +12483,7 @@ function Chart({
       ));
       return {
         ...print,
-        radius: minimumSize + (maximumSize - minimumSize) * visualWeight,
+        radius: minSize + (maxSize - minSize) * visualWeight,
         opacity: minimumOpacity + (maximumOpacity - minimumOpacity) * visualWeight,
       };
     }).sort((left, right) => left.timestamp - right.timestamp);

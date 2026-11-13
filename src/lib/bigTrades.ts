@@ -121,6 +121,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+export const BIG_CONTRACT_MARKER_SIZE = { minimum: 4, maximum: 11, limit: 14 } as const;
+
+export function bigContractMarkerSizes(settings: Record<string, unknown>) {
+  const minimum = Number(settings.minimumSize ?? BIG_CONTRACT_MARKER_SIZE.minimum);
+  const maximum = Number(settings.maximumSize ?? BIG_CONTRACT_MARKER_SIZE.maximum);
+  const minSize = clamp(Number.isFinite(minimum) ? minimum : BIG_CONTRACT_MARKER_SIZE.minimum, 1, BIG_CONTRACT_MARKER_SIZE.limit);
+  const maxSize = clamp(Number.isFinite(maximum) ? maximum : BIG_CONTRACT_MARKER_SIZE.maximum, minSize, BIG_CONTRACT_MARKER_SIZE.limit);
+  return { minSize, maxSize };
+}
+
 function quantile(sorted: number[], percentile: number) {
   if (!sorted.length) return 0;
   const position = clamp(percentile, 0, 1) * (sorted.length - 1);
@@ -381,8 +391,7 @@ export function calculateBigTradePrintsWithContext(
   //
   // An empty `qualified` already yields an empty `prints` through the map
   // below, so the empty case needs no branch of its own.
-  const minSize = clamp(Number(settings.minimumSize ?? 6), 1, 80);
-  const maxSize = Math.max(minSize, clamp(Number(settings.maximumSize ?? 32), 1, 160));
+  const { minSize, maxSize } = bigContractMarkerSizes(settings);
   const minOpacity = clamp(Number(settings.minimumOpacity ?? 25) / 100, 0, 1);
   const maxOpacity = Math.max(minOpacity, clamp(Number(settings.maximumOpacity ?? 90) / 100, 0, 1));
 

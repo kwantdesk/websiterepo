@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { defaultIndicatorSettings } from "../src/lib/chartIndicatorConfig.ts";
+import { bigContractMarkerSizes, sizeBigTradePrint } from "../src/lib/bigTrades.ts";
+import { defaultIndicatorSettings, normalizeStoredIndicator } from "../src/lib/chartIndicatorConfig.ts";
 
 /**
  * A Big Contracts marker must report the size of a real execution, not the sum
@@ -60,6 +61,20 @@ check("per-bar marker count is high enough to show real prints", () => {
     Number(defaults.maxMarkersPerBar) >= 20,
     `maxMarkersPerBar is ${defaults.maxMarkersPerBar}; too low and busy bars lose real prints`,
   );
+});
+
+check("default and saved markers stay compact without losing size ordering", () => {
+  const legacy = { indicatorId: "big-trades", instanceId: "saved", enabled: true,
+    settings: { bigTradesSettingsVersion: 6, minimumSize: 6, maximumSize: 32 } };
+  const saved = normalizeStoredIndicator(legacy).settings;
+  assert.deepEqual(bigContractMarkerSizes(saved), { minSize: 4, maxSize: 11 });
+  assert.deepEqual(bigContractMarkerSizes(defaults), { minSize: 4, maxSize: 11 });
+  const context = { ...bigContractMarkerSizes({ minimumSize: 80, maximumSize: 160 }),
+    minOpacity: 0.25, maxOpacity: 0.9, scaleFor: () => ({ sizeFloor: 30, visualCeiling: 150 }) };
+  assert.equal(sizeBigTradePrint({ timestamp: 0, volume: 150 }, context).radius, 14);
+  const stock = { ...context, ...bigContractMarkerSizes(defaults) };
+  assert.ok(sizeBigTradePrint({ timestamp: 0, volume: 150 }, stock).radius
+    > sizeBigTradePrint({ timestamp: 0, volume: 30 }, stock).radius);
 });
 
 console.log(`\nbig trades marker semantics: ${passed}/${passed} checks passed`);

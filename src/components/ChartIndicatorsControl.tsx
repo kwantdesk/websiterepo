@@ -1,5 +1,6 @@
 "use client";
 
+import { BIG_CONTRACT_MARKER_SIZE } from "@/lib/bigTrades";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT, resolveVolumeProfileInputData, resolveVolumeProfileMode } from "@/lib/volumeProfileMath";
 import { isInsideKwantDatePicker } from "@/components/ui/KwantDatePicker";
 import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
@@ -1017,7 +1018,7 @@ function applyNumericIndicatorSetting(
   if (indicatorId === "big-trades") {
     for (const [minimumKey, maximumKey, defaultMinimum, defaultMaximum] of [
       ["minimumOpacity", "maximumOpacity", 25, 90],
-      ["minimumSize", "maximumSize", 6, 32],
+      ["minimumSize", "maximumSize", BIG_CONTRACT_MARKER_SIZE.minimum, BIG_CONTRACT_MARKER_SIZE.maximum],
     ] as const) {
       if (key === minimumKey && value > Number(next[maximumKey] ?? defaultMaximum)) next[maximumKey] = value;
       if (key === maximumKey && value < Number(next[minimumKey] ?? defaultMinimum)) next[minimumKey] = value;

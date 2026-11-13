@@ -1,3 +1,4 @@
+import { BIG_CONTRACT_MARKER_SIZE, bigContractMarkerSizes } from "@/lib/bigTrades";
 import type { ChartSettings } from "@/lib/chartSettings";
 import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
 import { normalizeGammaEnvironmentSource } from "@/lib/chartGammaConversion";
@@ -1195,11 +1196,11 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "standardDeviation", label: "Marker standard deviation scale", defaultValue: 1, min: 0.1, max: 5, step: 0.1 },
     { key: "minimumOpacity", label: "Minimum opacity (%)", defaultValue: 25, min: 0, max: 100 },
     { key: "maximumOpacity", label: "Maximum opacity (%)", defaultValue: 90, min: 0, max: 100 },
-    { key: "minimumSize", label: "Minimum marker size", defaultValue: 6, min: 1, max: 80 },
-    { key: "maximumSize", label: "Maximum marker size", defaultValue: 32, min: 1, max: 160 },
+    { key: "minimumSize", label: "Minimum marker size", defaultValue: BIG_CONTRACT_MARKER_SIZE.minimum, min: 1, max: BIG_CONTRACT_MARKER_SIZE.limit },
+    { key: "maximumSize", label: "Maximum marker size", defaultValue: BIG_CONTRACT_MARKER_SIZE.maximum, min: 1, max: BIG_CONTRACT_MARKER_SIZE.limit },
     // 1 = always. Shrinking the markers used to silently erase the contract
     // counts, so the number now stays by default and hiding it is opt-in.
-    { key: "labelMinSize", label: "Show number from marker size", defaultValue: 1, min: 1, max: 160 },
+    { key: "labelMinSize", label: "Show number from marker size", defaultValue: 1, min: 1, max: BIG_CONTRACT_MARKER_SIZE.limit },
     { key: "projectionLineWidth", label: "Projection line width", defaultValue: 1, min: 0.5, max: 4, step: 0.5 },
     { key: "projectionOpacity", label: "Projection opacity (%)", defaultValue: 55, min: 0, max: 100 },
     { key: "deepMinimumTradeSize", label: "Deep contracts minimum trade size", defaultValue: 30, min: 1, max: 5000, step: 1 },
@@ -4559,6 +4560,16 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
 // outside those whitelists rather than silently dropping it on Save/restore.
 export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): ChartIndicatorInstance => {
   let normalized = normalizeStoredIndicatorCore(instance);
+  if (normalized.indicatorId === "big-trades") {
+    const settings = { ...normalized.settings };
+    // Replace the former stock sizes in saved charts as well as new ones.
+    if (Number(settings.minimumSize) === 6 && Number(settings.maximumSize) === 32) {
+      settings.minimumSize = BIG_CONTRACT_MARKER_SIZE.minimum;
+      settings.maximumSize = BIG_CONTRACT_MARKER_SIZE.maximum;
+    }
+    const { minSize, maxSize } = bigContractMarkerSizes(settings);
+    normalized = { ...normalized, settings: { ...settings, minimumSize: minSize, maximumSize: maxSize } };
+  }
   if (MOMENTUM_INDICATOR_IDS.has(normalized.indicatorId)) normalized = {
     ...normalized, settings: { ...normalized.settings, chartArea: instance.settings?.chartArea === "chart" ? "chart" : "pane" },
   };
