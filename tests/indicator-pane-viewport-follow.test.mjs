@@ -4,6 +4,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { execFileSync } from 'node:child_process';
+import { CHART_INDICATOR_CATALOG } from '../src/lib/chartIndicatorCatalog.ts';
+import { calculateIndicatorSeries } from '../src/lib/chartIndicatorEngine.ts';
+import * as ticks from '../src/lib/indicatorAxisTicks.ts';
 import * as sampling from '../src/lib/chartIndicatorPaneSampling.ts';
 import * as barWidth from '../src/lib/chartBarWidth.ts';
 import * as histogramWidth from '../src/lib/indicatorHistogramWidth.ts';
@@ -31,7 +34,7 @@ function harness() {
     '@/lib/liveDeltaPanes':{isFullHistoryPriceStudy:()=>false,isLivePriceStudy:()=>false,isLiveCumulativeVolumeStudy:()=>false},
     '@/components/SuperTrendPaneLabels':{default:()=>null},'@/components/KstPanePlot':{default:()=>null},
     '@/lib/superTrendPaneScale':{SuperTrendPaneScale:class {retain(){}resolve(_key,series,domain){return domain(series);}}},
-    '@/lib/chartIndicatorPaneSampling':sampling,'@/lib/chartBarWidth':barWidth,'@/lib/indicatorHistogramWidth':histogramWidth,'@/lib/paneCoordinateContinuity':coordinates,
+    '@/lib/indicatorAxisTicks':ticks,'@/lib/chartIndicatorPaneSampling':sampling,'@/lib/chartBarWidth':barWidth,'@/lib/indicatorHistogramWidth':histogramWidth,'@/lib/paneCoordinateContinuity':coordinates,
     '@/lib/cvdRenderContinuity':continuity,'@/lib/indicatorPaneViewport':{subscribeIndicatorPaneFrames}};
   const module={exports:{}};
   const baseline=process.env.KWANT_PANE_VIEWPORT_BASELINE;
@@ -168,4 +171,99 @@ test('axis capture loss, cancellation and component disposal release all drag li
     if(end!=='dispose')h.dispose();
   }
   const h=harness(),pointer=axisPointer(axisIn(h,'cvd'),{button:2});assert.equal(pointer.listeners.size,0);h.dispose();
+});
+
+test('numeric pane intervals follow the rendered scale and stay clear of pane controls', () => {
+  const h = harness();
+  try {
+    h.props.groups = [h.groups[0]];
+    h.props.paneHeights = {cvd: 230};
+    h.props.height = 230;
+    h.props.priceScaleWidth = 100;
+    const read = () => {
+      const root = h.tree();
+      const axis = h.descendants(root, n => n.props?.['aria-label'] === 'CVD value scale')[0];
+      assert.ok(axis);
+      const labels = h.descendants(axis, n => n.type === 'text');
+      assert.ok(labels.length >= 3);
+      assert.equal(new Set(labels.map(n => n.props.children)).size, labels.length);
+      const control = h.descendants(root, n => n.props?.['aria-label'] === 'Minimize CVD pane')[0];
+      assert.ok(control.props.style.right > 100);
+      return labels.map(n => [n.props.children, n.props.y]);
+    };
+    const before = read();
+    const drag = axisPointer(axisIn(h,'cvd'), {shift:true});
+    drag.move(drag.height * .8);
+    drag.end();
+    assert.notDeepEqual(read(), before);
+  } finally {
+    h.dispose();
+  }
+});
+
+test('percent and independent price series keep separate scales and empty panes omit invented ticks', () => {
+  const h = harness();
+  try {
+    h.props.height = 220;
+    h.props.paneHeights = {iv: 220};
+    const rank = {key:'rank', kind:'line', data:[{time:1,value:29},{time:3,value:60}]};
+    const price = {key:'price', kind:'line', label:'SPX', independentScale:true, data:[{time:1,value:5900},{time:3,value:6100}]};
+    h.props.groups = [{key:'iv', title:'IV Rank', indicatorId:'implied-volatility-rank', percentageAxis:true,
+      fixedDomain:{min:0,max:100}, secondaryAxisSeriesKey:'price', series:[rank,price]}];
+    const getLabels = name => {
+      const axis = h.descendants(h.tree(), n => n.props?.['aria-label'] === name)[0];
+      return h.descendants(axis, n => n.type === 'text' && n.props.dominantBaseline === 'central');
+    };
+    const rankLabels = getLabels('IV Rank percentage scale');
+    const priceLabels = getLabels('SPX value scale');
+    assert.ok(rankLabels.length > 1 && rankLabels.every(n => n.props.children.endsWith('%') && n.props.textAnchor === 'end'));
+    assert.ok(priceLabels.length > 1 && priceLabels.every(n => !n.props.children.endsWith('%') && n.props.textAnchor === 'start'));
+    h.props.groups[0].series = [{...rank, data:[]}];
+    assert.equal(getLabels('IV Rank percentage scale').length, 0);
+  } finally {
+    h.dispose();
+  }
+});
+
+test('axis spacing and precision adapt to tight, signed and abbreviated ranges', () => {
+  const labels = (min,max,height) => ticks.indicatorAxisTicks({min,max},height).map(t => t.label);
+  assert.deepEqual(labels(91,95,155), ['91','92','93','94','95']);
+  assert.deepEqual(labels(-98000,-95000,100), ['-98K','-97K','-96K','-95K']);
+  assert.deepEqual(labels(-0.005,0.005,240), ['-0.005','-0.004','-0.003','-0.002','-0.001','0','0.001','0.002','0.003','0.004','0.005']);
+  assert.ok(labels(90.1,95,25).length > 0);
+});
+
+test('every catalog study emitting numeric pane data uses the shared graduated axis', t => {
+  const h = harness();
+  try {
+    h.props.height = 240;
+    const candles = Array.from({length:300}, (_, i) => {
+      const close = 1000 + i * .1 + Math.sin(i / 5) * 5;
+      return {timestamp:(i+1)*60_000, open:close-.25, high:close+1, low:close-1,
+        close, volume:80 + i % 20, bidVolume:30, askVolume:50 + i % 20, delta:20 + i % 20};
+    });
+    const theme = {primary:'#fff', secondary:'#ccc', positive:'#0f0', negative:'#f00', muted:'#aaa'};
+    const checked = [];
+    for (const {id,name} of CHART_INDICATOR_CATALOG) {
+      const series = calculateIndicatorSeries({instanceId:id, indicatorId:id, enabled:true, settings:{}},candles,theme,
+        {instrument:'NQ',tickSize:.25})
+        .filter(plot => plot.placement === 'pane' && plot.data.length)
+        .map(plot => ({...plot,data:plot.data.slice(-3).map((point,i) => ({...point,time:i+1}))}));
+      if (!series.some(plot => !plot.excludeFromAutoScale && !plot.horizontalPriceLine)) continue;
+      h.props.groups = [{key:id,title:name,indicatorId:id,series}];
+      h.props.paneHeights = {[id]:240};
+      const valueAxes = h.descendants(h.tree(), node => node.type === 'g' && node.props?.['aria-label']?.endsWith(' value scale'));
+      assert.ok(valueAxes.length, name);
+      for (const axis of valueAxes) {
+        const labels = h.descendants(axis, node => node.type === 'text');
+        assert.ok(labels.length >= 2, name);
+        assert.equal(new Set(labels.map(label => label.props.children)).size, labels.length, name);
+      }
+      checked.push(id);
+    }
+    assert.ok(checked.length >= 15);
+    t.diagnostic(checked.join(', '));
+  } finally {
+    h.dispose();
+  }
 });

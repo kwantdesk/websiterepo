@@ -9099,7 +9099,6 @@ function Chart({
           key: instance.instanceId, title: series[0].label,
           indicatorId: instance.indicatorId, settings: instance.settings, series,
           fixedDomain: { min: -100, max: 100 },
-          axisTicks: [-100, -50, 0, 50, 100],
           guideLevels: [-80, 80],
           showHeader: instance.settings?.showName !== false,
           showLegend: false,
@@ -9134,7 +9133,6 @@ function Chart({
         return [{
           key: instance.instanceId,
           title: `ADX (${Number(instance.settings?.period ?? 14)})`,
-          axisTicks: [0, 20, 40, 60, 80, 100],
           domainBounds: { min: 0, max: 100 },
           showLegend: instance.settings?.showDirectionalLines === true,
           indicatorId: instance.indicatorId,

@@ -17,6 +17,7 @@ import KstPanePlot from "@/components/KstPanePlot";
 import { createPaneCoordinateCache, resolvePaneCoordinate } from "@/lib/paneCoordinateContinuity";
 import { cvdSeriesRegressed } from "@/lib/cvdRenderContinuity";
 import { subscribeIndicatorPaneFrames } from "@/lib/indicatorPaneViewport";
+import { indicatorAxisTicks } from "@/lib/indicatorAxisTicks";
 
 type IndicatorPaneGroup = {
   key: string;
@@ -27,7 +28,6 @@ type IndicatorPaneGroup = {
   stats?: KwantStatsTable;
   unavailableReason?: string;
   fixedDomain?: IndicatorPaneDomain;
-  axisTicks?: readonly number[];
   domainBounds?: IndicatorPaneDomain;
   guideLevels?: readonly number[];
   statusLabel?: string;
@@ -67,6 +67,35 @@ function formatPaneValue(value: number, indicatorId: string) {
   return isFullHistoryPriceStudy(indicatorId) || indicatorId === "standard-deviation" || indicatorId === "average-true-range-atr" || indicatorId === "awesome-oscillator"
     ? Number(value.toPrecision(5)).toString()
     : compact(value);
+}
+
+const PERCENT_VALUE_INDICATORS = new Set(["rate-of-change-roc", "williams-r", "stochastic-oscillator"]);
+
+function PaneValueTicks({ domain, top, bottom, x, width, left, percent, name, gridEnd, color, caption }: {
+  domain: IndicatorPaneDomain; top: number; bottom: number; x: number; width: number;
+  left?: boolean; percent?: boolean; name: string; gridEnd?: number; color?: string; caption?: string;
+}) {
+  const labelX = x + (left ? -7 : 7);
+  const anchor = left ? "end" : "start";
+  return (
+    <g aria-label={name}>
+      {caption && <text x={labelX} y={top - 9} textAnchor={anchor} fill={color ?? "var(--muted)"}
+        fontSize="8" fontFamily="var(--font-mono), Aleph, monospace">{caption}</text>}
+      {indicatorAxisTicks(domain, bottom - top, percent, width).map(({ value, label }) => {
+        const y = bottom - (value - domain.min) / (domain.max - domain.min) * (bottom - top);
+        return (
+          <g key={value}>
+            {gridEnd !== undefined && <line x1={x} x2={gridEnd} y1={y} y2={y} stroke="var(--grid-color)" opacity="0.18" />}
+            <line x1={x} x2={x + (left ? -4 : 4)} y1={y} y2={y} stroke="var(--muted)" opacity="0.55" />
+            <text x={labelX} y={y} dominantBaseline="central" textAnchor={anchor}
+              fill={color ?? "var(--foreground)"} fontSize="10" fontFamily="var(--font-mono), Aleph, monospace"
+              textLength={label.length * 6 > width - 8 ? Math.max(12, width - 8) : undefined}
+              lengthAdjust="spacingAndGlyphs">{label}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
 }
 
 function formatStatValue(value: number, format: "number" | "percent" | "seconds" | "ratio", autoFormat: boolean) {
@@ -334,9 +363,11 @@ function ChartIndicatorPaneSurface({
             .filter((series) => series.independentScale)
             .map((series) => [series.key, scaleDomain(seriesDomain([series]), verticalScale, verticalPan)] as const),
         );
-        const secondarySeries = group.secondaryAxisSeriesKey
-          ? visibleSeries.find((series) => series.key === group.secondaryAxisSeriesKey)
-          : undefined;
+        const hasValues = (series: CalculatedIndicatorSeries) =>
+          !series.horizontalPriceLine && !series.excludeFromAutoScale && series.data.some(point => Number.isFinite(point.value));
+        const primaryAxisDomain = sharedSeries.some(hasValues) ? sharedDomain : undefined;
+        const secondarySeries = visibleSeries.find(series => series.key === group.secondaryAxisSeriesKey && hasValues(series))
+          ?? visibleSeries.find(series => series.independentScale && hasValues(series));
         const secondaryDomain = secondarySeries ? independentDomains.get(secondarySeries.key) : undefined;
         const yFor = (value: number, definition: CalculatedIndicatorSeries) => {
           const domain = definition.independentScale
@@ -532,22 +563,6 @@ function ChartIndicatorPaneSurface({
                 opacity="0.72"
               />
             ) : null}
-            {!collapsed && !stats && group.percentageAxis ? (
-              <g aria-label="IV Rank percentage scale">
-                {[0, 20, 40, 60, 80, 100].map((tick) => {
-                  const reference = group.series.find((series) => !series.independentScale) ?? group.series[0];
-                  if (!reference) return null;
-                  const y = yFor(tick, reference);
-                  return (
-                    <g key={`${group.key}-percentage-tick-${tick}`}>
-                      <line x1={leftAxisWidth} y1={Math.round(y) + 0.5} x2={plotWidth} y2={Math.round(y) + 0.5} stroke="var(--grid-color)" strokeOpacity="0.18" vectorEffect="non-scaling-stroke" />
-                      <text x={leftAxisWidth - 7} y={y + 3} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace" textAnchor="end">{tick}%</text>
-                    </g>
-                  );
-                })}
-                <text x={leftAxisWidth - 7} y={innerTop + 4} fill="var(--muted)" fontSize="7" fontFamily="var(--font-mono), Aleph, monospace" textAnchor="end">IVR %</text>
-              </g>
-            ) : null}
             {!collapsed && !stats ? <g clipPath={`url(#${clipId})`}>
               {group.guideLevels?.map((level) => {
                 const y = yFor(level, group.series[0]);
@@ -706,19 +721,22 @@ function ChartIndicatorPaneSurface({
                 bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                 points={sampledPanePoints(definition, xForTime, plotWidth, visibleWindow).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
             )) : null}
-            {!collapsed && !stats && group.series.length > 0 && group.axisTicks?.filter(tick => tick >= sharedDomain.min && tick <= sharedDomain.max).map((tick) => {
-              const y = yFor(tick, group.series[0]);
-              return <text key={tick} x={plotWidth + 6} y={y} dominantBaseline="central" fill="var(--foreground)"
-                fontSize="10" fontFamily="Aleph, monospace">{tick}</text>;
-            })}
-            {!collapsed && !stats && !group.percentageAxis && !group.axisTicks?.some(tick => tick >= sharedDomain.min && tick <= sharedDomain.max) ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.max, group.indicatorId)}</text> : null}
-            {!collapsed && !stats && !group.percentageAxis && !group.axisTicks?.some(tick => tick >= sharedDomain.min && tick <= sharedDomain.max) ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.min, group.indicatorId)}</text> : null}
-            {!collapsed && secondaryDomain && group.secondaryAxisLabel ? (
-              <g aria-label={`${group.secondaryAxisLabel} price scale`}>
-                <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace">{secondaryDomain.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
-                <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace">{secondaryDomain.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
-                <text x={plotWidth + 6} y={top + 16} fill="var(--muted)" fontSize="7" fontFamily="var(--font-mono), Aleph, monospace">{group.secondaryAxisLabel}</text>
-              </g>
+            {!collapsed && !stats && primaryAxisDomain ? (
+              <PaneValueTicks domain={primaryAxisDomain} top={innerTop} bottom={innerBottom}
+                x={group.percentageAxis ? leftAxisWidth : plotWidth}
+                width={group.percentageAxis ? leftAxisWidth : valueScaleWidth} left={group.percentageAxis}
+                percent={group.percentageAxis || PERCENT_VALUE_INDICATORS.has(group.indicatorId)}
+                gridEnd={group.percentageAxis ? plotWidth : undefined}
+                caption={group.percentageAxis ? "IVR %" : undefined}
+                name={group.percentageAxis ? "IV Rank percentage scale" : `${group.title} value scale`} />
+            ) : null}
+            {!collapsed && !stats && secondaryDomain && secondarySeries ? (
+              <PaneValueTicks domain={secondaryDomain} top={innerTop} bottom={innerBottom}
+                x={group.percentageAxis || !primaryAxisDomain ? plotWidth : Math.min(valueScaleWidth, plotWidth)}
+                width={valueScaleWidth} left={!group.percentageAxis && Boolean(primaryAxisDomain)}
+                color={secondarySeries.color}
+                caption={secondarySeries.key === group.secondaryAxisSeriesKey ? group.secondaryAxisLabel : undefined}
+                name={`${secondarySeries.key === group.secondaryAxisSeriesKey ? group.secondaryAxisLabel ?? secondarySeries.label : secondarySeries.label} value scale`} />
             ) : null}
             {!collapsed && independentCvdTape && tapeTimes.length ? (
               <>
@@ -802,8 +820,8 @@ function ChartIndicatorPaneSurface({
               setOpenMenu(null);
               onTogglePane(group.key);
             }}
-            className="pointer-events-auto absolute right-[66px] z-30 flex h-6 w-6 cursor-grab touch-none select-none items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground active:cursor-grabbing"
-            style={{ top: top + 4 }}
+            className="pointer-events-auto absolute z-30 flex h-6 w-6 cursor-grab touch-none select-none items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground active:cursor-grabbing"
+            style={{ top: top + 4, right: valueScaleWidth + 4 }}
           >
             {collapsed ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
           </button>
@@ -831,8 +849,8 @@ function ChartIndicatorPaneSurface({
                   return next;
                 });
               }}
-              className="pointer-events-auto absolute right-[66px] z-30 flex h-6 w-6 items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground"
-              style={{ top: top + 32 }}
+              className="pointer-events-auto absolute z-30 flex h-6 w-6 items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground"
+              style={{ top: top + 32, right: valueScaleWidth + 4 }}
             >
               <RefreshCw className="h-3 w-3" />
             </button>
