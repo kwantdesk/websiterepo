@@ -2240,54 +2240,7 @@ body .gex-map-replay .gex-map-replay-play:not(:disabled) {
    to the COLUMN's width, not the whole workspace — three columns squeezed
    into a small pane each tidy themselves up independently. */
 .gex-map-exposure-panel {
-  container: gex-map-panel / inline-size;
-}
-
-[data-gex-strike-ladder] {
-  container: gex-map-ladder / inline-size;
-}
-
-.gex-map-full-strike-row {
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  column-gap: 6px;
-}
-
-.gex-map-full-strike-row > .gex-map-change-column {
-  overflow: visible;
-}
-
-.gex-map-full-strike-row > :nth-child(2) {
-  text-align: center;
-  white-space: nowrap;
-}
-
-/* Read the zoomed ladder width. At high zoom both change figures need a
-   separate line to stay clear of the signed exposure. */
-@container gex-map-panel (width > 300px) {
-  @container gex-map-ladder (max-width: 345px) {
-    .gex-map-full-strike-row[data-gex-strike-node] {
-      height: auto;
-      min-height: 29px;
-      padding-block: 2px;
-    }
-
-    .gex-map-full-strike-row[data-gex-strike-node] > .gex-map-change-column {
-      grid-column: 1 / -1;
-      flex-wrap: wrap;
-    }
-  }
-}
-
-@container gex-map-panel (width > 300px) {
-  @container gex-map-ladder (max-width: 180px) {
-    .gex-map-full-strike-row[data-gex-strike-node] > :first-child {
-      grid-column: 1 / -1;
-    }
-
-    .gex-map-full-strike-row[data-gex-strike-node] > :nth-child(2) {
-      grid-column: 2;
-    }
-  }
+  container-type: inline-size;
 }
 
 /* The change column compresses before it disappears; it must clip rather
@@ -2317,7 +2270,7 @@ body .gex-map-replay .gex-map-replay-play:not(:disabled) {
 /* Strike and signed exposure are the column's most important content: when a
    column narrows, the change column is what leaves first — never the signed
    exposure, which previously collapsed because it was the flexible track. */
-@container gex-map-panel (max-width: 300px) {
+@container (max-width: 300px) {
   .gex-map-change-column {
     display: none;
   }
@@ -2327,7 +2280,7 @@ body .gex-map-replay .gex-map-replay-play:not(:disabled) {
   }
 }
 
-@container gex-map-panel (max-width: 235px) {
+@container (max-width: 235px) {
   .gex-map-panel-spot,
   .gex-map-change-column {
     display: none;
@@ -2343,14 +2296,6 @@ body .gex-map-replay .gex-map-replay-play:not(:disabled) {
 
   .gex-star-badge-label {
     display: none;
-  }
-}
-
-@container gex-map-panel (max-width: 300px) {
-  .gex-map-strike-row.gex-map-full-strike-row {
-    grid-template-columns: 42% minmax(0, 1fr);
-    column-gap: 0;
-    margin-inline: 0;
   }
 }
 
@@ -2550,7 +2495,7 @@ body.kwant-cockpit-ui .kwant-one-liner-glow {
     letter-spacing: 0;
   }
   /* The strike stays readable beside its exposure inside a phone-sized third. */
-  @container gex-map-panel (max-width: 170px) {
+  @container (max-width: 170px) {
     .gex-map-strike-row {
       grid-template-columns: 44px minmax(0, 1fr);
     }
