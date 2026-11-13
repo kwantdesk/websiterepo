@@ -408,7 +408,9 @@ import {
   normalizeSpeedOfTapeInstantSettings,
 } from "@/lib/speedOfTapeInstant";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
-import { MiniDomPrimitive, miniDomLayout, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
+import { CanvasRenderingTarget2D, size as canvasSize } from "fancy-canvas";
+import { layoutRightStudyLanes, volumeProfileUsesOuterRightDock, VOLUME_PROFILE_DOCK_IDS } from "@/lib/rightChartStudyDock";
+import { MiniDomPrimitive, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
 import { DeltaLadderPrimitive, type DeltaLadderLevel, type DeltaLadderOptions, type DeltaLadderSide } from "@/lib/deltaLadderPrimitive";
 import {
   defaultGammaHeatmapSource,
@@ -3333,6 +3335,11 @@ function Chart({
   );
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const miniDomResizeRef = useRef<{ x: number; width: number } | null>(null);
+  const chartDockLayoutRef = useRef<HTMLDivElement>(null);
+  const rightStudyDockRef = useRef<HTMLDivElement>(null);
+  const [rightIndicatorPaneHost, setRightIndicatorPaneHost] = useState<HTMLDivElement | null>(null);
+  const [chartDockWidth, setChartDockWidth] = useState(0);
   const drawingKeyboardScopeRef = useRef<HTMLDivElement>(null);
   const flushDrawingHistoryRef = useRef<(() => void) | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -3440,7 +3447,6 @@ function Chart({
   const miniDomPrimitiveRef = useRef<MiniDomPrimitive | null>(null);
   const deltaLadderPrimitiveRef = useRef<DeltaLadderPrimitive | null>(null);
   /** The time scale's own right offset, kept so the ladder can give it back. */
-  const miniDomReservedRightOffsetRef = useRef<number | null>(null);
   /**
    * The last book the ladder was given.
    *
@@ -3518,7 +3524,6 @@ function Chart({
     lastFired: Map<string, number>;
   }>({ key: "", pointIds: new Set(), levelStates: new Map(), lastFired: new Map() });
   const previousNetGammaSnapshotRef = useRef<NetGammaProfileSnapshot | null>(null);
-  const netGammaReservedRightOffsetRef = useRef<number | null>(null);
   const darkPoolMapPrimitiveRef = useRef<DarkPoolMapPrimitive | null>(null);
   const darkPoolGexPrimitiveRef = useRef<DarkPoolGexPrimitive | null>(null);
   const darkPoolGexAlertStateRef = useRef<{ key: string; ids: Set<string> }>({ key: "", ids: new Set() });
@@ -5781,25 +5786,6 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.fontSize ?? 8)), 6, 14),
     };
   }, [miniDomIndicator, settings.downColor, settings.upColor]);
-  /**
-   * How much of the pane's right edge the Mini DOM occupies.
-   *
-   * The ladder is opaque and pinned to the price scale, so it IS the chart's
-   * right edge while it is on. Anything that docks right — a volume profile
-   * above all — has to stop at its left side instead of sliding underneath
-   * it, which is what the pane inset below does.
-   */
-  const miniDomReservedWidth = useMemo(() => {
-    if (!miniDomIndicator || !overlaySize.width) return 0;
-    return miniDomLayout({
-      paneWidth: overlaySize.width,
-      widthPx: miniDomOptions.widthPx,
-      rightGapPx: miniDomOptions.rightGapPx,
-      showBids: miniDomOptions.showBids,
-      showAsks: miniDomOptions.showAsks,
-    }).reservedWidth;
-  }, [miniDomIndicator, miniDomOptions, overlaySize.width]);
-
   const miniDomOptionsRef = useRef(miniDomOptions);
   miniDomOptionsRef.current = miniDomOptions;
 
@@ -5867,36 +5853,6 @@ function Chart({
   useEffect(() => {
     miniDomPrimitiveRef.current?.setOptions(miniDomOptions);
   }, [miniDomOptions]);
-
-  /**
-   * The ladder is the chart's right edge, so the chart has to end at it.
-   *
-   * It is opaque and fixed against the price scale, and everything else on
-   * the pane was still free to draw underneath: candles slid under it at the
-   * live edge and disappeared, and a docked profile ran beneath an opaque
-   * panel. Reserving its width as bar offset means the newest candle stops at
-   * its left side instead of vanishing behind it — the same reservation the
-   * net-gamma lane already uses, so the two cannot fight over the same space.
-   *
-   * Measured in bars because that is what the time scale reserves in, so the
-   * gap holds its pixel width as the chart is zoomed.
-   */
-  /**
-   * The Mini DOM does NOT get its own page edge.
-   *
-   * It used to push the time scale over by its own width so candles stopped
-   * at its left side, which made the ladder the chart's right boundary. The
-   * price scale is the edge; the ladder sits inside the plot against it and
-   * price runs on underneath. This effect only undoes a reservation left over
-   * from that behaviour.
-   */
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
-    if (miniDomReservedRightOffsetRef.current === null) return;
-    chart.timeScale().applyOptions({ rightOffset: miniDomReservedRightOffsetRef.current });
-    miniDomReservedRightOffsetRef.current = null;
-  }, [chartReadyRevision, miniDomEnabled]);
 
   const tpoSourceTrades = useMemo<TpoTrade[]>(() => {
     if (!tpoSamplingEnabled) return [];
@@ -9353,41 +9309,7 @@ function Chart({
   }, [netGammaIndicator, netGammaProfile, priceFormat.precision, settings.backgroundColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
   useEffect(() => {
     netGammaExposurePrimitiveRef.current?.update(netGammaPrimitiveData);
-  }, [netGammaPrimitiveData]);
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
-    const timeScale = chart.timeScale();
-    const settingsRecord = netGammaIndicator?.settings ?? {};
-    const reserveRight = Boolean(
-      netGammaIndicator
-      && settingsRecord.spaceMode === "reserved"
-      && String(settingsRecord.placement ?? "right") === "right",
-    );
-    if (!reserveRight) {
-      if (netGammaReservedRightOffsetRef.current !== null) {
-        timeScale.applyOptions({ rightOffset: netGammaReservedRightOffsetRef.current });
-        netGammaReservedRightOffsetRef.current = null;
-      }
-      return;
-    }
-    const options = timeScale.options();
-    if (netGammaReservedRightOffsetRef.current === null) {
-      netGammaReservedRightOffsetRef.current = Number(options.rightOffset ?? 0);
-    }
-    const laneWidth = Math.max(
-      Number(settingsRecord.minimumLaneWidthPx ?? 220),
-      Math.min(
-        Number(settingsRecord.maximumLaneWidthPx ?? 420),
-        overlaySize.width * Number(settingsRecord.laneWidthPercent ?? 24) / 100,
-      ),
-    );
-    const barsToReserve = laneWidth / Math.max(1, Number(options.barSpacing ?? 6));
-    timeScale.applyOptions({ rightOffset: Math.max(netGammaReservedRightOffsetRef.current, barsToReserve) });
-  }, [
-    netGammaIndicator,
-    overlaySize.width,
-  ]);
+  }, [chartReadyRevision, netGammaPrimitiveData]);
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !netGammaIndicator || netGammaIndicator.settings?.tooltipsEnabled === false) {
@@ -15088,6 +15010,7 @@ function Chart({
     candleSeries.attachPrimitive(sessionHighLowPrimitive);
     sessionHighLowPrimitiveRef.current = sessionHighLowPrimitive;
     const repaintNotifier = new ChartRepaintNotifierPrimitive();
+    repaintNotifier.subscribe(() => paintRightStudyDockRef.current());
     candleSeries.attachPrimitive(repaintNotifier);
     repaintNotifierRef.current = repaintNotifier;
     const positionCalculatorPrimitive = new PositionCalculatorPrimitive();
@@ -16343,7 +16266,6 @@ function Chart({
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
       bounceLevelsPrimitiveRef.current = null;
-      netGammaReservedRightOffsetRef.current = null;
       darkPoolMapPrimitiveRef.current = null;
       darkPoolGexPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
@@ -16997,6 +16919,8 @@ function Chart({
         id: `${volumeProfileOwnerKey(profile)}:${profile.startMs}`,
         profile: rendered,
         executionLevels: profile.levels,
+        outerRightDock: volumeProfileUsesOuterRightDock(instance.indicatorId, requestedSnapMode),
+        dockInstanceId: instance.instanceId,
         lastCandleTime,
         intervalSeconds,
         maxVolume: Math.max(1, ...rendered.levels.map((level) => level.volume)),
@@ -17147,7 +17071,6 @@ function Chart({
     chartReadyRevision,
     indicatorSignature,
     indicators,
-    miniDomReservedWidth,
     settings.borderDownColor,
     settings.borderUpColor,
     settings.downColor,
@@ -17609,13 +17532,16 @@ function Chart({
 
   useEffect(() => {
     if (!tpoMergeSelection) return;
-    const container = chartContainerRef.current;
+    const container = chartDockLayoutRef.current;
     if (!container) return;
     const completeMerge = (event: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
+      const canvas = (event.target as HTMLElement | null)?.closest<HTMLCanvasElement>("canvas[data-right-study^=tpo]");
+      const rect = (canvas ?? chartContainerRef.current)?.getBoundingClientRect();
+      if (!rect) return;
       const hit = tpoProfilePrimitiveRef.current?.profileHitTest(
         event.clientX - rect.left,
         event.clientY - rect.top,
+        canvas?.dataset.rightStudy?.slice(4),
       );
       if (!hit || hit.instanceId !== tpoMergeSelection.instanceId) return;
       const candidates = tpoBaseModelsRef.current
@@ -18838,6 +18764,67 @@ function Chart({
     }
   };
 
+  useLayoutEffect(() => {
+    const node = chartDockLayoutRef.current;
+    if (!node) return;
+    const resize = () => setChartDockWidth(node.clientWidth);
+    const observer = new ResizeObserver(resize);
+    observer.observe(node);
+    resize();
+    return () => observer.disconnect();
+  }, []);
+
+  const rightPaneCount = orderedIndicatorPanes.filter((group) => indicatorPaneLayout[group.key]?.dock === "right").length;
+  const rightStudyLanes = layoutRightStudyLanes(chartDockWidth, [
+    ...(miniDomEnabled && (miniDomOptions.showAsks || miniDomOptions.showBids)
+      ? [{ id: "mini-dom", width: miniDomOptions.widthPx + miniDomOptions.rightGapPx }] : []),
+    ...(deltaLadderOptions?.side === "right"
+      ? [{ id: "delta-ladder", width: deltaLadderOptions.widthPx + deltaLadderOptions.edgeGapPx }] : []),
+    ...indicators.filter((instance) => instance.enabled && VOLUME_PROFILE_DOCK_IDS.has(instance.indicatorId)
+      && volumeProfileUsesOuterRightDock(instance.indicatorId, instance.settings?.snapMode)
+      && Number(instance.settings?.profileWidth ?? 2) > 0)
+      .map((instance) => ({ id: "volume:" + instance.instanceId, width: Math.max(64, Math.min(420,
+        chartDockWidth * Number(instance.settings?.profileWidth ?? 2) / 100)) })),
+    ...indicators.filter((instance) => instance.enabled && (instance.indicatorId === "tpo-chart" || instance.indicatorId === "weekly-tpo")
+      && instance.settings?.showOnRight === true)
+      .map((instance) => ({ id: "tpo:" + instance.instanceId, width: 140 })),
+    ...(instantTapeIndicator ? [{ id: "instant-tape", width: nativePriceScaleWidth }] : []),
+    ...(rightPaneCount ? [{ id: "indicator-panes", width: Math.max(150, Math.min(chartDockWidth * 0.42, rightPaneCount * 180)) }] : []),
+  ]);
+  const paintRightStudyDockRef = useRef<() => void>(() => {});
+  paintRightStudyDockRef.current = () => {
+    const dock = rightStudyDockRef.current;
+    if (!dock) return;
+    const chartHeight = chartRef.current?.paneSize().height ?? 0;
+    const visibleHeight = Math.max(0, Math.min(chartHeight, overlaySize.height - indicatorPaneHeight - nativeTimeScaleHeight));
+    if (!chartHeight) return;
+    const pixelRatio = window.devicePixelRatio || 1;
+    for (const canvas of dock.querySelectorAll<HTMLCanvasElement>("canvas[data-right-study]")) {
+      const laneWidth = canvas.clientWidth;
+      if (laneWidth < 4) { canvas.width = 0; continue; }
+      const bitmapWidth = Math.round(laneWidth * pixelRatio);
+      const bitmapHeight = Math.round(chartHeight * pixelRatio);
+      if (canvas.style.height !== chartHeight + "px") canvas.style.height = chartHeight + "px";
+      if (canvas.width !== bitmapWidth) canvas.width = bitmapWidth;
+      if (canvas.height !== bitmapHeight) canvas.height = bitmapHeight;
+      const context = canvas.getContext("2d");
+      if (!context) continue;
+      context.clearRect(0, 0, bitmapWidth, bitmapHeight);
+      context.save();
+      context.beginPath();
+      context.rect(0, topIndicatorPaneHeight * pixelRatio, bitmapWidth, Math.max(0, visibleHeight - topIndicatorPaneHeight) * pixelRatio);
+      context.clip();
+      const target = new CanvasRenderingTarget2D(context, canvasSize({ width: laneWidth, height: chartHeight }),
+        canvasSize({ width: bitmapWidth, height: bitmapHeight }));
+      const id = canvas.dataset.rightStudy ?? "";
+      if (id === "mini-dom") miniDomPrimitiveRef.current?.drawInDock(target);
+      else if (id === "delta-ladder") deltaLadderPrimitiveRef.current?.drawInDock(target);
+      else if (id.startsWith("volume:")) volumeProfilePrimitiveRef.current?.drawInDock(target, id.slice(7));
+      else if (id.startsWith("tpo:")) tpoProfilePrimitiveRef.current?.drawInDock(target, id.slice(4));
+      context.restore();
+    }
+  };
+  useLayoutEffect(() => { paintRightStudyDockRef.current(); });
   return (
     <div ref={drawingKeyboardScopeRef} className="flex h-full w-full min-w-0 overflow-hidden">
       {/* The charting toolbar is the chart's LEFT EDGE: a static flex column
@@ -18892,6 +18879,7 @@ function Chart({
         </div>,
         document.fullscreenElement ?? document.body,
       ) : null}
+      <div ref={chartDockLayoutRef} className="relative flex h-full min-w-0 flex-1 overflow-hidden">
       <div
         ref={chartContainerRef}
         className="relative h-full min-w-0 flex-1 overflow-hidden"
@@ -18908,47 +18896,6 @@ function Chart({
           className="pointer-events-none absolute right-3 top-3 z-50 max-w-xs border border-primary bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
           {superTrendAlertNotice || indicatorAlertNotice}
         </div> : null}
-      {/*
-        * The Mini DOM's own left edge, as something the trader can take hold
-        * of. The ladder is a canvas primitive with no element to grab, so the
-        * grip is a thin strip laid over where it ends, dragging its width in
-        * pixels. Nothing else on the chart moves: the ladder is the pane's
-        * right edge while it is on, so widening it just moves that edge.
-        */}
-      {miniDomIndicator && miniDomReservedWidth > 0 ? (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Drag to resize the Mini DOM"
-          title="Drag to resize the Mini DOM"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const startX = event.clientX;
-            const startWidth = miniDomOptions.widthPx;
-            const instanceId = miniDomIndicator.instanceId;
-            const move = (moveEvent: PointerEvent) => {
-              // Dragging LEFT widens: the ladder grows away from the scale.
-              const next = clamp(Math.round(startWidth - (moveEvent.clientX - startX)), 60, 420);
-              updateIndicatorSettingRef.current?.(instanceId, "widthPx", next);
-            };
-            const release = () => {
-              window.removeEventListener("pointermove", move);
-              window.removeEventListener("pointerup", release);
-            };
-            window.addEventListener("pointermove", move);
-            window.addEventListener("pointerup", release);
-          }}
-          // Offset from the CONTAINER's right edge, which includes the price
-          // scale — the ladder's own left edge is that much further in. Without
-          // the scale's width in here the strip sat about sixty pixels away
-          // from the edge it is supposed to grab, so it never caught the
-          // pointer and resizing appeared to do nothing at all.
-          className="absolute top-0 z-[26] h-full w-[10px] cursor-ew-resize hover:bg-primary/30"
-          style={{ right: `${Math.max(0, nativePriceScaleWidth + miniDomReservedWidth - 5)}px` }}
-        />
-      ) : null}
-
       {toolbarEnabled ? (
         <>
           <ChartDrawLayer
@@ -19070,7 +19017,6 @@ function Chart({
         topInset={topIndicatorPaneHeight}
         leftInset={toolbarPlotLeftInset}
         priceScaleWidth={nativePriceScaleWidth}
-        rightReservedWidth={miniDomReservedWidth}
         badges={[
           { id: "gamma-environment", position: gammaEnvironmentPosition, content: gammaEnvironmentIndicator ? (
         <button
@@ -20449,21 +20395,10 @@ function Chart({
         </svg>
       ) : null}
 
-      {instantTapeIndicator && instantTapeFrame ? (
-        <SpeedOfTapeInstantOverlay
-          frame={instantTapeFrame}
-          settings={instantTapeSettings}
-          right={nativePriceScaleWidth + miniDomReservedWidth}
-          top={topIndicatorPaneHeight}
-          bottom={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
-          width={nativePriceScaleWidth}
-          backgroundColor={settings.backgroundColor}
-          eventKey={replayTimestampMs == null ? liveCandleEventKey : undefined}
-        />
-      ) : null}
-
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
+        rightDockHost={rightIndicatorPaneHost}
+        rightDockWidth={rightStudyLanes.find(({ id }) => id === "indicator-panes")?.width ?? 0}
         liveDeltaInputs={{ candles: deltaPaneCandles, preserveEarlierHistory: extendedDeltaHistory, volumeCandles: sampledIndicatorCandles, priceCandles: candles, instrument, tickSize: priceFormat.minMove,
           theme: visibleIndicatorTheme(settings),
           mapTime: eventChartIndicatorTimeMap ? (sourceTime) =>
@@ -21434,6 +21369,53 @@ function Chart({
           </div>
         </div>
       )}
+      </div>
+      {rightStudyLanes.length ? (
+        <div ref={rightStudyDockRef} data-chart-right-study-dock className="relative flex h-full shrink-0 overflow-hidden"
+          style={{ backgroundColor: settings.backgroundColor }}>
+          {rightStudyLanes.map(({ id, width }) => (
+            <div key={id} className="relative h-full shrink-0 overflow-hidden" style={{ width }}>
+              {id === "indicator-panes" ? <div ref={setRightIndicatorPaneHost} className="relative h-full w-full" />
+                : id === "instant-tape" ? instantTapeFrame && (
+                  <SpeedOfTapeInstantOverlay
+                    frame={instantTapeFrame} settings={instantTapeSettings} right={0}
+                    top={topIndicatorPaneHeight} bottom={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
+                    width={width} backgroundColor={settings.backgroundColor}
+                    eventKey={replayTimestampMs == null ? liveCandleEventKey : undefined}
+                  />
+                ) : <canvas data-right-study={id} className="absolute left-0 top-0 w-full"
+                  onContextMenu={id.startsWith("tpo:") ? (event) => {
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    const chart = chartContainerRef.current;
+                    const hit = tpoProfilePrimitiveRef.current?.profileHitTest(
+                      event.clientX - bounds.left, event.clientY - bounds.top, id.slice(4),
+                    );
+                    if (!chart || !hit) return;
+                    event.preventDefault();
+                    setContextMenu({ x: Math.max(0, chart.clientWidth - 250), y: hit.y, price: "",
+                      tpoHit: { instanceId: hit.instanceId, profileId: hit.profileId } });
+                  } : undefined} />}
+              {id === "mini-dom" && miniDomIndicator ? (
+                <div role="separator" aria-orientation="vertical" aria-label="Drag to resize the Mini DOM"
+                  className="absolute inset-y-0 left-0 z-10 w-2 touch-none cursor-ew-resize hover:bg-primary/30"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    miniDomResizeRef.current = { x: event.clientX, width: miniDomOptions.widthPx };
+                  }}
+                  onPointerMove={(event) => {
+                    const drag = miniDomResizeRef.current;
+                    if (!drag) return;
+                    updateIndicatorSettingRef.current?.(miniDomIndicator.instanceId, "widthPx",
+                      clamp(Math.round(drag.width - (event.clientX - drag.x)), 40, 420));
+                  }}
+                  onLostPointerCapture={() => { miniDomResizeRef.current = null; }}
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
       </div>
       {depthOfMarketIndicator ? (
         <DepthOfMarketPanel

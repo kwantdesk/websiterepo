@@ -22,3 +22,15 @@ test("disabled removed or unknown owners are never reassigned to another profile
   assert.equal(resolveVolumeProfileOwner({ period: "custom", ownerInstanceId: "removed" }, indicators), undefined);
   assert.equal(resolveVolumeProfileOwner({ period: "custom", ownerInstanceId: "m" }, indicators.map(i => ({ ...i, enabled: i.instanceId !== "m" }))), undefined);
 });
+
+test("the right-docked Composite body renders outside the plot", async () => {
+  const { renderProfile } = await import("./helpers/volume-profile-render-harness.mjs");
+  const composite = renderProfile({ period: "custom", snapMode: "right", outerRightDock: true, mode: "volume", visualStyle: "solid" });
+  assert.equal(composite.paths.length, 0);
+  assert.ok(composite.drawDock().some(path => path.commands.some(([op, x]) => op === "rect" && x >= 0 && x < 140)));
+  for (const period of ["daily", "weekly"]) {
+    const profile = renderProfile({ period, snapMode: "right", mode: "volume", visualStyle: "solid" });
+    assert.ok(profile.paths.length > 0);
+    assert.equal(profile.drawDock().length, 0);
+  }
+});

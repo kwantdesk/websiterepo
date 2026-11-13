@@ -40,6 +40,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private models: TpoPrimitiveModel[] = [];
   private hits: HitBounds[] = [];
+  private dockHits = new Map<string, HitBounds[]>();
   private leftInset = 0;
   private readonly paneView = {
     // TPO is the primary auction visual. Keep it above the candle series for
@@ -77,6 +78,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
 
   setModels(models: TpoPrimitiveModel[]) {
     this.models = models;
+    this.dockHits.clear();
     this.attachedParams?.requestUpdate();
   }
 
@@ -87,9 +89,10 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     this.attachedParams?.requestUpdate();
   }
 
-  profileHitTest(x: number, y: number): TpoHit | null {
-    if (x < this.leftInset) return null;
-    const hit = [...this.hits].reverse().find((candidate) =>
+  profileHitTest(x: number, y: number, dockInstanceId?: string): TpoHit | null {
+    if (!dockInstanceId && x < this.leftInset) return null;
+    const hits = dockInstanceId ? this.dockHits.get(dockInstanceId) ?? [] : this.hits;
+    const hit = [...hits].reverse().find((candidate) =>
       x >= candidate.left && x <= candidate.right && y >= candidate.top && y <= candidate.bottom);
     return hit ? { instanceId: hit.instanceId, profileId: hit.profileId, x, y } : null;
   }
@@ -107,7 +110,11 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     return timeScale.logicalToCoordinate((Number(lastLogical) + (timestampSeconds - model.lastCandleTime) / model.intervalSeconds) as Logical);
   }
 
-  private draw(target: CanvasRenderingTarget2D, layer: "all" | "single-prints" = "all") {
+  drawInDock(target: CanvasRenderingTarget2D, instanceId: string) {
+    this.draw(target, "all", instanceId);
+  }
+
+  private draw(target: CanvasRenderingTarget2D, layer: "all" | "single-prints" = "all", dockInstanceId?: string) {
     const params = this.attachedParams;
     if (!params || !this.models.length) {
       this.hits = [];
@@ -116,10 +123,12 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       context.save();
       context.beginPath();
-      const leftEdge = Math.min(this.leftInset, mediaSize.width);
+      const leftEdge = dockInstanceId ? 0 : Math.min(this.leftInset, mediaSize.width);
       context.rect(leftEdge, 0, Math.max(0, mediaSize.width - leftEdge), mediaSize.height);
       context.clip();
-      this.hits = [];
+      const hits: HitBounds[] = [];
+      if (dockInstanceId) this.dockHits.set(dockInstanceId, hits);
+      else if (layer === "all") this.hits = hits;
 
       const visibleLogical = params.chart.timeScale().getVisibleLogicalRange();
       const visibleSpan = visibleLogical ? Math.max(1, Number(visibleLogical.to) - Number(visibleLogical.from)) : 80;
@@ -198,11 +207,12 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         // what the setting is about.
         const facesLeft = settings.showOnRight;
         const dockRight = facesLeft && latest;
+        if (dockInstanceId ? !dockRight || model.instanceId !== dockInstanceId : dockRight) return;
         const behindLeftWall = !facesLeft && periodStartX + offset <= leftEdge + 2;
         if (behindLeftWall && leftWallProfileByInstance.get(model.instanceId) !== modelIndex) return;
         if (facesLeft && !dockRight && periodEndX - offset <= leftEdge + 2) return;
         const anchorX = dockRight
-          ? mediaSize.width - 4 - offset
+          ? Math.max(2, mediaSize.width - 4 - offset)
           : facesLeft
             // An older right-facing profile hangs off the end of its own
             // period and opens back across it.
@@ -213,7 +223,9 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         // outside the clipped canvas and make the profile look incomplete.
         const direction = facesLeft ? -1 : behindLeftWall ? 1 : settings.mirror ? -1 : 1;
         const maxTpos = Math.max(1, ...profile.rows.map((row) => row.tpoCount));
-        const cellWidth = Math.min(baseCell, Math.max(1.25, width / maxTpos));
+        const cellWidth = dockInstanceId
+          ? Math.min(baseCell, Math.max(0.5, (mediaSize.width - 8) / maxTpos))
+          : Math.min(baseCell, Math.max(1.25, width / maxTpos));
         const gap = Math.min(settings.blockGap, cellWidth * 0.35);
         const opacity = clamp(settings.opacityPercent / 100, 0, 1);
         const lowY = profile.profileLowTick == null ? null : params.series.priceToCoordinate(tickToPrice(profile.profileLowTick, profile.tickSize));
@@ -679,7 +691,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           context.textBaseline = "top";
           lines.forEach((line, index) => context.fillText(line, boxX + 6, boxY + 4 + index * (fontSize + 4)));
         }
-        this.hits.push({
+        hits.push({
           instanceId: model.instanceId,
           profileId: profile.id,
           x: anchorX,

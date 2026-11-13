@@ -202,20 +202,11 @@ check("it is the chart's right edge, not a pane laid over it", () => {
     "the study must ship pointing one way");
 });
 
-check("it reserves its width so a docked profile stops at its edge", () => {
-  // A right-docked volume profile anchors at the pane's right edge. With the
-  // ladder on, that edge moves: the profile has to stop at the ladder's left
-  // side instead of sliding underneath an opaque panel.
-  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true });
-  assert.equal(layout.reservedWidth, 1200 - layout.left);
-  assert.ok(layout.reservedWidth >= layout.width, "the gap to the scale counts as reserved too");
+check("daily and weekly profile renderers still reach the native axis", () => {
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-  assert.match(
-    chart,
-    /setPaneInsets\(\{ left: toolbarPlotLeftInset, right: miniDomReservedWidth \}\)/,
-    "the volume profile must dock against the ladder, not the pane",
-  );
-  assert.match(chart, /cursor-ew-resize/, "the ladder's left edge must be draggable");
+  assert.match(chart, /setPaneInsets\(\{ left: toolbarPlotLeftInset, right: 0 \}\)/);
+  assert.match(chart, /outerRightDock: volumeProfileUsesOuterRightDock/);
+  assert.match(chart, /cursor-ew-resize/, "the ladder edge must be draggable");
 });
 
 check("finer granularity is reachable from the settings", () => {
@@ -293,15 +284,10 @@ check("a settings change does not tear down the book", () => {
   assert.match(chart, /setOptions\(miniDomOptions\)/, "restyling still has to reach the ladder at once");
 });
 
-check("the chart ends at the ladder rather than running under it", () => {
-  // It is opaque and fixed against the price scale, so anything still free to
-  // draw beneath it just disappears — candles at the live edge above all.
+check("the ladder has its own column outside the price scale", () => {
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-  assert.match(chart, /miniDomReservedRightOffsetRef/, "the ladder must reserve its width on the time scale");
-  assert.match(chart, /barsToReserve = miniDomReservedWidth \/ Math\.max\(1, Number\(options\.barSpacing \?\? 6\)\)/,
-    "reserved in bars, so the gap holds its pixel width through a zoom");
-  // And it must hand the offset back when switched off.
-  assert.match(chart, /timeScale\.applyOptions\(\{ rightOffset: miniDomReservedRightOffsetRef\.current \}\);/);
+  assert.match(chart, /data-chart-right-study-dock/);
+  assert.doesNotMatch(chart, /miniDomReservedRightOffsetRef/);
 });
 
 check("the stock settings are what a fresh ladder actually draws", () => {

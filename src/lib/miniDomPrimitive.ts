@@ -41,11 +41,7 @@ export type MiniDomLevel = {
 export type MiniDomOptions = {
   /** Total ladder width in pixels, shared by whichever rails are shown. */
   widthPx: number;
-  /**
-   * Gap from the price scale. The default is two pixels, which is where a
-   * right-docked volume profile anchors, so the two line up rather than
-   * sitting a hair apart.
-   */
+  /** Blank space at the outside edge of the lane. */
   rightGapPx: number;
   buyColor: string;
   sellColor: string;
@@ -70,10 +66,7 @@ export const DEFAULT_MINI_DOM_OPTIONS: MiniDomOptions = {
   rightGapPx: 2,
   buyColor: "#14B8B0",
   sellColor: "#B4174B",
-  // No panel. The chart reserves the ladder's width on the time scale, so
-  // nothing draws underneath it any more and there is nothing to cover up —
-  // a filled panel is just a slab of colour over the chart. Empty means the
-  // fill is skipped entirely; an opacity can be dialled back in per chart.
+  // The ladder has its own column. Empty uses the chart background.
   backgroundColor: "",
   showBids: true,
   showAsks: true,
@@ -99,13 +92,13 @@ export function miniDomLayout(input: {
   showAsks: boolean;
   /** Both rails off one baseline instead of the liq map's mirrored pair. */
   alignLeft?: boolean;
+  outerDock?: boolean;
 }) {
   const sideCount = Number(input.showBids) + Number(input.showAsks);
-  const width = Math.max(40, Math.min(input.widthPx, Math.max(40, input.paneWidth - 40)));
-  // Anchored where a right-docked volume profile anchors: the pane's own right
-  // edge, which is the chart side of the price scale. The scale is a separate
-  // canvas, so the pane width IS the boundary — the ladder can never run under
-  // it however wide it is set.
+  const width = input.outerDock
+    ? Math.max(0, Math.min(input.widthPx, input.paneWidth - input.rightGapPx))
+    : Math.max(40, Math.min(input.widthPx, Math.max(40, input.paneWidth - 40)));
+  // Align the bars within their allotted canvas width.
   const right = Math.max(width, input.paneWidth - Math.max(0, input.rightGapPx));
   const left = right - width;
   const sideWidth = sideCount > 0 ? width / sideCount : 0;
@@ -145,12 +138,7 @@ export function miniDomLayout(input: {
     numberX: left + numberColumn - 6,
     /** Bars stop short of the rail edge so neighbouring rails stay apart. */
     barExtent: baselineX === null ? Math.max(1, sideWidth - 5) : alignedExtent,
-    /**
-     * What the rest of the chart may use. The ladder is opaque and fixed to
-     * the price scale, so everything else — a docked volume profile above all
-     * — has to treat this as the pane's right edge rather than sliding
-     * underneath it.
-     */
+    /** Ladder width including any edge gap. */
     reservedWidth: Math.max(0, input.paneWidth - (right - width)),
     /** Below this the contract counts do not fit and are dropped. */
     sizesFit: input.alignLeft ? width >= 68 : sideWidth >= 42,
@@ -306,8 +294,10 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
     this.booked = 0;
   }
 
-  paneViews() {
-    return this.levels.length ? [this.paneView] : [];
+  paneViews() { return []; }
+
+  drawInDock(target: CanvasRenderingTarget2D) {
+    this.paneView.renderer()?.draw(target);
   }
 
   private draw(target: CanvasRenderingTarget2D) {
@@ -324,8 +314,10 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
         showBids: options.showBids,
         showAsks: options.showAsks,
         alignLeft: options.alignLeft,
+        outerDock: true,
       });
 
+      if (layout.width <= 0) return;
       // Band against what is actually on screen, so the ladder rescales as the
       // view moves rather than being flattened by one far-away wall.
       const topPrice = params.series.coordinateToPrice(0);

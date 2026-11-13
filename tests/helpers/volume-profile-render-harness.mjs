@@ -10,7 +10,7 @@ export class ProfilePathStub {
 
 export function renderProfile({period="daily",mode="delta-volume",visualStyle="line",snapMode="off",
   showDelta=true,gradient=null,zeroDelta=false,inverted=false,drawing=false, styleOverrides={},
-  symbol="NQ",tickSize=1,basePrice=100,pixelsPerTick=30,manualGroupTicks=1,automaticGrouping=false,autoGroupFactor=1,levelCount=6}={}){
+  symbol="NQ",tickSize=1,basePrice=100,pixelsPerTick=30,manualGroupTicks=1,automaticGrouping=false,autoGroupFactor=1,levelCount=6,outerRightDock=false}={}){
   globalThis.Path2D=ProfilePathStub;
   const paths=[],state={};
   const context=new Proxy(state,{
@@ -48,10 +48,15 @@ export function renderProfile({period="daily",mode="delta-volume",visualStyle="l
   const priceToCoordinate=p=>300+(inverted?1:-1)*(p-basePrice)*pixelsPerTick/tickSize;
   const primitive=new NativeVolumeProfilePrimitive();
   primitive.attached({series:{priceToCoordinate,coordinateToPrice:y=>basePrice+(inverted?1:-1)*(y-300)*tickSize/pixelsPerTick},chart:{timeScale:()=>scale},requestUpdate(){}});
-  const model={id:"test-profile",profile,style,lastCandleTime:endMs/1000,intervalSeconds:60,
+  const model={id:"test-profile",profile,style,outerRightDock,dockInstanceId:"profile",lastCandleTime:endMs/1000,intervalSeconds:60,
     maxVolume:300,maxAbsDelta:100,lowPrice:basePrice,highPrice:basePrice+(levelCount-1)*tickSize,
     ...(drawing?{drawingBounds:{startTime:startMs/1000,endTime:endMs/1000,firstPrice:99,secondPrice:106}}:{})};
   primitive.setModels([model]);
   primitive.paneViews()[0].renderer().draw({useMediaCoordinateSpace:cb=>cb({context,mediaSize})});
-  return {paths,profile,model,primitive};
+  const drawDock = () => {
+    paths.length = 0;
+    primitive.drawInDock({useMediaCoordinateSpace:cb=>cb({context,mediaSize:{width:140,height:600}})}, "profile");
+    return paths;
+  };
+  return {paths,profile,model,primitive,drawDock};
 }

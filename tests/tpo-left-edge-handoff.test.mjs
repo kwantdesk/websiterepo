@@ -34,7 +34,12 @@ function scene(models, starts, inset = 36) {
     for (const pane of primitive.paneViews()) pane.renderer().draw({ useMediaCoordinateSpace: cb => cb({ context, mediaSize: { width: 800, height: 300 } }) });
     return [...painted].sort();
   };
-  return { primitive, draw, hideEnd(id) { const m = models.find(m => m.profile.id === id); coordinates.set(m.profile.endTimeMs / 1000, null); }, move(id, x) { const m = models.find(m => m.profile.id === id); coordinates.set(m.profile.startTimeMs / 1000, x); coordinates.set(m.profile.endTimeMs / 1000, x + 100); } };
+  const drawDock = () => {
+    painted.clear();
+    primitive.drawInDock({ useMediaCoordinateSpace: cb => cb({ context, mediaSize: { width: 140, height: 300 } }) }, "daily");
+    return [...painted].sort();
+  };
+  return { primitive, draw, drawDock, hideEnd(id) { const m = models.find(m => m.profile.id === id); coordinates.set(m.profile.endTimeMs / 1000, null); }, move(id, x) { const m = models.find(m => m.profile.id === id); coordinates.set(m.profile.startTimeMs / 1000, x); coordinates.set(m.profile.endTimeMs / 1000, x + 100); } };
 }
 
 const old = () => model("old", 1, "#ff0000"), incoming = () => model("incoming", 2, "#00ff00");
@@ -70,7 +75,8 @@ test("independent TPO studies retain independent wall profiles", () => {
 test("right-docked mode does not leave old profiles clamped to the left edge", () => {
   const models = [old(), incoming()].map(m => ({ ...m, settings: { ...m.settings, showOnRight: true } }));
   const s = scene(models, { old: -400, incoming: 200 });
-  assert.deepEqual(s.draw(), ["#00ff00"]);
+  assert.deepEqual(s.draw(), []);
+  assert.deepEqual(s.drawDock(), ["#00ff00"]);
 });
 
 test("an unprojectable newer profile cannot take ownership from a drawable profile", () => {

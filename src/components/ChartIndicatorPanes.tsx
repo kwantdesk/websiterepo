@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 import { indicatorHistogramWidth } from "@/lib/indicatorHistogramWidth";
 import { useLiveDeltaPanes } from "@/components/useLiveDeltaPanes";
 import { isFullHistoryPriceStudy, isLivePriceStudy, type LiveDeltaInputs } from "@/lib/liveDeltaPanes";
@@ -1446,6 +1448,8 @@ function ChartVerticalIndicatorPaneSurface({
 
 function ChartIndicatorPanes({
   groups: baseGroups,
+  rightDockHost,
+  rightDockWidth = 0,
   liveDeltaInputs,
   liveChartKey,
   coordinateScope,
@@ -1469,6 +1473,8 @@ function ChartIndicatorPanes({
   onOpenSettings,
 }: {
   groups: IndicatorPaneGroup[];
+  rightDockHost?: HTMLElement | null;
+  rightDockWidth?: number;
   liveChartKey?: string;
   liveDeltaInputs?: LiveDeltaInputs;
   coordinateScope: string;
@@ -1635,6 +1641,7 @@ function ChartIndicatorPanes({
   const dockForPoint = (clientX: number, clientY: number, currentDock: IndicatorPaneDock) => {
     const rect = rootRef.current?.getBoundingClientRect();
     if (!rect) return currentDock;
+    if (rightDockHost && clientX >= rect.right) return "right" as const;
     const x = (clientX - rect.left) / Math.max(1, rect.width);
     const y = (clientY - rect.top) / Math.max(1, rect.height);
     if (y <= 0.22) return "top" as const;
@@ -1723,14 +1730,15 @@ function ChartIndicatorPanes({
     surfaceGroups: IndicatorPaneGroup[],
     surfaceHeight: number,
     placementStyle: CSSProperties,
+    dockWidth = sideWidthFor(surfaceGroups.length),
   ) => {
-    if (!surfaceGroups.length || surfaceHeight <= 0) return null;
+    if (!surfaceGroups.length || surfaceHeight <= 0 || dockWidth <= 0) return null;
     return (
       <ChartVerticalIndicatorPaneSurface
         superTrendScale={superTrendScale.current}
         key={dock}
         groups={surfaceGroups}
-        width={sideWidthFor(surfaceGroups.length)}
+        width={dockWidth}
         height={surfaceHeight}
         globalPlotWidth={Math.max(1, width - priceScaleWidth)}
         viewportVersion={surfaceViewportVersion}
@@ -1752,7 +1760,12 @@ function ChartIndicatorPanes({
       {renderSurface("top", groupsByDock.top, horizontalPaneWidth, topHeight, { left: boundedLeftInset, top: 0 })}
       {renderSurface("bottom", groupsByDock.bottom, horizontalPaneWidth, bottomHeight, { left: boundedLeftInset, bottom })}
       {renderSideSurface("left", groupsByDock.left, leftHeight, { left: boundedLeftInset, top: topHeight })}
-      {renderSideSurface("right", groupsByDock.right, rightHeight, { right: priceScaleWidth, top: topHeight })}
+      {rightDockHost ? createPortal(
+        renderSideSurface("right", groupsByDock.right, rightHeight, { left: 0, top: topHeight }, rightDockWidth),
+        rightDockHost,
+      ) : rightDockHost === undefined
+        ? renderSideSurface("right", groupsByDock.right, rightHeight, { right: priceScaleWidth, top: topHeight })
+        : null}
       {drag ? (
         <div className="pointer-events-none absolute inset-0 z-[120] bg-background/10" aria-label="Indicator docking targets">
           {([

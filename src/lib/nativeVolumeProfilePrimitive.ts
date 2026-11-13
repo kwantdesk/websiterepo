@@ -553,6 +553,8 @@ export type NativeVolumeProfileModel = {
   id: string;
   profile: InstitutionalVolumeProfile;
   executionLevels?: InstitutionalVolumeProfile["levels"];
+  outerRightDock?: boolean;
+  dockInstanceId?: string;
   style: NativeVolumeProfileStyle;
   lastCandleTime: number | null;
   intervalSeconds: number | null;
@@ -730,11 +732,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     return timeScale.logicalToCoordinate(projectedLogical as Logical);
   }
 
-  private draw(target: CanvasRenderingTarget2D) {
+  drawInDock(target: CanvasRenderingTarget2D, instanceId: string) {
+    this.draw(target, instanceId);
+  }
+
+  private draw(target: CanvasRenderingTarget2D, dockInstanceId?: string) {
     const params = this.attachedParams;
     if (!params || !this.models.length) return;
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
-      const leftEdge = clamp(this.paneInsets.left, 0, Math.max(0, mediaSize.width - 4));
+      const leftEdge = dockInstanceId ? 0 : clamp(this.paneInsets.left, 0, Math.max(0, mediaSize.width - 4));
       const rightEdge = clamp(
         mediaSize.width - this.paneInsets.right,
         leftEdge + 4,
@@ -813,6 +819,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       // Left docking has separate viewport-crossing ownership below.
       const latestEndMsByKind = new Map<string, number>();
       const latestEndMsByOwner = new Map<string, number>();
+      const latestDockEndMs = new Map<string, number>();
       for (const model of this.models) {
         const kind = `${model.profile.period}:${model.profile.root}`;
         latestEndMsByKind.set(
@@ -820,6 +827,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           Math.max(latestEndMsByKind.get(kind) ?? Number.NEGATIVE_INFINITY, model.profile.endMs),
         );
         const owner = model.profile.ownerInstanceId;
+        if (model.dockInstanceId) latestDockEndMs.set(model.dockInstanceId,
+          Math.max(latestDockEndMs.get(model.dockInstanceId) ?? -Infinity, model.profile.endMs));
         if (owner) latestEndMsByOwner.set(owner, Math.max(latestEndMsByOwner.get(owner) ?? -Infinity, model.profile.endMs));
       }
 
@@ -882,10 +891,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           model,
           model.drawingBounds?.endTime ?? profile.endMs / 1_000,
         );
-        if (sessionAnchorX == null || sessionEndX == null || !profile.levels.length) continue;
+        if ((!dockInstanceId && (sessionAnchorX == null || sessionEndX == null)) || !profile.levels.length) continue;
+        const startX = sessionAnchorX ?? leftEdge;
+        const finishX = sessionEndX ?? rightEdge;
         const customProfile = profile.period === "custom" && model.drawingBounds;
-        const rawCustomLeft = Math.min(sessionAnchorX, sessionEndX);
-        const rawCustomRight = Math.max(sessionAnchorX, sessionEndX);
+        const rawCustomLeft = Math.min(startX, finishX);
+        const rawCustomRight = Math.max(startX, finishX);
         const customCenterX = (rawCustomLeft + rawCustomRight) / 2;
         const customWidth = Math.max(120, rawCustomRight - rawCustomLeft);
         const customLeft = customCenterX - customWidth / 2;
@@ -895,7 +906,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // the *entire* session was off-screen, so a cash-session viewport had
         // real profile data loaded but drew every bar beyond the canvas.
         const autoPinnedDailyLeft = profile.period === "daily"
-          && sessionAnchorX < leftEdge + 2
+          && startX < leftEdge + 2
           && ownsLeftDock(model);
         const latestDailyProfile = profile.period === "daily"
           && profile.endMs === latestDailyEndMs;
@@ -904,9 +915,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           >= (latestEndMsByKind.get(`${profile.period}:${profile.root}`) ?? profile.endMs);
         const isNewestOfOwner = profile.ownerInstanceId
           ? profile.endMs === latestEndMsByOwner.get(profile.ownerInstanceId) : isNewestOfKind;
-        const pinnedRight = style.snapMode === "right"
-          && isNewestOfKind
-          && (profile.period !== "daily" || latestDailyProfile);
+        const pinnedRight = style.snapMode === "right" && (model.outerRightDock
+          ? profile.endMs === latestDockEndMs.get(model.dockInstanceId ?? "")
+          : isNewestOfKind && (profile.period !== "daily" || latestDailyProfile));
+        const external = model.outerRightDock && pinnedRight;
+        if (dockInstanceId ? !external || model.dockInstanceId !== dockInstanceId : external) continue;
         // Which WAY the profile is drawn, as opposed to where it is anchored.
         //
         // Docking to the screen edge is reserved for the newest profile of a
@@ -917,7 +930,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const facesLeft = style.snapMode === "right";
         const pinnedLeft = style.snapMode === "left"
           && ownsLeftDock(model)
-          && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < leftEdge + 2);
+          && (profile.period === "daily" ? autoPinnedDailyLeft : startX < leftEdge + 2);
         const pinned = pinnedLeft || pinnedRight;
         // A left-facing profile must open back across ITS OWN session.
         //
@@ -944,12 +957,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           ? (customLeft + customRight) / 2
           : pinned
           ? pinnedRight ? rightEdge - 2 : leftEdge + 2
-          : facesLeft ? sessionEndX : sessionAnchorX) + profileOffsetPx;
+          : facesLeft ? finishX : startX) + profileOffsetPx;
         const endX = (customProfile
           ? customRight
           : pinned
           ? pinnedRight ? leftEdge : rightEdge
-          : sessionEndX) + profileOffsetPx;
+          : finishX) + profileOffsetPx;
 
         // Decimals come from the contract's own tick, so a level never prints
         // more precision than the instrument actually trades in.
@@ -957,7 +970,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           ? 0
           : Math.min(6, Math.max(0, Math.ceil(-Math.log10(profile.tickSize))));
 
-        const sessionWidth = Math.max(0.5, Math.abs(sessionEndX - sessionAnchorX));
+        const sessionWidth = Math.max(0.5, Math.abs(finishX - startX));
         const visibleLogicalRange = params.chart.timeScale().getVisibleLogicalRange();
         const profileDurationSeconds = Math.abs(
           (model.drawingBounds?.endTime ?? profile.endMs / 1_000)
@@ -1014,7 +1027,9 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                   sessionWidth * effectiveWidthPercent / 100,
                 ),
               ));
-        const profileWidth = fineVolumeProfileWidth(baseProfileWidth, effectiveWidthPercent);
+        const profileWidth = dockInstanceId
+          ? Math.max(0, usablePaneWidth - 4)
+          : fineVolumeProfileWidth(baseProfileWidth, effectiveWidthPercent);
         // A daily profile has two independent halves: volume to the right of
         // its spine and signed delta to the left. Once its session anchor has
         // moved beyond the viewport, dock to the left edge. Combined delta
@@ -1664,7 +1679,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             lineStartX = isVwapLevel ? Math.max(0, sourceBody.leftX) : sourceFrontX;
             lineEndX = isVwapLevel ? Math.min(rightEdge, sourceBody.rightX) : sourceFrontX;
           } else if (extensionMode === "to-profile-end") {
-            lineEndX = Math.min(lineEndX, Math.max(sourceFrontX, sessionEndX));
+            lineEndX = Math.min(lineEndX, Math.max(sourceFrontX, finishX));
           } else if (extensionMode === "until-first-interaction" && lineSegment) {
             const touched = firstVolumeProfileLevelInteraction(price, model.laterBars ?? []);
             if (touched) {

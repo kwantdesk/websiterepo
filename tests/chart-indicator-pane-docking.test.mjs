@@ -20,8 +20,8 @@ test("minus handle drags panes to all four dock targets", () => {
   }
 });
 
-test("right dock terminates before the native chart price scale", () => {
-  assert.match(panes, /renderSideSurface\("right"[\s\S]*?\{ right: priceScaleWidth, top: topHeight \}/);
+test("right dock renders outside the native chart price scale", () => {
+  assert.match(panes, /rightDockHost \? createPortal\([\s\S]*?renderSideSurface\("right"[\s\S]*?rightDockWidth\)/);
   assert.match(panes, /renderSideSurface\("left"[\s\S]*?\{ left: boundedLeftInset, top: topHeight \}/);
 });
 

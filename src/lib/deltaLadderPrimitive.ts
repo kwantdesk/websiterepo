@@ -78,11 +78,14 @@ export function deltaLadderLayout(input: {
   widthPx: number;
   edgeGapPx: number;
   side: DeltaLadderSide;
+  outerDock?: boolean;
 }) {
   const gap = Math.max(0, input.edgeGapPx);
   // Never wider than the pane can hold, so the spikes cannot run off the far
   // side however wide the setting is pushed.
-  const extent = Math.max(20, Math.min(input.widthPx, Math.max(20, input.paneWidth - gap - 20)));
+  const extent = input.outerDock
+    ? Math.max(1, Math.min(input.widthPx, input.paneWidth - gap - 2))
+    : Math.max(20, Math.min(input.widthPx, Math.max(20, input.paneWidth - gap - 20)));
   const spineX = input.side === "right"
     ? Math.max(extent, input.paneWidth - gap)
     : Math.min(input.paneWidth - extent, gap);
@@ -190,10 +193,14 @@ export class DeltaLadderPrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return this.options && this.levels.length ? [this.paneView] : [];
+    return this.options?.side === "left" && this.levels.length ? [this.paneView] : [];
   }
 
-  private draw(target: CanvasRenderingTarget2D) {
+  drawInDock(target: CanvasRenderingTarget2D) {
+    if (this.options?.side === "right") this.draw(target, true);
+  }
+
+  private draw(target: CanvasRenderingTarget2D, outerDock = false) {
     const params = this.attachedParams;
     const options = this.options;
     if (!params || !options || !this.levels.length) return;
@@ -201,7 +208,8 @@ export class DeltaLadderPrimitive implements ISeriesPrimitive<Time> {
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       const layout = deltaLadderLayout({
         paneWidth: mediaSize.width,
-        widthPx: options.widthPx,
+        widthPx: outerDock ? Math.min(options.widthPx, Math.max(1, mediaSize.width - options.edgeGapPx)) : options.widthPx,
+        outerDock,
         edgeGapPx: options.edgeGapPx,
         side: options.side,
       });
