@@ -87,7 +87,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Delta Cumulative Histogram", "Order Flow", "Histogram representation of cumulative buying and selling pressure.", true),
   indicator("Imbalance Tracker", "Order Flow", "Tracks stacked and diagonal bid/ask imbalances.", true),
   indicator("Dynamic POC", "Order Flow", "Tracks the developing point of control.", true),
-  indicator("Speed of Tape (Instant)", "Order Flow", "Low-latency transaction-speed signal.", true),
+  indicator("Speed of Tape (Vertical)", "Order Flow", "Low-latency transaction-speed meter beside the price scale.", true, "Reference", "Speed of Tape (Instant)"),
   indicator("Big Contracts", "Order Flow", "Instant Big contracts markers and Deep contracts price boxes from exact aggressive executions.", true, "Reference", "Big Trades"),
   indicator("Speed of Tape", "Order Flow", "Book Speed replacement. Shows executed volume or trade count over a rolling seconds window.", true),
   indicator("DOM Pro", "Order Flow", "High-DPI Rithmic MBO ladder with resting depth, aggressor trades, order counts, queue-aware capability states and configurable professional columns.", true, "Kwantify", "Depth of Market"),

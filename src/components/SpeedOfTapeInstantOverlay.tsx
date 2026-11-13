@@ -13,7 +13,6 @@ import {
 type Props = {
   frame: SpeedOfTapeInstantFrame;
   settings: SpeedOfTapeInstantSettings;
-  right: number;
   top: number;
   bottom: number;
   width: number;
@@ -24,7 +23,6 @@ type Props = {
 export default function SpeedOfTapeInstantOverlay({
   frame,
   settings,
-  right,
   top,
   bottom,
   width,
@@ -51,10 +49,10 @@ export default function SpeedOfTapeInstantOverlay({
   const label = `${settings.numberOfSeconds}s ${settings.inputData === "trades" ? "T" : "V"}`;
   return (
     <div
-      aria-label={`Speed of Tape instant, ${label}`}
+      aria-label={`Speed of Tape (Vertical), ${label}`}
       data-speed-of-tape-instant="true"
-      className="pointer-events-none absolute z-[7] overflow-hidden border-x border-border/70 font-mono"
-      style={{ right, top, bottom, width, backgroundColor: `color-mix(in srgb, ${backgroundColor} 94%, transparent)` }}
+      className="pointer-events-none absolute right-0 overflow-hidden border-x border-border/70 font-mono"
+      style={{ top, bottom, width, backgroundColor: `color-mix(in srgb, ${backgroundColor} 94%, transparent)` }}
     >
       <div
         className="absolute inset-x-0 top-0 overflow-hidden"

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { CHART_INDICATOR_BY_ID } from "../src/lib/chartIndicatorCatalog.ts";
 import {
   buildSpeedOfTapeInstantFrame,
   normalizeSpeedOfTapeInstantSettings,
@@ -74,12 +75,19 @@ const tape = [
   assert.match(controls, /<option value="volume">Volume<\/option><option value="trades">Trades<\/option>/);
   assert.match(controls, /<option value="total">Total<\/option>.*<option value="delta">Delta<\/option>/s);
   assert.match(chart, /buildSpeedOfTapeInstantFrame\(marketTrades, instantTapeSettings\)/);
-  assert.match(chart, /right=\{nativePriceScaleWidth \+ miniDomReservedWidth\}/);
-  assert.match(workspace, /footprintLiveActive \|\| instantTapeLiveActive/);
+  assert.equal(CHART_INDICATOR_BY_ID.get("speed-of-tape-instant")?.name, "Speed of Tape (Vertical)");
+  assert.equal(CHART_INDICATOR_BY_ID.get("speed-of-tape")?.name, "Speed of Tape");
+  assert.match(chart, /layoutRightStudyLanes\(chartDockWidth, \[\s*\.\.\.\(instantTapeIndicator/);
+  const priceChart = chart.indexOf("ref={chartContainerRef}");
+  const dock = chart.indexOf("data-chart-right-study-dock");
+  const meter = chart.indexOf("<SpeedOfTapeInstantOverlay");
+  assert.ok(priceChart >= 0 && priceChart < dock && dock < meter);
+  assert.equal(chart.indexOf("<SpeedOfTapeInstantOverlay", meter + 1), -1);
+  assert.match(workspace, /const baseCadence = footprintLiveActive && !instantTapeLiveActive/);
   const overlay = fs.readFileSync(new URL("../src/components/SpeedOfTapeInstantOverlay.tsx", import.meta.url), "utf8");
   assert.match(overlay, /bottom: settings\.textEnabled \? 16 : 0/);
   assert.match(overlay, /speedOfTapeMeterTopPercent\(value, largest\)/);
   assert.match(overlay, /S-T\(\{settings\.numberOfSeconds\}\)/);
 }
 
-console.log("Speed of Tape (Instant) fixtures passed: 6/6");
+console.log("Speed of Tape (Vertical) fixtures passed: 6/6");

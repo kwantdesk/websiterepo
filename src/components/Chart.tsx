@@ -18344,6 +18344,7 @@ function Chart({
 
   const rightPaneCount = orderedIndicatorPanes.filter((group) => indicatorPaneLayout[group.key]?.dock === "right").length;
   const rightStudyLanes = layoutRightStudyLanes(chartDockWidth, [
+    ...(instantTapeIndicator ? [{ id: "instant-tape", width: nativePriceScaleWidth }] : []),
     ...(miniDomEnabled && (miniDomOptions.showAsks || miniDomOptions.showBids)
       ? [{ id: "mini-dom", width: miniDomOptions.widthPx + miniDomOptions.rightGapPx }] : []),
     ...(deltaLadderOptions?.side === "right"
@@ -18356,7 +18357,6 @@ function Chart({
     ...indicators.filter((instance) => instance.enabled && (instance.indicatorId === "tpo-chart" || instance.indicatorId === "weekly-tpo")
       && instance.settings?.showOnRight === true)
       .map((instance) => ({ id: "tpo:" + instance.instanceId, width: 140 })),
-    ...(instantTapeIndicator ? [{ id: "instant-tape", width: nativePriceScaleWidth }] : []),
     ...(rightPaneCount ? [{ id: "indicator-panes", width: Math.max(150, Math.min(chartDockWidth * 0.42, rightPaneCount * 180)) }] : []),
   ]);
   const paintRightStudyDockRef = useRef<() => void>(() => {});
@@ -20914,8 +20914,8 @@ function Chart({
               {id === "indicator-panes" ? <div ref={setRightIndicatorPaneHost} className="relative h-full w-full" />
                 : id === "instant-tape" ? instantTapeFrame && (
                   <SpeedOfTapeInstantOverlay
-                    frame={instantTapeFrame} settings={instantTapeSettings} right={0}
-                    top={topIndicatorPaneHeight} bottom={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
+                    frame={instantTapeFrame} settings={instantTapeSettings}
+                    top={topIndicatorPaneHeight} bottom={indicatorPaneHeight + nativeTimeScaleHeight}
                     width={width} backgroundColor={settings.backgroundColor}
                     eventKey={replayTimestampMs == null ? liveCandleEventKey : undefined}
                   />
