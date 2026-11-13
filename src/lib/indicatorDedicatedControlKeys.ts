@@ -91,7 +91,8 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "textAlign"
   ],
   "average-directional-index-adx": [
-    "lineStyle"
+    "lineStyle",
+    "showDirectionalLines"
   ],
   "bar-poc-indicator": [
     "filterMode",

@@ -11,7 +11,7 @@ import { GAP_DETECTOR_DEFAULTS } from "@/lib/gapDetector";
 import { ZIG_ZAG_DEFAULTS, ZIG_ZAG_NUMERIC_SETTINGS, normalizeZigZagSettings } from "@/lib/zigZag";
 import { INVERSE_CYBER_CYCLE_DEFAULTS, normalizeInverseCyberCycleSettings } from "@/lib/inverseCyberCycle";
 import { ICHIMOKU_DEFAULTS, normalizeIchimokuSettings } from "@/lib/ichimoku";
-import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
+import { ADX_DEFAULTS, ADX_LINE_COLOR } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
 import { REGRESSION_CHANNEL_DEFAULTS, normalizeRegressionChannelSettings } from "@/lib/regressionChannel";
@@ -353,7 +353,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   ],
   "average-directional-index-adx": [
     { key: "period", label: "Period", defaultValue: 14, min: 1, max: 1000, step: 1 },
-    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: ADX_DEFAULTS.lineWidth, min: 1, max: 4, step: 1 },
   ],
   "absolute-levels": [
     { key: "firstValue", label: "First value", defaultValue: 0, min: -1000000000, max: 1000000000, step: 0.00000001 },
@@ -1747,6 +1747,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     gridColor: theme?.gridColor ?? "#8A8F98",
     backgroundColor: theme?.backgroundColor ?? "#000000",
   })),
+  ...(indicatorId === "average-directional-index-adx" ? { adxColor: ADX_LINE_COLOR } : {}),
   ...(indicatorId === "aroon-oscillator" ? {
     plotColor: AROON_OSCILLATOR_COLORS.positive,
     plotUpColor: AROON_OSCILLATOR_COLORS.positive,

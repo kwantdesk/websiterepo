@@ -28,6 +28,7 @@ type IndicatorPaneGroup = {
   unavailableReason?: string;
   fixedDomain?: IndicatorPaneDomain;
   axisTicks?: readonly number[];
+  domainBounds?: IndicatorPaneDomain;
   guideLevels?: readonly number[];
   statusLabel?: string;
   currentBadge?: string;
@@ -316,8 +317,13 @@ function ChartIndicatorPaneSurface({
         const sharedSeries = visibleSeries.filter((series) => !series.independentScale);
         const verticalScale = verticalScaleByPane[group.key] ?? 1;
         const verticalPan = verticalPanByPane[group.key] ?? 0;
+        const dataDomain = group.fixedDomain ?? superTrendScale.resolve(group.key, sharedSeries.length ? sharedSeries : visibleSeries, seriesDomain);
+        const boundedDomain = group.domainBounds ? {
+          min: Math.max(group.domainBounds.min, dataDomain.min),
+          max: Math.min(group.domainBounds.max, dataDomain.max),
+        } : dataDomain;
         const automaticSharedDomain = scaleDomain(
-          group.fixedDomain ?? superTrendScale.resolve(group.key, sharedSeries.length ? sharedSeries : visibleSeries, seriesDomain),
+          boundedDomain.max > boundedDomain.min ? boundedDomain : group.domainBounds ?? dataDomain,
           verticalScale,
           verticalPan,
         );
@@ -697,14 +703,13 @@ function ChartIndicatorPaneSurface({
                 bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                 points={sampledPanePoints(definition, xForTime, plotWidth, visibleWindow).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
             )) : null}
-            {!collapsed && !stats && group.axisTicks?.map((tick) => {
+            {!collapsed && !stats && group.series.length > 0 && group.axisTicks?.filter(tick => tick >= sharedDomain.min && tick <= sharedDomain.max).map((tick) => {
               const y = yFor(tick, group.series[0]);
-              if (tick < sharedDomain.min || tick > sharedDomain.max) return null;
               return <text key={tick} x={plotWidth + 6} y={y} dominantBaseline="central" fill="var(--foreground)"
                 fontSize="10" fontFamily="Aleph, monospace">{tick}</text>;
             })}
-            {!collapsed && !stats && !group.percentageAxis && !group.axisTicks ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.max, group.indicatorId)}</text> : null}
-            {!collapsed && !stats && !group.percentageAxis && !group.axisTicks ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.min, group.indicatorId)}</text> : null}
+            {!collapsed && !stats && !group.percentageAxis && !group.axisTicks?.some(tick => tick >= sharedDomain.min && tick <= sharedDomain.max) ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.max, group.indicatorId)}</text> : null}
+            {!collapsed && !stats && !group.percentageAxis && !group.axisTicks?.some(tick => tick >= sharedDomain.min && tick <= sharedDomain.max) ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.min, group.indicatorId)}</text> : null}
             {!collapsed && secondaryDomain && group.secondaryAxisLabel ? (
               <g aria-label={`${group.secondaryAxisLabel} price scale`}>
                 <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace">{secondaryDomain.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>

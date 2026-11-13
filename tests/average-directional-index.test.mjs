@@ -14,9 +14,9 @@ const instance = settings => ({ instanceId: "adx-1", indicatorId: "average-direc
 
 test("full Wilder seeds: DI needs period changes, ADX needs period DX observations", () => {
   assert.equal(find(calculateAverageDirectionalIndex(up(14), {}, theme), "+DI").length, 0);
-  assert.equal(find(calculateAverageDirectionalIndex(up(15), {}, theme), "+DI").length, 1);
+  assert.equal(find(calculateAverageDirectionalIndex(up(15), { showDirectionalLines: true }, theme), "+DI").length, 1);
   assert.equal(find(calculateAverageDirectionalIndex(up(27), {}, theme), "ADX").length, 0);
-  const result = calculateAverageDirectionalIndex(up(28), {}, theme);
+  const result = calculateAverageDirectionalIndex(up(28), { showDirectionalLines: true }, theme);
   assert.equal(find(result, "ADX").length, 1);
   near(find(result, "ADX")[0].value, 100);
   near(find(result, "+DI")[0].value, 50);
@@ -25,7 +25,7 @@ test("full Wilder seeds: DI needs period changes, ADX needs period DX observatio
 
 test("hand-calculated mixed direction fixture includes true range and Wilder smoothing", () => {
   const candles = [[10, 8, 9], [12, 9, 11], [13, 10, 12], [12, 9, 10], [14, 10, 13], [13, 8, 9]].map((v, i) => bar(i, ...v));
-  const result = calculateAverageDirectionalIndex(candles, { period: 3 }, theme);
+  const result = calculateAverageDirectionalIndex(candles, { period: 3, showDirectionalLines: true }, theme);
   near(find(result, "+DI")[0].value, 100 / 3);
   near(find(result, "−DI")[0].value, 100 / 9);
   near(find(result, "ADX")[0].value, (50 + 500 / 7 + 100 / 23) / 3);
@@ -50,14 +50,18 @@ test("invalid bars reset warmup and break plots; closed-session time gaps do not
 
 test("event timestamps, settings, colors and saved instances retain their meanings", () => {
   const candles = up(35).map((c, i) => ({ ...c, timestamp: 1700000000000 + i }));
-  const config = instance({ lineWidth: 3, lineStyle: "dashed", useThemeColors: false, adxColor: "#123456", plusDiColor: "#abcdef", minusDiColor: "#fedcba" });
+  const config = instance({ lineWidth: 3, lineStyle: "dashed", showDirectionalLines: true, useThemeColors: false, adxColor: "#123456", plusDiColor: "#abcdef", minusDiColor: "#fedcba" });
   const result = calculateIndicatorSeries(config, candles, theme);
   assert.deepEqual(result.map(s => s.color), ["#123456", "#abcdef", "#fedcba"]);
   assert.ok(result.every(s => s.placement === "pane" && s.lineWidth === 3 && s.lineStyle === "dashed"));
   assert.equal(find(result, "ADX")[0].time, candles[27].timestamp / 1000);
   const saved = normalizePaneIndicatorState({ pane: [JSON.parse(JSON.stringify(config))] });
   assert.deepEqual(saved.pane[0].settings, config.settings);
-  assert.equal(calculateIndicatorSeries(instance({ showPlusDi: false, showMinusDi: false }), candles, theme).length, 1);
+  const defaultSeries = calculateIndicatorSeries(instance({}), candles, theme);
+  assert.deepEqual(defaultSeries.map(series => series.label), ["ADX"]);
+  assert.equal(defaultSeries[0].color, "#A16BC8");
+  assert.equal(defaultSeries[0].lineWidth, 2);
+  assert.deepEqual(find(defaultSeries, "ADX"), find(result, "ADX"));
   assert.equal(calculateIndicatorSeries({ ...config, enabled: false }, candles, theme).length, 0);
 });
 
@@ -69,7 +73,7 @@ test("period changes recalculate and registration reaches the actual engine", ()
 
 test("a forming candle changes only its own output and theme changes retain explicit ownership", () => {
   const candles = up(40);
-  const config = instance({});
+  const config = instance({ showDirectionalLines: true, useThemeColors: true });
   const original = calculateIndicatorSeries(config, candles, theme);
   const moved = candles.map((c, i) => i === 39 ? { ...c, high: c.high + 3, close: c.close + 2 } : c);
   const changed = calculateIndicatorSeries(config, moved, theme);
@@ -89,7 +93,7 @@ test("out-of-order input cannot produce invalid chart ordering or duplicate plot
 
 test("the price-event pane retains the maximum ADX lookback and updates the forming bar", () => {
   const candles = up(2500);
-  const settings = { period: 1000 };
+  const settings = { period: 1000, showDirectionalLines: true };
   const group = { key: "adx-live", indicatorId: "average-directional-index-adx", settings, series: [] };
   const inputs = { candles, instrument: "NQ", tickSize: 0.25, theme };
   assert.equal(isLivePriceStudy(group.indicatorId), true);

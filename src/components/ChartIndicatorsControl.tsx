@@ -6716,6 +6716,16 @@ export default function ChartIndicatorsControl({
                 </label>
               ) : null}
 
+              {settingsDefinition.id === "average-directional-index-adx" ? (
+                <label data-settings-section="Style" className="flex items-center justify-between gap-3 text-[10px] text-muted">
+                  <span>Show +DI and −DI</span>
+                  <input type="checkbox" checked={settingsInstance.settings?.showDirectionalLines === true}
+                    onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current, settings: { ...(current.settings ?? {}), showDirectionalLines: event.target.checked },
+                    }))} />
+                </label>
+              ) : null}
+
               {["average-directional-index-adx", "average-true-range-atr", "commodity-channel-index-cci"].includes(settingsDefinition.id) ? (
                 <label data-settings-section="Style" className="block space-y-1 text-[10px] text-muted">
                   <span>Line style</span>

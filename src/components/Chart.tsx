@@ -9273,7 +9273,10 @@ function Chart({
       if (instance.indicatorId === "average-directional-index-adx") {
         return [{
           key: instance.instanceId,
-          title: "Average Directional Index (ADX)",
+          title: `ADX (${Number(instance.settings?.period ?? 14)})`,
+          axisTicks: [0, 20, 40, 60, 80, 100],
+          domainBounds: { min: 0, max: 100 },
+          showLegend: instance.settings?.showDirectionalLines === true,
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series,
