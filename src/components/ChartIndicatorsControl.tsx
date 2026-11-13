@@ -1035,16 +1035,19 @@ export default function ChartIndicatorsControl({
   useEffect(() => { if (openRequest > 0) setOpen(current => !current); }, [openRequest]);
   const [settingsInstanceId, setSettingsInstanceId] = useState<string | null>(null);
   const [candleSettingsOpen, setCandleSettingsOpen] = useState(false);
+  const openCandleSettings = useCallback(() => {
+    setOpen(false);
+    setCandleSettingsOpen(true);
+  }, []);
   /*
    * Right-clicking the candles opens this panel directly. The colours, the
    * style and the gradient schemes all live here, and the only way in before
    * was the indicator list - which is not where anyone reaches for them.
    */
   useEffect(() => {
-    const open = () => setCandleSettingsOpen(true);
-    window.addEventListener(OPEN_CANDLE_SETTINGS_EVENT, open);
-    return () => window.removeEventListener(OPEN_CANDLE_SETTINGS_EVENT, open);
-  }, []);
+    window.addEventListener(OPEN_CANDLE_SETTINGS_EVENT, openCandleSettings);
+    return () => window.removeEventListener(OPEN_CANDLE_SETTINGS_EVENT, openCandleSettings);
+  }, [openCandleSettings]);
   const candleStyleId = resolveCandleStyle(candleSettings?.[CANDLE_SETTING_KEYS.style]);
   const candlesUseThemeColors = candleSettingsUseThemeColors(candleSettings);
   const setCandleSetting = (key: string, value: unknown) => {
@@ -1704,7 +1707,7 @@ export default function ChartIndicatorsControl({
                   {onCandleSettingsChange ? (
                     <button
                       type="button"
-                      onClick={() => setCandleSettingsOpen(true)}
+                      onClick={openCandleSettings}
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:border-primary/30 hover:text-foreground"
                       title="Candle style and colours"
                       aria-label="Candle settings"
@@ -1946,7 +1949,7 @@ export default function ChartIndicatorsControl({
 
       {candleSettingsOpen && typeof document !== "undefined" ? createPortal(
         <div className="pointer-events-none fixed inset-0 z-[2800] flex items-center justify-center bg-transparent p-4">
-          <div className="pointer-events-auto relative flex max-h-[88vh] w-full max-w-[440px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60">
+          <div role="dialog" aria-label="Candle settings" className="pointer-events-auto relative flex max-h-[88vh] w-full max-w-[440px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
                 <div className="text-[15px] font-semibold text-foreground">Candles</div>

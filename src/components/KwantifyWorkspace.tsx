@@ -5325,6 +5325,7 @@ function WorkspaceChartPaneComponent({
   crosshairSyncScope = "matching",
   crosshairLinked = false,
   candlesVisible = true,
+  candleSettings = null,
   viewportSyncGroup = "",
   viewportSyncRole = "independent",
   replayTimestampMs = null,
@@ -9930,6 +9931,7 @@ function WorkspaceChartPaneComponent({
           crosshairSyncScope={crosshairSyncScope}
           crosshairLinked={crosshairLinked}
           candlesVisible={candlesVisible}
+          candleSettings={candleSettings}
           drawingsLocked={pane.drawingsLocked === true}
           viewportSyncGroup={viewportSyncGroup}
           viewportSyncRole={viewportSyncRole}
