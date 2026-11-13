@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
+import { mergeLiveIndicatorTail } from "../src/lib/chartLiveEvents.ts";
 import { chartSourceTimestamp } from "../src/lib/chartCountdown.ts";
 import { calculatePeriodVwap, calculateRollingVwap } from "../src/lib/vwap.ts";
 import { calculateIndicatorSeries } from "../src/lib/chartIndicatorEngine.ts";
@@ -64,6 +65,70 @@ test("VWAP family renders identical final lines/bands through repeated empty-tai
       }
     }
   }
+});
+
+test("a one-day VWAP window renders every loaded day with actual volume", () => {
+  const day = 86_400_000;
+  const minute = 60_000;
+  const start = Date.UTC(2026, 9, 1, 14);
+  const history = Array.from({ length: 30 }, (_, i) => [
+    candle(start + i * day, 100 + i, 2),
+    candle(start + i * day + minute, 104 + i, 2),
+    candle(start + i * day + 2 * minute, 900, 0),
+  ]).flat();
+  const theme = { primary: "#fff", secondary: "#aaa", muted: "#888", positive: "#0f0", negative: "#f00" };
+  const indicator = { instanceId: "env", indicatorId: "vwap-envelopes", enabled: true,
+    settings: { ...defaultIndicatorSettings("vwap-envelopes"), periodMode: "days", periodValue: 1 } };
+  const weightedTimes = history.filter(bar => bar.volume > 0).map(bar => bar.timestamp / 1_000);
+  const result = calculateIndicatorSeries(indicator, history, theme).filter(series => series.data.length);
+  assert.equal(result.length, 7);
+  for (const plot of result) assert.deepEqual(plot.data.map(point => point.time), weightedTimes);
+  assert.equal(result[0].data[1].value, 102);
+  assert.equal(result.find(plot => plot.key === "vwap-envelopes-upper-1").data[1].value, 104);
+
+  const replayTimestampMs = start + 2 * day + minute;
+  const [replay] = calculateIndicatorSeries(indicator, history, theme, { replayTimestampMs });
+  assert.deepEqual(replay.data, result[0].data.filter(point => point.time * 1_000 <= replayTimestampMs));
+
+  const [manual] = calculateIndicatorSeries({
+    ...indicator, settings: { ...indicator.settings, indicatorHistoryMode: "manual", historyDaysLimit: 1 },
+  }, history, theme);
+  assert.deepEqual(manual.data, result[0].data.filter(point => point.time * 1_000 >= history.at(-1).timestamp - day));
+});
+
+test("chart overlay uses loaded price history even when its sampled input contains only the current session", () => {
+  const chart = ts.createSourceFile("Chart.tsx",
+    readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8"),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let build;
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(chart) === "vwapEnvelopeSeries") {
+      build = node.initializer.arguments[0];
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(chart);
+  assert.ok(build);
+  const candles = [...traded, candle(friday + 3 * 86_400_000, 125, 12)];
+  const indicator = { instanceId: "env-1", indicatorId: "vwap-envelopes", enabled: true,
+    settings: defaultIndicatorSettings("vwap-envelopes") };
+  const context = {
+    indicators: [indicator, { ...indicator, instanceId: "env-2" }],
+    observedSourceCandles: candles,
+    sampledIndicatorCandles: candles.slice(-1),
+    replayTimestampMs: null,
+    pendingLiveVolumeCandleRef: { current: [] },
+    settings: {}, instrument: "NQ", timeframe: "1m",
+    mergeLiveIndicatorTail,
+    calculateIndicatorSeries,
+    visibleIndicatorTheme: () => ({ primary: "#fff", secondary: "#aaa", muted: "#888", positive: "#0f0", negative: "#f00" }),
+  };
+  const source = ts.transpileModule(`const build = ${build.getText(chart)}; build();`,
+    { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const overlays = vm.runInNewContext(source, context);
+  assert.equal(new Set(overlays.map(plot => plot.key)).size, overlays.length);
+  assert.deepEqual(Array.from(overlays.filter(plot => plot.data.length), plot => plot.data[0].time),
+    Array(14).fill(candles[0].timestamp / 1_000));
 });
 
 test("actual workspace timestamp parser never relabels stale or invalid quotes as now", () => {

@@ -7652,6 +7652,18 @@ function Chart({
     return () => { mounted = false; };
   }, [instrument, adrHistoryDays, adrHistoryKey, adrRequestDay]);
   const adrDailyCandles = adrHistoryKey && adrHistory?.key === adrHistoryKey ? adrHistory.candles : undefined;
+  const vwapEnvelopeSeries = useMemo(() => {
+    const instances = indicators.filter(instance => instance.enabled && instance.indicatorId === "vwap-envelopes");
+    if (!instances.length) return [];
+    // Match the price chart's loaded bars and retain the sampled forming bar.
+    const studyCandles = replayTimestampMs != null ? observedSourceCandles
+      : mergeLiveIndicatorTail(observedSourceCandles, pendingLiveVolumeCandleRef.current);
+    const theme = visibleIndicatorTheme(settings);
+    return instances.flatMap(instance => calculateIndicatorSeries(instance, studyCandles, theme, {
+      instrument, timeframe, replayTimestampMs,
+    }).map(series => ({ ...series, key: `${series.key}:${instance.instanceId}`, groupKey: instance.instanceId })));
+    // The sampled snapshot signals that the forming candle advanced.
+  }, [indicators, instrument, observedSourceCandles, replayTimestampMs, sampledIndicatorCandles, settings, timeframe]);
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (instance.indicatorId === "options-vwap") {
@@ -7677,7 +7689,8 @@ function Chart({
         }
         return lines;
       }
-      if (isLivePriceStudy(instance.indicatorId) || isFullHistoryPriceStudy(instance.indicatorId)) return [];
+      if (instance.indicatorId === "vwap-envelopes"
+        || isLivePriceStudy(instance.indicatorId) || isFullHistoryPriceStudy(instance.indicatorId)) return [];
       if (instance.indicatorId === "average-daily-range-target" && adrHistoryKey && !adrDailyCandles) return [];
       if (
         !orderFlowSeriesReady
@@ -7838,6 +7851,7 @@ function Chart({
       ...baseCalculatedIndicatorSeries.filter(definition => !liveChaikinOverlays.some(group => group.key === definition.groupKey)),
       ...liveChaikinOverlays.flatMap(group => group.series),
       ...priceStudySeries,
+      ...vwapEnvelopeSeries,
       ...cciGroups.filter(group => group.settings?.chartArea !== "chart").flatMap(group => group.series),
       ...liveCciOverlays.flatMap(group => group.series),
     ], replayTimestampMs);
@@ -7858,7 +7872,7 @@ function Chart({
       ...series.filter(usesSourceTime),
     ];
   }, [baseCalculatedIndicatorSeries, liveChaikinOverlays, priceStudySeries, cciGroups, liveCciOverlays,
-    eventChartIndicatorTimeMap, replayTimestampMs]);
+    eventChartIndicatorTimeMap, replayTimestampMs, vwapEnvelopeSeries]);
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
@@ -17181,6 +17195,7 @@ function Chart({
       const data = lightweightIndicatorData(definition);
       const correctionTrackedPoints = definition.key === "aroon-oscillator"
         || definition.key.startsWith("bollinger-bands-")
+        || definition.key.startsWith("vwap-envelopes-")
         ? definition.data : undefined;
       const previousCorrectionTrackedPoints = existing?.correctionTrackedPoints;
       // A late candle can change an interior study window with the tail intact.
