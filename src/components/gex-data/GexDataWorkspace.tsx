@@ -110,6 +110,11 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
         }
         if (key === TIME_ZONE_KEY) syncTimeZone();
         if (key === PALETTE_KEY) syncPalette();
+        if (key === TIME_ZONE_KEY || key === PALETTE_KEY || key === CONFIGURATION_KEY
+          || key === "gex-data:select-preferences:v1" || key.startsWith("gex-data-tool-groups:")
+          || key.includes(":gex-data-table-columns:")) {
+          frame.current?.contentWindow?.postMessage({ type: "gex-data-host-workspace-edit" }, window.location.origin);
+        }
       },
       theme: () => {
         const style = getComputedStyle(document.documentElement);
@@ -214,7 +219,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "20261113-workspace-menu"); params.set("hostTimezone", "1");
+  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "20261114-save-warning"); params.set("hostTimezone", "1");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
   const frameKey = `${accountKey}:${generation}:${src}`;
   const frameLoading = !ready || loadedFrame !== frameKey;

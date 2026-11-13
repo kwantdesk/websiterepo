@@ -1690,13 +1690,12 @@ function GexMapWorkspace({
     setReplayTimestamp(null);
   }
 
-  function workspaceSnapshot(): GexMapWorkspaceSnapshot {
-    return {
+  const workspaceSnapshot = useMemo<GexMapWorkspaceSnapshot>(() => ({
       view: { surfaceVersion: 2, panels, viewMode, stepMinutes, expiryScope, representation, exposureModel, timeHorizon },
       starSettings, palette: savedPalette, ladderZoom, futureZoom, priceLocked, replayWindow,
       futureSettings,
-    };
-  }
+  }), [panels, viewMode, stepMinutes, expiryScope, representation, exposureModel, timeHorizon,
+    starSettings, savedPalette, ladderZoom, futureZoom, priceLocked, replayWindow, futureSettings]);
 
   function activateWorkspace(preset: GexMapWorkspacePreset) {
     setPrivateWorkspace(true);

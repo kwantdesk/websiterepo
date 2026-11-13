@@ -197,7 +197,7 @@ import {
 } from "@/lib/paperTradeExport";
 import { readStoredTheme, saveTheme, type ThemeColors } from "@/lib/theme";
 import { DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, saveCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
-import { loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
+import { GEX_MAP_PALETTE_CHANGE_EVENT, loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
 import { normalizeTimeZone, timeZoneCity } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, applyActiveThemeToWorkspaceChartSettings, chartSettingsEqual, chartSettingsFromChangeEvent, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
@@ -1155,6 +1155,26 @@ type WorkspacePreset = {
   linkedPaneIds?: string[];
   updatedAt: string;
 };
+type WorkspaceContents = Omit<WorkspacePreset, "id" | "name" | "updatedAt">;
+
+function workspaceContentsSignature(contents: WorkspaceContents) {
+  return JSON.stringify([
+    contents.layout,
+    contents.panes.map((pane) => normalizeWorkspacePane(pane, pane)),
+    normalizeChartSettings(contents.chartSettings),
+    Object.fromEntries(Object.entries(normalizePaneIndicatorState(contents.indicators)).filter(([, list]) => list.length > 0)),
+    contents.candleSettings ?? {},
+    contents.floatingWindows ?? [],
+    [...(contents.linkedPaneIds ?? [])].sort(),
+    contents.theme,
+    contents.gexMapPalette,
+  ], (_key, value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)))
+      : value,
+  );
+}
+
 type WorkspaceBackupFile = {
   format: "kwantdesk-chart-workspaces";
   version: 1;
@@ -16811,76 +16831,67 @@ export default function KwantifyWorkspace({
     }
   };
 
-  /**
-   * Everything a saved workspace remembers, as one comparable string.
-   *
-   * Deliberately the same fields createCurrentWorkspaceSnapshot captures, and
-   * deliberately NOT its id, name or timestamp — those change on every save
-   * and would make a freshly saved workspace look modified straight away.
-   */
-  const workspaceStateSignature = useMemo(() => {
-    try {
-      return JSON.stringify([
-        workspaceTree,
-        workspacePanes,
-        chartSettings,
-        paneIndicators,
-        candleSettingsByPane,
-        workspaceFloatingWindows,
-        [...linkedViewportPaneIds].sort(),
-      ]);
-    } catch {
-      // A cyclic or unserialisable value must not take the workspace down;
-      // the badge simply stops tracking until the next clean read.
-      return "";
-    }
-  }, [
-    chartSettings,
-    candleSettingsByPane,
-    linkedViewportPaneIds,
-    paneIndicators,
-    workspaceFloatingWindows,
-    workspacePanes,
-    workspaceTree,
-  ]);
-  // Null until a workspace has been saved or applied in this session: with
-  // nothing to compare against there is nothing to warn about, and nagging
-  // someone who has never used workspaces is just noise.
-  const [savedWorkspaceSignature, setSavedWorkspaceSignature] = useState<string | null>(null);
-  // Applying a preset sets a dozen pieces of state, so the signature is only
-  // the applied one AFTER that render. React batches those updates into a
-  // single render, so adopting the first signature that follows is exactly
-  // right — setting it inline would capture the workspace being replaced and
-  // flag a freshly applied preset as modified.
-  const pendingWorkspaceCleanRef = useRef(false);
-  const workspaceHasUnsavedChanges = savedWorkspaceSignature !== null
-    && workspaceStateSignature !== ""
-    && savedWorkspaceSignature !== workspaceStateSignature;
-
+  const [workspaceAppearance, setWorkspaceAppearance] = useState(() => ({
+    theme: readStoredTheme(),
+    gexMapPalette: loadGexMapPalette(),
+  }));
   useEffect(() => {
-    if (!pendingWorkspaceCleanRef.current || !workspaceStateSignature) return;
-    pendingWorkspaceCleanRef.current = false;
-    setSavedWorkspaceSignature(workspaceStateSignature);
-  }, [workspaceStateSignature]);
+    const readAppearance = () => setWorkspaceAppearance({
+      theme: readStoredTheme(),
+      gexMapPalette: loadGexMapPalette(),
+    });
+    readAppearance();
+    window.addEventListener("kwantdesk:theme-change", readAppearance);
+    window.addEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, readAppearance);
+    return () => {
+      window.removeEventListener("kwantdesk:theme-change", readAppearance);
+      window.removeEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, readAppearance);
+    };
+  }, [preferencesReady]);
+
+  const workspaceContents = useMemo<WorkspaceContents>(() => ({
+    layout: workspaceTree,
+    panes: workspacePanes,
+    chartSettings,
+    indicators: paneIndicators,
+    candleSettings: candleSettingsByPane,
+    floatingWindows: workspaceFloatingWindows,
+    linkedPaneIds: [...linkedViewportPaneIds],
+    ...workspaceAppearance,
+  }), [
+    workspaceTree, workspacePanes, chartSettings, paneIndicators, candleSettingsByPane,
+    workspaceFloatingWindows, linkedViewportPaneIds, workspaceAppearance,
+  ]);
+  const workspaceStateSignature = useMemo(() => workspaceContentsSignature(workspaceContents), [workspaceContents]);
+  const activeWorkspacePreset = workspacePresets.find((preset) => preset.id === activeWorkspacePresetId);
+  const savedWorkspaceSignature = useMemo(() => activeWorkspacePreset
+    ? workspaceContentsSignature({
+      ...activeWorkspacePreset,
+      theme: activeWorkspacePreset.theme ?? workspaceAppearance.theme,
+      gexMapPalette: activeWorkspacePreset.gexMapPalette ?? workspaceAppearance.gexMapPalette,
+    })
+    : null, [activeWorkspacePreset, workspaceAppearance]);
+  const [initialWorkspaceSignatures, setInitialWorkspaceSignatures] = useState<Partial<Record<ChartWorkspaceScope, string>>>({});
+  const initialWorkspaceSignature = initialWorkspaceSignatures[chartWorkspaceScope];
+  useEffect(() => {
+    if (!preferencesReady || initialWorkspaceSignature !== undefined) return;
+    setInitialWorkspaceSignatures((signatures) => ({ ...signatures, [chartWorkspaceScope]: workspaceStateSignature }));
+  }, [preferencesReady, chartWorkspaceScope, initialWorkspaceSignature, workspaceStateSignature]);
+  const workspaceBaseline = savedWorkspaceSignature ?? initialWorkspaceSignature;
+  const workspaceHasUnsavedChanges = preferencesReady && workspaceBaseline !== undefined
+    && workspaceBaseline !== workspaceStateSignature;
 
   const createCurrentWorkspaceSnapshot = (
     name: string,
     id = crypto.randomUUID(),
   ): WorkspacePreset => ({
+    ...workspaceContents,
     id,
     name,
-    layout: workspaceTree,
-    panes: workspacePanes,
-    chartSettings,
     indicators: clonePaneIndicatorState(paneIndicators),
     candleSettings: clonePaneCandleSettings(candleSettingsByPane),
-    floatingWindows: workspaceFloatingWindows,
-    // A workspace is its complete look: the overall theme and every custom
-    // palette are captured with it, so applying it later restores the exact
-    // colours even after the trader has changed themes in between.
     theme: readStoredTheme(),
     gexMapPalette: loadGexMapPalette(),
-    linkedPaneIds: [...linkedViewportPaneIds],
     updatedAt: new Date().toISOString(),
   });
 
@@ -16896,7 +16907,6 @@ export default function KwantifyWorkspace({
     }
     const nextPreset = createCurrentWorkspaceSnapshot(name);
     if (!await persistWorkspacePresets([...workspacePresets, nextPreset])) return;
-    setSavedWorkspaceSignature(workspaceStateSignature);
     setActiveWorkspacePresetId(nextPreset.id);
     setWorkspacePresetName("");
     setShowSaveWorkspacePreset(false);
@@ -16920,12 +16930,10 @@ export default function KwantifyWorkspace({
     // Only mark the workspace clean once it is actually stored. Marking it
     // saved on a refused write loses the change silently at the next reload.
     if (!written) return;
-    setSavedWorkspaceSignature(workspaceStateSignature);
     showReportToast("success", `Workspace "${activePreset.name}" updated`, 2000);
   };
 
   const applyWorkspacePreset = (preset: WorkspacePreset) => {
-    pendingWorkspaceCleanRef.current = true;
     // Restore the workspace's saved look first: the overall theme and custom
     // palettes it was saved with win over whatever theme is currently active,
     // so an old workspace always comes back exactly as it was designed.
@@ -20701,21 +20709,15 @@ export default function KwantifyWorkspace({
                 className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${
                   showWorkspacePresetMenu ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"
                 }`}
+                aria-description={workspaceHasUnsavedChanges ? "Save this workspace" : undefined}
                 title={chartWorkspaceScope === "algo" ? "Saved Algo workspaces" : "Saved workspaces"}
               >
                 <Save className="h-3.5 w-3.5" strokeWidth={1.55} />
                 <span>WORKSPACES</span>
-                {/*
-                  * Anything the saved workspace remembers — layout, panes,
-                  * chart settings, indicators and their colours — puts this
-                  * here. It only appears once a workspace has actually been
-                  * saved or applied, since there is nothing to be unsaved
-                  * against before that.
-                  */}
                 {workspaceHasUnsavedChanges ? (
                   <span
                     className="flex items-center gap-1 text-amber-300"
-                    title="This workspace has changes that are not saved"
+                    title="Save this workspace"
                   >
                     <AlertTriangle className="h-3 w-3" strokeWidth={2} />
                     <span className="hidden text-[9px] font-semibold normal-case tracking-normal @[560px]:inline">

@@ -80,7 +80,7 @@ function zoom(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.min(GEX_MAP_ZOOM_MAX, Math.max(GEX_MAP_ZOOM_MIN, value)) : 1;
 }
 
-function normalizeSnapshot(value: unknown): GexMapWorkspaceSnapshot | null {
+export function normalizeGexMapWorkspaceSnapshot(value: unknown): GexMapWorkspaceSnapshot | null {
   const snapshot = record(value);
   const view = record(snapshot.view);
   if (view.surfaceVersion !== 2 || !Array.isArray(view.panels) || view.panels.length < 1 || view.panels.length > 4) return null;
@@ -108,7 +108,7 @@ function normalizeSnapshot(value: unknown): GexMapWorkspaceSnapshot | null {
 
 function normalizePreset(value: unknown): GexMapWorkspacePreset | null {
   const { id, name, updatedAt, snapshot } = record(value);
-  const normalized = normalizeSnapshot(snapshot);
+  const normalized = normalizeGexMapWorkspaceSnapshot(snapshot);
   if (!normalized || typeof id !== "string" || !/^[\w-]{1,80}$/.test(id)
     || typeof name !== "string" || !name.trim() || name.length > 80) return null;
   return { id, name: name.trim(), updatedAt: typeof updatedAt === "string" ? updatedAt : "", snapshot: normalized };
@@ -151,7 +151,7 @@ export function saveGexMapWorkspace(name: string, snapshot: GexMapWorkspaceSnaps
     throw new Error("A GEX Map workspace already uses that name.");
   }
   if (!active && presets.length >= LIMIT) throw new Error("GEX Map can keep up to 60 saved workspaces.");
-  const normalized = normalizeSnapshot(snapshot);
+  const normalized = normalizeGexMapWorkspaceSnapshot(snapshot);
   if (!normalized) throw new Error("This map configuration could not be saved.");
   const next = { id: active?.id ?? crypto.randomUUID(), name: trimmed, updatedAt: new Date().toISOString(), snapshot: normalized };
   persist([...presets.filter(({ id }) => id !== next.id), next]);

@@ -72,3 +72,7 @@
 
 /* Keep add adjacent to the final tab; reserve the trailing edge for close. */
 .dock-add{flex:0 0 24px;align-self:center;margin-left:0}.dock-close{flex:0 0 28px;width:28px;height:24px;border:0;border-radius:5px;background:transparent;color:var(--gex-23623939636462);font-size:20px;line-height:1;cursor:pointer;margin-left:4px}.dock-close:disabled{opacity:.35;cursor:default}.dock-close:hover:not(:disabled){background:var(--gex-23323230393430)}
+
+.top-action.chart-workspace-trigger .saved-workspace-warning{display:inline-flex;color:var(--site-warning,#c28c25)}
+.top-action.chart-workspace-trigger .saved-workspace-warning[hidden]{display:none}
+.top-action.chart-workspace-trigger .saved-workspace-warning svg{width:12px;height:12px}

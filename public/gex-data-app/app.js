@@ -13,7 +13,7 @@ import { createTableView } from "./table-view.js?v=3";
 import { selectedSnapshotSpot, completedMinuteSnapshot, sessionMinuteTimestamp, snapshotControlTimeline, equityOptionSnapshotSchedule } from "./snapshot-model.js?v=2";
 import { timeDomain, timeX, timeTicks, nearestTimeIndex,timeAtIndex } from "./time-axis.js?v=1";
 import { abbreviate, currencyAbbreviated, currencyAuto, abbreviatedTick, percentagePointsAuto } from "./number-format.js?v=2";
-import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=20261113-workspace-menu';
+import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=20261114-save-warning';
 import {instrumentChoices,setChoiceValue,snapshotTimeOptions,multiChoiceDropdown} from './choice-controls.js?v=2';
 import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} from './preferences-model.js?v=1';
 import {normalizeWheelDelta,wheelZoomWindow,panZoomWindow,heatMapPlainWheel,cursorTooltipPlacement,sliderBarWindow,sliderHandleWindow,sliderTrackClick,lerpZoomStep} from './chart-interaction-model.js?v=1';
@@ -930,8 +930,8 @@ await boot();
     if(!FILTER_GROUP_TOOLS.has(tool.id))actions.querySelector('[aria-label="Filter Groups"]')?.remove();
   }
 
-  function saveToolControls(){
-    if(activeTool){const values=Object.fromEntries(qa("[data-control]",q("#toolControls")).map(input=>[input.dataset.control,input.dataset.overrideOwn??input.value]));savedToolControls[activeTool.id]=['volatility-skew','term-structure'].includes(activeTool.id)?persistSurfaceSelections(activeTool.id,savedToolControls[activeTool.id],values):values;try{gexStorage.setItem(controlsStorageKey,JSON.stringify(savedToolControls));}catch{}if(EMBEDDED)parent.postMessage({type:'gex-data-tool-state',controls:savedToolControls[activeTool.id]},location.origin);}
+  function saveToolControls(edited=true){
+    if(activeTool){const values=Object.fromEntries(qa("[data-control]",q("#toolControls")).map(input=>[input.dataset.control,input.dataset.overrideOwn??input.value]));savedToolControls[activeTool.id]=['volatility-skew','term-structure'].includes(activeTool.id)?persistSurfaceSelections(activeTool.id,savedToolControls[activeTool.id],values):values;try{gexStorage.setItem(controlsStorageKey,JSON.stringify(savedToolControls));}catch{}if(EMBEDDED&&edited)parent.postMessage({type:'gex-data-tool-state',controls:savedToolControls[activeTool.id]},location.origin);}
   }
   function loadContractChoicePayload(endpoint,request){
     const key=endpoint+JSON.stringify(request),cached=contractChoiceCache.get(key);if(cached&&cached.expires>Date.now())return cached.promise;
@@ -1046,7 +1046,7 @@ await boot();
       };draw();
     });
   }
-  window.addEventListener('pagehide',()=>{saveToolControls();try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}});
+  window.addEventListener('pagehide',()=>{saveToolControls(false);try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}});
   function onControlsChanged(event) {
     if(activeTool?.id==='gainers-losers'&&event?.target?.dataset.control==='rankMetric')setControl('rankDirection','-1');
     if(['equity-prints','exchange-notifications'].includes(activeTool?.id)){toolCursor=null;q('#loadMore').hidden=true;}
@@ -1323,7 +1323,7 @@ await boot();
       toolPayload=payload;toolPayloadQuery=query;toolCursor=nextCursor;renderToolPayload(tool,payload,{refresh:true,append});renderSnapshotControl(payload);
       lastToolSuccessAt=Date.now();
       updateToolTimestamp(tool,payload);
-      saveToolControls();updateLiveState();
+      saveToolControls(false);updateLiveState();
     }catch(error){
       if(liveFrame&&['equity-prints','exchange-notifications','order-flow-consolidated','order-flow-unconsolidated'].includes(tool.id)&&requestId===toolRequestId&&activeTool===tool&&toolPayload)toolCursor=previousCursor;
       if(!requestPrepared&&requestId===toolRequestId&&activeTool===tool&&error.name!=="AbortError"){
@@ -1695,7 +1695,8 @@ await boot();
       initialWindow=initialWindowResolver({width,height})??null;initialWindowPending=false;
       if(apply&&!preserveRememberedWindow&&initialWindow){state.start=initialWindow.start??state.start;state.end=initialWindow.end??state.end;state.yWindow=initialWindow.yWindow??state.yWindow;syncRanges();}
     }
-    function remember(){if(initialActivationPending||initialWindowResolver&&initialWindowPending)return;if(activeTool)chartWindows.set(activeTool.id,{query:windowQuery,times:timeScale?items.map(row=>row.time):undefined,start:state.start,end:state.end,yWindow:[...state.yWindow],length:items.length,...(navigationDomains?{navigation:captureNavigationWindow()}:{})});clearTimeout(windowSaveTimer);windowSaveTimer=setTimeout(()=>{try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));}catch{}},300);syncRanges();}
+    let viewportEdited=false;
+    function remember(edited=true){if(initialActivationPending||initialWindowResolver&&initialWindowPending)return;if(activeTool)chartWindows.set(activeTool.id,{query:windowQuery,times:timeScale?items.map(row=>row.time):undefined,start:state.start,end:state.end,yWindow:[...state.yWindow],length:items.length,...(navigationDomains?{navigation:captureNavigationWindow()}:{})});viewportEdited ||= edited;clearTimeout(windowSaveTimer);windowSaveTimer=setTimeout(()=>{try{gexStorage.setItem(`gex-data-chart-windows:${instanceKey}`,JSON.stringify([...chartWindows]));if(EMBEDDED&&viewportEdited)parent.postMessage({type:'gex-data-workspace-viewport-edit'},location.origin);viewportEdited=false;}catch{}},300);syncRanges();}
     function drawNavigator(){
       if(!mini.isConnected)return;
       const {ctx,width:w,height:h}=canvasContext(mini);ctx.clearRect(0,0,w,h);
@@ -1709,7 +1710,7 @@ await boot();
     }
     function drawVertical(){if(!verticalMini.isConnected)return;const {ctx,width:w,height:h}=canvasContext(verticalMini);ctx.clearRect(0,0,w,h);const valueOf=item=>typeof item==="number"?item:item.value,maximum=Math.max(1,...verticalValues.map(item=>Math.abs(valueOf(item))));ctx.beginPath();verticalValues.forEach((item,index)=>{const x=Math.abs(valueOf(item))/maximum*w,y=h-(typeof item==="number"?index/Math.max(1,verticalValues.length-1):item.position)*h;index?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.strokeStyle=CHART_COLORS.primary;ctx.lineWidth=1;ctx.stroke();const top=(1-state.yWindow[1])*h,bottom=(1-state.yWindow[0])*h;ctx.fillStyle=themePaint("rgba(112,15,236,.15)");ctx.fillRect(0,top,w,bottom-top);ctx.strokeStyle=themePaint("#E2D7F1");ctx.strokeRect(.5,top,w-1,bottom-top);ctx.fillStyle=themePaint("#fff");ctx.fillRect(0,top,w,4);ctx.fillRect(0,bottom-4,w,4);}
     function clearChartHover(){state.hover=null;state.hoverRatio=null;tooltip.hidden=true;}
-    function redraw(){if(disposed||initialActivationPending||!canvas.isConnected)return;const {ctx,width:w,height:h}=canvasContext(canvas);if(w<=0||h<=0)return;if(initialWindowPending)resolveInitialViewport(w,h,true);if(navigationDomains&&!initialDomainRemembered){initialDomainRemembered=true;remember();}ctx.clearRect(0,0,w,h);ctx.font="700 13px Aleph, sans-serif";ctx.fillStyle=themePaint("#fff");draw(ctx,w,h,{...state,start:Math.floor(state.start),end:Math.min(items.length-1,Math.ceil(state.end)),rawStart:state.start,rawEnd:state.end});drawNavigator();drawVertical();}
+    function redraw(){if(disposed||initialActivationPending||!canvas.isConnected)return;const {ctx,width:w,height:h}=canvasContext(canvas);if(w<=0||h<=0)return;if(initialWindowPending)resolveInitialViewport(w,h,true);if(navigationDomains&&!initialDomainRemembered){initialDomainRemembered=true;remember(false);}ctx.clearRect(0,0,w,h);ctx.font="700 13px Aleph, sans-serif";ctx.fillStyle=themePaint("#fff");draw(ctx,w,h,{...state,start:Math.floor(state.start),end:Math.min(items.length-1,Math.ceil(state.end)),rawStart:state.start,rawEnd:state.end});drawNavigator();drawVertical();}
     function hoverIndex(event){
       if(!items.length)return null;
       const rect=canvas.getBoundingClientRect(),ratio=Math.max(0,Math.min(1,(event.clientX-rect.left-plotLeft)/Math.max(1,rect.width-plotRight-plotLeft)));
@@ -1785,7 +1786,7 @@ await boot();
         items=nextItems;navigatorValues=next.navigatorValues||[];state.start=nextWindow.start;state.end=nextWindow.end;
         if(state.dragStart){state.dragStart[0]+=shift;state.dragStart[1]+=shift;}
         startRange.max=endRange.max=String(Math.max(0,items.length-1));horizontalNavigation?.setLength(items.length);
-        head.replaceChild(quantLegend(next.legend||[]),head.lastChild);remember();redrawLiveUpdate();return true;
+        head.replaceChild(quantLegend(next.legend||[]),head.lastChild);remember(false);redrawLiveUpdate();return true;
       },
       update(nextItems,nextLegend,nextNavigatorValues){
         if(disposed||!compatibleLiveTimeline(items,nextItems))return false;
@@ -1796,7 +1797,7 @@ await boot();
         state.start=nextWindow.start;state.end=nextWindow.end;
         if(state.dragStart){state.dragStart[0]+=shift;state.dragStart[1]+=shift;}
         startRange.max=endRange.max=String(Math.max(0,items.length-1));horizontalNavigation?.setLength(items.length);
-        head.replaceChild(quantLegend(nextLegend),head.lastChild);remember();redrawLiveUpdate();return true;
+        head.replaceChild(quantLegend(nextLegend),head.lastChild);remember(false);redrawLiveUpdate();return true;
       }};activeChartInstance=chart;return chart;
   }
 
@@ -2213,13 +2214,13 @@ await boot();
     updateObservations(payload);
     let hits=[],headers=[],mapDrag=null,hoveredTicker=null,measuredSize=null,camera={...MARKET_MAP_CAMERA_IDENTITY},mapWidth=1,mapHeight=1,maxZoom=50,horizontalNavigation,verticalNavigation;
     try{const saved=JSON.parse(gexStorage.getItem(`gex-data-market-map-camera:${instanceKey}`));if(saved&&['zoomX','zoomY','offsetX','offsetY'].every(key=>Number.isFinite(saved[key])))camera=saved;}catch{}
-    const saveCamera=()=>{try{gexStorage.setItem(`gex-data-market-map-camera:${instanceKey}`,JSON.stringify(camera));}catch{}};
+    const saveCamera=(edited=true)=>{try{gexStorage.setItem(`gex-data-market-map-camera:${instanceKey}`,JSON.stringify(camera));if(EMBEDDED&&edited)parent.postMessage({type:'gex-data-workspace-viewport-edit'},location.origin);}catch{}};
     const chart=quantCanvas({
       title:"Market Map",items:entries,zoom:false,height:620,legend:[],
       tooltipRows:(_,index,state)=>{if(mapDrag?.panning)return [];const {x:px,y:py}=marketMapWorldPoint(camera,state.pointerX,state.pointerY),header=headers.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);if(header){hoveredTicker=null;return marketMapHeaderTooltipRows(header.item.name,grouping);}const hit=hits.find(rect=>px>=rect.x&&px<=rect.x+rect.width&&py>=rect.y&&py<=rect.y+rect.height);hoveredTicker=hit?.item?.ticker??null;return marketMapTooltipRows(hit?.item,{formatMarketCap:value=>compact(value,true)});},
       draw:(ctx,w,h)=>{
         if(w<=0||h<=0)return;
-        if(measuredSize&&(measuredSize.width!==w||measuredSize.height!==h)){camera={...MARKET_MAP_CAMERA_IDENTITY};saveCamera();}
+        if(measuredSize&&(measuredSize.width!==w||measuredSize.height!==h)){camera={...MARKET_MAP_CAMERA_IDENTITY};saveCamera(false);}
         measuredSize={width:w,height:h};mapWidth=w;mapHeight=h;camera=clampMarketMapCamera(camera,w,h,maxZoom);
         ({hits,headers}=drawMarketMapFrame(ctx,{groups:sectors,grouping,width:w,height:h,camera,paint:themePaint}));
         if(!entries.length){
@@ -2401,7 +2402,7 @@ await boot();
     if(activeTool){snapshotSelections.delete(snapshotKey(activeTool));if(activeTool.id!=='market-map'){toolPayload=null;resetStage();}masterReplayTimer=setTimeout(()=>loadActiveTool(),100);}
   });
   window.addEventListener('pagehide',()=>clearTimeout(masterReplayTimer));
-  window.addEventListener('message',event=>{if(!EMBEDDED||event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='gex-data-preferences')preferencesChanged();if(event.data?.type==='gex-data-refresh')loadActiveTool();if(event.data?.type==='gex-data-save-state')saveToolControls();if(event.data?.type==='gex-data-visibility'){const wasVisible=frameVisible;frameVisible=event.data.visible===true;if(frameVisible&&!wasVisible)refreshResumedTool();else if(!frameVisible){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}}});
+  window.addEventListener('message',event=>{if(!EMBEDDED||event.origin!==location.origin||event.source!==parent)return;if(event.data?.type==='gex-data-preferences')preferencesChanged();if(event.data?.type==='gex-data-refresh')loadActiveTool();if(event.data?.type==='gex-data-save-state')saveToolControls(false);if(event.data?.type==='gex-data-visibility'){const wasVisible=frameVisible;frameVisible=event.data.visible===true;if(frameVisible&&!wasVisible)refreshResumedTool();else if(!frameVisible){clearTimeout(pollTimer);pollTimer=null;activeController?.abort();}}});
   window.addEventListener("hashchange", () => {
     const id = location.hash.startsWith("#tool=") ? location.hash.slice(6) : null;
     if (id && toolMap.has(id) && activeTool?.id !== id) showTool(id);

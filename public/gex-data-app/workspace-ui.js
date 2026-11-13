@@ -1,5 +1,5 @@
 import {validateWorkspaceLayout} from './saved-workspaces-model.js?v=20261104';
-import {createSavedWorkspaceMenu} from './saved-workspaces-menu.js?v=20261104';
+import {createSavedWorkspaceMenu} from './saved-workspaces-menu.js?v=20261114-save-warning';
 import {themePaint} from './site-theme.js?v=1';
 import {gexStorage,openWorkspacePalette} from './site-runtime.js?v=1';
 import {createBoardWorkspace,createWorkspace,workspaceAction,workspaceTabsets,workspaceOrientation,workspaceDockLocation,workspaceDockRect,serializeWorkspace,validateTabName} from './workspace-model.js?v=1';
@@ -118,7 +118,7 @@ export function bootWorkspace({tools,showBoard,openTool}){
   const workspaceMenu=createSavedWorkspaceMenu({storage:gexStorage,popup,closePopup,confirm:confirmLocalAction,
     capture:()=>({...gexStorage.snapshot(),[KEYS.layout]:JSON.stringify(serializeWorkspace(state))}),validate:validateSnapshot,apply:restoreSnapshot});
   const workspacesButton=button('Workspaces',event=>workspaceMenu.open(event.currentTarget),'top-action wide chart-workspace-trigger');workspacesButton.prepend(document.querySelector('#workspaceToolbarIcon').content.cloneNode(true));workspaceMenu.decorateTrigger(workspacesButton);workspacesButton.setAttribute('aria-label','GEX DATA workspaces');document.querySelector('.top-actions').append(workspacesButton);
-  const persist=()=>{try{gexStorage.setItem(KEYS.layout,JSON.stringify(serializeWorkspace(state)));}catch{}};
+  const persist=()=>{try{gexStorage.setItem(KEYS.layout,JSON.stringify(serializeWorkspace(state)));}catch{}workspaceMenu.refresh();};
   const act=action=>{try{if(action.type==='duplicate'){action={...action,newId:crypto.randomUUID()};const original=workspaceTabsets(state).flatMap(set=>set.children).find(tab=>tab.id===action.tabId);const oldFrame=frames.get(action.tabId);if(original&&oldFrame)oldFrame.contentWindow?.postMessage({type:'gex-data-save-state'},location.origin);for(const key of [`gex-data-tool-groups:${action.tabId}`,`gex-data-chart-windows:${action.tabId}`,`gex-data-market-map-camera:${action.tabId}`]){const value=gexStorage.getItem(key);if(value!==null)gexStorage.setItem(key.replace(action.tabId,action.newId),value);}}
     const next=workspaceAction(state,action),sets=workspaceTabsets(next);if(sets.length>16||sets.flatMap(set=>set.children).length>32)throw Error('This workspace supports up to 16 panes and 32 tools.');state=next;persist();render();}catch(error){notify(error.message);}};
   function notify(message){popup(document.querySelector('#openLibrary'),'GEX DATA',el=>el.append(node('p','',message)));}
@@ -179,13 +179,15 @@ export function bootWorkspace({tools,showBoard,openTool}){
   top('Filters','Page Tool Filters',anchor=>showSharedFilters(anchor,'page'));top('Market','Global Tool Filters',anchor=>showSharedFilters(anchor,'global'));top('Edit','Tool Configuration',showToolConfiguration);
   top('Settings','Settings',showToolConfiguration);top('Remove layout','Clear Page',()=>dialog('Clear Page',d=>d.append(node('p','','Remove every tool from this local page? This does not change the market-data website.'),button('Cancel',()=>d.close()),button('Clear Page',()=>{state=createWorkspace();persist();render();d.close();},'danger-button'))));
   window.addEventListener('message',event=>{if(event.origin!==location.origin)return;const pair=[...frames].find(([,frame])=>frame.contentWindow===event.source);if(!pair)return;const [id,frame]=pair;
+    if(event.data?.type==='gex-data-workspace-viewport-edit')workspaceMenu.markViewportChanged();
     if(event.data?.type==='gex-data-tool-state'){const tab=workspaceTabsets(state).flatMap(set=>set.children).find(tab=>tab.id===id);if(tab){tab.controls=event.data.controls;persist();}}
     if(event.data?.type==='gex-data-minute'){const tab=workspaceTabsets(state).flatMap(set=>set.children).find(tab=>tab.id===id);if(tab){tab.minute=event.data.minute;persist();}}
     if(event.data?.type==='gex-data-status'){const marker=layout.querySelector(`[data-tab="${CSS.escape(id)}"] .dock-status`);if(marker){marker.classList.toggle('paused',event.data.paused===true);marker.classList.toggle('failed',event.data.failed===true);marker.title=event.data.message||'Licensed connection';}}
     if(event.data?.type==='gex-data-escape')closePopup();
     if(event.data?.type==='gex-data-tab-menu'){const set=workspaceTabsets(state).find(set=>set.children.some(tab=>tab.id===id)),tab=set?.children.find(tab=>tab.id===id);if(tab)tabMenu(frame,tab,set);}
   });
-  const preferencesChanged=()=>{applyDocumentPreferences();updateBadges();for(const frame of frames.values())send(frame,'gex-data-preferences');};window.addEventListener('gex-data-preferences',preferencesChanged);window.addEventListener('storage',preferencesChanged);
+  const preferencesChanged=()=>{applyDocumentPreferences();updateBadges();for(const frame of frames.values())send(frame,'gex-data-preferences');};window.addEventListener('gex-data-preferences',()=>{preferencesChanged();workspaceMenu.refresh();});window.addEventListener('storage',preferencesChanged);
+  window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===parent&&event.data?.type==='gex-data-host-workspace-edit')workspaceMenu.refresh();});
   const observer=new ResizeObserver(()=>requestAnimationFrame(syncFrames));observer.observe(root);window.addEventListener('resize',syncFrames);
   const popoutTimer=setInterval(()=>{for(const [id,child] of popouts)if(child.closed){popouts.delete(id);render();}},500);
   window.addEventListener('pagehide',()=>{clearInterval(popoutTimer);for(const child of popouts.values())child.close?.();});

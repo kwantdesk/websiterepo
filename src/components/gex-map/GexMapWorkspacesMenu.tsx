@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download, FileUp, LayoutGrid, Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, Download, FileUp, LayoutGrid, Plus, Save, Trash2 } from "lucide-react";
 import {
   deleteGexMapWorkspace, exportGexMapWorkspaces, GEX_MAP_WORKSPACES_KEY, importGexMapWorkspaces,
-  readGexMapWorkspaces, saveGexMapWorkspace, type GexMapWorkspacePreset, type GexMapWorkspaceSnapshot,
+  normalizeGexMapWorkspaceSnapshot, readGexMapWorkspaces, saveGexMapWorkspace, type GexMapWorkspacePreset, type GexMapWorkspaceSnapshot,
 } from "@/lib/gexMapWorkspaces";
 
 const actionClass = "flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-border px-2 text-[10px] font-semibold text-foreground hover:bg-surface disabled:opacity-40";
 
 export default function GexMapWorkspacesMenu({ activeId, snapshot, onActivate, onSaved, onDelete }: {
   activeId: string | null;
-  snapshot: () => GexMapWorkspaceSnapshot;
+  snapshot: GexMapWorkspaceSnapshot;
   onActivate: (preset: GexMapWorkspacePreset) => void;
   onSaved: (preset: GexMapWorkspacePreset) => void;
   onDelete: (id: string) => void;
@@ -25,6 +25,10 @@ export default function GexMapWorkspacesMenu({ activeId, snapshot, onActivate, o
   const menuRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const active = presets.find((preset) => preset.id === activeId);
+  const signature = useMemo(() => JSON.stringify(normalizeGexMapWorkspaceSnapshot(snapshot)), [snapshot]);
+  const [initialSignature] = useState(signature);
+  const baseline = active ? JSON.stringify(active.snapshot) : initialSignature;
+  const dirty = (!activeId || !!active) && signature !== baseline;
   const open = position !== null;
 
   function place() {
@@ -71,7 +75,7 @@ export default function GexMapWorkspacesMenu({ activeId, snapshot, onActivate, o
 
   function save(value: string, id?: string) {
     try {
-      const preset = saveGexMapWorkspace(value, snapshot(), id);
+      const preset = saveGexMapWorkspace(value, snapshot, id);
       onSaved(preset);
       setPresets(readGexMapWorkspaces());
       setName(null);
@@ -101,12 +105,15 @@ export default function GexMapWorkspacesMenu({ activeId, snapshot, onActivate, o
   }
 
   return <>
-    <button ref={buttonRef} type="button" aria-expanded={open} aria-haspopup="dialog" aria-label="GEX Map workspaces"
+    <button ref={buttonRef} type="button" aria-expanded={open} aria-haspopup="dialog" aria-label="GEX Map workspaces" aria-description={dirty ? "Save this workspace" : undefined}
       onClick={() => { if (open) setPosition(null); else { setPresets(readGexMapWorkspaces()); setStatus(""); place(); } }}
       className="flex h-7 shrink-0 items-center gap-1.5 rounded-[var(--kwant-control-radius,8px)] border border-border/70 bg-background/35 px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] text-muted hover:bg-surface hover:text-foreground"
       title={active ? "Active GEX Map workspace · " + active.name : "Saved GEX Map workspaces"}>
       <LayoutGrid className="h-3.5 w-3.5" /> Workspaces
       {active ? <span className="max-w-24 truncate text-primary">{active.name}</span> : null}
+      {dirty ? <span className="inline-flex text-[var(--warning)]" title="Save this workspace">
+        <AlertTriangle aria-hidden="true" className="h-3 w-3" />
+      </span> : null}
     </button>
     {position ? createPortal(
       <div ref={menuRef} role="dialog" aria-label="Saved GEX Map workspaces" style={{ ...position, maxHeight: Math.max(120, window.innerHeight - position.top - 8) }}
