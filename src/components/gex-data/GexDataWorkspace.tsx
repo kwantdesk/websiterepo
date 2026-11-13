@@ -1,7 +1,7 @@
 "use client";
 import { revalidatePrivateTool } from "@/lib/privateToolRevalidation";
 import { createLeasedMarketSource } from "../../../public/browser-market-stream.js";
-import { createGexDataLiveClient } from "../../../public/gex-data-live-client.js";
+import { createGexDataLiveClient, GexDataStreamUnavailable } from "../../../public/gex-data-live-client.js";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
@@ -137,7 +137,13 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
         if (disposed || !activeRef.current) throw new Error("This workspace is paused.");
         if (!/^\/api\/gex-data\/[a-z-]+$/.test(url)) throw new Error("Unsupported data request.");
         const streamed = live.request(url, options, consumer);
-        if (streamed) return streamed;
+        if (streamed) {
+          try { return await streamed; }
+          catch (error) {
+            if (!(error instanceof GexDataStreamUnavailable)) throw error;
+          }
+          options.signal?.throwIfAborted();
+        }
         const key = `${url}:${options.body ?? ""}`;
         let entry = cache.get(key);
         if (!entry || entry.until < Date.now()) {
@@ -208,7 +214,7 @@ export default function GexDataWorkspace({ accountKey, active = true }: { accoun
   }, [active]);
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "20261112-market-map-scrub"); params.set("hostTimezone", "1");
+  const requestedTool = params.get("gexTool"); params.delete("gexTool"); params.set("v", "20261113-workspace-menu"); params.set("hostTimezone", "1");
   const src = `/gex-data-app/index.html?${params}${requestedTool && /^[a-z-]+$/.test(requestedTool) ? `#tool=${requestedTool}` : ""}`;
   const frameKey = `${accountKey}:${generation}:${src}`;
   const frameLoading = !ready || loadedFrame !== frameKey;

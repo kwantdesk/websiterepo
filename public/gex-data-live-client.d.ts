@@ -8,3 +8,4 @@ export function createGexDataLiveClient(options: {
   dispose(): void;
   status(): { selections: number; owners: number; bytes: number };
 };
+export class GexDataStreamUnavailable extends Error {}

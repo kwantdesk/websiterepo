@@ -6,8 +6,11 @@ const tools = new Set(('contract-statistics contract-trade-side-statistics expos
 // audited. Latest-first Equity has a tested provider-ID merge for loaded pages.
 for (const tool of ['open-interest-change', 'news-articles']) tools.delete(tool);
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+export class GexDataStreamUnavailable extends Error {}
+
 export function createGexDataLiveClient({ createSource, onFrame = () => {}, setTimer = setTimeout, clearTimer = clearTimeout }) {
   const entries = new Map(), owners = new Map(); let disposed = false, bytes = 0;
+  const fallbackUntil = new Map();
   const forget = entry => {
     entry.source.close(); entries.delete(entry.key); bytes -= entry.bytes;
     for (const waiter of [...entry.waiters]) waiter.reject(new Error('This data selection was closed.'));
@@ -39,6 +42,8 @@ export function createGexDataLiveClient({ createSource, onFrame = () => {}, setT
     } catch { return fallback(); }
     const encodedBytes = new TextEncoder().encode(text); if (encodedBytes.length > 2900) return fallback();
     const key = url + ':' + text;
+    if ((fallbackUntil.get(key) ?? 0) > Date.now()) return fallback();
+    fallbackUntil.delete(key);
     const old = owners.get(slot);
     if (old && old !== key) { const previous = entries.get(old); previous?.owners.delete(slot); if (previous && !previous.owners.size) forget(previous); }
     owners.set(slot, key);
@@ -47,10 +52,21 @@ export function createGexDataLiveClient({ createSource, onFrame = () => {}, setT
       if (entries.size >= 32) { owners.delete(slot); return Promise.reject(new Error('Too many active data selections.')); }
       const encoded = btoa(String.fromCharCode(...encodedBytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
       const source = createSource('/api/gex-data/stream?' + new URLSearchParams({ tool, request: encoded }));
-      entry = { key, source, owners: new Set(), waiters: new Set(), text: null, bytes: 0, at: -Infinity, revision: null, failed: false };
+      entry = { key, source, owners: new Set(), waiters: new Set(), text: null, bytes: 0, at: -Infinity, revision: null, failed: false, fail: null };
       entries.set(key, entry);
-      source.addEventListener('feed-error', () => { entry.failed = true; });
-      source.addEventListener('error', () => { entry.failed = true; });
+      entry.fail = () => {
+        if (entries.get(key) !== entry) return;
+        entry.failed = true;
+        // A provider error on an established stream may recover in place. A
+        // transport failure or missing initial frame must release its lease.
+        fallbackUntil.set(key, Date.now() + 60_000);
+        if (fallbackUntil.size > 64) fallbackUntil.delete(fallbackUntil.keys().next().value);
+        for (const slot of entry.owners) owners.delete(slot);
+        for (const waiter of [...entry.waiters]) waiter.reject(new GexDataStreamUnavailable('Live delivery is unavailable.'));
+        forget(entry);
+      };
+      source.addEventListener('feed-error', () => { if (entry.text === null) entry.fail(); else entry.failed = true; });
+      source.addEventListener('error', entry.fail);
       source.addEventListener('verified', () => { entry.failed = false; });
       source.addEventListener('snapshot', event => {
         if (entries.get(key) !== entry || !entry.owners.size) return;
@@ -78,10 +94,10 @@ export function createGexDataLiveClient({ createSource, onFrame = () => {}, setT
       const finish = fn => value => { clearTimer(timer); options.signal?.removeEventListener('abort', abort); entry.waiters.delete(waiter); fn(value); };
       const waiter = { resolve: finish(resolve), reject: finish(reject) };
       const abort = () => waiter.reject(new DOMException('The data request was cancelled.', 'AbortError'));
-      entry.waiters.add(waiter); timer = setTimer(() => waiter.reject(new Error('Live data did not respond in time.')), 35000);
+      entry.waiters.add(waiter); timer = setTimer(entry.fail, 10_000);
       options.signal?.addEventListener('abort', abort, { once: true }); if (options.signal?.aborted) abort();
     });
   }
   return { request, release, pause() { for (const slot of [...owners.keys()]) release(slot.split('\n')[0]); },
-    dispose() { disposed = true; this.pause(); }, status: () => ({ selections: entries.size, owners: owners.size, bytes }) };
+    dispose() { disposed = true; this.pause(); fallbackUntil.clear(); }, status: () => ({ selections: entries.size, owners: owners.size, bytes }) };
 }

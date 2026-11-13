@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGexDataLiveClient } from '../public/gex-data-live-client.js';
+import { createGexDataLiveClient, GexDataStreamUnavailable } from '../public/gex-data-live-client.js';
 function fixture() {
   const sources = [], changes = [];
   const client = createGexDataLiveClient({ createSource: url => {
@@ -49,6 +49,36 @@ test('feed refusal does not silently relabel old data as live; verified unchange
   await assert.rejects(client.request(url, options({}), 'a'), /temporarily/);
   sources[0].dispatchEvent(new Event('verified'));
   assert.equal((await (await client.request(url, options({}), 'a')).json()).data, 5); client.dispose();
+});
+
+test('a failed initial lease releases shared demand and allows a finite read', async () => {
+  const { client, sources } = fixture();
+  const body = { filter: { ticker: 'SPY' }, lookBackPeriod: 365, maturity: 30 };
+  const endpoint = '/api/gex-data/iv-rank';
+  const a = client.request(endpoint, options(body), 'a');
+  const b = client.request(endpoint, options(body), 'b');
+  sources[0].dispatchEvent(new Event('error'));
+  await Promise.all([assert.rejects(a, GexDataStreamUnavailable), assert.rejects(b, GexDataStreamUnavailable)]);
+  assert.equal(sources[0].closed, true);
+  assert.equal(client.request(endpoint, options(body), 'a'), null);
+  assert.equal(sources.length, 1);
+  client.dispose();
+});
+
+test('a lease that opens without a snapshot has a bounded first-frame wait', async () => {
+  let timeout;
+  const source = new EventTarget();
+  source.close = () => {};
+  const client = createGexDataLiveClient({
+    createSource: () => source,
+    setTimer: (callback, delay) => { assert.equal(delay, 10_000); timeout = callback; return 1; },
+    clearTimer: () => {},
+  });
+  const read = client.request(url, options({}), 'a');
+  timeout();
+  await assert.rejects(read, GexDataStreamUnavailable);
+  assert.equal(client.request(url, options({}), 'a'), null);
+  client.dispose();
 });
 
 test('latest-first Equity shares changed frames while older REST pages preserve its channel',async()=>{
