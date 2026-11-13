@@ -27,13 +27,14 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import GexMapSettingsDialog, { GexMapDropdown } from "./GexMapSettingsDialog";
 export { GexMapDropdown } from "./GexMapSettingsDialog";
+import { DEFAULT_GEX_MAP_PANELS, DEFAULT_GEX_MAP_WORKSPACE_EXPIRY_SCOPE } from "@/lib/gexMapLinkedSettings";
 import { useGexMapSettingsBridge } from "./useLinkedGexMapSettings";
 import { publishGexMapSurface, subscribeGexMapSurface } from "@/lib/gexMapSurfaceBus";
 import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
 import GexMapWorkspacesMenu from "./GexMapWorkspacesMenu";
 import {
-  GEX_MAP_FUTURE_SETTINGS_KEY, GEX_MAP_ZOOM_MIN, GEX_MAP_ZOOM_MAX, GEX_MAP_ZOOM_BASE_SCALE,
+  GEX_MAP_FUTURE_SETTINGS_KEY, GEX_MAP_ZOOM_MIN, GEX_MAP_ZOOM_MAX, GEX_MAP_FUTURE_ZOOM_BASE_SCALE,
   loadFutureSettings, saveFutureSettings, readActiveGexMapWorkspace, rememberActiveGexMapWorkspace,
   type GexMapFutureSettings, type GexMapWorkspacePreset, type GexMapWorkspaceSnapshot,
 } from "@/lib/gexMapWorkspaces";
@@ -166,21 +167,6 @@ export type GexMapWorkspaceProps = {
 };
 
 /**
- * What the map opens on: SPX, SPY and QQQ gamma, side by side.
- *
- * The three columns used to open on three DIFFERENT greeks — gamma, delta,
- * then vanna — so the first thing on screen compared three unlike things
- * across three underlyings. Reading gamma across the index, the ETF and the
- * Nasdaq proxy at once is what the map is opened for; the other greeks are a
- * click away per column.
- */
-const DEFAULT_PANELS: PanelConfig[] = [
-  { id: "left", symbol: "SPX", greekMode: "GAMMA" },
-  { id: "centre", symbol: "SPY", greekMode: "GAMMA" },
-  { id: "right", symbol: "QQQ", greekMode: "GAMMA" },
-];
-
-/**
  * The layout every saved map carried before the default became three gammas.
  *
  * A pane that still holds exactly this was never actually configured — it is
@@ -248,7 +234,7 @@ function linkedMarketFromLocation(): GexMapMarket | null {
 }
 
 function initialPanelsForMarket(market: GexMapMarket | null) {
-  return (market ? MARKET_PANELS[market] : DEFAULT_PANELS).map((panel) => ({ ...panel }));
+  return (market ? MARKET_PANELS[market] : DEFAULT_GEX_MAP_PANELS).map((panel) => ({ ...panel }));
 }
 
 function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
@@ -274,7 +260,7 @@ function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
     surfaceVersion: 2,
     // An untouched old default is carried forward to the new one; a layout
     // the trader actually chose is theirs and is kept exactly as saved.
-    panels: isLegacyDefaultPanels(panels) ? DEFAULT_PANELS.map((panel) => ({ ...panel })) : panels,
+    panels: isLegacyDefaultPanels(panels) ? DEFAULT_GEX_MAP_PANELS.map((panel) => ({ ...panel })) : panels,
     viewMode: normalizeGexMapViewMode(parsed.viewMode),
     timeHorizon: parsed.timeHorizon === "present" || parsed.timeHorizon === "future" ? parsed.timeHorizon : undefined,
     exposureModel: parsed.exposureModel === "DEALER_INVENTORY" ? "DEALER_INVENTORY" : "STRUCTURAL_OI",
@@ -817,7 +803,7 @@ function ExposurePanel({
             // CSS zoom reflows heights and typography together, so the +/-
             // clicker genuinely fits more strike nodes on screen when zoomed
             // out and fewer, larger nodes when zoomed in.
-            style={{ zoom: ladderZoom * GEX_MAP_ZOOM_BASE_SCALE } as CSSProperties}
+            style={{ zoom: ladderZoom } as CSSProperties}
           >
             {rows.map((row) => {
               const prior = previous.get(row.strike);
@@ -1165,16 +1151,19 @@ function GexMapWorkspace({
     left: null,
     centre: null,
     right: null,
+    ndx: null,
   });
   const [panelErrors, setPanelErrors] = useState<Record<string, string | null>>({
     left: null,
     centre: null,
     right: null,
+    ndx: null,
   });
   const [loading, setLoading] = useState<Record<string, boolean>>({
     left: true,
     centre: true,
     right: true,
+    ndx: true,
   });
   const [internalReplayMode, setReplayMode] = useState(false);
   const [replayDate, setReplayDate] = useState("");
@@ -1193,7 +1182,7 @@ function GexMapWorkspace({
   const [exposureModel, setExposureModel] = useState<"STRUCTURAL_OI" | "DEALER_INVENTORY">(
     () => initialEmbedStateRef.current?.exposureModel ?? "STRUCTURAL_OI");
   const [expiryScope, setExpiryScope] = useState<GexMapExpiryScope>(
-    () => initialEmbedStateRef.current?.expiryScope ?? DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+    () => initialEmbedStateRef.current?.expiryScope ?? DEFAULT_GEX_MAP_WORKSPACE_EXPIRY_SCOPE,
   );
   const [representation, setRepresentation] = useState<GexMapRepresentation>(
     () => initialEmbedStateRef.current?.representation ?? DEFAULT_GEX_MAP_REPRESENTATION,
@@ -1993,7 +1982,7 @@ function GexMapWorkspace({
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden px-2 py-1.5">
             {replayMode ? <div role="status" className="flex h-full items-center justify-center p-6 text-center text-xs text-muted">
               The forward-expiry matrix has no recorded replay surface. Switch to Present for timestamped exposure replay.
-            </div> : <GexMapFutureMatrix palette={activePalette} zoom={futureZoom * GEX_MAP_ZOOM_BASE_SCALE}
+            </div> : <GexMapFutureMatrix palette={activePalette} zoom={futureZoom * GEX_MAP_FUTURE_ZOOM_BASE_SCALE}
               settings={futureSettings} />}
           </div>
         ) : (

@@ -11,11 +11,18 @@ export type LinkedGexMapSettings = {
   exposureModel: "STRUCTURAL_OI" | "DEALER_INVENTORY"; viewMode: GexMapViewMode;
   stepMinutes: number; starSettings: GexMapStarSettings; panels: LinkedGexMapPanel[];
 };
+export const DEFAULT_GEX_MAP_PANELS: readonly LinkedGexMapPanel[] = [
+  { id: "left", symbol: "SPX", greekMode: "GAMMA" },
+  { id: "centre", symbol: "SPY", greekMode: "GAMMA" },
+  { id: "right", symbol: "QQQ", greekMode: "GAMMA" },
+  { id: "ndx", symbol: "NDX", greekMode: "GAMMA" },
+];
+export const DEFAULT_GEX_MAP_WORKSPACE_EXPIRY_SCOPE: GexMapExpiryScope = "ALL_EXPIRIES";
 export const DEFAULT_LINKED_GEX_MAP_SETTINGS: LinkedGexMapSettings = {
-  version: 1, expiryScope: DEFAULT_GEX_MAP_EXPIRY_SCOPE, representation: DEFAULT_GEX_MAP_REPRESENTATION,
+  version: 1, expiryScope: DEFAULT_GEX_MAP_WORKSPACE_EXPIRY_SCOPE, representation: DEFAULT_GEX_MAP_REPRESENTATION,
   exposureModel: "STRUCTURAL_OI", viewMode: "star", stepMinutes: 1,
   starSettings: { ...RECOMMENDED_GEX_MAP_STAR_SETTINGS },
-  panels: [{ id: "left", symbol: "SPX", greekMode: "GAMMA" }, { id: "centre", symbol: "SPY", greekMode: "GAMMA" }, { id: "right", symbol: "QQQ", greekMode: "GAMMA" }],
+  panels: DEFAULT_GEX_MAP_PANELS.map(panel => ({ ...panel })),
 };
 const GREEKS = ["GAMMA", "DELTA", "VANNA", "CHARM"];
 const bounded = (v: unknown, min: number, max: number, fallback: number) => typeof v === "number" && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback;
@@ -40,7 +47,7 @@ export function normalizeLinkedGexMapSettings(value: unknown): LinkedGexMapSetti
     valueMode: s.valueMode === "star-percent" ? "star-percent" : "signed",
   };
   const panels = Array.isArray(v.panels) ? v.panels.filter((p) => p && typeof p.id === "string" && typeof p.symbol === "string" && /^[A-Z0-9.^-]{1,16}$/.test(p.symbol) && GREEKS.includes(p.greekMode)).map((p) => ({ id: p.id, symbol: p.symbol, greekMode: p.greekMode })) : [];
-  return { version: 1, expiryScope: v.expiryScope === "ALL_EXPIRIES" ? "ALL_EXPIRIES" : "FRONT_EXPIRY",
+  return { version: 1, expiryScope: v.expiryScope === "FRONT_EXPIRY" ? DEFAULT_GEX_MAP_EXPIRY_SCOPE : DEFAULT_GEX_MAP_WORKSPACE_EXPIRY_SCOPE,
     representation: v.representation === "PER_ONE_PERCENT_MOVE" ? "PER_ONE_PERCENT_MOVE" : "PER_ONE_DOLLAR_MOVE",
     exposureModel: v.exposureModel === "DEALER_INVENTORY" ? "DEALER_INVENTORY" : "STRUCTURAL_OI",
     viewMode: v.viewMode === undefined ? "star" : normalizeGexMapViewMode(v.viewMode),

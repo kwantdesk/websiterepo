@@ -1,35 +1,29 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-/**
- * The GEX Map opens on gamma across SPX, SPY and QQQ.
- *
- * It used to open its three columns on three DIFFERENT greeks — gamma, then
- * delta, then vanna — so the first thing on screen compared three unlike
- * measures across three underlyings. Reading gamma across the index, the ETF
- * and the Nasdaq proxy side by side is what the map is opened for; the other
- * greeks are a click away per column.
- */
-
 const source = readFileSync(new URL("../src/components/gex-map/GexMapWorkspace.tsx", import.meta.url), "utf8");
+
+const linked = readFileSync(new URL("../src/lib/gexMapLinkedSettings.ts", import.meta.url), "utf8");
+const palette = readFileSync(new URL("../src/lib/gexMapPalette.ts", import.meta.url), "utf8");
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
 /** The panel list a named const declares, in order. */
-function panelsOf(name) {
-  const start = source.indexOf(`const ${name}`);
+function panelsOf(name, text = source) {
+  const start = text.indexOf(`const ${name}`);
   assert.ok(start > 0, `${name} is gone`);
-  const body = source.slice(start, source.indexOf("];", start));
+  const body = text.slice(start, text.indexOf("];", start));
   return [...body.matchAll(/symbol: "([A-Z]+)", greekMode: "([A-Z]+)"/g)]
     .map((match) => ({ symbol: match[1], greekMode: match[2] }));
 }
 
-check("it opens on SPX, SPY and QQQ gamma", () => {
-  assert.deepEqual(panelsOf("DEFAULT_PANELS"), [
+check("it opens on SPX, SPY, QQQ and NDX gamma", () => {
+  assert.deepEqual(panelsOf("DEFAULT_GEX_MAP_PANELS", linked), [
     { symbol: "SPX", greekMode: "GAMMA" },
     { symbol: "SPY", greekMode: "GAMMA" },
     { symbol: "QQQ", greekMode: "GAMMA" },
+    { symbol: "NDX", greekMode: "GAMMA" },
   ]);
 });
 
@@ -40,8 +34,8 @@ check("adding a panel starts it on SPX gamma", () => {
 
 check("every default column reads the same greek", () => {
   // The actual complaint: three columns, three different measures.
-  for (const name of ["DEFAULT_PANELS", "MARKET_PANELS"]) {
-    const modes = new Set(panelsOf(name).map((panel) => panel.greekMode));
+  for (const [name, text] of [["DEFAULT_GEX_MAP_PANELS", linked], ["MARKET_PANELS", source]]) {
+    const modes = new Set(panelsOf(name, text).map((panel) => panel.greekMode));
     assert.deepEqual([...modes], ["GAMMA"], `${name} opens on mixed greeks: ${[...modes].join(", ")}`);
   }
 });
@@ -65,9 +59,18 @@ check("an untouched old layout is carried forward, a chosen one is not", () => {
   ], "the migration must match the layout that actually shipped");
   assert.match(
     source,
-    /panels: isLegacyDefaultPanels\(panels\) \? DEFAULT_PANELS\.map\(\(panel\) => \(\{ \.\.\.panel \}\)\) : panels,/,
+    /panels: isLegacyDefaultPanels\(panels\) \? DEFAULT_GEX_MAP_PANELS\.map\(\(panel\) => \(\{ \.\.\.panel \}\)\) : panels,/,
     "only the untouched old default may be replaced",
   );
+});
+
+check("the stock ladder opens at actual size with site colours and all expiries", () => {
+  assert.match(source, /useState\(initialSnapshot\?\.ladderZoom \?\? 1\)/);
+  assert.match(source, /style=\{\{ zoom: ladderZoom \}/);
+  assert.match(source, /initialEmbedStateRef\.current\?\.expiryScope \?\? DEFAULT_GEX_MAP_WORKSPACE_EXPIRY_SCOPE/);
+  assert.match(linked, /DEFAULT_GEX_MAP_WORKSPACE_EXPIRY_SCOPE: GexMapExpiryScope = "ALL_EXPIRIES"/);
+  assert.match(linked, /v\.expiryScope === "FRONT_EXPIRY" \? DEFAULT_GEX_MAP_EXPIRY_SCOPE : DEFAULT_GEX_MAP_WORKSPACE_EXPIRY_SCOPE/);
+  assert.match(palette, /DEFAULT_GEX_MAP_PALETTE: GexMapPalette = \{\s*useThemeColors: true/);
 });
 
 console.log(`\ngex map defaults: ${passed}/${passed} checks passed`);
