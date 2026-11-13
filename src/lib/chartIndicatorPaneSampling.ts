@@ -69,6 +69,7 @@ export function sampledPanePoints(
       current.high = Math.max(current.high ?? currentOpen, point.high ?? pointClose);
       current.low = Math.min(current.low ?? currentOpen, point.low ?? pointClose);
       current.color = point.color ?? current.color;
+      current.borderColor = point.borderColor ?? current.borderColor;
       current.time = point.time;
       current.x = point.x;
       current.breakBefore = Boolean(current.breakBefore || point.breakBefore);

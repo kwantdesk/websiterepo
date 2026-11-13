@@ -17,14 +17,6 @@ export function indicatorSettingDisabledReason(
   if (id === "classic-gex-profile" && key === "zeroGammaColor" && settings.showZeroGamma === false) {
     return "Enable Show Zero Gamma to adjust its colour.";
   }
-  if (id === "book-speed") {
-    if ((key === "averageLength" || /^average(?:Bid|Ask)Color$/.test(key)) && settings.showAverage === false) {
-      return "Enable Show Average to adjust the average plot.";
-    }
-    if (/^marker(?:Value|BidColor|AskColor)$/.test(key) && settings.showMarker !== true) {
-      return "Enable Show Marker to adjust the threshold.";
-    }
-  }
   if (id === "chaikin-accumulation-distribution" && /^average(?:Length|Type|Color|LineWidth)$/.test(key) && settings.showAverage !== true) {
     return "Enable Show Average to adjust the average plot.";
   }

@@ -60,11 +60,6 @@ import {
   normalizeCumulativeIcebergStopSettings,
 } from "@/lib/cumulativeIcebergStop";
 import {
-  BOOK_SPEED_SETTINGS_VERSION,
-  DEFAULT_BOOK_SPEED_SETTINGS,
-  normalizeBookSpeedSettings,
-} from "@/lib/bookSpeed";
-import {
   DEEP_DELTA_SETTINGS_VERSION,
   DEFAULT_DEEP_DELTA_SETTINGS,
   normalizeDeepDeltaSettings,
@@ -147,7 +142,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "delta-cumulative-histogram",
   "imbalance-tracker",
   "dynamic-poc",
-  "book-speed",
+  "speed-of-tape",
   "market-statistics",
   "confluence-identifier",
   "cumulative-volume-delta",
@@ -427,14 +422,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
     { key: "alertStopThreshold", label: "Stop alert threshold", defaultValue: 100, min: 0, max: 10000000, step: 1 },
     { key: "alertIcebergThreshold", label: "Iceberg alert threshold", defaultValue: 100, min: 0, max: 10000000, step: 1 },
-    { key: "paneHeight", label: "Pane height", defaultValue: 190, min: 120, max: 520, step: 1 },
-  ],
-  "book-speed": [
-    { key: "parameterValue", label: "Parameter value", defaultValue: 10, min: 1, max: 3600, step: 1 },
-    { key: "averageLength", label: "Average length", defaultValue: 10, min: 1, max: 1000, step: 1 },
-    { key: "markerValue", label: "Marker value", defaultValue: 10, min: 0, max: 100000, step: 1 },
-    { key: "lineWidth", label: "Histogram and average width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
-    { key: "historyBuckets", label: "History buckets", defaultValue: 360, min: 20, max: 10000, step: 10 },
     { key: "paneHeight", label: "Pane height", defaultValue: 190, min: 120, max: 520, step: 1 },
   ],
   "deep-delta": [
@@ -1701,13 +1688,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     openColor: theme?.gridColor ?? IMPORTANT_LEVELS_DEFAULTS.openColor,
     closeColor: theme?.borderUpColor ?? theme?.upColor ?? IMPORTANT_LEVELS_DEFAULTS.closeColor,
   } : {}),
-  ...(indicatorId === "speed-of-tape" ? {
-    ...SPEED_OF_TAPE_DEFAULTS,
-    bullBorderColor: theme?.borderUpColor ?? theme?.upColor ?? SPEED_OF_TAPE_DEFAULTS.bullBorderColor,
-    bullFillColor: theme?.upColor ?? SPEED_OF_TAPE_DEFAULTS.bullFillColor,
-    bearBorderColor: theme?.borderDownColor ?? theme?.downColor ?? SPEED_OF_TAPE_DEFAULTS.bearBorderColor,
-    bearFillColor: theme?.downColor ?? SPEED_OF_TAPE_DEFAULTS.bearFillColor,
-  } : {}),
   ...(indicatorId === "price-movement-levels" ? {
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
   } : {}),
@@ -1748,6 +1728,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     gridColor: theme?.gridColor ?? "#8A8F98",
     backgroundColor: theme?.backgroundColor ?? "#000000",
   })),
+  ...(indicatorId === "speed-of-tape" ? SPEED_OF_TAPE_DEFAULTS : {}),
   ...(indicatorId === "average-directional-index-adx" ? { adxColor: ADX_LINE_COLOR } : {}),
   ...(indicatorId === "aroon-oscillator" ? {
     plotColor: AROON_OSCILLATOR_COLORS.positive,
@@ -1936,16 +1917,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     stopBidColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS.stopBidColor,
     stopAskColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS.stopAskColor,
     schemaVersion: CUMULATIVE_ICEBERG_STOP_SETTINGS_VERSION,
-  } : {}),
-  ...(indicatorId === "book-speed" ? {
-    ...DEFAULT_BOOK_SPEED_SETTINGS,
-    bidColor: theme?.upColor ?? DEFAULT_BOOK_SPEED_SETTINGS.bidColor,
-    askColor: theme?.downColor ?? DEFAULT_BOOK_SPEED_SETTINGS.askColor,
-    averageBidColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_BOOK_SPEED_SETTINGS.averageBidColor,
-    averageAskColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_BOOK_SPEED_SETTINGS.averageAskColor,
-    markerBidColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_BOOK_SPEED_SETTINGS.markerBidColor,
-    markerAskColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_BOOK_SPEED_SETTINGS.markerAskColor,
-    schemaVersion: BOOK_SPEED_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "deep-delta" ? {
     ...DEFAULT_DEEP_DELTA_SETTINGS,
@@ -3201,6 +3172,7 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
     delete settings.showSource;
     instance = { ...instance, settings };
   }
+  const legacyBookSpeed = instance.indicatorId === "book-speed";
   const canonicalId = canonicalChartIndicatorId(instance.indicatorId);
   if (canonicalId !== instance.indicatorId) instance = { ...instance, indicatorId: canonicalId };
   let normalizedInstance = instance.indicatorId === "deep-profile"
@@ -3323,7 +3295,21 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
     return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "speed-of-tape") {
-    const settings: Record<string, number | string | boolean> = { ...defaultIndicatorSettings("speed-of-tape"), ...(normalizedInstance.settings ?? {}) };
+    const saved = normalizedInstance.settings ?? {};
+    const migrated = legacyBookSpeed ? {
+      ...(saved.useThemeColors === true ? { useThemeColors: true } : {}),
+      ...(saved.parameterMode === "seconds" ? { numberSeconds: saved.parameterValue } : {}),
+      ...(saved.paneHeight !== undefined ? { paneHeight: saved.paneHeight } : {}),
+      ...(saved.useThemeColors === false ? {
+        useThemeColors: false,
+        bullBorderColor: saved.bidColor,
+        bullFillColor: saved.bidColor,
+        bearBorderColor: saved.askColor,
+        bearFillColor: saved.askColor,
+      } : {}),
+    } : saved;
+    const settings: Record<string, number | string | boolean> = { ...defaultIndicatorSettings("speed-of-tape"),
+      ...Object.fromEntries(Object.entries(migrated).filter(([, value]) => value !== undefined)) };
     settings.database = ["volume", "trades"].includes(String(settings.database)) ? settings.database : "volume";
     for (const definition of INDICATOR_NUMERIC_SETTINGS["speed-of-tape"] ?? []) {
       const parsed = Number(settings[definition.key]); settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
@@ -3513,10 +3499,6 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
   if (normalizedInstance.indicatorId === "cumulative-iceberg-stop") {
     const defaults = defaultIndicatorSettings("cumulative-iceberg-stop");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeCumulativeIcebergStopSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
-  }
-  if (normalizedInstance.indicatorId === "book-speed") {
-    const defaults = defaultIndicatorSettings("book-speed");
-    return { ...normalizedInstance, settings: { ...defaults, ...normalizeBookSpeedSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "deep-delta") {
     const defaults = defaultIndicatorSettings("deep-delta");

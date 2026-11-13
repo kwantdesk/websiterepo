@@ -100,11 +100,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "rthFilterMode",
     "rthFilterWindow"
   ],
-  "book-speed": [
-    "parameterMode",
-    "showAverage",
-    "showMarker"
-  ],
   "bounce-levels": [
     "expirationDates",
     "expirationMode",

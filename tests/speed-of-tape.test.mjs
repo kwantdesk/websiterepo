@@ -64,7 +64,7 @@ test("zero-speed windows and custom colors survive filtering and unordered input
 
 test("Speed of Tape measures exact volume/trade intensity in N-second windows", () => {
   const tape = [trade(1_000, 10), trade(2_000, 20, "SELL"), trade(11_000, 5, "BUY", 3), trade(12_000, 5, "BUY", 2)];
-  const volume = buildSpeedOfTapeFrame(tape, { database: "volume", numberSeconds: 10, standardDeviationPerFilter: 0 }, theme);
+  const volume = buildSpeedOfTapeFrame(tape, { database: "volume", numberSeconds: 10, standardDeviationPerFilter: 0, useThemeColors: true }, theme);
   assert.deepEqual(volume.bars.map((bar) => [bar.value, bar.delta, bar.color]), [[30, -10, "#f00"], [10, 10, "#0f0"]]);
   const trades = buildSpeedOfTapeFrame(tape, { database: "trades", numberSeconds: 10, filterMin: 0, standardDeviationPerFilter: 0 }, theme);
   assert.deepEqual(trades.bars.map((bar) => bar.value), [2, 5]);
@@ -76,10 +76,35 @@ test("settings are bounded, persisted and public controls/runtime gates exist", 
   const normalized = normalizeSpeedOfTapeSettings({ numberSeconds: 0, standardDeviationPerFilter: 99, paneHeight: 1, database: "bad" });
   assert.deepEqual([normalized.numberSeconds, normalized.standardDeviationPerFilter, normalized.paneHeight, normalized.database], [1, 10, 120, "volume"]);
   const defaults = defaultIndicatorSettings("speed-of-tape");
+  assert.deepEqual([defaults.bullFillColor, defaults.bearFillColor, defaults.useThemeColors], ["#65D876", "#B277DF", false]);
   const restored = normalizePaneIndicatorState({ pane: [{ instanceId: "s", indicatorId: "speed-of-tape", enabled: true, settings: { ...defaults, database: "trades", numberSeconds: 30 } }] }).pane[0];
   assert.deepEqual([restored.settings.database, restored.settings.numberSeconds], ["trades", 30]);
   assert.ok(!auditIndicatorLibrary().pending.some((entry) => entry.id === "speed-of-tape"));
   const control = fs.readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
   const wiring = `${control}\n${fs.readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8")}\n${fs.readFileSync(new URL("../src/lib/speedOfTape.ts", import.meta.url), "utf8")}`;
   for (const label of ["Database", "Filter min", "Filter max", "Number seconds", "Standard dev per filter", "bullBorderColor", "bullFillColor", "bearBorderColor", "bearFillColor"]) assert.match(wiring, new RegExp(label, "i"));
+});
+
+test("a burst that expires before candle close still draws its peak wick", () => {
+  const frame = buildChartSpeedOfTapeFrame([trade(1_000, 30, "SELL"), trade(8_000, 20, "SELL")],
+    { numberSeconds: 10, useThemeColors: false, bearBorderColor: "#111111", bearFillColor: "#222222" }, theme,
+    [candle(0, { volume: 50 })], 60_000, 59_999, -10_000, 60_000, true);
+  const [point] = chartSpeedOfTapeSeries(frame, "speed")[0].data;
+  assert.deepEqual([point.time, point.open, point.close, point.high, point.borderColor, point.color],
+    [0, 0, 0, 5, "#111111", "#222222"]);
+});
+
+test("recorded time bars require complete matching tape before rendering", () => {
+  const tape = [trade(5_000, 30)];
+  const bars = [candle(0, { volume: 40 })];
+  assert.equal(buildChartSpeedOfTapeFrame(tape, {}, theme, bars, 60_000, 59_999, 0, 60_000, true).bars.length, 0);
+  assert.equal(buildChartSpeedOfTapeFrame(tape, {}, theme, [candle(0, { volume: 30 })], 60_000, 59_999, 0, 30_000, true).bars.length, 0);
+});
+
+test("saved Book Speed opens as Speed of Tape with its compatible settings", () => {
+  const [restored] = normalizePaneIndicatorState({ pane: [{ instanceId: "old", indicatorId: "book-speed", enabled: true,
+    settings: { parameterMode: "seconds", parameterValue: 25, paneHeight: 230, useThemeColors: false, bidColor: "#123456" } }] }).pane;
+  assert.deepEqual([restored.instanceId, restored.indicatorId, restored.enabled, restored.settings.numberSeconds,
+    restored.settings.paneHeight, restored.settings.bullFillColor], ["old", "speed-of-tape", true, 25, 230, "#123456"]);
+  assert.equal(restored.settings.parameterMode, undefined);
 });

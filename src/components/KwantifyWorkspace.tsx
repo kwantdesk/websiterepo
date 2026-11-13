@@ -5594,6 +5594,7 @@ function WorkspaceChartPaneComponent({
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
   const [bigContractHistory, setBigContractHistory] = useState<{ symbol: string; records: InstitutionalTrade[] }>({ symbol: "", records: [] });
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
+  const [denseExecutionStartMs, setDenseExecutionStartMs] = useState<number | null>(null);
   // The live contract tape is a single bounded mutable array shared by every
   // pane for that instrument. A revision lets React consumers observe an
   // in-place append without cloning 25k-55k execution objects per pane on
@@ -6280,6 +6281,7 @@ function WorkspaceChartPaneComponent({
     marketActiveRef.current = false;
     rithmicConnectedRef.current = false;
     executionContinuityRef.current = "checking";
+    setDenseExecutionStartMs(null);
     setMarketIsActive(false);
     if (marketInactiveTimerRef.current !== null) {
       window.clearTimeout(marketInactiveTimerRef.current);
@@ -6299,6 +6301,8 @@ function WorkspaceChartPaneComponent({
       return;
     }
 
+    let denseExecutionStart: number | null = null;
+    if (instantTapeLiveActive) setDenseExecutionStartMs(null);
     let pendingExecutionRecords: InstitutionalTrade[] = [];
 
     let marketTradeStateSyncTimer: number | null = null;
@@ -6393,6 +6397,10 @@ function WorkspaceChartPaneComponent({
 
       if (!pendingExecutionRecords.length) return;
       const records = pendingExecutionRecords;
+      if (instantTapeLiveActive && denseExecutionStart === null && records.length && executionContinuityRef.current === "continuous") {
+        denseExecutionStart = records[0].timestamp;
+        setDenseExecutionStartMs(denseExecutionStart);
+      }
       pendingExecutionRecords = [];
       // Execution-only charts must establish live authority too; quote
       // delivery is independent and may arrive later or not arrive at all.
@@ -6552,6 +6560,10 @@ function WorkspaceChartPaneComponent({
       },
       onContinuity: (continuity) => {
         executionContinuityRef.current = continuity;
+        if (instantTapeLiveActive) {
+          if (continuity !== "continuous") denseExecutionStart = null;
+          setDenseExecutionStartMs(continuity === "continuous" ? denseExecutionStart : null);
+        }
         // Auction Gap is execution-order sensitive. Propagate a reconnect or
         // broken receipt immediately even when there is no trade batch, so it
         // cannot keep calculating against a previously trusted stream state.
@@ -6568,6 +6580,10 @@ function WorkspaceChartPaneComponent({
       },
       onSeed: (records) => {
         if (!records.length) return;
+        if (instantTapeLiveActive) {
+          denseExecutionStart = records[0].timestamp;
+          if (executionContinuityRef.current === "continuous") setDenseExecutionStartMs(denseExecutionStart);
+        }
         if (isEventBasedChartInterval(pane.timeframe)) eventHistorySeedRef.current = records;
         markMarketActive(records.reduce((newest, record) => Number.isFinite(record.timestamp)
           ? Math.max(newest, record.timestamp) : newest, -Infinity));
@@ -9799,6 +9815,7 @@ function WorkspaceChartPaneComponent({
           bigContractHistory={replayHistoryRange || bigContractHistory.symbol !== pane.symbol ? undefined : bigContractHistory.records}
           marketTrades={replayMarketTrades}
           marketTradesVersion={marketTradesVersion}
+          denseExecutionStartMs={replayActive ? null : denseExecutionStartMs}
           trades={trades}
           focusRange={focusRange}
           instrument={displayCmeSymbol(pane.symbol)}

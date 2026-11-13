@@ -99,6 +99,7 @@ export type CalculatedIndicatorSeries = {
     time: number;
     value: number;
     color?: string;
+    borderColor?: string;
     breakBefore?: boolean;
     open?: number;
     high?: number;

@@ -29,6 +29,7 @@ export type ChartIndicatorInstance = {
 
 /** Display-name-derived IDs shipped without matching their existing engines. */
 export function canonicalChartIndicatorId(id: string): string {
+  if (id === "book-speed") return "speed-of-tape";
   if (id === "big-trades-deep-trades") return "big-trades";
   if (id === "liquidity-sweep-stop-sweep-detector") return "liquidity-stop-sweep-detector";
   if (id === "market-profile-tpo") return "tpo-chart";
@@ -91,7 +92,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Session Imbalance", "Order Flow", "Aggregates imbalance behaviour across a session.", true),
   indicator("Iceberg / Refresh Detector", "Order Flow", "Repeated passive-liquidity replenishment inferred from aggressive executions and the shared Level 3 order-book lifecycle.", true, "Kwantify", undefined, "Liquidity"),
   indicator("POC & Auction Suite", "Order Flow", "Professional bar, session, rolling and anchored POC analysis with naked-level lifecycle, finished and unfinished auctions, excess and migration.", true, "Kwantify", undefined, "Auction"),
-  indicator("Book Speed", "Order Flow", "Execution-confirmed Bid and Ask book levels consumed in time or tick-reversal windows.", true),
+  indicator("Speed of Tape", "Order Flow", "Book Speed replacement. Shows executed volume or trade count over a rolling seconds window.", true),
   indicator("DOM Pro", "Order Flow", "High-DPI Rithmic MBO ladder with resting depth, aggressor trades, order counts, queue-aware capability states and configurable professional columns.", true, "Kwantify", "Depth of Market"),
   indicator("Mini DOM", "Order Flow", "The resting book drawn on the chart itself, pinned beside the price scale with every row at its own price so depth lines up with the candles.", true, "Kwantify"),
   indicator("Footprint", "Order Flow", "Native bid × ask, volume and delta footprint bars at every traded price.", true, "Kwantify", "Deep Print (Footprint)"),

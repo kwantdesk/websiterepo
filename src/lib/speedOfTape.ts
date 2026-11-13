@@ -4,11 +4,11 @@ import type { Candle } from "@/lib/backtester";
 
 export const SPEED_OF_TAPE_DEFAULTS = {
   database: "volume", filterMin: 1, filterMax: 0, numberSeconds: 10, standardDeviationPerFilter: 0,
-  paneHeight: 190, useThemeColors: true, bullBorderColor: "#22C55E", bullFillColor: "#22C55E",
-  bearBorderColor: "#EF4444", bearFillColor: "#EF4444", speedOfTapeSettingsVersion: 1,
+  paneHeight: 190, useThemeColors: false, bullBorderColor: "#65D876", bullFillColor: "#65D876",
+  bearBorderColor: "#B277DF", bearFillColor: "#B277DF", speedOfTapeSettingsVersion: 1,
 } as const;
 export type SpeedOfTapeStatus = "ready" | "waiting-for-executions" | "orders-unavailable";
-export type SpeedOfTapeFrame = { status: SpeedOfTapeStatus; bars: Array<{ startMs: number; endMs: number; value: number; delta: number; color: string }>; mean: number; standardDeviation: number };
+export type SpeedOfTapeFrame = { status: SpeedOfTapeStatus; bars: Array<{ startMs: number; endMs: number; value: number; delta: number; color: string; peak?: number; borderColor?: string; durationSeconds?: number }>; mean: number; standardDeviation: number };
 const finite = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 export function normalizeSpeedOfTapeSettings(raw: Record<string, unknown> = {}) {
@@ -20,7 +20,7 @@ export function normalizeSpeedOfTapeSettings(raw: Record<string, unknown> = {}) 
     numberSeconds: Math.round(Math.max(1, Math.min(3_600, finite(raw.numberSeconds, 10)))),
     standardDeviationPerFilter: Math.max(0, Math.min(10, finite(raw.standardDeviationPerFilter, 0))),
     paneHeight: Math.round(Math.max(120, Math.min(520, finite(raw.paneHeight, 190)))),
-    useThemeColors: raw.useThemeColors !== false,
+    useThemeColors: raw.useThemeColors === true,
     bullBorderColor: String(raw.bullBorderColor ?? SPEED_OF_TAPE_DEFAULTS.bullBorderColor),
     bullFillColor: String(raw.bullFillColor ?? SPEED_OF_TAPE_DEFAULTS.bullFillColor),
     bearBorderColor: String(raw.bearBorderColor ?? SPEED_OF_TAPE_DEFAULTS.bearBorderColor),
@@ -62,60 +62,99 @@ export function speedOfTapeSeries(frame: SpeedOfTapeFrame, instanceId: string): 
     data: frame.bars.map((bar) => ({ time: bar.endMs / 1_000, value: bar.value, color: bar.color })) }];
 }
 
-/** Sample the trailing N-second execution window at each actual candle.
- * Native chart coordinates only exist at candle timestamps, not at arbitrary
- * ten-second boundaries. Keep the clock window independent of bar duration. */
+/** Keep the closing rate and the peak reached inside each price bar. */
 export function buildChartSpeedOfTapeFrame(
   trades: readonly InstitutionalTrade[], raw: Record<string, unknown>, theme: IndicatorTheme,
   candles: readonly Candle[], intervalMs: number | null, asOfMs: number, completeFromMs = -Infinity,
+  completeToMs = Infinity, validateCandleVolume = false,
 ): SpeedOfTapeFrame {
   const settings = normalizeSpeedOfTapeSettings(raw);
-  const empty = (status: SpeedOfTapeStatus): SpeedOfTapeFrame => ({status, bars: [], mean: 0, standardDeviation: 0});
+  const empty = (status: SpeedOfTapeStatus): SpeedOfTapeFrame => ({ status, bars: [], mean: 0, standardDeviation: 0 });
   if (settings.database === "order") return empty("orders-unavailable");
-  const exact = trades.filter(trade => !trade.flowOnly && Number.isFinite(trade.timestamp)
+  const exact = trades.filter(trade => !trade.flowOnly && !trade.footprintSummary && Number.isFinite(trade.timestamp)
     && Number.isFinite(trade.volume) && trade.volume > 0 && trade.timestamp <= asOfMs);
   if (!exact.length || !candles.length) return empty("waiting-for-executions");
   if (exact.some((trade, i) => i > 0 && trade.timestamp < exact[i - 1].timestamp)) {
     exact.sort((a, b) => a.timestamp - b.timestamp || a.recordIndex - b.recordIndex);
   }
-  // Filters refer to the execution's size, also in trade-count mode.
   const eligible = exact.filter(trade => trade.volume >= settings.filterMin
     && !(settings.filterMax > 0 && trade.volume > settings.filterMax));
   const duration = settings.numberSeconds * 1_000;
   const rows: SpeedOfTapeFrame["bars"] = [];
-  let left = 0, right = 0, value = 0, delta = 0;
+  let left = 0, right = 0, value = 0, delta = 0, volumeIndex = 0;
   const size = (trade: InstitutionalTrade) => settings.database === "trades"
     ? Math.max(1, Number(trade.trades) || 1) : trade.volume;
   const signed = (trade: InstitutionalTrade) => trade.aggressor === "BUY" ? size(trade)
     : trade.aggressor === "SELL" ? -size(trade) : 0;
+  const expire = (time: number) => {
+    while (left < right && eligible[left].timestamp <= time - duration) {
+      value -= size(eligible[left]);
+      delta -= signed(eligible[left]);
+      left++;
+    }
+  };
+  const fill = (direction: number) => direction >= 0
+    ? settings.useThemeColors ? theme.positive : settings.bullFillColor
+    : settings.useThemeColors ? theme.negative : settings.bearFillColor;
+  const border = (direction: number) => direction >= 0
+    ? settings.useThemeColors ? theme.positive : settings.bullBorderColor
+    : settings.useThemeColors ? theme.negative : settings.bearBorderColor;
+  let previousEventEnd = -Infinity;
+  const addThrough = (cutoff: number, onSample?: () => void) => {
+    while (right < eligible.length && eligible[right].timestamp <= cutoff) {
+      const time = eligible[right].timestamp;
+      expire(time);
+      do {
+        const trade = eligible[right++];
+        value += size(trade);
+        delta += signed(trade);
+      } while (right < eligible.length && eligible[right].timestamp === time);
+      onSample?.();
+    }
+    expire(cutoff);
+  };
   for (let index = 0; index < candles.length; index++) {
     const candle = candles[index];
-    if (candle.timestamp > asOfMs) break;
-    const endMs = Math.min(asOfMs, intervalMs !== null
-      ? candle.timestamp + intervalMs - 1
-      : candle.sourceEndTimestamp ?? candle.timestamp);
-    // The retained tape can begin mid-session: never invent earlier readings.
-    if (endMs < exact[0].timestamp || endMs - duration < completeFromMs) continue;
-    while (right < eligible.length && eligible[right].timestamp <= endMs) {
-      value += size(eligible[right]); delta += signed(eligible[right]); right++;
+    const startMs = intervalMs === null ? candle.sourceStartTimestamp ?? candle.timestamp : candle.timestamp;
+    if (startMs > asOfMs) break;
+    const endMs = Math.min(asOfMs, intervalMs === null
+      ? candle.sourceEndTimestamp ?? candle.timestamp
+      : Math.min(candle.timestamp + intervalMs, candles[index + 1]?.timestamp ?? Infinity) - 1);
+    if (intervalMs === null && endMs < previousEventEnd) continue;
+    const firstReliable = Math.max(startMs, previousEventEnd, completeFromMs + duration);
+    if (intervalMs === null) previousEventEnd = endMs;
+    if (endMs < firstReliable || endMs < exact[0].timestamp || endMs >= completeToMs) continue;
+    if (validateCandleVolume && intervalMs !== null) {
+      if (startMs < completeFromMs || !Number.isFinite(candle.volume)) continue;
+      while (volumeIndex < exact.length && exact[volumeIndex].timestamp < startMs) volumeIndex++;
+      let barVolume = 0;
+      while (volumeIndex < exact.length && exact[volumeIndex].timestamp <= endMs) barVolume += exact[volumeIndex++].volume;
+      if (barVolume !== candle.volume) continue;
     }
-    while (left < right && eligible[left].timestamp <= endMs - duration) {
-      value -= size(eligible[left]); delta -= signed(eligible[left]); left++;
-    }
-    rows.push({startMs: candle.timestamp, endMs, value, delta, color: delta >= 0
-      ? settings.useThemeColors ? theme.positive : settings.bullFillColor
-      : settings.useThemeColors ? theme.negative : settings.bearFillColor});
+    addThrough(firstReliable);
+    let peak = value, peakDelta = delta;
+    addThrough(endMs, () => {
+      if (value >= peak) { peak = value; peakDelta = delta; }
+    });
+    const direction = value > 0 ? delta : peakDelta;
+    rows.push({ startMs: candle.timestamp, endMs, value, delta, peak,
+      color: fill(direction), borderColor: border(direction), durationSeconds: settings.numberSeconds });
   }
-  const mean = rows.reduce((sum, row) => sum + row.value, 0) / Math.max(1, rows.length);
-  const standardDeviation = Math.sqrt(rows.reduce((sum, row) => sum + (row.value - mean) ** 2, 0) / Math.max(1, rows.length));
-  const threshold = settings.standardDeviationPerFilter > 0 ? mean + standardDeviation * settings.standardDeviationPerFilter : -Infinity;
-  // Retain zeroes for filtered windows so the histogram never bridges a gap.
-  return {status: "ready", mean, standardDeviation, bars: rows.map(row => row.value >= threshold ? row : {...row, value: 0})};
+  const mean = rows.reduce((sum, row) => sum + (row.peak ?? 0), 0) / Math.max(1, rows.length);
+  const standardDeviation = Math.sqrt(rows.reduce((sum, row) => sum + ((row.peak ?? 0) - mean) ** 2, 0) / Math.max(1, rows.length));
+  const threshold = settings.standardDeviationPerFilter > 0 ? mean + standardDeviation * settings.standardDeviationPerFilter : 0;
+  return { status: rows.length ? "ready" : "waiting-for-executions", mean, standardDeviation,
+    bars: rows.map(row => (row.peak ?? 0) >= threshold ? row : { ...row, value: 0, peak: 0 }) };
 }
 
 export function chartSpeedOfTapeSeries(frame: SpeedOfTapeFrame, instanceId: string): CalculatedIndicatorSeries[] {
   if (frame.status !== "ready") return [];
-  return [{key: `${instanceId}-speed`, label: "Speed of Tape", kind: "histogram", placement: "pane",
+  return [{ key: `${instanceId}-speed`, label: "Speed of Tape", kind: "candlestick", placement: "pane",
     color: "#ffffff", includeZeroInScale: true,
-    data: frame.bars.map(bar => ({time: bar.startMs / 1_000, value: bar.value, color: bar.color}))}];
+    data: frame.bars.map(bar => {
+      const seconds = bar.durationSeconds ?? 1;
+      const close = bar.value / seconds;
+      return { time: bar.startMs / 1_000, value: close, open: 0, low: 0,
+        high: (bar.peak ?? bar.value) / seconds, close, color: bar.color, borderColor: bar.borderColor };
+    }) }];
 }

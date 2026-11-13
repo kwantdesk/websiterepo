@@ -626,6 +626,7 @@ function ChartIndicatorPaneSurface({
                         const close = point.close ?? point.value;
                         const high = point.high ?? Math.max(open, close);
                         const low = point.low ?? Math.min(open, close);
+                        if (group.indicatorId === "speed-of-tape" && high === 0) return null;
                         const color = point.color ?? definition.color;
                         const openY = yFor(open, definition);
                         const closeY = yFor(close, definition);
@@ -638,7 +639,7 @@ function ChartIndicatorPaneSurface({
                                 x2={point.x}
                                 y1={yFor(high, definition)}
                                 y2={yFor(low, definition)}
-                                stroke={color}
+                                stroke={point.borderColor ?? color}
                                 strokeWidth={definition.lineWidth ?? 1}
                                 vectorEffect="non-scaling-stroke"
                               />
@@ -658,6 +659,8 @@ function ChartIndicatorPaneSurface({
                                 width={barWidth}
                                 height={Math.max(2, Math.abs(openY - closeY))}
                                 fill={color}
+                                stroke={point.borderColor}
+                                strokeWidth={point.borderColor ? 0.75 : undefined}
                                 opacity="0.96"
                               />
                             )}

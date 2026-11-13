@@ -6,7 +6,7 @@ import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 /** No current-only data or cross-chart state may impersonate a replay adapter. */
 export const REPLAY_UNAVAILABLE_INDICATORS = new Set([
   "pulling-stacking", "absorption-detector", "iceberg-refresh-detector",
-  "liquidity-stop-sweep-detector", "cumulative-iceberg-stop", "book-speed",
+  "liquidity-stop-sweep-detector", "cumulative-iceberg-stop",
   "depth-of-market", "mini-dom", "big-blocks-options", "implied-volatility-rank",
   "classic-gex-profile", "expected-move", "gamma-environment", "gamma-levels",
   "net-gamma-exposure-by-strike", "dark-pool-map", "hedge-levels", "tpo-levels",

@@ -32,6 +32,7 @@ import { ShiftCandlePrimitive } from "@/lib/shiftCandlePrimitive";
 import { buildChartSpeedOfTapeFrame, normalizeSpeedOfTapeSettings as normalizeSimpleSpeedOfTapeSettings, chartSpeedOfTapeSeries } from "@/lib/speedOfTape";
 import { useChartIndicatorAlertDelivery } from "@/components/useChartIndicatorAlertDelivery";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
+import { useSpeedOfTapeHistory, TAPE_HISTORY_CHUNK_MS, TAPE_HISTORY_WINDOW_MS } from "@/components/useSpeedOfTapeHistory";
 import { useExactFootprintHistory } from "@/components/useExactFootprintHistory";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -411,14 +412,6 @@ import {
   normalizeCumulativeIcebergStopSettings,
   type CumulativeIcebergStopFrame,
 } from "@/lib/cumulativeIcebergStop";
-import {
-  BookSpeedEngine,
-  bookSpeedSource,
-  matchesBookSpeedContract,
-  normalizeBookSpeedSettings,
-  projectBookSpeedBuckets,
-  type BookSpeedFrame,
-} from "@/lib/bookSpeed";
 import {
   buildTapeSpeedFrame,
   normalizeTapeSpeedSettings,
@@ -821,6 +814,7 @@ interface ChartProps {
   candles: Candle[];
   extendedDeltaHistory?: boolean;
   marketTrades?: InstitutionalTrade[];
+  denseExecutionStartMs?: number | null;
   marketTradesVersion?: number;
   bigContractHistory?: InstitutionalTrade[];
   trades?: (Trade & { markerVisible?: boolean })[];
@@ -3268,6 +3262,7 @@ function Chart({
   candles: rawCandles,
   extendedDeltaHistory = false,
   marketTrades: rawMarketTrades = EMPTY_CHART_ITEMS,
+  denseExecutionStartMs,
   marketTradesVersion = 0,
   bigContractHistory = EMPTY_CHART_ITEMS,
   trades,
@@ -3566,8 +3561,6 @@ function Chart({
   const cumulativeStopEngineRef = useRef(new LiquidityStopSweepDetectorEngine());
   const cumulativeStopReferencesRef = useRef<SweepReferenceLevel[]>([]);
   const cumulativeIcebergStopAlertKeysRef = useRef(new Set<string>());
-  const bookSpeedEngineRef = useRef(new BookSpeedEngine());
-  const bookSpeedSettingsRef = useRef(normalizeBookSpeedSettings(undefined));
   const pocAuctionPrimitiveRef = useRef<PocAuctionPrimitive | null>(null);
   const unfinishedAuctionPrimitiveRef = useRef<UnfinishedAuctionPrimitive | null>(null);
   const barPocPrimitiveRef = useRef<BarPocPrimitive | null>(null);
@@ -4331,8 +4324,6 @@ function Chart({
   const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useReplayFrameState<LiquidityStopSweepHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [cumulativeIcebergStopStreamStatus, setCumulativeIcebergStopStreamStatus] = useState<RithmicLiquidityStatus>("checking");
   const [cumulativeIcebergStopFrame, setCumulativeIcebergStopFrame] = useReplayFrameState<CumulativeIcebergStopFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [bookSpeedStreamStatus, setBookSpeedStreamStatus] = useState<RithmicLiquidityStatus>("checking");
-  const [bookSpeedFrame, setBookSpeedFrame] = useReplayFrameState<BookSpeedFrame | null>(replayTimestampMs, null, `${instrument}:${contractSymbol ?? ""}`);
   const [pocAuctionFrame, setPocAuctionFrame] = useReplayFrameState<PocAuctionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const pocAuctionReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
   const stackedImbalanceReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
@@ -6651,76 +6642,6 @@ function Chart({
     };
   }, [cumulativeIcebergStopIndicator, settings]);
 
-  const bookSpeedIndicator = useMemo(
-    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "book-speed") ?? null,
-    [indicatorSignature, indicators],
-  );
-  const bookSpeedSettings = useMemo(() => {
-    const normalized = normalizeBookSpeedSettings(bookSpeedIndicator?.settings);
-    if (!normalized.useThemeColors) return normalized;
-    const visible = visibleIndicatorTheme(settings);
-    return {
-      ...normalized,
-      bidColor: visible.positive,
-      askColor: visible.negative,
-      averageBidColor: visible.secondary,
-      averageAskColor: visible.negative,
-      markerBidColor: visible.positive,
-      markerAskColor: visible.negative,
-    };
-  }, [bookSpeedIndicator, settings]);
-  bookSpeedSettingsRef.current = bookSpeedSettings;
-
-  useEffect(() => {
-    if (!bookSpeedIndicator) {
-      bookSpeedEngineRef.current.reset();
-      setBookSpeedFrame(null);
-      return;
-    }
-    const { root, contract } = bookSpeedSource(instrument, contractSymbol);
-    if (!root || isMarketIndexSymbol(instrument)) {
-      setBookSpeedFrame(null);
-      setBookSpeedStreamStatus("unavailable");
-      return;
-    }
-    bookSpeedEngineRef.current.reset();
-    setBookSpeedFrame(null);
-    setBookSpeedStreamStatus("checking");
-    let publishTimer: number | null = null;
-    let lastPublishedAt = 0;
-    const publish = () => {
-      publishTimer = null;
-      lastPublishedAt = performance.now();
-      setBookSpeedFrame(bookSpeedEngineRef.current.frame(bookSpeedSettingsRef.current));
-    };
-    const unsubscribe = subscribeRithmicLiquidity({
-      root,
-      contractSymbol: contract,
-      exchange: futuresVenue(root),
-      replayHistory: true,
-      onStatus: (status) => {
-        if (status === "unavailable") {
-          bookSpeedEngineRef.current.interrupt();
-          setBookSpeedFrame(bookSpeedEngineRef.current.frame(bookSpeedSettingsRef.current));
-        }
-        setBookSpeedStreamStatus(status);
-      },
-      onSnapshot: (snapshot) => {
-        if (snapshot.depthUpdated === false || !matchesBookSpeedContract(root, contract, snapshot.contractSymbol)) return;
-        bookSpeedEngineRef.current.observe(snapshot, bookSpeedSettingsRef.current);
-        const elapsed = performance.now() - lastPublishedAt;
-        if (elapsed >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) publish();
-        else if (publishTimer === null) publishTimer = window.setTimeout(publish, Math.max(16, LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS - elapsed));
-      },
-    });
-    return () => { unsubscribe(); if (publishTimer !== null) window.clearTimeout(publishTimer); };
-  }, [bookSpeedIndicator?.instanceId, bookSpeedSettings.parameterMode, bookSpeedSettings.parameterValue, contractSymbol, instrument]);
-  useEffect(() => {
-    if (!bookSpeedIndicator) return;
-    const frame = bookSpeedEngineRef.current.frame(bookSpeedSettingsRef.current);
-    if (frame.generatedAt) setBookSpeedFrame(frame);
-  }, [bookSpeedIndicator?.instanceId, bookSpeedSettings.averageLength, bookSpeedSettings.historyBuckets]);
-
   useEffect(() => {
     if (!cumulativeIcebergStopIndicator) {
       cumulativeStopReferencesRef.current = [];
@@ -8894,68 +8815,6 @@ function Chart({
       if (!instance.enabled) return [];
       if (momentumOnChart(instance)) return [];
       if (instance.indicatorId === "speed-of-tape") return [];
-      if (instance.indicatorId === "book-speed") {
-        const source = bookSpeedSettings;
-        const eventInterval = Boolean(timeframe && isEventBasedChartInterval(timeframe));
-        const buckets = projectBookSpeedBuckets(
-          bookSpeedFrame?.buckets ?? [], sampledIndicatorCandles,
-          timestamp => eventInterval ? eventChartIndicatorTimeMap?.exact.get(timestamp) : Math.floor(timestamp / 1_000),
-          eventInterval ? null : timeframeToMs(timeframe),
-        );
-        const mapped = (read: (bucket: typeof buckets[number]) => number) =>
-          buckets.map(bucket => ({ time: bucket.time, value: read(bucket) }));
-        const bid = mapped((bucket) => bucket.bidLevels);
-        const ask = mapped((bucket) => -bucket.askLevels);
-        const series: CalculatedIndicatorSeries[] = [
-          { key: `${instance.instanceId}-bid`, label: "Bid", kind: "histogram", placement: "pane", color: source.bidColor, includeZeroInScale: true, histogramFixedWidth: source.lineWidth, data: bid.filter(point => point.value !== 0) },
-          { key: `${instance.instanceId}-ask`, label: "Ask", kind: "histogram", placement: "pane", color: source.askColor, includeZeroInScale: true, histogramFixedWidth: source.lineWidth, data: ask.filter(point => point.value !== 0) },
-        ];
-        if (source.showAverage) {
-          series.push(
-            { key: `${instance.instanceId}-average-bid`, label: "Avg Bid", kind: "line", placement: "pane", color: source.averageBidColor, lineWidth: source.lineWidth as 1 | 2 | 3 | 4, data: mapped((bucket) => bucket.averageBid) },
-            { key: `${instance.instanceId}-average-ask`, label: "Avg Ask", kind: "line", placement: "pane", color: source.averageAskColor, lineWidth: source.lineWidth as 1 | 2 | 3 | 4, data: mapped((bucket) => bucket.averageAsk) },
-          );
-        }
-        if (source.showMarker && bid.length) {
-          const first = bid[0].time;
-          const last = bid.at(-1)!.time;
-          series.push(
-            { key: `${instance.instanceId}-marker-bid`, label: "Bid Marker", kind: "line", placement: "pane", color: source.markerBidColor, lineStyle: "dashed", lineWidth: source.lineWidth as 1 | 2 | 3 | 4, data: [{ time: first, value: source.markerValue }, { time: last, value: source.markerValue }] },
-            { key: `${instance.instanceId}-marker-ask`, label: "Ask Marker", kind: "line", placement: "pane", color: source.markerAskColor, lineStyle: "dashed", lineWidth: source.lineWidth as 1 | 2 | 3 | 4, data: [{ time: first, value: -source.markerValue }, { time: last, value: -source.markerValue }] },
-          );
-        }
-        const unavailableReason = bookSpeedStreamStatus === "unavailable"
-          ? "Rithmic order-book data is unavailable for this instrument."
-          : !bookSpeedFrame || bookSpeedFrame.status === "CONNECTING" || bookSpeedFrame.status === "WARM-UP"
-            ? "Building the first complete Book Speed measurement window."
-            : bookSpeedFrame.status === "BOOK UNAVAILABLE" || bookSpeedFrame.status === "STALE"
-              ? bookSpeedFrame.statusMessage
-              : undefined;
-        return [{
-          key: instance.instanceId,
-          title: `Book Speed · ${bookSpeedFrame?.status ?? "CONNECTING"}`,
-          indicatorId: instance.indicatorId,
-          settings: instance.settings,
-          series,
-          statusLabel: source.parameterMode === "seconds" ? `${source.parameterValue}s windows` : `${source.parameterValue}t reversals`,
-          currentBadgeValue: bookSpeedFrame?.currentBid,
-          currentBadge: bookSpeedFrame ? `LATEST WINDOW · BID ${bookSpeedFrame.currentBid} · ASK ${bookSpeedFrame.currentAsk}` : "RITHMIC",
-          showHeader: true,
-          showLegend: true,
-          defaultHeight: source.paneHeight,
-          minimumHeight: 120,
-          maximumHeight: 520,
-          unavailableReason,
-          tooltipPoints: buckets.map(bucket => ({ time: bucket.time, rows: [
-            { label: "Window", value: `${formatChartTimestamp(Math.floor(bucket.startMs / 1_000) as Time, settings.timezone, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}–${formatChartTimestamp(Math.floor(bucket.endMs / 1_000) as Time, settings.timezone, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` },
-            { label: "Windows", value: bucket.windows.toLocaleString() },
-            { label: "Bid levels consumed", value: bucket.bidLevels.toLocaleString() },
-            { label: "Ask levels consumed", value: bucket.askLevels.toLocaleString() },
-            { label: "Average Bid / Ask per window", value: `${bucket.averageBid.toFixed(1)} / ${Math.abs(bucket.averageAsk).toFixed(1)}` },
-            { label: "State", value: bucket.provisional ? "Forming" : "Complete" },
-          ] })),
-        }];
-      }
       if (instance.indicatorId === "cumulative-iceberg-stop") {
         const frame = cumulativeIcebergStopFrame;
         const source = cumulativeIcebergStopSettings;
@@ -9355,9 +9214,6 @@ function Chart({
     });
   }, [
     calculatedIndicatorSeries,
-    bookSpeedFrame,
-    bookSpeedSettings,
-    bookSpeedStreamStatus,
     sampledIndicatorCandles,
     settings.timezone,
     cumulativeIcebergStopFrame,
@@ -9385,30 +9241,79 @@ function Chart({
   const speedOfTapeEnabled = indicators.some(instance => instance.enabled && instance.indicatorId === "speed-of-tape");
   const [speedOfTapeClock, setSpeedOfTapeClock] = useState(Date.now);
   useEffect(() => {
-    if (!speedOfTapeEnabled || replayTimestampMs != null) return;
+    if (!speedOfTapeEnabled || replayTimestampMs != null || marketIsActive !== true) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "hidden") setSpeedOfTapeClock(Date.now());
     }, 1_000);
     return () => window.clearInterval(timer);
-  }, [speedOfTapeEnabled, replayTimestampMs]);
-  const speedOfTapePanes = useMemo(() => indicators.flatMap((instance): IndicatorPaneGroup[] => {
+  }, [speedOfTapeEnabled, replayTimestampMs, marketIsActive]);
+  const speedTapeInterval = timeframeToMs(timeframe);
+  const speedTapeAsOf = replayTimestampMs ?? Math.max(speedOfTapeClock, marketTrades.at(-1)?.timestamp ?? 0);
+  const speedTapeRange = useMemo(() => {
+    if (!speedOfTapeEnabled || !contractSymbol || isMarketIndexSymbol(instrument)
+      || !/[FGHJKMNQUVXZ]\d{1,2}$/.test(contractSymbol) || !candles.length) return null;
+    const logical = chartRef.current?.timeScale().getVisibleLogicalRange();
+    const lastVisible = Math.min(candles.length - 1, Math.max(0, Math.ceil(Number(logical?.to ?? candles.length - 1))));
+    const last = candles[lastVisible];
+    const tail = speedTapeInterval === null ? last.sourceEndTimestamp ?? last.timestamp : last.timestamp + speedTapeInterval - 1;
+    const closedArchive = Math.floor(Date.now() / TAPE_HISTORY_CHUNK_MS) * TAPE_HISTORY_CHUNK_MS;
+    const toMs = Math.min(closedArchive, (Math.floor(tail / TAPE_HISTORY_CHUNK_MS) + 1) * TAPE_HISTORY_CHUNK_MS);
+    const firstVisible = Math.max(0, Math.floor(Number(logical?.from ?? 0)));
+    const first = candles[firstVisible] ?? candles[0];
+    const fromMs = Math.max(toMs - TAPE_HISTORY_WINDOW_MS,
+      Math.floor(((first.sourceStartTimestamp ?? first.timestamp) - 3_600_000) / TAPE_HISTORY_CHUNK_MS) * TAPE_HISTORY_CHUNK_MS);
+    return { fromMs, toMs };
+    // Re-evaluate when the viewport moves. Archive windows stay fixed between
+    // chunk boundaries, so forming candles never issue a per-tick request.
+  }, [speedOfTapeEnabled, contractSymbol, instrument, candles, viewportVersion, replayTimestampMs, speedTapeInterval]);
+  const speedTapeHistory = useSpeedOfTapeHistory(speedTapeRange ? contractSymbol : null,
+    speedTapeRange?.fromMs ?? 0, speedTapeRange?.toMs ?? 0);
+  const speedTapeArchive = useMemo(() => {
+    const spans: Array<{ fromMs: number; toMs: number; records: InstitutionalTrade[] }> = [];
+    for (const window of speedTapeHistory) {
+      const previous = spans.at(-1);
+      if (previous?.toMs === window.fromMs) {
+        previous.toMs = window.toMs;
+        for (const record of window.records) previous.records.push(record);
+      } else spans.push({ ...window, records: [...window.records] });
+    }
+    return spans;
+  }, [speedTapeHistory]);
+  const archivedSpeedOfTape = useMemo(() => indicators.map(instance => {
+    if (!instance.enabled || instance.indicatorId !== "speed-of-tape") return null;
+    const theme = visibleIndicatorTheme(settings);
+    return speedTapeArchive.flatMap(span => buildChartSpeedOfTapeFrame(span.records, instance.settings ?? {}, theme,
+      candles.filter(candle => (candle.sourceContractSymbol ?? contractSymbol) === contractSymbol),
+      speedTapeInterval, replayTimestampMs ?? Infinity, span.fromMs, span.toMs, true).bars);
+  }), [indicators, speedTapeArchive, settings, candles, contractSymbol, replayTimestampMs, speedTapeInterval]);
+  const speedOfTapePanes = useMemo(() => indicators.flatMap((instance, index): IndicatorPaneGroup[] => {
     if (!instance.enabled || instance.indicatorId !== "speed-of-tape") return [];
     const source = normalizeSimpleSpeedOfTapeSettings(instance.settings);
-    // The retained tape is strongest-print sampled beyond fifteen minutes.
-    // That prefix cannot truthfully supply execution intensity.
-    const completeFrom = Math.max(marketTrades[0]?.timestamp ?? Infinity,
-      (marketTrades.at(-1)?.timestamp ?? Infinity) - 15 * 60_000);
-    const frame = buildChartSpeedOfTapeFrame(marketTrades, instance.settings ?? {}, visibleIndicatorTheme(settings),
-      candles.slice(-4_000), timeframeToMs(timeframe), replayTimestampMs ?? Math.max(speedOfTapeClock, Date.now()), completeFrom);
-    return [{key: instance.instanceId, title: "Speed of Tape", indicatorId: instance.indicatorId, settings: instance.settings,
-      series: chartSpeedOfTapeSeries(frame, instance.instanceId),
-      statusLabel: frame.status === "ready" ? `Trailing ${source.numberSeconds}s` : frame.status.replaceAll("-", " ").toUpperCase(),
-      currentBadgeValue: frame.bars.at(-1)?.value,
-      currentBadge: frame.bars.length ? Math.round(frame.bars.at(-1)!.value).toLocaleString() : undefined,
-      showHeader: true, showLegend: true, defaultHeight: source.paneHeight, minimumHeight: 120, maximumHeight: 520,
-      unavailableReason: frame.status === "orders-unavailable" ? "Order-placement events are unavailable; choose Volume or Trades."
-        : frame.status === "waiting-for-executions" ? "Waiting for exact executions." : undefined}];
-  }), [indicators, marketTrades, marketTradesVersion, candles, timeframe, replayTimestampMs, speedOfTapeClock, settings]);
+    // Ordinary history holds strongest-print samples. Only the independent
+    // archive and the bounded dense execution tail can supply this study.
+    const completeFrom = Math.max(denseExecutionStartMs ?? Infinity, marketTrades[0]?.timestamp ?? Infinity,
+      marketTrades.at(-25_000)?.timestamp ?? -Infinity);
+    const last = candles.at(-1);
+    const direct = latestDirectLiveCandleRef.current;
+    const tail = replayTimestampMs == null && direct && direct.key === liveCandleEventKey
+      && direct.instrument === instrument && direct.timeframe === timeframe ? direct.candle : null;
+    const liveCandles = candles.slice(-4_000);
+    if (tail && (!last || tail.timestamp > last.timestamp)) liveCandles.push(tail);
+    else if (tail && tail.timestamp === last?.timestamp) liveCandles[liveCandles.length - 1] = tail;
+    const live = buildChartSpeedOfTapeFrame(marketTrades, instance.settings ?? {}, visibleIndicatorTheme(settings),
+      liveCandles, speedTapeInterval, speedTapeAsOf, completeFrom);
+    const bars = new Map(live.bars.map(bar => [bar.startMs, bar]));
+    for (const bar of archivedSpeedOfTape[index] ?? []) bars.set(bar.startMs, bar);
+    const series = chartSpeedOfTapeSeries({ ...live, status: bars.size ? "ready" : live.status,
+      bars: [...bars.values()].sort((a, b) => a.startMs - b.startMs) }, instance.instanceId);
+    return [{ key: instance.instanceId, title: "Speed of Tape (" + source.numberSeconds + ")",
+      indicatorId: instance.indicatorId, settings: instance.settings, series,
+      showHeader: true, showLegend: false, defaultHeight: source.paneHeight, minimumHeight: 120, maximumHeight: 520,
+      domainBounds: { min: 0, max: Infinity },
+      unavailableReason: series.length ? undefined : isMarketIndexSymbol(instrument)
+        ? "Execution tape is unavailable for this instrument."
+        : "Waiting for recorded or live executions." }];
+  }), [indicators, marketTrades, marketTradesVersion, candles, speedTapeInterval, speedTapeAsOf, settings, instrument, archivedSpeedOfTape, denseExecutionStartMs, liveCandleEventKey, replayTimestampMs, timeframe]);
   const calculatedIndicatorPanes = useMemo(() => [...historicalCalculatedIndicatorPanes, ...speedOfTapePanes],
     [historicalCalculatedIndicatorPanes, speedOfTapePanes]);
   const defaultIndicatorPaneHeight = Math.max(88, Math.min(140, overlaySize.height * 0.18));

@@ -165,13 +165,11 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "level2Color", role: "secondary" },
     { key: "markerColor", role: "muted" },
   ],
-  "book-speed": [
-    { key: "bidColor", role: "positive" },
-    { key: "askColor", role: "negative" },
-    { key: "averageBidColor", role: "secondary" },
-    { key: "averageAskColor", role: "negative" },
-    { key: "markerBidColor", role: "positive" },
-    { key: "markerAskColor", role: "negative" },
+  "speed-of-tape": [
+    { key: "bullBorderColor", role: "positive" },
+    { key: "bullFillColor", role: "positive" },
+    { key: "bearBorderColor", role: "negative" },
+    { key: "bearFillColor", role: "negative" },
   ],
   "cumulative-volume-delta": [
     { key: "plotColor", role: "primary" },
