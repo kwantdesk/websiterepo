@@ -6213,10 +6213,6 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "shift-candle") ?? null,
     [indicatorSignature, indicators],
   );
-  const importantLevelsIndicator = useMemo(
-    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "important-levels") ?? null,
-    [indicatorSignature, indicators],
-  );
   const cumulativeIcebergStopIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cumulative-iceberg-stop") ?? null,
     [indicatorSignature, indicators],
@@ -6646,7 +6642,7 @@ function Chart({
     });
   }, [footprintBuildSettings, indicatorMarketTrades, indicatorWindowCandles, marketStatisticsIndicator]);
   const shiftCandleBars = useMemo(() => {
-    if ((!shiftCandleIndicator && !importantLevelsIndicator) || !indicatorWindowCandles.length) return [];
+    if (!shiftCandleIndicator || !indicatorWindowCandles.length) return [];
     return buildFootprintBarsCached(shiftCandleBuildCacheRef, indicatorWindowCandles, indicatorMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
@@ -6654,7 +6650,7 @@ function Chart({
       maximumTradeVolume: 0,
       showEmptyPriceRows: false,
     });
-  }, [footprintBuildSettings, importantLevelsIndicator, indicatorMarketTrades, indicatorWindowCandles, shiftCandleIndicator]);
+  }, [footprintBuildSettings, indicatorMarketTrades, indicatorWindowCandles, shiftCandleIndicator]);
   useEffect(() => {
     if (!footprintDataConsumer) {
       retainedFootprintBarsRef.current = null;
@@ -7961,7 +7957,7 @@ function Chart({
         { instrument, timeframe, tickSize: priceFormat.minMove, replayTimestampMs,
           ...(instance.indicatorId === "average-daily-range-target" && adrHistoryKey
             ? { adrDailyCandles, adrAsOfMs: adrAsOf } : {}),
-          footprintBars: instance.indicatorId === "shift-candle" || instance.indicatorId === "important-levels" ? shiftCandleBars : undefined },
+          footprintBars: instance.indicatorId === "shift-candle" ? shiftCandleBars : undefined },
       ).map((series) => ({ ...series, groupKey: instance.instanceId }));
     }),
     [

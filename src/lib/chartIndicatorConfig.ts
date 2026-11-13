@@ -93,7 +93,6 @@ import { AVERAGE_DAILY_RANGE_TARGET_DEFAULTS, normalizeAverageDailyRangeTargetSe
 import { VOLUME_DELTA_SPRINT_DEFAULTS, normalizeVolumeDeltaSprintSettings } from "@/lib/volumeDeltaSprint";
 import { OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS, normalizeOverlayTimeframeHighlightSettings } from "@/lib/overlayTimeframeHighlight";
 import { SHIFT_CANDLE_DEFAULTS, normalizeShiftCandleSettings } from "@/lib/shiftCandle";
-import { IMPORTANT_LEVELS_DEFAULTS } from "@/lib/importantLevels";
 import { SPEED_OF_TAPE_DEFAULTS } from "@/lib/speedOfTape";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
@@ -112,7 +111,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "price-movement-levels",
   "average-daily-range-target",
   "shift-candle",
-  "important-levels",
   "pivot-points",
   "fvg-identifier",
   "gamma-environment",
@@ -263,13 +261,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "minimumImbalanceVolumeDifference", label: "Minimum imbalance volume difference", defaultValue: 20, min: 0, max: 10000000, step: 1 },
     { key: "zoneOpacity", label: "Fresh zone opacity", defaultValue: 18, min: 0, max: 100, step: 1 },
     { key: "markerLineWidth", label: "Marker width", defaultValue: 2, min: 0.5, max: 8, step: 0.5 },
-  ],
-  "important-levels": [
-    { key: "days", label: "Days", defaultValue: 2, min: 0, max: 100, step: 1 },
-    { key: "weeks", label: "Weeks", defaultValue: 1, min: 0, max: 100, step: 1 },
-    { key: "months", label: "Months", defaultValue: 1, min: 0, max: 100, step: 1 },
-    { key: "fontSize", label: "Font size", defaultValue: 10, min: 6, max: 40, step: 0.5 },
-    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
   ],
   "speed-of-tape": [
     { key: "filterMin", label: "Filter min", defaultValue: 1, min: 0, max: 10000000, step: 1 },
@@ -1607,13 +1598,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sellMarkerColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.sellMarkerColor,
     freshBuyZoneColor: theme?.upColor ?? SHIFT_CANDLE_DEFAULTS.freshBuyZoneColor,
     freshSellZoneColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.freshSellZoneColor,
-  } : {}),
-  ...(indicatorId === "important-levels" ? {
-    ...IMPORTANT_LEVELS_DEFAULTS,
-    lowColor: theme?.downColor ?? IMPORTANT_LEVELS_DEFAULTS.lowColor,
-    highColor: theme?.upColor ?? IMPORTANT_LEVELS_DEFAULTS.highColor,
-    openColor: theme?.gridColor ?? IMPORTANT_LEVELS_DEFAULTS.openColor,
-    closeColor: theme?.borderUpColor ?? theme?.upColor ?? IMPORTANT_LEVELS_DEFAULTS.closeColor,
   } : {}),
   ...(indicatorId === "price-movement-levels" ? {
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
@@ -3168,18 +3152,6 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
   // Retired study: old workspaces must not reactivate annotation mirroring.
   if (normalizedInstance.indicatorId === "annotations-overlay") {
     return { ...normalizedInstance, enabled: false };
-  }
-  if (normalizedInstance.indicatorId === "important-levels") {
-    const settings: Record<string, number | string | boolean> = { ...defaultIndicatorSettings("important-levels"), ...(normalizedInstance.settings ?? {}) };
-    settings.filterTime = ["none", "eth", "rth", "custom"].includes(String(settings.filterTime)) ? settings.filterTime : "eth";
-    settings.plotType = ["label", "line", "label-and-line"].includes(String(settings.plotType)) ? settings.plotType : "label-and-line";
-    settings.textAlign = ["left", "right", "current-right", "current-last"].includes(String(settings.textAlign)) ? settings.textAlign : "right";
-    for (const definition of INDICATOR_NUMERIC_SETTINGS["important-levels"] ?? []) {
-      const parsed = Number(settings[definition.key]);
-      settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
-    }
-    settings.importantLevelsSettingsVersion = 1;
-    return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "speed-of-tape") {
     const saved = normalizedInstance.settings ?? {};

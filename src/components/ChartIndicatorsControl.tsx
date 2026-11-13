@@ -462,9 +462,6 @@ const SHIFT_CANDLE_MANAGED_SETTINGS = new Set([
   "plotPrice", "markerShape", "imbalanceEnabled", "freshZonesEnabled", "autoCenter",
   "alertEnabled", "alertName", "popupEnabled", "popupMessage", "shiftCandleSettingsVersion",
 ]);
-const IMPORTANT_LEVELS_MANAGED_SETTINGS = new Set([
-  "filterTime", "customStartTime", "customEndTime", "plotType", "textAlign", "skipLast", "importantLevelsSettingsVersion",
-]);
 const SPEED_OF_TAPE_MANAGED_SETTINGS = new Set(["database", "speedOfTapeSettingsVersion"]);
 const SESSIONS_MANAGED_SETTINGS = new Set([
   "showTokyo", "showLondon", "showNewYork", "allowSessionOverlap", "sessionsSettingsVersion",
@@ -500,7 +497,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "overlay-timeframe-highlight",
   "on-candle-stats",
   "shift-candle",
-  "important-levels",
   "speed-of-tape",
   "monthly-volume-profile",
   "session-volume-profile",
@@ -7940,19 +7936,6 @@ export default function ChartIndicatorsControl({
               })() : null}
 
 
-              {settingsDefinition.id === "important-levels" ? (
-                <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Filter time</span><KwantSelect value={String(settingsInstance.settings?.filterTime ?? "eth")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), filterTime: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Important Levels filter time"><option value="none">None</option><option value="eth">ETH</option><option value="rth">RTH</option><option value="custom">Custom</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Plot type</span><KwantSelect value={String(settingsInstance.settings?.plotType ?? "label-and-line")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), plotType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Important Levels plot type"><option value="label">Label</option><option value="line">Line</option><option value="label-and-line">Label and line</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Text align</span><KwantSelect value={String(settingsInstance.settings?.textAlign ?? "right")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), textAlign: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Important Levels text align"><option value="left">Left</option><option value="right">Right</option><option value="current-right">Current to right</option><option value="current-last">Current to last</option></KwantSelect></label>
-                    <button type="button" aria-pressed={settingsInstance.settings?.skipLast === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), skipLast: current.settings?.skipLast !== true } }))} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Skip last period</span><span className={settingsInstance.settings?.skipLast === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.skipLast === true ? "On" : "Off"}</span></button>
-                    {String(settingsInstance.settings?.filterTime ?? "eth") === "custom" ? <><label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Ini session · exchange time</span><KwantDateTimeInput type="time" value={String(settingsInstance.settings?.customStartTime ?? "08:30")} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customStartTime: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-foreground" /></label><label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>End session · exchange time</span><KwantDateTimeInput type="time" value={String(settingsInstance.settings?.customEndTime ?? "15:15")} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customEndTime: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-foreground" /></label></> : null}
-                  </div>
-                  <p className="text-[8px] leading-4 text-muted">Daily, weekly and monthly levels use Chicago exchange sessions. OHLC, midpoint and VWAP use authoritative candles; POC and value area appear only when exact volume-at-price history exists.</p>
-                </div>
-              ) : null}
-
               {settingsDefinition.id === "speed-of-tape" ? (
                 <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Database</span><KwantSelect value={String(settingsInstance.settings?.database ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), database: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Speed of Tape database"><option value="volume">Volume</option><option value="trades">Trades</option></KwantSelect></label>
@@ -8253,7 +8236,6 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "overlay-timeframe-highlight" && OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "on-candle-stats" && ON_CANDLE_STATS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "shift-candle" && SHIFT_CANDLE_MANAGED_SETTINGS.has(key))
-                    && !(settingsDefinition.id === "important-levels" && IMPORTANT_LEVELS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "speed-of-tape" && SPEED_OF_TAPE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "sessions" && SESSIONS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "session-highs-lows" && SESSION_HIGH_LOW_MANAGED_SETTINGS.has(key))

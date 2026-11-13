@@ -627,14 +627,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "useLiveIntradayIv",
     "useThemeColors"
   ],
-  "important-levels": [
-    "customEndTime",
-    "customStartTime",
-    "filterTime",
-    "plotType",
-    "skipLast",
-    "textAlign"
-  ],
   "kwant-profile": [
     "autoGroupFactor",
     "borderWidth",
