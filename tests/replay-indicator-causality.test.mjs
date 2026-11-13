@@ -23,7 +23,7 @@ const candles = Array.from({length:360},(_,i)=>({timestamp:start+i*60_000,open:2
 const count=300, prefix=candles.slice(0,count), clock=prefix.at(-1).timestamp;
 const poisoned=[...prefix,...candles.slice(count).map(c=>({...c,close:1e9,high:1e10,volume:1e12,askVolume:1e12,delta:1e12}))];
 
-test('catalogue inventory is explicit; new indicators require another causality audit',()=>assert.equal(CHART_INDICATOR_CATALOG.length,80));
+test('catalogue inventory is explicit; new indicators require another causality audit',()=>assert.equal(CHART_INDICATOR_CATALOG.length,79));
 for(const definition of CHART_INDICATOR_CATALOG){
   test(`${definition.id}: future-tail poisoning and rewind prefix are isolated`,()=>{
     const instance={instanceId:definition.id,indicatorId:definition.id,enabled:true,settings:{...defaultIndicatorSettings(definition.id),...(definition.id==='source-code-indicator'?{source:'//@version=6\nindicator("Causal source",overlay=true)\nplot(ta.sma(close,5))',sourceLanguage:'pine'}:{})}};

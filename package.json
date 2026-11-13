@@ -174,7 +174,7 @@
     "test:initial-balance-timeframe": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-initial-balance-timeframe.mjs",
     "test:globex-initial-balance": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-globex-initial-balance.mjs",
     "test:session-highs-lows": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-session-highs-lows.mjs",
-    "test:session-marker": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/session-marker.test.mjs",
+    "test:sessions-overlay": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/sessions-overlay.test.mjs",
     "test:average-daily-range-target": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/average-daily-range-target.test.mjs",
     "test:volume-delta-sprint": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/volume-delta-sprint.test.mjs",
     "test:overlay-timeframe-highlight": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/overlay-timeframe-highlight.test.mjs",

@@ -898,11 +898,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "showNewYork",
     "showTokyo"
   ],
-  "session-marker": [
-    "allowSessionOverlap",
-    "lineStyle",
-    "timeReference"
-  ],
   "session-volume-profile": [
     "autoGroupFactor",
     "borderWidth",

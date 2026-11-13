@@ -124,7 +124,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Session Highs & Lows", "Market Structure", "Extends the latest completed Globex, Asia, London and New York highs and lows to the live edge.", false, "Kwantify"),
   indicator("IB Levels", "Market Structure", "Developing initial-balance high and low for each enabled session, frozen after 15, 30, 45 or 60 minutes.", false, "Kwantify"),
   indicator("Classic GEX Profile", "Market Structure", "Live call and put gamma exposure ladder anchored to the NQ/MNQ chart price scale.", false, "Kwantify"),
-  indicator("Session Marker", "Market Structure", "Marks configurable market sessions."),
 
   indicator("Moving Average", "Trend", "Configurable moving-average overlay."),
   indicator("Ichimoku Indicator", "Trend", "Ichimoku cloud, conversion and base lines."),

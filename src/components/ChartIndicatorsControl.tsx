@@ -463,11 +463,6 @@ const SESSIONS_MANAGED_SETTINGS = new Set([
 const SESSION_HIGH_LOW_MANAGED_SETTINGS = new Set([
   "showGlobex", "showTokyo", "showLondon", "showNewYork", "sessionHighLowSettingsVersion",
 ]);
-const SESSION_MARKER_MANAGED_SETTINGS = new Set([
-  "asianEnabled", "europeEnabled", "usaEnabled",
-  "asianVwapEnabled", "europeVwapEnabled", "usaVwapEnabled",
-  "allowSessionOverlap", "sessionMarkerSettingsVersion",
-]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -562,7 +557,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "keltner-channel",
   "sessions",
   "session-highs-lows",
-  "session-marker",
   "ib-levels",
   "big-trades",
   "depth-of-market",
@@ -734,25 +728,6 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   }
   if (indicatorId === "auction-gap-tracker") return auctionGapThemeColors(chartSettings) as Record<string, string>;
   if (indicatorId === "bounce-levels") return bounceThemeColours(chartSettings) as Record<string, string>;
-  if (indicatorId === "session-marker") {
-    const visible = visibleIndicatorTheme(chartSettings);
-    return Object.fromEntries(["asian", "europe", "usa"].flatMap((session) => [
-      [`${session}HighColor`, visible.positive],
-      [`${session}LowColor`, visible.negative],
-      [`${session}ImbalanceHighColor`, visible.positive],
-      [`${session}ImbalanceLowColor`, visible.negative],
-      [`${session}OpenColor`, visible.secondary],
-      [`${session}CloseColor`, visible.muted],
-      [`${session}SessionRangeColor`, visible.secondary],
-      [`${session}ImbalanceRangeColor`, visible.muted],
-      [`${session}MidColor`, visible.secondary],
-      [`${session}VwapColor`, visible.secondary],
-    ]).concat([
-      ["textColor", visible.primary],
-      ["markerPositiveColor", visible.positive],
-      ["markerNegativeColor", visible.negative],
-    ])) as Record<string, string>;
-  }
   if (indicatorId === "average-daily-range-target") {
     const visible = visibleIndicatorTheme(chartSettings);
     return { textColor: visible.primary, backgroundColor: visible.muted } as Record<string, string>;
@@ -7909,44 +7884,6 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {settingsDefinition.id === "session-marker" ? (
-                <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {([
-                      ["Time reference", "timeReference", [["exchange", "Exchange time"], ["local", "Local time"]]],
-                      ["Line style", "lineStyle", [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]],
-                    ] as const).map(([label, key, choices]) => (
-                      <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                        <span>{label}</span>
-                        <KwantSelect value={String(settingsInstance.settings?.[key] ?? choices[0][0])} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={`Session Marker ${label.toLowerCase()}`}>
-                          {choices.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-                        </KwantSelect>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    {([
-                      ["Asian", "asian", "16:00", "03:00"],
-                      ["Europe", "europe", "03:00", "09:30"],
-                      ["USA", "usa", "09:30", "16:00"],
-                    ] as const).map(([label, key, start, end]) => {
-                      const enabled = settingsInstance.settings?.[`${key}Enabled`] !== false;
-                      const vwapEnabled = settingsInstance.settings?.[`${key}VwapEnabled`] === true;
-                      return (
-                      <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
-                        <button type="button" aria-pressed={enabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Enabled`]: !enabled } }))} className="flex h-8 w-full items-center justify-between text-[9px] uppercase tracking-[0.14em] text-foreground"><span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>
-                        <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start session</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}StartTime`] ?? start)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}StartTime`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
-                        <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End session</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}EndTime`] ?? end)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}EndTime`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
-                        <button type="button" aria-pressed={vwapEnabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}VwapEnabled`]: !vwapEnabled } }))} className="flex h-8 w-full items-center justify-between border border-border px-2 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Session VWAP</span><span className={vwapEnabled ? "text-primary" : "text-muted"}>{vwapEnabled ? "On" : "Off"}</span></button>
-                      </div>
-                      );
-                    })}
-                  </div>
-                  <button type="button" aria-pressed={settingsInstance.settings?.allowSessionOverlap === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), allowSessionOverlap: current.settings?.allowSessionOverlap !== true } }))} className="flex h-9 w-full items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Allow custom overlaps</span><span className={settingsInstance.settings?.allowSessionOverlap === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.allowSessionOverlap === true ? "On" : "Off"}</span></button>
-                  <p className="text-[8px] leading-4 text-muted">Stock windows hand off Asian → Europe → USA with no shared candle. Each session and its VWAP can be controlled independently; custom overlaps are opt-in.</p>
-                </div>
-              ) : null}
-
               {settingsDefinition.id === "average-daily-range-target" ? (
                 <div data-settings-section="General" className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
@@ -8121,7 +8058,6 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "speed-of-tape" && SPEED_OF_TAPE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "sessions" && SESSIONS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "session-highs-lows" && SESSION_HIGH_LOW_MANAGED_SETTINGS.has(key))
-                    && !(settingsDefinition.id === "session-marker" && SESSION_MARKER_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "pulling-stacking" && (key === "includeOwnOrders" || key === "includeImpliedOrders"))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
