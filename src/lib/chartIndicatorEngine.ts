@@ -43,7 +43,7 @@ import { calculateDeepEffortAverage } from "@/lib/deepEffort";
 import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
-import { applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
+import { AROON_OSCILLATOR_COLORS, AROON_OSCILLATOR_LENGTH, applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
 import { calculateDeepDeltaBars, normalizeDeepDeltaSettings } from "@/lib/deepDelta";
 import {
   calculatePeriodVwap,
@@ -250,13 +250,15 @@ function aroonScore(length: number, age: number) {
 const aroonDataCache = new WeakMap<ChartIndicatorInstance, {
   candles: Candle[];
   length: number;
+  colors?: string;
   series: CalculatedIndicatorSeries["data"][];
 }>();
 
-function aroonData(instance: ChartIndicatorInstance, candles: Candle[], length: number) {
+function aroonData(instance: ChartIndicatorInstance, candles: Candle[], length: number, colors?: typeof AROON_OSCILLATOR_COLORS) {
+  const colorKey = colors ? `${colors.positive}/${colors.negative}` : undefined;
   const previous = aroonDataCache.get(instance);
   let matching = 0;
-  if (previous?.length === length) {
+  if (previous?.length === length && previous.colors === colorKey) {
     const count = Math.min(candles.length, previous.candles.length);
     // Chart candle updates replace changed bars and preserve the settled prefix.
     while (matching < count) {
@@ -282,13 +284,15 @@ function aroonData(instance: ChartIndicatorInstance, candles: Candle[], length: 
     const up = aroonScore(length, highs[offset]);
     const down = aroonScore(length, lows[offset]);
     if (oscillator) {
-      series[0].push({ time, value: up - down });
+      const value = up - down;
+      series[0].push({ time, value, color: value > 0 ? colors?.positive
+        : value < 0 ? colors?.negative : "transparent" });
     } else {
       series[0].push({ time, value: up });
       series[1].push({ time, value: down });
     }
   }
-  aroonDataCache.set(instance, { candles, length, series });
+  aroonDataCache.set(instance, { candles, length, colors: colorKey, series });
   return series;
 }
 
@@ -466,12 +470,14 @@ function calculateUnclippedIndicatorSeries(
     return instance.enabled ? calculateSuperTrendSeries(candles, instance.settings ?? {}, theme,
       instance.instanceId, instance.indicatorId === "super-trend-difference") : [];
   }
+  const plotTheme = instance.indicatorId === "aroon-oscillator" && instance.settings?.useThemeColors !== true
+    ? { ...theme, ...AROON_OSCILLATOR_COLORS } : theme;
   return applyIndicatorPlotColors(
     instance.indicatorId,
     instance.indicatorId === "volume" ? { ...instance.settings, gradientPreset: "off" }
       : instance.settings as Record<string, unknown> | undefined,
-    computeIndicatorSeries(instance, candles, theme, context),
-    theme,
+    computeIndicatorSeries(instance, candles, plotTheme, context),
+    plotTheme,
   );
 }
 
@@ -1109,15 +1115,17 @@ function computeIndicatorSeries(
   }
 
   if (key === "aroon-oscillator") {
-    const length = Math.max(2, Math.round(settingNumber(instance, "length", 25)));
+    const length = Math.max(2, Math.round(settingNumber(instance, "length", AROON_OSCILLATOR_LENGTH)));
     return [{
       key,
-      label: `Aroon Osc ${length}`,
-      kind: "line",
+      label: `Aroon Oscillator (${length})`,
+      kind: "histogram",
       placement: "pane",
-      color: theme.primary,
-      lineWidth: 2,
-      data: aroonData(instance, candles, length)[0],
+      color: theme.positive,
+      histogramBarWidth: 3,
+      showZeroLine: true,
+      includeZeroInScale: true,
+      data: aroonData(instance, candles, length, theme)[0],
     }];
   }
 

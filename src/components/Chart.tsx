@@ -9234,6 +9234,18 @@ function Chart({
         }];
       }
 
+      if (instance.indicatorId === "aroon-oscillator" && series.length) {
+        return [{
+          key: instance.instanceId, title: series[0].label,
+          indicatorId: instance.indicatorId, settings: instance.settings, series,
+          fixedDomain: { min: -100, max: 100 },
+          axisTicks: [-100, -50, 0, 50, 100],
+          guideLevels: [-80, 80],
+          showHeader: instance.settings?.showName !== false,
+          showLegend: false,
+        }];
+      }
+
       if (instance.indicatorId === "know-sure-thing-kst") {
         return [{
           key: instance.instanceId, title: "Know Sure Thing (KST)",
@@ -18463,7 +18475,7 @@ function Chart({
         && correctionTrackedPoints.some((point, index) => {
           if (index === correctionTrackedPoints.length - 1) return false;
           const previous = previousCorrectionTrackedPoints[index];
-          return point !== previous && (point.time !== previous?.time || point.value !== previous?.value);
+          return point !== previous && (point.time !== previous?.time || point.value !== previous?.value || point.color !== previous?.color);
         });
       const dataSnapshot = unchangedTrackedPoints && existing ? existing.dataSnapshot
         : buildLightweightSeriesDataSnapshot(data, correctedStudyHistory ? null : existing?.dataSnapshot ?? null);

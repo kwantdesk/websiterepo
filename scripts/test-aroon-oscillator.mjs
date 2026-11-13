@@ -28,7 +28,8 @@ function expectedAroon(bars, length) {
       if (bars[index].high >= bars[high].high) high = index;
       if (bars[index].low <= bars[low].low) low = index;
     }
-    return { time: candle.timestamp / 1_000, value: ((high - offset) / length) * 100 - ((low - offset) / length) * 100 };
+    const value = ((high - offset) / length) * 100 - ((low - offset) / length) * 100;
+    return { time: candle.timestamp / 1_000, value, color: value > 0 ? "#4ADE80" : value < 0 ? "#C084FC" : "transparent" };
   });
 }
 
@@ -39,6 +40,15 @@ for (const length of [2, 14, 25, 100, 500]) {
   const [replay] = calculateIndicatorSeries(instance(length), loaded, theme, { ...context, replayTimestampMs: cutoff });
   assert.deepEqual(replay.data, result.data.filter(point => point.time <= cutoff / 1_000));
 }
+const [defaultPlot] = calculateIndicatorSeries(instance(undefined), loaded, theme, context);
+assert.equal(defaultPlot.label, "Aroon Oscillator (14)");
+assert.equal(defaultPlot.kind, "histogram");
+assert.equal(defaultPlot.showZeroLine, true);
+assert.deepEqual(defaultPlot.data, expectedAroon(loaded, 14));
+const [customPlot] = calculateIndicatorSeries(instance(14, { useThemeColors: false, plotUpColor: "#112233", plotDownColor: "#445566" }), loaded, theme, context);
+assert.ok(customPlot.data.every(point => point.color === (point.value > 0 ? "#112233" : point.value < 0 ? "#445566" : "transparent")));
+const [themedPlot] = calculateIndicatorSeries(instance(14, { useThemeColors: true }), loaded, theme, context);
+assert.ok(themedPlot.data.every(point => point.color === (point.value > 0 ? theme.positive : point.value < 0 ? theme.negative : "transparent")));
 const [base] = calculateIndicatorSeries(instance(25), loaded, theme, context);
 const changed = loaded.slice();
 changed[changed.length - 1] = { ...changed.at(-1), high: 20_100, low: 19_900 };

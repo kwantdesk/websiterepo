@@ -38,7 +38,7 @@ import {
   DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS,
   normalizeSpeedOfTapeInstantSettings,
 } from "@/lib/speedOfTapeInstant";
-import { defaultIndicatorPlotColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
+import { AROON_OSCILLATOR_COLORS, AROON_OSCILLATOR_LENGTH, defaultIndicatorPlotColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import { normalizeExpectedMoveSettings } from "@/lib/expectedMove";
 import {
   DEFAULT_UNFINISHED_AUCTION_SETTINGS,
@@ -1533,7 +1533,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "averageLineWidth", label: "SMA line width", defaultValue: 1, min: 1, max: 4 },
   ],
   "aroon-up-down": [{ key: "length", label: "Length", defaultValue: 25, min: 2, max: 500 }],
-  "aroon-oscillator": [{ key: "length", label: "Length", defaultValue: 25, min: 2, max: 500 }],
+  "aroon-oscillator": [{ key: "length", label: "Length", defaultValue: AROON_OSCILLATOR_LENGTH, min: 2, max: 500 }],
   "standard-deviation": [{ key: "length", label: "Length", defaultValue: 20, min: 2, max: 500 }],
   "average-true-range-atr": [
     { key: "length", label: "Length", defaultValue: 14, min: 1, max: 500 },
@@ -1725,6 +1725,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "average-true-range-atr" ? { lineStyle: "solid", useThemeColors: true } : {}),
   ...(indicatorId === "awesome-oscillator" ? { useThemeColors: true } : {}),
+  ...(indicatorId === "aroon-oscillator" ? { useThemeColors: false } : {}),
   ...(indicatorId === "commodity-channel-index-cci"
     ? { source: "hlc3", showAverage: false, showLevels: false, lineStyle: "solid", useThemeColors: true } : {}),
   ...(indicatorId === "chaikin-accumulation-distribution" ? { showAverage: false, averageType: "simple", useThemeColors: true } : {}),
@@ -1748,6 +1749,11 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     gridColor: theme?.gridColor ?? "#8A8F98",
     backgroundColor: theme?.backgroundColor ?? "#000000",
   })),
+  ...(indicatorId === "aroon-oscillator" ? {
+    plotColor: AROON_OSCILLATOR_COLORS.positive,
+    plotUpColor: AROON_OSCILLATOR_COLORS.positive,
+    plotDownColor: AROON_OSCILLATOR_COLORS.negative,
+  } : {}),
   ...(indicatorId === "swing-point" ? {
     highTextColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
     lowTextColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",

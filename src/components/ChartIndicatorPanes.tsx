@@ -27,6 +27,8 @@ type IndicatorPaneGroup = {
   stats?: KwantStatsTable;
   unavailableReason?: string;
   fixedDomain?: IndicatorPaneDomain;
+  axisTicks?: readonly number[];
+  guideLevels?: readonly number[];
   statusLabel?: string;
   currentBadge?: string;
   currentBadgeValue?: number;
@@ -541,6 +543,11 @@ function ChartIndicatorPaneSurface({
               </g>
             ) : null}
             {!collapsed && !stats ? <g clipPath={`url(#${clipId})`}>
+              {group.guideLevels?.map((level) => {
+                const y = yFor(level, group.series[0]);
+                return <line key={level} x1={leftAxisWidth} y1={y} x2={plotWidth} y2={y}
+                  stroke="var(--muted)" strokeOpacity="0.45" strokeDasharray="1 3" vectorEffect="non-scaling-stroke" />;
+              })}
               {(group.bands ?? []).map((band, bandIndex) => {
                 const reference = group.series.find((series) => !series.independentScale) ?? group.series[0];
                 if (!reference) return null;
@@ -690,8 +697,14 @@ function ChartIndicatorPaneSurface({
                 bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                 points={sampledPanePoints(definition, xForTime, plotWidth, visibleWindow).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
             )) : null}
-            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.max, group.indicatorId)}</text> : null}
-            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.min, group.indicatorId)}</text> : null}
+            {!collapsed && !stats && group.axisTicks?.map((tick) => {
+              const y = yFor(tick, group.series[0]);
+              if (tick < sharedDomain.min || tick > sharedDomain.max) return null;
+              return <text key={tick} x={plotWidth + 6} y={y} dominantBaseline="central" fill="var(--foreground)"
+                fontSize="10" fontFamily="Aleph, monospace">{tick}</text>;
+            })}
+            {!collapsed && !stats && !group.percentageAxis && !group.axisTicks ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.max, group.indicatorId)}</text> : null}
+            {!collapsed && !stats && !group.percentageAxis && !group.axisTicks ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">{formatPaneValue(sharedDomain.min, group.indicatorId)}</text> : null}
             {!collapsed && secondaryDomain && group.secondaryAxisLabel ? (
               <g aria-label={`${group.secondaryAxisLabel} price scale`}>
                 <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), Aleph, monospace">{secondaryDomain.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>

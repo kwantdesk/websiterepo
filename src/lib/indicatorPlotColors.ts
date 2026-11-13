@@ -1,5 +1,8 @@
 import { mixHexColors, resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 
+export const AROON_OSCILLATOR_LENGTH = 14;
+export const AROON_OSCILLATOR_COLORS = { positive: "#4ADE80", negative: "#C084FC" };
+
 /**
  * Which colours each indicator actually paints, and what to call them.
  *
@@ -271,7 +274,7 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "downColor", role: "negative" },
   ],
   "aroon-oscillator": [
-    { key: "plotColor", role: "primary" },
+    { key: "plotColor", role: "primary", upRole: "positive", downRole: "negative" },
   ],
   "awesome-oscillator": [
     { key: "plotColor", role: "primary", upRole: "positive", downRole: "negative" },

@@ -699,6 +699,8 @@ function bigTradeModeFor(
 }
 
 function titleFromKey(key: string, indicatorId?: string) {
+  if (indicatorId === "aroon-oscillator" && key === "plotUpColor") return "Above zero";
+  if (indicatorId === "aroon-oscillator" && key === "plotDownColor") return "Below zero";
   if (indicatorId === "awesome-oscillator" && key === "plotUpColor") return "Growing";
   if (indicatorId === "awesome-oscillator" && key === "plotDownColor") return "Falling";
   if (indicatorId === "session-highs-lows" && key === "showTokyo") return "Show Asia";
