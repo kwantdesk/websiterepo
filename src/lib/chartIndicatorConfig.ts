@@ -1496,6 +1496,8 @@ function sidedTheme(theme?: ChartSettings): ChartSettings | undefined {
   };
 }
 
+const SESSIONS_ASIA_CLOCK = { tokyoTimezone: "Asia/Tokyo", tokyoStart: "09:00", tokyoEnd: "18:00" } as const;
+
 export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSettings) =>
   indicatorSettingsFromTheme(indicatorId, sidedTheme(rawTheme));
 
@@ -2258,25 +2260,29 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     statsSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "sessions" ? {
+    showGlobex: true,
     showTokyo: true,
     showLondon: true,
     showNewYork: true,
     showSydney: false,
+    globexLabel: "Globex",
     tokyoLabel: "Asia",
     londonLabel: "London",
     newYorkLabel: "New York",
     sydneyLabel: "Sydney",
-    tokyoTimezone: "America/New_York",
+    globexTimezone: "America/New_York",
+    ...SESSIONS_ASIA_CLOCK,
     londonTimezone: "America/New_York",
     newYorkTimezone: "America/New_York",
-    tokyoStart: "16:00",
-    tokyoEnd: "03:00",
+    globexStart: "18:00",
+    globexEnd: "17:00",
     londonStart: "03:00",
     londonEnd: "09:30",
     newYorkStart: "09:30",
     newYorkEnd: "16:00",
     sydneyStart: "08:00",
     sydneyEnd: "17:00",
+    globexColor: "#A461BB",
     tokyoColor: "#FF9900",
     londonColor: "#4CAF50",
     newYorkColor: "#2196F3",
@@ -2296,7 +2302,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     lineStyle: "dashed",
     labelSize: "small",
     allowSessionOverlap: false,
-    sessionsSettingsVersion: 2,
+    sessionsSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "session-highs-lows" ? {
     showGlobex: true,
@@ -3986,8 +3992,9 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
   }
   if (normalizedInstance.indicatorId === "sessions") {
     const raw = normalizedInstance.settings ?? {};
+    const defaults = defaultIndicatorSettings("sessions");
     const settings: Record<string, number | string | boolean> = {
-      ...defaultIndicatorSettings("sessions"),
+      ...defaults,
       ...raw,
     };
     const legacyContract = Number(raw.sessionsSettingsVersion ?? 0) < 2;
@@ -3996,18 +4003,25 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
         if (raw[key] === undefined || raw[key] === former) settings[key] = replacement;
       };
       upgradeStockValue("tokyoLabel", "Tokyo", "Asia");
-      upgradeStockValue("tokyoStart", "09:00", "16:00");
-      upgradeStockValue("tokyoEnd", "18:00", "03:00");
       upgradeStockValue("londonStart", "08:00", "03:00");
       upgradeStockValue("londonEnd", "17:00", "09:30");
       upgradeStockValue("newYorkStart", "09:00", "09:30");
       upgradeStockValue("newYorkEnd", "18:00", "16:00");
-      if (raw.tokyoTimezone === undefined) settings.tokyoTimezone = "America/New_York";
       if (raw.londonTimezone === undefined) settings.londonTimezone = "America/New_York";
       if (raw.newYorkTimezone === undefined) settings.newYorkTimezone = "America/New_York";
     }
+    if (Number(raw.sessionsSettingsVersion ?? 0) < 3
+      && (raw.tokyoTimezone === undefined || raw.tokyoTimezone === "America/New_York")
+      && (raw.tokyoStart === undefined || raw.tokyoStart === "16:00")
+      && (raw.tokyoEnd === undefined || raw.tokyoEnd === "03:00")) {
+      Object.assign(settings, SESSIONS_ASIA_CLOCK);
+    } else if (legacyContract && raw.tokyoTimezone === undefined
+      && ((raw.tokyoStart !== undefined && raw.tokyoStart !== "09:00")
+        || (raw.tokyoEnd !== undefined && raw.tokyoEnd !== "18:00"))) {
+      settings.tokyoTimezone = "America/New_York";
+    }
     settings.allowSessionOverlap = raw.allowSessionOverlap === true;
-    settings.sessionsSettingsVersion = 2;
+    settings.sessionsSettingsVersion = 3;
     return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "session-highs-lows") {

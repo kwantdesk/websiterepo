@@ -458,7 +458,7 @@ const OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS = new Set([
 ]);
 const SPEED_OF_TAPE_MANAGED_SETTINGS = new Set(["database", "speedOfTapeSettingsVersion"]);
 const SESSIONS_MANAGED_SETTINGS = new Set([
-  "showTokyo", "showLondon", "showNewYork", "allowSessionOverlap", "sessionsSettingsVersion",
+  "showGlobex", "showTokyo", "showLondon", "showNewYork", "allowSessionOverlap", "sessionsSettingsVersion",
 ]);
 const SESSION_HIGH_LOW_MANAGED_SETTINGS = new Set([
   "showGlobex", "showTokyo", "showLondon", "showNewYork", "sessionHighLowSettingsVersion",
@@ -7840,24 +7840,26 @@ export default function ChartIndicatorsControl({
 
               {settingsDefinition.id === "sessions" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {([
-                      ["Asia", "tokyo", "showTokyo", "16:00", "03:00"],
-                      ["London", "london", "showLondon", "03:00", "09:30"],
-                      ["New York", "newYork", "showNewYork", "09:30", "16:00"],
-                    ] as const).map(([label, key, enabledKey, start, end]) => {
+                      ["Globex", "globex", "showGlobex", "18:00", "17:00", "America/New_York"],
+                      ["Asia", "tokyo", "showTokyo", "09:00", "18:00", "Asia/Tokyo"],
+                      ["London", "london", "showLondon", "03:00", "09:30", "America/New_York"],
+                      ["New York", "newYork", "showNewYork", "09:30", "16:00", "America/New_York"],
+                    ] as const).map(([label, key, enabledKey, start, end, timezone]) => {
                       const enabled = settingsInstance.settings?.[enabledKey] !== false;
+                      const clock = String(settingsInstance.settings?.[key + "Timezone"] ?? timezone).replace(/^.*\//, "").replaceAll("_", " ");
                       return (
                         <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
                           <button type="button" aria-pressed={enabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [enabledKey]: !enabled } }))} className="flex h-8 w-full items-center justify-between text-[9px] uppercase tracking-[0.14em] text-foreground"><span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>
-                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start · New York exchange time</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}Start`] ?? start)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Start`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
-                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End · New York exchange time</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}End`] ?? end)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}End`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start · {clock} time</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}Start`] ?? start)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Start`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End · {clock} time</span><KwantDateTimeInput type="time" step={60} value={String(settingsInstance.settings?.[`${key}End`] ?? end)} onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}End`]: nextValue } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
                         </div>
                       );
                     })}
                   </div>
                   <button type="button" aria-pressed={settingsInstance.settings?.allowSessionOverlap === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), allowSessionOverlap: current.settings?.allowSessionOverlap !== true } }))} className="flex h-9 w-full items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Allow custom overlaps</span><span className={settingsInstance.settings?.allowSessionOverlap === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.allowSessionOverlap === true ? "On" : "Off"}</span></button>
-                  <p className="text-[8px] leading-4 text-muted">Stock windows hand off Asia → London → New York with no shared candle. Custom times are clipped at the next enabled session unless custom overlaps are explicitly allowed.</p>
+                  <p className="text-[8px] leading-4 text-muted">Default boxes hand off from Globex to Asia, London and New York. Enable custom overlaps to show the full configured windows.</p>
                 </div>
               ) : null}
 

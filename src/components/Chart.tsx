@@ -12257,7 +12257,9 @@ function Chart({
     if (!initialBalanceIndicator || own.followSessionsStudy !== true || !sessionsIndicator) return own;
     const linked = sessionsIndicator.settings ?? {};
     const keys = [
-      "showTokyo", "showLondon", "showNewYork", "showSydney",
+      "showGlobex", "showTokyo", "showLondon", "showNewYork", "showSydney",
+      "globexLabel", "globexStart", "globexEnd", "globexColor",
+      "globexTimezone", "tokyoTimezone", "londonTimezone", "newYorkTimezone", "sydneyTimezone",
       "tokyoLabel", "tokyoStart", "tokyoEnd", "tokyoColor",
       "londonLabel", "londonStart", "londonEnd", "londonColor",
       "newYorkLabel", "newYorkStart", "newYorkEnd", "newYorkColor",
