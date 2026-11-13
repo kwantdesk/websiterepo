@@ -1,7 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import { calculateIndicatorSeries, type CalculatedIndicatorSeries, type IndicatorTheme } from "@/lib/chartIndicatorEngine";
 import { mergeLiveIndicatorTail } from "@/lib/chartLiveEvents";
-import { CCI_INDICATOR_ID, cciPeriods } from "@/lib/commodityChannelIndex";
+import { CCI_INDICATOR_ID, cciAverageType, cciPeriods } from "@/lib/commodityChannelIndex";
 
 export const LIVE_DELTA_PANE_INTERVAL_MS = 200;
 export const isLiveDeltaPane = (id: string) => ["cumulative-volume-delta", "delta-cumulative-candlestick", "delta-cumulative-histogram", "delta-bar"].includes(id);
@@ -65,7 +65,9 @@ export class CciSeriesCache {
       const { length, averageLength } = cciPeriods(instance.settings);
       // Include the preceding window so an invalid candle at the splice can
       // still mark the first valid point as a new line segment.
-      const seed = Math.max(0, changed - length - averageLength);
+      // An EMA carries its prior state beyond the finite warm-up window.
+      const seed = averageLength && cciAverageType(instance.settings.averageType) === "exponential"
+        ? 0 : Math.max(0, changed - length - averageLength);
       const cutoff = Math.min(candles[changed].timestamp, prior.candles[changed]?.timestamp ?? Infinity) / 1_000;
       series = calculateIndicatorSeries(instance, candles.slice(seed), theme).map(definition => {
         const previous = prior.series.find(item => item.key === definition.key)?.data ?? [];

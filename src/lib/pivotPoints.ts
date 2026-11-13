@@ -166,7 +166,7 @@ function referenceBuckets(candles: Candle[], settings: PivotPointSettings) {
   return [...byKey.values()].sort((left, right) => left.order - right.order);
 }
 
-type PivotLevel = { suffix: "pivot-point" | "r1" | "r2" | "s1" | "s2"; label: "P" | "R1" | "R2" | "S1" | "S2"; role: keyof IndicatorTheme };
+type PivotLevel = { suffix: "pivot-point" | "r1" | "r2" | "s1" | "s2"; label: "P" | "R1" | "R2" | "S1" | "S2"; role: Exclude<keyof IndicatorTheme, "background"> };
 const LEVELS: PivotLevel[] = [
   { suffix: "pivot-point", label: "P", role: "primary" },
   { suffix: "r1", label: "R1", role: "negative" },

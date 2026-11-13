@@ -21,10 +21,10 @@ export function indicatorSettingDisabledReason(
     return "Enable Show Average to adjust the average plot.";
   }
   if (id === "commodity-channel-index-cci") {
-    if (/^average(?:Length|Color|LineWidth)$/.test(key) && settings.showAverage !== true) {
-      return "Enable Show Average to adjust the CCI SMA.";
+    if (/^average(?:Type|Length|Color|LineWidth)$/.test(key) && settings.showAverage === false) {
+      return "Enable Show Average to adjust the CCI average.";
     }
-    if (/^level(?:Value|Color)$/.test(key) && settings.showLevels !== true) {
+    if (/^(levelValue|levelLineWidth|zeroColor|overboughtColor|oversoldColor)$/.test(key) && settings.showLevels === false) {
       return "Enable Show Levels to adjust the reference lines.";
     }
   }

@@ -103,7 +103,7 @@ import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
 import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
-import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
+import { cciThemeColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { STATS_PALETTES, resolveStatsPalette, statsPaletteSettings } from "@/lib/statsPalettes";
@@ -408,7 +408,9 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
     : indicatorId === "chaikin-accumulation-distribution"
       ? ["showAverage", "averageType", "averageLength"].includes(key) ? "Inputs" : "Style"
     : indicatorId === "commodity-channel-index-cci"
-      ? ["length", "source", "showAverage", "averageLength", "showLevels", "levelValue"].includes(key) ? "Inputs" : "Style"
+      ? key.startsWith("average") || key === "showAverage" ? "Average"
+        : /^(showLevels|levelValue|levelLineWidth|zeroColor|overboughtColor|oversoldColor)$/.test(key) ? "Levels"
+        : ["length", "source"].includes(key) ? "General" : "Style"
     : indicatorId === "average-true-range-atr" && key === "lineWidth" ? "Style"
     : indicatorId === "volume" ? "General" : indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
@@ -756,10 +758,7 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
  * already on screen so nothing else visibly jumps.
  */
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
-  if (indicatorId === "commodity-channel-index-cci") {
-    const { primary, secondary, muted } = visibleIndicatorTheme(chartSettings);
-    return { plotColor: primary, averageColor: secondary, levelColor: muted };
-  }
+  if (indicatorId === "commodity-channel-index-cci") return cciThemeColors(visibleIndicatorTheme(chartSettings)) as Record<string, string>;
   if (indicatorId === "chaikin-accumulation-distribution") {
     const { primary, secondary } = visibleIndicatorTheme(chartSettings);
     return { plotColor: primary, averageColor: secondary };
@@ -6670,8 +6669,8 @@ export default function ChartIndicatorsControl({
                 </div>
               )) : null}
 
-              {settingsDefinition.id === "chaikin-accumulation-distribution" ? (
-                <label data-settings-section="Inputs" className="block space-y-1 text-[10px] text-muted">
+              {["chaikin-accumulation-distribution", "commodity-channel-index-cci"].includes(settingsDefinition.id) ? (
+                <label data-settings-section={settingsDefinition.id === "commodity-channel-index-cci" ? "Average" : "Inputs"} className="block space-y-1 text-[10px] text-muted">
                   <span>Average type</span>
                   <KwantSelect value={String(settingsInstance.settings?.averageType ?? "simple")}
                     disabled={settingsInstance.settings?.showAverage !== true}
@@ -6690,7 +6689,7 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {settingsDefinition.id === "commodity-channel-index-cci" ? (
-                <label data-settings-section="Inputs" className="block space-y-1 text-[10px] text-muted">
+                <label data-settings-section="General" className="block space-y-1 text-[10px] text-muted">
                   <span>Price source</span>
                   <KwantSelect value={String(settingsInstance.settings?.source ?? "hlc3")} menuLabel="CCI price source"
                     onChange={(event) => replace(settingsInstance.instanceId, (current) => ({

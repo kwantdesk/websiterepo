@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculateIndicatorSeries } from "../src/lib/chartIndicatorEngine.ts";
-import { normalizeStoredIndicator } from "../src/lib/chartIndicatorConfig.ts";
+import { defaultIndicatorSettings, normalizeStoredIndicator } from "../src/lib/chartIndicatorConfig.ts";
 import { indicatorSettingDisabledReason } from "../src/lib/indicatorSettingAvailability.ts";
 import { CciSeriesCache, LiveDeltaPaneModel } from "../src/lib/liveDeltaPanes.ts";
+
+import { themePresets } from "../src/lib/themePresets.ts";
+import { chartSettingsForTheme } from "../src/lib/chartSettings.ts";
+import { contrastRatio, parseResolvedColor } from "../src/lib/readableContrast.ts";
+import { visibleIndicatorTheme } from "../src/lib/indicatorPlotColors.ts";
 
 const indicator = { indicatorId: "commodity-channel-index-cci", instanceId: "cci", enabled: true };
 const theme = { primary: "#aa1188", secondary: "#11aaaa", positive: "#22ff00", negative: "#ff0033", muted: "#888888" };
@@ -61,8 +66,8 @@ test("CCI source, smoothing, levels, colours, line style and placement survive r
   assert.deepEqual([main.color, average.color, upper.color], ["#111111", "#222222", "#333333"]);
   assert.deepEqual([upper, zero, lower].map(series => series.data[0].value), [125, 0, -125]);
   assert.ok([main, average, upper, zero, lower].every(series => series.priceScaleId === "momentum-cci"));
-  assert.match(indicatorSettingDisabledReason(indicator.indicatorId, "averageLength"), /Show Average/);
-  assert.match(indicatorSettingDisabledReason(indicator.indicatorId, "levelValue"), /Show Levels/);
+  assert.match(indicatorSettingDisabledReason(indicator.indicatorId, "averageLength", {showAverage:false}), /Show Average/);
+  assert.match(indicatorSettingDisabledReason(indicator.indicatorId, "levelValue", {showLevels:false}), /Show Levels/);
   assert.equal(indicatorSettingDisabledReason(indicator.indicatorId, "averageLength", restored.settings), undefined);
   assert.equal(indicatorSettingDisabledReason(indicator.indicatorId, "levelValue", restored.settings), undefined);
 });
@@ -110,5 +115,59 @@ test("CCI cache handles replay rewind, playback advance, and deleted candles wit
   const deleted = candles.filter((_, index) => index !== 41);
   for (const snapshot of [candles, candles.slice(0, 15), candles.slice(0, 17), candles, deleted, []]) {
     assert.deepEqual(cache.calculate(group, snapshot, theme), calculateIndicatorSeries({ ...indicator, settings }, snapshot, theme));
+  }
+});
+
+test("stock CCI uses period 14, an enabled SMA 20, and full-pane ±100 and zero guides", () => {
+  const candles = candlesAt(Array.from({length:50}, (_, i) => 100 + Math.sin(i / 3) * 7));
+  const [main, average, ...levels] = calculateIndicatorSeries(indicator, candles, theme);
+  assert.equal(main.label, "CCI (14)");
+  assert.equal(main.lineWidth, 1);
+  assert.equal(average.label, "CCI SMA (20)");
+  assert.equal(average.lineWidth, 2);
+  assert.equal(average.data[0].time, candles[32].timestamp / 1000);
+  assert.deepEqual(levels.map(line => [line.data[0].value, line.lineWidth, line.lineStyle, line.horizontalPriceLine]),
+    [[100,1,"dotted",true], [0,1,"dotted",true], [-100,1,"dotted",true]]);
+  const restored = normalizeStoredIndicator({...indicator, settings:{length:20,showAverage:false,showLevels:false}});
+  assert.equal(restored.settings.length, 20);
+  assert.equal(calculateIndicatorSeries(restored, candles, theme).length, 1);
+});
+
+test("every built-in theme supplies five legible CCI colors that agree with the settings swatches", () => {
+  const candles = candlesAt(Array.from({length:45}, (_, i) => 100 + Math.sin(i / 3) * 7));
+  for (const preset of themePresets) {
+    const chart = chartSettingsForTheme(preset.colors, {});
+    const background = parseResolvedColor(chart.backgroundColor);
+    const settings = defaultIndicatorSettings(indicator.indicatorId, chart);
+    const lines = calculateIndicatorSeries({...indicator, settings}, candles, visibleIndicatorTheme(chart));
+    const keys = ["plotColor","averageColor","overboughtColor","zeroColor","oversoldColor"];
+    for (const [i, line] of lines.entries()) {
+      assert.equal(line.color, settings[keys[i]], preset.name + " " + keys[i]);
+      assert.ok(contrastRatio(background, parseResolvedColor(line.color)) >= 3, preset.name + " " + keys[i]);
+    }
+    assert.notEqual(lines[0].color, lines[1].color, preset.name);
+  }
+});
+
+test("CCI averages recalculate after history changes and level colors and width apply independently", () => {
+  const candles = candlesAt(Array.from({length:120}, (_, i) => 100 + Math.sin(i / 5) * 7));
+  const corrected = candles.map((bar,i) => i === 87 ? {...bar, close:bar.close + .5} : bar);
+  for (const averageType of ["simple","exponential","weighted","triangular"]) {
+    const settings = {averageType, levelLineWidth:3, useThemeColors:false,
+      zeroColor:"#112233", overboughtColor:"#228833", oversoldColor:"#992211"};
+    const group = {key:"cci", indicatorId:indicator.indicatorId, settings};
+    const cache = new CciSeriesCache();
+    cache.calculate(group,candles,theme);
+    const actual = cache.calculate(group,corrected,theme);
+    const full = calculateIndicatorSeries({...indicator,settings},corrected,theme);
+    for (const [i, plot] of actual.entries()) {
+      assert.equal(plot.data.length,full[i].data.length);
+      for (const [j, point] of plot.data.entries()) {
+        assert.equal(point.time,full[i].data[j].time);
+        assert.ok(Math.abs(point.value-full[i].data[j].value)<1e-9);
+      }
+    }
+    assert.deepEqual(actual.slice(2).map(line=>[line.color,line.lineWidth]),
+      [["#228833",3],["#112233",3],["#992211",3]]);
   }
 });

@@ -1,3 +1,4 @@
+import { legibleOn, readableTextOn } from "@/lib/readableContrast";
 import { mixHexColors, resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 
 export const AROON_OSCILLATOR_LENGTH = 14;
@@ -265,7 +266,9 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
   "commodity-channel-index-cci": [
     { key: "plotColor", role: "primary" },
     { key: "averageColor", role: "secondary" },
-    { key: "levelColor", role: "muted" },
+    { key: "zeroColor", role: "muted" },
+    { key: "overboughtColor", role: "positive" },
+    { key: "oversoldColor", role: "negative" },
   ],
   "aroon-oscillator": [
     { key: "plotColor", role: "primary", upRole: "positive", downRole: "negative" },
@@ -325,7 +328,10 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
  * disagree about where a colour is stored.
  */
 export function indicatorSeriesColorKey(indicatorId: string, seriesKey: string): string {
-  if (indicatorId === "commodity-channel-index-cci" && seriesKey.startsWith(`${indicatorId}-level-`)) return "levelColor";
+  if (indicatorId === "commodity-channel-index-cci" && seriesKey.startsWith(`${indicatorId}-level-`)) {
+    return seriesKey.endsWith("-level-0") ? "zeroColor"
+      : seriesKey.endsWith("-level-1") ? "overboughtColor" : "oversoldColor";
+  }
   if (indicatorId === "price-movement-levels") {
     if (seriesKey.includes("-support-")) return "supportLineColor";
     if (seriesKey.includes("-resistance-")) return "resistanceLineColor";
@@ -385,7 +391,7 @@ export function visibleIndicatorTheme(chart: {
   borderDownColor: string;
   gridColor: string;
   backgroundColor: string;
-}): Record<IndicatorThemeRole, string> {
+}): Record<IndicatorThemeRole, string> & { background: string } {
   const seen = (colour: string, instead: string) => (
     distinguishable(colour, chart.backgroundColor) ? colour : instead
   );
@@ -409,6 +415,7 @@ export function visibleIndicatorTheme(chart: {
    */
   const negative = separable(seen(chart.downColor, chart.borderDownColor), positive, chart.borderDownColor);
   return {
+    background: chart.backgroundColor,
     primary: positive,
     secondary: seen(chart.borderUpColor, chart.upColor),
     positive,
@@ -496,10 +503,24 @@ function luminance(colour: string): number | null {
   return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }
 
+export function cciThemeColors(theme: Record<IndicatorThemeRole, string> & { background?: string }) {
+  const background = theme.background ?? "#000000";
+  const zeroColor = readableTextOn(background);
+  const averageColor = legibleOn(theme.primary, background, 4.5);
+  return {
+    plotColor: legibleOn(mixHexColors(averageColor, background, 0.4), background, 3),
+    averageColor,
+    zeroColor,
+    overboughtColor: legibleOn("#008000", background),
+    oversoldColor: legibleOn("#FF0000", background),
+  };
+}
+
 export function defaultIndicatorPlotColors(
   indicatorId: string,
-  theme: Record<IndicatorThemeRole, string>,
+  theme: Record<IndicatorThemeRole, string> & { background?: string },
 ): Record<string, string> {
+  if (indicatorId === "commodity-channel-index-cci") return cciThemeColors(theme);
   const slots = INDICATOR_PLOT_COLOR_SLOTS[indicatorId];
   if (!slots) return {};
   const out: Record<string, string> = {};

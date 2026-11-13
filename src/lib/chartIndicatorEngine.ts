@@ -1,5 +1,5 @@
 import type { Candle } from "@/lib/backtester";
-import { applyMomentumPlacement } from "@/lib/momentumPlacement";
+import { applyMomentumPlacement, momentumOnChart } from "@/lib/momentumPlacement";
 import { candleDeltaPath } from "@/lib/candleDeltaPath";
 import { clipReplayIndicatorSeries, replayCausalCandles, replaySafeIndicators } from "@/lib/replayIndicatorSafety";
 import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
@@ -14,7 +14,7 @@ import { calculateIchimoku } from "@/lib/ichimoku";
 import type { IchimokuCloudOptions } from "@/lib/ichimokuCloudPrimitive";
 import type { ZigZagRetracementOptions } from "@/lib/zigZagRetracementPrimitive";
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
-import { calculateCci } from "@/lib/commodityChannelIndex";
+import { calculateCci, cciAverageType, CCI_DEFAULTS } from "@/lib/commodityChannelIndex";
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
 import { calculateRegressionChannel } from "@/lib/regressionChannel";
@@ -43,7 +43,7 @@ import { calculateDeepEffortAverage } from "@/lib/deepEffort";
 import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
-import { AROON_OSCILLATOR_COLORS, AROON_OSCILLATOR_LENGTH, applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
+import { cciThemeColors, AROON_OSCILLATOR_COLORS, AROON_OSCILLATOR_LENGTH, applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
 import { calculateDeepDeltaBars, normalizeDeepDeltaSettings } from "@/lib/deepDelta";
 import {
   calculatePeriodVwap,
@@ -114,6 +114,7 @@ export type IndicatorTheme = {
   positive: string;
   negative: string;
   muted: string;
+  background?: string;
 };
 
 export type DeltaPercentHighlightPoint = {
@@ -492,19 +493,25 @@ function computeIndicatorSeries(
   if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
   if (key === "commodity-channel-index-cci") {
     const { length, averageLength, data, averageData } = calculateCci(candles, instance.settings ?? {});
+    const colors = cciThemeColors(theme);
+    const averageType = cciAverageType(instance.settings?.averageType);
+    const averageLabel = { simple: "SMA", exponential: "EMA", triangular: "TMA", weighted: "WMA" }[averageType];
     const series: CalculatedIndicatorSeries[] = [{
-      key, label: `CCI ${length}`, kind: "line", placement: "pane", color: theme.primary,
-      lineWidth: vwapLineWidth(instance, "lineWidth", 2), lineStyle: vwapLineStyle(instance, "lineStyle", "solid"), data,
+      key, label: `CCI (${length})`, kind: "line", placement: "pane", color: colors.plotColor,
+      lineWidth: vwapLineWidth(instance, "lineWidth", CCI_DEFAULTS.lineWidth), lineStyle: vwapLineStyle(instance, "lineStyle", "solid"), data,
     }];
     if (averageLength) series.push({
-      key: `${key}-average`, label: `CCI SMA ${averageLength}`, kind: "line", placement: "pane",
-      color: theme.secondary, lineWidth: vwapLineWidth(instance, "averageLineWidth", 1), data: averageData,
+      key: `${key}-average`, label: `CCI ${averageLabel} (${averageLength})`, kind: "line", placement: "pane",
+      color: colors.averageColor, lineWidth: vwapLineWidth(instance, "averageLineWidth", CCI_DEFAULTS.averageLineWidth), data: averageData,
     });
-    if (settingBoolean(instance, "showLevels", false)) {
-      const level = Math.min(500, Math.max(1, settingNumber(instance, "levelValue", 100)));
+    if (data.length && settingBoolean(instance, "showLevels", CCI_DEFAULTS.showLevels)) {
+      const level = Math.min(500, Math.max(1, settingNumber(instance, "levelValue", CCI_DEFAULTS.levelValue)));
       for (const value of [level, 0, -level]) series.push({
         key: `${key}-level-${Math.sign(value)}`, label: value > 0 ? `+${value}` : String(value),
-        kind: "line", placement: "pane", color: theme.muted, lineWidth: 1, lineStyle: "dotted",
+        kind: "line", placement: "pane",
+        color: value > 0 ? colors.overboughtColor : value < 0 ? colors.oversoldColor : colors.zeroColor,
+        lineWidth: vwapLineWidth(instance, "levelLineWidth", CCI_DEFAULTS.levelLineWidth), lineStyle: "dotted",
+        horizontalPriceLine: !momentumOnChart(instance),
         lastValueVisible: false, data: data.map(point => ({ ...point, value })),
       });
     }

@@ -1,5 +1,17 @@
 import type { Candle } from "@/lib/backtester";
 
+import { smoother, type KstAverage } from "@/lib/knowSureThing";
+
+export const CCI_DEFAULTS = {
+  length: 14, source: "hlc3", showAverage: true, averageType: "simple", averageLength: 20,
+  showLevels: true, levelValue: 100, levelLineWidth: 1, lineWidth: 1,
+  averageLineWidth: 2, lineStyle: "solid", useThemeColors: true,
+} as const;
+
+export function cciAverageType(value: unknown): KstAverage {
+  return value === "exponential" || value === "triangular" || value === "weighted" ? value : "simple";
+}
+
 type Settings = Record<string, number | string | boolean>;
 type CciPoint = { time: number; value: number; breakBefore?: boolean };
 export const CCI_INDICATOR_ID = "commodity-channel-index-cci";
@@ -11,8 +23,8 @@ const period = (value: unknown, fallback: number, minimum: number) => {
 
 export function cciPeriods(settings: Settings) {
   return {
-    length: period(settings.length, 20, 2),
-    averageLength: settings.showAverage === true ? period(settings.averageLength, 9, 1) : 0,
+    length: period(settings.length, CCI_DEFAULTS.length, 2),
+    averageLength: settings.showAverage !== false ? period(settings.averageLength, CCI_DEFAULTS.averageLength, 1) : 0,
   };
 }
 
@@ -33,12 +45,17 @@ export function calculateCci(candles: readonly Candle[], settings: Settings) {
   const data: CciPoint[] = [];
   const averageData: CciPoint[] = [];
   let validFrom = 0;
+  const averageType = cciAverageType(settings.averageType);
+  const average = averageLength && averageType !== "simple" ? smoother(averageLength, averageType) : null;
   let averageFrom = 0;
+  let averageBreak = false;
   for (let index = 0; index < prices.length; index++) {
     const price = prices[index];
     if (!Number.isFinite(price)) {
       validFrom = index + 1;
       averageFrom = data.length;
+      averageBreak = averageData.length > 0;
+      average?.reset();
       continue;
     }
     const first = index - length + 1;
@@ -58,12 +75,19 @@ export function calculateCci(candles: readonly Candle[], settings: Settings) {
     const firstAfterGap = validFrom > 0 && first === validFrom;
     data.push({ time, value: value === 0 ? 0 : value, ...(firstAfterGap && { breakBefore: true }) });
 
-    const firstAveragePoint = data.length - averageLength;
-    if (!averageLength || firstAveragePoint < averageFrom) continue;
-    let sum = 0;
-    for (let i = firstAveragePoint; i < data.length; i++) sum += data[i].value;
-    averageData.push({ time, value: sum / averageLength,
-      ...(data[firstAveragePoint].breakBefore && { breakBefore: true }) });
+    if (!averageLength || data.length - averageLength < averageFrom) {
+      average?.push(value);
+      continue;
+    }
+    let smoothed = average?.push(value);
+    if (averageType === "simple") {
+      let sum = 0;
+      for (let i = data.length - averageLength; i < data.length; i++) sum += data[i].value;
+      smoothed = sum / averageLength;
+    }
+    if (smoothed === undefined) continue;
+    averageData.push({ time, value: smoothed, ...(averageBreak && { breakBefore: true }) });
+    averageBreak = false;
   }
   return { length, averageLength, data, averageData };
 }

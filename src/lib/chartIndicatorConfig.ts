@@ -1,3 +1,4 @@
+import { CCI_DEFAULTS, cciAverageType } from "@/lib/commodityChannelIndex";
 import { BIG_CONTRACT_MARKER_SIZE, bigContractMarkerSizes } from "@/lib/bigTrades";
 import type { ChartSettings } from "@/lib/chartSettings";
 import { MOMENTUM_INDICATOR_IDS } from "@/lib/momentumPlacement";
@@ -1513,11 +1514,12 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "rate-of-change-roc": [{ key: "length", label: "Length", defaultValue: 12, min: 1, max: 500 }],
   "momentum-indicator": [{ key: "length", label: "Length", defaultValue: 10, min: 1, max: 500 }],
   "commodity-channel-index-cci": [
-    { key: "length", label: "Length", defaultValue: 20, min: 2, max: 500 },
-    { key: "averageLength", label: "SMA length", defaultValue: 9, min: 1, max: 500 },
-    { key: "levelValue", label: "Threshold", defaultValue: 100, min: 1, max: 500 },
-    { key: "lineWidth", label: "CCI line width", defaultValue: 2, min: 1, max: 4 },
-    { key: "averageLineWidth", label: "SMA line width", defaultValue: 1, min: 1, max: 4 },
+    { key: "length", label: "Length", defaultValue: CCI_DEFAULTS.length, min: 2, max: 500 },
+    { key: "averageLength", label: "Average length", defaultValue: CCI_DEFAULTS.averageLength, min: 1, max: 500 },
+    { key: "levelValue", label: "Level value", defaultValue: CCI_DEFAULTS.levelValue, min: 1, max: 500 },
+    { key: "levelLineWidth", label: "Level line width", defaultValue: CCI_DEFAULTS.levelLineWidth, min: 1, max: 4 },
+    { key: "lineWidth", label: "CCI line width", defaultValue: CCI_DEFAULTS.lineWidth, min: 1, max: 4 },
+    { key: "averageLineWidth", label: "Average line width", defaultValue: CCI_DEFAULTS.averageLineWidth, min: 1, max: 4 },
   ],
   "aroon-oscillator": [{ key: "length", label: "Length", defaultValue: AROON_OSCILLATOR_LENGTH, min: 2, max: 500 }],
   "standard-deviation": [{ key: "length", label: "Length", defaultValue: 20, min: 2, max: 500 }],
@@ -1705,8 +1707,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "average-true-range-atr" ? { lineStyle: "solid", useThemeColors: true } : {}),
   ...(indicatorId === "awesome-oscillator" ? { useThemeColors: true } : {}),
   ...(indicatorId === "aroon-oscillator" ? { useThemeColors: false } : {}),
-  ...(indicatorId === "commodity-channel-index-cci"
-    ? { source: "hlc3", showAverage: false, showLevels: false, lineStyle: "solid", useThemeColors: true } : {}),
+  ...(indicatorId === "commodity-channel-index-cci" ? CCI_DEFAULTS : {}),
   ...(indicatorId === "chaikin-accumulation-distribution" ? { showAverage: false, averageType: "simple", useThemeColors: true } : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
@@ -4566,8 +4567,16 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     }
     settings.source = ["hlc3", "close", "hl2", "ohlc4"].includes(String(settings.source)) ? settings.source : "hlc3";
     settings.lineStyle = ["solid", "dashed", "dotted"].includes(String(settings.lineStyle)) ? settings.lineStyle : "solid";
-    settings.showAverage = settings.showAverage === true;
-    settings.showLevels = settings.showLevels === true;
+    settings.averageType = cciAverageType(settings.averageType);
+    settings.showAverage = settings.showAverage !== false;
+    settings.showLevels = settings.showLevels !== false;
+    const previousLevelColor = normalized.settings?.levelColor;
+    if (typeof previousLevelColor === "string") {
+      for (const key of ["zeroColor", "overboughtColor", "oversoldColor"]) {
+        settings[key] = normalized.settings?.[key] ?? previousLevelColor;
+      }
+    }
+    delete settings.levelColor;
     settings.useThemeColors = settings.useThemeColors !== false;
     normalized = { ...normalized, settings };
   }

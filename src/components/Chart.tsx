@@ -9154,7 +9154,7 @@ function Chart({
           settings: instance.settings,
           series,
           showHeader: instance.settings?.showName !== false,
-          showLegend: instance.indicatorId === "delta-bar" || instance.indicatorId === "deep-delta" ? false : undefined,
+          showLegend: ["delta-bar", "deep-delta", CCI_INDICATOR_ID].includes(instance.indicatorId) ? false : undefined,
         }];
       }
       if (cumulativeDeltaStudy) {
