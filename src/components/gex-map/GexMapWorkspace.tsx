@@ -761,7 +761,7 @@ function ExposurePanel({
         </div>
       </div>
 
-      <div className="gex-map-strike-row grid h-7 grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
+      <div className={`gex-map-strike-row ${viewMode === "full" ? "gex-map-full-strike-row" : ""} grid h-7 grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted`}>
         <span>Strike</span>
         <span>{viewMode !== "full" ? "Structural node" : valueHeading}</span>
         <span className="gex-map-change-column text-right">{viewMode !== "full" ? "Control · velocity" : `${stepMinutes}m change`}</span>
@@ -997,7 +997,7 @@ function ExposurePanel({
                   data-near-spot={nearSpot ? "true" : undefined}
                   data-star-node={isStar ? "true" : undefined}
                   data-gex-strike-node="true"
-                  className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
+                  className={`gex-map-strike-row gex-map-full-strike-row relative grid items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
                   style={{
                     /*
                      * The shadow follows the text, not the theme. A dark halo
@@ -1040,7 +1040,7 @@ function ExposurePanel({
                   >
                     {formatRowValue(row.net)}
                   </span>
-                  <span className="gex-map-change-column flex items-center justify-end gap-1">
+                  <span className="gex-map-change-column flex items-center justify-end gap-1 whitespace-nowrap">
                     {changeRatio !== null ? (
                       <span className={`rounded px-1 py-0.5 text-[8px] font-semibold ${changeRatio >= 0 ? "bg-primary/15 text-primary" : "bg-danger/15 text-danger"}`}>
                         {changeRatio >= 0 ? "+" : ""}{Math.round(changeRatio * 100)}%
