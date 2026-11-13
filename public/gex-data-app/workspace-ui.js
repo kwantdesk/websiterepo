@@ -33,7 +33,10 @@ export function popup(anchor,title,build){
   const dismiss=()=>{if(currentPopup===el)closePopup();};claimMenu(document,el,dismiss,anchor);if(owner.document!==document)claimMenu(owner.document,el,dismiss,anchor);
   owner.document.body.append(el);currentPopup=el;
   const r=anchor?.getBoundingClientRect?.()??{left:innerWidth/2,top:70,bottom:70},offset=owner!==window?window.frameElement.getBoundingClientRect():{left:0,top:0},bounds=el.getBoundingClientRect();
-  el.style.left=`${Math.max(8,Math.min(owner.innerWidth-bounds.width-8,r.left+offset.left))}px`;const below=r.bottom+offset.top+6,above=r.top+offset.top-bounds.height-6;
+  const workspaceMenu=el.classList.contains('chart-workspace-menu');
+  const left=r.left+offset.left+(workspaceMenu&&anchor?(r.width-bounds.width)/2:0);
+  const gap=workspaceMenu?8:6;
+  el.style.left=`${Math.max(8,Math.min(owner.innerWidth-bounds.width-8,left))}px`;const below=r.bottom+offset.top+gap,above=r.top+offset.top-bounds.height-gap;
   el.style.top=`${Math.max(8,Math.min(owner.innerHeight-bounds.height-8,below+bounds.height>owner.innerHeight-8&&above>=8?above:below))}px`;
   return el;
 }

@@ -15,4 +15,32 @@ await menu.getByRole('button',{name:'Delete Desk one',exact:true}).click();await
 assert.equal(await menu.getByRole('button',{name:'Import workspace JSON',exact:true}).evaluate((el,backup)=>{const transfer=new DataTransfer();transfer.items.add(new File([JSON.stringify(backup)],'backup.json',{type:'application/json'}));el.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:transfer}));const highlighted=el.dataset.dragging==='true';el.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer}));return highlighted},backup),true);const rootFrame=page.frames().find(f=>f.url().includes('/gex-data-app/index.html?hostTimezone=0'));const restored=rootFrame.waitForNavigation({waitUntil:'domcontentloaded'});await app.getByRole('dialog',{name:'Import workspace',exact:true}).getByRole('button',{name:'Confirm',exact:true}).click();await restored;menu=await open();assert.equal(await menu.locator('.saved-workspace-row').count(),2);assert.equal(await page.evaluate(()=>window.__kwantGexDataHost.read('gex-data:active-workspace:v1')),backup.presets[0].id);
 const legacy={format:'kwantdesk-gex-data',version:1,name:'Old export',values:backup.presets[0].values};await menu.locator('input[type=file]').setInputFiles({name:'old.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(legacy))});const restoredOld=rootFrame.waitForNavigation({waitUntil:'domcontentloaded'});await app.getByRole('dialog',{name:'Import workspace',exact:true}).getByRole('button',{name:'Confirm',exact:true}).click();await restoredOld;menu=await open();assert.ok(await menu.getByRole('button',{name:/Old export/}).first().isVisible());
 await menuButton.click();await menu.waitFor({state:'detached'});assert.equal(await menuButton.getAttribute('aria-expanded'),'false');
+const menuStyle=menu=>menu.evaluate(panel=>{
+  const style=selector=>getComputedStyle(panel.querySelector(selector));
+  const rect=panel.getBoundingClientRect();
+  const trigger=panel.ownerDocument.querySelector('.chart-workspace-trigger').getBoundingClientRect();
+  return {width:rect.width,left:rect.left,right:rect.right,viewport:panel.ownerDocument.defaultView.innerWidth,
+    triggerCenter:trigger.left+trigger.width/2,panelCenter:rect.left+rect.width/2,gap:rect.top-trigger.bottom,
+    radius:getComputedStyle(panel).borderRadius,background:getComputedStyle(panel).backgroundColor,
+    quickRadius:style('.saved-workspace-grid .primary').borderRadius,quickHeight:style('.saved-workspace-grid .primary').height,
+    rowRadius:style('.saved-workspace-row').borderRadius,importRadius:style('.saved-workspace-import').borderRadius};
+});
+await page.locator('#qaDarkTheme').click();
+menu=await open();
+const dark=await menuStyle(menu);
+assert.equal(dark.width,340);assert.equal(dark.radius,'16px');assert.equal(dark.quickRadius,'12px');
+assert.equal(dark.quickHeight,'36px');assert.equal(dark.rowRadius,'12px');assert.equal(dark.importRadius,'12px');
+assert.ok(Math.abs(dark.panelCenter-dark.triggerCenter)<1);assert.equal(dark.gap,8);
+await page.locator('#qaLightTheme').click();
+await page.waitForFunction(background=>{
+  const panel=document.querySelector('iframe').contentDocument.querySelector('.chart-workspace-menu');
+  return panel && panel.ownerDocument.defaultView.getComputedStyle(panel).backgroundColor!==background;
+},dark.background);
+const light=await menuStyle(menu);assert.notEqual(light.background,dark.background);assert.equal(light.radius,dark.radius);
+await menuButton.click();
+await page.setViewportSize({width:320,height:640});
+await app.getByRole('button',{name:'Open chart controls',exact:true}).click();
+menu=await open();
+const narrow=await menuStyle(menu);assert.ok(narrow.left>=8);assert.ok(narrow.right<=narrow.viewport-8);
+await menuButton.click();
 assert.deepEqual(errors,[]);assert.deepEqual(missing,[]);const result={workspaceMenuActionsVerified:true,legacyAndBundleImportVerified:true,dragAndDropVerified:true,pageErrors:errors,missingAssets:missing,externalNetworkBlocked:true,providerRequests:0};fs.writeFileSync('tmp/gex-workspace-menu-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result))}finally{await browser.close();await new Promise(r=>server.close(r))}})().catch(e=>{console.error(e);process.exitCode=1});
