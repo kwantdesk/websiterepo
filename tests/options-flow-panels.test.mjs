@@ -14,8 +14,8 @@ test('picker catalogue contains every source tool exactly once, under separate s
     const expected=[...code.matchAll(/\{\s*id:\s*[\x22\x27]([a-z-]+)[\x22\x27]/g)].map(m=>m[1]).sort();
     assert.deepEqual(OPTIONS_FLOW_TOOLS.filter(t=>t.source===source).map(t=>t.toolId).sort(),expected);
   }
-  assert.equal(OPTIONS_FLOW_TOOLS.length,61);
-  assert.equal(new Set(OPTIONS_FLOW_TOOLS.map(t=>t.id)).size,61);
+  assert.equal(OPTIONS_FLOW_TOOLS.length,60);
+  assert.equal(new Set(OPTIONS_FLOW_TOOLS.map(t=>t.id)).size,60);
   assert.ok(optionsFlowTool('options-flow:kwanty:classic'));
   assert.ok(optionsFlowTool('options-flow:kwanty:state'));
   assert.ok(optionsFlowTool('options-flow:kwanty:orderflow'));
@@ -96,7 +96,7 @@ test('tool panels reuse real source surfaces and chart Indicators are natively d
   assert.match(shell, /<details className=[^>]+>\s*<summary[^>]+>\s*<span>Order Flow Tools/);
   assert.match(shell, /<details className=[^>]+>\s*<summary[^>]+>\s*<span>Options Flow Tools/);
   assert.match(shell, /const WORKSPACE_PICKER_ORDER = \[\s*"charts", "gamvue", "gexmap", "gexdata", "gamma", "liqmap",\s*"news", "socials", "journal", "algo", "backtesting"/);
-  assert.match(shell, /tool.source === "gex-data" && tool.toolId !== "exposure-forecast"/);
+  assert.match(shell, /GEX_DATA_PICKER_TOOLS = OPTIONS_FLOW_TOOLS\s+\.filter\(tool => tool.source === "gex-data"\)/);
   assert.match(shell,/activePaneIsChart \? <ChartIndicatorsControl/);
   assert.match(shell,/<button type="button" disabled aria-label="Indicators unavailable/);
   assert.match(shell,/optionsFlowState: normalizeOptionsFlowState/);

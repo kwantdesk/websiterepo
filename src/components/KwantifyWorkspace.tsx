@@ -1555,7 +1555,7 @@ const OPTIONS_INDICATOR_PICKER_TOOLS = WORKSPACE_TOOL_OPTIONS.filter(option =>
 ).sort((a, b) => a.label.localeCompare(b.label));
 
 const GEX_DATA_PICKER_TOOLS = OPTIONS_FLOW_TOOLS
-  .filter(tool => tool.source === "gex-data" && tool.toolId !== "exposure-forecast")
+  .filter(tool => tool.source === "gex-data")
   .map(tool => ({ ...tool, icon: BarChart3 }))
   .sort((a, b) => a.label.localeCompare(b.label));
 
@@ -1588,7 +1588,7 @@ function isWorkspaceChartKind(value: WorkspacePanelKind | null): value is "chart
 }
 
 function isWorkspacePanelKind(value: unknown): value is WorkspacePanelKind {
-  return ALL_WORKSPACE_PANEL_OPTIONS.some((option) => option.id === value);
+  return Boolean(optionsFlowTool(value)) || ALL_WORKSPACE_PANEL_OPTIONS.some((option) => option.id === value);
 }
 
 function displayCmeSymbol(symbol: string) {

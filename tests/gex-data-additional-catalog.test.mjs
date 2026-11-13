@@ -27,7 +27,9 @@ function requestFor(tool,values={},page={},global={}){
 }
 
 test('nine additional catalogue tools have distinct licensed routes and real chart-picker entries',()=>{
-  assert.equal(definitions.length,32);
+  assert.equal(definitions.length,31);
+  assert.ok(definitions.every(tool=>Object.hasOwn(GEX_DATA_TOOLS,tool.endpoint)));
+  assert.ok(OPTIONS_FLOW_TOOLS.every(tool=>tool.toolId!=='exposure-forecast'));
   const routes=[];
   for(const id of ids){
     const matches=definitions.filter(tool=>tool.id===id);assert.equal(matches.length,1,id);

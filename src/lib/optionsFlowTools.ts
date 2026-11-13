@@ -10,7 +10,7 @@ const dataTools = [
   ["contract-trade-side-statistics", "Contract Side Statistics"], ["contract-statistics", "Contract Statistics"],
   ["gainers-losers", "Gainers / Losers"], ["market-share", "Market Share"], ["market-share-table", "Market Share Table"],
   ["exposure-by-expiration", "Exposure by Expiration"], ["exposure-by-strike", "Exposure by Strike"],
-  ["exposure-forecast", "Exposure Forecast"], ["heat-map", "Heat Map"], ["iv-rank", "Implied Volatility Rank"],
+  ["heat-map", "Heat Map"], ["iv-rank", "Implied Volatility Rank"],
   ["interval-map", "Interval Map"], ["max-pain", "Max Pain"], ["max-pain-over-time", "Max Pain / Time"], ["net-drift", "Net Drift"],
   ["order-flow-unconsolidated","Unconsolidated Order Flow"],["net-flow","Net Flow"],
   ["volatility-drift","Volatility Drift"],["volatility-skew","Volatility Skew"],["term-structure","Term Structure"],
@@ -40,6 +40,10 @@ export const OPTIONS_FLOW_TOOLS = ([
     : source === "gex-data" ? "GEX DATA · original tool, controls and filters" : "GEX BOX · original tool and settings",
 })));
 export function optionsFlowTool(value: unknown) {
+  // Existing saved chart layouts can still open their legacy panel.
+  if (value === "options-flow:gex-data:exposure-forecast") {
+    return { id: value, source: "gex-data" as const, toolId: "exposure-forecast", label: "Exposure Forecast", description: "Forecast is unavailable through the market data API." };
+  }
   return OPTIONS_FLOW_TOOLS.find(tool => tool.id === value);
 }
 export function optionsFlowInitialSymbol(instrument: string, allowed: readonly string[]) {

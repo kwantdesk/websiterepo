@@ -13,7 +13,7 @@ import { createTableView } from "./table-view.js?v=3";
 import { selectedSnapshotSpot, completedMinuteSnapshot, sessionMinuteTimestamp, snapshotControlTimeline, equityOptionSnapshotSchedule } from "./snapshot-model.js?v=2";
 import { timeDomain, timeX, timeTicks, nearestTimeIndex,timeAtIndex } from "./time-axis.js?v=1";
 import { abbreviate, currencyAbbreviated, currencyAuto, abbreviatedTick, percentagePointsAuto } from "./number-format.js?v=2";
-import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=20261114-save-warning';
+import {bootWorkspace,applyDocumentPreferences,getConfiguration,getFilterOverrides,getFilterGroups,filterGroupTypeForTool,showFilterGroups,popup,showToolConfiguration,showDataDialog,confirmLocalAction} from './workspace-ui.js?v=20261114-feed-catalogue';
 import {instrumentChoices,setChoiceValue,snapshotTimeOptions,multiChoiceDropdown} from './choice-controls.js?v=2';
 import {resolveFilterOverride,normalizeAPIExpression,expirationFilterForTool} from './preferences-model.js?v=1';
 import {normalizeWheelDelta,wheelZoomWindow,panZoomWindow,heatMapPlainWheel,cursorTooltipPlacement,sliderBarWindow,sliderHandleWindow,sliderTrackClick,lerpZoomStep} from './chart-interaction-model.js?v=1';
@@ -38,7 +38,7 @@ import {netFlowMinuteDetailRequest} from './net-flow-interaction-model.js?v=2026
 import {buildOptionExpirationChoicesRequest,parseOpenInterestExpirationChoices,buildOptionStrikeChoicesRequest,mergeOptionContractChoices,parseOpenInterestStrikeChoices} from './option-contract-choices.js?v=20261103';
 import {mountNetDriftContractControls,mountObservedStrikeControl,mountObservedExpiryControl} from './net-drift-contract-controls.js?v=20261103';
 import {optionTapeRequest,optionTapeSort,optionTapeFilterExpression,optionTapeField,optionTapeColumnFields,optionTapeSessionRange,optionTapeCursor,mergeOptionTapeRows} from './option-tape-interaction-model.js?v=20261103';
-import {toolControlDefault} from './tool-control-defaults.js?v=20261103';
+import {toolControlDefault} from './tool-control-defaults.js?v=20261114-feed-catalogue';
 import {equityPrintField,equityPrintColumnFields,equityPrintSort,equityPrintFilterExpression,equityPrintRequest,equityPrintCursor} from './equity-print-interaction-model.js?v=20261103';
 import {mergeLiveTapePage} from './equity-live-page.js';
 import {notificationField,notificationColumnFields,notificationSort,notificationFilterExpression,notificationRequest,notificationCursor,notificationReferenceSession,gainersReferenceSession} from './exchange-notification-interaction-model.js?v=20261104';
@@ -536,7 +536,6 @@ await boot();
 
     { id: "exposure-by-expiration", title: "Exposure by Expiration", group: "Exposure", icon: "⊞", endpoint: "exposure-by-expiration", view: "exposureExpiration", controls: ["mode", "date", "ticker", "greek", "representation", "exposureDisplay", "strike"], liveMs: 20000, description: "GEX, DEX, VEX, and CHEX aggregated across expirations with flexible exposure units." },
     { id: "exposure-by-strike", title: "Exposure by Strike", group: "Exposure", icon: "⊟", endpoint: "exposure-by-strike", view: "exposureStrike", controls: ["mode", "date", "ticker", "greek", "representation", "exposureDisplay", "expiry"], liveMs: 20000, description: "Net Greek exposure across strikes with expiration filtering and an underlying-price marker." },
-    { id: "exposure-forecast", title: "Exposure Forecast", group: "Exposure", icon: "✦", endpoint: null, view: "forecast", controls: ["mode", "date", "ticker"], liveMs: 20000, description: "Requires market-data's licensed forecast output." },
     { id: "heat-map", title: "Heat Map", group: "Exposure", icon: "▦", endpoint: "heat-map", view: "heatMap", controls: ["mode", "date", "ticker", "heatMetric", "heatAxes"], liveMs: 20000, description: "Expiration × strike map of exposure, open interest, premium, volume, and Greek metrics." },
     { id: "iv-rank", title: "Implied Volatility Rank", group: "Exposure", icon: "≈", endpoint: "iv-rank", view: "ivRank", controls: ["ticker", "lookback", "maturity", "contractTypeOptional"], liveMs: 60000, description: "Call and put IV rank over a customizable historical lookback and maturity window." },
     { id: "interval-map", title: "Interval Map", group: "Exposure", icon: "⁙", endpoint: "interval-map", view: "intervalMap", controls: ["mode", "date", "ticker", "period", "greek", "intervalValueMode", "strikePadding", "expiry", "minStrike", "maxStrike"], liveMs: 20000, description: "Time-bucketed option exposure with net coloring and an underlying-price overlay." },
@@ -1170,7 +1169,7 @@ await boot();
     if (toolCursor) body.searchAfter = toolCursor;
     const override=getFilterOverrides(),tickerOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.tickers,globalValue:override.global.tickers,isTicker:true}),expiryOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.expirationDate,globalValue:override.global.expirationDate}),dateOverride=resolveFilterOverride({toolValue:null,pageValue:override.page.sessionDate,globalValue:override.global.sessionDate});
     if(tickerOverride.type!=='NONE'&&tool.id!=='market-map'){body.filter||={};delete body.filter.ticker;delete body.filter.tickers;const multiple=['market-share','market-share-table','gainers-losers','exchange-notifications','contract-statistics','contract-trade-side-statistics','net-drift','order-flow-consolidated','order-flow-unconsolidated','equity-prints','news-articles'].includes(tool.id);body.filter[multiple?'tickers':'ticker']=multiple?tickerOverride.value:tickerOverride.value[0];}
-    if(expiryOverride.type!=='NONE'&&!['dark-flow','dark-pool-levels','equity-prints','exchange-notifications','stock-price-over-time','market-map','iv-rank','max-pain-over-time','exposure-forecast','news-articles'].includes(tool.id)){body.filter||={};delete body.filter.expirationDate;delete body.filter.expirationDates;Object.assign(body.filter,expirationFilterForTool(tool.id,expiryOverride.value));}
+    if(expiryOverride.type!=='NONE'&&!['dark-flow','dark-pool-levels','equity-prints','exchange-notifications','stock-price-over-time','market-map','iv-rank','max-pain-over-time','news-articles'].includes(tool.id)){body.filter||={};delete body.filter.expirationDate;delete body.filter.expirationDates;Object.assign(body.filter,expirationFilterForTool(tool.id,expiryOverride.value));}
     if(dateOverride.type!=='NONE'&&tool.id!=='iv-rank'&&!(masterReplay&&tool.id==='market-map')){if(tool.id==='dark-pool-levels')body.sessionDateRange={startDate:dateOverride.value,endDate:dateOverride.value};else body.sessionDate=dateOverride.value;}
     const attached=FILTER_GROUP_TOOLS.has(tool.id)?getFilterGroups().filter(group=>(toolGroupIds[tool.id]||[]).includes(group.id)&&(group.type||'OPTION_TRADES_UNCONSOLIDATED')===filterGroupTypeForTool(tool.id)):[];if(attached.length)body.filterExpression=normalizeAPIExpression({conjunction:'AND',filters:attached.map(group=>group.expression)});
     if(tool.id==='option-price-over-time'&&body.filter?.osi){if(tickerOverride.type!=='NONE'||expiryOverride.type!=='NONE')throw Error('Clear page/global ticker and expiration overrides when selecting an exact OSI contract.');body.filter={osi:body.filter.osi};}
@@ -1233,7 +1232,6 @@ await boot();
   }
 
   async function loadToolPayload(tool, mapTimeline = null) {
-    if (tool.view === "forecast") return {unavailable:true};
     let body = buildRequest(tool);
     const effectiveSessionDate=body.sessionDate||apiStatus.market?.optionsSessionDate;
     const snapshotTools=["heat-map","exposure-by-strike","exposure-by-expiration","market-map","volatility-skew","term-structure"],snapshotTime=snapshotTools.includes(tool.id)?snapshotSelections.get(snapshotKey(tool)):null;
@@ -2259,10 +2257,10 @@ await boot();
     return renderIntervalMapQuant(payload);
   }
 
-  function renderForecast() {
+  function renderRetiredForecast() {
     showVisual();q("#chartToolbar").hidden=true;
     const message=element("div","source-unavailable");
-    message.append(element("h2","","Exposure Forecast"),element("p","","The licensed market-data forecast feed is not connected. No forecast data is available."));
+    message.append(element("h2","","Exposure Forecast"),element("p","","Forecast is unavailable through the market data API."));
     q("#toolVisual").replaceChildren(message);setSummary([]);
   }
 
@@ -2305,7 +2303,6 @@ await boot();
     if (tool.view === "marketMap") return renderMarketMap(payload);
     if (tool.view === "heatMap") return renderHeatMap(payload);
     if (tool.view === "intervalMap") return renderIntervalMap(payload);
-    if (tool.view === "forecast") return renderForecast(payload);
 
     if (tool.view === "darkFlow") {
       renderDarkFlowQuant(payload); return;
@@ -2410,6 +2407,15 @@ await boot();
   });
   const initialTool = location.hash.startsWith("#tool=") ? location.hash.slice(6) : null;
   if (toolMap.has(initialTool)) void showTool(initialTool);
+  else if (initialTool === 'exposure-forecast') {
+    if (workspaceController) showBoard();
+    else {
+      dashboard.hidden = true;
+      toolView.hidden = false;
+      q('#initialToolLoading').hidden = true;
+      renderRetiredForecast();
+    }
+  }
   document.documentElement.dataset.workspaceUiReady = "true";
   document.dispatchEvent(new Event("gex-data-workspace-rendered"));
 }

@@ -9,7 +9,7 @@ import {resolveFilterOverride} from '../../public/gex-data-app/preferences-model
 
 const spyTools = [
   'dark-flow', 'dark-pool-levels', 'interval-map',
-  'exposure-by-expiration', 'exposure-by-strike', 'exposure-forecast',
+  'exposure-by-expiration', 'exposure-by-strike',
   'heat-map', 'iv-rank', 'max-pain-over-time', 'net-drift', 'net-flow',
   'open-interest-by-expiration', 'open-interest-by-strike',
   'open-interest-over-time', 'term-structure', 'volatility-drift',
@@ -39,10 +39,10 @@ for (const tool of absentTickerTools) test(`${tool}: absent ticker default prese
   assert.equal(toolControlDefault(tool, 'ticker', 'QQQ'), 'QQQ');
 });
 
-test('all 32 audited defaults are accounted for without duplicate local ids', () => {
+test('all 31 audited defaults are accounted for without duplicate local ids', () => {
   const tools = [...spyTools, ...unsetTools, ...unrestrictedTools, ...absentTickerTools];
-  assert.equal(tools.length, 32);
-  assert.equal(new Set(tools).size, 32);
+  assert.equal(tools.length, 31);
+  assert.equal(new Set(tools).size, 31);
 });
 
 test('unknown tools, futures and inherited object keys preserve exact fallback', () => {

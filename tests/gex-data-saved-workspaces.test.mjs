@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {SAVED_WORKSPACES_KEY,ACTIVE_WORKSPACE_KEY,workspaceValues,normalizeSavedWorkspaces,saveWorkspaceAs,quickSaveWorkspace,workspaceBackup,parseWorkspaceBackup,mergeWorkspaceBackups,workspaceToolCount,validateWorkspaceLayout} from '../public/gex-data-app/saved-workspaces-model.js';
+import test from 'node:test';import assert from 'node:assert/strict';import {SAVED_WORKSPACES_KEY,ACTIVE_WORKSPACE_KEY,workspaceValues,normalizeSavedWorkspaces,saveWorkspaceAs,quickSaveWorkspace,workspaceBackup,parseWorkspaceBackup,mergeWorkspaceBackups,workspaceToolCount,validateWorkspaceLayout,removeRetiredForecast} from '../public/gex-data-app/saved-workspaces-model.js';
 const values={'gex-data:workspace:v1':JSON.stringify({type:'row',children:[{type:'tabset',children:[{type:'tab',id:'a',tool:'net-drift'}]}]}),'gex-data:configuration:v1':'{"hideLegends":true}'};
 const preset={id:'one',name:'Desk one',updatedAt:'2026-11-04T00:00:00Z',values};
 test('existing name/values saves retain their contents and stable identity',()=>{const old=[{name:'Legacy',values}];const a=normalizeSavedWorkspaces(old),b=normalizeSavedWorkspaces(old);assert.equal(a[0].id,b[0].id);assert.deepEqual(a[0].values,values);assert.equal(workspaceToolCount(a[0].values),1)});
@@ -11,3 +11,19 @@ test('malformed files, foreign storage keys, unrelated chart formats and invalid
 test('real layout validation rejects empty objects, duplicate identities and unknown tools but accepts usable empty panes',()=>{const valid={type:'row',id:'root',children:[{type:'tabset',id:'set',children:[]}]},ids=new Set(['net-drift']);assert.deepEqual(validateWorkspaceLayout(valid,ids),valid);for(const input of [{},{type:'row',id:'root',children:[]},{...valid,children:[{type:'tabset',id:'root',children:[]}]},{...valid,children:[{type:'tabset',id:'set',children:[{type:'tab',id:'t',tool:'unknown'}]}]}])assert.throws(()=>validateWorkspaceLayout(input,ids));});
 
 test('different unnamed legacy backup files cannot overwrite each other during merge',()=>{const a={format:'kwantdesk-gex-data',version:1,values},b={...a,values:{...values,'gex-data:configuration:v1':'{}'}};const one=parseWorkspaceBackup(a),two=parseWorkspaceBackup(b);assert.notEqual(one[0].id,two[0].id);assert.equal(parseWorkspaceBackup(a)[0].id,one[0].id);assert.equal(mergeWorkspaceBackups(one,two).length,2)});
+
+test('legacy Forecast tabs are omitted while other tabs, pane weights and selections survive',()=>{
+  const forecast={type:'tab',id:'retired',tool:'exposure-forecast'};
+  const drift={type:'tab',id:'drift',tool:'net-drift'};
+  const heat={type:'tab',id:'heat',tool:'heat-map'};
+  const layout={type:'row',id:'root',children:[
+    {type:'tabset',id:'main',weight:70,selected:2,children:[forecast,drift,heat]},
+    {type:'tabset',id:'other',weight:30,selected:0,children:[{...forecast,id:'retired2'}]},
+  ]};
+  const result=removeRetiredForecast(layout);
+  validateWorkspaceLayout(result,new Set(['net-drift','heat-map']));
+  assert.deepEqual(result.children.map(pane=>[pane.weight,pane.selected,pane.children.map(tab=>tab.id)]),
+    [[70,1,['drift','heat']],[30,-1,[]]]);
+  assert.equal(layout.children[0].children[0],forecast);
+  assert.equal(removeRetiredForecast(result),result);
+});

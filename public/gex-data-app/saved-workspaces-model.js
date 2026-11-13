@@ -12,7 +12,7 @@ export function normalizeSavedWorkspaces(input,validate=value=>value){
  if(!Array.isArray(input)||input.length>100)throw Error('Invalid saved workspace list.');
  const ids=new Set();return input.map(p=>{
   if(!p||typeof p!=='object'||typeof p.name!=='string'||!p.name.trim()||p.name.length>64)throw Error('Invalid workspace name.');
-  const values=workspaceValues(p.values);validate(values);const id=typeof p.id==='string'&&/^[a-zA-Z0-9:_-]{1,128}$/.test(p.id)?p.id:legacyId(p.name);
+  const originalValues=workspaceValues(p.values);const values=validate(originalValues)??originalValues;const id=typeof p.id==='string'&&/^[a-zA-Z0-9:_-]{1,128}$/.test(p.id)?p.id:legacyId(p.name);
   if(ids.has(id))throw Error('Duplicate workspace identity.');ids.add(id);
   return{id,name:p.name.trim(),updatedAt:typeof p.updatedAt==='string'&&Number.isFinite(Date.parse(p.updatedAt))?p.updatedAt:null,values};
  });
@@ -36,6 +36,20 @@ export function parseWorkspaceBackup(data,validate){
 export function mergeWorkspaceBackups(saved,imported){const merged=new Map(saved.map(p=>[p.id,p]));for(const preset of imported)merged.set(preset.id,preset);if(merged.size>100)throw Error('Remove a saved workspace before importing more.');return[...merged.values()]}
 export function workspaceToolCount(values){try{const state=JSON.parse(values['gex-data:workspace:v1']);let count=0;const walk=n=>{if(!n)return;if(n.type==='tab')count++;else for(const child of n.children||[])walk(child)};walk(state.layout??state);return count}catch{return 0}}
 
+// Preserve other tabs, pane dimensions and selection in existing exports.
+export function removeRetiredForecast(layout) {
+  if (!layout || !Array.isArray(layout.children)) return layout;
+  if (layout.type === 'tabset') {
+    const children = layout.children.filter(tab => tab?.type !== 'tab' || tab.tool !== 'exposure-forecast');
+    if (children.length === layout.children.length) return layout;
+    const selected = layout.selected ?? 0;
+    const remainingBefore = layout.children.slice(0, selected).filter(tab => tab?.tool !== 'exposure-forecast').length;
+    return {...layout, children, selected: Math.min(remainingBefore, children.length - 1)};
+  }
+  if (layout.type !== 'row') return layout;
+  const children = layout.children.map(removeRetiredForecast);
+  return children.some((child, index) => child !== layout.children[index]) ? {...layout, children} : layout;
+}
 export function validateWorkspaceLayout(layout,toolIds){
  const stack=[{node:layout,parent:null,depth:0}],ids=new Set();let count=0,panes=0,tools=0;
  while(stack.length){const {node,parent,depth}=stack.pop();if(++count>128||depth>32||!node||typeof node!=='object'||!['row','tabset','tab'].includes(node.type)||typeof node.id!=='string'||!node.id||node.id.length>128||ids.has(node.id))throw Error('Invalid workspace layout.');ids.add(node.id);

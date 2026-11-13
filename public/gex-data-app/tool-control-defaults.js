@@ -8,7 +8,6 @@ const TICKER_DEFAULTS = Object.freeze({
   'interval-map': 'SPY',
   'exposure-by-expiration': 'SPY',
   'exposure-by-strike': 'SPY',
-  'exposure-forecast': 'SPY',
   'heat-map': 'SPY',
   'iv-rank': 'SPY',
   'max-pain-over-time': 'SPY',

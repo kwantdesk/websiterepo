@@ -35,7 +35,7 @@ test('every catalogue tool opens and loads with the retired banner absent; board
     renderToolNav:()=>calls.push('navigation'),loadActiveTool:async()=>calls.push('load'),
   };
   vm.runInNewContext(catalogue+'const toolMap=new Map(TOOL_DEFINITIONS.map(tool=>[tool.id,tool]));'+functions+';globalThis.tools=TOOL_DEFINITIONS;globalThis.open=showTool;globalThis.board=showBoard;',context);
-  assert.equal(context.tools.length,32);
+  assert.equal(context.tools.length,31);
   for(const tool of context.tools){
     calls.length=0;
     await context.open(tool.id);
