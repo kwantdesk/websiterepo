@@ -140,7 +140,6 @@ import { OverlayVolumeWidthPrimitive } from "@/lib/chartOverlayPrimitive";
 export type ChartOverlaySeries = ChartOverlaySeriesModel;
 import type { VixEnvironmentSnapshot } from "@/lib/vixEnvironment";
 import {
-  DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
   LIVE_CHART_EXECUTION_EVENT,
   WORKSPACE_LAYOUT_SETTLED_EVENT,
@@ -281,7 +280,6 @@ import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
 import {
   applyInstitutionalTradesToVolumeProfile,
   fetchInstitutionalVolumeProfile,
-  fetchInstitutionalSnapshot,
   isCandleBackedVolumeProfile,
   isExecutionBackedVolumeProfile,
   readCachedInstitutionalVolumeProfile,
@@ -750,16 +748,6 @@ import PrecisionToolsBoundary from "@/chart/precision-tools/PrecisionToolsBounda
 import type { PrecisionChartAdapter, PrecisionObject, PrecisionTheme, PrecisionToolId } from "@/chart/precision-tools/types";
 import { claimChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
 import {
-  calculateSmtDivergences,
-  comparisonSmtMarket,
-  resolveSmtMarket,
-  type SmtDivergenceSettings,
-} from "@/lib/smtDivergence";
-import {
-  SmtDivergencePrimitive,
-  type SmtDivergencePrimitiveOptions,
-} from "@/lib/smtDivergencePrimitive";
-import {
   CHART_CROSSHAIR_SYNC_TOGGLE_EVENT,
   chartCrosshairInstrumentKey,
   chartCrosshairSyncGroup,
@@ -1024,48 +1012,6 @@ const HEDGE_LEVEL_COLORS: Record<HedgeChartLevel["kind"], string> = {
 
 const EMPTY_CHART_LEVELS: ChartLevel[] = [];
 const EMPTY_CHART_ITEMS: never[] = [];
-
-const smtComparisonSnapshotCache = new Map<string, { candles: Candle[]; storedAt: number }>();
-const smtComparisonSnapshotRequests = new Map<string, Promise<Candle[]>>();
-const MAX_SMT_COMPARISON_SNAPSHOTS = 12;
-
-async function loadSmtComparisonCandles(
-  symbol: "ES" | "NQ",
-  timeframe: string,
-  lookbackBars: number,
-) {
-  const key = `${symbol}:${timeframe}:${lookbackBars}`;
-  const cached = smtComparisonSnapshotCache.get(key);
-  if (cached && Date.now() - cached.storedAt < 10_000) {
-    smtComparisonSnapshotCache.delete(key);
-    smtComparisonSnapshotCache.set(key, cached);
-    return cached.candles;
-  }
-  const existing = smtComparisonSnapshotRequests.get(key);
-  if (existing) return existing;
-  const request = fetchInstitutionalSnapshot({
-    symbol,
-    timeframe,
-    lookbackBars,
-    timeoutMs: 15_000,
-  }).then((snapshot) => {
-    const candles = snapshot?.candles ?? [];
-    if (candles.length) {
-      smtComparisonSnapshotCache.delete(key);
-      smtComparisonSnapshotCache.set(key, { candles, storedAt: Date.now() });
-      while (smtComparisonSnapshotCache.size > MAX_SMT_COMPARISON_SNAPSHOTS) {
-        const oldestKey = smtComparisonSnapshotCache.keys().next().value as string | undefined;
-        if (!oldestKey) break;
-        smtComparisonSnapshotCache.delete(oldestKey);
-      }
-    }
-    return candles;
-  }).finally(() => {
-    smtComparisonSnapshotRequests.delete(key);
-  });
-  smtComparisonSnapshotRequests.set(key, request);
-  return request;
-}
 
 type CandleSeriesApi = ReturnType<IChartApi["addCandlestickSeries"]>;
 
@@ -3609,7 +3555,6 @@ function Chart({
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const deepContractsPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const bigBlocksPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
-  const smtDivergencePrimitiveRef = useRef<SmtDivergencePrimitive | null>(null);
   const cvdDivergencePricePrimitiveRef = useRef<CvdDivergencePricePrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
   const liveFootprintSourceCandlesRef = useRef<Candle[]>([]);
@@ -4442,7 +4387,6 @@ function Chart({
   const [storedIndicatorTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
   const sampledIndicatorMarketTrades = useMemo(() => replayTimestampMs == null ? storedIndicatorTrades : replayCausalTrades(marketTrades, replayTimestampMs), [marketTrades, replayTimestampMs, storedIndicatorTrades]);
   const [sampledIndicatorMarketTradesVersion, setSampledIndicatorMarketTradesVersion] = useState(marketTradesVersion);
-  const [smtComparisonCandles, setSmtComparisonCandles] = useState<Candle[]>([]);
   const [indicatorPaneHeights, setIndicatorPaneHeights] = useState<Record<string, number>>({});
   const [collapsedIndicatorPanes, setCollapsedIndicatorPanes] = useState<Record<string, boolean>>({});
   const [indicatorPaneLayout, setIndicatorPaneLayout] = useState<IndicatorPaneLayoutMap>(() => {
@@ -5734,194 +5678,6 @@ function Chart({
     };
   }, [liquidityStopSweepIndicator, liquidityStopSweepSettings.showTooltips]);
 
-  const smtDivergenceIndicator = useMemo(
-    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "divergence-detector") ?? null,
-    [indicators],
-  );
-  const smtDivergenceEnabled = smtDivergenceIndicator !== null;
-  const smtDivergenceSettings = useMemo<SmtDivergenceSettings>(() => {
-    const source = smtDivergenceIndicator?.settings ?? {};
-    return {
-      pivotStrength: Math.max(1, Math.round(Number(source.pivotStrength ?? 3))),
-      synchronizationBars: Math.max(1, Math.round(Number(source.synchronizationBars ?? 3))),
-      minimumSwingBars: Math.max(1, Math.round(Number(source.minimumSwingBars ?? 3))),
-      maximumLookbackBars: Math.max(100, Math.round(Number(source.maximumLookbackBars ?? 1200))),
-      minimumMoveTicks: Math.max(0, Number(source.minimumMoveTicks ?? 1)),
-      maximumSignals: Math.max(1, Math.round(Number(source.maximumSignals ?? 24))),
-      includeNonConfirmation: source.includeNonConfirmation !== false,
-      showBullish: source.showBullish !== false,
-      showBearish: source.showBearish !== false,
-    };
-  }, [smtDivergenceIndicator]);
-  const smtPrimaryMarket = useMemo(() => resolveSmtMarket(instrument), [instrument]);
-  const smtComparisonMarket = useMemo(() => comparisonSmtMarket(instrument), [instrument]);
-
-  useEffect(() => {
-    if (!smtDivergenceEnabled || !smtPrimaryMarket || !smtComparisonMarket) {
-      setSmtComparisonCandles([]);
-      return;
-    }
-    setSmtComparisonCandles([]);
-    let cancelled = false;
-    let requestInFlight = false;
-    const selectedTimeframe = timeframe ?? "1m";
-    const hydrateComparison = async () => {
-      if (requestInFlight) return;
-      requestInFlight = true;
-      const comparisonCandles = await loadSmtComparisonCandles(
-        smtComparisonMarket,
-        selectedTimeframe,
-        smtDivergenceSettings.maximumLookbackBars + smtDivergenceSettings.pivotStrength * 2 + 20,
-      );
-      requestInFlight = false;
-      if (cancelled || !comparisonCandles.length) return;
-      setSmtComparisonCandles((current) => {
-        const hydratedLast = comparisonCandles.at(-1);
-        const currentLast = current.at(-1);
-        if (!hydratedLast || !currentLast || currentLast.timestamp < hydratedLast.timestamp) return comparisonCandles;
-        if (currentLast.timestamp === hydratedLast.timestamp) {
-          return [
-            ...comparisonCandles.slice(0, -1),
-            {
-              ...hydratedLast,
-              high: Math.max(hydratedLast.high, currentLast.high),
-              low: Math.min(hydratedLast.low, currentLast.low),
-              close: currentLast.close,
-            },
-          ];
-        }
-        return [
-          ...comparisonCandles,
-          ...current.filter((candle) => candle.timestamp > hydratedLast.timestamp),
-        ].slice(-(smtDivergenceSettings.maximumLookbackBars + 40));
-      });
-    };
-
-    void hydrateComparison();
-    const refreshTimer = window.setInterval(
-      () => void hydrateComparison(),
-      marketIsActive === false ? 60_000 : 12_000,
-    );
-    let pendingComparisonUpdate: { bucket: number; high: number; low: number; close: number } | null = null;
-    let comparisonSampleTimer: number | null = null;
-    const flushComparisonTick = () => {
-      comparisonSampleTimer = null;
-      const pending = pendingComparisonUpdate;
-      pendingComparisonUpdate = null;
-      if (!pending) return;
-      const { bucket, high, low, close } = pending;
-      setSmtComparisonCandles((current) => {
-        const latest = current.at(-1);
-        if (!latest) return [{ timestamp: bucket, open: close, high, low, close, volume: 0 }];
-        if (bucket < latest.timestamp) return current;
-        if (bucket > latest.timestamp) {
-          return [...current, {
-            timestamp: bucket,
-            open: latest.close,
-            high: Math.max(latest.close, high),
-            low: Math.min(latest.close, low),
-            close,
-            volume: 0,
-          }].slice(-(smtDivergenceSettings.maximumLookbackBars + 40));
-        }
-        return [
-          ...current.slice(0, -1),
-          {
-            ...latest,
-            high: Math.max(latest.high, high),
-            low: Math.min(latest.low, low),
-            close,
-          },
-        ];
-      });
-    };
-    const receiveComparisonTick = (event: Event) => {
-      const detail = (event as CustomEvent<DatabentoLiveTick>).detail;
-      if (!detail || resolveSmtMarket(detail.instrument) !== smtComparisonMarket) return;
-      const price = Number(detail.mid);
-      const intervalMs = timeframeToMs(selectedTimeframe);
-      if (!Number.isFinite(price) || price <= 0 || intervalMs === null || intervalMs >= 24 * 60 * 60_000) return;
-      const timestampText = String(detail.timestamp ?? "").trim();
-      const rawTimestamp = typeof detail.timestamp === "number"
-        ? detail.timestamp
-        : /^\d+$/.test(timestampText)
-          ? Number(timestampText)
-          : Date.parse(timestampText);
-      if (!Number.isFinite(rawTimestamp)) return;
-      const timestampMs = rawTimestamp < 10_000_000_000
-        ? rawTimestamp * 1_000
-        : rawTimestamp > 10_000_000_000_000_000
-          ? Math.floor(rawTimestamp / 1_000_000)
-          : rawTimestamp > 10_000_000_000_000
-            ? Math.floor(rawTimestamp / 1_000)
-            : rawTimestamp;
-      const bucket = Math.floor(timestampMs / intervalMs) * intervalMs;
-      if (pendingComparisonUpdate && pendingComparisonUpdate.bucket !== bucket) {
-        if (comparisonSampleTimer !== null) window.clearTimeout(comparisonSampleTimer);
-        flushComparisonTick();
-      }
-      pendingComparisonUpdate = pendingComparisonUpdate?.bucket === bucket
-        ? {
-            bucket,
-            high: Math.max(pendingComparisonUpdate.high, price),
-            low: Math.min(pendingComparisonUpdate.low, price),
-            close: price,
-          }
-        : { bucket, high: price, low: price, close: price };
-      if (comparisonSampleTimer === null) comparisonSampleTimer = window.setTimeout(flushComparisonTick, 120);
-    };
-    window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveComparisonTick);
-    return () => {
-      cancelled = true;
-      window.clearInterval(refreshTimer);
-      if (comparisonSampleTimer !== null) window.clearTimeout(comparisonSampleTimer);
-      comparisonSampleTimer = null;
-      pendingComparisonUpdate = null;
-      window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, receiveComparisonTick);
-    };
-  }, [
-    marketIsActive,
-    smtComparisonMarket,
-    smtDivergenceEnabled,
-    smtDivergenceSettings.maximumLookbackBars,
-    smtDivergenceSettings.pivotStrength,
-    smtPrimaryMarket,
-    timeframe,
-  ]);
-
-  const smtDivergenceSignals = useMemo(() => {
-    if (!smtDivergenceEnabled || !smtPrimaryMarket || !smtComparisonMarket) return [];
-    return calculateSmtDivergences({
-      primaryCandles: sampledIndicatorCandles,
-      comparisonCandles: smtComparisonCandles,
-      primaryMarket: smtPrimaryMarket,
-      comparisonMarket: smtComparisonMarket,
-      tickSize: priceFormat.minMove,
-      settings: smtDivergenceSettings,
-    });
-  }, [
-    priceFormat.minMove,
-    sampledIndicatorCandles,
-    smtComparisonCandles,
-    smtComparisonMarket,
-    smtDivergenceEnabled,
-    smtDivergenceSettings,
-    smtPrimaryMarket,
-  ]);
-  const smtDivergencePrimitiveOptions = useMemo<SmtDivergencePrimitiveOptions>(() => {
-    const source = smtDivergenceIndicator?.settings ?? {};
-    const useThemeColors = source.useThemeColors !== false;
-    return {
-      bullishColor: useThemeColors ? settings.upColor : String(source.bullishColor ?? settings.upColor),
-      bearishColor: useThemeColors ? settings.downColor : String(source.bearishColor ?? settings.downColor),
-      lineWidth: Math.max(1, Number(source.lineWidth ?? 2)),
-      opacity: Math.max(0.1, Math.min(1, Number(source.opacity ?? 92) / 100)),
-      showLabels: source.showLabels !== false,
-      showPivotDots: source.showPivotDots !== false,
-      labelFontSize: Math.max(8, Number(source.labelFontSize ?? 10)),
-      dashedLines: source.dashedLines === true,
-    };
-  }, [settings.downColor, settings.upColor, smtDivergenceIndicator]);
   const tpoCalculationSignature = useMemo(() => JSON.stringify(indicators
     .filter((instance) => instance.indicatorId === "tpo-chart" || instance.indicatorId === "weekly-tpo")
     .map((instance) => {
@@ -5961,10 +5717,8 @@ function Chart({
     return indicators.some((instance) =>
       instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow)
       ? Math.max(orderFlowLimit, bigTradeLimit)
-      : smtDivergenceEnabled
-        ? Math.max(1_500, Math.min(5_000, smtDivergenceSettings.maximumLookbackBars))
-        : 1_500;
-  }, [indicatorSignature, indicators, replayTimestampMs != null, sampledIndicatorCandles.length, smtDivergenceEnabled, smtDivergenceSettings.maximumLookbackBars, timeframe]);
+      : 1_500;
+  }, [indicatorSignature, indicators, replayTimestampMs != null, sampledIndicatorCandles.length, timeframe]);
   const indicatorWindowCandles = useMemo(
     () => replayIndicatorCandles(sampledIndicatorCandles, indicatorHistoryLimit, replayTimestampMs),
     [indicatorHistoryLimit, replayTimestampMs, sampledIndicatorCandles],
@@ -15717,9 +15471,6 @@ function Chart({
     const cvdDivergencePricePrimitive = new CvdDivergencePricePrimitive();
     candleSeries.attachPrimitive(cvdDivergencePricePrimitive);
     cvdDivergencePricePrimitiveRef.current = cvdDivergencePricePrimitive;
-    const smtDivergencePrimitive = new SmtDivergencePrimitive();
-    candleSeries.attachPrimitive(smtDivergencePrimitive);
-    smtDivergencePrimitiveRef.current = smtDivergencePrimitive;
     const footprintPrimitive = new FootprintPrimitive();
     candleSeries.attachPrimitive(footprintPrimitive);
     footprintPrimitiveRef.current = footprintPrimitive;
@@ -16766,13 +16517,6 @@ function Chart({
         if (cvdDivergencePricePrimitiveRef.current) {
           try { candleSeries.detachPrimitive(cvdDivergencePricePrimitiveRef.current); } catch { /* Chart teardown may already have detached it. */ }
         }
-        if (candleSeriesRef.current && smtDivergencePrimitiveRef.current) {
-          try {
-            candleSeriesRef.current.detachPrimitive(smtDivergencePrimitiveRef.current);
-          } catch {
-            // Chart teardown can detach primitives before React cleanup runs.
-          }
-        }
         if (candleSeriesRef.current && footprintPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(footprintPrimitiveRef.current);
@@ -16879,7 +16623,6 @@ function Chart({
       bigTradesPrimitiveRef.current = null;
       deepContractsPrimitiveRef.current = null;
       bigBlocksPrimitiveRef.current = null;
-      smtDivergencePrimitiveRef.current = null;
       cvdDivergencePricePrimitiveRef.current = null;
       footprintPrimitiveRef.current = null;
       paperFillMarkersPrimitiveRef.current = null;
@@ -17385,13 +17128,6 @@ function Chart({
       }];
     }));
   }, [baseCalculatedIndicatorSeries, chartReadyRevision, settings.backgroundColor, settings.upColor, settings.downColor]);
-
-  useEffect(() => {
-    smtDivergencePrimitiveRef.current?.update(
-      smtDivergenceEnabled ? smtDivergenceSignals : [],
-      smtDivergencePrimitiveOptions,
-    );
-  }, [chartReadyRevision, smtDivergenceEnabled, smtDivergencePrimitiveOptions, smtDivergenceSignals]);
 
   useEffect(() => {
     const primitive = paperFillMarkersPrimitiveRef.current;

@@ -51,7 +51,6 @@ const inactiveGuardFiles = [
   "src/lib/positionCalculatorPrimitive.ts",
   "src/lib/pullingStackingPrimitive.ts",
   "src/lib/ratioHighlightPrimitive.ts",
-  "src/lib/smtDivergencePrimitive.ts",
   "src/lib/stackedImbalancePrimitive.ts",
   "src/lib/stopSpotterPrimitive.ts",
   "src/lib/tpo/primitive.ts",

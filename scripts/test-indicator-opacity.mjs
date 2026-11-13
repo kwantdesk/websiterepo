@@ -79,7 +79,6 @@ check("the drawn primitives start solid too", () => {
   for (const [file, what] of [
     ["bigBlocksPrimitive", "big blocks"],
     ["footprintPrimitive", "footprint cells"],
-    ["smtDivergencePrimitive", "SMT divergence"],
   ]) {
     const source = readFileSync(new URL(`../src/lib/${file}.ts`, import.meta.url), "utf8");
     assert.match(source, /^ {2}opacity: 1,$/m, `${what} still defaults faded`);

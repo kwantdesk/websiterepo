@@ -305,7 +305,7 @@ test("Bounce Levels refresh cadence is platform-managed rather than user configu
   const config = readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8");
   const bounceConfig = config.slice(
     config.indexOf('"bounce-levels": ['),
-    config.indexOf('"divergence-detector": [', config.indexOf('"bounce-levels": [')),
+    config.indexOf('"delta-highlight": [', config.indexOf('"bounce-levels": [')),
   );
   assert.match(chart, /BOUNCE_LEVELS_REFRESH_INTERVAL_MS = 5_000/);
   assert.doesNotMatch(chart, /bounceLevelsIndicator\.settings\?\.refreshSeconds/);

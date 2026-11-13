@@ -186,7 +186,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "on-candle-stats",
   "classic-gex-profile",
   "expected-move",
-  "divergence-detector",
 ]);
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
   "kwant-profile",
@@ -1013,17 +1012,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "alertMinimumExposure", label: "Alert minimum absolute exposure", defaultValue: 0, min: 0, max: 1000000000000, step: 1000000 },
     { key: "alertMinimumRoc", label: "Alert minimum absolute ROC (%)", defaultValue: 0, min: 0, max: 1000, step: 1 },
     { key: "alertCooldownSeconds", label: "Alert cooldown (seconds)", defaultValue: 60, min: 5, max: 3600, step: 5 },
-  ],
-  "divergence-detector": [
-    { key: "pivotStrength", label: "Pivot confirmation bars", defaultValue: 3, min: 1, max: 12, step: 1 },
-    { key: "synchronizationBars", label: "ES / NQ synchronization window (bars)", defaultValue: 3, min: 1, max: 12, step: 1 },
-    { key: "minimumSwingBars", label: "Minimum bars between pivots", defaultValue: 3, min: 1, max: 100, step: 1 },
-    { key: "maximumLookbackBars", label: "Historical lookback bars", defaultValue: 1200, min: 100, max: 5000, step: 100 },
-    { key: "minimumMoveTicks", label: "Minimum structural break (ticks)", defaultValue: 1, min: 0, max: 100, step: 1 },
-    { key: "maximumSignals", label: "Maximum visible divergences", defaultValue: 24, min: 1, max: 100, step: 1 },
-    { key: "lineWidth", label: "Divergence line width", defaultValue: 2, min: 1, max: 5, step: 0.5 },
-    { key: "opacity", label: "Line opacity (%)", defaultValue: 100, min: 10, max: 100, step: 1 },
-    { key: "labelFontSize", label: "Label font size", defaultValue: 10, min: 8, max: 16, step: 1 },
   ],
   "delta-highlight": [
     { key: "minValue", label: "Minimum absolute delta (%)", defaultValue: 50, min: 0, max: 100, step: 1 },
@@ -2283,19 +2271,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     positiveGexColor: theme?.upColor ?? "#22C55E",
     negativeGexColor: theme?.downColor ?? "#EF4444",
     darkPoolGexSettingsVersion: 2,
-  } : {}),
-  ...(indicatorId === "divergence-detector" ? {
-    comparisonMode: "automatic-es-nq",
-    includeNonConfirmation: true,
-    showBullish: true,
-    showBearish: true,
-    showLabels: true,
-    showPivotDots: true,
-    dashedLines: false,
-    useThemeColors: true,
-    bullishColor: theme?.upColor ?? "#22C55E",
-    bearishColor: theme?.downColor ?? "#EF4444",
-    divergenceDetectorSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "delta-highlight" ? {
     useThemeColors: true,
@@ -3579,31 +3554,6 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "snapshot", "snapshots", "levels", "history"]) {
       delete settings[unsafeKey];
     }
-    return { ...normalizedInstance, settings };
-  }
-  if (normalizedInstance.indicatorId === "divergence-detector") {
-    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("divergence-detector");
-    const source: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
-    const settings: Record<string, number | string | boolean> = {};
-    for (const definition of INDICATOR_NUMERIC_SETTINGS["divergence-detector"] ?? []) {
-      const parsed = Number(source[definition.key]);
-      settings[definition.key] = Math.min(
-        definition.max,
-        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
-      );
-    }
-    settings.comparisonMode = "automatic-es-nq";
-    for (const key of [
-      "includeNonConfirmation", "showBullish", "showBearish", "showLabels",
-      "showPivotDots", "useThemeColors",
-    ]) settings[key] = source[key] !== false;
-    settings.dashedLines = source.dashedLines === true;
-    for (const key of ["bullishColor", "bearishColor"]) {
-      settings[key] = /^#[0-9a-f]{6}$/i.test(String(source[key] ?? ""))
-        ? String(source[key]).toUpperCase()
-        : defaults[key];
-    }
-    settings.divergenceDetectorSettingsVersion = 1;
     return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "expected-move") {

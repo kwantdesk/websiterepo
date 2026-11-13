@@ -584,7 +584,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "session-marker",
   "session-imbalance",
   "ib-levels",
-  "divergence-detector",
   "big-trades",
   "depth-of-market",
   "mini-dom",
@@ -1038,13 +1037,6 @@ function applyNumericIndicatorSetting(
   if (key === "activeEnterThreshold" && value < Number(next.activeExitThreshold ?? 8)) next.activeExitThreshold = value;
   if (key === "activeExitThreshold" && value > Number(next.activeEnterThreshold ?? 15)) next.activeEnterThreshold = value;
   return next;
-}
-
-function divergenceMarketPair(instrument: string) {
-  const normalized = instrument.trim().toUpperCase();
-  if (/^M?NQ/.test(normalized)) return { primary: "NQ", comparison: "ES" };
-  if (/^M?ES/.test(normalized)) return { primary: "ES", comparison: "NQ" };
-  return null;
 }
 
 /**
@@ -4845,30 +4837,6 @@ export default function ChartIndicatorsControl({
                   </div>
                 );
               })() : null}
-
-              {settingsDefinition.id === "divergence-detector" ? (
-                <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">ES / NQ SMT comparison</div>
-                    <p className="mt-1 text-[9px] leading-4 text-muted">
-                      {divergenceMarketPair(instrument)
-                        ? `${divergenceMarketPair(instrument)!.primary} is automatically compared with ${divergenceMarketPair(instrument)!.comparison} on ${timeframe}. Changing chart timeframe recalculates both markets together.`
-                        : "This detector is available on ES, MES, NQ and MNQ charts. Select one of those instruments to calculate SMT divergence."}
-                    </p>
-                  </div>
-                  <div className="border border-border bg-background/55 px-3 py-2">
-                    <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Chart market</div>
-                    <div className="mt-1 font-mono text-[11px] text-foreground">{divergenceMarketPair(instrument)?.primary ?? "Unsupported"}</div>
-                  </div>
-                  <div className="border border-border bg-background/55 px-3 py-2">
-                    <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Cross-check market</div>
-                    <div className="mt-1 font-mono text-[11px] text-primary">{divergenceMarketPair(instrument)?.comparison ?? "ES / NQ only"}</div>
-                  </div>
-                  <div className="text-[8px] leading-4 text-muted sm:col-span-2">
-                    Signals use confirmed swing pivots only. Bullish SMT compares failed lower lows; bearish SMT compares failed higher highs. No future candle is used before a line is confirmed.
-                  </div>
-                </div>
-              ) : null}
 
               {settingsDefinition.id === "expected-move" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">

@@ -124,7 +124,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Price Movement Levels", "Market Structure", "Levels calculated from measured price movement."),
   indicator("FVG Identifier", "Market Structure", "Detects and tracks fair value gaps."),
   indicator("Gap Detector", "Market Structure", "Highlights gaps between chart bars."),
-  indicator("Divergence Detector", "Market Structure", "Confirmed ES-NQ SMT divergence across synchronized swing highs and lows."),
   indicator("Swing Point", "Market Structure", "Identifies confirmed swing highs and lows."),
   indicator("Average Daily Range Target", "Market Structure", "Projects daily range targets."),
   indicator("Sessions", "Market Structure", "DST-aware Tokyo, London, New York and Sydney session boxes, levels and labels.", false, "Kwantify"),
