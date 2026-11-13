@@ -33,7 +33,6 @@ test("workspace picker separates pages from dedicated order-flow tools", () => {
     "QUEUE POSITION TRACKING",
     "SIZE MODIFICATION TRACKING",
     "ORDER SIZE DISTRIBUTION",
-    "ICEBERG / REFRESH DETECTOR",
     "SPOOFING DETECTOR",
     "FRONT RUNNING",
     "PASSIVE MARKET MAKING",
@@ -48,6 +47,11 @@ test("workspace picker separates pages from dedicated order-flow tools", () => {
   ]) {
     assert.match(workspaceSource, new RegExp(`label: "${label}"`));
   }
+});
+
+test("removed Iceberg Detector panels fall back to regular charts", () => {
+  assert.doesNotMatch(workspaceSource, /tool-iceberg-refresh-detector|ICEBERG \/ REFRESH DETECTOR/i);
+  assert.match(workspaceSource, /content: pane\.content === null \|\| isWorkspacePanelKind\(pane\.content\) \? pane\.content : "charts"/);
 });
 
 test("chart-backed tools remain saved chart panes while DOM Pro uses its standalone ladder", () => {

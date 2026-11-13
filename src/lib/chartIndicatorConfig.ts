@@ -31,7 +31,6 @@ import { DEFAULT_DOM_PRO_VISIBLE_ROWS, DOM_PRO_SETTINGS_VERSION } from "@/lib/do
 import { DEFAULT_PULLING_STACKING_SETTINGS, normalizePullingStackingSettings, PULLING_STACKING_SETTINGS_VERSION } from "@/lib/pullingStacking";
 import { ABSORPTION_DETECTOR_SETTINGS_VERSION, DEFAULT_ABSORPTION_SETTINGS, normalizeAbsorptionSettings } from "@/lib/absorptionDetector";
 import { DEFAULT_STACKED_IMBALANCE_SETTINGS, STACKED_IMBALANCE_SETTINGS_VERSION, normalizeStackedImbalanceSettings } from "@/lib/stackedImbalanceSuite";
-import { DEFAULT_ICEBERG_REFRESH_SETTINGS, ICEBERG_REFRESH_SETTINGS_VERSION, normalizeIcebergRefreshSettings } from "@/lib/icebergRefreshDetector";
 import { DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS, LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION, normalizeLiquidityStopSweepSettings } from "@/lib/liquidityStopSweepDetector";
 import { DEFAULT_POC_AUCTION_SUITE_SETTINGS, POC_AUCTION_SUITE_SETTINGS_VERSION, normalizePocAuctionSuiteSettings } from "@/lib/pocAuctionSuite";
 import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/tapeSpeedOrderFlowBurst";
@@ -139,7 +138,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "speed-of-tape",
   "market-statistics",
   "cumulative-volume-delta",
-  "iceberg-refresh-detector",
   "poc-auction-suite",
   "speed-of-tape-instant",
   "moving-average",
@@ -648,30 +646,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "opacity", label: "Overlay opacity (%)", defaultValue: 100, min: 0, max: 100, step: 1 },
     { key: "alertMinimumScore", label: "Alert minimum score", defaultValue: 75, min: 0, max: 100, step: 1 },
     { key: "alertMinimumQuality", label: "Alert minimum quality", defaultValue: 60, min: 0, max: 100, step: 1 },
-  ],
-  "iceberg-refresh-detector": [
-    { key: "attributionWindowMs", label: "Refresh attribution window (ms)", defaultValue: 250, min: 10, max: 10000, step: 10 },
-    { key: "minimumCycleExecution", label: "Minimum cycle execution", defaultValue: 10, min: 1, max: 1000000, step: 1 },
-    { key: "minimumCycleReplenishment", label: "Minimum cycle replenishment", defaultValue: 10, min: 1, max: 1000000, step: 1 },
-    { key: "minimumCycleReplenishmentRatio", label: "Minimum cycle refresh ratio", defaultValue: 0.5, min: 0, max: 10, step: 0.05 },
-    { key: "activeMinimumExecuted", label: "Active minimum executed", defaultValue: 100, min: 1, max: 1000000, step: 1 },
-    { key: "activeMinimumReplenished", label: "Active minimum replenished", defaultValue: 50, min: 1, max: 1000000, step: 1 },
-    { key: "minimumRefreshCycles", label: "Minimum refresh cycles", defaultValue: 2, min: 1, max: 100, step: 1 },
-    { key: "minimumReplenishmentRatio", label: "Minimum replenishment ratio", defaultValue: 0.5, min: 0, max: 10, step: 0.05 },
-    { key: "minimumExecutionToDisplayRatio", label: "Executed / displayed ratio", defaultValue: 1.25, min: 0, max: 100, step: 0.05 },
-    { key: "minimumSuspectedCycles", label: "Suspected minimum cycles", defaultValue: 3, min: 1, max: 100, step: 1 },
-    { key: "minimumSuspectedExecuted", label: "Suspected minimum executed", defaultValue: 200, min: 1, max: 1000000, step: 1 },
-    { key: "minimumSuspectedScore", label: "Suspected minimum score", defaultValue: 75, min: 0, max: 100, step: 1 },
-    { key: "minimumQuality", label: "Minimum data quality", defaultValue: 45, min: 0, max: 100, step: 1 },
-    { key: "maximumPenetrationTicks", label: "Maximum penetration (ticks)", defaultValue: 1, min: 0, max: 1000, step: 1 },
-    { key: "minimumPulledContracts", label: "Pulled minimum contracts", defaultValue: 50, min: 1, max: 1000000, step: 1 },
-    { key: "minimumPullRatio", label: "Pulled minimum ratio", defaultValue: 0.5, min: 0, max: 10, step: 0.05 },
-    { key: "historySeconds", label: "Visible history (seconds)", defaultValue: 3600, min: 30, max: 86400, step: 30 },
-    { key: "activeProfileWidth", label: "Active profile width", defaultValue: 140, min: 90, max: 300, step: 2 },
-    { key: "markerSize", label: "Marker size", defaultValue: 8, min: 5, max: 17, step: 1 },
-    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 100, min: 0, max: 100, step: 1 },
-    { key: "alertMinimumScore", label: "Alert minimum score", defaultValue: 75, min: 0, max: 100, step: 1 },
-    { key: "alertMinimumQuality", label: "Alert minimum quality", defaultValue: 45, min: 0, max: 100, step: 1 },
   ],
   "stacked-imbalance-suite": [
     { key: "customOffsetGroups", label: "Comparison offset (groups)", defaultValue: 1, min: 1, max: 20, step: 1 },
@@ -1800,13 +1774,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     bidColor: theme?.downColor ?? DEFAULT_STACKED_IMBALANCE_SETTINGS.bidColor,
     neutralColor: theme?.gridColor ?? DEFAULT_STACKED_IMBALANCE_SETTINGS.neutralColor,
     version: STACKED_IMBALANCE_SETTINGS_VERSION,
-  } : {}),
-  ...(indicatorId === "iceberg-refresh-detector" ? {
-    ...DEFAULT_ICEBERG_REFRESH_SETTINGS,
-    bidColor: theme?.upColor ?? DEFAULT_ICEBERG_REFRESH_SETTINGS.bidColor,
-    askColor: theme?.downColor ?? DEFAULT_ICEBERG_REFRESH_SETTINGS.askColor,
-    neutralColor: theme?.gridColor ?? DEFAULT_ICEBERG_REFRESH_SETTINGS.neutralColor,
-    schemaVersion: ICEBERG_REFRESH_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "liquidity-stop-sweep-detector" ? {
     ...DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS,
@@ -3338,17 +3305,6 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
       settings: {
         ...normalizeStackedImbalanceSettings({
           ...defaultIndicatorSettings("stacked-imbalance-suite"),
-          ...(normalizedInstance.settings ?? {}),
-        }),
-      },
-    };
-  }
-  if (normalizedInstance.indicatorId === "iceberg-refresh-detector") {
-    return {
-      ...normalizedInstance,
-      settings: {
-        ...normalizeIcebergRefreshSettings({
-          ...defaultIndicatorSettings("iceberg-refresh-detector"),
           ...(normalizedInstance.settings ?? {}),
         }),
       },

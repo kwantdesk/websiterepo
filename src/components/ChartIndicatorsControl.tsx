@@ -99,7 +99,6 @@ import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 import { zeroGammaSourceChoices } from "@/lib/zeroGammaLine";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
 import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
-import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
 import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
@@ -534,7 +533,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "pulling-stacking",
   "absorption-detector",
   "stacked-imbalance-suite",
-  "iceberg-refresh-detector",
   "liquidity-stop-sweep-detector",
   "poc-auction-suite",
   "tape-speed-order-flow-burst",
@@ -6036,27 +6034,6 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {settingsDefinition.id === "iceberg-refresh-detector" ? (
-                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
-                  <div>
-                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Detection preset</div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {Object.entries(ICEBERG_REFRESH_PRESETS).map(([preset, presetSettings]) => (
-                        <button key={preset} type="button" onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...presetSettings, preset } }))} className={`min-h-8 border px-2 text-[7px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}>
-                          {preset}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Visualisation</span><KwantSelect value={String(settingsInstance.settings?.visualizationMode ?? "hybrid")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), visualizationMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="hybrid">Hybrid</option><option value="price-time-cells">Price-time cells</option><option value="refresh-markers">Refresh markers</option><option value="zones">Zones</option><option value="active-profile">Active profile</option><option value="footprint-cells">Footprint cells</option><option value="dom-highlights">DOM highlights</option><option value="lower-pane">Lower pane</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Excess replenishment</span><KwantSelect value={String(settingsInstance.settings?.excessReplenishmentTreatment ?? "ordinary-stack")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), excessReplenishmentTreatment: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="ordinary-stack">Ordinary stack</option><option value="candidate-replenishment">Candidate refresh</option><option value="ignore">Ignore</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Move into level</span><KwantSelect value={String(settingsInstance.settings?.moveIntoLevelTreatment ?? "exclude")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), moveIntoLevelTreatment: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="exclude">Exclude</option><option value="include-low-confidence">Low confidence</option><option value="include-normal">Include normally</option></KwantSelect></label>
-                  </div>
-                  <p className="text-[8px] leading-4 text-muted">This tool detects repeated passive-liquidity replenishment. “Suspected Iceberg” is an inference unless the feed explicitly supplies a native iceberg flag. The current normalized feed provides price-level evidence, not trader identity, reserve quantity, or legal intent.</p>
-                </div>
-              ) : null}
-
               {settingsDefinition.id === "liquidity-stop-sweep-detector" ? (
                 <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
                   <div>
@@ -8246,7 +8223,7 @@ export default function ChartIndicatorsControl({
                 const entries = Object.entries(settingsInstance.settings ?? {})
                   .filter(([key]) => !["showSource", "stableFootprintRows", "sessionSelectionArmed"].includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "gamma-heatmap" && key === "showStatus"))
-                  .filter(([key]) => !(["poc-auction-suite", "net-gamma-exposure-by-strike", "gex-interval-map", "pulling-stacking", "absorption-detector", "iceberg-refresh-detector", "liquidity-stop-sweep-detector"].includes(settingsDefinition.id) && key === "showHeader"))
+                  .filter(([key]) => !(["poc-auction-suite", "net-gamma-exposure-by-strike", "gex-interval-map", "pulling-stacking", "absorption-detector", "liquidity-stop-sweep-detector"].includes(settingsDefinition.id) && key === "showHeader"))
                   .filter(([key]) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
                   .filter(([key]) => {

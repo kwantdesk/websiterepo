@@ -601,11 +601,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
   "ib-levels": [
     "showFib"
   ],
-  "iceberg-refresh-detector": [
-    "excessReplenishmentTreatment",
-    "moveIntoLevelTreatment",
-    "visualizationMode"
-  ],
   "imbalance-tracker": [
     "enableAlertSound",
     "enablePopup",

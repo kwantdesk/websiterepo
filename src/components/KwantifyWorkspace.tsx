@@ -1072,7 +1072,6 @@ type WorkspaceToolKind =
   | "tool-imbalance-detector"
   | "tool-absorption-indicator"
   | "tool-stacked-imbalance-suite"
-  | "tool-iceberg-refresh-detector"
   | "tool-liquidity-stop-sweep-detector"
   | "tool-poc-auction-suite"
   | "tool-tape-speed-order-flow-burst"
@@ -1489,7 +1488,6 @@ const LEGACY_WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKin
   { id: "tool-imbalance-detector", label: "IMBALANCE DETECTOR", description: "Stacked and diagonal bid/ask imbalance", icon: Layers3, indicatorId: "imbalance-tracker" },
   { id: "tool-absorption-indicator", label: "ABSORPTION DETECTOR", description: "Price-time absorption, replenishment, confirmed zones, retests and breaks", icon: Eye, indicatorId: "absorption-detector" },
   { id: "tool-stacked-imbalance-suite", label: "STACKED IMBALANCE SUITE", description: "Diagonal and horizontal execution imbalance, stacks, scored zones, retests and breaks", icon: Layers3, indicatorId: "stacked-imbalance-suite" },
-  { id: "tool-iceberg-refresh-detector", label: "ICEBERG / REFRESH DETECTOR", description: "Repeated passive-liquidity replenishment, suspected iceberg zones, pulls and breaks", icon: Repeat, indicatorId: "iceberg-refresh-detector" },
   { id: "tool-liquidity-stop-sweep-detector", label: "LIQUIDITY SWEEP / STOP SWEEP DETECTOR", description: "Direct multi-level aggressive sweeps, reference-level stop-sweep inference, continuation and rejection", icon: Waves, indicatorId: "liquidity-stop-sweep-detector" },
   { id: "tool-poc-auction-suite", label: "POC & AUCTION", description: "Bar, session and rolling POC, naked levels, migration, finished and unfinished auctions, and excess", icon: CircleDot, indicatorId: "poc-auction-suite" },
   { id: "tool-tape-speed-order-flow-burst", label: "TAPE SPEED & ORDER-FLOW BURST", description: "Live tape velocity, directional bursts, churn and post-burst response", icon: Zap, indicatorId: "tape-speed-order-flow-burst" },
