@@ -1,3 +1,4 @@
+import { candleDeltaPath } from "./candleDeltaPath.ts";
 import type { Candle } from "@/lib/backtester";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
@@ -196,9 +197,9 @@ export function calculateKwantStats(
     const bid = Math.max(0, finite(candle.bidVolume));
     const hasExecutedSides = ask + bid > 0;
     const total = Math.max(0, finite(candle.volume, ask + bid));
-    const delta = hasExecutedSides
-      ? finite(candle.deltaClose, finite(candle.delta, ask - bid))
-      : null;
+    // The cached delta close can carry a session offset or lag the side totals.
+    const delta = hasExecutedSides ? ask - bid : null;
+    const deltaPath = delta === null ? null : candleDeltaPath(candle, delta);
     const totalTrades = Math.max(0, finite(candle.trades));
     const filterValue = inputData === "Order" ? totalTrades : total;
     const passesFilter = filterValue >= filterMin && (filterMax === 0 || filterValue <= filterMax);
@@ -232,12 +233,8 @@ export function calculateKwantStats(
         bidVolume: passesFilter && hasExecutedSides ? bid : null,
         askVolume: passesFilter && hasExecutedSides ? ask : null,
         deltaVolume: passesFilter ? delta : null,
-        maxDeltaVolume: passesFilter && delta !== null
-          ? finite(candle.deltaHigh, Math.max(0, delta))
-          : null,
-        minDeltaVolume: passesFilter && delta !== null
-          ? finite(candle.deltaLow, Math.min(0, delta))
-          : null,
+        maxDeltaVolume: passesFilter ? deltaPath?.high ?? null : null,
+        minDeltaVolume: passesFilter ? deltaPath?.low ?? null : null,
         totalTrades: passesFilter ? totalTrades : null,
         deltaTrades: passesFilter && hasTradeSides ? askTrades - bidTrades : null,
         rangeTicks: passesFilter ? rangeTicks : null,

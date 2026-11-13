@@ -48,3 +48,20 @@ test("settings persist and the catalogue/renderer gates are genuinely live", () 
   assert.match(chart, /OnCandleStatsPrimitive/);
   for (const label of ["Input data", "Price plot", "Font size", "Smaller font size", "Maximum opacity ratio", "Price offset"]) assert.match(control + fs.readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8"), new RegExp(label, "i"));
 });
+
+test("Kwant Stats uses per-bar ask minus bid even with cached or session-relative delta", () => {
+  const instance = { instanceId: "stats", indicatorId: "kwant-stats", enabled: true };
+  const colors = { positive: "#0f0", negative: "#f00", neutral: "#888", text: "#fff", header: "#111" };
+  const bars = calculateKwantStats([
+    { ...candle, delta: -20, deltaClose: 0 },
+    { ...candle, timestamp: 61_000, askVolume: 12, bidVolume: 28,
+      deltaOpen: 250, deltaClose: 234, deltaHigh: 253, deltaLow: 230 },
+    { ...candle, timestamp: 121_000, askVolume: undefined, bidVolume: undefined, deltaClose: 10 },
+  ], [], instance, 0.25, colors).bars.map(bar => bar.values);
+
+  assert.deepEqual(bars.map(bar => bar.totalVolume), [40, 40, 40]);
+  assert.deepEqual(bars.map(bar => bar.deltaVolume), [10, -16, null]);
+  assert.deepEqual(bars.map(bar => bar.deltaPercent), [25, -40, null]);
+  assert.deepEqual(bars.map(bar => bar.sessionCvd), [10, -6, null]);
+  assert.deepEqual(bars.map(bar => [bar.maxDeltaVolume, bar.minDeltaVolume]), [[15, -5], [3, -20], [null, null]]);
+});
