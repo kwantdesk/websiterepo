@@ -66,7 +66,8 @@
 .workspace-popup.chart-workspace-menu .saved-workspace-import[data-dragging=true]{border-color:var(--site-primary);background:color-mix(in srgb,var(--site-primary) 10%,var(--site-panel));color:var(--site-primary)}
 .workspace-popup.chart-workspace-menu .saved-workspace-action:disabled{opacity:.35;cursor:not-allowed}
 .chart-workspace-menu .saved-workspace-error{margin:8px 2px 0;font-size:11px;color:var(--site-danger)}
-.topbar .top-action.chart-workspace-trigger{border-color:transparent!important;border-radius:var(--kwant-control-radius,8px)!important}
+.topbar .top-action.chart-workspace-trigger{border-radius:var(--kwant-control-radius,8px)!important}
+.topbar .top-action.chart-workspace-trigger:not(:hover):not([aria-expanded=true]){border-color:color-mix(in srgb,var(--site-border) 70%,transparent)!important}
 .topbar .top-action.chart-workspace-trigger[aria-expanded=true]{background:color-mix(in srgb,var(--site-primary) 8%,transparent)!important;border-color:color-mix(in srgb,var(--site-primary) 35%,transparent)!important;color:var(--site-primary)!important}
 @media(pointer:coarse){.workspace-popup.chart-workspace-menu .saved-workspace-icon{opacity:1}}
 

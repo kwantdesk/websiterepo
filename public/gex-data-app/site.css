@@ -14,12 +14,11 @@ button,input,select,textarea,.qfe,.qfe-json{font-family:Aleph,sans-serif}
 body{min-width:0;overflow:hidden}
 .top-actions{overflow-x:auto;max-width:100%;white-space:nowrap}
 .top-actions{width:100%;min-width:0;flex:1}.top-action{flex:0 0 34px}.top-action.wide{width:auto!important;flex-basis:auto;padding:0 10px;font-size:12px}
-/* Centre the complete command group, including the appended Workspaces button.
-   Equal flexible gutters centre it on the page; a minimum right gutter keeps
-   the host timezone clear when the viewport needs the existing action scroll. */
-.app-shell > .topbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,max-content) minmax(0,1fr)}
-.app-shell > .topbar > .top-actions{grid-column:2;justify-content:safe center}
-.host-timezone-control .app-shell > .topbar{grid-template-columns:minmax(0,1fr) minmax(0,max-content) minmax(174px,1fr)}
+/* Keep Workspaces at the left inset and the remaining commands centred. */
+.app-shell > .topbar{display:grid;grid-template-columns:minmax(max-content,1fr) minmax(0,max-content) minmax(0,1fr)}
+.app-shell > .topbar > .chart-workspace-trigger{grid-column:1;grid-row:1;justify-self:start}
+.app-shell > .topbar > .top-actions{grid-column:2;grid-row:1;justify-content:safe center}
+.host-timezone-control .app-shell > .topbar{grid-template-columns:minmax(max-content,1fr) minmax(0,max-content) minmax(174px,1fr)}
 .tool-library{top:var(--kwant-workspace-command-height)!important;height:calc(100vh - var(--kwant-workspace-command-height))!important}
 .choice-dropdown{min-width:0;border:1px solid var(--site-border);border-radius:3px;background:var(--site-surface);color:var(--site-foreground)}
 .choice-dropdown summary{cursor:pointer;padding:7px 9px;overflow-wrap:anywhere;font-size:12px}

@@ -20,17 +20,22 @@ const menuStyle=menu=>menu.evaluate(panel=>{
   const rect=panel.getBoundingClientRect();
   const trigger=panel.ownerDocument.querySelector('.chart-workspace-trigger').getBoundingClientRect();
   return {width:rect.width,left:rect.left,right:rect.right,viewport:panel.ownerDocument.defaultView.innerWidth,
-    triggerCenter:trigger.left+trigger.width/2,panelCenter:rect.left+rect.width/2,gap:rect.top-trigger.bottom,
+    gap:rect.top-trigger.bottom,
+    triggerLeft:trigger.left,toolbarLeft:panel.ownerDocument.querySelector('.topbar').getBoundingClientRect().left,
+    triggerBorder:getComputedStyle(panel.ownerDocument.querySelector('.chart-workspace-trigger')).borderTopStyle,
     radius:getComputedStyle(panel).borderRadius,background:getComputedStyle(panel).backgroundColor,
     quickRadius:style('.saved-workspace-grid .primary').borderRadius,quickHeight:style('.saved-workspace-grid .primary').height,
     rowRadius:style('.saved-workspace-row').borderRadius,importRadius:style('.saved-workspace-import').borderRadius};
 });
 await page.locator('#qaDarkTheme').click();
+const closedBorder=await menuButton.evaluate(button=>getComputedStyle(button).borderTopColor);
+assert.doesNotMatch(closedBorder,/^(?:transparent|rgba\(0, 0, 0, 0\))$/);
 menu=await open();
 const dark=await menuStyle(menu);
 assert.equal(dark.width,340);assert.equal(dark.radius,'16px');assert.equal(dark.quickRadius,'12px');
 assert.equal(dark.quickHeight,'36px');assert.equal(dark.rowRadius,'12px');assert.equal(dark.importRadius,'12px');
-assert.ok(Math.abs(dark.panelCenter-dark.triggerCenter)<1);assert.equal(dark.gap,8);
+assert.equal(dark.left,8);assert.equal(dark.gap,8);
+assert.ok(dark.triggerLeft-dark.toolbarLeft<=16);assert.equal(dark.triggerBorder,'solid');
 await page.locator('#qaLightTheme').click();
 await page.waitForFunction(background=>{
   const panel=document.querySelector('iframe').contentDocument.querySelector('.chart-workspace-menu');
