@@ -23,7 +23,7 @@ test("normal widths and defaults are unchanged; hidden profiles remain hidden", 
 test("every volume-profile renderer applies fine scaling after layout floors", () => {
   const native = readFileSync("src/lib/nativeVolumeProfilePrimitive.ts", "utf8");
   assert.match(native, /const profileWidth = fineVolumeProfileWidth\(baseProfileWidth, effectiveWidthPercent\)/);
-  assert.match(native, /isNewestOfKind\s*\? style.widthPercent\s*:\s*Number\(style.previousWidthPercent/);
+  assert.match(native, /isNewestOfOwner\s*\? style.widthPercent\s*:\s*Number\(style.previousWidthPercent/);
   for (const file of ["src/components/ChartDrawLayer.tsx", "src/chart/precision-tools/renderer.ts"]) {
     assert.match(readFileSync(file, "utf8"), /fineVolumeProfileWidth\(Math.max\(/);
   }

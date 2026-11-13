@@ -5868,11 +5868,12 @@ function WorkspaceChartPaneComponent({
     instanceId,
     settings: {
       numberOfProfiles: settings.numberOfProfiles,
-      includeDevelopingHistory: indicatorId === "ask-bid-volume-profile" && (
+      includeDevelopingHistory: (indicatorId === "ask-bid-volume-profile" || indicatorId === "delta-profile") && (
         settings.showDevelopingPoc === true || settings.pocLineMode === "developing"
         || settings.pocLineMode === "extend-shifted"
         || settings.valueAreaDeveloping === "dash" || settings.valueAreaDeveloping === "solid"
-        || (settings.vwapEnabled === true && settings.showDevelopingVwap === true)
+        || (settings.showDevelopingVwap === true && (settings.vwapEnabled === true
+          || (settings.vwapEnabled == null && (settings.showVwapLine === true || settings.showVwapBands === true))))
       ),
       filterMode: settings.filterMode,
       filterTime: settings.filterTime,
@@ -6067,7 +6068,7 @@ function WorkspaceChartPaneComponent({
    * persisted across reloads and moved nothing on the chart. The slice is the
    * one place that decided, so it is the one place that has to ask.
    */
-  const dailyProfileCount = pane.broker === "Databento" && dailyProfileInstances.length
+  const dailyProfileCount = dailyProfileInstances.length
     ? Math.max(...dailyProfileInstances.map((instance) => resolveDailyVolumeProfileCount(instance.settings?.numberOfProfiles)))
     : resolveDailyVolumeProfileCount(dailyProfileSettings.numberOfProfiles);
   // Exact archive profiles use completed-minute checkpoints in replay. Never
@@ -8885,7 +8886,7 @@ function WorkspaceChartPaneComponent({
     if (!usingMarketIndexPaneFeed) return;
     const projectionRoot = volumeProfileIndexSourceRoot(pane.symbol);
     if (!projectionRoot) return;
-    const wantsDaily = Boolean(dailyProfileInstance);
+    const wantsDaily = dailyFuturesProfileSignature !== "[]";
     const wantsWeekly = Boolean(weeklyProfileInstance);
     const wantsComposite = Boolean(compositeProfileInstance && compositeProfileRange);
     if (!wantsDaily && !wantsWeekly && !wantsComposite) return;
@@ -8926,6 +8927,10 @@ function WorkspaceChartPaneComponent({
           ?? paneCandles[0];
         startMs = first.timestamp;
         endMs = lastCandle.timestamp + intervalMs;
+      } else if (profile.sessionId) {
+        // Exact split windows already share the cash chart’s UTC time axis.
+        // Widening them to a whole cash day would stack all split profiles.
+        return profile;
       } else {
         const lastDate = dateOf(lastCandle.timestamp);
         const profileDate = dateOf(profile.endMs - 1);
@@ -8947,6 +8952,8 @@ function WorkspaceChartPaneComponent({
             : [...paneCandles].reverse().find((candle) => dateOf(candle.timestamp) === profileDate);
           endMs = (lastOfDate?.timestamp ?? lastCandle.timestamp) + intervalMs;
         }
+        if (replayProfileClockMs != null) endMs = Math.min(endMs, replayProfileClockMs);
+        if (endMs <= startMs) return profile;
       }
       return {
         ...profile,
@@ -8984,13 +8991,20 @@ function WorkspaceChartPaneComponent({
         price: point.price * ratio,
       })),
     });
+    const dailyOwners = JSON.parse(dailyFuturesProfileSignature) as Array<{
+      instanceId: string;
+      settings: Record<string, string | number | boolean>;
+    }>;
     const load = async () => {
+      const cutoffMs = replayProfileClockMs ?? Date.now();
       try {
         const referenceBars = await fetchValueAreaFuturesReference(projectionRoot);
         const ratio = valueAreaFuturesToCashRatio(referenceBars, latestCashCandleRef.current);
         if (!ratio || cancelled) return;
         const contractSymbol = currentCmeContract(`${projectionRoot}.c.0`) ?? undefined;
         const requests: Promise<InstitutionalVolumeProfile | null>[] = [];
+        const requestedDailyWindows = new Set<string>();
+        const windowKey = (owner: string, date: string, session?: string) => JSON.stringify([owner, date, session ?? ""]);
         // The study's OWN settings, exactly as the futures path reads them. A
         // projected profile that ignores the trader's grouping and value area
         // is not the same study wearing a different symbol.
@@ -9003,23 +9017,31 @@ function WorkspaceChartPaneComponent({
           minTradeVolume: Math.max(0, Number(instanceSettings.minTradeVolume ?? 0) || 0),
           maxTradeVolume: Math.max(0, Number(instanceSettings.maxTradeVolume ?? 0) || 0),
         });
-        if (wantsDaily) {
-          // One profile per session the pane actually shows, not just today.
-          // The futures path has always loaded the prior sessions a profile
-          // trader reads back over; projecting only the live day left the
-          // options charts with a single profile and nothing behind it.
-          const projectedDates = [...new Set(
-            latestCandlesRef.current.map((candle) => chicagoTradingDate(candle.timestamp)),
-          )].sort().slice(-5);
-          const dates = projectedDates.length ? projectedDates : [chicagoTradingDate(Date.now())];
-          for (const tradingDate of dates) {
-            requests.push(fetchInstitutionalVolumeProfile({
-              symbol: projectionRoot,
-              contractSymbol,
-              period: "daily",
-              tradingDate,
-              ...projectedArgsFor(dailyProfileInstance?.settings ?? {}, 1),
-            }));
+        for (const { instanceId, settings: ownerSettings } of dailyOwners) {
+          const dates = dailyTradingDateSignature.split(",").slice(-resolveDailyVolumeProfileCount(ownerSettings.numberOfProfiles));
+          const windows = dailyProfileWindows(dates, ownerSettings);
+          for (const [tradingDate, jobs] of windows) {
+            const session = cmeSessionWindowForDate(tradingDate);
+            for (const job of jobs) {
+              const startMs = job.startMs ?? session?.startMs;
+              const windowEndMs = job.endMs ?? session?.endMs;
+              if (startMs == null || windowEndMs == null || startMs >= cutoffMs) continue;
+              requestedDailyWindows.add(windowKey(instanceId, tradingDate, job.sessionId));
+              requests.push(fetchInstitutionalVolumeProfile({
+                symbol: projectionRoot,
+                contractSymbol,
+                period: "daily",
+                tradingDate: job.tradingDate,
+                startMs,
+                endMs: replayProfileClockMs == null ? job.endMs : Math.min(windowEndMs, cutoffMs),
+                developmentWindowEndMs: ownerSettings.includeDevelopingHistory === true
+                  ? windowEndMs : undefined,
+                ...projectedArgsFor(ownerSettings, 1),
+              }).then(profile => profile && ({
+                ...profile, ownerInstanceId: instanceId, tradingDate,
+                sessionId: job.sessionId, sessionLabel: job.sessionLabel,
+              })));
+            }
           }
         }
         if (wantsWeekly) {
@@ -9057,27 +9079,38 @@ function WorkspaceChartPaneComponent({
           .flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : [])
           .filter((profile) => isExecutionBackedVolumeProfile(profile))
           .map((profile) => scaleProfile(profile, ratio));
-        if (projected.length) {
-          setVolumeProfiles(projected.sort((left, right) => left.startMs - right.startMs));
-        }
+        setVolumeProfiles(current => {
+          const next = new Map<string, InstitutionalVolumeProfile>();
+          const profileKey = (profile: InstitutionalVolumeProfile) => profile.period === "daily" && profile.ownerInstanceId && profile.tradingDate
+            ? windowKey(profile.ownerInstanceId, profile.tradingDate, profile.sessionId) : profile.period;
+          for (const profile of current) {
+            if (profile.root !== displayRoot || (replayProfileClockMs !== null && profile.endMs > cutoffMs)) continue;
+            if (profile.period === "daily" ? requestedDailyWindows.has(profileKey(profile))
+              : profile.period === "weekly" ? wantsWeekly : wantsComposite) next.set(profileKey(profile), profile);
+          }
+          for (const profile of projected) next.set(profileKey(profile), profile);
+          return [...next.values()].sort((left, right) => left.startMs - right.startMs);
+        });
       } catch {
         // The next interval retries; the last projected profile stays painted.
       }
     };
     void load();
-    const interval = window.setInterval(() => void load(), 60_000);
+    const interval = replayProfileClockMs == null ? window.setInterval(() => void load(), 60_000) : null;
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      if (interval !== null) window.clearInterval(interval);
     };
   }, [
     compositeProfileInstance,
     compositeProfileRange?.endMs,
     compositeProfileRange?.startMs,
     compositeProfileSettings,
-    dailyProfileInstance,
+    dailyFuturesProfileSignature,
+    dailyTradingDateSignature,
     pane.broker,
     pane.symbol,
+    replayProfileClockMs,
     weeklyProfileInstance,
   ]);
 
@@ -9227,6 +9260,23 @@ function WorkspaceChartPaneComponent({
   const sessionFilterTimeFor = (settings: Record<string, unknown>) => {
     const requested = String(settings.filterTime ?? "rth").toLowerCase();
     return (["rth", "eth", "custom"].includes(requested) ? requested : "rth") as "rth" | "eth" | "custom";
+  };
+  const dailyProfileWindows = (dates: readonly string[], settings: Record<string, unknown>) => {
+    const mode = sessionFilterModeFor(settings);
+    const segmentsByDate = new Map([...dates].reverse().map(date =>
+      [date, mode === "none" ? [] : sessionSegmentsForTradingDate(date, settings)] as const));
+    // Keep the whole-day fallback for saved split profiles with no selected windows.
+    const wholeDay = mode === "none" || (dailySessionSplitsFor(settings)
+      && ![...segmentsByDate.values()].some(segments => segments.length > 0));
+    return new Map([...segmentsByDate].map(([date, segments]) => [date, segments.length
+      ? segments.map(segment => ({
+        startMs: segment.startMs, endMs: segment.endMs, tradingDate: undefined,
+        sessionId: segment.id, sessionLabel: segment.label,
+      }))
+      : wholeDay ? [{
+        startMs: undefined, endMs: undefined, tradingDate: date,
+        sessionId: undefined, sessionLabel: undefined,
+      }] : []] as const));
   };
   useEffect(() => {
     if (!dailyProfileInstance && !weeklyProfileInstance && (pane.broker === "Databento" || !compositeProfileInstance)) {
@@ -9407,35 +9457,7 @@ function WorkspaceChartPaneComponent({
       for (const [ownerId, owner] of dailyOwners) {
         const newestSessionIds = new Set<string>();
         const { settings: dailyProfileSettings, dates: tradingDates } = owner;
-        const dailyFilterMode = sessionFilterModeFor(dailyProfileSettings);
-        const requestedSplits = dailySessionSplitsFor(dailyProfileSettings);
-        const segmentsByDate = new Map<string, ReturnType<typeof sessionSegmentsForTradingDate>>();
-        // Newest first: the live profile must not sit behind five historical
-        // network jobs in the browser/gateway connection queue.
-        [...tradingDates].reverse().forEach((tradingDate) => {
-          segmentsByDate.set(
-            tradingDate,
-            dailyFilterMode !== "none"
-              ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings)
-              : [],
-          );
-        });
-        /*
-         * A split that resolves to no window at all draws the whole day, not
-         * nothing.
-         *
-         * Every session unticked - reachable from a saved workspace, or from
-         * settings edited directly - left `drawnSessionIds` empty, and the
-         * prune below then removed every daily profile on the chart while no
-         * request was issued to replace them. The study vanished, which reads
-         * as broken rather than as a choice. An empty selection is not an
-         * instruction to draw nothing.
-         */
-        const dailySplits = requestedSplits
-          && [...segmentsByDate.values()].some((segments) => segments.length > 0);
-        if (requestedSplits && !dailySplits) {
-          for (const tradingDate of tradingDates) segmentsByDate.set(tradingDate, []);
-        }
+        const windows = dailyProfileWindows(tradingDates, dailyProfileSettings);
         // Unticking a session has to take its profile OFF the chart.
         // replaceExactProfile only ever adds or replaces by identity, so a
         // window that is no longer requested was simply never revisited and
@@ -9443,9 +9465,7 @@ function WorkspaceChartPaneComponent({
         // Pruning here rather than on arrival makes it disappear immediately
         // instead of waiting on the surviving sessions' network round trip.
         const drawnSessionIds = new Set<string>(
-          [...segmentsByDate.values()].some((segments) => segments.length > 0)
-            ? [...segmentsByDate.values()].flat().map((segment) => segment.id)
-            : [""],
+          [...windows.values()].flat().map((job) => job.sessionId ?? ""),
         );
         setVolumeProfiles((current) => {
           const kept = current.filter((candidate) => (
@@ -9455,24 +9475,7 @@ function WorkspaceChartPaneComponent({
           ));
           return kept.length === current.length ? current : kept;
         });
-        for (const [tradingDate, segments] of segmentsByDate) {
-          const jobs = segments.length
-            ? segments.map((segment) => ({
-                startMs: segment.startMs,
-                endMs: segment.endMs,
-                tradingDate: undefined as string | undefined,
-                filterMode: "none" as const,
-                sessionId: segment.id,
-                sessionLabel: segment.label,
-              }))
-            : dailyFilterMode === "none" || (requestedSplits && !dailySplits) ? [{
-                startMs: undefined,
-                endMs: undefined,
-                tradingDate,
-                filterMode: "none" as const,
-                sessionId: undefined,
-                sessionLabel: undefined,
-              }] : [];
+        for (const [tradingDate, jobs] of windows) {
           jobs.sort((left, right) => (right.startMs ?? 0) - (left.startMs ?? 0));
           jobs.forEach((job) => {
             // A selected London/NY window that has not opened cannot have
@@ -9504,7 +9507,7 @@ function WorkspaceChartPaneComponent({
               valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
               minTradeVolume: owner.minVolume,
               maxTradeVolume: owner.maxVolume,
-              filterMode: job.filterMode,
+              filterMode: "none",
               filterTime: sessionFilterTimeFor(dailyProfileSettings),
               sessionStartMinutes: Number(dailyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
               sessionEndMinutes: Number(dailyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
@@ -9523,8 +9526,11 @@ function WorkspaceChartPaneComponent({
               void readCachedInstitutionalVolumeProfile(requestArgs).then((cached) => {
                 if (!fresh) publish(cached);
               }).catch(() => {});
-              fresh = publish(await fetchInstitutionalVolumeProfile(requestArgs));
-              if (fresh && completed && isNewest) readyCompletedDailyProfiles.add(profileKey);
+              const received = await fetchInstitutionalVolumeProfile(requestArgs);
+              fresh = publish(received);
+              const hasDevelopment = !requestArgs.developmentWindowEndMs
+                || Boolean(received?.developingPoc.length && received.developingValueArea?.length && received.developingVwap?.length);
+              if (fresh && completed && isNewest && hasDevelopment) readyCompletedDailyProfiles.add(profileKey);
               return fresh;
             };
             (isNewest ? priorityDailyJobs : olderDailyJobs).push(load);

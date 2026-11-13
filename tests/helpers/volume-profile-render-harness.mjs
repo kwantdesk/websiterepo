@@ -9,14 +9,14 @@ export class ProfilePathStub {
 }
 
 export function renderProfile({period="daily",mode="delta-volume",visualStyle="line",snapMode="off",
-  showDelta=true,gradient=null,zeroDelta=false,inverted=false,drawing=false,
+  showDelta=true,gradient=null,zeroDelta=false,inverted=false,drawing=false, styleOverrides={},
   symbol="NQ",tickSize=1,basePrice=100,pixelsPerTick=30,manualGroupTicks=1,automaticGrouping=false,autoGroupFactor=1,levelCount=6}={}){
   globalThis.Path2D=ProfilePathStub;
   const paths=[],state={};
   const context=new Proxy(state,{
     get:(target,key)=>{
       if(key==="fill"||key==="stroke")return path=>{
-        if(path?.commands?.length)paths.push({kind:key,color:target[key==="fill"?"fillStyle":"strokeStyle"],commands:path.commands});
+        if(path?.commands?.length)paths.push({kind:key,color:target[key==="fill"?"fillStyle":"strokeStyle"],alpha:target.globalAlpha,commands:path.commands});
       };
       if(key==="createLinearGradient")return ()=>({kind:"gradient",addColorStop(){}});
       if(key==="measureText")return text=>({width:String(text).length*6});
@@ -44,7 +44,7 @@ export function renderProfile({period="daily",mode="delta-volume",visualStyle="l
     pocColor:"#FFFFFF",showValueArea:true,showProfileOutline:true,showProfileSpine:false,
     showPocLine:false,showValueAreaLines:false,showPocHighlight:false,showText:false,
     showDevelopingPoc:false,showPeaks:false,showValleys:false,showBusinessZone:false,showVwap:false,
-    showLevelLabels:false,showSummaryVolume:false,showSummaryTrades:false};
+    showLevelLabels:false,showSummaryVolume:false,showSummaryTrades:false,...styleOverrides};
   const priceToCoordinate=p=>300+(inverted?1:-1)*(p-basePrice)*pixelsPerTick/tickSize;
   const primitive=new NativeVolumeProfilePrimitive();
   primitive.attached({series:{priceToCoordinate,coordinateToPrice:y=>basePrice+(inverted?1:-1)*(y-300)*tickSize/pixelsPerTick},chart:{timeScale:()=>scale},requestUpdate(){}});

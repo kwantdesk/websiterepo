@@ -181,7 +181,7 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "bearishColor", role: "negative" },
   ],
   "delta-bar": [
-    { key: "plotColor", role: "primary" },
+    { key: "plotColor", role: "primary", upRole: "positive", downRole: "negative" },
   ],
   "delta-cumulative-candlestick": [
     { key: "plotColor", role: "primary" },

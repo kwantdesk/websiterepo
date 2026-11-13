@@ -588,20 +588,34 @@ function computeIndicatorSeries(
 
   if (key === "delta-bar") {
     if (!orderFlowAvailable(candles)) return [];
+    const requestedStyle = settingString(instance, "candleStyle", "candlestick");
+    const candleStyle = requestedStyle === "ohlc" || requestedStyle === "candle-body"
+      ? requestedStyle : "candlestick";
+    const min = Math.max(0, settingNumber(instance, "filterMinDelta", 0));
+    const max = Math.max(0, settingNumber(instance, "filterMaxDelta", 0));
     return [{
       key,
       label: "Delta Bar",
-      kind: "histogram",
+      kind: "candlestick",
+      candleStyle,
       placement: "pane",
       color: theme.primary,
+      lineWidth: Math.min(4, Math.max(1, Math.round(settingNumber(instance, "lineWidth", 1)))) as 1 | 2 | 3 | 4,
+      includeZeroInScale: true,
       data: candles.filter(hasVerifiedOrderFlow).map((candle) => {
-        const value = finite(candle.delta, finite(candle.askVolume) - finite(candle.bidVolume));
+        const close = Number(candle.askVolume) - Number(candle.bidVolume);
+        const path = candleStyle === "candle-body"
+          ? { high: Math.max(0, close), low: Math.min(0, close) }
+          : candleDeltaPath(candle, close);
         return {
           time: candle.timestamp / 1000,
-          value,
-          color: value >= 0 ? theme.positive : theme.negative,
+          value: close,
+          open: 0,
+          close,
+          ...path,
+          color: close >= 0 ? theme.positive : theme.negative,
         };
-      }),
+      }).filter(({ value }) => Math.abs(value) >= min && (!max || Math.abs(value) <= max)),
     }];
   }
 

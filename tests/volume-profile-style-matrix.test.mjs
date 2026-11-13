@@ -88,3 +88,22 @@ test("VAH/VAL/POC attachment follows the selected mode, independent of appearanc
     for(const visualStyle of styles)assert.equal(volumeProfileLevelFrontX({...input,visualStyle}),expected);
   }
 });
+
+test("Delta-only body follows the opacity slider across visual styles",()=>{
+  for(const mode of ["delta","delta-percentage"]) for(const visualStyle of ["line","solid","hollow","combined"]){
+    const path=(opacity)=>renderProfile({mode,visualStyle,styleOverrides:{opacity}}).paths
+      .find(entry=>entry.color==="#22FF88");
+    assert.equal(path(.8)?.alpha,.8,mode+" "+visualStyle);
+    assert.equal(path(1)?.alpha,1,mode+" "+visualStyle);
+  }
+});
+
+test("Delta-only POC highlight follows the actual signed row and vanishes with delta hidden",()=>{
+  const options={mode:"delta",visualStyle:"solid",snapMode:"left",styleOverrides:{showPocHighlight:true,valueAreaPercent:100}};
+  const painted=renderProfile(options).paths;
+  const hidden=renderProfile({...options,showDelta:false}).paths;
+  // The fixture’s highest total-volume row has zero delta.
+  assert.ok(painted.some(path=>path.color==="#22FF88"));
+  assert.ok(hidden.every(path=>path.color!=="#FFFFFF"));
+  assert.ok(painted.every(path=>path.color!=="#FFFFFF"),"balanced POC should not paint a phantom delta body");
+});

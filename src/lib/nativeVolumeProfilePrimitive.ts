@@ -812,12 +812,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       // Right docking keeps the CURRENT profile reachable at the live edge.
       // Left docking has separate viewport-crossing ownership below.
       const latestEndMsByKind = new Map<string, number>();
+      const latestEndMsByOwner = new Map<string, number>();
       for (const model of this.models) {
         const kind = `${model.profile.period}:${model.profile.root}`;
         latestEndMsByKind.set(
           kind,
           Math.max(latestEndMsByKind.get(kind) ?? Number.NEGATIVE_INFINITY, model.profile.endMs),
         );
+        const owner = model.profile.ownerInstanceId;
+        if (owner) latestEndMsByOwner.set(owner, Math.max(latestEndMsByOwner.get(owner) ?? -Infinity, model.profile.endMs));
       }
 
       // Which profile owns the LEFT dock, per instrument.
@@ -899,6 +902,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // Right docking is reserved for the newest profile of this kind.
         const isNewestOfKind = profile.endMs
           >= (latestEndMsByKind.get(`${profile.period}:${profile.root}`) ?? profile.endMs);
+        const isNewestOfOwner = profile.ownerInstanceId
+          ? profile.endMs === latestEndMsByOwner.get(profile.ownerInstanceId) : isNewestOfKind;
         const pinnedRight = style.snapMode === "right"
           && isNewestOfKind
           && (profile.period !== "daily" || latestDailyProfile);
@@ -934,7 +939,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
          */
         const profileOffsetPx = customProfile || pinned
           ? 0
-          : Number((isNewestOfKind ? style.currentOffsetPx : style.previousOffsetPx) ?? 0);
+          : Number((isNewestOfOwner ? style.currentOffsetPx : style.previousOffsetPx) ?? 0);
         const rawAnchorX = (customProfile
           ? (customLeft + customRight) / 2
           : pinned
@@ -967,7 +972,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
          * every completed profile with the CURRENT width and made Previous
          * Width a saved control that did nothing on normal chart viewports.
          */
-        const effectiveWidthPercent = isNewestOfKind
+        const effectiveWidthPercent = isNewestOfOwner
           ? style.widthPercent
           : Number(style.previousWidthPercent ?? style.widthPercent);
         const visibleLogicalSpan = visibleLogicalRange == null
@@ -1154,8 +1159,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const groupedMaxVolume = derived.maxVolume;
         const groupedMaxAbsDelta = derived.maxAbsDelta;
         const groupedMaxSideVolume = derived.maxSideVolume;
+        const signedDeltaOnly = style.mode === "delta" || style.mode === "delta-percentage";
+        const deltaOpacity = signedDeltaOnly ? style.opacity : Math.min(0.94, style.opacity + 0.14);
         const deltaScaleWidth = profile.period === "weekly" ? profileWidth * 0.5 : profileWidth;
-        const deltaScaleMaximum = profile.period === "weekly"
+        const deltaScaleMaximum = signedDeltaOnly || profile.period === "weekly"
           ? groupedMaxAbsDelta
           : pinned && !splitPinnedDaily
             ? groupedMaxVolume
@@ -1307,7 +1314,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               mode: style.mode,
               deltaOnRight,
               volumeWidth,
-              deltaWidth,
+              deltaWidth: style.showDelta ? deltaWidth : 0,
               askWidth,
               bidWidth,
             }),
@@ -1403,7 +1410,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             );
           }
 
-          if (style.showPocHighlight && isPoc) {
+          if (style.showPocHighlight && isPoc && (!signedDeltaOnly || (style.showDelta && deltaWidth > 0))) {
             // The highlight traces the row it highlights, so it must follow
             // where that row's bars were actually drawn. In volume mode the
             // delta bar sits on the RIGHT whenever delta is positive, but the
@@ -1411,23 +1418,24 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             // out of the back of the profile with nothing underneath it, over
             // whatever the trader has behind (a delta footprint, usually).
             const deltaExtent = style.showDelta && !volumeOnlyPinnedDaily ? deltaWidth : 0;
+            const singleSidedPoc = pinned && !(signedDeltaOnly && splitPinnedDaily);
             const leftExtent = style.mode === "bid-ask"
               ? bidWidth
               : (style.mode === "delta" || style.mode === "delta-percentage")
-                ? delta < 0 ? deltaWidth : 0
+                ? delta < 0 ? deltaExtent : 0
                 : deltaOnRight ? 0 : deltaExtent;
             const rightExtent = style.mode === "bid-ask"
               ? askWidth
               : (style.mode === "delta" || style.mode === "delta-percentage")
-                ? delta >= 0 ? deltaWidth : 0
+                ? delta >= 0 ? deltaExtent : 0
                 : Math.max(volumeWidth, deltaOnRight ? deltaExtent : 0);
             addBar(
               pocPath,
-              pinned
+              singleSidedPoc
                 ? facesLeft ? anchorX - Math.max(leftExtent, rightExtent) : anchorX
                 : anchorX - leftExtent,
               y,
-              pinned
+              singleSidedPoc
                 ? Math.max(leftExtent, rightExtent)
                 : leftExtent + rightExtent,
               height,
@@ -1478,7 +1486,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             if (!steps.length) continue;
             const silhouette = this.createPath();
             traceVolumeProfileContour(silhouette, steps);
-            context.globalAlpha = Math.min(1, style.opacity + 0.2);
+            context.globalAlpha = signedDeltaOnly ? deltaOpacity : Math.min(1, style.opacity + 0.2);
             context.strokeStyle = bodyColor(colours[component]);
             context.stroke(silhouette);
           }
@@ -1498,14 +1506,14 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           fillPath(
             positiveDeltaPath,
             bodyColor(style.positiveDeltaColor),
-            Math.min(0.94, style.opacity + 0.14),
+            deltaOpacity,
             style.visualStyle,
             style.borderWidth,
           );
           fillPath(
             negativeDeltaPath,
             bodyColor(style.negativeDeltaColor),
-            Math.min(0.94, style.opacity + 0.14),
+            deltaOpacity,
             style.visualStyle,
             style.borderWidth,
           );

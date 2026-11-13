@@ -458,6 +458,7 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "plotPrice"
   ],
   "delta-bar": [
+    "candleStyle",
     "showLadderValues",
     "useThemeColors"
   ],

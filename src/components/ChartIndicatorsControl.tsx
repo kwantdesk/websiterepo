@@ -3377,7 +3377,9 @@ export default function ChartIndicatorsControl({
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Value area</div>
                   <div className="grid grid-cols-2 gap-2 sm:col-span-2">
                     {([
-                      ["showValueArea", "Value area fill", true],
+                      ...(settingsDefinition.id === "delta-profile" && ["delta", "delta-percentage", "bid-ask"].includes(
+                        resolveVolumeProfileMode(settingsDefinition.id, settingsInstance.settings?.profileMode),
+                      ) ? [] : [["showValueArea", "Value area fill", true] as const]),
                       ["showValueAreaLines", "VAH / VAL lines", true],
                     ] as const).map(([key, label]) => {
                       const enabled = settingsInstance.settings?.[key] !== false;
@@ -3483,8 +3485,9 @@ export default function ChartIndicatorsControl({
                   />
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Developing traces both value-area edges as they widened through the session, dashed or solid.
-                    It is recorded minute by minute while the session runs, so a day that finished before the chart
-                    was open has no trail to draw and the setting honestly shows nothing on it.
+                    {settingsDefinition.id === "delta-profile" || settingsDefinition.id === "ask-bid-volume-profile"
+                      ? "The trail also restores from covered execution history."
+                      : "This trail develops while the session runs."}
                   </div>
                 </div>
               ) : null}
@@ -7451,10 +7454,28 @@ export default function ChartIndicatorsControl({
                       );
                     })}
                   </div>
+                  {String(settingsInstance.settings?.displayMode ?? "pane") === "pane" ? (
+                    <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Bar style</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.candleStyle ?? "candlestick")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), candleStyle: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="Delta Bar style"
+                      >
+                        <option value="candlestick">Candlestick</option>
+                        <option value="ohlc">OHLC</option>
+                        <option value="candle-body">Body only</option>
+                      </KwantSelect>
+                    </label>
+                  ) : null}
                   <div className="grid grid-cols-2 gap-2">
                     {([
                       ["showLadderValues", "Delta numbers"], ["useThemeColors", "Website colours"],
-                    ] as const).map(([key, label]) => (
+                    ] as const).filter(([key]) => key !== "showLadderValues" || ["left", "right"].includes(String(settingsInstance.settings?.displayMode))).map(([key, label]) => (
                       <button
                         key={key}
                         type="button"
@@ -8234,6 +8255,12 @@ export default function ChartIndicatorsControl({
                   ? []
                   : INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
                   .filter((setting) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(setting.key))
+                  .filter(({ key }) => {
+                    if (settingsDefinition.id !== "delta-bar") return true;
+                    const side = ["left", "right"].includes(String(settingsInstance.settings?.displayMode));
+                    return side ? key.startsWith("ladder")
+                      : !key.startsWith("ladder") && (key !== "lineWidth" || settingsInstance.settings?.candleStyle !== "candle-body");
+                  })
                   .filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent"))
                   .filter((setting) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(setting.key));
                 const bySection = new Map<string, typeof numericSettings>();
@@ -8274,6 +8301,13 @@ export default function ChartIndicatorsControl({
                   .filter(([key]) => !["showSource", "stableFootprintRows", "sessionSelectionArmed"].includes(key))
                   .filter(([key]) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
+                  .filter(([key]) => {
+                    if (settingsDefinition.id !== "delta-bar") return true;
+                    const side = ["left", "right"].includes(String(settingsInstance.settings?.displayMode));
+                    if (["buyColor", "sellColor", "spineColor"].includes(key)) return side;
+                    if (["plotColor", "plotUpColor", "plotDownColor"].includes(key)) return !side;
+                    return true;
+                  })
                   .filter(([key]) => !(settingsDefinition.id === "delta-cumulative-histogram" && key === "lineColor"))
                   .filter(([key]) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(key))
                   .filter(([key, value]) =>

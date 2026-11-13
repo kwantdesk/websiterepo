@@ -1338,8 +1338,9 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
   "delta-bar": [
-    // Only read when the study is docked to a side; in its lower pane it is
-    // still the plain per-bar histogram it has always been.
+    { key: "filterMinDelta", label: "Minimum absolute delta", defaultValue: 0, min: 0, max: 1000000, step: 1 },
+    { key: "filterMaxDelta", label: "Maximum absolute delta (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000, step: 1 },
+    { key: "lineWidth", label: "Wick / OHLC line width", defaultValue: 1, min: 1, max: 4, step: 1 },
     { key: "ladderWidthPx", label: "Ladder reach (pixels)", defaultValue: 150, min: 40, max: 420, step: 2 },
     { key: "ladderEdgeGapPx", label: "Gap from the pane edge (px)", defaultValue: 2, min: 0, max: 60, step: 1 },
     { key: "ladderLevelSpacingPx", label: "Spacing between price levels (px)", defaultValue: 22, min: 8, max: 60, step: 1 },
@@ -2707,9 +2708,8 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     effortSettingsVersion: 5,
   } : {}),
   ...(indicatorId === "delta-bar" ? {
-    // "pane" keeps the histogram every existing chart already has; the side
-    // modes turn it into a per-price ladder on the chart itself.
     displayMode: "pane",
+    candleStyle: "candlestick",
     ladderWidthPx: 150,
     ladderEdgeGapPx: 2,
     ladderLevelSpacingPx: 22,

@@ -170,9 +170,12 @@ const profilesFor = (instrument, variant) => buildTpoProfiles({
   // cash-index projection already worked - but it asked
   // only for TODAY, leaving the chart with one profile and nothing behind it
   // while the futures path loaded the prior sessions a profile trader reads.
-  assert.ok(projection.includes("for (const tradingDate of dates)"),
+  assert.ok(projection.includes("for (const [tradingDate, jobs] of windows)"),
     "the daily projection must cover several sessions, not just today");
-  assert.ok(projection.includes("slice(-5)"), "five sessions, matching the futures path");
+  assert.ok(projection.includes("slice(-resolveDailyVolumeProfileCount(ownerSettings.numberOfProfiles))"),
+    "each projected daily profile uses its own requested count");
+  assert.ok(projection.includes("dailyProfileWindows(dates, ownerSettings)"),
+    "projection must use the same session-window settings as futures");
   assert.ok(!projection.includes("tradingDate: chicagoTradingDate(Date.now()),"),
     "requesting only the live day is the bug");
 

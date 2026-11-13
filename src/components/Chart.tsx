@@ -17512,6 +17512,7 @@ function Chart({
         .includes(String(profileSettings.widthMode))
         ? String(profileSettings.widthMode)
         : "period-percent";
+      const maxProfileWidth = requestedWidthMode === "fixed-bars" ? 400 : 100;
       const pocLineMode = ["none", "show", "developing", "extend-shifted"].includes(String(profileSettings.pocLineMode))
         ? String(profileSettings.pocLineMode)
         : profileSettings.showPocLine === false ? "none" : "show";
@@ -17546,14 +17547,14 @@ function Chart({
             : requestedWidthMode === "window-percent"
               ? "window-percent"
               : requestedWidthMode === "automatic" ? "automatic" : "period-percent",
-          widthPercent: clamp(Number(profileSettings.profileWidth ?? 2), 0, 100),
+          widthPercent: clamp(Number(profileSettings.profileWidth ?? 2), 0, maxProfileWidth),
           // Completed profiles fall back to the current width. A truly missing
           // legacy value uses the same slim stock width as a fresh profile.
           previousWidthPercent: clamp(
             Number(profileSettings.previousProfileWidth
               ?? profileSettings.profileWidth
               ?? 2),
-            0, 100,
+            0, maxProfileWidth,
           ),
           currentOffsetPx: clamp(Number(profileSettings.currentProfileOffset ?? 0), -400, 400),
           previousOffsetPx: clamp(Number(profileSettings.previousProfileOffset ?? 0), -400, 400),
