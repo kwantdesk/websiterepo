@@ -96,7 +96,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
   "inverse-cyber-cycle",
   "ichimoku-indicator",
-  "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
   "tillson-t3",

@@ -130,7 +130,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Parabolic SAR", "Trend", "Trend-following stop and reversal points."),
   indicator("Linear Regression", "Trend", "Linear-regression trend estimate."),
   indicator("Regression Channel", "Trend", "Regression line with deviation channel."),
-  indicator("Super Trend", "Trend", "ATR-based directional trend overlay."),
   indicator("Super Trend Difference", "Trend", "Difference between price and Super Trend."),
   indicator("Keltner Channel", "Trend", "EMA channel expanded by average true range."),
   indicator("Bollinger Bands", "Trend", "Moving average with standard-deviation bands."),

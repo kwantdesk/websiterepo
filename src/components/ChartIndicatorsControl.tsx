@@ -471,7 +471,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "regression-channel",
   "swing-point",
   "text-on-chart",
-  "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
   "tillson-t3",
@@ -6407,10 +6406,10 @@ export default function ChartIndicatorsControl({
                 </div>)
               ) : null}
 
-              {settingsDefinition.id === "super-trend" || settingsDefinition.id === "super-trend-difference" ? (
+              {settingsDefinition.id === "super-trend-difference" ? (
                 <div data-settings-section="Style">
                   <SuperTrendIndicatorSettings settings={settingsInstance.settings ?? {}}
-                    difference={settingsDefinition.id === "super-trend-difference"}
+                    difference
                     onChange={patch => replace(settingsInstance.instanceId, current => ({
                       ...current, settings: { ...(current.settings ?? {}), ...patch },
                     }))} />
@@ -8073,7 +8072,6 @@ export default function ChartIndicatorsControl({
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "pulling-stacking" && (key === "includeOwnOrders" || key === "includeImpliedOrders"))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
-                    && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
                     && !(settingsDefinition.id === "awesome-oscillator" && key === "plotColor")
                     && !(settingsDefinition.id === "deep-m-effort-nq" && ["showNameLabel", "nameBackground", "valueBackground", "enableAlertSound", "enableMessage"].includes(key))
                     && (typeof value === "boolean" || isColourSetting(key, value)))

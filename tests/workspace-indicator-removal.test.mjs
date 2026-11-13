@@ -4,6 +4,8 @@ import { mergeAccountPreferenceChanges } from "../src/lib/accountPreferenceMerge
 import { workspaceScopeStorageKey } from "../src/lib/chartWorkspaceScope.ts";
 import { CHART_INDICATORS_STORAGE_KEY, retainInitialIndicatorEdits } from "../src/lib/workspaceIndicatorPreferences.ts";
 
+import { CHART_INDICATOR_BY_ID } from "../src/lib/chartIndicatorCatalog.ts";
+
 const atr = { instanceId: "atr-1", indicatorId: "average-true-range-atr", enabled: true, settings: { length: 14 } };
 const vwap = { instanceId: "vwap-1", indicatorId: "vwap", enabled: true };
 const added = { instanceId: "atr-2", indicatorId: atr.indicatorId, enabled: true };
@@ -111,10 +113,12 @@ test("first successful account read retains a hide clicked before the request st
 
 test("retired studies are omitted from restored panes", async () => {
   const { normalizePaneIndicatorState } = await import("../src/lib/chartIndicatorConfig.ts");
-  const retired = ["poc-auction-suite", "session-imbalance", "shift-candle", "session-marker"].map(indicatorId => ({
+  const retired = ["super-trend", "poc-auction-suite", "session-imbalance", "shift-candle", "session-marker"].map(indicatorId => ({
     instanceId: indicatorId, indicatorId, enabled: true,
   }));
-  const retained = [vwap, { instanceId: "session-highs", indicatorId: "session-highs-lows", enabled: true }];
+  assert.ok(retired.every(instance => !CHART_INDICATOR_BY_ID.has(instance.indicatorId)));
+  const retained = [vwap, { instanceId: "session-highs", indicatorId: "session-highs-lows", enabled: true },
+    { instanceId: "difference", indicatorId: "super-trend-difference", enabled: true }];
   const restored = normalizePaneIndicatorState({ [pane]: [...retired, ...retained] });
   assert.deepEqual(restored[pane].map(instance => instance.indicatorId), retained.map(instance => instance.indicatorId));
 });
