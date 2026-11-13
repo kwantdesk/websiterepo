@@ -13,7 +13,7 @@ import { mergeBigContractHistory } from "@/lib/bigContractHistory";
 
 import { clampPositionStopPrice, nearestPositionHandle } from "@/lib/positionToolConstraints";
 
-import { clipReplayIndicatorSeries, replayCausalCandles, replayCausalTrades, replaySafeIndicators, replayRetentionMustReset, REPLAY_UNAVAILABLE_INDICATORS } from "@/lib/replayIndicatorSafety";
+import { clipReplayIndicatorSeries, replayCausalCandles, replayCausalTrades, replaySafeIndicators, replayRetentionMustReset } from "@/lib/replayIndicatorSafety";
 import { replayProfileWithinClock } from "@/lib/replayVolumeProfiles";
 import { useReplayFrameState } from "@/lib/useReplayFrameState";
 import { replayIndicatorCandles } from "@/lib/replayChartHistory";
@@ -39,7 +39,7 @@ import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTr
 
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useId, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
-import ChartCornerBadges, { ChartIndicatorStatusBadge, ChartIndicatorStatusProvider } from "@/components/ChartCornerBadges";
+import ChartCornerBadges from "@/components/ChartCornerBadges";
 import CandleCountdownBadge from "@/components/CandleCountdownBadge";
 import {
   CHART_QUICK_EMOJI_EVENT,
@@ -109,7 +109,6 @@ import {
   Redo2,
   RotateCcw,
   Ruler,
-  ScanLine,
   Settings2,
   Palette,
   Shapes,
@@ -373,31 +372,29 @@ import {
 import {
   buildUnfinishedAuctionFrame,
   normalizeUnfinishedAuctionSettings,
-  type UnfinishedAuctionFrame,
 } from "@/lib/unfinishedAuction";
 import { UnfinishedAuctionPrimitive } from "@/lib/unfinishedAuctionPrimitive";
 import {
   buildBarPocFrame,
   normalizeBarPocSettings,
-  type BarPocFrame,
 } from "@/lib/barPocIndicator";
 import { BarPocPrimitive } from "@/lib/barPocPrimitive";
-import { buildDynamicPocFrame, normalizeDynamicPocSettings, type DynamicPocFrame } from "@/lib/dynamicPoc";
+import { buildDynamicPocFrame, normalizeDynamicPocSettings } from "@/lib/dynamicPoc";
 import { DynamicPocPrimitive } from "@/lib/dynamicPocPrimitive";
-import { buildRatioHighlightFrame, normalizeRatioHighlightSettings, type RatioHighlightFrame } from "@/lib/ratioHighlight";
+import { buildRatioHighlightFrame, normalizeRatioHighlightSettings } from "@/lib/ratioHighlight";
 import { RatioHighlightPrimitive } from "@/lib/ratioHighlightPrimitive";
-import { buildStopSpotterFrame, normalizeStopSpotterSettings, type StopSpotterFrame } from "@/lib/stopSpotter";
+import { buildStopSpotterFrame, normalizeStopSpotterSettings } from "@/lib/stopSpotter";
 import { StopSpotterPrimitive } from "@/lib/stopSpotterPrimitive";
-import { buildDeepWallFrame, normalizeDeepWallSettings, type DeepWallFrame } from "@/lib/deepWall";
+import { buildDeepWallFrame, normalizeDeepWallSettings } from "@/lib/deepWall";
 import { DeepWallPrimitive } from "@/lib/deepWallPrimitive";
-import { buildDeepVTrackerFrame, normalizeDeepVTrackerSettings, type DeepVTrackerFrame } from "@/lib/deepVTracker";
+import { buildDeepVTrackerFrame, normalizeDeepVTrackerSettings } from "@/lib/deepVTracker";
 import { DeepVTrackerPrimitive } from "@/lib/deepVTrackerPrimitive";
 import { calculateDeepMIVB, normalizeDeepMIVBSettings } from "@/lib/deepMIVB";
 import { DeepMIVBPrimitive } from "@/lib/deepMIVBPrimitive";
 import { buildDeepPatternSignals, normalizeDeepPatternBuilderSettings } from "@/lib/deepPatternBuilder";
 import { DeepPatternBuilderPrimitive } from "@/lib/deepPatternBuilderPrimitive";
-import { buildDeepProfileSwingFrame, normalizeDeepProfileSwingSettings, type DeepProfileSwingFrame } from "@/lib/deepProfileSwing";
-import { buildDeepProfileValuesFrame, normalizeDeepProfileValuesSettings, type DeepProfileValuesFrame } from "@/lib/deepProfileValues";
+import { buildDeepProfileSwingFrame, normalizeDeepProfileSwingSettings } from "@/lib/deepProfileSwing";
+import { buildDeepProfileValuesFrame, normalizeDeepProfileValuesSettings } from "@/lib/deepProfileValues";
 import {
   buildCumulativeIcebergStopFrame,
   normalizeCumulativeIcebergStopSettings,
@@ -600,7 +597,6 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  * is readable, and holding the whole chart back for them would trade one
  * complaint for another.
  */
-const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "bollinger-bands",
   "inverse-cyber-cycle",
@@ -730,7 +726,6 @@ import {
   type ExpectedMoveSourceSymbol,
 } from "@/lib/expectedMove";
 import {
-  hedgeFreshnessPill,
   hedgeLevelMovement,
   renderableHedgeLevels,
   staggerHedgeLabels,
@@ -3238,20 +3233,16 @@ function Chart({
   initialBalanceCandles,
   classicGexProfile = null,
   classicGexHistory = EMPTY_CHART_ITEMS,
-  classicGexLoading = false,
   classicGexError = null,
   expectedMoveCalibration = null,
   volumeProfiles = EMPTY_CHART_ITEMS,
   volumeProfileError = null,
-  compositeVolumeProfileStatus = null,
   onUpdateIndicatorSetting,
   onOpenIndicatorSettings,
   settings = defaultChartSettings,
   toolbarEnabled = true,
   gammaLevelsEnabled = false,
   gammaLevelsAvailable = false,
-  gammaLevelsLoading = false,
-  gammaLevelsError = null,
   gammaEnvironment = null,
   gammaEnvironmentLoading = false,
   gammaEnvironmentSourceSymbol = null,
@@ -3267,7 +3258,6 @@ function Chart({
   historicalStructureEnabled = false,
   historicalStructureAvailable = false,
   historicalStructureLoading = false,
-  historicalStructureError = null,
   historicalStructureDescription = "",
   onToggleHistoricalStructure,
   valueAreaLevelsEnabled = false,
@@ -3296,7 +3286,6 @@ function Chart({
 }: ChartProps) {
   const candles = useMemo(() => replayCausalCandles(rawCandles, replayTimestampMs), [rawCandles, replayTimestampMs]);
   const marketTrades = useMemo(() => replayCausalTrades(rawMarketTrades, replayTimestampMs), [rawMarketTrades, marketTradesVersion, replayTimestampMs]);
-  const unavailableReplayIndicators = replayTimestampMs == null ? [] : rawIndicators.filter(instance => instance.replayUnavailable || instance.enabled && REPLAY_UNAVAILABLE_INDICATORS.has(instance.indicatorId));
   const indicatorPaletteThemeValue = useMemo(() => ({
     up: settings.upColor,
     down: settings.downColor,
@@ -3674,7 +3663,6 @@ function Chart({
     instanceId: string;
     anchorProfileId: string;
   } | null>(null);
-  const [tpoDataStatus, setTpoDataStatus] = useState<string | null>(null);
   const tpoWorkerId = useId();
   const tpoWorkerOwnersRef = useRef(new Set<string>());
   useEffect(() => {
@@ -4246,21 +4234,15 @@ function Chart({
     row: ClassicGexProfileRow;
   } | null>(null);
   const [gammaHeatmapPayload, setGammaHeatmapPayload] = useState<GammaHeatmapPayload | null>(null);
-  const [gammaHeatmapLoading, setGammaHeatmapLoading] = useState(false);
-  const [gammaHeatmapError, setGammaHeatmapError] = useState<string | null>(null);
   const [gammaHeatmapTooltip, setGammaHeatmapTooltip] = useReplayFrameState<GammaHeatmapHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [pullingStackingStatus, setPullingStackingStatus] = useState<RithmicLiquidityStatus>("checking");
   const [pullingStackingFrame, setPullingStackingFrame] = useReplayFrameState<PullingStackingFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [pullingStackingTooltip, setPullingStackingTooltip] = useReplayFrameState<PullingStackingHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [absorptionStatus, setAbsorptionStatus] = useState<RithmicLiquidityStatus>("checking");
   const [absorptionFrame, setAbsorptionFrame] = useReplayFrameState<AbsorptionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [absorptionTooltip, setAbsorptionTooltip] = useReplayFrameState<AbsorptionHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [stackedImbalanceFrame, setStackedImbalanceFrame] = useReplayFrameState<StackedImbalanceFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [stackedImbalanceTooltip, setStackedImbalanceTooltip] = useReplayFrameState<StackedImbalanceHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [icebergRefreshStatus, setIcebergRefreshStatus] = useState<RithmicLiquidityStatus>("checking");
   const [icebergRefreshFrame, setIcebergRefreshFrame] = useReplayFrameState<IcebergRefreshFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [icebergRefreshTooltip, setIcebergRefreshTooltip] = useReplayFrameState<IcebergRefreshHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [liquidityStopSweepStatus, setLiquidityStopSweepStatus] = useState<RithmicLiquidityStatus>("checking");
   const [liquidityStopSweepFrame, setLiquidityStopSweepFrame] = useReplayFrameState<LiquidityStopSweepFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useReplayFrameState<LiquidityStopSweepHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [cumulativeIcebergStopStreamStatus, setCumulativeIcebergStopStreamStatus] = useState<RithmicLiquidityStatus>("checking");
@@ -4268,21 +4250,10 @@ function Chart({
   const [pocAuctionFrame, setPocAuctionFrame] = useReplayFrameState<PocAuctionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const pocAuctionReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
   const stackedImbalanceReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
-  const [unfinishedAuctionFrame, setUnfinishedAuctionFrame] = useReplayFrameState<UnfinishedAuctionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [barPocFrame, setBarPocFrame] = useReplayFrameState<BarPocFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [dynamicPocFrame, setDynamicPocFrame] = useReplayFrameState<DynamicPocFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [ratioHighlightFrame, setRatioHighlightFrame] = useReplayFrameState<RatioHighlightFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [stopSpotterFrame, setStopSpotterFrame] = useReplayFrameState<StopSpotterFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [deepWallFrame, setDeepWallFrame] = useReplayFrameState<DeepWallFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [deepVTrackerFrame, setDeepVTrackerFrame] = useReplayFrameState<DeepVTrackerFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [deepProfileSwingFrame, setDeepProfileSwingFrame] = useReplayFrameState<DeepProfileSwingFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [deepProfileValuesFrame, setDeepProfileValuesFrame] = useReplayFrameState<DeepProfileValuesFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [marketStatisticsFrame, setMarketStatisticsFrame] = useReplayFrameState<MarketStatisticsFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useReplayFrameState<PocAuctionHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useReplayFrameState<TapeSpeedHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
-  const [netGammaLoading, setNetGammaLoading] = useState(false);
-  const [netGammaError, setNetGammaError] = useState<string | null>(null);
   const [netGammaTooltip, setNetGammaTooltip] = useReplayFrameState<NetGammaExposureHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [bounceLevelsState, setBounceLevelsState] = useState<{ snapshot: BounceLevelsSnapshot | null; scope: string }>({ snapshot: null, scope: "" });
   const bounceLevelsDataSignatureRef = useRef("");
@@ -4312,12 +4283,8 @@ function Chart({
   const [, setBounceLevelsError] = useState<string | null>(null);
   const [bounceLevelsTooltip, setBounceLevelsTooltip] = useReplayFrameState<BounceLevelsHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [gexIntervalSurface, setGexIntervalSurface] = useState<GexIntervalProviderSurface | null>(null);
-  const [gexIntervalLoading, setGexIntervalLoading] = useState(false);
-  const [gexIntervalError, setGexIntervalError] = useState<string | null>(null);
   const [gexIntervalTooltip, setGexIntervalTooltip] = useReplayFrameState<GexIntervalMapHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [darkPoolMapPayload, setDarkPoolMapPayload] = useState<DarkPoolMapPayload | null>(null);
-  const [darkPoolMapLoading, setDarkPoolMapLoading] = useState(false);
-  const [darkPoolMapError, setDarkPoolMapError] = useState<string | null>(null);
   const [darkPoolMapTooltip, setDarkPoolMapTooltip] = useReplayFrameState<DarkPoolMapHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [darkPoolGexPayload, setDarkPoolGexPayload] = useState<DarkPoolMapPayload | null>(null);
   // Scope = instrument + indicator settings, deliberately excluding the replay
@@ -4334,14 +4301,10 @@ function Chart({
   const [tpoError, setTpoError] = useState<string | null>(null);
   const [tpoTooltip, setTpoTooltip] = useReplayFrameState<{ x: number; y: number; zone: TpoZone } | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [expectedMovePayload, setExpectedMovePayload] = useState<ExpectedMoveApiPayload | null>(null);
-  const [expectedMoveLoading, setExpectedMoveLoading] = useState(false);
-  const [expectedMoveError, setExpectedMoveError] = useState<string | null>(null);
   const [expectedMoveNow, setExpectedMoveNow] = useState(() => Date.now());
   const [expectedMoveLiveAnchor, setExpectedMoveLiveAnchor] = useState<number | null>(() => candles.at(-1)?.close ?? null);
   const [expectedMoveTooltip, setExpectedMoveTooltip] = useReplayFrameState<{ x: number; y: number; band: ExpectedMoveBand } | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [hedgeLevelsPayload, setHedgeLevelsPayload] = useState<HedgeLevelsPayload | null>(null);
-  const [hedgeLevelsLoading, setHedgeLevelsLoading] = useState(false);
-  const [hedgeLevelsError, setHedgeLevelsError] = useState<string | null>(null);
   const [hedgeLevelsNow, setHedgeLevelsNow] = useState(() => Date.now());
   const [hedgeLevelsPulseIds, setHedgeLevelsPulseIds] = useState<string[]>([]);
   const [hedgeLevelsTooltip, setHedgeLevelsTooltip] = useReplayFrameState<{ x: number; y: number; level: HedgeChartLevel } | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
@@ -5252,7 +5215,6 @@ function Chart({
     pullingStackingLastAlertAtRef.current = 0;
     pullingStackingFrameRef.current = null;
     setPullingStackingFrame(null);
-    setPullingStackingStatus("checking");
     let summaryTimer: number | null = null;
     let lastPublishedAt = 0;
     const publishSummary = (frame: PullingStackingFrame) => {
@@ -5264,7 +5226,6 @@ function Chart({
       contractSymbol: explicitContract,
       exchange: futuresVenue(root),
       replayHistory: true,
-      onStatus: setPullingStackingStatus,
       onSnapshot: (snapshot) => {
         const liveSettings = pullingStackingSettingsRef.current;
         const frame = pullingStackingEngineRef.current.apply(snapshot, liveSettings);
@@ -5370,7 +5331,6 @@ function Chart({
     absorptionAlertIdsRef.current.clear();
     absorptionFrameRef.current = null;
     setAbsorptionFrame(null);
-    setAbsorptionStatus("checking");
     let summaryTimer: number | null = null;
     let lastPublishedAt = 0;
     const publishSummary = (frame: AbsorptionFrame) => {
@@ -5382,7 +5342,6 @@ function Chart({
       contractSymbol: explicitContract,
       exchange: futuresVenue(root),
       replayHistory: true,
-      onStatus: setAbsorptionStatus,
       onSnapshot: (snapshot) => {
         const frame = absorptionEngineRef.current.apply(snapshot, absorptionSettings);
         absorptionFrameRef.current = frame;
@@ -5486,7 +5445,6 @@ function Chart({
     icebergRefreshAlertIdsRef.current.clear();
     icebergRefreshFrameRef.current = null;
     setIcebergRefreshFrame(null);
-    setIcebergRefreshStatus("checking");
     let summaryTimer: number | null = null;
     let lastPublishedAt = 0;
     const publish = (frame: IcebergRefreshFrame) => { lastPublishedAt = performance.now(); setIcebergRefreshFrame(frame); };
@@ -5495,7 +5453,6 @@ function Chart({
       contractSymbol: explicitContract,
       exchange: futuresVenue(root),
       replayHistory: true,
-      onStatus: setIcebergRefreshStatus,
       onSnapshot: (snapshot) => {
         const frame = icebergRefreshEngineRef.current.apply(snapshot, icebergRefreshSettings);
         icebergRefreshFrameRef.current = frame;
@@ -5600,7 +5557,6 @@ function Chart({
     liquidityStopSweepAlertIdsRef.current.clear();
     liquidityStopSweepFrameRef.current = null;
     setLiquidityStopSweepFrame(null);
-    setLiquidityStopSweepStatus("checking");
     let summaryTimer: number | null = null;
     let lastPublishedAt = 0;
     const publish = (frame: LiquidityStopSweepFrame) => {
@@ -5612,7 +5568,6 @@ function Chart({
       contractSymbol: explicitContract,
       exchange: futuresVenue(root),
       replayHistory: true,
-      onStatus: setLiquidityStopSweepStatus,
       onSnapshot: (snapshot) => {
         const frame = liquidityStopSweepEngineRef.current.apply(snapshot, liquidityStopSweepSettings, liquidityStopSweepReferencesRef.current);
         liquidityStopSweepFrameRef.current = frame;
@@ -7152,51 +7107,6 @@ function Chart({
     sampledIndicatorMarketTradesVersion,
     timeframe,
   ]);
-  /**
-   * Coverage, not existence.
-   *
-   * This was `.some`, so the FIRST bar to receive price-level flow painted the
-   * whole footprint - fully drawn cells beside bars that were still bare
-   * numbers, with the footers of the empty ones colliding because a bar with no
-   * rows does not claim its width. It corrected itself once the execution tape
-   * finished arriving, which is the twenty seconds of glitching before it looks
-   * right.
-   *
-   * A bar that never traded is legitimately empty rather than missing its flow,
-   * so it must not count against coverage - the same rule the CVD gate above
-   * had to learn, for the same reason: counting quiet bars as gaps forces a
-   * threshold loose enough to let a half-built chart paint.
-   *
-   * That question has to be put to the CANDLE. A footprint bar builds its own
-   * volume out of the executions it received, so a bar still waiting for flow
-   * reports zero volume and is indistinguishable from a bar that never traded -
-   * measuring coverage against it asks the missing data whether it is missing,
-   * and every window scores a perfect one.
-   */
-  const footprintHasPriceLevelFlow = useMemo(() => {
-    if (!liveFootprintRenderBars.length) return false;
-    const flowAt = new Map<number, boolean>();
-    for (const bar of liveFootprintRenderBars) flowAt.set(bar.timestamp, bar.hasPriceLevelFlow);
-    let sampled = 0;
-    let covered = 0;
-    for (const candle of footprintSourceCandles) {
-      if (Number(candle.volume ?? 0) <= 0) continue;
-      const flow = flowAt.get(candle.timestamp);
-      // Outside the footprint's own window; not its gap to answer for.
-      if (flow === undefined) continue;
-      sampled += 1;
-      if (flow) covered += 1;
-    }
-    /*
-     * No candle in the window reports volume, so there is nothing to measure
-     * against - an instrument that publishes none, or history that arrived
-     * without it. Fall back to the old test rather than inventing a verdict.
-     */
-    if (!sampled) return liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
-    return covered / sampled >= FOOTPRINT_MINIMUM_FLOW_COVERAGE;
-  }, [footprintSourceCandles, liveFootprintRenderBars]);
-  const footprintHasClassifiedFlow = liveFootprintRenderBars.some((bar) =>
-    bar.classifiedVolume > 0);
   const stackedImbalanceSettings = useMemo(() => {
     const normalized = normalizeStackedImbalanceSettings(stackedImbalanceIndicator?.settings);
     if (!normalized.useThemeColors) return normalized;
@@ -7394,7 +7304,6 @@ function Chart({
   useEffect(() => {
     if (!unfinishedAuctionIndicator) {
       unfinishedAuctionPrimitiveRef.current?.update(null);
-      setUnfinishedAuctionFrame(null);
       return;
     }
     const frame = buildUnfinishedAuctionFrame(
@@ -7405,24 +7314,20 @@ function Chart({
       unfinishedAuctionSettings,
     );
     unfinishedAuctionPrimitiveRef.current?.update({ frame, settings: unfinishedAuctionSettings });
-    startTransition(() => setUnfinishedAuctionFrame(frame));
   }, [instrument, liveFootprintRenderBars, priceFormat.minMove, rawPocAuctionBars, unfinishedAuctionIndicator, unfinishedAuctionSettings]);
 
   useEffect(() => {
     if (!barPocIndicator) {
       barPocPrimitiveRef.current?.update(null);
-      setBarPocFrame(null);
       return;
     }
     const frame = buildBarPocFrame(rawBarPocBars, instrument, priceFormat.minMove, barPocSettings);
     barPocPrimitiveRef.current?.update({ frame, settings: barPocSettings });
-    startTransition(() => setBarPocFrame(frame));
   }, [barPocIndicator, barPocSettings, instrument, priceFormat.minMove, rawBarPocBars]);
 
   useEffect(() => {
     if (!dynamicPocIndicator) {
       dynamicPocPrimitiveRef.current?.update(null);
-      setDynamicPocFrame(null);
       return;
     }
     const frame = buildDynamicPocFrame(dynamicPocBars, instrument, priceFormat.minMove, dynamicPocSettings);
@@ -7430,7 +7335,6 @@ function Chart({
       frame, settings: dynamicPocSettings,
       chartTime: (timestamp) => (eventChartTimeBySourceTimeRef.current.get(timestamp) ?? Math.floor(timestamp / 1_000)) as Time,
     });
-    startTransition(() => setDynamicPocFrame(frame));
   }, [chartReadyRevision, dynamicPocBars, dynamicPocIndicator, dynamicPocSettings, instrument, priceFormat.minMove]);
 
   useEffect(() => {
@@ -7477,7 +7381,6 @@ function Chart({
     if (!ratioHighlightIndicator) {
       ratioHighlightPrimitiveRef.current?.update(null);
       ratioHighlightLastReactPublishRef.current = 0;
-      setRatioHighlightFrame(null);
       return;
     }
     const frame = buildRatioHighlightFrame(rawPocAuctionBars, instrument, ratioHighlightSettings);
@@ -7485,7 +7388,6 @@ function Chart({
     const now = performance.now();
     if (replayTimestampMs != null || ratioHighlightLastReactPublishRef.current === 0 || now - ratioHighlightLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       ratioHighlightLastReactPublishRef.current = now;
-      setRatioHighlightFrame(frame);
     }
   }, [instrument, ratioHighlightIndicator, ratioHighlightSettings, rawPocAuctionBars]);
 
@@ -7495,7 +7397,6 @@ function Chart({
       stopSpotterLastReactPublishRef.current = 0;
       stopSpotterSeenMarkerIdsRef.current.clear();
       stopSpotterAlertBaselineReadyRef.current = false;
-      setStopSpotterFrame(null);
       return;
     }
     const frame = buildStopSpotterFrame(rawPocAuctionBars, instrument, priceFormat.minMove, stopSpotterSettings, replayTimestampMs ?? Date.now(), timeframeToMs(timeframe));
@@ -7503,7 +7404,6 @@ function Chart({
     const now = performance.now();
     if (replayTimestampMs != null || stopSpotterLastReactPublishRef.current === 0 || now - stopSpotterLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       stopSpotterLastReactPublishRef.current = now;
-      setStopSpotterFrame(frame);
     }
     const recentCutoff = rawPocAuctionBars.at(-2)?.startTime ?? rawPocAuctionBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
     if (!stopSpotterAlertBaselineReadyRef.current) {
@@ -7533,7 +7433,6 @@ function Chart({
       deepWallLastReactPublishRef.current = 0;
       deepWallSeenMarkerIdsRef.current.clear();
       deepWallAlertBaselineReadyRef.current = false;
-      setDeepWallFrame(null);
       return;
     }
     const frame = buildDeepWallFrame(rawPocAuctionBars, instrument, priceFormat.minMove, deepWallSettings);
@@ -7541,7 +7440,6 @@ function Chart({
     const now = performance.now();
     if (replayTimestampMs != null || deepWallLastReactPublishRef.current === 0 || now - deepWallLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       deepWallLastReactPublishRef.current = now;
-      setDeepWallFrame(frame);
     }
     const recentCutoff = rawPocAuctionBars.at(-3)?.startTime ?? rawPocAuctionBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
     if (!deepWallAlertBaselineReadyRef.current) {
@@ -7568,7 +7466,6 @@ function Chart({
       deepVTrackerLastReactPublishRef.current = 0;
       deepVTrackerSeenEventIdsRef.current.clear();
       deepVTrackerAlertBaselineReadyRef.current = false;
-      setDeepVTrackerFrame(null);
       return;
     }
     const frame = buildDeepVTrackerFrame(rawPocAuctionBars, instrument, priceFormat.minMove, deepVTrackerSettings);
@@ -7576,7 +7473,6 @@ function Chart({
     const now = performance.now();
     if (replayTimestampMs != null || deepVTrackerLastReactPublishRef.current === 0 || now - deepVTrackerLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       deepVTrackerLastReactPublishRef.current = now;
-      setDeepVTrackerFrame(frame);
     }
     const events = [...frame.patterns, ...frame.levels];
     const recentCutoff = rawPocAuctionBars.at(-3)?.startTime ?? rawPocAuctionBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
@@ -8047,23 +7943,6 @@ function Chart({
     if (!sampled) return true;
     return covered / sampled >= CUMULATIVE_DELTA_MINIMUM_COVERAGE;
   }, [indicatorCandles, orderFlowHistoryReady]);
-  /**
-   * What the order-flow panes are waiting for, or null once they have it.
-   *
-   * These studies are gated off until the tape is usable, so before that the
-   * pane is simply blank — indistinguishable from a broken indicator. Naming
-   * the wait is the difference between "loading" and "this does not work".
-   */
-  const orderFlowPaneStatus = useMemo(() => {
-    if (orderFlowSeriesReady) return null;
-    const waiting = indicators.some((instance) =>
-      instance.enabled && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId));
-    if (!waiting) return null;
-    return orderFlowHistoryReady
-      ? "CVD · PARTIAL EXECUTION HISTORY"
-      : "CVD · LOADING EXECUTION HISTORY";
-  }, [indicatorSignature, indicators, orderFlowHistoryReady, orderFlowSeriesReady]);
-
   const indicatorAlertNotice = useChartIndicatorAlertDelivery(indicators, instrument, Number(replayTimestampMs ?? 0) > 0);
   const superTrendAlertNotice = useSuperTrendAlerts({ indicators, history: indicatorCandlesDeep, liveKey: liveCandleEventKey,
     instrument, timeframe, live: marketIsActive === true && !(replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0),
@@ -9083,15 +8962,11 @@ function Chart({
   useEffect(() => {
     if (!gammaHeatmapIndicator) {
       setGammaHeatmapPayload(null);
-      setGammaHeatmapLoading(false);
-      setGammaHeatmapError(null);
       return;
     }
     const display = normalizeGammaHeatmapInstrument(instrument);
     if (!/^(NQ|MNQ|ES|MES)$/.test(display)) {
       setGammaHeatmapPayload(null);
-      setGammaHeatmapLoading(false);
-      setGammaHeatmapError("Gamma Heatmap supports NQ, MNQ, ES and MES charts.");
       return;
     }
     const indicatorSettings = gammaHeatmapIndicator.settings ?? {};
@@ -9107,7 +8982,6 @@ function Chart({
     const load = async (force = false) => {
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
       if (!(displayPrice && displayPrice > 0)) return;
-      if (!force) setGammaHeatmapLoading(true);
       const query = new URLSearchParams({
         display,
         source,
@@ -9136,12 +9010,10 @@ function Chart({
           ? { ...payload, snapshots: payload.snapshots.slice(-GAMMA_HEATMAP_MAX_SNAPSHOTS) }
           : payload;
         setGammaHeatmapPayload(cappedPayload);
-        setGammaHeatmapError(null);
-      } catch (error) {
-        if (!cancelled) setGammaHeatmapError(error instanceof Error ? error.message : "Gamma Heatmap could not refresh.");
+      } catch {
+        // Keep the last accepted snapshot and retry on the normal schedule.
       } finally {
         if (!cancelled) {
-          setGammaHeatmapLoading(false);
           timer = window.setTimeout(() => void load(false), refreshMs);
         }
       }
@@ -9228,15 +9100,11 @@ function Chart({
   useEffect(() => {
     if (!gexIntervalDataSettings) {
       setGexIntervalSurface(null);
-      setGexIntervalLoading(false);
-      setGexIntervalError(null);
       return;
     }
     const display = normalizeGammaHeatmapInstrument(instrument);
     if (!/^(NQ|MNQ|ES|MES|QQQ|SPY|NDX|SPX|SPXW)$/.test(display)) {
       setGexIntervalSurface(null);
-      setGexIntervalLoading(false);
-      setGexIntervalError("GEX Interval Map supports NQ, MNQ, ES, MES, QQQ, SPY, NDX, SPX and SPXW charts.");
       return;
     }
     const source = gexIntervalDataSettings.sourceTicker === "AUTO"
@@ -9252,11 +9120,7 @@ function Chart({
       key: `gex-interval-map:${source}:${display}:${gexIntervalDataSettings.aggregationPeriod}:${gexIntervalDataSettings.historyMode}:${gexIntervalDataSettings.sessionDate}:${gexIntervalDataSettings.startTime}:${gexIntervalDataSettings.endTime}`,
       url: `/api/gex-interval-map?${query}`,
       refreshMs: gexIntervalDataSettings.refreshSeconds * 1_000,
-      listener: ({ data, loading, error }) => {
-        setGexIntervalSurface(data);
-        setGexIntervalLoading(loading);
-        setGexIntervalError(error);
-      },
+      listener: ({ data }) => setGexIntervalSurface(data),
     });
   }, [gexIntervalDataSettings, instrument]);
 
@@ -9460,16 +9324,12 @@ function Chart({
   useEffect(() => {
     if (!netGammaDataSettings) {
       setNetGammaProfile(null);
-      setNetGammaLoading(false);
-      setNetGammaError(null);
       previousNetGammaSnapshotRef.current = null;
       return;
     }
     const display = normalizeGammaHeatmapInstrument(instrument);
     if (!/^(NQ|MNQ|ES|MES)$/.test(display)) {
       setNetGammaProfile(null);
-      setNetGammaLoading(false);
-      setNetGammaError("Net Gamma Exposure supports NQ, MNQ, ES and MES charts.");
       return;
     }
     const indicatorSettings = netGammaDataSettings;
@@ -9483,11 +9343,9 @@ function Chart({
     const load = async (force = false) => {
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
       if (!(displayPrice && displayPrice > 0)) {
-        setNetGammaLoading(true);
         timer = window.setTimeout(() => void load(force), 300);
         return;
       }
-      if (!force) setNetGammaLoading(true);
       const query = new URLSearchParams({
         display,
         source,
@@ -9521,12 +9379,10 @@ function Chart({
           if (current && current.id !== payload.id) previousNetGammaSnapshotRef.current = current;
           return payload;
         });
-        setNetGammaError(null);
-      } catch (error) {
-        if (!cancelled) setNetGammaError(error instanceof Error ? error.message : "Net Gamma Exposure could not refresh.");
+      } catch {
+        // Keep the last accepted snapshot and retry on the normal schedule.
       } finally {
         if (!cancelled) {
-          setNetGammaLoading(false);
           timer = window.setTimeout(() => void load(false), refreshMs);
         }
       }
@@ -10268,8 +10124,6 @@ function Chart({
   useEffect(() => {
     if (!darkPoolMapIndicator) {
       setDarkPoolMapPayload(null);
-      setDarkPoolMapLoading(false);
-      setDarkPoolMapError(null);
       return;
     }
     const display = normalizeDarkPoolInstrument(instrument);
@@ -10291,11 +10145,9 @@ function Chart({
     const load = async (force = false) => {
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
       if (!directSource && !(displayPrice && displayPrice > 0)) {
-        setDarkPoolMapLoading(true);
         timer = window.setTimeout(() => void load(force), 500);
         return;
       }
-      if (!force) setDarkPoolMapLoading(true);
       const query = new URLSearchParams({
         display,
         source,
@@ -10321,12 +10173,10 @@ function Chart({
         });
         if (cancelled) return;
         setDarkPoolMapPayload(payload);
-        setDarkPoolMapError(null);
-      } catch (error) {
-        if (!cancelled) setDarkPoolMapError(error instanceof Error ? error.message : "Dark Pool Map could not refresh.");
+      } catch {
+        // Keep the last accepted snapshot and retry on the normal schedule.
       } finally {
         if (!cancelled) {
-          setDarkPoolMapLoading(false);
           timer = window.setTimeout(() => void load(false), refreshMs);
         }
       }
@@ -10947,21 +10797,6 @@ function Chart({
   useEffect(() => {
     classicGexProfilePrimitiveRef.current?.update(classicGexOverlay?.primitiveData ?? null);
   }, [classicGexOverlay]);
-  // D9: a MANUAL mapping is a user-frozen ratio with no staleness of its own,
-  // so it is compared against the live-implied ratio on every payload and
-  // badged with the drift in NQ points. It never renders as a verified map.
-  const classicGexManualBadge = useMemo(() => {
-    if (!classicGexProfile || classicGexProfile.mapping.mode !== "MANUAL") return null;
-    const { scale, referenceScale } = classicGexProfile.mapping;
-    const shortScale = scale.toFixed(6);
-    if (!referenceScale || !classicGexProfile.sourcePrice) {
-      return { tone: "danger" as const, text: `Manual map ×${shortScale} · no live ratio to verify` };
-    }
-    const pointsOff = Math.abs(scale - referenceScale) * classicGexProfile.sourcePrice;
-    return pointsOff <= 15
-      ? { tone: "warning" as const, text: `Manual map ×${shortScale} · ~${pointsOff.toFixed(0)}pt vs live` }
-      : { tone: "danger" as const, text: `Manual map ×${shortScale} · ${pointsOff.toFixed(0)}pt OFF LIVE` };
-  }, [classicGexProfile]);
   const expectedMoveIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "expected-move") ?? null,
     [indicatorSignature, indicators],
@@ -10973,16 +10808,12 @@ function Chart({
   useEffect(() => {
     if (!expectedMoveIndicator) {
       setExpectedMovePayload(null);
-      setExpectedMoveLoading(false);
-      setExpectedMoveError(null);
       setExpectedMoveTooltip(null);
       return;
     }
     const normalizedInstrument = instrument.trim().toUpperCase();
     if (normalizedInstrument !== "NQ" && normalizedInstrument !== "MNQ") {
       setExpectedMovePayload(null);
-      setExpectedMoveLoading(false);
-      setExpectedMoveError("Expected Move is calibrated for NQ and MNQ.");
       return;
     }
     const source = expectedMoveSource;
@@ -11012,13 +10843,11 @@ function Chart({
     let retainedPayload = cachedFallback() ?? expectedMovePayload;
     if (retainedPayload) {
       setExpectedMovePayload(retainedPayload);
-      setExpectedMoveLoading(false);
     }
     async function load() {
       if (cancelled) return;
       controller?.abort();
       controller = new AbortController();
-      setExpectedMoveLoading(!retainedPayload);
       try {
         const response = await fetch(`/api/expected-move?source=${source}`, {
           cache: "no-store",
@@ -11037,20 +10866,16 @@ function Chart({
         if (cancelled) return;
         retainedPayload = candidate;
         setExpectedMovePayload(candidate);
-        setExpectedMoveError(null);
         if (!candidate.stale) window.localStorage.setItem(storageKey, JSON.stringify(candidate));
         schedule(candidate, candidate.stale ? 60_000 : 5 * 60_000);
       } catch (error) {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
-        const message = error instanceof Error ? error.message : "Expected Move is unavailable.";
         const fallbackSource = cachedFallback() ?? retainedPayload;
         const fallback = fallbackSource ? staleExpectedMovePayload(fallbackSource, Date.now()) : null;
         retainedPayload = fallback;
         setExpectedMovePayload(fallback);
-        setExpectedMoveError(message);
         schedule(fallback, 60_000);
       } finally {
-        if (!cancelled) setExpectedMoveLoading(false);
       }
     }
     void load();
@@ -11194,8 +11019,6 @@ function Chart({
   useEffect(() => {
     if (!hedgeLevelsIndicator) {
       setHedgeLevelsPayload(null);
-      setHedgeLevelsLoading(false);
-      setHedgeLevelsError(null);
       setHedgeLevelsTooltip(null);
       setHedgeLevelsPulseIds([]);
       previousHedgeLevelsRef.current = null;
@@ -11203,8 +11026,6 @@ function Chart({
     }
     if (!hedgeLevelsInstrument) {
       setHedgeLevelsPayload(null);
-      setHedgeLevelsLoading(false);
-      setHedgeLevelsError("Hedge Levels is available on NQ and MNQ.");
       return;
     }
 
@@ -11228,7 +11049,6 @@ function Chart({
     if (retained) {
       setHedgeLevelsPayload(retained);
       previousHedgeLevelsRef.current = retained.levels;
-      setHedgeLevelsLoading(false);
     }
     const schedule = (payload: HedgeLevelsPayload | null, fallbackMs = 60_000) => {
       if (cancelled) return;
@@ -11239,7 +11059,6 @@ function Chart({
       if (cancelled) return;
       controller?.abort();
       controller = new AbortController();
-      setHedgeLevelsLoading(!retained);
       try {
         const response = await fetch(`/api/hedge-levels?instrument=${hedgeLevelsInstrument}`, {
           cache: "no-store",
@@ -11269,20 +11088,16 @@ function Chart({
         }
         retained = candidate;
         setHedgeLevelsPayload(candidate);
-        setHedgeLevelsError(null);
         if (!candidate.stale) window.localStorage.setItem(storageKey, JSON.stringify(candidate));
         schedule(candidate);
       } catch (error) {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
-        const message = error instanceof Error ? error.message : "Hedge Levels is temporarily unavailable.";
         const fallbackSource = readCached() ?? retained;
         const fallback = fallbackSource ? staleHedgeLevelsPayload(fallbackSource, Date.now()) : null;
         retained = fallback;
         setHedgeLevelsPayload(fallback);
-        setHedgeLevelsError(message);
         schedule(fallback);
       } finally {
-        if (!cancelled) setHedgeLevelsLoading(false);
       }
     }
     void load();
@@ -17467,7 +17282,6 @@ function Chart({
     primitive.setPaneInsets({ left: toolbarPlotLeftInset, right: 0 });
     if (!deepProfileSwingIndicator) {
       primitive.setModels([]);
-      setDeepProfileSwingFrame(null);
       return;
     }
     const frame = buildDeepProfileSwingFrame(rawPocAuctionBars, instrument, contractSymbol ?? instrument, priceFormat.minMove, deepProfileSwingSettings, footprintMarketTrades);
@@ -17525,7 +17339,6 @@ function Chart({
       },
     }));
     primitive.setModels(models);
-    setDeepProfileSwingFrame(frame);
   }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileSwingIndicator, deepProfileSwingSettings, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
 
   useEffect(() => {
@@ -17534,7 +17347,6 @@ function Chart({
     primitive.setPaneInsets({ left: toolbarPlotLeftInset, right: 0 });
     if (!deepProfileValuesIndicator) {
       primitive.setModels([]);
-      setDeepProfileValuesFrame(null);
       return;
     }
     const visible = chartRef.current?.timeScale().getVisibleRange();
@@ -17631,7 +17443,6 @@ function Chart({
       },
     }));
     primitive.setModels(models);
-    setDeepProfileValuesFrame(frame);
   }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileValuesIndicator, deepProfileValuesSettings, deepProfileValuesViewportRevision, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
 
   useEffect(() => {
@@ -17654,7 +17465,6 @@ function Chart({
       tpoWorkerOwnersRef.current.clear();
       primitive.setModels([]);
       tpoModelsSignatureRef.current = "";
-      setTpoDataStatus(null);
       return;
     }
     const sourceTrades = tpoSourceTrades;
@@ -17663,13 +17473,11 @@ function Chart({
     if (!sourceTrades.length && requestsExactTrades) {
       primitive.setModels([]);
       tpoModelsSignatureRef.current = "";
-      setTpoDataStatus("TPO · WAITING FOR EXACT EXECUTIONS");
       return;
     }
     if (!sourceTrades.length && !sourceBars.length) {
       primitive.setModels([]);
       tpoModelsSignatureRef.current = "";
-      setTpoDataStatus("TPO · WAITING FOR MARKET DATA");
       return;
     }
     const themeStyles = getComputedStyle(document.documentElement);
@@ -17706,7 +17514,6 @@ function Chart({
     const rebuildThrottleMs = 250;
     const now = Date.now();
     let earliestStaleBuiltAt: number | null = null;
-    let backgroundBuildPending = false;
     for (const owner of tpoWorkerOwnersRef.current) {
       if (!activeInstanceIds.has(owner.slice(tpoWorkerId.length + 1))) { cancelTpoProfileBuild(owner); tpoWorkerOwnersRef.current.delete(owner); }
     }
@@ -17748,7 +17555,6 @@ function Chart({
         );
         if (replayTimestampMs == null) {
           backgroundBuild = true;
-          backgroundBuildPending = true;
           const owner = tpoWorkerId + ":" + instance.instanceId;
           tpoWorkerOwnersRef.current.add(owner);
           requestTpoProfileBuild({owner,scope:calculationKey,
@@ -17764,7 +17570,8 @@ function Chart({
                 ? refreshed?[...cached!.profiles.slice(0,-1),refreshed]:cached!.profiles : result;
               tpoProfileCacheRef.current.set(instance.instanceId,{trades:sourceTrades,bars:sourceBars,calculationKey,profiles:next,builtAt:Date.now()});
               setTpoRebuildNonce(value=>value+1);
-            },fail:()=>setTpoDataStatus("TPO · CALCULATION UNAVAILABLE"),
+            },
+            fail: () => {},
           });
           profiles = cached?.calculationKey===calculationKey ? cached.profiles : [];
         } else if (canRefreshDevelopingOnly && developing) {
@@ -17886,7 +17693,6 @@ function Chart({
       tpoModelsSignatureRef.current = modelsSignature;
       primitive.setModels(levelledModels);
     }
-    setTpoDataStatus(levelledModels.length || backgroundBuildPending ? null : "TPO · NO PROFILE IN THE SELECTED RANGE");
     // Trailing rebuild: when the run above served a throttled grid, re-enter
     // once the throttle window closes so the active profile catches the tape.
     if (earliestStaleBuiltAt !== null && tpoRebuildTimerRef.current === null) {
@@ -19152,7 +18958,6 @@ function Chart({
   };
 
   return (
-    <ChartIndicatorStatusProvider>
     <div ref={drawingKeyboardScopeRef} className="flex h-full w-full min-w-0 overflow-hidden">
       {/* The charting toolbar is the chart's LEFT EDGE: a static flex column
           that owns its own layout space, so chart content, candles and
@@ -19218,13 +19023,10 @@ function Chart({
           activeChartKeyboardTargetId = chartInstanceId;
         }}
       >
-        {unavailableReplayIndicators.length ? <div className="absolute left-2 top-2 z-50 rounded border border-border bg-panel px-2 py-1 text-[10px] text-muted" title={unavailableReplayIndicators.map(instance => CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.name ?? instance.indicatorId).join(", ")}>
-          {unavailableReplayIndicators.length} studies unavailable in replay · no verified historical adapter
-        </div> : null}
-        {(superTrendAlertNotice || indicatorAlertNotice) ? <ChartIndicatorStatusBadge role="status" aria-live="polite"
+        {(superTrendAlertNotice || indicatorAlertNotice) ? <div role="status" aria-live="polite"
           className="pointer-events-none absolute right-3 top-3 z-50 max-w-xs border border-primary bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
           {superTrendAlertNotice || indicatorAlertNotice}
-        </ChartIndicatorStatusBadge> : null}
+        </div> : null}
       {/*
         * The Mini DOM's own left edge, as something the trader can take hold
         * of. The ladder is a canvas primitive with no element to grab, so the
@@ -19389,17 +19191,6 @@ function Chart({
         priceScaleWidth={nativePriceScaleWidth}
         rightReservedWidth={miniDomReservedWidth}
         badges={[
-          { id: "flow-status", position: "bottom-right", content: orderFlowPaneStatus ? (
-        <div className="pointer-events-none flex items-center gap-1.5 border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-          {orderFlowPaneStatus}
-        </div>
-      ) : null },
-          { id: "tpo-status", position: "bottom-left", content: tpoDataStatus ? (
-        <div className="pointer-events-none border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
-          {tpoDataStatus}
-        </div>
-      ) : null },
           { id: "gamma-environment", position: gammaEnvironmentPosition, content: gammaEnvironmentIndicator ? (
         <button
           type="button"
@@ -19509,26 +19300,6 @@ function Chart({
       />) },
         ]}
       />
-      {pullingStackingIndicator && pullingStackingSettings.showHeader ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 top-2 z-[26] flex h-6 max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${pullingStackingStatus === "unavailable" ? "bg-danger" : pullingStackingStatus === "checking" ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Pulling &amp; Stacking</span>
-          {pullingStackingFrame ? (
-            <>
-              <span>{pullingStackingFrame.contractSymbol}</span>
-              <span>{Math.max(25, pullingStackingSettings.aggregationMs)}MS</span>
-              <span>{pullingStackingFrame.individualOrders && pullingStackingSettings.classificationMode === "individual-order" ? "LEVEL 3" : "MBP APPROXIMATION"}</span>
-              <span className={pullingStackingFrame.stale || pullingStackingFrame.sequenceGap ? "text-warning" : "text-primary"}>
-                {pullingStackingFrame.statusMessage}
-              </span>
-              <span className={pullingStackingFrame.totals.pressure >= 0 ? "text-primary" : "text-danger"}>LIQUIDITY PRESSURE {Math.round(pullingStackingFrame.totals.pressure).toLocaleString()}</span>
-              <span>V {Math.round(pullingStackingFrame.totals.velocity).toLocaleString()}/s</span>
-            </>
-          ) : <span>{pullingStackingStatus === "unavailable" ? "Order book unavailable" : "Synchronising order book…"}</span>}
-        </ChartIndicatorStatusBadge>
-      ) : null}
       {pullingStackingTooltip && pullingStackingSettings.showTooltips ? (
         <div
           className="pointer-events-none absolute z-[68] min-w-[230px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
@@ -19559,28 +19330,6 @@ function Chart({
           {pullingStackingTooltip.event ? <div className="mt-2 border-t border-border pt-1 text-primary">{pullingStackingTooltip.event.kind.replaceAll("_", " ")} · {pullingStackingTooltip.event.quantity.toLocaleString()}</div> : null}
         </div>
       ) : null}
-      {absorptionIndicator && absorptionSettings.showHeader ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 z-[27] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: pullingStackingIndicator && pullingStackingSettings.showHeader ? 38 : 8 }}
-          title={absorptionFrame?.limitations.join(" ") ?? "Waiting for the shared execution and order-book stream"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${absorptionStatus === "unavailable" ? "bg-danger" : absorptionStatus === "checking" ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Absorption Detector</span>
-          {absorptionFrame ? (
-            <>
-              <span>{absorptionFrame.contractSymbol}</span>
-              <span>{absorptionFrame.feedMode}</span>
-              <span>{(absorptionSettings.windowMs / 1_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}s</span>
-              <span className={absorptionFrame.status.includes("STALE") || absorptionFrame.sequenceGap ? "text-warning" : "text-primary"}>
-                {absorptionFrame.sequenceGap ? "RESYNCING" : absorptionFrame.status}
-              </span>
-              <span>BID {absorptionFrame.zones.filter((zone) => zone.side === "BID" && zone.state !== "BROKEN").length}</span>
-              <span>ASK {absorptionFrame.zones.filter((zone) => zone.side === "ASK" && zone.state !== "BROKEN").length}</span>
-            </>
-          ) : <span>{absorptionStatus === "unavailable" ? "Execution feed unavailable" : "Synchronising executions…"}</span>}
-        </ChartIndicatorStatusBadge>
-      ) : null}
       {absorptionTooltip ? (
         <div
           className="pointer-events-none absolute z-[69] min-w-[250px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
@@ -19608,20 +19357,6 @@ function Chart({
           {absorptionTooltip.event.suspectedHiddenLiquidity ? <div className="mt-2 border-t border-border pt-1 text-primary">Suspected hidden-liquidity context · identity and intent are not established.</div> : null}
         </div>
       ) : null}
-      {stackedImbalanceIndicator ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 z-[27] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) }}
-          title={stackedImbalanceFrame?.limitations.join(" ") || "Exact Footprint execution cells"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${stackedImbalanceFrame?.status === "WAITING_FOR_EXECUTIONS" ? "animate-pulse bg-warning" : stackedImbalanceFrame?.status === "STALE" ? "bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Stacked Imbalance Suite</span>
-          <span>{stackedImbalanceFrame?.status ?? "CALCULATING"}</span>
-          <span>ASK {stackedImbalanceFrame?.zones.filter((zone) => zone.side === "ASK" && !["BROKEN", "EXPIRED"].includes(zone.state)).length ?? 0}</span>
-          <span>BID {stackedImbalanceFrame?.zones.filter((zone) => zone.side === "BID" && !["BROKEN", "EXPIRED"].includes(zone.state)).length ?? 0}</span>
-          <span>{stackedImbalanceSettings.scopeMode.replaceAll("-", " ")}</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
       {stackedImbalanceTooltip ? (
         <div
           className="pointer-events-none absolute z-[70] min-w-[250px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
@@ -19647,94 +19382,9 @@ function Chart({
           )}
         </div>
       ) : null}
-      {pocAuctionIndicator && pocAuctionSettings.showHeader ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute right-2 top-2 z-[72] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          title={pocAuctionFrame?.limitations.join(" · ") || "Shared execution-volume POC and exact one-tick auction analysis"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${!pocAuctionFrame || pocAuctionFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : pocAuctionFrame.status === "TRADE_DATA_STALE" || pocAuctionFrame.status === "GROUPED_EXTREMES" ? "bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">POC &amp; Auction</span>
-          <span>{pocAuctionFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
-          <span>POC {pocAuctionFrame?.activePocs.length ?? 0}</span>
-          <span>UA {pocAuctionFrame?.auctions.filter((item) => item.completionState === "unfinished").length ?? 0}</span>
-          <span>EXCESS {pocAuctionFrame?.auctions.filter((item) => item.completionState === "excess").length ?? 0}</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {indicators.some(item=>item.enabled && item.indicatorId === "options-vwap") && (optionsVwapHistory || optionsVwapState.error) ? (
-        <ChartIndicatorStatusBadge className="rounded-lg border border-border bg-panel px-2 py-1 text-[9px] text-muted" title="Recorded option executions only. Sampled coverage is not a full-market VWAP.">
-          Options VWAP · {optionsVwapHistory ? optionsVwapHistory.events.length ? "sampled contracts" : "no recorded trades in this range" : "recorded options data unavailable"}
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {unfinishedAuctionIndicator ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute right-2 z-[72] flex max-w-[min(600px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8 }}
-          title="Exact one-tick unfinished-auction extremes from classified Rithmic executions"
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${!unfinishedAuctionFrame || unfinishedAuctionFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : unfinishedAuctionFrame.status === "GROUPED_EXTREMES" ? "bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Unfinished Auction</span>
-          <span>{unfinishedAuctionFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
-          <span>FRESH {unfinishedAuctionFrame?.levels.filter((level) => level.state === "fresh").length ?? 0}</span>
-          <span>TRIGGERED {unfinishedAuctionFrame?.levels.filter((level) => level.state === "triggered").length ?? 0}</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {barPocIndicator ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute right-2 z-[72] flex max-w-[min(600px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) }}
-          title="Exact per-candle point of control from classified Rithmic executions"
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${!barPocFrame || barPocFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Bar POC</span>
-          <span>{barPocFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
-          <span>{barPocFrame?.levels.length ?? 0} LEVELS</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {dynamicPocIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) }} title="Rolling point of control and envelopes from exact Rithmic volume-at-price">
-          <span className={`h-1.5 w-1.5 rounded-full ${!dynamicPocFrame || dynamicPocFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Dynamic POC</span><span>{dynamicPocFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {ratioHighlightIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) }} title="DeepCharts-compatible high/low auction-extreme ratios from exact Rithmic volume-at-price">
-          <span className={`h-1.5 w-1.5 rounded-full ${!ratioHighlightFrame || ratioHighlightFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Ratio Highlight</span><span>{ratioHighlightFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{ratioHighlightFrame?.markers.length ?? 0} MARKERS</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {stopSpotterIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) }} title="Stop-run candidates requiring the complete DeepCharts parameter contract on exact Rithmic volume-at-price">
-          <span className={`h-1.5 w-1.5 rounded-full ${!stopSpotterFrame || stopSpotterFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Stop Spotter</span><span>{stopSpotterFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{stopSpotterFrame?.markers.length ?? 0} RUNS</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {deepWallIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) }} title="Execution-confirmed ES-family passive-wall rejection markers from exact Rithmic volume-at-price">
-          <span className={`h-1.5 w-1.5 rounded-full ${!deepWallFrame || deepWallFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : deepWallFrame.status === "UNSUPPORTED_INSTRUMENT" ? "bg-muted" : "bg-primary"}`} />
-          <span className="text-foreground">KWANT Wall</span><span>{deepWallFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepWallFrame?.markers.length ?? 0} WALLS</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {deepVTrackerIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) }} title="Execution-confirmed acceleration, exhaustion, slowdown, absorption and pressure from Rithmic volume-at-price">
-          <span className={`h-1.5 w-1.5 rounded-full ${!deepVTrackerFrame || deepVTrackerFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">KWANT V-Tracker</span><span>{deepVTrackerFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepVTrackerFrame ? deepVTrackerFrame.patterns.length + deepVTrackerFrame.levels.length : 0} SIGNALS</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {deepProfileSwingIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) }} title="Automatic swing profiles from exact Rithmic volume-at-price">
-          <span className={`h-1.5 w-1.5 rounded-full ${!deepProfileSwingFrame || deepProfileSwingFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">KWANT Profile Swing</span><span>{deepProfileSwingFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileSwingFrame?.profiles.length ?? 0} PROFILES</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {deepProfileValuesIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) + (deepProfileSwingIndicator ? 26 : 0) }} title="POC, value area, VWAP and profile structure from exact Rithmic volume-at-price">
-          <span className={`h-1.5 w-1.5 rounded-full ${!deepProfileValuesFrame || deepProfileValuesFrame.status.startsWith("WAITING") ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">KWANT Profile Values</span><span>{deepProfileValuesFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileValuesFrame?.profiles.length ?? 0} PROFILES</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {marketStatisticsIndicator && marketStatisticsFrame ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 top-2 z-[71] min-w-[188px] border border-border/70 px-2 py-1.5 font-mono shadow-lg backdrop-blur-sm"
+      {marketStatisticsIndicator && marketStatisticsFrame && !marketStatisticsFrame.status.startsWith("WAITING") ? (
+        <div
+          className="pointer-events-none absolute left-2 top-3 z-[71] min-w-[188px] border border-border/70 px-2 py-1.5 font-mono shadow-lg backdrop-blur-sm"
           style={{
             color: marketStatisticsSettings.textColor,
             backgroundColor: `color-mix(in srgb, ${marketStatisticsSettings.backgroundColor} ${marketStatisticsSettings.panelOpacity}%, transparent)`,
@@ -19745,12 +19395,10 @@ function Chart({
         >
           {marketStatisticsSettings.showHeader ? (
             <div className="mb-1 flex items-center justify-between gap-4 border-b border-current/20 pb-1 uppercase tracking-[0.08em]">
-              <span>Filter</span><span>{marketStatisticsFrame.status.replaceAll("_", " ")}</span>
+              <span>Market Statistics</span>
             </div>
           ) : null}
-          {marketStatisticsFrame.status.startsWith("WAITING") ? (
-            <div className="py-1 uppercase tracking-[0.06em]">{marketStatisticsFrame.status.replaceAll("_", " ")}</div>
-          ) : marketStatisticsFrame.ranges
+          {marketStatisticsFrame.ranges
             .filter((range) => marketStatisticsSettings.showEmptyRanges || range.peak > 0)
             .map((range) => (
               <div key={`${range.lower}:${range.upper}`} className="grid grid-cols-[minmax(56px,1fr)_auto_auto] gap-2 tabular-nums" title={`Peak ${range.peak.toLocaleString()}`}>
@@ -19759,7 +19407,7 @@ function Chart({
                 <span style={{ color: marketStatisticsSettings.deviationColor }}>Dev: {range.deviation.toFixed(range.deviation < 10 ? 1 : 0)}</span>
               </div>
             ))}
-        </ChartIndicatorStatusBadge>
+        </div>
       ) : null}
       {pocAuctionTooltip ? (
         <div
@@ -19793,21 +19441,6 @@ function Chart({
           ) : null}
         </div>
       ) : null}
-      {icebergRefreshIndicator && icebergRefreshSettings.showHeader ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 z-[28] flex max-w-[min(860px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) + (stackedImbalanceIndicator ? 30 : 0) }}
-          title={icebergRefreshFrame?.limitations.join(" ") ?? "Synchronising shared executions and Level 3 order-book lifecycle"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${icebergRefreshStatus === "unavailable" ? "bg-danger" : icebergRefreshStatus === "checking" || icebergRefreshFrame?.status === "CALIBRATING" ? "animate-pulse bg-warning" : icebergRefreshFrame?.status === "STALE" ? "bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Iceberg / Refresh Detector</span>
-          <span>{icebergRefreshSettings.preset === "native-only" ? "NATIVE FIELDS UNAVAILABLE" : (icebergRefreshFrame?.status ?? "SYNCHRONISING")}</span>
-          <span>PRICE-LEVEL EVIDENCE</span>
-          <span>BID {icebergRefreshFrame?.candidates.filter((candidate) => candidate.passiveSide === "BID" && !["BROKEN", "EXPIRED"].includes(candidate.state)).length ?? 0}</span>
-          <span>ASK {icebergRefreshFrame?.candidates.filter((candidate) => candidate.passiveSide === "ASK" && !["BROKEN", "EXPIRED"].includes(candidate.state)).length ?? 0}</span>
-          <span>SUSPECT {icebergRefreshFrame?.candidates.filter((candidate) => candidate.state === "SUSPECTED").length ?? 0}</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
       {icebergRefreshTooltip ? (
         <div
           className="pointer-events-none absolute z-[71] min-w-[270px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
@@ -19827,21 +19460,6 @@ function Chart({
           ) : <div className="mt-2 text-muted">Repeated aggressive execution and same-price displayed replenishment. Identity and intent are not established.</div>}
           <div className="mt-2 border-t border-border pt-1 text-warning">Suspected Iceberg is an inference; the feed exposes no native reserve flag or maker-order trade ID.</div>
         </div>
-      ) : null}
-      {liquidityStopSweepIndicator && liquidityStopSweepSettings.showHeader ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 z-[29] flex max-w-[min(900px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) + (stackedImbalanceIndicator ? 30 : 0) + (icebergRefreshIndicator && icebergRefreshSettings.showHeader ? 30 : 0) }}
-          title={liquidityStopSweepFrame?.limitations.join(" ") ?? "Synchronising shared aggressive executions and Level 3 book context"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${liquidityStopSweepStatus === "unavailable" || liquidityStopSweepFrame?.status === "UNAVAILABLE" ? "bg-danger" : liquidityStopSweepStatus === "checking" || !liquidityStopSweepFrame ? "animate-pulse bg-warning" : liquidityStopSweepFrame.status.includes("STALE") ? "bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Sweep Detector</span>
-          <span>{liquidityStopSweepFrame?.status.replaceAll("_", " ") ?? "SYNCHRONISING"}</span>
-          <span>BUY {liquidityStopSweepFrame?.events.filter((event) => event.direction === "buy").length ?? 0}</span>
-          <span>SELL {liquidityStopSweepFrame?.events.filter((event) => event.direction === "sell").length ?? 0}</span>
-          <span>STOP? {liquidityStopSweepFrame?.events.filter((event) => event.state === "possible-stop-sweep").length ?? 0}</span>
-          <span>{liquidityStopSweepFrame?.fullDepth ? "L3 BOOK" : "TRADE + BOOK CONTEXT"}</span>
-        </ChartIndicatorStatusBadge>
       ) : null}
       {liquidityStopSweepTooltip ? (
         <div
@@ -19916,33 +19534,6 @@ function Chart({
           }}
         />
       ) : null}
-      {gammaHeatmapIndicator && gammaHeatmapIndicator.settings?.showStatus !== false ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{
-            top: 8
-              + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0)
-              + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0)
-              + (stackedImbalanceIndicator ? 30 : 0)
-              + (icebergRefreshIndicator && icebergRefreshSettings.showHeader ? 30 : 0)
-              + (liquidityStopSweepIndicator && liquidityStopSweepSettings.showHeader ? 30 : 0),
-          }}
-          title={gammaHeatmapPayload?.limitations.join(" ") ?? gammaHeatmapError ?? "Loading options exposure history"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${gammaHeatmapError && !gammaHeatmapPayload ? "bg-danger" : gammaHeatmapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Gamma Heatmap</span>
-          {gammaHeatmapPayload ? (
-            <>
-              <span>{gammaHeatmapPayload.sourceInstrument}→{gammaHeatmapPayload.displayInstrument}</span>
-              <span>{gammaHeatmapPayload.greekMode}</span>
-              <span className={gammaHeatmapPayload.status === "LIVE" ? "text-primary" : "text-warning"}>{gammaHeatmapPayload.status.replace("_", " ")}</span>
-              <span>{gammaHeatmapPayload.current?.mapping.method.replace("-", " ")}</span>
-              <span>{Math.round((gammaHeatmapPayload.current?.mapping.confidence ?? 0) * 100)}%</span>
-            </>
-          ) : gammaHeatmapLoading ? <span>Loading exposure history…</span> : <span className="text-danger">{gammaHeatmapError ?? "Exposure unavailable"}</span>}
-          {gammaHeatmapError && gammaHeatmapPayload ? <span className="text-warning">Refresh delayed · last good surface</span> : null}
-        </ChartIndicatorStatusBadge>
-      ) : null}
       {gammaHeatmapTooltip ? (
         <div
           className="pointer-events-none absolute z-[62] min-w-[210px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
@@ -19964,27 +19555,6 @@ function Chart({
             <span>Status</span><span className="text-foreground">{gammaHeatmapTooltip.snapshot.status.replace("_", " ")}</span>
           </div>
         </div>
-      ) : null}
-      {gexIntervalMapIndicator && gexIntervalMapIndicator.settings?.showHeader !== false ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: gammaHeatmapIndicator ? 38 : 8 }}
-          title={gexIntervalSnapshot?.limitations.join(" ") ?? gexIntervalError ?? "Loading signed Gamma interval history"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${gexIntervalError && !gexIntervalSnapshot ? "bg-danger" : gexIntervalLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">GEX Interval Map</span>
-          {gexIntervalSnapshot ? (
-            <>
-              <span>{gexIntervalSnapshot.sourceTicker}→{gexIntervalSnapshot.displayInstrument}</span>
-              <span>{gexIntervalSnapshot.mode}</span>
-              {gexIntervalSnapshot.mode === "difference" ? <span>{gexIntervalSnapshot.baseline.replace("-", " ")}</span> : null}
-              <span className={gexIntervalSnapshot.status === "LIVE" ? "text-primary" : "text-warning"}>{gexIntervalSnapshot.status.replace("_", " ")}</span>
-              <span>{gexIntervalSnapshot.points.length.toLocaleString()} points</span>
-              {gexIntervalSnapshot.skippedMappingBuckets ? <span className="text-warning">Mapping unavailable · {gexIntervalSnapshot.skippedMappingBuckets}</span> : null}
-            </>
-          ) : gexIntervalLoading ? <span>Loading interval surface…</span> : <span className="text-danger">{gexIntervalError ?? "Interval surface unavailable"}</span>}
-          {gexIntervalError && gexIntervalSnapshot ? <span className="text-warning">Refresh delayed · last good surface</span> : null}
-        </ChartIndicatorStatusBadge>
       ) : null}
       {gexIntervalTooltip ? (
         <div
@@ -20046,35 +19616,6 @@ function Chart({
             <span>Source → projected</span><span className="text-foreground">{bounceLevelsTooltip.node.sourceStrike.toLocaleString()} → {bounceLevelsTooltip.node.mappedPrice.toFixed(priceFormat.precision)}</span>
           </div>
         </div>
-      ) : null}
-      {netGammaIndicator && netGammaIndicator.settings?.showHeader !== false ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) }}
-          title={netGammaProfile?.limitations.join(" ") ?? netGammaError ?? "Loading Net Gamma Exposure by strike"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${netGammaError && !netGammaProfile ? "bg-danger" : netGammaLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Net GEX</span>
-          {netGammaProfile ? (
-            <>
-              <span>{netGammaProfile.sourceTicker}→{netGammaProfile.displayInstrument}</span>
-              <span>{netGammaProfile.expirationLabel}</span>
-              <span>{netGammaProfile.representation === "per-one-percent-move" ? "$/1% MOVE" : netGammaProfile.representation === "per-one-dollar-move" ? "$/1$ MOVE" : "RAW"}</span>
-              <span className={netGammaProfile.status === "live" ? "text-primary" : "text-warning"}>{netGammaProfile.status.replaceAll("-", " ")}</span>
-              <span>
-                {netGammaProfile.mapping.method === "live-ratio" ? "LIVE RATIO FALLBACK" : netGammaProfile.mapping.method.replaceAll("-", " ")}
-                {netGammaIndicator.settings?.showMappingConfidence !== false ? ` · ${Math.round(netGammaProfile.mapping.mappingConfidence)}%` : ""}
-              </span>
-              {netGammaProfile.rows.length ? (
-                <>
-                  <span className={netGammaProfile.totalRegime === "positive" ? "text-primary" : netGammaProfile.totalRegime === "negative" ? "text-danger" : "text-warning"}>{netGammaProfile.totalRegime} regime</span>
-                  <span className={netGammaProfile.totalNetExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(netGammaProfile.totalNetExposure, netGammaProfile.representation)}</span>
-                </>
-              ) : <span className="text-warning">No qualifying rows</span>}
-            </>
-          ) : netGammaLoading ? <span>Loading strike profile…</span> : <span className="text-danger">{netGammaError ?? "Exposure unavailable"}</span>}
-          {netGammaError && netGammaProfile ? <span className="text-warning">Refresh delayed · last valid profile</span> : null}
-        </ChartIndicatorStatusBadge>
       ) : null}
       {netGammaTooltip ? (
         <div
@@ -20213,28 +19754,6 @@ function Chart({
           </div>
           <div className="mt-2 border-t border-border pt-1 leading-4 text-muted">Tolerance {darkPoolGexResearch.disclosures.touchTolerance} · break {darkPoolGexResearch.disclosures.breakThreshold} · reaction {darkPoolGexResearch.disclosures.reactionThreshold} · horizon {Math.round(darkPoolGexResearch.disclosures.postTouchHorizonMs / 60_000)}m · resolution {darkPoolGexResearch.disclosures.resolution} · {darkPoolGexResearch.disclosures.sessionFilter} · {darkPoolGexResearch.sampleCount} level samples</div>
         </div>
-      ) : null}
-      {darkPoolMapIndicator ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
-          title={darkPoolMapPayload?.limitations.join(" ") ?? darkPoolMapError ?? "Loading real off-exchange prints"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${darkPoolMapError && !darkPoolMapPayload ? "bg-danger" : darkPoolMapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Dark Pool Map</span>
-          {darkPoolMapPayload ? (
-            <>
-              <span>{darkPoolMapPayload.sourceTicker} dark pool→{darkPoolMapPayload.displayInstrument}</span>
-              <span className={darkPoolMapPayload.status === "LIVE" ? "text-primary" : "text-warning"}>{darkPoolMapPayload.status.replaceAll("_", " ")}</span>
-              <span>{Math.round(darkPoolMapPayload.pollIntervalMs / 1_000)}s poll</span>
-              {darkPoolMapPayload.mapping ? <span>{darkPoolMapPayload.mapping.method.replaceAll("-", " ")}</span> : null}
-              {darkPoolMapIndicator.settings?.showMappingConfidence !== false && darkPoolMapPayload.mapping ? <span>{Math.round(darkPoolMapPayload.mapping.confidence * 100)}%</span> : null}
-              <span>{darkPoolMapPayload.prints.length.toLocaleString()} prints</span>
-              <span>{darkPoolMapPayload.zones.length} zones</span>
-            </>
-          ) : darkPoolMapLoading ? <span>Loading dark-pool prints…</span> : <span className="text-danger">{darkPoolMapError ?? "Dark-pool data unavailable"}</span>}
-          {darkPoolMapError && darkPoolMapPayload ? <span className="text-warning">Refresh delayed · last valid map</span> : null}
-        </ChartIndicatorStatusBadge>
       ) : null}
       {darkPoolMapTooltip ? (
         <div
@@ -20535,20 +20054,6 @@ function Chart({
           {level.price.toFixed(priceFormat.precision)}
         </div>
       ))}
-      {gammaLevelsEnabled && gammaLevelsLoading ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute right-[76px] top-3 z-[19] flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground shadow-lg backdrop-blur"
-          role="status"
-        >
-          <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
-          <span>Syncing {instrument} Gamma</span>
-        </ChartIndicatorStatusBadge>
-      ) : null}
-      {compositeVolumeProfileStatus ? (
-        <ChartIndicatorStatusBadge role="status" className="rounded-md border border-border bg-panel px-2 py-1 text-[10px] text-foreground">
-          Composite Volume Profile · {compositeVolumeProfileStatus}
-        </ChartIndicatorStatusBadge>
-      ) : null}
       {volumeProfileError ? (
         <div hidden data-volume-profile-diagnostic="unavailable">
           {volumeProfileError}
@@ -20558,15 +20063,6 @@ function Chart({
         <div hidden data-footprint-history-diagnostic="incomplete">
           {exactFootprintHistory.error}
         </div>
-      ) : null}
-      {footprintIndicator && footprintHasPriceLevelFlow && !footprintHasClassifiedFlow ? (
-        <ChartIndicatorStatusBadge
-          className="pointer-events-none absolute right-[76px] top-3 z-[19] max-w-[390px] border border-border/70 bg-background/92 px-3 py-2 font-mono text-[9px] leading-4 text-muted-foreground shadow-lg backdrop-blur"
-          role="status"
-        >
-          <div className="font-semibold uppercase tracking-[0.08em] text-foreground">Limited execution classification</div>
-          Bid × Ask requires aggressor-side classification. Unclassified volume is retained in total volume and POC, but is not assigned to Bid, Ask, Delta or imbalances.
-        </ChartIndicatorStatusBadge>
       ) : null}
       <div
         ref={horzLineRef}
@@ -20608,21 +20104,6 @@ function Chart({
 
 
 
-      {hedgeLevelsIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-3 z-[18] flex max-w-[370px] items-center gap-1.5 rounded-full border border-border bg-panel/92 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
-          <span className="font-semibold text-foreground">Hedge Levels</span>
-          {hedgeLevelsLoading && !hedgeLevelsPayload ? <span className="text-primary">Loading</span> : null}
-          {hedgeLevelsPayload ? (
-            <span className={hedgeLevelsPayload.stale ? "text-warning" : hedgeLevelsPayload.frozen ? "text-muted" : "text-primary"}>
-              {hedgeFreshnessPill(hedgeLevelsPayload, hedgeLevelsNow)}
-            </span>
-          ) : null}
-          {hedgeLevelsPayload?.contested ? <span className="text-warning">Contested</span> : null}
-          {hedgeLevelsError && !hedgeLevelsPayload ? (
-            <span className="max-w-[255px] truncate text-danger">{hedgeLevelsError}</span>
-          ) : null}
-        </ChartIndicatorStatusBadge>
-      ) : null}
 
       {hedgeLevelsOverlay && hedgeLevelsPayload ? (
         <div
@@ -20738,66 +20219,8 @@ function Chart({
         </div>
       ) : null}
 
-      {expectedMoveIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-[70px] z-[17] flex max-w-[330px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
-          <span className="font-semibold text-foreground">Expected Move</span>
-          {expectedMoveLoading && !expectedMovePayload ? <span className="text-primary">Loading</span> : null}
-          {expectedMovePayload?.stale ? (
-            <span className="text-warning">EM STALE {formatTpoAge(Math.max(expectedMovePayload.dataAge, expectedMoveNow - Date.parse(expectedMovePayload.generatedAt)))}</span>
-          ) : null}
-          {expectedMoveError && !expectedMovePayload ? (
-            <span className="max-w-[240px] truncate text-danger">{expectedMoveError}</span>
-          ) : null}
-          {expectedMovePayload && !expectedMovePayload.stale && !expectedMoveOverlay ? (
-            <span>Calibrating {expectedMovePayload.sourceSymbol}</span>
-          ) : null}
-        </ChartIndicatorStatusBadge>
-      ) : null}
 
-      {classicGexIndicator ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-[104px] z-[16] flex max-w-[430px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
-          <span className="font-semibold text-foreground">Classic GEX</span>
-          {classicGexLoading && !classicGexProfile ? <span>Loading</span> : null}
-          {classicGexProfile?.mapping.mode === "AUTO" && classicGexProfile.mapping.scale === 1
-            ? <span className="text-warning">Awaiting futures calibration</span>
-            : classicGexProfile && !classicGexProfile.rows.length
-              ? <span>No exposure in this scope</span> : null}
-          {classicGexProfile ? (
-            <span className={classicGexProfile.stale ? "text-warning" : "text-primary"}>
-              {classicGexProfile.stale
-                ? `Stale ${formatTpoAge(classicGexProfile.dataAgeMs)}`
-                : classicGexProfile.status}
-            </span>
-          ) : null}
-          {classicGexManualBadge ? (
-            <span className={classicGexManualBadge.tone === "danger" ? "text-danger" : "text-warning"}>
-              {classicGexManualBadge.text}
-            </span>
-          ) : null}
-          {classicGexError && !classicGexProfile ? (
-            <span className="max-w-[250px] truncate text-danger">{classicGexError}</span>
-          ) : null}
-        </ChartIndicatorStatusBadge>
-      ) : null}
 
-      {(gammaLevelsError || historicalStructureError) ? (
-        <ChartIndicatorStatusBadge className="pointer-events-none absolute right-[70px] top-[138px] z-[15] flex max-w-[430px] flex-col items-end gap-1">
-          {[
-            gammaLevelsError ? `Kwant Levels · ${gammaLevelsError}` : null,
-            // Value-area refresh failures stay silent here. The workspace keeps
-            // retrying in the background and restores the next completed CME
-            // profile without covering the chart with an expected window notice.
-            historicalStructureError ? `Structure · ${historicalStructureError}` : null,
-          ].filter((message): message is string => Boolean(message)).map((message) => (
-            <span
-              key={message}
-              className="max-w-full truncate rounded-full border border-border bg-panel/92 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-danger shadow-lg backdrop-blur"
-            >
-              {message}
-            </span>
-          ))}
-        </ChartIndicatorStatusBadge>
-      ) : null}
 
       {expectedMoveOverlay ? (
         <svg
@@ -22163,7 +21586,6 @@ function Chart({
         />
       ) : null}
     </div>
-    </ChartIndicatorStatusProvider>
   );
 }
 

@@ -5922,7 +5922,7 @@ export default function ChartIndicatorsControl({
                         ["showHeatCells", "Heat cells"], ["showRibbons", "Ribbons"], ["showEventMarkers", "Event markers"],
                         ["showCurrentProfile", "Current profile"], ["showLiveDepth", "Live depth"], ["showLowerPane", "Lower pane"],
                         ["showWallBuild", "Wall build"], ["showWallCollapse", "Wall collapse"], ["showLiquidityVacuum", "Liquidity vacuum"],
-                        ["pullRepostEnabled", "Pull / repost"], ["showLabels", "Labels"], ["showHeader", "Compact header"],
+                        ["pullRepostEnabled", "Pull / repost"], ["showLabels", "Labels"],
                         ["showTooltips", "Tooltips"], ["enableAlerts", "Alerts"], ["useThemeColors", "Website colours"],
                       ] as const).map(([key, label]) => (
                         <button
@@ -8276,6 +8276,8 @@ export default function ChartIndicatorsControl({
               {(() => {
                 const entries = Object.entries(settingsInstance.settings ?? {})
                   .filter(([key]) => !["showSource", "stableFootprintRows", "sessionSelectionArmed"].includes(key))
+                  .filter(([key]) => !(settingsDefinition.id === "gamma-heatmap" && key === "showStatus"))
+                  .filter(([key]) => !(["poc-auction-suite", "net-gamma-exposure-by-strike", "gex-interval-map", "pulling-stacking", "absorption-detector", "iceberg-refresh-detector", "liquidity-stop-sweep-detector"].includes(settingsDefinition.id) && key === "showHeader"))
                   .filter(([key]) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
                   .filter(([key]) => {

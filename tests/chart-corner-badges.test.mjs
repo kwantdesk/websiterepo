@@ -57,3 +57,9 @@ test('the actual chart supplies both pane offsets and leaves countdown positioni
   assert.doesNotMatch(timer, /absolute|bottom-0|right-0/);
   assert.ok(chart.indexOf('id: "gamma-environment", position: gammaEnvironmentPosition') < chart.indexOf('id: "candle-countdown", position: "bottom-right"'));
 });
+
+test("the shared chart never mounts passive indicator status badges", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(chart, /ChartIndicatorStatus(?:Badge|Provider)|id: "(?:flow|tpo)-status"/);
+  assert.doesNotMatch(source, /data-chart-indicator-status-host/);
+});

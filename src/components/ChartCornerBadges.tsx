@@ -1,29 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-
-const IndicatorStatusContext = createContext<{
-  target: HTMLDivElement | null;
-  setTarget: (target: HTMLDivElement | null) => void;
-} | null>(null);
-
-export function ChartIndicatorStatusProvider({ children }: { children: ReactNode }) {
-  const [target, setTarget] = useState<HTMLDivElement | null>(null);
-  const value = useMemo(() => ({ target, setTarget }), [target]);
-  return <IndicatorStatusContext.Provider value={value}>{children}</IndicatorStatusContext.Provider>;
-}
-
-/** Status messages retain their original condition/content, but one per-chart
- * host owns their geometry instead of fixed offsets in individual studies. */
-export function ChartIndicatorStatusBadge({ style, ...props }: HTMLAttributes<HTMLDivElement>) {
-  const context = useContext(IndicatorStatusContext);
-  if (!context?.target) return null;
-  return createPortal(<div {...props} data-chart-indicator-status style={{
-    ...style, position: "relative", inset: "auto", top: "auto", right: "auto", bottom: "auto", left: "auto",
-    minWidth: 0, maxWidth: "100%", height: "auto", flexWrap: "wrap", overflowWrap: "anywhere", margin: 0,
-  }} />, context.target);
-}
+import type { CSSProperties, ReactNode } from "react";
 
 export type ChartCornerBadge = {
   id: string;
@@ -46,10 +23,9 @@ export default function ChartCornerBadges({ badges, bottomInset, topInset, leftI
   priceScaleWidth: number;
   rightReservedWidth?: number;
 }) {
-  const statusContext = useContext(IndicatorStatusContext);
   return positions.map(position => {
     const entries = badges.filter(badge => (positions.includes(badge.position as typeof positions[number]) ? badge.position : "top-right") === position && badge.content != null);
-    if (!entries.length && !(position === "top-right" && statusContext)) return null;
+    if (!entries.length) return null;
     const bottom = position.startsWith("bottom");
     const right = position.endsWith("right");
     const middle = position.endsWith("middle");
@@ -65,7 +41,6 @@ export default function ChartCornerBadges({ badges, bottomInset, topInset, leftI
       {entries.map(badge => <div key={badge.id} data-chart-corner-badge={badge.id} className="empty:hidden" style={{ marginRight: right && !statusCorner ? priceScaleWidth + RIGHT_CORNER_GAP : 0 }}>
         {badge.content}
       </div>)}
-      {statusCorner && statusContext ? <div ref={statusContext.setTarget} className="contents" data-chart-indicator-status-host /> : null}
     </div>;
   });
 }
