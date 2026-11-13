@@ -7,7 +7,7 @@ export const CHART_ACTIVITY_WINDOW_MS = 15_000;
 const calendarDeadlines = new Map<string, number>();
 
 /** Match the actual calendar buckets used by live and recorded aggregation. */
-function candleDeadline(candleTimestamp: number, intervalMs: number, timeframe?: string) {
+export function candleDeadline(candleTimestamp: number, intervalMs: number, timeframe?: string) {
   const match = timeframe?.match(/^(\d+)(D|W|M)$/);
   if (!match) return candleTimestamp + intervalMs;
   const interval = match[0];

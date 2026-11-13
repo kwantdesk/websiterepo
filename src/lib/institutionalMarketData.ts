@@ -110,6 +110,9 @@ export type InstitutionalVolumeProfile = {
   endMs: number;
   coverageStartMs?: number | null;
   coverageEndMs?: number | null;
+  missingSessionDates?: string[];
+  /** Whether this Composite range can grow through new executions. */
+  followsLiveComposite?: boolean;
   /** False means the archive/ring sources leave a known hole in this window. */
   complete?: boolean | null;
   tickSize: number;
@@ -160,10 +163,18 @@ export function isCandleBackedVolumeProfile(
 
 export function isExecutionBackedVolumeProfile(
   profile: InstitutionalVolumeProfile | null | undefined,
+  allowPartialComposite = false,
 ): profile is InstitutionalVolumeProfile {
   if (!profile || profile.schemaVersion !== "kwantify-volume-profile-v1") return false;
   if (profile.provider !== "Databento" && profile.provider !== "Rithmic") return false;
-  if (profile.complete === false) return false;
+  if (profile.complete === false) {
+    const { coverageStartMs, coverageEndMs } = profile;
+    if (!allowPartialComposite || profile.period !== "custom" || profile.provider !== "Rithmic"
+      || typeof coverageStartMs !== "number" || typeof coverageEndMs !== "number"
+      || !Number.isFinite(coverageStartMs) || !Number.isFinite(coverageEndMs)
+      || coverageStartMs <= 0 || coverageStartMs < profile.startMs
+      || coverageEndMs >= profile.endMs || coverageEndMs < coverageStartMs) return false;
+  }
   // Defensive provenance guard for old browser caches and older gateway
   // builds that may have labelled an OHLCV reconstruction as a native
   // profile. Those rows must never flash before the execution tape arrives.
@@ -971,6 +982,7 @@ export type InstitutionalVolumeProfileRequest = {
   minTradeVolume?: number;
   maxTradeVolume?: number;
   developmentWindowEndMs?: number;
+  allowPartialComposite?: boolean;
   /** Filter/Split Time. Defaults reproduce the unfiltered whole-session profile. */
   filterMode?: "none" | "filter" | "splitted" | "triple";
   filterTime?: "rth" | "eth" | "custom";
@@ -1019,7 +1031,8 @@ export function institutionalVolumeProfileRequest(args: InstitutionalVolumeProfi
       if (!Number.isFinite(args.endMs)) query.set("endMs", String(session.endMs));
     }
   }
-  return { askedValueAreaPercent, query, cacheKey: query.toString() };
+  const cacheKey = query.toString() + (args.allowPartialComposite ? ":composite-coverage" : "");
+  return { askedValueAreaPercent, query, cacheKey };
 }
 
 /**
@@ -1035,11 +1048,11 @@ export async function readCachedInstitutionalVolumeProfile(
 ): Promise<InstitutionalVolumeProfile | null> {
   const { cacheKey } = institutionalVolumeProfileRequest(args);
   const memory = volumeProfileResponseCache.get(cacheKey)?.profile ?? null;
-  if (isExecutionBackedVolumeProfile(memory)) return memory;
+  if (isExecutionBackedVolumeProfile(memory, args.allowPartialComposite)) return memory;
   const persistent = await readPersistentIndicatorCache<InstitutionalVolumeProfile>(
     `volume-profile:${cacheKey}`,
   );
-  return isExecutionBackedVolumeProfile(persistent) ? persistent : null;
+  return isExecutionBackedVolumeProfile(persistent, args.allowPartialComposite) ? persistent : null;
 }
 
 export async function fetchInstitutionalVolumeProfile(
@@ -1072,10 +1085,7 @@ export async function fetchInstitutionalVolumeProfile(
       }
       const payload = await response.json() as InstitutionalVolumeProfile;
       if (
-        payload.schemaVersion !== "kwantify-volume-profile-v1"
-        || !Array.isArray(payload.levels)
-        || payload.levels.length === 0
-        || payload.complete === false
+        !isExecutionBackedVolumeProfile(payload, args.allowPartialComposite)
         || !Number.isFinite(payload.startMs)
         || payload.startMs <= 0
         || !Number.isFinite(payload.endMs)
@@ -1130,7 +1140,9 @@ export async function fetchInstitutionalVolumeProfile(
         if (oldest === undefined) break;
         volumeProfileResponseCache.delete(oldest);
       }
-      void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, normalizedPayload);
+      if (normalizedPayload.complete !== false) {
+        void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, normalizedPayload);
+      }
       return normalizedPayload;
     } catch (error) {
       rememberVolumeProfileFailure(cacheKey);
@@ -1250,7 +1262,7 @@ export function applyInstitutionalTradesToVolumeProfile(
         ? dailyTradingDate !== null && cmeSessionDateKey(record.timestamp) === dailyTradingDate
         : profile.period === "weekly"
           ? weeklyTradingWeek !== null && cmeTradingWeekKey(record.timestamp) === weeklyTradingWeek
-          : record.timestamp < profile.endMs
+          : profile.followsLiveComposite === true || record.timestamp < profile.endMs
     )
     && record.timestamp > coverageEndMs
     && record.volume >= profile.minTradeVolume
@@ -1348,7 +1360,7 @@ export function applyInstitutionalTradesToVolumeProfile(
   const variance = totalVolume > 0 && nextVwap !== null
     ? Math.max(0, weightedSquaredPrice / totalVolume - nextVwap * nextVwap)
     : 0;
-  const latestTimestamp = eligibleRecords.at(-1)?.timestamp ?? profile.endMs;
+  const latestTimestamp = eligibleRecords.reduce((latest, record) => Math.max(latest, record.timestamp), coverageEndMs);
   const latestMinute = Math.floor(latestTimestamp / 60_000);
   const developingPoc = [...profile.developingPoc];
   if (valueArea.poc !== null) {
@@ -1378,7 +1390,8 @@ export function applyInstitutionalTradesToVolumeProfile(
     asOf: new Date(latestTimestamp).toISOString(),
     // Unsplit daily and weekly profiles grow from the Rithmic execution tape.
     // A named split session has a real closing boundary and keeps it forever.
-    endMs: (profile.period === "daily" || profile.period === "weekly") && !isBoundedDailySession
+    endMs: profile.followsLiveComposite === true
+      || ((profile.period === "daily" || profile.period === "weekly") && !isBoundedDailySession)
       ? Math.max(profile.endMs, latestTimestamp + 1)
       : profile.endMs,
     coverageEndMs: Math.max(coverageEndMs, latestTimestamp),

@@ -72,7 +72,7 @@ import {
   executionCandlePaintBatch,
 } from "@/lib/liveCandleAuthority";
 import { groupByNewYorkDate } from "@/lib/newYorkTradingDay";
-import { resolveCompositeVolumeProfileRange } from "@/lib/compositeVolumeProfile";
+import { compositeArchiveWindow, resolveCompositeVolumeProfileRange } from "@/lib/compositeVolumeProfile";
 import { shouldRetainLastGoodVolumeProfile } from "@/lib/volumeProfileContinuity";
 import { isSameDailyVolumeProfileWindow } from "@/lib/volumeProfileOwnership";
 import { clearChartViewportGroup } from "@/lib/chartViewportSync";
@@ -93,7 +93,7 @@ import {
   type GexVueReplayState,
 } from "@/lib/gexVueReplay";
 
-import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
+import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
 import { warmWorkspaceCodeInBackground } from "@/lib/workspaceCodeWarmup";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
@@ -5647,6 +5647,7 @@ function WorkspaceChartPaneComponent({
   }, [active, onLiveExecutionQuote, pane.id, pane.symbol, replayActive, replayDisplayCandles, replayTimestampMs]);
   const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
+  const [compositeSnapshot, setCompositeSnapshot] = useState<{ key: string; profile: InstitutionalVolumeProfile | null; status: string | null } | null>(null);
   const [weeklyProfileFailure, setWeeklyProfileFailure] = useState<{ key: string; message: string } | null>(null);
   const [dailyProfileFailure, setDailyProfileFailure] = useState<{ key: string; message: string } | null>(null);
   /**
@@ -6083,16 +6084,20 @@ function WorkspaceChartPaneComponent({
     return [...dates].sort().slice(-dailyProfileCount);
   }, [candles, currentDailyTradingDate, dailyProfileCount, filterFutureProfileDates]);
   const dailyTradingDateSignature = dailyTradingDates.join(",");
-  const compositeProfileRange = useMemo(() => resolveCompositeVolumeProfileRange({
+  const compositeProfileRange = useMemo(() => compositeProfileInstance ? resolveCompositeVolumeProfileRange({
     candles,
-    intervalMs: Math.max(1, getTimeframeMs(pane.timeframe)),
+    intervalMs: isEventBasedChartInterval(pane.timeframe) ? null : getTimeframeMs(pane.timeframe),
+    timeframe: pane.timeframe,
+    replayEndMs: replayProfileClockMs,
     mode: compositeProfileSettings.compositeRangeMode,
     lengthValue: compositeProfileSettings.compositeLengthValue,
     customStartMs: compositeProfileSettings.compositeCustomStartMs,
     customEndMs: compositeProfileSettings.compositeCustomEndMs,
     customEndFollowsLatest: compositeProfileSettings.compositeCustomEndFollowsLatest,
-  }), [
+  }) : null, [
     candles,
+    compositeProfileInstance?.instanceId,
+    replayProfileClockMs,
     compositeProfileSettings.compositeCustomEndFollowsLatest,
     compositeProfileSettings.compositeCustomEndMs,
     compositeProfileSettings.compositeCustomStartMs,
@@ -6383,6 +6388,11 @@ function WorkspaceChartPaneComponent({
       startTransition(() => setVolumeProfiles((current) => current.length
         ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, batch))
         : current));
+      if (compositeProfileInstance) startTransition(() => setCompositeSnapshot(current => {
+        if (!current?.profile?.followsLiveComposite) return current;
+        const profile = applyInstitutionalTradesToVolumeProfile(current.profile, batch);
+        return profile === current.profile ? current : { ...current, profile };
+      }));
     }, {
       active: () => activeRef.current && document.visibilityState !== 'hidden',
       checkpoint: record => Math.floor(record.timestamp / 60_000),
@@ -6663,6 +6673,7 @@ function WorkspaceChartPaneComponent({
   }, [
     markMarketActive,
     needsLiveVolumeProfiles,
+    compositeProfileInstance?.instanceId,
     needsOrderFlowHistory,
     beginContinuityRecovery,
     auctionGapLiveActive,
@@ -9218,7 +9229,7 @@ function WorkspaceChartPaneComponent({
     return (["rth", "eth", "custom"].includes(requested) ? requested : "rth") as "rth" | "eth" | "custom";
   };
   useEffect(() => {
-    if (!dailyProfileInstance && !weeklyProfileInstance && !compositeProfileInstance) {
+    if (!dailyProfileInstance && !weeklyProfileInstance && (pane.broker === "Databento" || !compositeProfileInstance)) {
       setVolumeProfiles([]);
       return;
     }
@@ -9228,7 +9239,7 @@ function WorkspaceChartPaneComponent({
     // Globex open even while candle restoration is still in flight. Weekly
     // profiles still require candles to define their visible five-day window.
     if (
-      !dailyProfileInstance && Boolean(weeklyProfileInstance || compositeProfileInstance) && candles.length === 0
+      !dailyProfileInstance && weeklyProfileInstance && candles.length === 0
     ) return;
 
     let cancelled = false;
@@ -9278,8 +9289,6 @@ function WorkspaceChartPaneComponent({
     const requestedWeeklyGroupTicks = 1;
     const requestedWeeklyMinVolume = Math.max(0, Number(weeklyProfileSettings.minTradeVolume ?? 0) || 0);
     const requestedWeeklyMaxVolume = Math.max(0, Number(weeklyProfileSettings.maxTradeVolume ?? 0) || 0);
-    const requestedCompositeMinVolume = Math.max(0, Number(compositeProfileSettings.minTradeVolume ?? 0) || 0);
-    const requestedCompositeMaxVolume = Math.max(0, Number(compositeProfileSettings.maxTradeVolume ?? 0) || 0);
     const profileTradingDateFor = (profile: InstitutionalVolumeProfile) =>
       /^\d{4}-\d{2}-\d{2}$/.test(profile.tradingDate ?? "")
         ? profile.tradingDate!
@@ -9289,7 +9298,7 @@ function WorkspaceChartPaneComponent({
       root: activeRoot,
       contractSymbol: resolvedContractSymbol,
       weeklyEnabled: Boolean(weeklyProfileInstance),
-      compositeEnabled: Boolean(compositeProfileInstance && compositeProfileRange),
+      compositeEnabled: false,
     };
     const matchesRequestedProfile = (profile: InstitutionalVolumeProfile) => {
       if (!isExecutionBackedVolumeProfile(profile) || profile.root !== activeRoot) return false;
@@ -9300,18 +9309,12 @@ function WorkspaceChartPaneComponent({
         : undefined;
       const expectedGroupTicks = profile.period === "weekly"
         ? requestedWeeklyGroupTicks
-        : profile.period === "custom"
-          ? 1
         : requestedDailyGroupTicks;
       const expectedMinVolume = profile.period === "weekly"
         ? requestedWeeklyMinVolume
-        : profile.period === "custom"
-          ? requestedCompositeMinVolume
         : dailyOwner?.minVolume;
       const expectedMaxVolume = profile.period === "weekly"
         ? requestedWeeklyMaxVolume
-        : profile.period === "custom"
-          ? requestedCompositeMaxVolume
         : dailyOwner?.maxVolume;
       if (
         profile.groupTicks !== expectedGroupTicks
@@ -9323,10 +9326,7 @@ function WorkspaceChartPaneComponent({
           && dailyOwner.tradingDates.has(profileTradingDateFor(profile))
           && profileMatchesRequestedSessions(profile.sessionId, dailyOwner.sessions));
       }
-      if (profile.period === "weekly") return Boolean(weeklyProfileInstance);
-      return profile.period === "custom"
-        && Boolean(compositeProfileInstance && compositeProfileRange)
-        && profile.startMs === compositeProfileRange!.startMs;
+      return profile.period === "weekly" && Boolean(weeklyProfileInstance);
     };
     // A volume profile is an execution-tape surface. OHLCV cannot recover the
     // traded-at-price distribution or aggressor-side delta, so it is never an
@@ -9585,29 +9585,6 @@ function WorkspaceChartPaneComponent({
           });
         })());
       }
-      if (compositeProfileInstance && compositeProfileRange && includeCompletedProfiles) {
-        const profileClockMs = replayProfileClockMs ?? Date.now();
-        const compositeRequestArgs = {
-          symbol: displayCmeSymbol(pane.symbol),
-          contractSymbol: resolvedContractSymbol ?? undefined,
-          period: "custom",
-          startMs: compositeProfileRange.startMs,
-          endMs: replayProfileClockMs == null ? compositeProfileRange.endMs : Math.min(compositeProfileRange.endMs, profileClockMs),
-          groupTicks: 1,
-          valueAreaPercent: Number(compositeProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
-          minTradeVolume: requestedCompositeMinVolume,
-          maxTradeVolume: requestedCompositeMaxVolume,
-          filterMode: sessionFilterModeFor(compositeProfileSettings),
-          filterTime: sessionFilterTimeFor(compositeProfileSettings),
-          sessionStartMinutes: Number(compositeProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
-          sessionEndMinutes: Number(compositeProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
-          useEndSessionAsStartDay: compositeProfileSettings.useEndSessionAsStartDay === true,
-        } as const;
-        requests.push((async () => {
-          replaceExactProfile(await readCachedInstitutionalVolumeProfile(compositeRequestArgs));
-          replaceExactProfile(await fetchInstitutionalVolumeProfile(compositeRequestArgs));
-        })());
-      }
       // Older requests paint independently. They must not postpone retrying
       // the newest profile if its first request missed.
       void Promise.allSettled(requests);
@@ -9666,17 +9643,124 @@ function WorkspaceChartPaneComponent({
     weeklyProfileSettings.maxTradeVolume,
     weeklyProfileSettings.minTradeVolume,
     compositeProfileInstance?.instanceId,
-    compositeProfileRange?.startMs,
-    compositeProfileRange?.endMs,
-    compositeProfileSettings.filterMode,
-    compositeProfileSettings.filterTime,
-    compositeProfileSettings.sessionStartMinutes,
-    compositeProfileSettings.sessionEndMinutes,
-    compositeProfileSettings.useEndSessionAsStartDay,
-    compositeProfileSettings.valueAreaPercent,
-    compositeProfileSettings.maxTradeVolume,
-    compositeProfileSettings.minTradeVolume,
   ]);
+
+  const compositeProfileKey = JSON.stringify([
+    compositeProfileInstance?.instanceId, pane.symbol, pane.timeframe, resolvedContractSymbol, replayProfileClockMs !== null,
+    compositeProfileSettings.compositeRangeMode, compositeProfileSettings.compositeLengthValue,
+    compositeProfileSettings.compositeCustomStartMs, compositeProfileSettings.compositeCustomEndMs,
+    compositeProfileSettings.compositeCustomEndFollowsLatest, compositeProfileSettings.filterMode,
+    compositeProfileSettings.filterTime, compositeProfileSettings.sessionStartMinutes,
+    compositeProfileSettings.sessionEndMinutes, compositeProfileSettings.useEndSessionAsStartDay,
+    compositeProfileSettings.valueAreaPercent, compositeProfileSettings.minTradeVolume,
+    compositeProfileSettings.maxTradeVolume,
+  ]);
+  const compositeRangeReady = compositeProfileRange !== null;
+  const readCompositeRequest = useEffectEvent(() => {
+    if (!compositeProfileRange) return null;
+    const clockMs = replayProfileClockMs ?? Date.now();
+    const archiveWindow = compositeArchiveWindow(compositeProfileRange, clockMs);
+    if (!archiveWindow) return null;
+    const filterMode = sessionFilterModeFor(compositeProfileSettings);
+    const filterTime = sessionFilterTimeFor(compositeProfileSettings);
+    const sessionStartMinutes = Number(compositeProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES);
+    const sessionEndMinutes = Number(compositeProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES);
+    const useEndSessionAsStartDay = compositeProfileSettings.useEndSessionAsStartDay === true;
+    // The gateway can narrow one window. For disjoint sessions it would
+    // return the unfiltered range, which must not be shown as filtered data.
+    const segments = filterMode === "none" ? null : resolveSessionSegments(archiveWindow.startMs, archiveWindow.endMs, {
+      mode: filterMode, window: filterTime, customStartMinutes: sessionStartMinutes,
+      customEndMinutes: sessionEndMinutes, useEndSessionAsStartDay,
+    });
+    const effectiveWindow = segments === null ? archiveWindow : segments.length === 1 ? segments[0] : null;
+    const fixedEnd = compositeProfileSettings.compositeRangeMode === "custom"
+      && compositeProfileSettings.compositeCustomEndFollowsLatest === false;
+    return {
+      args: {
+        symbol: displayCmeSymbol(pane.symbol),
+        contractSymbol: resolvedContractSymbol ?? undefined,
+        period: "custom",
+        ...archiveWindow,
+        groupTicks: 1,
+        valueAreaPercent: Number(compositeProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
+        minTradeVolume: Math.max(0, Number(compositeProfileSettings.minTradeVolume) || 0),
+        maxTradeVolume: Math.max(0, Number(compositeProfileSettings.maxTradeVolume) || 0),
+        filterMode, filterTime, sessionStartMinutes, sessionEndMinutes, useEndSessionAsStartDay,
+        allowPartialComposite: true,
+      } as const,
+      effectiveWindow,
+      followsLive: replayProfileClockMs === null && !fixedEnd && segments === null
+        && compositeProfileRange.endMs > archiveWindow.endMs,
+      trimmedBoundary: archiveWindow.startMs > compositeProfileRange.startMs
+        || (compositeProfileRange.endMs < clockMs && archiveWindow.endMs < compositeProfileRange.endMs),
+    };
+  });
+  const topUpCompositeProfile = useEffectEvent((profile: InstitutionalVolumeProfile) =>
+    applyInstitutionalTradesToVolumeProfile(profile, latestMarketTradesRef.current));
+  useEffect(() => {
+    const instanceId = compositeProfileInstance?.instanceId;
+    if (pane.broker !== "Databento" || !instanceId || !compositeRangeReady) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    let lastCompleteWindow: string | null = null;
+    const publish = (profile: InstitutionalVolumeProfile | null, status: string | null) => {
+      if (!cancelled) setCompositeSnapshot(current => ({
+        key: compositeProfileKey,
+        profile: profile ?? (current?.key === compositeProfileKey && current.profile
+          && (replayProfileClockMs === null || current.profile.endMs <= replayProfileClockMs) ? current.profile : null),
+        status,
+      }));
+    };
+    const refresh = async () => {
+      const request = readCompositeRequest();
+      if (!request) {
+        publish(null, "Waiting for a recorded full minute in this range");
+      } else if (!request.effectiveWindow) {
+        publish(null, "This filter needs a single session window");
+      } else {
+        const { args, effectiveWindow, followsLive, trimmedBoundary } = request;
+        const windowKey = effectiveWindow.startMs + ":" + effectiveWindow.endMs;
+        if (windowKey !== lastCompleteWindow) {
+          const paint = (profile: InstitutionalVolumeProfile | null) => {
+            if (cancelled || !isExecutionBackedVolumeProfile(profile, true)
+              || profile.root !== args.symbol || profile.period !== "custom"
+              || (args.contractSymbol && args.contractSymbol !== profile.contractSymbol)
+              || profile.startMs !== effectiveWindow.startMs || profile.endMs !== effectiveWindow.endMs
+              || profile.groupTicks !== args.groupTicks || profile.minTradeVolume !== args.minTradeVolume
+              || profile.maxTradeVolume !== args.maxTradeVolume) return false;
+            const owned = { ...profile, ownerInstanceId: instanceId, followsLiveComposite: followsLive };
+            const missingCount = profile.missingSessionDates?.length ?? 0;
+            const coverage = profile.complete === false
+              ? (missingCount ? missingCount + (missingCount === 1 ? " session missing" : " sessions missing") : "Partial execution history")
+              : null;
+            publish(followsLive ? topUpCompositeProfile(owned) : owned,
+              [coverage, trimmedBoundary ? "Whole recorded minutes only" : null].filter(Boolean).join(" · ") || null);
+            return true;
+          };
+          const cached = await readCachedInstitutionalVolumeProfile(args);
+          if (cancelled) return;
+          const restored = paint(cached);
+          const profile = await fetchInstitutionalVolumeProfile(args);
+          if (paint(profile)) {
+            if (profile?.complete === true) lastCompleteWindow = windowKey;
+          } else if (!restored) {
+            publish(null, "Recorded executions unavailable for this range");
+          }
+        }
+      }
+      if (!cancelled && replayProfileClockMs === null) timer = window.setTimeout(() => void refresh(), 60_000);
+    };
+    void refresh();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [compositeProfileInstance?.instanceId, compositeProfileKey, compositeRangeReady, pane.broker, replayProfileClockMs]);
+  const scopedComposite = pane.broker === "Databento" && compositeRangeReady
+    && compositeSnapshot?.key === compositeProfileKey ? compositeSnapshot : null;
+  const chartVolumeProfiles = useMemo(() => scopedComposite?.profile
+    ? [...volumeProfiles, scopedComposite.profile] : volumeProfiles,
+  [scopedComposite?.profile, volumeProfiles]);
 
   useEffect(() => {
     if (!active) {
@@ -9847,7 +9931,8 @@ function WorkspaceChartPaneComponent({
           classicGexLoading={classicGexLoading}
           classicGexError={classicGexIndicator && !replayActive && !classicGexLive ? "Requires a recorded NQ or MNQ chart." : classicGexError}
           expectedMoveCalibration={expectedMoveCalibration}
-          volumeProfiles={replayTimestampMs ? volumeProfiles.filter(profile => profile.endMs <= replayTimestampMs) : volumeProfiles}
+          volumeProfiles={replayTimestampMs ? chartVolumeProfiles.filter(profile => profile.endMs <= replayTimestampMs) : chartVolumeProfiles}
+          compositeVolumeProfileStatus={scopedComposite?.status}
           volumeProfileError={weeklyProfileInstance && weeklyProfileFailure?.key === `${displayCmeSymbol(pane.symbol)}:${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`
               ? `Weekly Volume Profile: ${weeklyProfileFailure.message}`
               : dailyProfileInstance && dailyProfileFailure?.key === `${displayCmeSymbol(pane.symbol)}:${resolvedContractSymbol}:${dailyProfileInstance.instanceId}`

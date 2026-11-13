@@ -53,6 +53,31 @@ assert.equal(
   "an incomplete custom range must never issue a fabricated request",
 );
 
+
+const { compositeArchiveWindow } = await import("../src/lib/compositeVolumeProfile.ts");
+const base = Date.parse("2026-11-12T15:00:00Z");
+const eventBars = [
+  { timestamp: base + 1_000, sourceStartTimestamp: base + 1_000, sourceEndTimestamp: base + 29_100 },
+  { timestamp: base + 29_200, sourceStartTimestamp: base + 29_200, sourceEndTimestamp: base + 91_500 },
+  { timestamp: base + 94_500, sourceStartTimestamp: base + 94_500, sourceEndTimestamp: base + 134_800 },
+];
+const eventRange = resolveCompositeVolumeProfileRange({
+  candles: eventBars, intervalMs: null, mode: "rolling-bars", lengthValue: 2,
+});
+assert.deepEqual(eventRange, { startMs: base + 29_200, endMs: base + 134_801 });
+assert.deepEqual(compositeArchiveWindow(eventRange, base + 130_000), {
+  startMs: base + minute, endMs: base + 2 * minute,
+});
+assert.equal(compositeArchiveWindow(eventRange, base + 59_999), null);
+assert.deepEqual(resolveCompositeVolumeProfileRange({
+  candles: eventBars, intervalMs: null, mode: "rolling-bars", lengthValue: 1,
+  replayEndMs: base + 90_000,
+}), { startMs: base + 29_200, endMs: base + 90_000 });
+assert.equal(resolveCompositeVolumeProfileRange({
+  candles, intervalMs: minute, mode: "custom", lengthValue: 1, customStartMs: minute,
+  customEndFollowsLatest: false,
+}), null);
+
 const config = readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8");
 const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
 const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");

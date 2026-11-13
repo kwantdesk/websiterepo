@@ -867,6 +867,7 @@ interface ChartProps {
   expectedMoveCalibration?: ChartGammaCalibration | null;
   volumeProfiles?: InstitutionalVolumeProfile[];
   volumeProfileError?: string | null;
+  compositeVolumeProfileStatus?: string | null;
   onUpdateIndicatorSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenIndicatorSettings?: (instanceId: string) => void;
   settings?: ChartSettings;
@@ -3303,6 +3304,7 @@ function Chart({
   expectedMoveCalibration = null,
   volumeProfiles = EMPTY_CHART_ITEMS,
   volumeProfileError = null,
+  compositeVolumeProfileStatus = null,
   onUpdateIndicatorSetting,
   onOpenIndicatorSettings,
   settings = defaultChartSettings,
@@ -17575,7 +17577,7 @@ function Chart({
       if (!instance || profile.levels.length === 0) return [];
       // No native volume-profile mode may render a candle-distributed proxy.
       // It has neither true traded-at-price volume nor aggressor-side delta.
-      if (!isExecutionBackedVolumeProfile(profile) && !isCandleBackedVolumeProfile(profile)) return [];
+      if (!isExecutionBackedVolumeProfile(profile, instance.indicatorId === "composite-volume-profile") && !isCandleBackedVolumeProfile(profile)) return [];
       const profileSettings = instance.settings ?? {};
       const useThemeColors = profileSettings.useThemeColors !== false;
       const levelsVisible = profileSettings.recentLevelsOnly !== true
@@ -20892,6 +20894,11 @@ function Chart({
         >
           <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
           <span>Syncing {instrument} Gamma</span>
+        </ChartIndicatorStatusBadge>
+      ) : null}
+      {compositeVolumeProfileStatus ? (
+        <ChartIndicatorStatusBadge role="status" className="rounded-md border border-border bg-panel px-2 py-1 text-[10px] text-foreground">
+          Composite Volume Profile · {compositeVolumeProfileStatus}
         </ChartIndicatorStatusBadge>
       ) : null}
       {volumeProfileError ? (
