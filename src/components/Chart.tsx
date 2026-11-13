@@ -5616,9 +5616,9 @@ function Chart({
   // make a healthy Rithmic tape look as if it were updating every 1-2 seconds.
   const instantTapeFrame = useMemo(
     () => instantTapeIndicator
-      ? buildSpeedOfTapeInstantFrame(marketTrades, instantTapeSettings)
+      ? buildSpeedOfTapeInstantFrame(marketTrades, instantTapeSettings, replayTimestampMs ?? undefined)
       : null,
-    [instantTapeIndicator, instantTapeSettings, marketTrades, marketTradesVersion],
+    [instantTapeIndicator, instantTapeSettings, marketTrades, marketTradesVersion, replayTimestampMs],
   );
   const tapeSpeedSettings = useMemo(() => {
     const normalized = normalizeTapeSpeedSettings(tapeSpeedIndicator?.settings);
@@ -20914,7 +20914,7 @@ function Chart({
               {id === "indicator-panes" ? <div ref={setRightIndicatorPaneHost} className="relative h-full w-full" />
                 : id === "instant-tape" ? instantTapeFrame && (
                   <SpeedOfTapeInstantOverlay
-                    frame={instantTapeFrame} settings={instantTapeSettings}
+                    frame={instantTapeFrame} settings={instantTapeSettings} trades={marketTrades}
                     top={topIndicatorPaneHeight} bottom={indicatorPaneHeight + nativeTimeScaleHeight}
                     width={width} backgroundColor={settings.backgroundColor}
                     eventKey={replayTimestampMs == null ? liveCandleEventKey : undefined}

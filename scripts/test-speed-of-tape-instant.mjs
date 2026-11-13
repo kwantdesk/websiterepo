@@ -74,7 +74,7 @@ const tape = [
   assert.match(config, /"speed-of-tape-instant"/);
   assert.match(controls, /<option value="volume">Volume<\/option><option value="trades">Trades<\/option>/);
   assert.match(controls, /<option value="total">Total<\/option>.*<option value="delta">Delta<\/option>/s);
-  assert.match(chart, /buildSpeedOfTapeInstantFrame\(marketTrades, instantTapeSettings\)/);
+  assert.match(chart, /buildSpeedOfTapeInstantFrame\(marketTrades, instantTapeSettings, replayTimestampMs/);
   assert.equal(CHART_INDICATOR_BY_ID.get("speed-of-tape-instant")?.name, "Speed of Tape (Vertical)");
   assert.equal(CHART_INDICATOR_BY_ID.get("speed-of-tape")?.name, "Speed of Tape");
   assert.match(chart, /layoutRightStudyLanes\(chartDockWidth, \[\s*\.\.\.\(instantTapeIndicator/);
@@ -86,8 +86,8 @@ const tape = [
   assert.match(workspace, /const baseCadence = footprintLiveActive && !instantTapeLiveActive/);
   const overlay = fs.readFileSync(new URL("../src/components/SpeedOfTapeInstantOverlay.tsx", import.meta.url), "utf8");
   assert.match(overlay, /bottom: settings\.textEnabled \? 16 : 0/);
-  assert.match(overlay, /speedOfTapeMeterTopPercent\(value, largest\)/);
+  assert.match(overlay, /data-tape-wick/);
   assert.match(overlay, /S-T\(\{settings\.numberOfSeconds\}\)/);
 }
 
-console.log("Speed of Tape (Vertical) fixtures passed: 6/6");
+console.log("Speed of Tape (Vertical) calculation and chart wiring fixtures passed");

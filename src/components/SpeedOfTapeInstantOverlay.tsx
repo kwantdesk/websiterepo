@@ -4,15 +4,16 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { LIVE_CHART_EXECUTION_EVENT, type LiveChartExecutionDetail } from "@/lib/chartLiveEvents";
 import {
   buildSpeedOfTapeInstantFrame,
-  speedOfTapeMeterHeightPercent,
-  speedOfTapeMeterTopPercent,
+  SPEED_OF_TAPE_PLOT_TOP_MARGIN_PERCENT,
   type SpeedOfTapeInstantFrame,
   type SpeedOfTapeInstantSettings,
 } from "@/lib/speedOfTapeInstant";
+import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
 type Props = {
   frame: SpeedOfTapeInstantFrame;
   settings: SpeedOfTapeInstantSettings;
+  trades: readonly InstitutionalTrade[];
   top: number;
   bottom: number;
   width: number;
@@ -23,6 +24,7 @@ type Props = {
 export default function SpeedOfTapeInstantOverlay({
   frame,
   settings,
+  trades,
   top,
   bottom,
   width,
@@ -31,21 +33,40 @@ export default function SpeedOfTapeInstantOverlay({
 }: Props) {
   const [retainedLiveFrame, setLiveFrame] = useState(frame);
   const liveFrame = eventKey ? retainedLiveFrame : frame;
-  useEffect(() => setLiveFrame(frame), [frame]);
   useEffect(() => {
     if (!eventKey) return;
+    let tape = trades;
+    let timeout: number | undefined;
+    const update = () => {
+      window.clearTimeout(timeout);
+      const now = Date.now();
+      const next = buildSpeedOfTapeInstantFrame(tape, settings, now);
+      setLiveFrame(next);
+      if (next.nextChangeMs !== undefined) {
+        timeout = window.setTimeout(update, Math.max(1, next.nextChangeMs - now));
+      }
+    };
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
-      if (!detail || detail.key !== eventKey) return;
-      setLiveFrame(buildSpeedOfTapeInstantFrame(detail.tape, settings));
+      if (detail?.key !== eventKey) return;
+      tape = detail.tape;
+      update();
     };
     window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
-    return () => window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
-  }, [eventKey, settings]);
+    update();
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
+    };
+  }, [eventKey, settings, trades, frame]);
 
   if (!liveFrame.bars.length) return null;
   const sd2 = liveFrame.mean + liveFrame.standardDeviation * 2;
-  const largest = Math.max(settings.scaleMinValue, sd2, ...liveFrame.bars.map((bar) => Math.abs(bar.value)), 1);
+  const upper = Math.max(settings.scaleMinValue, settings.showStandardDeviations ? sd2 : 0,
+    ...liveFrame.bars.map(bar => bar.high), 1);
+  const lower = Math.min(0, ...liveFrame.bars.map(bar => bar.low));
+  const padding = SPEED_OF_TAPE_PLOT_TOP_MARGIN_PERCENT;
+  const yFor = (value: number) => padding + (upper - value) / (upper - lower) * (100 - padding);
   const label = `${settings.numberOfSeconds}s ${settings.inputData === "trades" ? "T" : "V"}`;
   return (
     <div
@@ -60,7 +81,7 @@ export default function SpeedOfTapeInstantOverlay({
       >
         {settings.showStandardDeviations && liveFrame.standardDeviation > 0 ? [1, 2].map((multiple) => {
           const value = liveFrame.mean + liveFrame.standardDeviation * multiple;
-          const y = speedOfTapeMeterTopPercent(value, largest);
+          const y = yFor(value);
           return (
             <div
               key={multiple}
@@ -78,20 +99,26 @@ export default function SpeedOfTapeInstantOverlay({
             </div>
           );
         }) : null}
-        <div className="absolute inset-0 flex items-end gap-0.5 px-0.5">
+        <div className="absolute inset-0 flex gap-0.5 px-0.5">
           {liveFrame.bars.map((bar) => {
             const positive = bar.positive;
             const borderColor = positive ? settings.positiveBorderColor : settings.negativeBorderColor;
             const fillColor = positive ? settings.positiveFillColor : settings.negativeFillColor;
-            const height = speedOfTapeMeterHeightPercent(bar.value, largest);
+            const bodyTop = yFor(Math.max(bar.open, bar.value));
+            const bodyBottom = yFor(Math.min(bar.open, bar.value));
+            const wickTop = yFor(bar.high);
+            const wickBottom = yFor(bar.low);
             const style: CSSProperties = {
-              height: bar.value === 0 ? 0 : `max(2px, ${height}%)`,
-              borderColor,
-              backgroundColor: fillColor,
-              borderWidth: settings.lineWidth,
-              boxSizing: "border-box",
+              top: bodyTop + "%", height: "max(1px, " + (bodyBottom - bodyTop) + "%)",
+              borderColor, backgroundColor: fillColor, borderWidth: settings.lineWidth, boxSizing: "border-box",
             };
-            return <i key={bar.startMs} className="block min-w-0 flex-1 border-solid" style={style} />;
+            return (
+              <div key={bar.startMs} className="relative h-full min-w-0 flex-1">
+                {bar.high !== bar.low && <i data-tape-wick className="absolute left-1/2 -translate-x-1/2"
+                  style={{ top: wickTop + "%", height: (wickBottom - wickTop) + "%", width: Math.min(2, settings.lineWidth), backgroundColor: borderColor }} />}
+                {(bar.high !== 0 || bar.low !== 0) && <i className="absolute inset-x-0 border-solid" style={style} />}
+              </div>
+            );
           })}
         </div>
       </div>

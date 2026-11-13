@@ -64,6 +64,9 @@ export type SpeedOfTapeInstantBar = {
   sell: number;
   delta: number;
   value: number;
+  open: number;
+  high: number;
+  low: number;
   positive: boolean;
 };
 
@@ -72,6 +75,7 @@ export type SpeedOfTapeInstantFrame = {
   mean: number;
   standardDeviation: number;
   latestTradeMs: number | null;
+  nextChangeMs?: number;
 };
 
 const finite = (value: unknown, fallback: number) => {
@@ -136,79 +140,95 @@ function selectedValue(
   return total;
 }
 
-/**
- * Builds the DeepCharts-style instant tape-speed columns from actual
- * executions. Each column owns one non-overlapping N-second exchange window;
- * OHLCV candles are never used as a substitute for a missing execution tape.
- */
+/** Sample the trailing execution window at arrivals, expiries and candle boundaries. */
 export function buildSpeedOfTapeInstantFrame(
   tradesInput: readonly InstitutionalTrade[],
   settingsInput?: Record<string, unknown> | Partial<SpeedOfTapeInstantSettings> | null,
+  asOfMs?: number,
 ): SpeedOfTapeInstantFrame {
   const settings = normalizeSpeedOfTapeInstantSettings(settingsInput);
   const bucketMs = settings.numberOfSeconds * 1_000;
-  const exact = tradesInput
-    .filter((trade) => !trade.flowOnly && Number.isFinite(trade.timestamp) && Number.isFinite(trade.volume));
-  let ordered = true;
-  for (let index = 1; index < exact.length; index += 1) {
-    if (exact[index].timestamp < exact[index - 1].timestamp) { ordered = false; break; }
+  const compare = (a: InstitutionalTrade, b: InstitutionalTrade) =>
+    a.timestamp - b.timestamp || a.recordIndex - b.recordIndex;
+  const trades = tradesInput.some((trade, index) => !Number.isFinite(trade.timestamp)
+    || (index > 0 && compare(tradesInput[index - 1], trade) > 0))
+    ? tradesInput.filter(trade => Number.isFinite(trade.timestamp)).sort(compare)
+    : tradesInput;
+  const isExecution = (trade: InstitutionalTrade) =>
+    !trade.flowOnly && !trade.footprintSummary && Number.isFinite(trade.volume) && trade.volume > 0;
+  let latestTradeMs: number | null = null;
+  for (let i = trades.length - 1; i >= 0; i--) {
+    const trade = trades[i];
+    if ((asOfMs === undefined || trade.timestamp <= asOfMs) && isExecution(trade)) {
+      latestTradeMs = trade.timestamp;
+      break;
+    }
   }
-  if (!ordered) exact.sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
-  if (!exact.length) return { bars: [], mean: 0, standardDeviation: 0, latestTradeMs: null };
-
-  const latestTradeMs = exact.at(-1)!.timestamp;
-  const latestStartMs = Math.floor(latestTradeMs / bucketMs) * bucketMs;
+  if (latestTradeMs === null) return { bars: [], mean: 0, standardDeviation: 0, latestTradeMs };
+  const clock = asOfMs ?? latestTradeMs;
+  const latestStartMs = Math.floor(clock / bucketMs) * bucketMs;
   const baselineCount = Math.max(settings.barsToShow, settings.standardDeviationLookback);
   const firstStartMs = latestStartMs - (baselineCount - 1) * bucketMs;
-  let low = 0;
-  let high = exact.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (exact[middle].timestamp < firstStartMs) low = middle + 1;
-    else high = middle;
+  let start = 0, end = trades.length;
+  while (start < end) {
+    const middle = (start + end) >>> 1;
+    if (trades[middle].timestamp <= firstStartMs - bucketMs) start = middle + 1;
+    else end = middle;
   }
-  // The canonical Rithmic tape can hold tens of thousands of prints. Only the
-  // configured baseline horizon can affect this rail, so do not clone/sort or
-  // filter the unreachable historical prefix on every live packet.
-  const eligible = exact.slice(low)
-    .filter((trade) => {
-      const size = Math.max(0, Number(trade.volume));
-      return size >= settings.filterMin && (settings.filterMax <= 0 || size <= settings.filterMax);
+
+  const eligible: Array<{ time: number; size: number; side: InstitutionalTrade["aggressor"] }> = [];
+  for (let i = start; i < trades.length && trades[i].timestamp <= clock; i++) {
+    const trade = trades[i];
+    if (!isExecution(trade) || trade.volume < settings.filterMin
+      || (settings.filterMax > 0 && trade.volume > settings.filterMax)) continue;
+    const size = settings.inputData === "trades" ? Math.max(1, finite(trade.trades, 1)) : trade.volume;
+    eligible.push({ time: trade.timestamp, size, side: trade.aggressor });
+  }
+  let left = 0, right = 0, total = 0, buy = 0, sell = 0;
+  const update = (trade: (typeof eligible)[number], sign: number) => {
+    const change = trade.size * sign;
+    total += change;
+    if (trade.side === "BUY") buy += change;
+    else if (trade.side === "SELL") sell += change;
+  };
+  const value = () => selectedValue(settings.displayValue, total, buy, sell);
+  const advance = (cutoff: number, sample?: () => void) => {
+    while (true) {
+      const arrival = eligible[right]?.time ?? Infinity;
+      const expiry = left < right ? eligible[left].time + bucketMs : Infinity;
+      const next = Math.min(arrival, expiry);
+      if (next > cutoff) return;
+      while (left < right && eligible[left].time + bucketMs <= next) update(eligible[left++], -1);
+      while (eligible[right]?.time === next) update(eligible[right++], 1);
+      sample?.();
+    }
+  };
+
+  const firstTradeMs = trades.find(isExecution)!.timestamp;
+  const firstVisibleBucket = Math.max(firstStartMs, Math.floor(firstTradeMs / bucketMs) * bucketMs);
+  const bars: SpeedOfTapeInstantBar[] = [];
+  for (let startMs = firstVisibleBucket; startMs <= latestStartMs; startMs += bucketMs) {
+    const endMs = startMs + bucketMs;
+    advance(startMs);
+    const open = value();
+    let high = open, low = open;
+    advance(Math.min(endMs - 1, clock), () => {
+      const current = value();
+      high = Math.max(high, current);
+      low = Math.min(low, current);
     });
-  if (!eligible.length) return { bars: [], mean: 0, standardDeviation: 0, latestTradeMs: null };
-  const buckets = Array.from({ length: baselineCount }, (_, index) => ({
-    startMs: firstStartMs + index * bucketMs,
-    endMs: firstStartMs + (index + 1) * bucketMs,
-    total: 0,
-    buy: 0,
-    sell: 0,
-  }));
-
-  for (const trade of eligible) {
-    const index = Math.floor((trade.timestamp - firstStartMs) / bucketMs);
-    if (index < 0 || index >= buckets.length) continue;
-    const weight = settings.inputData === "trades" ? Math.max(1, Number(trade.trades) || 1) : Math.max(0, Number(trade.volume));
-    buckets[index].total += weight;
-    if (trade.aggressor === "BUY") buckets[index].buy += weight;
-    else if (trade.aggressor === "SELL") buckets[index].sell += weight;
+    const delta = buy - sell;
+    bars.push({ startMs, endMs, total, buy, sell, delta, open, high, low, value: value(), positive: delta >= 0 });
   }
-
-  const allBars: SpeedOfTapeInstantBar[] = buckets.map((bucket) => {
-    const value = selectedValue(settings.displayValue, bucket.total, bucket.buy, bucket.sell);
-    // DeepCharts names these paint slots Delta Positive/Negative. The height
-    // is the chosen speed metric; the side colour remains execution delta so
-    // Total and Trades do not lose which aggressor controlled the window.
-    const delta = bucket.buy - bucket.sell;
-    return { ...bucket, delta, value, positive: delta >= 0 };
-  });
-  const baselineValues = allBars.map((bar) => Math.abs(bar.value));
-  const mean = baselineValues.reduce((sum, value) => sum + value, 0) / Math.max(1, baselineValues.length);
-  const variance = baselineValues.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, baselineValues.length);
-  const visible = allBars.slice(-settings.barsToShow);
+  const baselineValues = bars.slice(-settings.standardDeviationLookback).map(bar => Math.abs(bar.value));
+  const mean = baselineValues.reduce((sum, item) => sum + item, 0) / baselineValues.length;
+  const variance = baselineValues.reduce((sum, item) => sum + (item - mean) ** 2, 0) / baselineValues.length;
+  const visible = bars.slice(-settings.barsToShow);
+  const nextExpiry = left < right ? eligible[left].time + bucketMs : Infinity;
+  const nextChangeMs = visible.some(bar => bar.high !== 0 || bar.low !== 0)
+    ? Math.min(latestStartMs + bucketMs, nextExpiry) : undefined;
   return {
-    bars: settings.plotReversed ? [...visible].reverse() : visible,
-    mean,
-    standardDeviation: Math.sqrt(variance),
-    latestTradeMs,
+    bars: settings.plotReversed ? visible.reverse() : visible,
+    mean, standardDeviation: Math.sqrt(variance), latestTradeMs, nextChangeMs,
   };
 }

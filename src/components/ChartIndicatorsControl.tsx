@@ -6034,7 +6034,7 @@ export default function ChartIndicatorsControl({
                       </KwantSelect>
                     </label>
                   </div>
-                  <p className="text-[8px] leading-4 text-muted">Vertical instant tape beside the live price scale. It is calculated only from direct Rithmic executions; candles are never substituted when the tape is unavailable.</p>
+                  <p className="text-[8px] leading-4 text-muted">Each candle samples a rolling window of executions. The body shows its opening and closing values, and the wicks show the highest and lowest values reached.</p>
                 </div>
               ) : null}
 
