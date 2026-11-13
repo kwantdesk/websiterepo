@@ -15,6 +15,7 @@ import { calculateIchimoku } from "@/lib/ichimoku";
 import type { IchimokuCloudOptions } from "@/lib/ichimokuCloudPrimitive";
 import type { ZigZagRetracementOptions } from "@/lib/zigZagRetracementPrimitive";
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
+import { rsiSettings } from "@/lib/relativeStrengthIndex";
 import { calculateCci, cciAverageType, CCI_DEFAULTS } from "@/lib/commodityChannelIndex";
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
@@ -39,7 +40,7 @@ import { calculateDeepEffortAverage } from "@/lib/deepEffort";
 import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
-import { cciThemeColors, AROON_OSCILLATOR_COLORS, AROON_OSCILLATOR_LENGTH, applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
+import { cciThemeColors, AROON_OSCILLATOR_COLORS, AROON_OSCILLATOR_LENGTH, applyIndicatorPlotColors, defaultIndicatorPlotColors } from "@/lib/indicatorPlotColors";
 import { calculateDeepDeltaBars, normalizeDeepDeltaSettings } from "@/lib/deepDelta";
 import {
   calculatePeriodVwap,
@@ -1141,7 +1142,9 @@ function computeIndicatorSeries(
   const lows = candles.map((candle) => candle.low);
 
   if (key === "relative-strength-index-rsi") {
-    const length = Math.max(2, Math.round(settingNumber(instance, "length", 14)));
+    const config = rsiSettings(instance.settings);
+    const colors = defaultIndicatorPlotColors(key, theme);
+    const { length } = config;
     const gains = closes.map((close, index) => index === 0 ? 0 : Math.max(0, close - closes[index - 1]));
     const losses = closes.map((close, index) => index === 0 ? 0 : Math.max(0, closes[index - 1] - close));
     const averageGain = wilder(gains.slice(1), length);
@@ -1151,15 +1154,34 @@ function computeIndicatorSeries(
       const loss = averageLoss[index];
       values.push(gain == null || loss == null ? null : loss === 0 ? 100 : 100 - 100 / (1 + gain / loss));
     });
-    return [{
-      key,
-      label: `RSI ${length}`,
-      kind: "line",
-      placement: "pane",
-      color: theme.primary,
-      lineWidth: 2,
-      data: lineData(candles, values),
+    const data = lineData(candles, values);
+    const series: CalculatedIndicatorSeries[] = [{
+      key, label: `RSI (${length})`, kind: "line", placement: "pane",
+      color: colors.plotColor, lineWidth: 2, data,
     }];
+    if (config.showAverage) {
+      const average = smoother(config.averageLength, config.averageType);
+      const averageData = lineData(candles, values.map(value => average.push(value ?? NaN) ?? null));
+      const averageLabel = { simple: "SMA", exponential: "EMA", triangular: "TMA", weighted: "WMA" }[config.averageType];
+      series.push({
+        key: `${key}-average`, label: `${averageLabel} (${config.averageLength})`, kind: "line", placement: "pane",
+        color: colors.averageColor, lineWidth: 1, data: averageData,
+      });
+    }
+    if (config.showLevels && data.length) {
+      const inPane = !momentumOnChart(instance);
+      for (const [name, value, color] of [
+        ["overbought", config.overboughtLevel, colors.overboughtColor],
+        ["oversold", config.oversoldLevel, colors.oversoldColor],
+      ] as const) {
+        series.push({
+          key: `${key}-${name}`, label: String(value), kind: "line", placement: "pane", color,
+          lineWidth: config.levelLineWidth, lineStyle: "dotted", horizontalPriceLine: inPane, lastValueVisible: false,
+          data: inPane ? [{ time: data[0].time, value }] : data.map(point => ({ time: point.time, value })),
+        });
+      }
+    }
+    return series;
   }
 
   if (key === "rate-of-change-roc" || key === "momentum-indicator") {

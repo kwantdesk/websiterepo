@@ -1,3 +1,4 @@
+import { RSI_DEFAULTS, rsiSettings } from "@/lib/relativeStrengthIndex";
 import { CCI_DEFAULTS, cciAverageType } from "@/lib/commodityChannelIndex";
 import { BIG_CONTRACT_MARKER_SIZE, bigContractMarkerSizes } from "@/lib/bigTrades";
 import type { ChartSettings } from "@/lib/chartSettings";
@@ -1368,7 +1369,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "band4", label: "Band 4", defaultValue: 4, min: 0.1, max: 10, step: 0.1 },
     { key: "band5", label: "Band 5", defaultValue: 5, min: 0.1, max: 10, step: 0.1 },
   ],
-  "relative-strength-index-rsi": [{ key: "length", label: "Length", defaultValue: 14, min: 2, max: 500 }],
+  "relative-strength-index-rsi": [
+    { key: "length", label: "Length", defaultValue: RSI_DEFAULTS.length, min: 2, max: 500 },
+    { key: "averageLength", label: "Average length", defaultValue: RSI_DEFAULTS.averageLength, min: 1, max: 500 },
+    { key: "overboughtLevel", label: "Overbought level", defaultValue: RSI_DEFAULTS.overboughtLevel, min: 0, max: 100 },
+    { key: "oversoldLevel", label: "Oversold level", defaultValue: RSI_DEFAULTS.oversoldLevel, min: 0, max: 100 },
+    { key: "levelLineWidth", label: "Level width", defaultValue: RSI_DEFAULTS.levelLineWidth, min: 1, max: 4 },
+  ],
   "rate-of-change-roc": [{ key: "length", label: "Length", defaultValue: 12, min: 1, max: 500 }],
   "momentum-indicator": [{ key: "length", label: "Length", defaultValue: 10, min: 1, max: 500 }],
   "commodity-channel-index-cci": [
@@ -1550,6 +1557,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "average-true-range-atr" ? { lineStyle: "solid", useThemeColors: true } : {}),
   ...(indicatorId === "awesome-oscillator" ? { useThemeColors: true } : {}),
   ...(indicatorId === "aroon-oscillator" ? { useThemeColors: false } : {}),
+  ...(indicatorId === "relative-strength-index-rsi" ? RSI_DEFAULTS : {}),
   ...(indicatorId === "commodity-channel-index-cci" ? CCI_DEFAULTS : {}),
   ...(indicatorId === "chaikin-accumulation-distribution" ? { showAverage: false, averageType: "simple", useThemeColors: true } : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
@@ -4209,6 +4217,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (MOMENTUM_INDICATOR_IDS.has(normalized.indicatorId)) normalized = {
     ...normalized, settings: { ...normalized.settings, chartArea: instance.settings?.chartArea === "chart" ? "chart" : "pane" },
   };
+  if (normalized.indicatorId === "relative-strength-index-rsi") {
+    const settings = { ...defaultIndicatorSettings(normalized.indicatorId), ...normalized.settings };
+    normalized = { ...normalized, settings: { ...settings, ...rsiSettings(settings) } };
+  }
   if (normalized.indicatorId === "commodity-channel-index-cci") {
     const settings: Record<string, number | string | boolean> = {
       ...defaultIndicatorSettings(normalized.indicatorId), ...normalized.settings,

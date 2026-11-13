@@ -247,6 +247,9 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
   ],
   "relative-strength-index-rsi": [
     { key: "plotColor", role: "primary" },
+    { key: "averageColor", role: "secondary" },
+    { key: "overboughtColor", role: "positive" },
+    { key: "oversoldColor", role: "negative" },
   ],
   "rate-of-change-roc": [
     { key: "plotColor", role: "primary" },
@@ -502,6 +505,16 @@ export function defaultIndicatorPlotColors(
   theme: Record<IndicatorThemeRole, string> & { background?: string },
 ): Record<string, string> {
   if (indicatorId === "commodity-channel-index-cci") return cciThemeColors(theme);
+  if (indicatorId === "relative-strength-index-rsi") {
+    const background = theme.background ?? "#000000";
+    const plotColor = legibleOn(theme.primary, background, 4.5);
+    const averageColor = legibleOn(mixHexColors(plotColor, background, 0.45), background, 3);
+    return {
+      plotColor, averageColor,
+      overboughtColor: legibleOn(theme.positive, background),
+      oversoldColor: legibleOn(theme.negative, background),
+    };
+  }
   const slots = INDICATOR_PLOT_COLOR_SLOTS[indicatorId];
   if (!slots) return {};
   const out: Record<string, string> = {};

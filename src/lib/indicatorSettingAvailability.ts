@@ -20,11 +20,11 @@ export function indicatorSettingDisabledReason(
   if (id === "chaikin-accumulation-distribution" && /^average(?:Length|Type|Color|LineWidth)$/.test(key) && settings.showAverage !== true) {
     return "Enable Show Average to adjust the average plot.";
   }
-  if (id === "commodity-channel-index-cci") {
+  if (id === "commodity-channel-index-cci" || id === "relative-strength-index-rsi") {
     if (/^average(?:Type|Length|Color|LineWidth)$/.test(key) && settings.showAverage === false) {
-      return "Enable Show Average to adjust the CCI average.";
+      return "Enable Show Average to adjust the average plot.";
     }
-    if (/^(levelValue|levelLineWidth|zeroColor|overboughtColor|oversoldColor)$/.test(key) && settings.showLevels === false) {
+    if (/^(levelValue|levelLineWidth|zeroColor|overboughtLevel|oversoldLevel|overboughtColor|oversoldColor)$/.test(key) && settings.showLevels === false) {
       return "Enable Show Levels to adjust the reference lines.";
     }
   }

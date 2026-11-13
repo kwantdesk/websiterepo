@@ -101,7 +101,7 @@ import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
 import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
 import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
-import { cciThemeColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
+import { cciThemeColors, defaultIndicatorPlotColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { STATS_PALETTES, resolveStatsPalette, statsPaletteSettings } from "@/lib/statsPalettes";
@@ -395,9 +395,9 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
     : indicatorId === "classic-gex-profile" && ["profileWidth", "minBarWidth", "contrast"].includes(key) ? "Style"
     : indicatorId === "chaikin-accumulation-distribution"
       ? ["showAverage", "averageType", "averageLength"].includes(key) ? "Inputs" : "Style"
-    : indicatorId === "commodity-channel-index-cci"
+    : ["commodity-channel-index-cci", "relative-strength-index-rsi"].includes(indicatorId)
       ? key.startsWith("average") || key === "showAverage" ? "Average"
-        : /^(showLevels|levelValue|levelLineWidth|zeroColor|overboughtColor|oversoldColor)$/.test(key) ? "Levels"
+        : /^(showLevels|levelValue|levelLineWidth|zeroColor|overboughtLevel|oversoldLevel|overboughtColor|oversoldColor)$/.test(key) ? "Levels"
         : ["length", "source"].includes(key) ? "General" : "Style"
     : indicatorId === "average-true-range-atr" && key === "lineWidth" ? "Style"
     : indicatorId === "volume" ? "General" : indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
@@ -727,6 +727,7 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
  */
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
   if (indicatorId === "commodity-channel-index-cci") return cciThemeColors(visibleIndicatorTheme(chartSettings)) as Record<string, string>;
+  if (indicatorId === "relative-strength-index-rsi") return defaultIndicatorPlotColors(indicatorId, visibleIndicatorTheme(chartSettings));
   if (indicatorId === "chaikin-accumulation-distribution") {
     const { primary, secondary } = visibleIndicatorTheme(chartSettings);
     return { plotColor: primary, averageColor: secondary };
@@ -6551,8 +6552,8 @@ export default function ChartIndicatorsControl({
                 </div>
               )) : null}
 
-              {["chaikin-accumulation-distribution", "commodity-channel-index-cci"].includes(settingsDefinition.id) ? (
-                <label data-settings-section={settingsDefinition.id === "commodity-channel-index-cci" ? "Average" : "Inputs"} className="block space-y-1 text-[10px] text-muted">
+              {["chaikin-accumulation-distribution", "commodity-channel-index-cci", "relative-strength-index-rsi"].includes(settingsDefinition.id) ? (
+                <label data-settings-section={sectionForSetting(settingsDefinition.id, "averageType", "Inputs")} className="block space-y-1 text-[10px] text-muted">
                   <span>Average type</span>
                   <KwantSelect value={String(settingsInstance.settings?.averageType ?? "simple")}
                     disabled={settingsInstance.settings?.showAverage !== true}

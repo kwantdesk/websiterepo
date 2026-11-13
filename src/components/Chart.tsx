@@ -7776,7 +7776,7 @@ function Chart({
       ) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
       // Aroon uses candle extrema and a linear rolling window across loaded history.
-      const studyCandles = instance.indicatorId === "aroon-oscillator"
+      const studyCandles = instance.indicatorId === "aroon-oscillator" || instance.indicatorId === "relative-strength-index-rsi"
         ? sampledIndicatorCandles
         : instance.indicatorId === "volume" || instance.indicatorId === "chaikin-accumulation-distribution"
         ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
@@ -7950,6 +7950,7 @@ function Chart({
     // native event chart inside indicatorTimeToX. Mapping here crops it twice.
     const usesSourceTime = (definition: CalculatedIndicatorSeries) =>
       definition.placement === "pane" && (definition.key.startsWith("chaikin-accumulation-distribution")
+        || definition.key.startsWith("relative-strength-index-rsi")
         || definition.key.startsWith(CCI_INDICATOR_ID));
     const cciOverlays = (definition: CalculatedIndicatorSeries) =>
       definition.placement === "overlay" && definition.key.startsWith(CCI_INDICATOR_ID);
@@ -8339,6 +8340,14 @@ function Chart({
           indicatorId: instance.indicatorId, settings: instance.settings, series,
           statusLabel: series.length ? undefined : "ATR warming up",
           unavailableReason: series.length ? undefined : "Waiting for enough valid candles to calculate Super Trend.",
+        }];
+      }
+
+      if (instance.indicatorId === "relative-strength-index-rsi" && series.length) {
+        return [{
+          key: instance.instanceId, title: series[0].label,
+          indicatorId: instance.indicatorId, settings: instance.settings, series,
+          fixedDomain: { min: 0, max: 100 },
         }];
       }
 
