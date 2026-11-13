@@ -14654,12 +14654,11 @@ export default function KwantifyWorkspace({
 
     const loadData = async () => {
       try {
-        const periodConfig = getPeriodConfig(selectedPeriod);
         if (isTooManyCandles(selectedPeriod, selectedTimeframe)) {
           setChartLoadingMessage("Too many candles for this timeframe/period combination. Reduce the period or increase the timeframe.");
           return;
         }
-        setChartLoadingMessage(`Loading ${periodConfig.label} of ${selectedTimeframe} data... this may take a moment`);
+        setChartLoadingMessage("");
         const candles = await fetchChartCandles(
           getHistoricalCandleLimit(selectedPeriod, selectedTimeframe, 500),
           selectedPeriod,
