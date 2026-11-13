@@ -20023,7 +20023,7 @@ export default function KwantifyWorkspace({
           activeItem={algo && bottomWorkspaceSection === "charts" ? "algo" : bottomWorkspaceSection}
           accountLabel="Account"
           accountTitle={currentDisplayName ? `${currentDisplayName} · your profile` : currentUsername ? `@${currentUsername} · your profile` : "Your profile"}
-          navigationMode="persistent"
+          navigationMode={isAlgoWorkspace ? "standalone" : "persistent"}
           accountAvatarUrl={currentAvatarUrl || ""}
           onAccountClick={() => router.push(currentUsername ? `/socials/${encodeURIComponent(currentUsername)}` : "/socials")}
           onTradesClick={() => {

@@ -71,7 +71,7 @@ type AppSidebarProps = {
   accountTitle?: string;
   /** When set, the account button shows this profile picture instead of the generic icon. */
   accountAvatarUrl?: string;
-  navigationMode?: "native" | "persistent";
+  navigationMode?: "native" | "persistent" | "standalone";
   onAccountClick?: () => void;
   onTradesClick?: () => void;
   onNavigateIntent?: (item: SidebarKey) => void;
@@ -207,6 +207,8 @@ function AppSidebar({
   ) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     warmNavigation(key);
+    if (navigationMode === "standalone") return;
+
     // Stop chart/feed work on pointer-down, before the browser waits for the
     // subsequent click. Settings commits its local destination here as well:
     // leaving chart chrome can move the link before the later click arrives.
@@ -235,6 +237,14 @@ function AppSidebar({
     href: string,
   ) => {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    if (navigationMode === "standalone") {
+      // Algo is outside the persistent workspace layout. Changing browser
+      // history there cannot mount the destination workspace.
+      event.preventDefault();
+      window.location.assign(href);
+      return;
+    }
+
     beginNavigation(key);
 
     // Keyboard activation does not emit pointer-down, so keep a deterministic

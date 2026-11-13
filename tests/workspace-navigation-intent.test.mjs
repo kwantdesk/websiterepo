@@ -36,7 +36,7 @@ test('failed chunks can retry, external URLs are not prepared, and non-workspace
 
 function sidebar(mode='native'){
   const events=[],prefetch=[],w=warmer(),module={exports:{}},Link=()=>null;
-  const browserWindow={location:{pathname:'/charts',search:''},dispatchEvent(event){events.push('local:'+event.detail.href)},history:{pushState(_a,_b,href){events.push('url:'+href)}}};
+  const browserWindow={location:{pathname:mode==='standalone'?'/algo':'/charts',search:'',assign:href=>events.push('document:'+href)},dispatchEvent(event){events.push('local:'+event.detail.href)},history:{pushState(_a,_b,href){events.push('url:'+href)}}};
   const intent={exports:{}};const CustomEvent=class{constructor(type,init){this.type=type;this.detail=init.detail}};
   vm.runInNewContext(compile(fs.readFileSync('src/lib/workspaceNavigationIntent.ts','utf8')),{module:intent,exports:intent.exports,window:browserWindow,CustomEvent});
   const react={memo:f=>f,useEffect(){},useLayoutEffect(){},useRef:value=>({current:value})};
@@ -54,6 +54,22 @@ test('actual persistent GEX Vue rail retains immediate local switching without a
   const h=sidebar('persistent'),gex=h.links.find(n=>n.props.href==='/gamvue');let prevented=false;
   gex.props.onPointerDown({button:0});gex.props.onClick({button:0,preventDefault(){prevented=true;}});
   assert.ok(h.events.includes('start:gamvue'));assert.ok(h.events.includes('url:/gamvue'));assert.equal(prevented,true);assert.equal(h.prefetch.length,0);
+});
+
+test('Algo navigation loads the real Charts route and preserves modifier clicks',()=>{
+  const h=sidebar('standalone');
+  const charts=h.links.find(node=>node.props.href==='/charts');
+  assert.ok(charts);
+  charts.props.onPointerDown({button:0,pointerType:'mouse'});
+  assert.deepEqual(h.events,[]);
+  let prevented=false;
+  charts.props.onClick({button:0,ctrlKey:true,preventDefault(){prevented=true;}});
+  assert.equal(prevented,false);
+  assert.deepEqual(h.events,[]);
+  charts.props.onClick({button:0,preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  assert.deepEqual(h.events,['document:/charts']);
+  assert.match(readSource('src/components/KwantifyWorkspace.tsx'),/navigationMode=\{isAlgoWorkspace \? "standalone" : "persistent"\}/);
 });
 
 test('actual home launch card attaches code preparation to pointer, keyboard focus and touch',()=>{
