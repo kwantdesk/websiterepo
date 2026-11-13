@@ -8906,8 +8906,8 @@ function Chart({
         const bid = mapped((bucket) => bucket.bidLevels);
         const ask = mapped((bucket) => -bucket.askLevels);
         const series: CalculatedIndicatorSeries[] = [
-          { key: `${instance.instanceId}-bid`, label: "Bid", kind: "histogram", placement: "pane", color: source.bidColor, includeZeroInScale: true, histogramOutlineWidth: source.lineWidth, data: bid },
-          { key: `${instance.instanceId}-ask`, label: "Ask", kind: "histogram", placement: "pane", color: source.askColor, includeZeroInScale: true, histogramOutlineWidth: source.lineWidth, data: ask },
+          { key: `${instance.instanceId}-bid`, label: "Bid", kind: "histogram", placement: "pane", color: source.bidColor, includeZeroInScale: true, histogramFixedWidth: source.lineWidth, data: bid.filter(point => point.value !== 0) },
+          { key: `${instance.instanceId}-ask`, label: "Ask", kind: "histogram", placement: "pane", color: source.askColor, includeZeroInScale: true, histogramFixedWidth: source.lineWidth, data: ask.filter(point => point.value !== 0) },
         ];
         if (source.showAverage) {
           series.push(
@@ -8938,7 +8938,7 @@ function Chart({
           series,
           statusLabel: source.parameterMode === "seconds" ? `${source.parameterValue}s windows` : `${source.parameterValue}t reversals`,
           currentBadgeValue: bookSpeedFrame?.currentBid,
-          currentBadge: bookSpeedFrame ? `BID ${bookSpeedFrame.currentBid} · ASK ${bookSpeedFrame.currentAsk}` : "RITHMIC",
+          currentBadge: bookSpeedFrame ? `LATEST WINDOW · BID ${bookSpeedFrame.currentBid} · ASK ${bookSpeedFrame.currentAsk}` : "RITHMIC",
           showHeader: true,
           showLegend: true,
           defaultHeight: source.paneHeight,

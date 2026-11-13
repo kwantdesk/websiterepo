@@ -79,6 +79,7 @@ export type CalculatedIndicatorSeries = {
   histogramOutlineWidth?: number;
   /** Optional bounded pixel thickness along the time axis; legacy candle widths unchanged. */
   histogramBarWidth?: number;
+  histogramFixedWidth?: number;
   lineStyle?: "solid" | "dashed" | "dotted";
   lineType?: "simple" | "with-steps";
   pointMarkersVisible?: boolean;

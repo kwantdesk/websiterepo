@@ -571,7 +571,8 @@ function ChartIndicatorPaneSurface({
                   // candles kept growing and the histogram stayed narrow, so a
                   // bar and its delta stopped being the same width — the one
                   // thing that makes a lower pane readable against price.
-                  const barWidth = indicatorHistogramWidth(chartCandleBodyWidth(paneBarSpacing(visible)), definition.histogramBarWidth);
+                  const barWidth = definition.histogramFixedWidth
+                    ?? indicatorHistogramWidth(chartCandleBodyWidth(paneBarSpacing(visible)), definition.histogramBarWidth);
                   const zero = Math.max(innerTop, Math.min(innerBottom, yFor(0, definition)));
                   const pathsByColor = new Map<string, string[]>();
                   visible.forEach((point) => {
@@ -1237,7 +1238,7 @@ function ChartVerticalIndicatorPaneSurface({
                     if (definition.kind === "histogram") {
                       // Rotated pane: bars run along price, so the same rule
                       // applies to their height.
-                      const barHeight = indicatorHistogramWidth(chartCandleBodyWidth(
+                      const barHeight = definition.histogramFixedWidth ?? indicatorHistogramWidth(chartCandleBodyWidth(
                         paneBarSpacing(visible.map((point) => ({ x: point.y }))),
                       ), definition.histogramBarWidth);
                       const pathsByColor = new Map<string, string[]>();

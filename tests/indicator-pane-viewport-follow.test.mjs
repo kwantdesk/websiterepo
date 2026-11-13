@@ -28,6 +28,7 @@ function harness() {
   const mocks={'react':react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'lucide-react':new Proxy({},{get:()=>()=>null}),
     '@/components/useSuperTrendLivePanes':{useSuperTrendLivePanes:groups=>groups},
     '@/components/useLiveDeltaPanes':{useLiveDeltaPanes:groups=>groups},
+    '@/lib/liveDeltaPanes':{isFullHistoryPriceStudy:()=>false,isLivePriceStudy:()=>false,isLiveCumulativeVolumeStudy:()=>false},
     '@/components/SuperTrendPaneLabels':{default:()=>null},'@/components/KstPanePlot':{default:()=>null},
     '@/lib/superTrendPaneScale':{SuperTrendPaneScale:class {retain(){}resolve(_key,series,domain){return domain(series);}}},
     '@/lib/chartIndicatorPaneSampling':sampling,'@/lib/chartBarWidth':barWidth,'@/lib/indicatorHistogramWidth':histogramWidth,'@/lib/paneCoordinateContinuity':coordinates,
@@ -84,6 +85,25 @@ test('chart recreation rebinds the pane viewport listener instead of retaining a
 });
 
 function axisIn(h,key){return h.descendants(h.tree(),n=>n.props?.['data-indicator-axis']===key)[0];}
+
+test("sparse Book Speed measurements render at the configured width across zoom levels", () => {
+  const h = harness();
+  try {
+    h.props.groups = [{ key: "book", title: "Book Speed", indicatorId: "book-speed",
+      series: [{ key: "bid", label: "Bid", placement: "pane", kind: "histogram", color: "#12ab34",
+        histogramFixedWidth: 2.5, includeZeroInScale: true, data: [{ time: 1, value: 2 }, { time: 3, value: 4 }] }] }];
+    for (const spacing of [50, 150]) {
+      h.tree();
+      h.move(100, spacing);
+      h.window.paint();
+      const [path] = h.descendants(h.tree(), node => node.type === "path" && node.props.fill === "#12ab34");
+      assert.ok(path);
+      assert.deepEqual([...path.props.d.matchAll(/h([\d.]+)v/g)].map(match => Number(match[1])), [2.5, 2.5]);
+    }
+  } finally {
+    h.dispose();
+  }
+});
 function nativeAxisMultiplier(height,startY,currentY){
   const source=fs.readFileSync('node_modules/lightweight-charts/dist/lightweight-charts.development.mjs','utf8');
   const start=source.indexOf('    _internal_scaleTo(x) {'),end=source.indexOf('    _internal_endScale()',start);
