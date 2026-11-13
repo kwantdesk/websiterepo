@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { captureBrowserPreferences, isTrackedStorageKey, readScopedPreferences, receiveAccountPreferences } from "@/lib/userPreferences";
 import { accountPreferenceFingerprint, mergeAccountPreferenceChanges, mergePaperTradingLedgerUpdate, paperValuationFingerprint } from "@/lib/accountPreferenceMerge";
+import { retainInitialIndicatorEdits } from "@/lib/workspaceIndicatorPreferences";
 import { normalizePaperTradingLedger } from "@/lib/paperTrading";
 import { exchangeAccountPreferences, readAccountPreferenceRevision } from "@/lib/accountPreferenceCloud";
 
@@ -52,7 +53,10 @@ export function useAccountPreferenceSync({ supabase, userId, enabled }: {
         if (!active) return;
         // Preserve edits made while the request was in flight.
         const latest = captureBrowserPreferences();
-        const applied = mergeAccountPreferenceChanges(sent, latest, result.snapshot);
+        const received = needsInitialRead
+          ? retainInitialIndicatorEdits(base, sent, result.snapshot)
+          : result.snapshot;
+        const applied = mergeAccountPreferenceChanges(sent, latest, received);
         // Local quote marking must not be rewound by an unchanged cloud ledger.
         const ledgerKey = 'kwantify-paper-trading-ledger-v1';
         if (latest.values[ledgerKey] && accountPreferenceFingerprint({ ...latest, values: { [ledgerKey]: latest.values[ledgerKey] } })

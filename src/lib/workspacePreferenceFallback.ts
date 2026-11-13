@@ -1,6 +1,9 @@
+import { writeProtectedItem } from "./browserStorageQuota.ts";
+import { WORKSPACE_INDICATOR_KEYS } from "./workspaceIndicatorPreferences.ts";
+
 const library = "kwantdesk-chart-workspace-presets";
 const keys = new Set([library, "kwantdesk:gamma-charting:" + library, "kwantdesk:algo-charting:" + library, "kwantdesk:workspace-preset-deletions:v1"]);
-const accountStateKeys = new Set([...keys, "kwantify-paper-trading-accounts", "kwantify-paper-trading-ledger-v1"]);
+const accountStateKeys = new Set([...keys, ...WORKSPACE_INDICATOR_KEYS, "kwantify-paper-trading-accounts", "kwantify-paper-trading-ledger-v1"]);
 type ConfirmedValue = { value: string; blockedLocalValue: string | null };
 const confirmed = new Map<string, Map<string, ConfirmedValue>>();
 export const isWorkspaceLibraryPreference = (key: string) => keys.has(key);
@@ -26,6 +29,16 @@ export function confirmedWorkspacePreferences(userId: string) {
   }));
 }
 export function clearConfirmedWorkspacePreferences(userId: string) { confirmed.delete(userId); }
+export function writeWorkspaceIndicatorPreference(key: string, value: string) {
+  const result = writeProtectedItem(key, value);
+  if (typeof window === "undefined") return result;
+  const owner = window.localStorage.getItem("kwantdesk:active-preferences-owner:v1");
+  if (!owner) return result;
+  recordConfirmedWorkspacePreference(owner, key, value, result.ok);
+  if (!result.ok) window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed", { detail: { keys: [key] } }));
+  return result;
+}
+
 export function readWorkspacePreferenceValue(key: string) {
   if (typeof window === "undefined") return null;
   const owner = window.localStorage.getItem("kwantdesk:active-preferences-owner:v1");

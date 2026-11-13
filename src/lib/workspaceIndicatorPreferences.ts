@@ -4,7 +4,7 @@ export const CHART_INDICATORS_STORAGE_KEY = "kwantdesk-chart-indicators";
 export const WORKSPACE_INDICATOR_KEYS = (["charts", "gamma", "algo"] as const)
   .map(scope => workspaceScopeStorageKey(scope, CHART_INDICATORS_STORAGE_KEY));
 
-type Indicator = { instanceId: string; [key: string]: unknown };
+type Indicator = { instanceId: string; enabled?: boolean; [key: string]: unknown };
 type IndicatorState = Record<string, Indicator[]>;
 
 function parseState(raw: string | undefined): IndicatorState | null {
@@ -45,11 +45,33 @@ export function mergeWorkspaceIndicatorState(baseRaw?: string, localRaw?: string
         const edited = edits.get(id);
         const incoming = received.get(id);
         if (original && (!edited || !incoming)) continue;
-        const chosen = edited && JSON.stringify(edited) !== JSON.stringify(original) ? edited : incoming;
-        if (chosen) indicators.push(chosen);
+        if (!edited || !incoming || !original) {
+          const added = edited ?? incoming;
+          if (added) indicators.push(added);
+          continue;
+        }
+        // Merge visibility independently so a peer settings edit cannot
+        // re-enable a hidden indicator or erase its updated settings.
+        const { enabled: beforeEnabled, ...beforeFields } = original;
+        const { enabled: localEnabled, ...localFields } = edited;
+        const fields = JSON.stringify(localFields) !== JSON.stringify(beforeFields) ? localFields : incoming;
+        const enabled = localEnabled !== beforeEnabled ? localEnabled : incoming.enabled;
+        indicators.push({ ...fields, enabled });
       }
       return [paneId, indicators];
     }),
   );
   return JSON.stringify(merged);
+}
+
+export function retainInitialIndicatorEdits<T extends { values: Record<string, string> }>(
+  base: T, sent: T, received: T,
+): T {
+  const values = { ...received.values };
+  for (const key of WORKSPACE_INDICATOR_KEYS) {
+    const edited = sent.values[key];
+    if (edited === undefined || edited === base.values[key]) continue;
+    values[key] = mergeWorkspaceIndicatorState(base.values[key], edited, values[key]) ?? edited;
+  }
+  return { ...received, values };
 }

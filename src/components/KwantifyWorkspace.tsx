@@ -2,7 +2,7 @@
 import { createLeasedMarketSource } from "../../public/browser-market-stream.js";
 import { chartQuoteKey, publishChartLivePrice } from "@/lib/liveChartPrice";
 import KwantDateTimeInput from "@/components/ui/KwantDateTimeInput";
-import { readWorkspacePreferenceValue, recordConfirmedWorkspacePreference } from "@/lib/workspacePreferenceFallback";
+import { readWorkspacePreferenceValue, recordConfirmedWorkspacePreference, writeWorkspaceIndicatorPreference } from "@/lib/workspacePreferenceFallback";
 
 import { captureDropdownDismissal } from "@/lib/dropdownDismissal";
 import WorkspaceGexMapPane from "@/components/gex-map/WorkspaceGexMapPane";
@@ -2703,7 +2703,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
   } catch {}
   let indicators: Record<string, ChartIndicatorInstance[]> = {};
   try {
-    const current = read(CHART_INDICATORS_STORAGE_KEY);
+    const current = readWorkspacePreferenceValue(workspaceScopeStorageKey(scope, CHART_INDICATORS_STORAGE_KEY));
     const legacy = scope === "charts" ? window.localStorage.getItem("olisa-chart-pane-indicators") : null;
     indicators = normalizePaneIndicatorState(JSON.parse(current ?? legacy ?? "{}"));
   } catch {}
@@ -2764,7 +2764,10 @@ function persistChartWorkspaceRuntime(
   if (runtime.activePresetId) write(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY, runtime.activePresetId);
   else window.localStorage.removeItem(workspaceScopeStorageKey(scope, ACTIVE_WORKSPACE_PRESET_STORAGE_KEY));
   write("olisa-chart-workspace-active-pane", runtime.activePaneId);
-  write(CHART_INDICATORS_STORAGE_KEY, JSON.stringify(clonePaneIndicatorState(runtime.indicators)));
+  writeWorkspaceIndicatorPreference(
+    workspaceScopeStorageKey(scope, CHART_INDICATORS_STORAGE_KEY),
+    JSON.stringify(clonePaneIndicatorState(runtime.indicators)),
+  );
   write("olisa-chart-favourite-intervals", JSON.stringify(runtime.favouriteTimeframes));
   write("olisa-chart-workspace-linked-panes", JSON.stringify(runtime.linkedPaneIds));
   writeProtectedItem(workspaceTemplateStorageKey(scope, CHART_TEMPLATES_STORAGE_KEY), JSON.stringify(runtime.templates));
@@ -11350,7 +11353,7 @@ export default function KwantifyWorkspace({
     paneIndicatorsRef.current = next;
     setPaneIndicatorsState(next);
     if (persistImmediately) {
-      writeProtectedItem(
+      writeWorkspaceIndicatorPreference(
         workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_INDICATORS_STORAGE_KEY),
         JSON.stringify(next),
       );
@@ -13138,7 +13141,7 @@ export default function KwantifyWorkspace({
     const timer = window.setTimeout(() => {
       if (scope !== chartWorkspaceScopeRef.current || paneIndicators !== paneIndicatorsRef.current) return;
       const serialized = JSON.stringify(paneIndicators);
-      if (window.localStorage.getItem(key) !== serialized) writeProtectedItem(key, serialized);
+      if (readWorkspacePreferenceValue(key) !== serialized) writeWorkspaceIndicatorPreference(key, serialized);
     }, 120);
     return () => window.clearTimeout(timer);
   }, [paneIndicators, preferencesReady]);
@@ -15018,7 +15021,7 @@ export default function KwantifyWorkspace({
           setChartSettingsSnapshot(nextChartSettings);
 
           try {
-            const current = window.localStorage.getItem(CHART_INDICATORS_STORAGE_KEY);
+            const current = readWorkspacePreferenceValue(CHART_INDICATORS_STORAGE_KEY);
             const legacy = window.localStorage.getItem("olisa-chart-pane-indicators");
             setPaneIndicators(normalizePaneIndicatorState(JSON.parse(current ?? legacy ?? "{}")));
           } catch {
