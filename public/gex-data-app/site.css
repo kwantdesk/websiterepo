@@ -74,6 +74,22 @@ html,body,.app-shell,.dashboard,.dock-body,.dock-tool-frame,
 .embedded .tool-controls>.control,.embedded .tool-controls>.embedded-actions{align-items:center;align-self:center}
 .embedded .embedded-actions button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:24px;min-height:24px;line-height:1}
 .embedded .tool-controls>.embedded-actions{margin-left:0;gap:5px;flex:0 0 auto}
+/* Keep each contract control's width in the scrollable row. Its host uses
+   display:contents, so the contract group is itself a toolbar flex item. */
+.embedded .tool-controls .net-drift-contract-controls {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex:none;
+}
+.embedded .tool-controls .net-drift-contract-controls > .control {
+  display:flex;
+  flex:none;
+  min-width:0;
+}
+.embedded .tool-controls .net-drift-contract-controls .kwant-choice-trigger {
+  white-space:nowrap;
+}
 .embedded-actions button{background:var(--site-surface)!important;color:var(--site-foreground)!important;border:1px solid var(--site-border)!important;border-radius:3px!important;box-shadow:none;min-width:28px}
 .embedded-actions button:hover{background:var(--site-surface)!important;color:var(--site-primary)!important;border-color:var(--site-primary)!important;filter:none}
 .embedded-actions button:focus-visible{outline:2px solid var(--site-primary);outline-offset:2px}
