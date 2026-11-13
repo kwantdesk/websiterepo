@@ -116,7 +116,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("VWAP Envelopes", "Volume & Profiles", "VWAP with configurable standard-deviation envelopes."),
   indicator("Rolling VWAP", "Volume & Profiles", "Continuous rolling-period VWAP.", false, "Kwantify"),
   indicator("Market Statistics", "Volume & Profiles", "Compact market and participation statistics.", true),
-  indicator("On Candle Stats", "Volume & Profiles", "Displays selected statistics directly on candles.", true),
 
   indicator("Pivot Points", "Market Structure", "Traditional pivot support and resistance levels."),
   indicator("Price Movement Levels", "Market Structure", "Levels calculated from measured price movement."),

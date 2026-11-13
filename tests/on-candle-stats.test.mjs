@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import test from "node:test";
 
-import { auditIndicatorLibrary } from "../scripts/audit-indicator-library.mjs";
+import { CHART_INDICATOR_BY_ID } from "../src/lib/chartIndicatorCatalog.ts";
 import { defaultIndicatorSettings, normalizePaneIndicatorState } from "../src/lib/chartIndicatorConfig.ts";
 import { calculateKwantStats } from "../src/lib/kwantStats.ts";
 
@@ -14,7 +13,7 @@ const makeTrade = (timestamp, price, aggressor, volume, delta) => ({
 });
 
 test("ordered executions drive COT, trade delta and price-level ratios", () => {
-  const instance = { instanceId: "s", indicatorId: "on-candle-stats", enabled: true, settings: { ...defaultIndicatorSettings("on-candle-stats"), showCotHigh: true, showCotLow: true, showDeltaTrades: true, showHighRatio: true, showLowRatio: true } };
+  const instance = { instanceId: "s", indicatorId: "kwant-stats", enabled: true, settings: { ...defaultIndicatorSettings("kwant-stats"), showCotHigh: true, showCotLow: true, showDeltaTrades: true, showHighRatio: true, showLowRatio: true } };
   const table = calculateKwantStats([candle], [
     makeTrade(1_000, 99, "SELL", 8, -8),
     makeTrade(1_100, 101.75, "BUY", 12, 12),
@@ -30,23 +29,21 @@ test("ordered executions drive COT, trade delta and price-level ratios", () => {
 });
 
 test("Order filters use trade count while Aggregate Volume filters use volume", () => {
-  const base = { ...defaultIndicatorSettings("on-candle-stats"), filterMin: 10 };
+  const base = { ...defaultIndicatorSettings("kwant-stats"), filterMin: 10 };
   const colors = { positive: "#0f0", negative: "#f00", neutral: "#888", text: "#fff", header: "#111" };
-  const orders = calculateKwantStats([candle], [], { instanceId: "o", indicatorId: "on-candle-stats", enabled: true, settings: { ...base, inputData: "Order" } }, 0.25, colors);
-  const aggregate = calculateKwantStats([candle], [], { instanceId: "a", indicatorId: "on-candle-stats", enabled: true, settings: { ...base, inputData: "Aggregate Volume" } }, 0.25, colors);
+  const orders = calculateKwantStats([candle], [], { instanceId: "o", indicatorId: "kwant-stats", enabled: true, settings: { ...base, inputData: "Order" } }, 0.25, colors);
+  const aggregate = calculateKwantStats([candle], [], { instanceId: "a", indicatorId: "kwant-stats", enabled: true, settings: { ...base, inputData: "Aggregate Volume" } }, 0.25, colors);
   assert.equal(orders.bars[0].values.totalVolume, null);
   assert.equal(aggregate.bars[0].values.totalVolume, 40);
 });
 
-test("settings persist and the catalogue/renderer gates are genuinely live", () => {
-  const defaults = defaultIndicatorSettings("on-candle-stats");
-  const restored = normalizePaneIndicatorState({ pane: [{ instanceId: "s", indicatorId: "on-candle-stats", enabled: true, settings: { ...defaults, inputData: "Order", pricePlot: "delta-sign", fontSize: 15, showCotBar: true } }] }).pane[0];
-  assert.deepEqual([restored.settings.inputData, restored.settings.pricePlot, restored.settings.fontSize, restored.settings.showCotBar], ["Order", "delta-sign", 15, true]);
-  assert.ok(!auditIndicatorLibrary().pending.some((row) => row.id === "on-candle-stats"));
-  const chart = fs.readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-  const control = fs.readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
-  assert.match(chart, /OnCandleStatsPrimitive/);
-  for (const label of ["Input data", "Price plot", "Font size", "Smaller font size", "Maximum opacity ratio", "Price offset"]) assert.match(control + fs.readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8"), new RegExp(label, "i"));
+test("On Candle Stats is retired from the catalogue and saved charts", () => {
+  assert.equal(CHART_INDICATOR_BY_ID.has("on-candle-stats"), false);
+  const state = normalizePaneIndicatorState({ pane: [
+    { instanceId: "retired", indicatorId: "on-candle-stats", enabled: true },
+    { instanceId: "keep", indicatorId: "kwant-stats", enabled: true },
+  ] });
+  assert.deepEqual(state.pane.map(({ instanceId }) => instanceId), ["keep"]);
 });
 
 test("Kwant Stats uses per-bar ask minus bid even with cached or session-relative delta", () => {

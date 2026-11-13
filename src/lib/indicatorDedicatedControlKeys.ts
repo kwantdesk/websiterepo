@@ -818,10 +818,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "sourceTicker",
     "visualMode"
   ],
-  "on-candle-stats": [
-    "inputData",
-    "pricePlot"
-  ],
   "overlay-chart": [
     "colorBasedOnDelta",
     "filled",
