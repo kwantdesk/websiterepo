@@ -52,7 +52,7 @@ export class CciSeriesCache {
       while (changed < shared && sameCciCandle(prior.candles[changed], candles[changed])) changed++;
     }
     let series: CalculatedIndicatorSeries[];
-    if (!prior || changed === 0) {
+    if (!prior || changed === 0 || group.settings?.indicatorHistoryMode === "manual") {
       series = calculateIndicatorSeries(instance, candles, theme);
     } else if (changed === candles.length && changed === prior.candles.length) {
       series = prior.series;
@@ -125,7 +125,8 @@ export class LiveDeltaPaneModel {
     if (!isLiveDeltaPane(group.indicatorId) && group.indicatorId !== "volume" && !isLivePriceStudy(group.indicatorId)
       && !isLiveCumulativeVolumeStudy(group.indicatorId) && !isFullHistoryPriceStudy(group.indicatorId)) return group.series;
     const instance = { indicatorId: group.indicatorId, instanceId: group.key, enabled: true, settings: group.settings ?? {} };
-    const extended = inputs.preserveEarlierHistory && isLiveDeltaPane(group.indicatorId) && !inputs.mapTime;
+    const extended = inputs.preserveEarlierHistory && isLiveDeltaPane(group.indicatorId) && !inputs.mapTime
+      && group.settings?.indicatorHistoryMode !== "manual";
     const identity = extended ? JSON.stringify([deltaPaneIdentity(group), inputs.theme]) : "";
     const cached = extended ? this.extendedSeries.get(group.key) : undefined;
     let series: CalculatedIndicatorSeries[];

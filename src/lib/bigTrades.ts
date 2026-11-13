@@ -1,3 +1,4 @@
+import { indicatorHistoryStart } from "@/lib/indicatorHistoryRange";
 import { distributeContractMarkers } from "./bigContractHistory";
 import { exchangeMinuteOfDay } from "@/lib/exchangeClock";
 import type { Candle } from "@/lib/backtester";
@@ -265,7 +266,6 @@ export function calculateBigTradePrintsWithContext(
   settings: BigTradeSettings,
   now = Date.now(),
 ): { prints: BigTradePrint[]; context: BigTradeLiveContext | null } {
-  const daysToLoad = clamp(Number(settings.daysToLoad ?? 1), 1, 90);
   // Anchor the lookback to the newest execution we actually possess. CME is
   // closed over the weekend and on exchange holidays, so a wall-clock cutoff
   // can erase Friday's entire tape on Sunday even though it is still the most
@@ -284,7 +284,7 @@ export function calculateBigTradePrintsWithContext(
   const historyAnchor = latestExecutionTimestamp > 0
     ? latestExecutionTimestamp
     : now;
-  const cutoff = historyAnchor - daysToLoad * 86_400_000;
+  const cutoff = indicatorHistoryStart(settings, orderFlowCandles[0]?.sourceStartTimestamp ?? orderFlowCandles[0]?.timestamp, historyAnchor);
   const candidates = tradeCandidates(orderFlowCandles, marketTrades, cutoff, settings);
   if (!candidates.length) return { prints: [], context: null };
   // The automatic threshold must be measured against FULL-FIDELITY prints.

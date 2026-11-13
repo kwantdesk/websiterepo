@@ -375,7 +375,11 @@ export function buildInitialBalanceLevels(
   const durations = requestedInitialBalanceDurations(settings);
   const latestTimestamp = candles.at(-1)!.timestamp;
   const candlesByTimestamp = new Map(candles.map((candle) => [candle.timestamp, candle]));
-  const windows = buildMarketSessionWindows(candles, settings, intervalMs);
+  const candleIndexByTime = new Map(candles.map((candle, index) => [candle.timestamp, index]));
+  const historyStart = Number(settings.chartHistoryStartMs);
+  const followsChart = Number.isFinite(historyStart);
+  const lookbackDays = followsChart ? Math.max(1, (latestTimestamp - historyStart) / 86_400_000 + 1) : undefined;
+  const windows = buildMarketSessionWindows(candles, lookbackDays === undefined ? settings : { ...settings, lookbackDays }, intervalMs);
   const latestWindowBySession = new Map<MarketSessionDefinition["key"], MarketSessionWindow>();
   for (const window of windows) {
     const current = latestWindowBySession.get(window.key);
@@ -383,17 +387,19 @@ export function buildInitialBalanceLevels(
       latestWindowBySession.set(window.key, window);
     }
   }
-  const latestWindows = [...latestWindowBySession.values()]
+  const latestWindows = (followsChart ? windows.filter(window => window.endTimestamp > historyStart) : [...latestWindowBySession.values()])
     // The IB study never draws a Sydney range: Globex is the futures reopen.
     .filter((session) => session.key !== "sydney")
     .sort((left, right) => left.startTimestamp - right.startTimestamp);
 
   return latestWindows.flatMap((session) => durations.flatMap((durationMinutes) => {
     const formationEndTimestamp = session.startTimestamp + durationMinutes * 60_000;
-    const formationCandles = candles.filter((candle) =>
-      candle.timestamp >= session.startTimestamp
-      && candle.timestamp < formationEndTimestamp
-      && candle.timestamp < session.endTimestamp);
+    const formationCandles: Candle[] = [];
+    const start = Math.max(0, candleIndexByTime.get(session.startTimestamp) ?? 0);
+    const end = Math.min(formationEndTimestamp, session.endTimestamp);
+    for (let index = start; index < candles.length && candles[index].timestamp < end; index += 1) {
+      formationCandles.push(candles[index]);
+    }
     if (!formationCandles.length) return [];
 
     // Anchor each side to the first candle whose wick actually established

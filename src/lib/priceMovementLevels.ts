@@ -112,7 +112,7 @@ export function calculatePriceMovementLevels(
   const projections = settings.levelBasedOn === "close"
     ? allSessions.slice(1).map((bucket, i) => ({ bucket, anchor: allSessions[i].last.close }))
     : allSessions.map(bucket => ({ bucket, anchor: bucket.first.open }));
-  const visible = projections.slice(-settings.daysToLoad);
+  const visible = projections;
   if (!visible.length) return [];
   const sessions = visible.map(item => item.bucket);
   const anchors = visible.map(item => item.anchor);

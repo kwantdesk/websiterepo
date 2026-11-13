@@ -1,3 +1,4 @@
+import { indicatorHistoryStart } from "@/lib/indicatorHistoryRange";
 import type { Candle } from "@/lib/backtester";
 import { cmeSessionDateKey, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
@@ -5,7 +6,6 @@ import { monthlyProfileRanges, profileVariantJob, visibleProfileRange, type Prof
 import { requestedSessionIds, resolveSessionSegments, RTH_END_MINUTES, RTH_START_MINUTES } from "@/lib/volumeProfileSessions";
 
 const number = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-const count = (value: unknown, fallback: number) => Math.max(1, Math.min(12, Math.round(number(value, fallback))));
 
 function requestSource(instance: ChartIndicatorInstance, symbol: string, contractSymbol?: string) {
   const settings = instance.settings ?? {};
@@ -26,7 +26,7 @@ function sessionJobs(args: VariantProfilePlanArgs, instance: ChartIndicatorInsta
     ...args.candles.map((candle) => cmeSessionDateKey(candle.timestamp)),
     cmeSessionDateKey(args.clockMs),
   ].filter(Boolean) as string[])]
-    .sort().slice(-count(settings.numberOfProfiles, 5));
+    .sort();
   const mode = String(settings.filterMode ?? "filter");
   const requestedMode = mode === "none" ? "none" : mode === "triple" ? "triple" : mode === "splitted" ? "splitted" : "filter";
   const sessions = requestedSessionIds({ ...settings, filterMode: requestedMode });
@@ -35,7 +35,7 @@ function sessionJobs(args: VariantProfilePlanArgs, instance: ChartIndicatorInsta
     : "rth";
   return dates.flatMap((tradingDate) => {
     const day = cmeSessionWindowForDate(tradingDate);
-    if (!day) return [];
+    if (!day || day.endMs <= indicatorHistoryStart(settings, args.candles[0]?.timestamp, args.clockMs)) return [];
     // Keep the true session end stable while it develops. Clipping to every
     // incoming candle clock creates a cold cache key on every update.
     const ranges = requestedMode === "none"
@@ -78,7 +78,14 @@ export function planVolumeProfileVariantJobs(args: VariantProfilePlanArgs): Prof
       // contract. Refuse that unsupported combination instead of returning a
       // whole-month profile labelled RTH.
       if (String(settings.filterMode ?? "none") !== "none") continue;
-      for (const range of monthlyProfileRanges(args.clockMs, count(settings.numberOfProfiles, 3))) {
+      if (!args.candles.length) continue;
+      const start = indicatorHistoryStart(settings, args.candles[0].timestamp, args.clockMs);
+      const firstMonth = new Date(start);
+      const lastMonth = new Date(args.clockMs);
+      const monthCount = (lastMonth.getUTCFullYear() - firstMonth.getUTCFullYear()) * 12
+        + lastMonth.getUTCMonth() - firstMonth.getUTCMonth() + 2;
+      for (const range of monthlyProfileRanges(args.clockMs, monthCount)) {
+        if (range.endMs <= start) continue;
         jobs.push(profileVariantJob({ ownerId: instance.instanceId, label: range.label, range,
           source: requestSource(instance, args.symbol, args.contractSymbol) }));
       }

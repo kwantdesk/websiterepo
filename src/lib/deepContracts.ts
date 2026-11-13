@@ -1,3 +1,4 @@
+import { indicatorHistoryStart } from "@/lib/indicatorHistoryRange";
 import { distributeContractMarkers } from "./bigContractHistory";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
@@ -60,19 +61,19 @@ export function calculateDeepContractEvents(
   settings: DeepContractSettings,
   tickSizeInput: number,
   now = Date.now(),
+  historyStartMs?: number,
 ): DeepContractEvent[] {
   const tickSize = Math.max(Number.EPSILON, finite(tickSizeInput, 0.25));
   const boxTicks = clamp(Math.round(finite(settings.deepBoxTickRange, 4)), 1, 100);
   const minimum = clamp(finite(settings.deepMinimumTradeSize, 30), 1, 5_000);
   const margin = clamp(finite(settings.deepTickMargin, 1), 0, 100) * tickSize + Number.EPSILON;
   const clusterWindow = clamp(finite(settings.clusterWindowMs, 100), 0, 10_000);
-  const days = clamp(Math.round(finite(settings.daysToLoad, 1)), 1, 30);
   const newestTimestamp = trades.reduce(
     (latest, trade) => Math.max(latest, finite(trade.timestamp)),
     0,
   ) || now;
   const anchor = now - newestTimestamp > 6 * 60 * 60_000 ? newestTimestamp : now;
-  const cutoff = anchor - days * 86_400_000;
+  const cutoff = indicatorHistoryStart(settings, historyStartMs, anchor);
   const candidates: DeepContractEvent[] = [];
   for (const trade of trades) {
     if (finite(trade.timestamp) < cutoff) continue;

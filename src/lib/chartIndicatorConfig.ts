@@ -1041,7 +1041,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maLineWidth", label: "Moving average width", defaultValue: 2, min: 1, max: 4 },
   ],
   "big-trades": [
-    { key: "daysToLoad", label: "Days to load", defaultValue: 1, min: 1, max: 30 },
     { key: "manualFilter", label: "Manual minimum trade size", defaultValue: 30, min: 1, max: 5000, step: 1 },
     { key: "maximumFilter", label: "Maximum trade size · 0 = unlimited", defaultValue: 0, min: 0, max: 1000000 },
     // Day and overnight are measured separately, so a genuinely large
@@ -1502,6 +1501,7 @@ export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSe
   indicatorSettingsFromTheme(indicatorId, sidedTheme(rawTheme));
 
 const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
+  indicatorHistoryMode: "auto",
   ...(MOMENTUM_INDICATOR_IDS.has(indicatorId) ? { chartArea: "pane" } : {}),
   ...(indicatorId === "big-blocks-options" ? { ...BIG_BLOCKS_OPTIONS_DEFAULTS,
     callColor: theme?.upColor ?? BIG_BLOCKS_OPTIONS_DEFAULTS.callColor,
@@ -2389,7 +2389,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "big-trades" ? {
     showBigContracts: true,
     showDeepContracts: false,
-    daysToLoad: 1,
     filterMode: "manual",
     automaticIntensity: "medium",
     enableClustering: true,

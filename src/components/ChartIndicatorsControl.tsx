@@ -1,5 +1,7 @@
 "use client";
 
+import { indicatorHistoryDays } from "@/lib/indicatorHistoryRange";
+
 import { BIG_CONTRACT_MARKER_SIZE } from "@/lib/bigTrades";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT, resolveVolumeProfileInputData, resolveVolumeProfileMode } from "@/lib/volumeProfileMath";
 import { isInsideKwantDatePicker } from "@/components/ui/KwantDatePicker";
@@ -42,7 +44,6 @@ import {
 import {
   INDICATOR_NUMERIC_SETTINGS,
   LIVE_CHART_INDICATOR_IDS,
-  MAXIMUM_DAILY_VOLUME_PROFILES,
   VOLUME_PROFILE_INDICATOR_IDS,
   defaultIndicatorSettings,
 } from "@/lib/chartIndicatorConfig";
@@ -3547,17 +3548,6 @@ export default function ChartIndicatorsControl({
                       }))}
                     />
                   ))}
-                  <IndicatorNumericSlider
-                    label="Number of profiles"
-                    min={0}
-                    max={MAXIMUM_DAILY_VOLUME_PROFILES}
-                    step={1}
-                    value={Number(settingsInstance.settings?.numberOfProfiles ?? 0)}
-                    onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
-                      ...current,
-                      settings: { ...(current.settings ?? {}), numberOfProfiles: next },
-                    }))}
-                  />
                   <IndicatorNumericSlider
                     label="Border width"
                     min={0.5}
@@ -7820,6 +7810,23 @@ export default function ChartIndicatorsControl({
                 * template is reachable without scrolling past everything it
                 * would change.
                 */}
+              {!["depth-of-market", "mini-dom", "speed-of-tape-instant"].includes(settingsDefinition.id) && <div data-settings-section="General" className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5 text-[10px] text-muted">
+                  <span>History range</span>
+                  <KwantSelect menuLabel="Indicator history range" value={settingsInstance.settings?.indicatorHistoryMode === "manual" ? "manual" : "auto"}
+                    onChange={(event) => replace(settingsInstance.instanceId, current => ({
+                      ...current, settings: { ...current.settings, indicatorHistoryMode: event.target.value },
+                    }))}>
+                    <option value="auto">Auto · Match chart</option>
+                    <option value="manual">Custom days</option>
+                  </KwantSelect>
+                </label>
+                {settingsInstance.settings?.indicatorHistoryMode === "manual" && <IndicatorNumericSlider
+                  label="History days" min={1} max={365} step={1} value={indicatorHistoryDays(settingsInstance.settings) ?? 5}
+                  onChange={(historyDaysLimit) => replace(settingsInstance.instanceId, current => ({
+                    ...current, settings: { ...current.settings, historyDaysLimit },
+                  }))} />}
+              </div>}
               <IndicatorTemplateBar
                 indicatorId={settingsDefinition.id}
                 settings={settingsInstance.settings ?? {}}
@@ -7990,6 +7997,9 @@ export default function ChartIndicatorsControl({
                     return side ? key.startsWith("ladder")
                       : !key.startsWith("ladder") && (key !== "lineWidth" || settingsInstance.settings?.candleStyle !== "candle-body");
                   })
+                  .filter((setting) => !(["sessions", "session-highs-lows", "ib-levels"].includes(settingsDefinition.id) && setting.key === "lookbackDays"))
+                  .filter((setting) => !(settingsDefinition.id === "price-movement-levels" && setting.key === "daysToLoad"))
+                  .filter((setting) => !(settingsDefinition.id === "gamma-heatmap" && setting.key === "historyHours"))
                   .filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent"))
                   .filter((setting) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(setting.key));
                 const bySection = new Map<string, typeof numericSettings>();

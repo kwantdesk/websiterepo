@@ -29,7 +29,8 @@ import { freshPaperExecutionQuote, paperOrderReceipt, paperTradeExecutionQuote }
 
 import { syncPaperJournalCloud } from "@/lib/paperJournalCloud";
 
-import { bigContractHistoryWindows } from "@/lib/bigContractHistory";
+import { indicatorHistoryStart, INDICATOR_HISTORY_DAY_MS } from "@/lib/indicatorHistoryRange";
+import { bigContractHistoryWindowsForRange } from "@/lib/bigContractHistory";
 
 import ReplayWatchlistNumbers, { type ReplayWatchlistLoader } from "@/components/ReplayWatchlistNumbers";
 
@@ -212,7 +213,6 @@ import {
   linkPaneIndicatorStateToTheme,
   normalizePaneIndicatorState,
   DAILY_VOLUME_PROFILE_INDICATOR_IDS,
-  resolveDailyVolumeProfileCount,
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
@@ -5799,32 +5799,19 @@ function WorkspaceChartPaneComponent({
   // A plain replay price chart also needs archived executions to build its
   // forming candle. Do not make real intrabar movement depend on adding CVD.
   const replayOrderFlowRequired = Boolean(replayHistoryRange && pane.broker === "Databento");
-  // Big Contracts is the one study with an explicit lookback in days; the
-  // execution archive request has to cover it.
-  const historicalExecutionDays = indicators.reduce((days, instance) => (
-    instance.enabled && instance.indicatorId === "big-trades"
-      ? Math.max(days, Math.min(30, Math.max(1, Number(instance.settings?.daysToLoad ?? 1))))
-      : days
-  ), DEFAULT_CHART_HISTORY_CALENDAR_DAYS);
-  const bigContractDays = indicators.reduce((days, instance) => instance.enabled && instance.indicatorId === "big-trades"
-    ? Math.max(days, Math.min(30, Math.max(1, Number(instance.settings?.daysToLoad ?? 1)))) : days, 0);
+  const historicalExecutionDays = DEFAULT_CHART_HISTORY_CALENDAR_DAYS;
+  const loadedStartMs = candles[0]?.sourceStartTimestamp ?? candles[0]?.timestamp;
+  const loadedEndMs = candles.at(-1)?.sourceEndTimestamp ?? candles.at(-1)?.timestamp;
+  const bigContractOwner = indicators.find(instance => instance.enabled && instance.indicatorId === "big-trades");
+  const bigContractFrom = bigContractOwner && loadedStartMs !== undefined && loadedEndMs !== undefined
+    ? Math.floor(indicatorHistoryStart(bigContractOwner.settings, loadedStartMs, replayHistoryRange?.toMs ?? loadedEndMs) / INDICATOR_HISTORY_DAY_MS) * INDICATOR_HISTORY_DAY_MS
+    : null;
+  const bigContractThrough = loadedEndMs === undefined ? null
+    : Math.min(Math.floor(Date.now() / 900_000) * 900_000, (Math.floor(loadedEndMs / INDICATOR_HISTORY_DAY_MS) + 1) * INDICATOR_HISTORY_DAY_MS);
   useEffect(() => {
-    if (!bigContractDays || replayHistoryRange || pane.broker !== "Databento") return;
+    if (bigContractFrom === null || bigContractThrough === null || pane.broker !== "Databento") return;
     let cancelled = false;
-    const windows = bigContractHistoryWindows(bigContractDays, Math.floor(Date.now() / 60_000) * 60_000);
-    if (bigContractDays > DEFAULT_CHART_HISTORY_CALENDAR_DAYS) {
-      void fetchWorkspaceCandles(pane.symbol, pane.timeframe, pane.broker, period, 500, false, undefined, false, false, bigContractDays)
-        .then((history) => {
-          if (cancelled) return;
-          // Extend the left edge without replacing any already-visible candle.
-          const first = latestCandlesRef.current[0]?.timestamp ?? Infinity;
-          const older = history.filter((bar) => bar.timestamp < first);
-          if (!older.length) return;
-          const extended = [...older, ...latestCandlesRef.current];
-          latestCandlesRef.current = extended;
-          setCandles(extended);
-        }).catch(() => {});
-    }
+    const windows = bigContractHistoryWindowsForRange(bigContractFrom, bigContractThrough).reverse();
     const batches: InstitutionalTrade[][] = [];
     let cursor = 0;
     const load = async () => {
@@ -5845,7 +5832,7 @@ function WorkspaceChartPaneComponent({
     void load();
     void load();
     return () => { cancelled = true; };
-  }, [bigContractDays, pane.broker, pane.symbol, pane.timeframe, period, replayHistoryRange]);
+  }, [bigContractFrom, bigContractThrough, pane.broker, pane.symbol]);
   const footprintLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "deep-print-footprint");
   const instantTapeLiveActive = indicators.some((instance) =>
@@ -5866,7 +5853,8 @@ function WorkspaceChartPaneComponent({
   const dailyFuturesProfileSignature = JSON.stringify(dailyProfileInstances.map(({ instanceId, indicatorId, settings = {} }) => ({
     instanceId,
     settings: {
-      numberOfProfiles: settings.numberOfProfiles,
+      indicatorHistoryMode: settings.indicatorHistoryMode,
+      historyDaysLimit: settings.historyDaysLimit,
       includeDevelopingHistory: (indicatorId === "ask-bid-volume-profile" || indicatorId === "delta-profile") && (
         settings.showDevelopingPoc === true || settings.pocLineMode === "developing"
         || settings.pocLineMode === "extend-shifted"
@@ -5989,6 +5977,8 @@ function WorkspaceChartPaneComponent({
     // the full array out prevents unrelated indicator toggles reconnecting feeds.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartOverlaySignature, pane.symbol, pane.timeframe, period, replayHistoryRange, settings.borderUpColor, settings.downColor, settings.upColor]);
+  const initialBalanceArchiveStart = loadedStartMs === undefined ? null
+    : Math.floor(indicatorHistoryStart(initialBalanceInstance?.settings, loadedStartMs, loadedEndMs ?? loadedStartMs) / INDICATOR_HISTORY_DAY_MS) * INDICATOR_HISTORY_DAY_MS;
   useEffect(() => {
     if (!initialBalanceNeedsMinuteSeries) {
       setInitialBalanceStudyCandles((current) => (current.length ? [] : current));
@@ -5996,40 +5986,43 @@ function WorkspaceChartPaneComponent({
     }
     let cancelled = false;
     const controller = new AbortController();
-    // IB keeps only the most recent window per session, so a couple of days of
-    // minutes is the whole requirement - there is no reason to pull the
-    // study's full lookback at minute resolution.
-    const load = async () => {
+    const load = async (restoreHistory: boolean) => {
       try {
         const toMs = replayHistoryRange?.toMs ?? Date.now();
-        const candles = await fetchWorkspaceCandles(
+        const recentFromMs = toMs - 3 * INDICATOR_HISTORY_DAY_MS;
+        const fromMs = Math.max(toMs - 30 * INDICATOR_HISTORY_DAY_MS,
+          restoreHistory ? Math.min(initialBalanceArchiveStart ?? recentFromMs, recentFromMs) : recentFromMs);
+        const rows = await fetchWorkspaceCandles(
           pane.symbol,
           "1m",
           pane.broker,
-          "5D",
-          5_000,
+          "1M",
+          45_000,
           false,
           controller.signal,
           false,
           false,
-          3,
-          replayHistoryRange ?? { fromMs: toMs - 3 * 24 * 60 * 60_000, toMs, key: `ib-1m:${pane.symbol}` },
+          Math.ceil((toMs - fromMs) / INDICATOR_HISTORY_DAY_MS),
+          replayHistoryRange ?? { fromMs, toMs, key: `ib-1m:${pane.symbol}:${fromMs}` },
         );
-        if (!cancelled) setInitialBalanceStudyCandles(candles);
+        if (!cancelled && rows.length) setInitialBalanceStudyCandles(current => restoreHistory
+          ? rows
+          : [...current.filter(candle => candle.timestamp < rows[0].timestamp), ...rows]);
       } catch {
         // The study falls back to the pane's own candles, which is the old
         // behaviour rather than a blank chart.
       }
     };
-    void load();
-    // The developing range has to keep building while the session opens.
-    const timer = replayHistoryRange ? null : window.setInterval(() => void load(), 60_000);
+    setInitialBalanceStudyCandles([]);
+    void load(true);
+    // Reconcile just the recent minute tail while the opening range develops.
+    const timer = replayHistoryRange ? null : window.setInterval(() => void load(false), 60_000);
     return () => {
       cancelled = true;
       controller.abort();
       if (timer !== null) window.clearInterval(timer);
     };
-  }, [initialBalanceNeedsMinuteSeries, pane.broker, pane.symbol, replayHistoryRange]);
+  }, [initialBalanceArchiveStart, initialBalanceNeedsMinuteSeries, pane.broker, pane.symbol, replayHistoryRange]);
   const needsLiveVolumeProfiles = Boolean(dailyProfileInstance || weeklyProfileInstance || compositeProfileInstance);
   // Daily/weekly profiles are execution-tape studies too. Leaving them out of
   // this gate meant a profile-only chart never opened the Rithmic execution
@@ -6060,16 +6053,6 @@ function WorkspaceChartPaneComponent({
   // open the execution stream can be live before the first/restored candle is
   // committed, so relying on candles alone omitted today's profile entirely.
   const currentDailyTradingDate = chicagoTradingDate(replayTimestampMs ?? Date.now());
-  /*
-   * How many daily profiles to draw, which used to be a hard six.
-   *
-   * `numberOfProfiles` was stored, migrated and read by nothing - the setting
-   * persisted across reloads and moved nothing on the chart. The slice is the
-   * one place that decided, so it is the one place that has to ask.
-   */
-  const dailyProfileCount = dailyProfileInstances.length
-    ? Math.max(...dailyProfileInstances.map((instance) => resolveDailyVolumeProfileCount(instance.settings?.numberOfProfiles)))
-    : resolveDailyVolumeProfileCount(dailyProfileSettings.numberOfProfiles);
   // Exact archive profiles use completed-minute checkpoints in replay. Never
   // fan out a history HTTP request for every 200 ms transport tick.
   const replayProfileClockMs = replayTimestampMs == null ? null : Math.floor(replayTimestampMs / 60_000) * 60_000;
@@ -6081,20 +6064,26 @@ function WorkspaceChartPaneComponent({
       if (!filterFutureProfileDates || date <= currentDailyTradingDate) dates.add(date);
     }
     dates.add(currentDailyTradingDate);
-    return [...dates].sort().slice(-dailyProfileCount);
-  }, [candles, currentDailyTradingDate, dailyProfileCount, filterFutureProfileDates]);
+    return [...dates].sort();
+  }, [candles, currentDailyTradingDate, filterFutureProfileDates]);
   const dailyTradingDateSignature = dailyTradingDates.join(",");
-  const compositeProfileRange = useMemo(() => compositeProfileInstance ? resolveCompositeVolumeProfileRange({
-    candles,
-    intervalMs: isEventBasedChartInterval(pane.timeframe) ? null : getTimeframeMs(pane.timeframe),
-    timeframe: pane.timeframe,
-    replayEndMs: replayProfileClockMs,
-    mode: compositeProfileSettings.compositeRangeMode,
-    lengthValue: compositeProfileSettings.compositeLengthValue,
-    customStartMs: compositeProfileSettings.compositeCustomStartMs,
-    customEndMs: compositeProfileSettings.compositeCustomEndMs,
-    customEndFollowsLatest: compositeProfileSettings.compositeCustomEndFollowsLatest,
-  }) : null, [
+  const compositeProfileRange = useMemo(() => {
+    if (!compositeProfileInstance) return null;
+    const range = resolveCompositeVolumeProfileRange({
+      candles,
+      intervalMs: isEventBasedChartInterval(pane.timeframe) ? null : getTimeframeMs(pane.timeframe),
+      timeframe: pane.timeframe,
+      replayEndMs: replayProfileClockMs,
+      mode: compositeProfileSettings.compositeRangeMode,
+      lengthValue: compositeProfileSettings.compositeLengthValue,
+      customStartMs: compositeProfileSettings.compositeCustomStartMs,
+      customEndMs: compositeProfileSettings.compositeCustomEndMs,
+      customEndFollowsLatest: compositeProfileSettings.compositeCustomEndFollowsLatest,
+    });
+    if (!range) return null;
+    const startMs = indicatorHistoryStart(compositeProfileSettings, range.startMs, range.endMs);
+    return startMs < range.endMs ? { ...range, startMs } : null;
+  }, [
     candles,
     compositeProfileInstance?.instanceId,
     replayProfileClockMs,
@@ -6103,6 +6092,8 @@ function WorkspaceChartPaneComponent({
     compositeProfileSettings.compositeCustomStartMs,
     compositeProfileSettings.compositeLengthValue,
     compositeProfileSettings.compositeRangeMode,
+    compositeProfileSettings.indicatorHistoryMode,
+    compositeProfileSettings.historyDaysLimit,
     pane.timeframe,
   ]);
   // The futures→cash value-area projection reads the latest cash candle
@@ -9017,7 +9008,8 @@ function WorkspaceChartPaneComponent({
           maxTradeVolume: Math.max(0, Number(instanceSettings.maxTradeVolume ?? 0) || 0),
         });
         for (const { instanceId, settings: ownerSettings } of dailyOwners) {
-          const dates = dailyTradingDateSignature.split(",").slice(-resolveDailyVolumeProfileCount(ownerSettings.numberOfProfiles));
+          const ownerStart = indicatorHistoryStart(ownerSettings, undefined, cutoffMs);
+          const dates = dailyTradingDateSignature.split(",").filter(date => (cmeSessionWindowForDate(date)?.endMs ?? 0) > ownerStart);
           const windows = dailyProfileWindows(dates, ownerSettings);
           for (const [tradingDate, jobs] of windows) {
             const session = cmeSessionWindowForDate(tradingDate);
@@ -9304,7 +9296,8 @@ function WorkspaceChartPaneComponent({
       instanceId: string;
       settings: Record<string, string | number | boolean>;
     }>).map(({ instanceId, settings }) => {
-      const dates = tradingDates.slice(-resolveDailyVolumeProfileCount(settings.numberOfProfiles));
+      const cutoff = indicatorHistoryStart(settings, undefined, replayProfileClockMs ?? Date.now());
+      const dates = tradingDates.filter(date => (cmeSessionWindowForDate(date)?.endMs ?? 0) > cutoff);
       const requestedSessions = requestedSessionIds(settings);
       const sessions = requestedSessions?.size ? requestedSessions : null;
       return [instanceId, {
@@ -9338,6 +9331,24 @@ function WorkspaceChartPaneComponent({
     const requestedWeeklyGroupTicks = 1;
     const requestedWeeklyMinVolume = Math.max(0, Number(weeklyProfileSettings.minTradeVolume ?? 0) || 0);
     const requestedWeeklyMaxVolume = Math.max(0, Number(weeklyProfileSettings.maxTradeVolume ?? 0) || 0);
+    const profileClockMs = replayProfileClockMs ?? Date.now();
+    const weekSelection = weeklyProfileSettings.weekSelection;
+    const selectedWeek = cmeWeekRange(
+      profileClockMs,
+      weekSelection === "previous" || weekSelection === "current" ? weekSelection : "rolling-five",
+      tradingDates,
+    );
+    const firstSession = tradingDates[0] ? cmeSessionWindowForDate(tradingDates[0]) : null;
+    const weeklyHistoryStart = indicatorHistoryStart(
+      weeklyProfileSettings, firstSession?.startMs ?? selectedWeek.startMs, profileClockMs,
+    );
+    const weeklyWindows = [selectedWeek];
+    for (let endMs = selectedWeek.startMs; weeklyProfileInstance && endMs > weeklyHistoryStart;) {
+      const { startMs } = cmeWeekRange(endMs - 1, "current");
+      weeklyWindows.push({ startMs, endMs });
+      endMs = startMs;
+    }
+    const weeklyStarts = new Set(weeklyWindows.map(window => window.startMs));
     const profileTradingDateFor = (profile: InstitutionalVolumeProfile) =>
       /^\d{4}-\d{2}-\d{2}$/.test(profile.tradingDate ?? "")
         ? profile.tradingDate!
@@ -9375,7 +9386,7 @@ function WorkspaceChartPaneComponent({
           && dailyOwner.tradingDates.has(profileTradingDateFor(profile))
           && profileMatchesRequestedSessions(profile.sessionId, dailyOwner.sessions));
       }
-      return profile.period === "weekly" && Boolean(weeklyProfileInstance);
+      return profile.period === "weekly" && Boolean(weeklyProfileInstance) && weeklyStarts.has(profile.startMs);
     };
     // A volume profile is an execution-tape surface. OHLCV cannot recover the
     // traded-at-price distribution or aggressor-side delta, so it is never an
@@ -9387,6 +9398,7 @@ function WorkspaceChartPaneComponent({
       return current
         .filter((profile) => {
           if (!isExecutionBackedVolumeProfile(profile)) return false;
+          if (profile.period === "weekly" && !weeklyStarts.has(profile.startMs)) return false;
           const owner = profile.ownerInstanceId ? dailyOwners.get(profile.ownerInstanceId) : undefined;
           return shouldRetainLastGoodVolumeProfile(profile, {
             ...continuityScope,
@@ -9439,7 +9451,7 @@ function WorkspaceChartPaneComponent({
             if (sameWindow) previousDaily = candidate;
             return !sameWindow;
           }
-          return false;
+          return candidate.startMs !== replacement.startMs;
         });
         next.push(previousDaily && replayProfileClockMs == null
           ? retainLiveVolumeProfileDevelopment(replacement, previousDaily)
@@ -9544,52 +9556,54 @@ function WorkspaceChartPaneComponent({
       const currentDailyProfileLoaded = priorityResults.every((result) =>
         result.status === "fulfilled" && result.value,
       );
-      requests.push(...olderDailyJobs.map((load) => load()));
       if (weeklyProfileInstance && includeCompletedProfiles) {
-        const profileClockMs = replayProfileClockMs ?? Date.now();
-        // Stock weekly behaviour is one rolling calculation over the latest
-        // five real trading dates. Current/previous calendar week remain user
-        // choices in settings.
-        const selection = String(weeklyProfileSettings.weekSelection ?? "rolling-five");
-        const { startMs: weekStartMs, endMs: weekEndMs } = cmeWeekRange(
-          profileClockMs,
-          selection === "previous" ? "previous" : selection === "current" ? "current" : "rolling-five",
-          tradingDates,
-        );
-        const weeklyRequestArgs = {
-          symbol: displayCmeSymbol(pane.symbol),
-          contractSymbol: resolvedContractSymbol ?? undefined,
-          period: "weekly",
-          startMs: weekStartMs,
-          // A finished week is bounded at this week's open so no part of the
-          // live week can leak into it.
-          // Keep the developing week's request identity stable. The gateway
-          // resolves an omitted end to its current clock, while the browser's
-          // cache key remains the same from one candle/timeframe to the next.
-          // Including the latest candle timestamp here made every load a cold
-          // cache miss, so the chart waited for a full five-session archive
-          // aggregation even when it had an exact weekly snapshot locally.
-          endMs: replayProfileClockMs == null ? weekEndMs ?? undefined : Math.min(weekEndMs ?? profileClockMs, profileClockMs),
-          groupTicks: requestedWeeklyGroupTicks,
-          valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
-          minTradeVolume: requestedWeeklyMinVolume,
-          maxTradeVolume: requestedWeeklyMaxVolume,
-          filterMode: sessionFilterModeFor(weeklyProfileSettings),
-          filterTime: sessionFilterTimeFor(weeklyProfileSettings),
-          sessionStartMinutes: Number(weeklyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
-          sessionEndMinutes: Number(weeklyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
-          useEndSessionAsStartDay: weeklyProfileSettings.useEndSessionAsStartDay === true,
-        } as const;
-        requests.push((async () => {
-          replaceExactProfile(await readCachedInstitutionalVolumeProfile(weeklyRequestArgs));
-          const profile = await fetchInstitutionalVolumeProfile(weeklyRequestArgs);
-          replaceExactProfile(profile);
-          if (!cancelled) setWeeklyProfileFailure(profile ? null : {
-            key: `${activeRoot}:${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`,
-            message: volumeProfileFailureMessage(weeklyRequestArgs) ?? "Required session history is unavailable.",
-          });
-        })());
+        weeklyWindows.forEach(({ startMs: weekStartMs, endMs: weekEndMs }, index) => {
+          const weeklyRequestArgs = {
+            symbol: displayCmeSymbol(pane.symbol),
+            contractSymbol: resolvedContractSymbol ?? undefined,
+            period: "weekly",
+            startMs: weekStartMs,
+            // A finished week is bounded at this week's open so no part of the
+            // live week can leak into it.
+            // Keep the developing week's request identity stable. The gateway
+            // resolves an omitted end to its current clock, while the browser's
+            // cache key remains the same from one candle/timeframe to the next.
+            // Including the latest candle timestamp here made every load a cold
+            // cache miss, so the chart waited for a full five-session archive
+            // aggregation even when it had an exact weekly snapshot locally.
+            endMs: replayProfileClockMs == null ? weekEndMs ?? undefined : Math.min(weekEndMs ?? profileClockMs, profileClockMs),
+            groupTicks: requestedWeeklyGroupTicks,
+            valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
+            minTradeVolume: requestedWeeklyMinVolume,
+            maxTradeVolume: requestedWeeklyMaxVolume,
+            filterMode: sessionFilterModeFor(weeklyProfileSettings),
+            filterTime: sessionFilterTimeFor(weeklyProfileSettings),
+            sessionStartMinutes: Number(weeklyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
+            sessionEndMinutes: Number(weeklyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
+            useEndSessionAsStartDay: weeklyProfileSettings.useEndSessionAsStartDay === true,
+          } as const;
+          const loadWeekly = async () => {
+            replaceExactProfile(await readCachedInstitutionalVolumeProfile(weeklyRequestArgs));
+            const profile = await fetchInstitutionalVolumeProfile(weeklyRequestArgs);
+            const published = replaceExactProfile(profile);
+            if (!cancelled && index === 0) setWeeklyProfileFailure(published ? null : {
+              key: `${activeRoot}:${resolvedContractSymbol}:${weeklyProfileInstance.instanceId}`,
+              message: volumeProfileFailureMessage(weeklyRequestArgs) ?? "Required session history is unavailable.",
+            });
+            return published;
+          };
+          if (index === 0) requests.push(loadWeekly());
+          else olderDailyJobs.push(loadWeekly);
+        });
       }
+      const loadOlderProfiles = async () => {
+        while (!cancelled) {
+          const load = olderDailyJobs.shift();
+          if (!load) return;
+          await load().catch(() => false);
+        }
+      };
+      requests.push(loadOlderProfiles(), loadOlderProfiles());
       // Older requests paint independently. They must not postpone retrying
       // the newest profile if its first request missed.
       void Promise.allSettled(requests);
@@ -9636,6 +9650,9 @@ function WorkspaceChartPaneComponent({
     pane.symbol,
     resolvedContractSymbol,
     weeklyProfileInstance?.instanceId,
+    weeklyProfileSettings.indicatorHistoryMode,
+    weeklyProfileSettings.historyDaysLimit,
+    weeklyProfileSettings.weekSelection,
     weeklyProfileSettings.autoGroupFactor,
     weeklyProfileSettings.filterMode,
     weeklyProfileSettings.filterTime,
@@ -9901,7 +9918,7 @@ function WorkspaceChartPaneComponent({
             ? loadEarlierRecordedHistory : undefined}
           candles={displayCandles}
           extendedDeltaHistory={Boolean(monthlyFlowKey)}
-          bigContractHistory={replayHistoryRange || bigContractHistory.symbol !== pane.symbol ? undefined : bigContractHistory.records}
+          bigContractHistory={bigContractHistory.symbol !== pane.symbol ? undefined : bigContractHistory.records}
           marketTrades={replayMarketTrades}
           marketTradesVersion={marketTradesVersion}
           denseExecutionStartMs={replayActive ? null : denseExecutionStartMs}

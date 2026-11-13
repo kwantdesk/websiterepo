@@ -31,16 +31,16 @@ function trade(timestamp, volume, price = 20_000) {
   };
 }
 
-test("Big Trades defaults to 24 hours ending at the newest execution", () => {
+test("Big Trades Auto retains prints back to the first loaded candle", () => {
   const now = Date.UTC(2026, 7, 15, 12);
   const prints = calculateBigTradePrints(
-    [],
-    [trade(now - 25 * 60 * 60_000, 500), trade(now, 100)],
+    [{ timestamp: now - 30 * 86_400_000 }],
+    [trade(now - 31 * 86_400_000, 900), trade(now - 25 * 60 * 60_000, 500), trade(now, 100)],
     { filterMode: "manual", manualFilter: 1, enableClustering: false },
     now,
   );
 
-  assert.deepEqual(prints.map((print) => print.volume), [100]);
+  assert.deepEqual(prints.map((print) => print.volume), [500, 100]);
 });
 
 test("unchanged tape keeps identical markers through daily close and the old six-hour boundary", () => {
@@ -53,7 +53,7 @@ test("unchanged tape keeps identical markers through daily close and the old six
     assert.deepEqual(calculateBigTradePrints([], tape, settings, close + elapsed), expected);
   }
   const advanced = calculateBigTradePrints([], [...tape, trade(close + 1_000, 200)], settings, close + 1_000);
-  assert.deepEqual(advanced.map((print) => print.volume), [100, 200]);
+  assert.deepEqual(advanced.map((print) => print.volume), [500, 100, 200]);
 });
 
 test("Big Trades retains the latest completed session while CME is closed", () => {
@@ -69,7 +69,7 @@ test("Big Trades retains the latest completed session while CME is closed", () =
     sundayMorning,
   );
 
-  assert.deepEqual(prints.map((print) => print.volume), [100]);
+  assert.deepEqual(prints.map((print) => print.volume), [500, 100]);
 });
 
 test("manual minimum trade size immediately filters executions contract by contract", () => {

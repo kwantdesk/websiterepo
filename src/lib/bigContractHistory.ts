@@ -24,10 +24,15 @@ export function distributeContractMarkers<T extends { timestamp: number; volume:
 // Request bounded slices: the archive's per-response print ceiling must not
 // turn a multi-day request into just its newest executions.
 export function bigContractHistoryWindows(days: number, toMs: number) {
-  const fromMs = toMs - Math.min(30, Math.max(1, Math.round(days))) * DAY;
+  return bigContractHistoryWindowsForRange(toMs - Math.min(365, Math.max(1, Math.round(days))) * DAY, toMs);
+}
+
+export function bigContractHistoryWindowsForRange(fromMs: number, toMs: number) {
   const windows = [];
-  for (let start = fromMs; start < toMs; start += DAY) {
-    windows.push({ fromMs: start, toMs: Math.min(toMs, start + DAY) });
+  for (let start = fromMs; start < toMs;) {
+    const end = Math.min(toMs, (Math.floor(start / DAY) + 1) * DAY);
+    windows.push({ fromMs: start, toMs: end });
+    start = end;
   }
   return windows;
 }

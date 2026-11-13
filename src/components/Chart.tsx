@@ -1,4 +1,6 @@
 "use client";
+
+import { indicatorHistoryStart, INDICATOR_HISTORY_DAY_MS } from "@/lib/indicatorHistoryRange";
 import { createPortal } from "react-dom";
 import { installPriceScaleDoubleClickToggle } from "@/lib/priceScaleDoubleClickToggle";
 import { useChartDrawingUndo } from "@/components/useChartDrawingUndo";
@@ -16,7 +18,6 @@ import { clampPositionStopPrice, nearestPositionHandle } from "@/lib/positionToo
 import { clipReplayIndicatorSeries, replayCausalCandles, replayCausalTrades, replaySafeIndicators, replayRetentionMustReset } from "@/lib/replayIndicatorSafety";
 import { replayProfileWithinClock } from "@/lib/replayVolumeProfiles";
 import { useReplayFrameState } from "@/lib/useReplayFrameState";
-import { replayIndicatorCandles } from "@/lib/replayChartHistory";
 
 import { SuperTrendLabels } from "@/lib/superTrendLabels";
 import { BigBlocksLiveState, type LiveBigBlockZone } from "@/lib/bigBlocksLiveState";
@@ -544,7 +545,6 @@ const CUMULATIVE_DELTA_INDICATOR_IDS = new Set([
   "delta-cumulative-histogram",
   "delta-bar",
 ]);
-const DEEP_HISTORY_INDICATOR_MAX_BARS = 20_000;
 
 /**
  * How much of the window a cumulative-delta study must cover before it draws.
@@ -574,36 +574,6 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  * is readable, and holding the whole chart back for them would trade one
  * complaint for another.
  */
-const DEEP_HISTORY_INDICATOR_IDS = new Set([
-  "bollinger-bands",
-  "inverse-cyber-cycle",
-  "ichimoku-indicator",
-  // Linear recurrence: measured 20k-bar p95 ~4.3ms; live updates are incremental.
-  "super-trend",
-  "super-trend-difference",
-  // Four full ROC/average seeds plus signal need up to 2999 real bars.
-  "know-sure-thing-kst",
-  // Six EMA seed windows at length 1000 need 5995 real bars, not the lite 1500.
-  "tillson-t3",
-  // O(n) centered rolling fit: 20k-bar p95 < 1.6ms in the local calculator
-  // check. Its selectable 10k length must not receive only 1.5k lite candles.
-  "linear-regression",
-  "regression-channel",
-  "swing-point",
-  "fvg-identifier",
-  "price-movement-levels",
-  // Daily/weekly/monthly targets can require hundreds of completed periods.
-  "average-daily-range-target",
-  "overlay-timeframe-highlight",
-  // Single-pass running extremes; the selectable 10k confirmation window and
-  // long structural swings must not be truncated to the 1.5k lite tail.
-  "zig-zag",
-  "moving-average",
-  "volume",
-  "standard-deviation",
-  "average-true-range-atr",
-  "rate-of-change-roc",
-]);
 const EMPTY_CHARTING_DRAWINGS: Drawing[] = [];
 // Retained gamma-heatmap history columns per pane. Bounds per-pane memory and
 // the per-render surface build cost (the GEX Vue OOM/freeze driver).
@@ -5521,60 +5491,7 @@ function Chart({
     const timer = window.setTimeout(() => setSettledTpoIndicators(latestIndicatorsRef.current), 90);
     return () => window.clearTimeout(timer);
   }, [tpoCalculationSignature]);
-  const indicatorHistoryLimit = useMemo(() => {
-    if (replayTimestampMs != null) return sampledIndicatorCandles.length;
-    const intervalMs = timeframeToMs(timeframe);
-    const orderFlowLimit = intervalMs === null
-      ? 6_000
-      : Math.max(1_500, Math.min(4_000, Math.ceil(172_800_000 / intervalMs)));
-    // Big Contracts anchors every print to a candle, so a print older than the
-    // first candle in this window can never be drawn. Its "Days to load"
-    // therefore has to widen the window, or raising it silently showed nothing
-    // beyond the default 48-hour order-flow lookback. Bounded so a 30-day
-    // request on a one-minute chart cannot explode the recompute cost.
-    const bigTradeDays = indicators.reduce((days, instance) => (
-      instance.enabled && instance.indicatorId === "big-trades"
-        ? Math.max(days, Math.min(30, Math.max(1, Number(instance.settings?.daysToLoad ?? 1))))
-        : days
-    ), 0);
-    const bigTradeLimit = bigTradeDays > 0 && intervalMs !== null
-      ? Math.max(1_500, Math.min(43_200, Math.ceil((bigTradeDays * 86_400_000) / intervalMs)))
-      : 0;
-    return indicators.some((instance) =>
-      instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow)
-      ? Math.max(orderFlowLimit, bigTradeLimit)
-      : 1_500;
-  }, [indicatorSignature, indicators, replayTimestampMs != null, sampledIndicatorCandles.length, timeframe]);
-  const indicatorWindowCandles = useMemo(
-    () => replayIndicatorCandles(sampledIndicatorCandles, indicatorHistoryLimit, replayTimestampMs),
-    [indicatorHistoryLimit, replayTimestampMs, sampledIndicatorCandles],
-  );
-  // Non-order-flow studies (MA, RSI, VWAP...) never need the 48h order-flow
-  // lookback. When an order-flow indicator inflates the window to 4-6k candles,
-  // simple studies stay on a 1.5k window so they don't pay a 4x recompute cost
-  // every sample — the dominant multi-indicator OOM/churn multiplier.
-  const indicatorWindowCandlesLite = useMemo(
-    () => replayTimestampMs != null || indicatorHistoryLimit <= 1_500
-      ? indicatorWindowCandles
-      : sampledIndicatorCandles.slice(-1_500),
-    [indicatorHistoryLimit, indicatorWindowCandles, replayTimestampMs, sampledIndicatorCandles],
-  );
-  // Studies cheap enough to span the whole loaded history instead of the
-  // 1,500-bar lite window, which on a one-minute chart stopped roughly a day
-  // short of price while the candles carried on.
-  //
-  // The membership is measured, not guessed. On 20,000 one-minute bars, per
-  // recompute (the sample cadence is 1-2s): moving average 1.3ms, volume
-  // 1.6ms, standard deviation 2.2ms, ATR 2.4ms, rate of change 2.8ms — about
-  // 10ms with every one of them switched on at once, comfortably inside the
-  // budget. Everything else measured dearer at that depth and stays on the
-  // lite window: Keltner 12ms, rolling VWAP 46ms, and VWAP alone 92ms, which
-  // would block five frames on every sample and bring back the stutter this
-  // window was introduced to prevent.
-  const indicatorWindowCandlesDeep = useMemo(
-    () => replayIndicatorCandles(sampledIndicatorCandles, DEEP_HISTORY_INDICATOR_MAX_BARS, replayTimestampMs),
-    [replayTimestampMs, sampledIndicatorCandles],
-  );
+  const indicatorWindowCandles = sampledIndicatorCandles;
   const indicatorMarketTrades = useMemo(() => {
     if (!indicatorWindowCandles.length || !sampledIndicatorMarketTrades.length) return [];
     const firstTimestamp = indicatorWindowCandles[0].timestamp;
@@ -5718,9 +5635,7 @@ function Chart({
   // must never be folded back into CVD or it will replace exact history with a
   // biased subset of large prints.
   const indicatorCandles = indicatorWindowCandles;
-  const deltaPaneCandles = extendedDeltaHistory ? sampledIndicatorCandles : indicatorCandles;
-  const indicatorCandlesLite = indicatorWindowCandlesLite;
-  const indicatorCandlesDeep = indicatorWindowCandlesDeep;
+  const deltaPaneCandles = indicatorCandles;
   const miniDomIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "mini-dom") ?? null,
     [indicatorSignature, indicators],
@@ -6260,8 +6175,8 @@ function Chart({
     ?? (deltaLadderSide ? deltaBarIndicator : null);
   const volumeAtPriceConsumer = footprintDataConsumer ?? dynamicPocIndicator;
   const footprintCandles = useMemo(
-    () => volumeAtPriceConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
-    [volumeAtPriceConsumer, indicatorHistoryLimit, sampledIndicatorCandles],
+    () => volumeAtPriceConsumer ? sampledIndicatorCandles : [],
+    [volumeAtPriceConsumer, sampledIndicatorCandles],
   );
   useEffect(() => {
     if (!volumeAtPriceConsumer) {
@@ -7664,7 +7579,7 @@ function Chart({
     return covered / sampled >= CUMULATIVE_DELTA_MINIMUM_COVERAGE;
   }, [indicatorCandles, orderFlowHistoryReady]);
   const indicatorAlertNotice = useChartIndicatorAlertDelivery(indicators, instrument, Number(replayTimestampMs ?? 0) > 0);
-  const superTrendAlertNotice = useSuperTrendAlerts({ indicators, history: indicatorCandlesDeep, liveKey: liveCandleEventKey,
+  const superTrendAlertNotice = useSuperTrendAlerts({ indicators, history: indicatorCandles, liveKey: liveCandleEventKey,
     instrument, timeframe, live: marketIsActive === true && !(replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0),
     onReset: instanceId => {
       superTrendPlotBuffersRef.current.delete(`super-trend-${instanceId}`);
@@ -7743,7 +7658,8 @@ function Chart({
         if (!instance.enabled || !optionsVwapHistory || optionsVwapHistory.symbol !== instrument) return [];
         const config=instance.settings ?? {};
         const theme=visibleIndicatorTheme(settings);
-        const points=calculateOptionsVwap(optionsVwapHistory.events,sampledIndicatorCandles,config,replayTimestampMs,(sampledIndicatorCandles.at(-1)?.timestamp ?? 0)+(timeframeToMs(timeframe) ?? inferCandleIntervalMs(sampledIndicatorCandles) ?? 60000));
+        const from = indicatorHistoryStart(config, sampledIndicatorCandles[0]?.timestamp, replayTimestampMs ?? sampledIndicatorCandles.at(-1)?.timestamp ?? 0);
+        const points=calculateOptionsVwap(optionsVwapHistory.events,sampledIndicatorCandles,config,replayTimestampMs,(sampledIndicatorCandles.at(-1)?.timestamp ?? 0)+(timeframeToMs(timeframe) ?? inferCandleIntervalMs(sampledIndicatorCandles) ?? 60000)).filter(point => point.time * 1_000 >= from);
         const style=(value:unknown): "solid"|"dashed"|"dotted"=>value==="dashed"||value==="dotted"?value:"solid";
         const width=(value:unknown,fallback:number)=>Math.max(1,Math.min(4,Number(value)||fallback)) as 1|2|3|4;
         const lines:CalculatedIndicatorSeries[]=[{key:instance.instanceId+"-options-vwap",groupKey:instance.instanceId,label:"Options VWAP · observed contracts",kind:"line",placement:"overlay",
@@ -7768,21 +7684,9 @@ function Chart({
         && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId)
         && !CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId)
       ) return [];
-      const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
-      // Aroon uses candle extrema and a linear rolling window across loaded history.
-      const studyCandles = instance.indicatorId === "aroon-oscillator" || instance.indicatorId === "relative-strength-index-rsi"
-        ? sampledIndicatorCandles
-        : instance.indicatorId === "volume" || instance.indicatorId === "chaikin-accumulation-distribution"
-        ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
-        : CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId) ? deltaPaneCandles
-        : requiresOrderFlowWindow
-        ? indicatorCandles
-        : DEEP_HISTORY_INDICATOR_IDS.has(instance.indicatorId)
-          ? indicatorCandlesDeep
-          : indicatorCandlesLite;
       return calculateIndicatorSeries(
         instance,
-        studyCandles,
+        indicatorCandles,
         // Resolved so a study is never painted the chart's own colour: a
         // hollow-candle theme makes downColor the background.
         visibleIndicatorTheme(settings),
@@ -7795,8 +7699,6 @@ function Chart({
     [
       indicatorCandles,
       deltaPaneCandles,
-      indicatorCandlesDeep,
-      indicatorCandlesLite,
       indicatorSignature,
       sampledIndicatorCandles,
       optionsVwapHistory,
@@ -7895,7 +7797,7 @@ function Chart({
   // not wait for the slower execution/indicator history sampler after Add.
   const priceStudySeries = useMemo(() => indicators.flatMap(instance =>
     isLivePriceStudy(instance.indicatorId)
-      ? calculateIndicatorSeries(instance, replayIndicatorCandles(candles, DEEP_HISTORY_INDICATOR_MAX_BARS, replayTimestampMs),
+      ? calculateIndicatorSeries(instance, candles,
         visibleIndicatorTheme(settings), { instrument, tickSize: priceFormat.minMove, replayTimestampMs })
         .map(series => ({ ...series, groupKey: instance.instanceId })) : []),
   [candles, indicatorSignature, indicators, instrument, priceFormat.minMove, replayTimestampMs,
@@ -8509,12 +8411,13 @@ function Chart({
     const toMs = Math.min(closedArchive, (Math.floor(tail / TAPE_HISTORY_CHUNK_MS) + 1) * TAPE_HISTORY_CHUNK_MS);
     const firstVisible = Math.max(0, Math.floor(Number(logical?.from ?? 0)));
     const first = candles[firstVisible] ?? candles[0];
+    const tapeSettings = indicators.find(instance => instance.enabled && instance.indicatorId === "speed-of-tape")?.settings;
     const fromMs = Math.max(toMs - TAPE_HISTORY_WINDOW_MS,
-      Math.floor(((first.sourceStartTimestamp ?? first.timestamp) - 3_600_000) / TAPE_HISTORY_CHUNK_MS) * TAPE_HISTORY_CHUNK_MS);
+      Math.floor((indicatorHistoryStart(tapeSettings, first.sourceStartTimestamp ?? first.timestamp, replayTimestampMs ?? candles.at(-1)!.timestamp) - 3_600_000) / TAPE_HISTORY_CHUNK_MS) * TAPE_HISTORY_CHUNK_MS);
     return { fromMs, toMs };
     // Re-evaluate when the viewport moves. Archive windows stay fixed between
     // chunk boundaries, so forming candles never issue a per-tick request.
-  }, [speedOfTapeEnabled, contractSymbol, instrument, candles, viewportVersion, replayTimestampMs, speedTapeInterval]);
+  }, [speedOfTapeEnabled, contractSymbol, instrument, candles, viewportVersion, replayTimestampMs, speedTapeInterval, indicators]);
   const speedTapeHistory = useSpeedOfTapeHistory(speedTapeRange ? contractSymbol : null,
     speedTapeRange?.fromMs ?? 0, speedTapeRange?.toMs ?? 0);
   const speedTapeArchive = useMemo(() => {
@@ -8553,8 +8456,11 @@ function Chart({
       liveCandles, speedTapeInterval, speedTapeAsOf, completeFrom);
     const bars = new Map(live.bars.map(bar => [bar.startMs, bar]));
     for (const bar of archivedSpeedOfTape[index] ?? []) bars.set(bar.startMs, bar);
-    const series = chartSpeedOfTapeSeries({ ...live, status: bars.size ? "ready" : live.status,
-      bars: [...bars.values()].sort((a, b) => a.startMs - b.startMs) }, instance.instanceId);
+    const fromMs = indicatorHistoryStart(instance.settings, candles[0]?.sourceStartTimestamp ?? candles[0]?.timestamp,
+      replayTimestampMs ?? candles.at(-1)?.sourceEndTimestamp ?? last?.timestamp ?? 0);
+    const history = [...bars.values()].filter(bar => bar.startMs >= fromMs).sort((a, b) => a.startMs - b.startMs);
+    const series = chartSpeedOfTapeSeries({ ...live, status: history.length ? "ready" : live.status,
+      bars: history }, instance.instanceId);
     return [{ key: instance.instanceId, title: "Speed of Tape (" + source.numberSeconds + ")",
       indicatorId: instance.indicatorId, settings: instance.settings, series,
       showHeader: true, showLegend: false, defaultHeight: source.paneHeight, minimumHeight: 120, maximumHeight: 520,
@@ -8620,6 +8526,8 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "gamma-heatmap") ?? null,
     [indicators],
   );
+  const gammaHistoryHours = Math.min(120, Math.max(1, Math.ceil(((candles.at(-1)?.timestamp ?? 0)
+    - indicatorHistoryStart(gammaHeatmapIndicator?.settings, candles[0]?.timestamp, replayTimestampMs ?? candles.at(-1)?.timestamp ?? 0)) / 3_600_000)));
   useEffect(() => {
     if (!gammaHeatmapIndicator) {
       setGammaHeatmapPayload(null);
@@ -8635,7 +8543,7 @@ function Chart({
     const source = sourceSetting === "AUTO" ? defaultGammaHeatmapSource(display) : sourceSetting;
     const metric = String(indicatorSettings.metric ?? "GAMMA").toUpperCase();
     const sourceMode = String(indicatorSettings.sourceMode ?? "hybrid");
-    const historyHours = Math.max(1, Number(indicatorSettings.historyHours ?? 24));
+    const historyHours = gammaHistoryHours;
     const binSize = Math.max(0.25, Number(indicatorSettings.binSize ?? (display === "ES" || display === "MES" ? 1 : 5)));
     const refreshMs = Math.max(15_000, Number(indicatorSettings.refreshSeconds ?? 30) * 1_000);
     let cancelled = false;
@@ -8684,7 +8592,7 @@ function Chart({
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [gammaHeatmapIndicator, instrument]);
+  }, [gammaHeatmapIndicator, gammaHistoryHours, instrument]);
 
   // A forming candle is not permission to reveal later options observations.
   // Use the exact clock, including the mapping snapshot's availability time.
@@ -11305,6 +11213,7 @@ function Chart({
   // execution listener below paints new qualifying events immediately, so the
   // authoritative distribution pass only needs to settle the scale every five
   // seconds. History/replay changes still force a pass straight away.
+  const causalBigContractHistory = useMemo(() => replayCausalTrades(bigContractHistory, replayTimestampMs), [bigContractHistory, replayTimestampMs]);
   const bigTradeFullPassKey = (() => {
     const firstTrade = Number(indicatorMarketTrades[0]?.timestamp ?? 0);
     const latestTrade = Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0);
@@ -11317,7 +11226,7 @@ function Chart({
   const deepContractEvents = useMemo(() => {
     if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return [];
     const settings = bigTradesIndicator.settings ?? {};
-    const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}:${bigContractHistory.length}`;
+    const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}:${bigContractHistory.length}:${bigContractHistory[0]?.timestamp ?? 0}`;
     const retentionScope = JSON.stringify([observedCandleScope, contractSymbol, priceFormat.minMove,
       settings.deepMinimumTradeSize, settings.deepBoxTickRange, settings.deepTickMargin, settings.clusterWindowMs]);
     const scopeChanged = deepContractRetentionScopeRef.current !== retentionScope;
@@ -11326,14 +11235,16 @@ function Chart({
     deepContractReplayClockRef.current = replayTimestampMs;
     const requiresFullScan = scopeChanged || replayReset || deepContractFullScanIdentityRef.current !== fullScanIdentity;
     deepContractFullScanIdentityRef.current = fullScanIdentity;
+    const from = indicatorHistoryStart(settings, indicatorCandles[0]?.timestamp, replayTimestampMs ?? indicatorCandles.at(-1)?.timestamp ?? Date.now());
     const next = calculateDeepContractEvents(
-      requiresFullScan ? mergeBigContractHistory(replayTimestampMs == null ? bigContractHistory : [], indicatorMarketTrades) : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
+      requiresFullScan ? mergeBigContractHistory(causalBigContractHistory, indicatorMarketTrades) : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
       settings,
       priceFormat.minMove,
       replayTimestampMs ?? Date.now(),
+      from,
     );
     deepContractTapeWatermarkRef.current = Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0);
-    const days = Math.min(30, Math.max(1, Number(settings.daysToLoad ?? 1)));
+
     const newestKnown = Math.max(
       Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0),
       Number(indicatorCandles.at(-1)?.timestamp ?? 0),
@@ -11341,7 +11252,7 @@ function Chart({
     const retained = retainDeepContractEvents(
       scopeChanged || replayTimestampMs != null && requiresFullScan ? [] : retainedDeepContractsRef.current,
       next,
-      (newestKnown || Date.now()) - days * 86_400_000,
+      indicatorHistoryStart(settings, indicatorCandles[0]?.timestamp, replayTimestampMs ?? newestKnown),
     );
     retainedDeepContractsRef.current = retained;
     return retained;
@@ -11383,7 +11294,7 @@ function Chart({
         return [];
       }
       const settings = bigTradesIndicator.settings ?? {};
-      const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}:${bigContractHistory.length}`;
+      const fullScanIdentity = `${instrument}:${priceFormat.minMove}:${indicatorMarketTrades[0]?.timestamp ?? 0}:${indicatorCandles[0]?.timestamp ?? 0}:${JSON.stringify(settings)}:${bigContractHistory.length}:${bigContractHistory[0]?.timestamp ?? 0}`;
       const retentionScope = JSON.stringify([observedCandleScope, contractSymbol, priceFormat.minMove,
         settings.enableClustering, settings.clusterWindowMs, settings.clusterPriceTicks]);
       const scopeChanged = bigTradeRetentionScopeRef.current !== retentionScope;
@@ -11394,7 +11305,7 @@ function Chart({
       bigTradeFullScanIdentityRef.current = fullScanIdentity;
       const { prints, context } = calculateBigTradePrintsWithContext(
         indicatorCandles,
-        requiresFullScan ? mergeBigContractHistory(replayTimestampMs == null ? bigContractHistory : [], indicatorMarketTrades) : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
+        requiresFullScan ? mergeBigContractHistory(causalBigContractHistory, indicatorMarketTrades) : recentExecutionTail(indicatorMarketTrades, 15 * 60_000),
         { ...settings, tickSize: priceFormat.minMove },
         replayTimestampMs ?? Date.now(),
       );
@@ -11422,7 +11333,7 @@ function Chart({
       // what has already been earned, bounded by the study's own lookback, so
       // "Days to load: 10" keeps ten days instead of the four hours the tape
       // happens to still hold.
-      const lookbackDays = Math.min(30, Math.max(1, Number(bigTradesIndicator.settings?.daysToLoad ?? 1)));
+
       const newestKnown = Math.max(
         Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0),
         Number(indicatorCandles.at(-1)?.timestamp ?? 0),
@@ -11433,7 +11344,7 @@ function Chart({
           : retainedBigTradePrintsRef.current.filter(print => !catchup?.removedIds.has(print.id)),
         catchup ? [...prints.filter(print => !catchup.removedIds.has(print.id)), ...catchup.prints] : prints,
         context,
-        anchor - lookbackDays * 86_400_000,
+        indicatorHistoryStart(settings, indicatorCandles[0]?.timestamp, replayTimestampMs ?? anchor),
       );
       retainedBigTradePrintsRef.current = retained;
       return retained;
@@ -12248,10 +12159,11 @@ function Chart({
       candidate.enabled && candidate.indicatorId === "ib-levels") ?? null,
     [indicatorSignature, indicators],
   );
-  const sessionHighLowSettings = useMemo(() => {
+  const sessionHighLowSettings: Record<string, string | number | boolean> = useMemo(() => {
     const own = sessionHighLowIndicator?.settings ?? {};
-    return own;
-  }, [sessionHighLowIndicator]);
+    const from = indicatorHistoryStart(own, indicatorCandles[0]?.timestamp, indicatorCandles.at(-1)?.timestamp ?? 0);
+    return { ...own, lookbackDays: (Math.max(0, (indicatorCandles.at(-1)?.timestamp ?? 0) - from) / INDICATOR_HISTORY_DAY_MS) + 1 };
+  }, [sessionHighLowIndicator, indicatorCandles]);
   const initialBalanceSettings = useMemo(() => {
     const own = initialBalanceIndicator?.settings ?? {};
     if (!initialBalanceIndicator || own.followSessionsStudy !== true || !sessionsIndicator) return own;
@@ -12275,7 +12187,8 @@ function Chart({
     () => sessionsIndicator
       ? buildMarketSessionWindows(
           indicatorCandles,
-          sessionsIndicator.settings ?? {},
+          { ...sessionsIndicator.settings, lookbackDays: Math.max(1, Math.ceil(((indicatorCandles.at(-1)?.timestamp ?? 0)
+            - indicatorHistoryStart(sessionsIndicator.settings, indicatorCandles[0]?.timestamp, indicatorCandles.at(-1)?.timestamp ?? 0)) / INDICATOR_HISTORY_DAY_MS)) },
           candleIntervalMs ?? 60_000,
         )
       : [],
@@ -12295,11 +12208,14 @@ function Chart({
     () => initialBalanceIndicator
       ? buildInitialBalanceLevels(
           initialBalanceCandles ?? indicatorCandles,
-          initialBalanceSettings,
+          { ...initialBalanceSettings, chartHistoryStartMs: indicatorHistoryStart(
+            initialBalanceSettings, indicatorCandles[0]?.sourceStartTimestamp ?? indicatorCandles[0]?.timestamp,
+            replayTimestampMs ?? indicatorCandles.at(-1)?.timestamp ?? 0,
+          ) },
           initialBalanceCandles ? 60_000 : candleIntervalMs ?? 60_000,
         )
       : [],
-    [candleIntervalMs, indicatorCandles, initialBalanceCandles, initialBalanceIndicator, initialBalanceSettings],
+    [candleIntervalMs, indicatorCandles, initialBalanceCandles, initialBalanceIndicator, initialBalanceSettings, replayTimestampMs],
   );
   const sessionHighLowRenderData = useMemo<SessionHighLowRenderLevel[]>(() => {
     const sessionTheme = visibleIndicatorTheme(settings);
@@ -16466,6 +16382,7 @@ function Chart({
     const models = renderedVolumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
       const instance = resolveVolumeProfileOwner(profile, indicators);
       if (!instance || profile.levels.length === 0) return [];
+      if ((profile.endMs ?? profile.startMs) < indicatorHistoryStart(instance.settings, candles[0]?.timestamp, volumeProfileLastCandleTimestamp ?? 0)) return [];
       // No native volume-profile mode may render a candle-distributed proxy.
       // It has neither true traded-at-price volume nor aggressor-side delta.
       if (!isExecutionBackedVolumeProfile(profile, instance.indicatorId === "composite-volume-profile") && !isCandleBackedVolumeProfile(profile)) return [];
@@ -16907,8 +16824,12 @@ function Chart({
       const variant = instance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
       const renderSettings = validateTpoSettings(instance.settings, variant, settings, instrument);
       const calculationSource = settledInstances.get(instance.instanceId) ?? instance;
-      const calculationSettings = validateTpoSettings(calculationSource.settings, variant, undefined, instrument);
-      const calculationKey = `${instrument}|${contractSymbol}|${timeframe}|${tpoCalculationSettingsKey(calculationSettings)}`;
+      const from = indicatorHistoryStart(calculationSource.settings, sourceBars[0]?.startTimeMs,
+        replayTimestampMs ?? sourceBars.at(-1)?.endTimeMs ?? sourceTrades.at(-1)?.timestampMs ?? 0);
+      const calculationSettings = { ...validateTpoSettings(calculationSource.settings, variant, undefined, instrument), profileCount: 500 };
+      const historyBars = sourceBars.filter(bar => bar.endTimeMs > from);
+      const historyTrades = sourceTrades.filter(trade => trade.timestampMs >= from);
+      const calculationKey = `${instrument}|${contractSymbol}|${timeframe}|${tpoCalculationSettingsKey(calculationSettings)}|${calculationSource.settings?.indicatorHistoryMode ?? "auto"}|${calculationSource.settings?.historyDaysLimit ?? ""}`;
       const cached = tpoProfileCacheRef.current.get(instance.instanceId);
       const exactHit = cached
         && cached.trades === sourceTrades
@@ -16934,6 +16855,8 @@ function Chart({
         const canRefreshDevelopingOnly = Boolean(
           replayTimestampMs == null && cached
           && developing?.developing
+          && cached.bars[0]?.startTimeMs === sourceBars[0]?.startTimeMs
+          && calculationSource.settings?.indicatorHistoryMode !== "manual"
           && cached.calculationKey === calculationKey
           && calculationSettings.periodMode !== "custom-range"
           && !calculationSettings.quickSessions.includes(",")
@@ -16948,7 +16871,7 @@ function Chart({
               nowMs:Date.now(),trades:sourceTrades.filter(trade=>trade.timestampMs>=developing.startTimeMs),
               bars:sourceBars.filter(bar=>bar.endTimeMs>developing.startTimeMs),
               settings:{...calculationSettings,profileCount:1},
-            } : {trades:sourceTrades,bars:sourceBars,settings:calculationSettings,nowMs:Date.now()},
+            } : {trades:historyTrades,bars:historyBars,settings:calculationSettings,nowMs:Date.now()},
             done:result=>{
               const refreshed=canRefreshDevelopingOnly && developing
                 ? result.find(profile=>profile.id===developing.id)??result.at(-1) : null;
@@ -16973,7 +16896,7 @@ function Chart({
             ? [...cached!.profiles.slice(0, -1), refreshed]
             : cached!.profiles;
         } else {
-          profiles = buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: calculationSettings, nowMs: replayTimestampMs ?? Date.now() });
+          profiles = buildTpoProfiles({ trades: historyTrades, bars: historyBars, settings: calculationSettings, nowMs: replayTimestampMs ?? Date.now() });
         }
       }
       if (!backgroundBuild && profiles !== cached?.profiles) {

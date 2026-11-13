@@ -71,10 +71,10 @@ test("cross-midnight custom sessions exclude outside candles and retain the anch
 });
 
 test("history count, colors, labels and persistence are wired", () => {
-  const candles = [bar("2026-09-07T14:00:00Z", 100, 100.4, 99.6, 100), bar("2026-09-08T14:00:00Z", 110, 110.4, 109.6, 110)];
+  const candles = [bar("2026-09-06T14:00:00Z", 100, 100.4, 99.6, 100), bar("2026-09-08T14:00:00Z", 110, 110.4, 109.6, 110)];
   const base = { instanceId: "pml", indicatorId: "price-movement-levels", enabled: true, settings: defaultIndicatorSettings("price-movement-levels") };
   assert.equal(calculateIndicatorSeries(base, candles, theme, { tickSize: 0.25 }).length, 11);
-  const restored = normalizePaneIndicatorState({ pane: [{ ...base, settings: { ...base.settings, daysToLoad: 1, minimumLevels: 1,
+  const restored = normalizePaneIndicatorState({ pane: [{ ...base, settings: { ...base.settings, indicatorHistoryMode: "manual", historyDaysLimit: 1, minimumLevels: 1,
     useThemeColors: false, supportLineColor: "#123456", resistanceLineColor: "#654321", zeroLineColor: "#abcdef", textColor: "#fedcba" } }] }).pane[0];
   const plotted = calculateIndicatorSeries(restored, candles, theme, { tickSize: 0.25 });
   assert.deepEqual(plotted.map(item => item.color), ["#abcdef", "#654321", "#123456"]);

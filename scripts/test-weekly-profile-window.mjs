@@ -44,10 +44,10 @@ check("calendar-week boundary helper remains stable for user overrides", () => {
 
 check("workspace calculation is history-aware and cache-stable", () => {
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
-  assert.match(workspace, /const selection = String\(weeklyProfileSettings\.weekSelection \?\? "rolling-five"\)/);
+  assert.match(workspace, /const weekSelection = weeklyProfileSettings\.weekSelection/);
   assert.match(workspace, /"rolling-five",\s*\r?\n\s*tradingDates,/);
   assert.match(workspace, /period: "weekly",\s*\r?\n\s*startMs: weekStartMs,/);
-  assert.match(workspace, /endMs: weekEndMs \?\? undefined,/);
+  assert.ok(workspace.includes("endMs: replayProfileClockMs == null ? weekEndMs ?? undefined"));
   assert.doesNotMatch(workspace, /endMs: weekEndMs \?\? \(weeklyCandles\.length/);
 });
 

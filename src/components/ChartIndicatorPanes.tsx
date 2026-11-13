@@ -1542,7 +1542,7 @@ function ChartIndicatorPanes({
   const volumeGroups = useLiveDeltaPanes(deltaGroups, coordinateScope, liveChartKey,
     liveDeltaInputs ? { ...liveDeltaInputs, candles: liveDeltaInputs.volumeCandles ?? liveDeltaInputs.candles } : undefined, "volume");
   const priceStudyEnabled = volumeGroups.some(group => isLivePriceStudy(group.indicatorId));
-  const priceCandles = useMemo(() => priceStudyEnabled ? liveDeltaInputs?.priceCandles?.slice(-20_000) : undefined,
+  const priceCandles = useMemo(() => priceStudyEnabled ? liveDeltaInputs?.priceCandles : undefined,
     [liveDeltaInputs?.priceCandles, priceStudyEnabled]);
   const priceGroups = useLiveDeltaPanes(volumeGroups, coordinateScope, liveChartKey,
     liveDeltaInputs && priceCandles ? { ...liveDeltaInputs, candles: priceCandles } : undefined, "price");

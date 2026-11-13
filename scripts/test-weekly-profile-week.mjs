@@ -51,7 +51,7 @@ check("both live profile paths send the calculated five-session bounds", () => {
   assert.match(workspace, /cmeWeekRange\([\s\S]*?"rolling-five"[\s\S]*?paneTradingDates,/);
   assert.match(workspace, /period: "weekly",\s*\r?\n\s*startMs: weeklyWindow\.startMs,/);
   assert.match(workspace, /period: "weekly",\s*\r?\n\s*startMs: weekStartMs,/);
-  assert.match(workspace, /endMs: weekEndMs \?\? undefined,/);
+  assert.ok(workspace.includes("endMs: replayProfileClockMs == null ? weekEndMs ?? undefined"));
 });
 
 check("weekly UI defaults to automatic five-day calculation", () => {

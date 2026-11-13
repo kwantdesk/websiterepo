@@ -77,6 +77,8 @@ export function calculatePeriodVwap(
   const startHour = Math.max(0, Math.min(23, Math.round(finite(options.sessionStartHour, 17))));
   let activeBucket = "";
   let cumulativeOrders = 0;
+  let previousHour = NaN;
+  let dayOrdinal = 0;
   const totals = { weight: 0, pv: 0, p2v: 0 };
 
   return candles.flatMap((candle, index): VwapPoint[] => {
@@ -90,7 +92,15 @@ export function calculatePeriodVwap(
     else if (mode === "seconds") bucket = `s:${Math.floor(seconds / value)}`;
     else if (mode === "bars") bucket = `b:${Math.floor(index / value)}`;
     else if (mode === "orders") bucket = `o:${Math.floor(cumulativeOrders / value)}`;
-    else bucket = `d:${Math.floor(tradingDayOrdinal(candle.timestamp, startHour) / value)}`;
+    else {
+      // Chicago session boundaries and UTC offset changes fall on whole UTC hours.
+      const hour = Math.floor(seconds / 3600);
+      if (hour !== previousHour) {
+        previousHour = hour;
+        dayOrdinal = tradingDayOrdinal(candle.timestamp, startHour);
+      }
+      bucket = `d:${Math.floor(dayOrdinal / value)}`;
+    }
 
     const breakBefore = activeBucket !== "" && bucket !== activeBucket;
     if (bucket !== activeBucket) {

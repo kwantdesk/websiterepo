@@ -1,3 +1,4 @@
+import { indicatorHistoryStart } from "@/lib/indicatorHistoryRange";
 import { timeframeDurationMs } from "@/lib/chartHistoryWindow";
 import { isEventBasedChartInterval } from "@/lib/chartIntervals";
 import type { Candle } from "@/lib/backtester";
@@ -435,8 +436,12 @@ export function calculateIndicatorSeries(
   const clock = context.replayTimestampMs;
   const [safeInstance] = replaySafeIndicators([instance], clock);
   if (!safeInstance.enabled) return [];
-  return applyMomentumPlacement(safeInstance, clipReplayIndicatorSeries(calculateUnclippedIndicatorSeries(safeInstance,
-    replayCausalCandles(candles, clock), theme, context), clock));
+  const available = replayCausalCandles(candles, clock);
+  const series = clipReplayIndicatorSeries(calculateUnclippedIndicatorSeries(safeInstance, available, theme, context), clock);
+  const from = indicatorHistoryStart(instance.settings, undefined, clock ?? available.at(-1)?.timestamp ?? 0);
+  return applyMomentumPlacement(safeInstance, from === -Infinity ? series : series.map(definition => definition.horizontalPriceLine
+    ? definition
+    : { ...definition, data: definition.data.filter(point => point.time * 1_000 >= from) }));
 }
 
 function calculateUnclippedIndicatorSeries(
@@ -807,6 +812,9 @@ function computeIndicatorSeries(
     const zeroLineColor = useThemeColors ? theme.muted : settingString(instance, "zeroLineColor", theme.muted);
     const zeroLineWidth = Math.min(4, Math.max(1, Math.round(settingNumber(instance, "zeroLineWidth", 1)))) as 1 | 2 | 3 | 4;
     let activePeriod = "";
+    let lastHour = NaN;
+    let session = "";
+    let sessionDay = 0;
     let cumulative = 0;
     let cumulativeAsk = 0;
     let cumulativeBid = 0;
@@ -824,8 +832,12 @@ function computeIndicatorSeries(
         missingFlowSinceLastVerified = true;
         return;
       }
-      const session = sessionKey(candle.timestamp, startHour);
-      const sessionDay = Math.floor(Date.parse(`${session}T00:00:00Z`) / 86_400_000);
+      const hour = Math.floor(candle.timestamp / 3_600_000);
+      if (hour !== lastHour) {
+        lastHour = hour;
+        session = sessionKey(candle.timestamp, startHour);
+        sessionDay = Math.floor(Date.parse(`${session}T00:00:00Z`) / 86_400_000);
+      }
       const timestampSeconds = Math.floor(candle.timestamp / 1000);
       const nextPeriod = dedicatedStudy
         ? (resetToSession ? `d:${session}` : "continuous")

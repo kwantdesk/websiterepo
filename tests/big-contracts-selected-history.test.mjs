@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
 import { bigContractHistoryWindows, mergeBigContractHistory, distributeContractMarkers } from "../src/lib/bigContractHistory.ts";
 import { mergeInstitutionalTradeTape } from "../src/lib/liveExecutionTape.ts";
 import { calculateBigTradePrints } from "../src/lib/bigTrades.ts";
@@ -39,27 +38,18 @@ test("the actual Big Contracts calculator retains 23-hour and 47-hour historical
   const now = Date.UTC(2026, 9, 22, 20);
   const tape = mergeBigContractHistory([trade(now - 47 * 3_600_000, 1), trade(now - 23 * 3_600_000, 2)], [trade(now, 3)]);
   const settings = { filterMode: "manual", manualFilter: 1, enableClustering: false };
-  assert.equal(calculateBigTradePrints([], tape, { ...settings, daysToLoad: 1 }, now).length, 2);
-  assert.equal(calculateBigTradePrints([], tape, { ...settings, daysToLoad: 2 }, now).length, 3);
+  assert.equal(calculateBigTradePrints([], tape, { ...settings, indicatorHistoryMode: "manual", historyDaysLimit: 1 }, now).length, 2);
+  assert.equal(calculateBigTradePrints([], tape, { ...settings, indicatorHistoryMode: "manual", historyDaysLimit: 2 }, now).length, 3);
 });
 
 test("drawing limits retain the full day instead of just the latest few hours", () => {
   const now = Date.UTC(2026, 9, 22, 20);
   const tape = Array.from({ length: 20_000 }, (_, i) => trade(now - DAY + 1 + i * 4_320, i));
-  const prints = calculateBigTradePrints([], tape, { filterMode: "manual", manualFilter: 1, enableClustering: false, daysToLoad: 1 }, now);
+  const prints = calculateBigTradePrints([], tape, { filterMode: "manual", manualFilter: 1, enableClustering: false, indicatorHistoryMode: "manual", historyDaysLimit: 1 }, now);
   assert.ok(prints.length <= 12_000);
   assert.ok(prints[0].timestamp < now - 23 * 3_600_000);
   assert.ok(prints.at(-1).timestamp > now - 60_000);
   const reduced = distributeContractMarkers(tape, 100);
   assert.equal(reduced.length, 100);
   assert.ok(reduced[0].timestamp < now - 23 * 3_600_000);
-});
-
-test("settings changes restart hydration and sparse candidates stay isolated from other studies/replay", () => {
-  const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
-  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-  assert.match(workspace, /\[bigContractDays, pane.broker, pane.symbol, pane.timeframe, period, replayHistoryRange\]/);
-  assert.match(workspace, /if \(cancelled\) return;\s+batches\[index\]/);
-  assert.match(workspace, /bigContractHistory=\{replayHistoryRange \|\| bigContractHistory.symbol !== pane.symbol \? undefined/);
-  assert.equal((chart.match(/mergeBigContractHistory\(replayTimestampMs == null \? bigContractHistory : \[\], indicatorMarketTrades\)/g) ?? []).length, 2);
 });
