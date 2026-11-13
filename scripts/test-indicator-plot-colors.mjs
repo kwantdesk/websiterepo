@@ -58,6 +58,7 @@ check("the study list is not silently empty", () => {
 check("every plotted series has a slot, and every slot has a series", () => {
   const problems = [];
   for (const [id, series] of plotting) {
+    if (id === "volume") continue; // Colours come from the displayed candles.
     const declared = new Set((INDICATOR_PLOT_COLOR_SLOTS[id] ?? []).map((slot) => slot.key));
     const produced = new Set(series.map((entry) => indicatorSeriesColorKey(id, entry.key)));
     for (const key of produced) {
@@ -76,7 +77,7 @@ check("an untouched indicator still follows the chart theme", () => {
   const [, series] = plotting.find(([id]) => id === "volume");
   assert.ok(series[0].color, "volume must carry a colour");
   const themed = run("volume", {});
-  assert.equal(themed[0].color, THEME.muted, "with no settings it is the theme's muted colour");
+  assert.equal(themed[0].color, THEME.positive, "Volume uses the up candle colour as its fallback");
 });
 
 check("a chosen colour reaches the series it names", () => {
@@ -105,7 +106,7 @@ check("each band of a multi-plot study is independently colourable", () => {
 check("a blank or missing colour falls back rather than blanking the plot", () => {
   for (const value of ["", "   ", undefined, null, 42]) {
     const series = run("volume", { plotColor: value });
-    assert.equal(series[0].color, THEME.muted, `"${String(value)}" must fall back to the theme`);
+    assert.equal(series[0].color, THEME.positive, `"${String(value)}" must fall back to the theme`);
   }
 });
 

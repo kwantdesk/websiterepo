@@ -1,6 +1,7 @@
 import { indicatorHistoryStart } from "@/lib/indicatorHistoryRange";
 import { timeframeDurationMs } from "@/lib/chartHistoryWindow";
 import { isEventBasedChartInterval } from "@/lib/chartIntervals";
+import { toHeikinAshi } from "@/lib/candleStyle";
 import type { Candle } from "@/lib/backtester";
 import { applyMomentumPlacement, momentumOnChart } from "@/lib/momentumPlacement";
 import { candleDeltaPath } from "@/lib/candleDeltaPath";
@@ -111,6 +112,10 @@ export type IndicatorTheme = {
   negative: string;
   muted: string;
   background?: string;
+};
+
+export type IndicatorChartTheme = IndicatorTheme & {
+  volumeCandleColors?: { up: string; down: string; heikinAshi: boolean };
 };
 
 export type DeltaPercentHighlightPoint = {
@@ -430,7 +435,7 @@ type IndicatorCalculationContext = {
 export function calculateIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
-  theme: IndicatorTheme,
+  theme: IndicatorChartTheme,
   context: IndicatorCalculationContext = {},
 ): CalculatedIndicatorSeries[] {
   const clock = context.replayTimestampMs;
@@ -447,9 +452,10 @@ export function calculateIndicatorSeries(
 function calculateUnclippedIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
-  theme: IndicatorTheme,
+  theme: IndicatorChartTheme,
   context: IndicatorCalculationContext = {},
 ): CalculatedIndicatorSeries[] {
+  if (instance.indicatorId === "volume") return computeIndicatorSeries(instance, candles, theme, context);
   // KST owns both slope colours per plot. The generic post-colour pass would
   // flatten those deliberate two-colour paths into one custom swatch.
   if (instance.indicatorId === "know-sure-thing-kst") {
@@ -463,8 +469,7 @@ function calculateUnclippedIndicatorSeries(
     ? { ...theme, ...AROON_OSCILLATOR_COLORS } : theme;
   return applyIndicatorPlotColors(
     instance.indicatorId,
-    instance.indicatorId === "volume" ? { ...instance.settings, gradientPreset: "off" }
-      : instance.settings as Record<string, unknown> | undefined,
+    instance.settings as Record<string, unknown> | undefined,
     computeIndicatorSeries(instance, candles, plotTheme, context),
     plotTheme,
   );
@@ -473,7 +478,7 @@ function calculateUnclippedIndicatorSeries(
 function computeIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
-  theme: IndicatorTheme,
+  theme: IndicatorChartTheme,
   context: IndicatorCalculationContext = {},
 ): CalculatedIndicatorSeries[] {
   if (!instance.enabled || candles.length === 0) return [];
@@ -573,15 +578,21 @@ function computeIndicatorSeries(
   if (key === "volume") {
     if (!volumeAvailable(candles)) return [];
     const minimumTotalVolume = Math.max(0, settingNumber(instance, "minimumTotalVolume", 0));
+    const colors = theme.volumeCandleColors;
+    const up = colors?.up ?? theme.positive;
+    const down = colors?.down ?? theme.negative;
+    const displayedCandles = colors?.heikinAshi ? toHeikinAshi(candles) : candles;
     return [{
-      key, label: "Volume", kind: "histogram", placement: "pane", color: theme.muted,
+      key, label: "Volume", kind: "histogram", placement: "pane", color: up,
       includeZeroInScale: true,
-      data: candles.flatMap((candle) => {
+      data: displayedCandles.flatMap((candle) => {
         const reportedVolume = Math.max(0, finite(candle.volume));
         const classifiedVolume = Math.max(0, finite(candle.askVolume)) + Math.max(0, finite(candle.bidVolume));
         // Executed total owns bar height; sides repair an absent total only.
         const value = reportedVolume > 0 ? reportedVolume : classifiedVolume;
-        return value < minimumTotalVolume ? [] : [{ time: candle.timestamp / 1000, value }];
+        return value < minimumTotalVolume ? [] : [{
+          time: candle.timestamp / 1000, value, color: candle.close >= candle.open ? up : down,
+        }];
       }),
     }];
   }

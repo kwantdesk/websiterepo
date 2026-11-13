@@ -185,9 +185,6 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
   "delta-cumulative-histogram": [
     { key: "plotColor", role: "primary" },
   ],
-  "volume": [
-    { key: "plotColor", role: "muted" },
-  ],
   "vwap": [
     { key: "mainColor", role: "primary" },
     { key: "upper1Color", role: "secondary" },
@@ -379,8 +376,7 @@ export function visibleIndicatorTheme(chart: {
   const seen = (colour: string, instead: string) => (
     distinguishable(colour, chart.backgroundColor) ? colour : instead
   );
-  // The grid is deliberately near-invisible on most themes; volume rides on
-  // `muted`, so it falls back to the outline rather than to another hairline.
+  // Use a candle outline if the grid is near-invisible.
   const muted = seen(chart.gridColor, seen(chart.borderDownColor, chart.borderUpColor));
   const positive = seen(chart.upColor, chart.borderUpColor);
   /*
@@ -553,7 +549,7 @@ export function indicatorSlotGradientColor(
 /**
  * Recolour a series that paints its bars individually.
  *
- * A histogram like Volume does not take one colour: every point carries its
+ * A directional histogram can carry more than one colour: every point carries its
  * own, set from the theme's positive or negative to show direction. Setting
  * only the series colour therefore changed nothing a trader could see - the
  * picker and the scheme were both dead on it, which is what "volume doesn't
@@ -635,7 +631,7 @@ export function applyIndicatorPlotColors<
    * true, the single setting was being pushed into BOTH directions below -
    * `up ?? color`, `down ?? color` - so every rising and falling bar collapsed
    * onto the same colour. Eight studies did this: CVD and its three delta
-   * variants, Volume, Delta Bar, the MACD histogram and the Awesome
+   * variants, Delta Bar, the MACD histogram and the Awesome
    * Oscillator.
    *
    * It was invisible to every colour-layer check because the colour APPLIED
@@ -662,7 +658,7 @@ export function applyIndicatorPlotColors<
     changed = true;
     /*
      * A chosen colour has to reach the bars as well as the series. Without
-     * this, picking a colour for Volume moved a value nothing reads.
+     * this, a picker could change the series without changing its bars.
      */
     const recoloured = recolourPoints(entry, theme, up ?? color ?? "", down ?? color ?? "");
     return {

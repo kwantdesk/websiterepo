@@ -1,3 +1,4 @@
+import { contrastRatio, parseResolvedColor } from "@/lib/readableContrast";
 import {
   INDICATOR_GRADIENT_KEY,
   gradientStop,
@@ -178,6 +179,20 @@ export function resolveCandleSeriesColors(
     // regardless of the switch.
     borderVisible: hollow ? true : settings?.[CANDLE_SETTING_KEYS.borderVisible] !== false,
     wickVisible: settings?.[CANDLE_SETTING_KEYS.wickVisible] !== false,
+  };
+}
+
+export function candleVolumeColors(colors: CandleSeriesColors, background: string) {
+  const surface = parseResolvedColor(background);
+  const visibleColor = (fill: string, border: string, wick: string) => {
+    const body = parseResolvedColor(fill);
+    const transparent = /^(transparent|rgba\([^)]*,\s*0(?:\.0+)?\))$/i.test(fill.trim());
+    if (!transparent && (!body || !surface || contrastRatio(body, surface) >= 1.2)) return fill;
+    return colors.borderVisible ? border : colors.wickVisible ? wick : fill;
+  };
+  return {
+    up: visibleColor(colors.upColor, colors.borderUpColor, colors.wickUpColor),
+    down: visibleColor(colors.downColor, colors.borderDownColor, colors.wickDownColor),
   };
 }
 

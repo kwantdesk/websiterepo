@@ -650,7 +650,7 @@ function ChartIndicatorPaneSurface({
                           fill={color}
                           stroke={definition.histogramOutlineWidth ? color : undefined}
                           strokeWidth={definition.histogramOutlineWidth}
-                          opacity="0.88"
+                          opacity={group.indicatorId === "volume" ? 1 : 0.88}
                         />
                       ))}
                     </g>
@@ -1323,7 +1323,7 @@ function ChartVerticalIndicatorPaneSurface({
                       return (
                         <g key={definition.key}>
                           {[...pathsByColor.entries()].map(([color, commands]) => (
-                            <path key={`${definition.key}-${color}`} d={commands.join("")} fill={color} stroke={definition.histogramOutlineWidth ? color : undefined} strokeWidth={definition.histogramOutlineWidth} opacity="0.9" />
+                            <path key={`${definition.key}-${color}`} d={commands.join("")} fill={color} stroke={definition.histogramOutlineWidth ? color : undefined} strokeWidth={definition.histogramOutlineWidth} opacity={group.indicatorId === "volume" ? 1 : 0.9} />
                           ))}
                         </g>
                       );

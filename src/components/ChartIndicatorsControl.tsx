@@ -914,9 +914,6 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       bidColor: chartSettings.downColor,
     } as Record<string, string>;
   }
-  if (indicatorId === "volume") {
-    return { plotColor: visibleIndicatorTheme(chartSettings).muted } as Record<string, string>;
-  }
   if (VOLUME_PROFILE_INDICATOR_IDS.has(indicatorId)) {
     return volumeProfileThemeColours(chartSettings) as Record<string, string>;
   }
@@ -8048,6 +8045,7 @@ export default function ChartIndicatorsControl({
                     if (["plotColor", "plotUpColor", "plotDownColor"].includes(key)) return !side;
                     return true;
                   })
+                  .filter(([key]) => settingsDefinition.id !== "volume" || !["plotColor", "plotUpColor", "plotDownColor", "useThemeColors"].includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "delta-cumulative-histogram" && key === "lineColor"))
                   .filter(([key]) => settingsDefinition.id !== "bounce-levels" || settingsInstance.settings?.gexMapMirror === false || isBounceMirrorPresentationKey(key))
                   .filter(([key, value]) =>
@@ -8139,21 +8137,14 @@ export default function ChartIndicatorsControl({
                       </div>
                     )
                 );
-                return [...bySection.entries()].flatMap(([section, group]) => {
-                  // Volume has a single real plot-colour control; its engine
-                  // deliberately ignores gradient schemes. Keep that control
-                  // in the common colours position without adding a dead picker.
-                  const colours = settingsDefinition.id === "volume"
-                    ? group.filter(([key, value]) => isColourSetting(key, value) || key === "useThemeColors") : [];
-                  const settings = group.filter(entry => !colours.includes(entry));
-                  return [
-                    colours.length ? <div key={section + "-colours"} data-settings-header="colours" className="grid gap-2 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">{colours.map(control)}</div> : null,
-                    settings.length ? <div key={section} data-settings-section={section} className="grid gap-2 sm:grid-cols-2">{settings.map(control)}</div> : null,
-                  ];
-                });
+                return [...bySection.entries()].map(([section, group]) => (
+                  <div key={section} data-settings-section={section} className="grid gap-2 sm:grid-cols-2">{group.map(control)}</div>
+                ));
               })()}
               <div data-settings-section={settingsDefinition.id === "fvg-identifier" ? "Plot settings" : "General"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
-                {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
+                {settingsDefinition.id === "volume" ? (
+                  <>Volume bars follow the chart candle colours.</>
+                ) : settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
                   <>Linked Bounce Levels uses the GEX Map colour scale. Open <span className="text-foreground">GEX Map view, nodes &amp; colours</span> above to change the shared palette.</>
                 ) : (
                   <>Choosing a custom colour turns off theme colours for this indicator. An active colour scheme owns its colours until switched Off.</>

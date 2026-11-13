@@ -1613,9 +1613,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
-  ...(indicatorId === "volume" ? {
-    useThemeColors: true,
-  } : {}),
   ...(["vwap", "vwap-envelopes", "rolling-vwap"].includes(indicatorId) ? {
     source: "hlc3",
     periodMode: indicatorId === "rolling-vwap" ? "bars" : "days",

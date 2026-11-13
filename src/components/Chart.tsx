@@ -245,6 +245,7 @@ import { resolveIndicatorPalette } from "@/lib/indicatorPalettes";
 import { settingsWithPalette, settingsWithThemeColours } from "@/lib/indicatorPaletteRegistry";
 import {
   resolveCandleSeriesColors,
+  candleVolumeColors,
   resolveCandleStyle,
   isHeikinAshiStyle,
   toHeikinAshi,
@@ -6542,6 +6543,10 @@ function Chart({
     candleSettings, settings.upColor, settings.downColor, settings.borderUpColor,
     settings.borderDownColor, settings.wickUpColor, settings.wickDownColor,
   ]);
+  const volumeCandleColors = useMemo(() => ({
+    ...candleVolumeColors(resolvedCandleColors, settings.backgroundColor),
+    heikinAshi: isHeikinAshiStyle(candleStyle),
+  }), [candleStyle, resolvedCandleColors, settings.backgroundColor]);
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series || !liveCandleEventKey || replayTimestampMs != null && replayTimestampMs > 0) return;
@@ -7703,7 +7708,7 @@ function Chart({
         indicatorCandles,
         // Resolved so a study is never painted the chart's own colour: a
         // hollow-candle theme makes downColor the background.
-        visibleIndicatorTheme(settings),
+        { ...visibleIndicatorTheme(settings), volumeCandleColors },
         { instrument, timeframe, tickSize: priceFormat.minMove, replayTimestampMs,
           ...(instance.indicatorId === "average-daily-range-target" && adrHistoryKey
             ? { adrDailyCandles, adrAsOfMs: adrAsOf } : {}),
@@ -7725,6 +7730,7 @@ function Chart({
       instrument,
       orderFlowSeriesReady,
       priceFormat.minMove,
+      volumeCandleColors,
       settings.borderUpColor,
       settings.downColor,
       settings.gridColor,
@@ -8322,7 +8328,7 @@ function Chart({
           settings: instance.settings,
           series,
           showHeader: instance.settings?.showName !== false,
-          showLegend: ["delta-bar", "deep-delta", CCI_INDICATOR_ID].includes(instance.indicatorId) ? false : undefined,
+          showLegend: ["volume", "delta-bar", "deep-delta", CCI_INDICATOR_ID].includes(instance.indicatorId) ? false : undefined,
         }];
       }
       if (cumulativeDeltaStudy) {
@@ -19876,7 +19882,7 @@ function Chart({
         rightDockHost={rightIndicatorPaneHost}
         rightDockWidth={rightStudyLanes.find(({ id }) => id === "indicator-panes")?.width ?? 0}
         liveDeltaInputs={{ candles: deltaPaneCandles, preserveEarlierHistory: extendedDeltaHistory, volumeCandles: sampledIndicatorCandles, priceCandles: candles, instrument, tickSize: priceFormat.minMove,
-          theme: visibleIndicatorTheme(settings),
+          theme: { ...visibleIndicatorTheme(settings), volumeCandleColors },
           mapTime: eventChartIndicatorTimeMap ? (sourceTime) =>
             eventChartTimeBySourceTimeRef.current.get(Math.round(sourceTime * 1000))
               ?? eventChartIndicatorTimeMap.exact.get(Math.round(sourceTime * 1000))

@@ -1,5 +1,5 @@
 import type { Candle } from "@/lib/backtester";
-import { calculateIndicatorSeries, type CalculatedIndicatorSeries, type IndicatorTheme } from "@/lib/chartIndicatorEngine";
+import { calculateIndicatorSeries, type CalculatedIndicatorSeries, type IndicatorChartTheme, type IndicatorTheme } from "@/lib/chartIndicatorEngine";
 import { mergeLiveIndicatorTail } from "@/lib/chartLiveEvents";
 import { CCI_INDICATOR_ID, cciAverageType, cciPeriods } from "@/lib/commodityChannelIndex";
 
@@ -11,7 +11,7 @@ export const isLivePriceStudy = (id: string) => id === "standard-deviation"
 export const isLiveCumulativeVolumeStudy = (id: string) => id === "chaikin-accumulation-distribution";
 export const isFullHistoryPriceStudy = (id: string) => id === CCI_INDICATOR_ID;
 export type LiveDeltaGroup = { key: string; indicatorId: string; settings?: Record<string, number | string | boolean>; series: CalculatedIndicatorSeries[] };
-export type LiveDeltaInputs = { candles: Candle[]; preserveEarlierHistory?: boolean; volumeCandles?: Candle[]; priceCandles?: Candle[]; instrument: string; tickSize: number; theme: IndicatorTheme; mapTime?: (sourceTime: number) => number | undefined };
+export type LiveDeltaInputs = { candles: Candle[]; preserveEarlierHistory?: boolean; volumeCandles?: Candle[]; priceCandles?: Candle[]; instrument: string; tickSize: number; theme: IndicatorChartTheme; mapTime?: (sourceTime: number) => number | undefined };
 export const deltaPaneIdentity = (group: LiveDeltaGroup) => JSON.stringify([group.indicatorId, group.settings ?? {}]);
 
 type CciHistory = { identity: string; candles: Candle[]; series: CalculatedIndicatorSeries[] };
