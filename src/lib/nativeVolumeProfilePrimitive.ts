@@ -1,4 +1,5 @@
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
+import type { ChartProfileLayout, ProfileBody } from "./chartProfileLayout";
 import { fineVolumeProfileWidth } from "./volumeProfileWidth";
 import type {
   ISeriesPrimitive,
@@ -620,7 +621,19 @@ export function resolveDeltaBarWidth(input: {
 
 export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private readonly createPath: () => Path2D;
-  constructor(createPath: () => Path2D = () => new Path2D()) { this.createPath = createPath; }
+  private readonly profileLayout?: ChartProfileLayout;
+
+  constructor(createPath: () => Path2D = () => new Path2D(), profileLayout?: ChartProfileLayout) {
+    this.profileLayout = profileLayout;
+    this.createPath = createPath;
+    profileLayout?.addSource((left, right) => {
+      const bodies = new Map<object, ProfileBody>();
+      for (const { model, placement } of this.profileLayouts(left, right)) {
+        if (placement) bodies.set(model, placement);
+      }
+      return bodies;
+    });
+  }
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private models: NativeVolumeProfileModel[] = [];
   /**
@@ -686,6 +699,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       const live = new Set(this.models.map((model) => model.id));
       for (const id of this.derived.keys()) if (!live.has(id)) this.derived.delete(id);
     }
+    this.profileLayout?.invalidate();
     this.attachedParams?.requestUpdate();
   }
 
@@ -730,6 +744,233 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     const projectedLogical = Number(anchorLogical)
       + (timestamp - Number(anchorTime)) / model.intervalSeconds;
     return timeScale.logicalToCoordinate(projectedLogical as Logical);
+  }
+
+  private *profileLayouts(leftEdge: number, rightEdge: number, dockInstanceId?: string) {
+    const params = this.attachedParams;
+    if (!params) return;
+    const usablePaneWidth = Math.max(4, rightEdge - leftEdge);
+    const latestDailyEndMs = this.models.reduce((latestEndMs, model) => {
+      const { profile } = model;
+      if (profile.period !== "daily") return latestEndMs;
+      return Math.max(latestEndMs, profile.endMs);
+    }, Number.NEGATIVE_INFINITY);
+    // The newest profile of each kind, per instrument, for RIGHT docking.
+    //
+    // Right docking keeps the CURRENT profile reachable at the live edge.
+    // Left docking has separate viewport-crossing ownership below.
+    const latestEndMsByKind = new Map<string, number>();
+    const latestEndMsByOwner = new Map<string, number>();
+    const latestDockEndMs = new Map<string, number>();
+    for (const model of this.models) {
+      const kind = `${model.profile.period}:${model.profile.root}`;
+      latestEndMsByKind.set(
+        kind,
+        Math.max(latestEndMsByKind.get(kind) ?? Number.NEGATIVE_INFINITY, model.profile.endMs),
+      );
+      const owner = model.profile.ownerInstanceId;
+      if (model.dockInstanceId) latestDockEndMs.set(model.dockInstanceId,
+        Math.max(latestDockEndMs.get(model.dockInstanceId) ?? -Infinity, model.profile.endMs));
+      if (owner) latestEndMsByOwner.set(owner, Math.max(latestEndMsByOwner.get(owner) ?? -Infinity, model.profile.endMs));
+    }
+
+    // A shared layout can fit one left dock per study. Within a study only
+    // the latest profile to cross the left edge owns that dock.
+    const dockOwnerKey = (model: NativeVolumeProfileModel) =>
+      this.profileLayout ? model.dockInstanceId ?? model.profile.root : model.profile.root;
+    const leftDockOwners = resolveVolumeProfileLeftDockOwners(
+      this.models.map((model) => {
+        const anchorMs = model.drawingBounds?.startTime != null
+          ? model.drawingBounds.startTime * 1_000
+          : model.profile.startMs;
+        return {
+          id: model.id,
+          root: dockOwnerKey(model),
+          anchorMs,
+          endMs: model.profile.endMs,
+          anchorX: this.timeToCoordinate(model, anchorMs / 1_000),
+          snapMode: model.style.snapMode,
+        };
+      }),
+      leftEdge,
+    );
+    const ownsLeftDock = (model: NativeVolumeProfileModel) =>
+      leftDockOwners.get(dockOwnerKey(model)) === model.id;
+
+    const visibleLogicalRange = params.chart.timeScale().getVisibleLogicalRange();
+    for (const model of this.models) {
+      const { profile, style } = model;
+      const resolvedStartX = this.timeToCoordinate(
+        model,
+        model.drawingBounds?.startTime ?? profile.startMs / 1_000,
+      );
+      const resolvedEndX = this.timeToCoordinate(
+        model,
+        model.drawingBounds?.endTime ?? profile.endMs / 1_000,
+      );
+      if ((!dockInstanceId && (resolvedStartX == null || resolvedEndX == null)) || !profile.levels.length) continue;
+      const sessionAnchorX = resolvedStartX ?? leftEdge;
+      const sessionEndX = resolvedEndX ?? rightEdge;
+      const customProfile = profile.period === "custom" && model.drawingBounds;
+      const rawCustomLeft = Math.min(sessionAnchorX, sessionEndX);
+      const rawCustomRight = Math.max(sessionAnchorX, sessionEndX);
+      const customCenterX = (rawCustomLeft + rawCustomRight) / 2;
+      const customWidth = Math.max(120, rawCustomRight - rawCustomLeft);
+      const customLeft = customCenterX - customWidth / 2;
+      const customRight = customLeft + customWidth;
+      // Keep the current left-dock owner visible when its session open has
+      // moved off the left edge. The old renderer only pinned once
+      // the *entire* session was off-screen, so a cash-session viewport had
+      // real profile data loaded but drew every bar beyond the canvas.
+      const autoPinnedDailyLeft = profile.period === "daily"
+        && sessionAnchorX < leftEdge + 2
+        && ownsLeftDock(model);
+      const latestDailyProfile = profile.period === "daily"
+        && profile.endMs === latestDailyEndMs;
+      // Right docking is reserved for the newest profile of this kind.
+      const isNewestOfKind = profile.endMs
+        >= (latestEndMsByKind.get(`${profile.period}:${profile.root}`) ?? profile.endMs);
+      const isNewestOfOwner = profile.ownerInstanceId
+        ? profile.endMs === latestEndMsByOwner.get(profile.ownerInstanceId) : isNewestOfKind;
+      const pinnedRight = style.snapMode === "right" && (model.outerRightDock
+        ? profile.endMs === latestDockEndMs.get(model.dockInstanceId ?? "")
+        : this.profileLayout && model.dockInstanceId
+          ? profile.endMs === latestDockEndMs.get(model.dockInstanceId)
+          : isNewestOfKind && (profile.period !== "daily" || latestDailyProfile));
+      const external = model.outerRightDock && pinnedRight;
+      if (dockInstanceId ? !external || model.dockInstanceId !== dockInstanceId : external) continue;
+      // Which WAY the profile is drawn, as opposed to where it is anchored.
+      //
+      // Docking to the screen edge is reserved for the newest profile of a
+      // kind, and that is deliberate. Direction is not: asking for profiles
+      // on the right and getting every one except the newest drawn growing
+      // rightward — off toward the price scale — is the setting doing the
+      // opposite of what it says on every bar but one.
+      const facesLeft = style.snapMode === "right";
+      const pinnedLeft = style.snapMode === "left"
+        && ownsLeftDock(model)
+        && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < leftEdge + 2);
+      const pinned = pinnedLeft || pinnedRight;
+      // A left-facing profile must open back across ITS OWN session.
+      //
+      // An undocked profile anchored at its session START and drawn leftward
+      // opens across the session BEFORE it — the histogram sits over bars it
+      // was not built from, which is the profile reading backwards. Anchoring
+      // it at the session end instead makes it cover exactly the range it
+      // measured, whichever way it faces. The TPO renderer already does this
+      // ("an older right-facing profile hangs off the end of its own period
+      // and opens back across it"); the volume profile did not, which is why
+      // only some profiles looked reversed.
+      /*
+       * DeepChart's Vbp offset, in pixels along the time axis.
+       *
+       * Applied to a profile sitting at its own session anchor only. A docked
+       * profile is deliberately pinned to a screen edge and a fixed-range one
+       * is deliberately at the trader's own anchors; nudging either would move
+       * it off the thing it was pinned to.
+       */
+      const profileOffsetPx = customProfile || pinned
+        ? 0
+        : Number((isNewestOfOwner ? style.currentOffsetPx : style.previousOffsetPx) ?? 0);
+      const rawAnchorX = (customProfile
+        ? (customLeft + customRight) / 2
+        : pinned
+        ? pinnedRight ? rightEdge - 2 : leftEdge + 2
+        : facesLeft ? sessionEndX : sessionAnchorX) + profileOffsetPx;
+      const endX = (customProfile
+        ? customRight
+        : pinned
+        ? pinnedRight ? leftEdge : rightEdge
+        : sessionEndX) + profileOffsetPx;
+
+      const sessionWidth = Math.max(0.5, Math.abs(sessionEndX - sessionAnchorX));
+      const profileDurationSeconds = Math.abs(
+        (model.drawingBounds?.endTime ?? profile.endMs / 1_000)
+        - (model.drawingBounds?.startTime ?? profile.startMs / 1_000),
+      );
+      const durationLogicalBars = model.intervalSeconds == null || model.intervalSeconds <= 0
+        ? null
+        : profileDurationSeconds / model.intervalSeconds;
+      /*
+       * Current and Previous Width are independent in DeepCharts. Resolve
+       * the active value before zoom conversion; the old order converted
+       * every completed profile with the CURRENT width and made Previous
+       * Width a saved control that did nothing on normal chart viewports.
+       */
+      const effectiveWidthPercent = isNewestOfOwner
+        ? style.widthPercent
+        : Number(style.previousWidthPercent ?? style.widthPercent);
+      const visibleLogicalSpan = visibleLogicalRange == null
+        ? null
+        : Math.abs(Number(visibleLogicalRange.to) - Number(visibleLogicalRange.from));
+      const automaticWidth = visibleLogicalRange == null || model.intervalSeconds == null
+        ? null
+        : zoomScaledVolumeProfileWidth({
+            paneWidth: usablePaneWidth,
+            visibleLogicalFrom: Number(visibleLogicalRange.from),
+            visibleLogicalTo: Number(visibleLogicalRange.to),
+            referenceLogicalBars: customProfile
+              ? durationLogicalBars ?? CHART_PROFILE_REFERENCE_BARS
+              : CHART_PROFILE_REFERENCE_BARS,
+            widthPercent: effectiveWidthPercent,
+          });
+      const resolvedModeWidth = resolveVolumeProfileWidth({
+        mode: style.widthBasis,
+        value: effectiveWidthPercent,
+        paneWidth: usablePaneWidth,
+        sessionWidth,
+        visibleLogicalSpan,
+        automaticWidth,
+      });
+      /*
+       * A completed profile may be drawn narrower than the live one, which is
+       * how DeepChart separates "what is forming" from "what is settled".
+       */
+      const baseProfileWidth = resolvedModeWidth
+        ?? (effectiveWidthPercent <= 0
+          ? 0
+          : Math.min(
+              usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
+              Math.max(
+                Math.min(
+                  PROFILE_MIN_READABLE_WIDTH_PX,
+                  usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
+                ),
+                sessionWidth * effectiveWidthPercent / 100,
+              ),
+            ));
+      const profileWidth = dockInstanceId
+        ? Math.max(0, usablePaneWidth - 4)
+        : fineVolumeProfileWidth(baseProfileWidth, effectiveWidthPercent);
+      // A daily profile has two independent halves: volume to the right of
+      // its spine and signed delta to the left. Once its session anchor has
+      // moved beyond the viewport, dock to the left edge. Combined delta
+      // nests inside the volume half so both measurements remain visible.
+      const splitPinnedDaily = pinnedLeft && !pinnedRight && profile.period === "daily";
+      const volumeOnlyPinnedDaily = splitPinnedDaily
+        && (style.mode === "delta-volume" || style.mode === "volume");
+      const anchorX = volumeOnlyPinnedDaily
+        ? rawAnchorX
+        : splitPinnedDaily
+          ? Math.min(rightEdge - 2, leftEdge + profileWidth + 2)
+          : rawAnchorX;
+      if (!pinned && (
+        Math.max(anchorX, endX) + profileWidth < leftEdge
+        || Math.min(anchorX, endX) - profileWidth > rightEdge
+      )) continue;
+      const twoSided = !facesLeft && (!pinned || splitPinnedDaily)
+        && (style.mode === "bid-ask" || (style.mode !== "volume" && style.showDelta && !volumeOnlyPinnedDaily));
+      const leftWidth = facesLeft || twoSided ? profileWidth : 0;
+      const rightWidth = facesLeft ? 0 : profileWidth;
+      const placement = model.drawingBounds || !(profileWidth > 0) ? null : {
+        owner: model.dockInstanceId ?? model.profile.ownerInstanceId ?? model.profile.period,
+        anchor: anchorX,
+        leftWidth,
+        rightWidth,
+        edge: pinnedLeft ? "left" as const : pinnedRight ? "right" as const : undefined,
+      };
+      yield { model, anchorX, endX, finishX: sessionEndX, profileWidth, facesLeft, pinned, splitPinnedDaily, volumeOnlyPinnedDaily, placement };
+    }
   }
 
   drawInDock(target: CanvasRenderingTarget2D, instanceId: string) {
@@ -808,55 +1049,6 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       context.rect(leftEdge, 0, usablePaneWidth, mediaSize.height);
       context.clip();
 
-      const latestDailyEndMs = this.models.reduce((latestEndMs, model) => {
-        const { profile } = model;
-        if (profile.period !== "daily") return latestEndMs;
-        return Math.max(latestEndMs, profile.endMs);
-      }, Number.NEGATIVE_INFINITY);
-      // The newest profile of each kind, per instrument, for RIGHT docking.
-      //
-      // Right docking keeps the CURRENT profile reachable at the live edge.
-      // Left docking has separate viewport-crossing ownership below.
-      const latestEndMsByKind = new Map<string, number>();
-      const latestEndMsByOwner = new Map<string, number>();
-      const latestDockEndMs = new Map<string, number>();
-      for (const model of this.models) {
-        const kind = `${model.profile.period}:${model.profile.root}`;
-        latestEndMsByKind.set(
-          kind,
-          Math.max(latestEndMsByKind.get(kind) ?? Number.NEGATIVE_INFINITY, model.profile.endMs),
-        );
-        const owner = model.profile.ownerInstanceId;
-        if (model.dockInstanceId) latestDockEndMs.set(model.dockInstanceId,
-          Math.max(latestDockEndMs.get(model.dockInstanceId) ?? -Infinity, model.profile.endMs));
-        if (owner) latestEndMsByOwner.set(owner, Math.max(latestEndMsByOwner.get(owner) ?? -Infinity, model.profile.endMs));
-      }
-
-      // Which profile owns the LEFT dock, per instrument.
-      //
-      // Daily and weekly used to own separate docks at the same two pixels,
-      // then a special case hid whichever daily happened to collide with the
-      // weekly. That is the random/stuck profile: the visible winner was not
-      // the next profile to cross. One physical dock has one owner.
-      const leftDockOwners = resolveVolumeProfileLeftDockOwners(
-        this.models.map((model) => {
-          const anchorMs = model.drawingBounds?.startTime != null
-            ? model.drawingBounds.startTime * 1_000
-            : model.profile.startMs;
-          return {
-            id: model.id,
-            root: model.profile.root,
-            anchorMs,
-            endMs: model.profile.endMs,
-            anchorX: this.timeToCoordinate(model, anchorMs / 1_000),
-            snapMode: model.style.snapMode,
-          };
-        }),
-        leftEdge,
-      );
-      const ownsLeftDock = (model: NativeVolumeProfileModel) =>
-        leftDockOwners.get(model.profile.root) === model.id;
-
       // Exact screen-space body spans. Level occlusion is a visual rule, so it
       // must use where every body was actually painted — including docked,
       // right-facing, weekly and overlapping session profiles — rather than a
@@ -872,180 +1064,28 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         draw: (left: number, top: number) => void;
       }> = [];
 
-      for (const model of this.models) {
-        const { profile, style } = model;
-        const topPrice = params.series.coordinateToPrice(0);
-        const bottomPrice = params.series.coordinateToPrice(mediaSize.height);
-        const visibleLow = topPrice == null || bottomPrice == null
-          ? Number.NEGATIVE_INFINITY
-          : Math.min(topPrice, bottomPrice);
-        const visibleHigh = topPrice == null || bottomPrice == null
-          ? Number.POSITIVE_INFINITY
-          : Math.max(topPrice, bottomPrice);
-        const profileVerticallyVisible = !(model.highPrice < visibleLow || model.lowPrice > visibleHigh);
-        const sessionAnchorX = this.timeToCoordinate(
-          model,
-          model.drawingBounds?.startTime ?? profile.startMs / 1_000,
-        );
-        const sessionEndX = this.timeToCoordinate(
-          model,
-          model.drawingBounds?.endTime ?? profile.endMs / 1_000,
-        );
-        if ((!dockInstanceId && (sessionAnchorX == null || sessionEndX == null)) || !profile.levels.length) continue;
-        const startX = sessionAnchorX ?? leftEdge;
-        const finishX = sessionEndX ?? rightEdge;
-        const customProfile = profile.period === "custom" && model.drawingBounds;
-        const rawCustomLeft = Math.min(startX, finishX);
-        const rawCustomRight = Math.max(startX, finishX);
-        const customCenterX = (rawCustomLeft + rawCustomRight) / 2;
-        const customWidth = Math.max(120, rawCustomRight - rawCustomLeft);
-        const customLeft = customCenterX - customWidth / 2;
-        const customRight = customLeft + customWidth;
-        // Keep the current left-dock owner visible when its session open has
-        // moved off the left edge. The old renderer only pinned once
-        // the *entire* session was off-screen, so a cash-session viewport had
-        // real profile data loaded but drew every bar beyond the canvas.
-        const autoPinnedDailyLeft = profile.period === "daily"
-          && startX < leftEdge + 2
-          && ownsLeftDock(model);
-        const latestDailyProfile = profile.period === "daily"
-          && profile.endMs === latestDailyEndMs;
-        // Right docking is reserved for the newest profile of this kind.
-        const isNewestOfKind = profile.endMs
-          >= (latestEndMsByKind.get(`${profile.period}:${profile.root}`) ?? profile.endMs);
-        const isNewestOfOwner = profile.ownerInstanceId
-          ? profile.endMs === latestEndMsByOwner.get(profile.ownerInstanceId) : isNewestOfKind;
-        const pinnedRight = style.snapMode === "right" && (model.outerRightDock
-          ? profile.endMs === latestDockEndMs.get(model.dockInstanceId ?? "")
-          : isNewestOfKind && (profile.period !== "daily" || latestDailyProfile));
-        const external = model.outerRightDock && pinnedRight;
-        if (dockInstanceId ? !external || model.dockInstanceId !== dockInstanceId : external) continue;
-        // Which WAY the profile is drawn, as opposed to where it is anchored.
-        //
-        // Docking to the screen edge is reserved for the newest profile of a
-        // kind, and that is deliberate. Direction is not: asking for profiles
-        // on the right and getting every one except the newest drawn growing
-        // rightward — off toward the price scale — is the setting doing the
-        // opposite of what it says on every bar but one.
-        const facesLeft = style.snapMode === "right";
-        const pinnedLeft = style.snapMode === "left"
-          && ownsLeftDock(model)
-          && (profile.period === "daily" ? autoPinnedDailyLeft : startX < leftEdge + 2);
-        const pinned = pinnedLeft || pinnedRight;
-        // A left-facing profile must open back across ITS OWN session.
-        //
-        // An undocked profile anchored at its session START and drawn leftward
-        // opens across the session BEFORE it — the histogram sits over bars it
-        // was not built from, which is the profile reading backwards. Anchoring
-        // it at the session end instead makes it cover exactly the range it
-        // measured, whichever way it faces. The TPO renderer already does this
-        // ("an older right-facing profile hangs off the end of its own period
-        // and opens back across it"); the volume profile did not, which is why
-        // only some profiles looked reversed.
-        /*
-         * DeepChart's Vbp offset, in pixels along the time axis.
-         *
-         * Applied to a profile sitting at its own session anchor only. A docked
-         * profile is deliberately pinned to a screen edge and a fixed-range one
-         * is deliberately at the trader's own anchors; nudging either would move
-         * it off the thing it was pinned to.
-         */
-        const profileOffsetPx = customProfile || pinned
-          ? 0
-          : Number((isNewestOfOwner ? style.currentOffsetPx : style.previousOffsetPx) ?? 0);
-        const rawAnchorX = (customProfile
-          ? (customLeft + customRight) / 2
-          : pinned
-          ? pinnedRight ? rightEdge - 2 : leftEdge + 2
-          : facesLeft ? finishX : startX) + profileOffsetPx;
-        const endX = (customProfile
-          ? customRight
-          : pinned
-          ? pinnedRight ? leftEdge : rightEdge
-          : finishX) + profileOffsetPx;
+      const visibleLogical = params.chart.timeScale().getVisibleLogicalRange();
+      const placements = dockInstanceId ? undefined : this.profileLayout?.positions(
+        leftEdge, rightEdge, visibleLogical?.from, visibleLogical?.to,
+      );
+      const topPrice = params.series.coordinateToPrice(0);
+      const bottomPrice = params.series.coordinateToPrice(mediaSize.height);
+      const visibleLow = topPrice == null || bottomPrice == null ? -Infinity : Math.min(topPrice, bottomPrice);
+      const visibleHigh = topPrice == null || bottomPrice == null ? Infinity : Math.max(topPrice, bottomPrice);
 
+      for (const layout of this.profileLayouts(leftEdge, rightEdge, dockInstanceId)) {
+        const { model, endX, finishX, facesLeft, pinned, splitPinnedDaily, volumeOnlyPinnedDaily } = layout;
+        const { profile, style } = model;
+        const placement = placements?.get(model);
+        const anchorX = placement?.anchor ?? layout.anchorX;
+        const profileWidth = layout.profileWidth * (placement?.scale ?? 1);
+        const profileVerticallyVisible = !(model.highPrice < visibleLow || model.lowPrice > visibleHigh);
         // Decimals come from the contract's own tick, so a level never prints
         // more precision than the instrument actually trades in.
         const pricePrecision = profile.tickSize >= 1
           ? 0
           : Math.min(6, Math.max(0, Math.ceil(-Math.log10(profile.tickSize))));
 
-        const sessionWidth = Math.max(0.5, Math.abs(finishX - startX));
-        const visibleLogicalRange = params.chart.timeScale().getVisibleLogicalRange();
-        const profileDurationSeconds = Math.abs(
-          (model.drawingBounds?.endTime ?? profile.endMs / 1_000)
-          - (model.drawingBounds?.startTime ?? profile.startMs / 1_000),
-        );
-        const durationLogicalBars = model.intervalSeconds == null || model.intervalSeconds <= 0
-          ? null
-          : profileDurationSeconds / model.intervalSeconds;
-        /*
-         * Current and Previous Width are independent in DeepCharts. Resolve
-         * the active value before zoom conversion; the old order converted
-         * every completed profile with the CURRENT width and made Previous
-         * Width a saved control that did nothing on normal chart viewports.
-         */
-        const effectiveWidthPercent = isNewestOfOwner
-          ? style.widthPercent
-          : Number(style.previousWidthPercent ?? style.widthPercent);
-        const visibleLogicalSpan = visibleLogicalRange == null
-          ? null
-          : Math.abs(Number(visibleLogicalRange.to) - Number(visibleLogicalRange.from));
-        const automaticWidth = visibleLogicalRange == null || model.intervalSeconds == null
-          ? null
-          : zoomScaledVolumeProfileWidth({
-              paneWidth: usablePaneWidth,
-              visibleLogicalFrom: Number(visibleLogicalRange.from),
-              visibleLogicalTo: Number(visibleLogicalRange.to),
-              referenceLogicalBars: customProfile
-                ? durationLogicalBars ?? CHART_PROFILE_REFERENCE_BARS
-                : CHART_PROFILE_REFERENCE_BARS,
-              widthPercent: effectiveWidthPercent,
-            });
-        const resolvedModeWidth = resolveVolumeProfileWidth({
-          mode: style.widthBasis,
-          value: effectiveWidthPercent,
-          paneWidth: usablePaneWidth,
-          sessionWidth,
-          visibleLogicalSpan,
-          automaticWidth,
-        });
-        /*
-         * A completed profile may be drawn narrower than the live one, which is
-         * how DeepChart separates "what is forming" from "what is settled".
-         */
-        const baseProfileWidth = resolvedModeWidth
-          ?? (effectiveWidthPercent <= 0
-            ? 0
-            : Math.min(
-                usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
-                Math.max(
-                  Math.min(
-                    PROFILE_MIN_READABLE_WIDTH_PX,
-                    usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
-                  ),
-                  sessionWidth * effectiveWidthPercent / 100,
-                ),
-              ));
-        const profileWidth = dockInstanceId
-          ? Math.max(0, usablePaneWidth - 4)
-          : fineVolumeProfileWidth(baseProfileWidth, effectiveWidthPercent);
-        // A daily profile has two independent halves: volume to the right of
-        // its spine and signed delta to the left. Once its session anchor has
-        // moved beyond the viewport, dock to the left edge. Combined delta
-        // nests inside the volume half so both measurements remain visible.
-        const splitPinnedDaily = pinnedLeft && !pinnedRight && profile.period === "daily";
-        const volumeOnlyPinnedDaily = splitPinnedDaily
-          && (style.mode === "delta-volume" || style.mode === "volume");
-        const anchorX = volumeOnlyPinnedDaily
-          ? rawAnchorX
-          : splitPinnedDaily
-            ? Math.min(rightEdge - 2, leftEdge + profileWidth + 2)
-            : rawAnchorX;
-        if (!pinned && (
-          Math.max(anchorX, endX) + profileWidth < leftEdge
-          || Math.min(anchorX, endX) - profileWidth > rightEdge
-        )) continue;
         const sourceLevels = profile.levels;
         // The trader's own % Value Area. Falls back to the 70% convention only
         // when the setting is absent.
@@ -1198,7 +1238,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           startMs: model.drawingBounds?.startTime != null
             ? model.drawingBounds.startTime * 1_000
             : profile.startMs,
-          leftX: anchorX - bodyReachesLeftBy,
+          leftX: anchorX - (placement && layout.placement ? layout.placement.leftWidth * placement.scale : bodyReachesLeftBy),
           // Levels always travel forward on screen from the rightmost point
           // the source profile can paint. This prevents right-facing and
           // docked profiles from emitting a line out of their back.
@@ -1485,6 +1525,14 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const levelValueAreaColor = style.gradient
           ? mixHexColors(style.gradient.to, style.gradient.from, 0.35)
           : style.valueAreaLineColor ?? style.valueAreaColor;
+        if (placement && layout.placement) {
+          context.save();
+          context.beginPath();
+          const leftWidth = layout.placement.leftWidth * placement.scale;
+          const rightWidth = layout.placement.rightWidth * placement.scale;
+          context.rect(anchorX - leftWidth, 0, leftWidth + rightWidth, mediaSize.height);
+          context.clip();
+        }
         if (contourSteps) {
           // Appearance changes the paint, not which measurements exist. Every
           // selected volume/delta/ask/bid component owns its own open contour.
@@ -1594,6 +1642,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           context.lineTo(anchorX, Math.max(top, bottom));
           context.stroke();
         }
+
+        if (placement && layout.placement) context.restore();
 
         // When a day is split into session windows, several profiles sit side
         // by side on the same date. Name each one at its top, otherwise the

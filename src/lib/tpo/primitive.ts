@@ -1,3 +1,4 @@
+import type { ChartProfileLayout, ProfileBody } from "@/lib/chartProfileLayout";
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import { mixHexColors, resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 import type { ISeriesPrimitive, Logical, SeriesAttachedParameter, Time } from "@/lib/lightweightChartsCompat";
@@ -61,6 +62,26 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     renderer: () => ({ draw: (target: CanvasRenderingTarget2D) => this.draw(target, "single-prints") }),
   };
 
+  private readonly profileLayout?: ChartProfileLayout;
+
+  constructor(profileLayout?: ChartProfileLayout) {
+    this.profileLayout = profileLayout;
+    profileLayout?.addSource((left, right) => {
+      const bodies = new Map<object, ProfileBody>();
+      for (const layout of this.profileLayouts(left, right)) {
+        const { model, anchorX, direction, width } = layout;
+        bodies.set(model, {
+          owner: model.instanceId,
+          anchor: anchorX,
+          leftWidth: direction < 0 ? width : 0,
+          rightWidth: direction > 0 ? width : 0,
+          edge: layout.behindLeftWall ? "left" : undefined,
+        });
+      }
+      return bodies;
+    });
+  }
+
   attached(params: SeriesAttachedParameter<Time>) {
     this.attachedParams = params;
   }
@@ -79,6 +100,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
   setModels(models: TpoPrimitiveModel[]) {
     this.models = models;
     this.dockHits.clear();
+    this.profileLayout?.invalidate();
     this.attachedParams?.requestUpdate();
   }
 
@@ -110,6 +132,88 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     return timeScale.logicalToCoordinate((Number(lastLogical) + (timestampSeconds - model.lastCandleTime) / model.intervalSeconds) as Logical);
   }
 
+  private *profileLayouts(leftEdge: number, rightEdge: number, dockInstanceId?: string) {
+    const params = this.attachedParams;
+    if (!params) return;
+    const visibleLogical = params.chart.timeScale().getVisibleLogicalRange();
+    const visibleSpan = visibleLogical ? Math.max(1, Number(visibleLogical.to) - Number(visibleLogical.from)) : 80;
+    const pixelsPerBar = rightEdge / visibleSpan;
+    const latestProfileByInstance = new Map<string, number>();
+    this.models.forEach((model, index) => {
+      const currentIndex = latestProfileByInstance.get(model.instanceId);
+      if (currentIndex == null || model.profile.startTimeMs > this.models[currentIndex].profile.startTimeMs) {
+        latestProfileByInstance.set(model.instanceId, index);
+      }
+    });
+    const coordinates = this.models.map((model) => ({
+      start: this.timeToCoordinate(model, model.profile.startTimeMs / 1_000),
+      end: this.timeToCoordinate(model, model.profile.endTimeMs / 1_000),
+    }));
+    const leftWallProfileByInstance = new Map<string, number>();
+    this.models.forEach((model, index) => {
+      if (!model.profile.rows.length || model.settings.showOnRight) return;
+      const start = coordinates[index].start;
+      if (start == null || coordinates[index].end == null) return;
+      const latest = latestProfileByInstance.get(model.instanceId) === index;
+      const offset = (latest ? model.settings.currentOffset : model.settings.previousOffset) * pixelsPerBar;
+      if (start + offset > leftEdge + 2) return;
+      const currentIndex = leftWallProfileByInstance.get(model.instanceId);
+      if (currentIndex == null || model.profile.startTimeMs > this.models[currentIndex].profile.startTimeMs) {
+        leftWallProfileByInstance.set(model.instanceId, index);
+      }
+    });
+    for (const [modelIndex, model] of this.models.entries()) {
+      const { profile, settings } = model;
+      if (!profile.rows.length) continue;
+      const periodStartX = coordinates[modelIndex].start;
+      const periodEndX = coordinates[modelIndex].end;
+      if (periodStartX == null || periodEndX == null) continue;
+      const latest = latestProfileByInstance.get(model.instanceId) === modelIndex;
+      const baseCell = clamp(settings.blockSize, 2, 24);
+      const periodWidth = Math.max(1, Math.abs(periodEndX - periodStartX));
+      const requestedWidth = settings.widthMode === "window-percent"
+        ? rightEdge * settings.currentWidth / 100
+        : settings.widthMode === "period-percent"
+          ? periodWidth * settings.currentWidth / 100
+          : settings.widthMode === "fixed-bars"
+            ? pixelsPerBar * settings.currentWidth
+            : Math.min(periodWidth * 0.42, Math.max(72, pixelsPerBar * 28));
+      const width = clamp(requestedWidth * (latest ? 1 : settings.previousWidth / Math.max(1, settings.currentWidth)), 22, rightEdge * 0.42);
+      const offset = (latest ? settings.currentOffset : settings.previousOffset) * pixelsPerBar;
+      // Which WAY it is drawn, and WHERE it is anchored, are two things.
+      //
+      // Show-on-right sent every profile to the same place — the screen's
+      // right edge — so this week and last week were drawn one on top of
+      // the other, which is the doubled profile. Docking to the edge only
+      // makes sense for the newest of a kind; the ones behind it belong at
+      // their own period. They still FACE the same way, because that is
+      // what the setting is about.
+      const facesLeft = settings.showOnRight;
+      const dockRight = facesLeft && latest;
+      if (dockInstanceId ? !dockRight || model.instanceId !== dockInstanceId : dockRight) continue;
+      const behindLeftWall = !facesLeft && periodStartX + offset <= leftEdge + 2;
+      if (behindLeftWall && leftWallProfileByInstance.get(model.instanceId) !== modelIndex) continue;
+      if (facesLeft && !dockRight && periodEndX - offset <= leftEdge + 2) continue;
+      if (this.profileLayout && !dockInstanceId && !facesLeft && periodStartX + offset >= rightEdge) continue;
+      const anchorX = dockRight
+        ? Math.max(2, rightEdge - 4 - offset)
+        : facesLeft
+          // An older right-facing profile hangs off the end of its own
+          // period and opens back across it.
+          ? clamp(periodEndX - offset, leftEdge + 2, rightEdge - 2)
+          : behindLeftWall ? leftEdge + 4 : clamp(periodStartX + offset, leftEdge + 2, rightEdge - 2);
+      // A profile held at the left wall must open into the viewport. Keeping
+      // a saved mirrored direction here would draw part of the newest TPO
+      // outside the clipped canvas and make the profile look incomplete.
+      const direction = facesLeft ? -1 : behindLeftWall ? 1 : settings.mirror ? -1 : 1;
+      const maxTpos = Math.max(1, ...profile.rows.map((row) => row.tpoCount));
+      const cellWidth = dockInstanceId
+        ? Math.min(baseCell, Math.max(0.5, (rightEdge - 8) / maxTpos))
+        : Math.min(baseCell, Math.max(1.25, width / maxTpos));
+      yield { model, periodEndX, anchorX, direction, width, cellWidth, maxTpos, facesLeft, behindLeftWall };
+    }
+  }
+
   drawInDock(target: CanvasRenderingTarget2D, instanceId: string) {
     this.draw(target, "all", instanceId);
   }
@@ -131,106 +235,31 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
       else if (layer === "all") this.hits = hits;
 
       const visibleLogical = params.chart.timeScale().getVisibleLogicalRange();
-      const visibleSpan = visibleLogical ? Math.max(1, Number(visibleLogical.to) - Number(visibleLogical.from)) : 80;
-      const pixelsPerBar = mediaSize.width / visibleSpan;
-      const latestProfileByInstance = new Map<string, number>();
-      this.models.forEach((model, index) => {
-        const currentIndex = latestProfileByInstance.get(model.instanceId);
-        if (currentIndex == null || model.profile.startTimeMs > this.models[currentIndex].profile.startTimeMs) {
-          latestProfileByInstance.set(model.instanceId, index);
-        }
-      });
-      const coordinates = this.models.map((model) => ({
-        start: this.timeToCoordinate(model, model.profile.startTimeMs / 1_000),
-        end: this.timeToCoordinate(model, model.profile.endTimeMs / 1_000),
-      }));
-      const leftWallProfileByInstance = new Map<string, number>();
-      this.models.forEach((model, index) => {
-        if (!model.profile.rows.length || model.settings.showOnRight) return;
-        const start = coordinates[index].start;
-        if (start == null || coordinates[index].end == null) return;
-        const latest = latestProfileByInstance.get(model.instanceId) === index;
-        const offset = (latest ? model.settings.currentOffset : model.settings.previousOffset) * pixelsPerBar;
-        if (start + offset > leftEdge + 2) return;
-        const currentIndex = leftWallProfileByInstance.get(model.instanceId);
-        if (currentIndex == null || model.profile.startTimeMs > this.models[currentIndex].profile.startTimeMs) {
-          leftWallProfileByInstance.set(model.instanceId, index);
-        }
-      });
+      const placements = dockInstanceId ? undefined : this.profileLayout?.positions(
+        leftEdge, mediaSize.width, visibleLogical?.from, visibleLogical?.to,
+      );
+      const layouts = [...this.profileLayouts(leftEdge, mediaSize.width, dockInstanceId)];
       const minimumCellWidthByInstance = new Map<string, number>();
-      this.models.forEach((model, index) => {
-        const { profile, settings } = model;
-        const periodStartX = coordinates[index].start;
-        const periodEndX = coordinates[index].end;
-        if (!profile.rows.length || periodStartX == null || periodEndX == null) return;
-        const latest = latestProfileByInstance.get(model.instanceId) === index;
-        const periodWidth = Math.max(1, Math.abs(periodEndX - periodStartX));
-        const requestedWidth = settings.widthMode === "window-percent"
-          ? mediaSize.width * settings.currentWidth / 100
-          : settings.widthMode === "period-percent"
-            ? periodWidth * settings.currentWidth / 100
-            : settings.widthMode === "fixed-bars"
-              ? pixelsPerBar * settings.currentWidth
-              : Math.min(periodWidth * 0.42, Math.max(72, pixelsPerBar * 28));
-        const width = clamp(requestedWidth * (latest ? 1 : settings.previousWidth / Math.max(1, settings.currentWidth)), 22, mediaSize.width * 0.42);
-        const maxTpos = Math.max(1, ...profile.rows.map((row) => row.tpoCount));
-        const cellWidth = Math.min(clamp(settings.blockSize, 2, 24), Math.max(1.25, width / maxTpos));
-        const currentMinimum = minimumCellWidthByInstance.get(model.instanceId);
-        minimumCellWidthByInstance.set(model.instanceId, currentMinimum == null ? cellWidth : Math.min(currentMinimum, cellWidth));
-      });
+      for (const { model, cellWidth } of layouts) {
+        const fittedWidth = cellWidth * (placements?.get(model)?.scale ?? 1);
+        const currentMinimum = minimumCellWidthByInstance.get(model.instanceId) ?? Infinity;
+        minimumCellWidthByInstance.set(model.instanceId, Math.min(currentMinimum, fittedWidth));
+      }
 
-      this.models.forEach((model, modelIndex) => {
+      for (const layout of layouts) {
+        const { model, periodEndX, direction, facesLeft } = layout;
         const { profile, settings, theme } = model;
-        if (!profile.rows.length) return;
-        const periodStartX = coordinates[modelIndex].start;
-        const periodEndX = coordinates[modelIndex].end;
-        if (periodStartX == null || periodEndX == null) return;
-        const latest = latestProfileByInstance.get(model.instanceId) === modelIndex;
-        const baseCell = clamp(settings.blockSize, 2, 24);
-        const periodWidth = Math.max(1, Math.abs(periodEndX - periodStartX));
-        const requestedWidth = settings.widthMode === "window-percent"
-          ? mediaSize.width * settings.currentWidth / 100
-          : settings.widthMode === "period-percent"
-            ? periodWidth * settings.currentWidth / 100
-            : settings.widthMode === "fixed-bars"
-              ? pixelsPerBar * settings.currentWidth
-              : Math.min(periodWidth * 0.42, Math.max(72, pixelsPerBar * 28));
-        const width = clamp(requestedWidth * (latest ? 1 : settings.previousWidth / Math.max(1, settings.currentWidth)), 22, mediaSize.width * 0.42);
-        const offset = (latest ? settings.currentOffset : settings.previousOffset) * pixelsPerBar;
-        // Which WAY it is drawn, and WHERE it is anchored, are two things.
-        //
-        // Show-on-right sent every profile to the same place — the screen's
-        // right edge — so this week and last week were drawn one on top of
-        // the other, which is the doubled profile. Docking to the edge only
-        // makes sense for the newest of a kind; the ones behind it belong at
-        // their own period. They still FACE the same way, because that is
-        // what the setting is about.
-        const facesLeft = settings.showOnRight;
-        const dockRight = facesLeft && latest;
-        if (dockInstanceId ? !dockRight || model.instanceId !== dockInstanceId : dockRight) return;
-        const behindLeftWall = !facesLeft && periodStartX + offset <= leftEdge + 2;
-        if (behindLeftWall && leftWallProfileByInstance.get(model.instanceId) !== modelIndex) return;
-        if (facesLeft && !dockRight && periodEndX - offset <= leftEdge + 2) return;
-        const anchorX = dockRight
-          ? Math.max(2, mediaSize.width - 4 - offset)
-          : facesLeft
-            // An older right-facing profile hangs off the end of its own
-            // period and opens back across it.
-            ? clamp(periodEndX - offset, leftEdge + 2, mediaSize.width - 2)
-            : behindLeftWall ? leftEdge + 4 : clamp(periodStartX + offset, leftEdge + 2, mediaSize.width - 2);
-        // A profile held at the left wall must open into the viewport. Keeping
-        // a saved mirrored direction here would draw part of the newest TPO
-        // outside the clipped canvas and make the profile look incomplete.
-        const direction = facesLeft ? -1 : behindLeftWall ? 1 : settings.mirror ? -1 : 1;
-        const maxTpos = Math.max(1, ...profile.rows.map((row) => row.tpoCount));
-        const cellWidth = dockInstanceId
-          ? Math.min(baseCell, Math.max(0.5, (mediaSize.width - 8) / maxTpos))
-          : Math.min(baseCell, Math.max(1.25, width / maxTpos));
+        const placement = placements?.get(model);
+        const anchorX = placement?.anchor ?? layout.anchorX;
+        const width = layout.width * (placement?.scale ?? 1);
+        const cellWidth = placement
+          ? Math.min(layout.cellWidth * placement.scale, width / (layout.maxTpos * 1.7))
+          : layout.cellWidth;
         const gap = Math.min(settings.blockGap, cellWidth * 0.35);
         const opacity = clamp(settings.opacityPercent / 100, 0, 1);
         const lowY = profile.profileLowTick == null ? null : params.series.priceToCoordinate(tickToPrice(profile.profileLowTick, profile.tickSize));
         const highY = profile.profileHighTick == null ? null : params.series.priceToCoordinate(tickToPrice(profile.profileHighTick, profile.tickSize));
-        if (lowY == null || highY == null) return;
+        if (lowY == null || highY == null) continue;
         let boundsLeft = anchorX;
         let boundsRight = anchorX;
         let boundsTop = Math.min(lowY, highY);
@@ -258,6 +287,14 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           ask: String(settings[`range${range}AskColor` as keyof TpoIndicatorSettings]),
         })).filter((range) => range.enabled).sort((left, right) => left.minimum - right.minimum);
 
+        const bodyLeft = direction < 0 ? anchorX - width : anchorX;
+        const bodyRight = bodyLeft + width;
+        if (placement) {
+          context.save();
+          context.beginPath();
+          context.rect(bodyLeft, 0, width, mediaSize.height);
+          context.clip();
+        }
         if (settings.showValueArea && settings.valueAreaShowBackground && profile.vahTick !== null && profile.valTick !== null) {
           const vahY = params.series.priceToCoordinate(tickToPrice(profile.vahTick + 0.5, profile.tickSize));
           const valY = params.series.priceToCoordinate(tickToPrice(profile.valTick - 0.5, profile.tickSize));
@@ -474,7 +511,13 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           });
         }
 
-        const profileLineEnd = facesLeft ? 0 : Math.min(mediaSize.width, Math.max(anchorX, periodEndX));
+        if (placement) {
+          context.restore();
+          boundsLeft = Math.max(boundsLeft, bodyLeft);
+          boundsRight = Math.min(boundsRight, bodyRight);
+        }
+
+        const profileLineEnd = facesLeft ? 0 : Math.min(mediaSize.width, Math.max(layout.anchorX, periodEndX));
         // A level or single print belongs to its own session and stops where
         // the session in front begins — never drawn underneath it. The newest
         // profile has nothing ahead of it and runs to the live edge. This holds
@@ -510,7 +553,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           context.lineWidth = widthValue;
           context.setLineDash(dash);
           context.beginPath();
-          context.moveTo(anchorX, y);
+          context.moveTo(layout.anchorX, y);
           const interactionX = firstInteractionMs === null ? null : this.timeToCoordinate(model, firstInteractionMs / 1_000);
           const lineEnd = extensionMode === "to-next-profile" && !facesLeft
             ? nextProfileEnd
@@ -553,7 +596,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
                   : profileLineEnd;
             context.globalAlpha = settings.singlePrintFillZone ? settings.singlePrintFillOpacity / 100 : 0;
             context.fillStyle = settings.inheritThemeColours ? theme.singlePrint : settings.singlePrintColor;
-            context.fillRect(Math.min(anchorX, fillEnd), Math.min(top, bottom), Math.abs(fillEnd - anchorX), Math.abs(bottom - top));
+            context.fillRect(Math.min(layout.anchorX, fillEnd), Math.min(top, bottom), Math.abs(fillEnd - layout.anchorX), Math.abs(bottom - top));
             if (settings.singlePrintLineWidth > 0) {
               drawLevel(zone.lowTick, settings.inheritThemeColours ? theme.singlePrint : settings.singlePrintColor, [2, 2], settings.singlePrintShowLabel ? "SINGLE" : "", settings.singlePrintLineWidth, settings.singlePrintExtensionMode, settings.singlePrintShowLabel, zone.firstInteractionMs ?? null);
             }
@@ -561,7 +604,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         }
         // The bottom layer exists only for those shaded zones; everything
         // else TPO draws belongs above the candles.
-        if (layer === "single-prints") return;
+        if (layer === "single-prints") continue;
 
         // A gradient scheme is the profile's colour setting, so the levels
         // drawn off it follow too — otherwise the POC and value area keep
@@ -676,11 +719,14 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           const lines = settings.summaryLayout === "full" ? detail : [title, compact];
           const fontSize = settings.summaryFontSize;
           context.font = `600 ${fontSize}px 'Aleph', monospace`;
-          const boxWidth = Math.min(mediaSize.width - 8, Math.max(...lines.map((line) => context.measureText(line).width)) + 12);
+          const desiredBoxWidth = Math.max(...lines.map((line) => context.measureText(line).width)) + 12;
+          const boxWidth = Math.min(placement ? width : mediaSize.width - 8, desiredBoxWidth);
           const boxHeight = lines.length * (fontSize + 4) + 8;
           const rightAligned = settings.summaryLocation.endsWith("right");
           const bottomAligned = settings.summaryLocation.startsWith("bottom");
-          const boxX = rightAligned ? clamp(boundsRight - boxWidth, 4, mediaSize.width - boxWidth - 4) : clamp(boundsLeft, 4, mediaSize.width - boxWidth - 4);
+          const boxMinX = placement ? bodyLeft : 4;
+          const boxMaxX = placement ? bodyRight - boxWidth : mediaSize.width - boxWidth - 4;
+          const boxX = clamp(rightAligned ? boundsRight - boxWidth : boundsLeft, boxMinX, boxMaxX);
           const boxY = bottomAligned ? clamp(boundsBottom - boxHeight, 4, mediaSize.height - boxHeight - 4) : clamp(boundsTop, 4, mediaSize.height - boxHeight - 4);
           context.globalAlpha = settings.summaryBackgroundOpacity / 100;
           context.fillStyle = settings.summaryBackgroundColor;
@@ -689,19 +735,21 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           context.fillStyle = settings.summaryTextColor || theme.foreground;
           context.textAlign = "left";
           context.textBaseline = "top";
-          lines.forEach((line, index) => context.fillText(line, boxX + 6, boxY + 4 + index * (fontSize + 4)));
+          if (boxWidth > 12) {
+            lines.forEach((line, index) => context.fillText(line, boxX + 6, boxY + 4 + index * (fontSize + 4), boxWidth - 12));
+          }
         }
         hits.push({
           instanceId: model.instanceId,
           profileId: profile.id,
           x: anchorX,
           y: boundsTop,
-          left: Math.min(boundsLeft, boundsRight) - 4,
-          right: Math.max(boundsLeft, boundsRight) + 4,
+          left: Math.max(placement ? bodyLeft : -Infinity, Math.min(boundsLeft, boundsRight) - 4),
+          right: Math.min(placement ? bodyRight : Infinity, Math.max(boundsLeft, boundsRight) + 4),
           top: boundsTop - 14,
           bottom: boundsBottom + 14,
         });
-      });
+      }
       context.restore();
     });
   }

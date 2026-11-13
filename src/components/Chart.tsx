@@ -394,6 +394,7 @@ import {
 } from "@/lib/speedOfTapeInstant";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import { CanvasRenderingTarget2D, size as canvasSize } from "fancy-canvas";
+import { ChartProfileLayout } from "@/lib/chartProfileLayout";
 import { layoutRightStudyLanes, volumeProfileUsesOuterRightDock, VOLUME_PROFILE_DOCK_IDS } from "@/lib/rightChartStudyDock";
 import { MiniDomPrimitive, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
 import { DeltaLadderPrimitive, type DeltaLadderLevel, type DeltaLadderOptions, type DeltaLadderSide } from "@/lib/deltaLadderPrimitive";
@@ -14613,7 +14614,8 @@ function Chart({
     const darkPoolGexPrimitive = new DarkPoolGexPrimitive();
     candleSeries.attachPrimitive(darkPoolGexPrimitive);
     darkPoolGexPrimitiveRef.current = darkPoolGexPrimitive;
-    const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
+    const profileLayout = new ChartProfileLayout();
+    const volumeProfilePrimitive = new NativeVolumeProfilePrimitive(undefined, profileLayout);
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
     const deepProfileSwingPrimitive = new NativeVolumeProfilePrimitive();
@@ -14622,7 +14624,7 @@ function Chart({
     const deepProfileValuesPrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(deepProfileValuesPrimitive);
     deepProfileValuesPrimitiveRef.current = deepProfileValuesPrimitive;
-    const tpoProfilePrimitive = new TpoProfilePrimitive();
+    const tpoProfilePrimitive = new TpoProfilePrimitive(profileLayout);
     tpoProfilePrimitive.setPaneInsets({ left: toolbarPlotLeftInset });
     candleSeries.attachPrimitive(tpoProfilePrimitive);
     tpoProfilePrimitiveRef.current = tpoProfilePrimitive;
