@@ -3,7 +3,7 @@ import {orderflowMajorLevels} from './orderflow-major-levels.js?v=20261104';
 import {LIVE_SNAPSHOT_INTERVAL_MS,FAILED_SNAPSHOT_INTERVAL_MS} from './cadence.js';
 import {themePaint,themeIsLight} from './site-theme.js';
 import {mountWorkspaceChrome,arrangeWorkspacePanels,reorderWorkspacePanels} from './workspace-chrome.js?v=2';
-import {showWorkspaceLoading} from '../workspace-loading.js?v=2';
+import {showWorkspaceLoading} from '../workspace-loading.js?v=3';
 import {syncThemeSettings} from './theme-settings.js';
 import {botStorage,botFetch,botTheme,botTimeZone,botPriceHistory,botSubscribePrice,botWorkspaceReplay} from './site-runtime.js?v=2';
 import {createReplayPrefixReader} from './replay-cursor.js?v=1';
@@ -23,7 +23,7 @@ import {RetainedSnapshots} from './retention.js';
 import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261106';
 import {renderOrderflow,ORDERFLOW_METRICS,createOrderflowModel} from './orderflow-chart.js?v=7';
 import {mountSettingsEditor} from './settings-editor.js?v=5';
-import {createOverlayEditor} from './overlay-editor.js?v=6';
+import {createOverlayEditor} from './overlay-editor.js?v=7';
 import {finite,mergeSnapshots,sourceDate,sourceTime,expiryLabel,profileHistoryRecords,seekSnapshot,exposureSummary,exposureSummaryUnit,toggleExpiry,closeOrderPanel,restoreOrderPanel,ORDERFLOW_WINDOWS} from './models.js?v=3';
 
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];

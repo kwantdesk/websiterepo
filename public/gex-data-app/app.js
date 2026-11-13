@@ -3,7 +3,7 @@ import {marketShareTooltipRows,marketShareFormatValue} from './market-share-inte
 import {createIntervalMapTooltipSelection,intervalMapTooltipRows} from './interval-map-interaction-model.js?v=20261104';
 import {gainersIndustryChoices} from './gainers-industry-controls.js?v=20261104';
 import {themePaint,actionForeground,surfaceForeground} from './site-theme.js?v=1';
-import {showWorkspaceLoading} from '../workspace-loading.js?v=2';
+import {showWorkspaceLoading} from '../workspace-loading.js?v=3';
 import {gexStorage,gexTimeZone,gexFetch as fetch,gexWorkspaceReplay,releaseGexDataConsumer} from './site-runtime.js?v=1';
 import { CHART_COLORS, exposureAlpha, niceTicks, intervalPreview, intervalStrikeWindow, foldIntervalUpdates, precedingIntervalSpot, averagedIvRank, drawSignedVolume, drawIntervalPlot } from "./chart-primitives.js?v=2";
 import { PRICE_CHART_TYPES, parsePriceRows, priceChartPresentation, priceChartBounds, drawPriceCandles, drawOptionVolume, drawDarkFlowArea, prepareDarkPoolLevels, DARK_POOL_LEVEL_COLUMNS, EQUITY_PRINT_COLUMNS, EXCHANGE_NOTIFICATION_COLUMNS, NOTIFICATION_TYPES, equitySideColorToken, equityPrintColorToken, notificationColorToken } from "./equity-renderers.js?v=3";

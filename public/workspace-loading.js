@@ -10,6 +10,6 @@ export function showWorkspaceLoading(target, title = "Loading workspace") {
   loader.setAttribute("role", "status");
   loader.setAttribute("aria-label", title);
   loader.setAttribute("aria-busy", "true");
-  loader.innerHTML = '<span class="kwant-loader-emblem" aria-hidden="true"><span class="kwant-loader-orbit"></span></span>';
+  loader.innerHTML = '<div class="kwant-loader-content" aria-hidden="true"><span class="kwant-loader-label">Loading&hellip;</span><span class="kwant-loader-track"><span class="kwant-loader-fill"></span></span></div>';
   target.replaceChildren(loader);
 }

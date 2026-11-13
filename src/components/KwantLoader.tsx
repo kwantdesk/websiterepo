@@ -1,4 +1,4 @@
-import { Sparkles, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { CSSProperties } from "react";
 
 type KwantLoaderProps = {
@@ -19,7 +19,7 @@ type KwantLoaderProps = {
 export default function KwantLoader({
   title,
   detail,
-  icon: Icon = Sparkles,
+  icon: Icon,
   className = "",
   compact = false,
   screen = false,
@@ -53,17 +53,13 @@ export default function KwantLoader({
       } ${className}`}
       style={style}
     >
-      <div className="flex min-w-0 flex-col items-center px-3">
-        <span className="kwant-loader-emblem" aria-hidden="true">
-          <span className="kwant-loader-orbit" />
-          {screen ? null : <Icon className="h-4 w-4" />}
+      <div className={`kwant-loader-content${compact ? " kwant-loader-content-compact" : ""}`}>
+        <span className="kwant-loader-label" aria-hidden="true">
+          {!screen && Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+          {screen ? "Loading…" : title}
         </span>
-        {screen ? (detail ? <span className="sr-only">{detail}</span> : null) : (
-          <>
-            <div className={`${compact ? "mt-3 text-[10px]" : "mt-4 text-xs"} font-semibold text-foreground`}>{title}</div>
-            {detail ? <div className="mt-1 max-w-sm text-[10px] leading-4 text-muted">{detail}</div> : null}
-          </>
-        )}
+        <span className="kwant-loader-track" aria-hidden="true"><span className="kwant-loader-fill" /></span>
+        {detail ? <span className={screen ? "sr-only" : "max-w-sm text-[10px] leading-4 text-muted"}>{detail}</span> : null}
       </div>
     </div>
   );

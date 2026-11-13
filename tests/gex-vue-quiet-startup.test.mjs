@@ -27,7 +27,7 @@ test('quiet startup preserves full-page dimensions and explicit custom chart bac
   assert.match(html,/h-full w-full grow self-stretch/);assert.ok(html.includes(`background-color:${color}`));
   assert.doesNotMatch(html,/#000000|radial-gradient|kwant-loader/);
  }
- assert.match(render({}),/kwant-loader-orbit/); // Existing non-GEX callers retain their presentation.
+ assert.match(render({}),/kwant-loader-track/); // Existing non-GEX callers retain their presentation.
 });
 
 test('every GEX VUE startup phase is quiet without bypassing chart or preference readiness',()=>{
