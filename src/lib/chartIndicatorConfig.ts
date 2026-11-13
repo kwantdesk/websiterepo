@@ -32,7 +32,6 @@ import { DEFAULT_PULLING_STACKING_SETTINGS, normalizePullingStackingSettings, PU
 import { ABSORPTION_DETECTOR_SETTINGS_VERSION, DEFAULT_ABSORPTION_SETTINGS, normalizeAbsorptionSettings } from "@/lib/absorptionDetector";
 import { DEFAULT_STACKED_IMBALANCE_SETTINGS, STACKED_IMBALANCE_SETTINGS_VERSION, normalizeStackedImbalanceSettings } from "@/lib/stackedImbalanceSuite";
 import { DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS, LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION, normalizeLiquidityStopSweepSettings } from "@/lib/liquidityStopSweepDetector";
-import { DEFAULT_POC_AUCTION_SUITE_SETTINGS, POC_AUCTION_SUITE_SETTINGS_VERSION, normalizePocAuctionSuiteSettings } from "@/lib/pocAuctionSuite";
 import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/tapeSpeedOrderFlowBurst";
 import {
   DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS,
@@ -88,11 +87,9 @@ import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder"
 import { FAIR_VALUE_GAP_DEFAULTS, normalizeFairValueGapSettings } from "@/lib/fairValueGap";
 import { PRICE_MOVEMENT_LEVEL_DEFAULTS, normalizePriceMovementLevelSettings } from "@/lib/priceMovementLevels";
 import { SESSION_MARKER_DEFAULTS, normalizeSessionMarkerSettings } from "@/lib/sessionMarker";
-import { SESSION_IMBALANCE_DEFAULTS, normalizeSessionImbalanceSettings } from "@/lib/sessionImbalance";
 import { AVERAGE_DAILY_RANGE_TARGET_DEFAULTS, normalizeAverageDailyRangeTargetSettings } from "@/lib/averageDailyRangeTarget";
 import { VOLUME_DELTA_SPRINT_DEFAULTS, normalizeVolumeDeltaSprintSettings } from "@/lib/volumeDeltaSprint";
 import { OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS, normalizeOverlayTimeframeHighlightSettings } from "@/lib/overlayTimeframeHighlight";
-import { SHIFT_CANDLE_DEFAULTS, normalizeShiftCandleSettings } from "@/lib/shiftCandle";
 import { SPEED_OF_TAPE_DEFAULTS } from "@/lib/speedOfTape";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
@@ -110,7 +107,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "average-directional-index-adx",
   "price-movement-levels",
   "average-daily-range-target",
-  "shift-candle",
   "pivot-points",
   "fvg-identifier",
   "gamma-environment",
@@ -136,7 +132,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "speed-of-tape",
   "market-statistics",
   "cumulative-volume-delta",
-  "poc-auction-suite",
   "speed-of-tape-instant",
   "moving-average",
   "vwap",
@@ -169,7 +164,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "sessions",
   "session-highs-lows",
   "session-marker",
-  "session-imbalance",
   "ib-levels",
   "big-trades",
   "deep-m-effort-nq",
@@ -247,19 +241,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "widthPx", label: "Maximum right-edge bar width (px)", defaultValue: 150, min: 30, max: 400, step: 1 },
     { key: "barHeight", label: "Call/put pair height (px)", defaultValue: 12, min: 4, max: 30, step: 1 },
     { key: "opacity", label: "Opacity (%)", defaultValue: 85, min: 10, max: 100, step: 1 },
-  ],
-  "shift-candle": [
-    { key: "maxBarsAfterReversal", label: "Maximum bars after reversal", defaultValue: 3, min: 1, max: 50, step: 1 },
-    { key: "minimumTickBreakout", label: "Minimum tick breakout", defaultValue: 1, min: 0, max: 1000, step: 1 },
-    { key: "minimumDeltaPercentDifference", label: "Minimum delta % difference", defaultValue: 20, min: 0, max: 200, step: 1 },
-    { key: "minimumDeltaValueDifference", label: "Minimum delta value difference", defaultValue: 100, min: 0, max: 10000000, step: 10 },
-    { key: "maximumTickPocDistance", label: "Maximum tick POC distance", defaultValue: 4, min: 0, max: 1000, step: 1 },
-    { key: "highestLowestLookback", label: "Highest / lowest reversal lookback", defaultValue: 5, min: 2, max: 1000, step: 1 },
-    { key: "markerTickOffset", label: "Marker tick offset", defaultValue: 2, min: -1000, max: 1000, step: 1 },
-    { key: "minimumImbalancePercent", label: "Minimum imbalance %", defaultValue: 300, min: 100, max: 10000, step: 25 },
-    { key: "minimumImbalanceVolumeDifference", label: "Minimum imbalance volume difference", defaultValue: 20, min: 0, max: 10000000, step: 1 },
-    { key: "zoneOpacity", label: "Fresh zone opacity", defaultValue: 18, min: 0, max: 100, step: 1 },
-    { key: "markerLineWidth", label: "Marker width", defaultValue: 2, min: 0.5, max: 8, step: 0.5 },
   ],
   "speed-of-tape": [
     { key: "filterMin", label: "Filter min", defaultValue: 1, min: 0, max: 10000000, step: 1 },
@@ -589,29 +570,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Candle line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
     { key: "textSize", label: "Text size", defaultValue: 10, min: 6, max: 24, step: 1 },
     { key: "standardDeviationLookback", label: "Standard deviation lookback", defaultValue: 60, min: 10, max: 500, step: 1 },
-  ],
-  "poc-auction-suite": [
-    { key: "customGroupSizeTicks", label: "Custom grouping (ticks)", defaultValue: 1, min: 1, max: 1000, step: 1 },
-    { key: "automaticTargetRows", label: "Automatic target rows", defaultValue: 80, min: 20, max: 500, step: 1 },
-    { key: "percentageOfMaximum", label: "POC band percentage", defaultValue: 0.95, min: 0.01, max: 1, step: 0.01 },
-    { key: "topNContiguousGroups", label: "POC band contiguous rows", defaultValue: 3, min: 1, max: 100, step: 1 },
-    { key: "minimumPocVolume", label: "Minimum POC volume", defaultValue: 1, min: 0, max: 1000000000, step: 1 },
-    { key: "minimumPocTradeCount", label: "Minimum POC trades", defaultValue: 1, min: 0, max: 1000000, step: 1 },
-    { key: "rollingBars", label: "Rolling POC bars", defaultValue: 20, min: 2, max: 10000, step: 1 },
-    { key: "minimumMigrationTicks", label: "Migration threshold (ticks)", defaultValue: 1, min: 0, max: 10000, step: 1 },
-    { key: "touchToleranceTicks", label: "Naked POC touch tolerance", defaultValue: 0, min: 0, max: 1000, step: 1 },
-    { key: "minimumAcceptanceVolume", label: "Acceptance volume", defaultValue: 100, min: 0, max: 1000000000, step: 1 },
-    { key: "minimumRejectionTicks", label: "Rejection response (ticks)", defaultValue: 4, min: 1, max: 10000, step: 1 },
-    { key: "excessLookbackTicks", label: "Excess lookback (ticks)", defaultValue: 4, min: 2, max: 100, step: 1 },
-    { key: "minimumTaperSteps", label: "Minimum taper steps", defaultValue: 2, min: 1, max: 99, step: 1 },
-    { key: "maximumTaperRatio", label: "Maximum taper ratio", defaultValue: 0.75, min: 0.01, max: 1, step: 0.01 },
-    { key: "minimumExcessScore", label: "Minimum excess score", defaultValue: 35, min: 0, max: 100, step: 1 },
-    { key: "activeLaneWidth", label: "Active level lane width", defaultValue: 150, min: 90, max: 320, step: 1 },
-    { key: "maximumActiveLaneRows", label: "Maximum active lane rows", defaultValue: 14, min: 1, max: 100, step: 1 },
-    { key: "markerSize", label: "Marker size", defaultValue: 7, min: 4, max: 14, step: 1 },
-    { key: "lineWidth", label: "Line width", defaultValue: 1.5, min: 0.5, max: 4, step: 0.5 },
-    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 100, min: 0, max: 100, step: 1 },
-    { key: "historyBars", label: "History bars", defaultValue: 1500, min: 50, max: 10000, step: 50 },
   ],
   "liquidity-stop-sweep-detector": [
     { key: "maximumInterTradeGapMs", label: "Maximum inter-trade gap (ms)", defaultValue: 75, min: 1, max: 10000, step: 1 },
@@ -1132,13 +1090,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "europeImbalanceMinutes", label: "Europe imbalance minutes", defaultValue: 60, min: 1, max: 240, step: 1 },
     { key: "usaImbalanceMinutes", label: "USA imbalance minutes", defaultValue: 60, min: 1, max: 240, step: 1 },
   ],
-  "session-imbalance": [
-    { key: "numberOfMinutes", label: "Number of minutes", defaultValue: 60, min: 1, max: 1440, step: 1 },
-    { key: "numberOfDays", label: "Number of days · 0 = all", defaultValue: 0, min: 0, max: 365, step: 1 },
-    { key: "lineOpacity", label: "Line opacity (%)", defaultValue: 100, min: 5, max: 100, step: 1 },
-    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 0.5, max: 4, step: 0.5 },
-    { key: "textSize", label: "Text size", defaultValue: 10, min: 6, max: 32, step: 0.5 },
-  ],
   "ib-levels": [
     { key: "lookbackDays", label: "Lookback (days)", defaultValue: 7, min: 1, max: 30 },
     { key: "lineOpacity", label: "Line opacity (%)", defaultValue: 100, min: 5, max: 100 },
@@ -1583,13 +1534,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     textColor: theme?.borderUpColor ?? theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.textColor,
     summaryTextColor: theme?.borderUpColor ?? theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.summaryTextColor,
   } : {}),
-  ...(indicatorId === "shift-candle" ? {
-    ...SHIFT_CANDLE_DEFAULTS,
-    buyMarkerColor: theme?.upColor ?? SHIFT_CANDLE_DEFAULTS.buyMarkerColor,
-    sellMarkerColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.sellMarkerColor,
-    freshBuyZoneColor: theme?.upColor ?? SHIFT_CANDLE_DEFAULTS.freshBuyZoneColor,
-    freshSellZoneColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.freshSellZoneColor,
-  } : {}),
   ...(indicatorId === "price-movement-levels" ? {
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
   } : {}),
@@ -1756,16 +1700,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sellColor: theme?.downColor ?? DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS.sellColor,
     neutralColor: theme?.gridColor ?? DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS.neutralColor,
     schemaVersion: LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION,
-  } : {}),
-  ...(indicatorId === "poc-auction-suite" ? {
-    ...DEFAULT_POC_AUCTION_SUITE_SETTINGS,
-    barPocColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.barPocColor,
-    sessionPocColor: theme?.upColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.sessionPocColor,
-    nakedPocColor: theme?.borderDownColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.nakedPocColor,
-    excessHighColor: theme?.downColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.excessHighColor,
-    excessLowColor: theme?.upColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.excessLowColor,
-    neutralColor: theme?.gridColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.neutralColor,
-    schemaVersion: POC_AUCTION_SUITE_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "unfinished-auction" ? {
     ...DEFAULT_UNFINISHED_AUCTION_SETTINGS,
@@ -2434,14 +2368,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     markerPositiveColor: theme?.upColor ?? "#22C55E",
     markerNegativeColor: theme?.downColor ?? "#EF4444",
   } : {}),
-  ...(indicatorId === "session-imbalance" ? {
-    ...SESSION_IMBALANCE_DEFAULTS,
-    highColor: theme?.upColor ?? "#22C55E",
-    lowColor: theme?.downColor ?? "#EF4444",
-    midColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
-    level50Color: theme?.gridColor ?? "#F59E0B",
-    level100Color: theme?.borderDownColor ?? theme?.downColor ?? "#A78BFA",
-  } : {}),
   ...(indicatorId === "ib-levels" ? {
     durationMinutes: 60,
     /*
@@ -3093,11 +3019,6 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
   if (normalizedInstance.indicatorId === "candlestick-bar") {
     return { ...normalizedInstance, enabled: false };
   }
-  if (normalizedInstance.indicatorId === "shift-candle") {
-    return { ...normalizedInstance, settings: normalizeShiftCandleSettings({
-      ...defaultIndicatorSettings("shift-candle"), ...(normalizedInstance.settings ?? {}),
-    }) };
-  }
   // Retired study: old workspaces must not reactivate annotation mirroring.
   if (normalizedInstance.indicatorId === "annotations-overlay") {
     return { ...normalizedInstance, enabled: false };
@@ -3238,17 +3159,6 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
       settings: {
         ...normalizeLiquidityStopSweepSettings({
           ...defaultIndicatorSettings("liquidity-stop-sweep-detector"),
-          ...(normalizedInstance.settings ?? {}),
-        }),
-      },
-    };
-  }
-  if (normalizedInstance.indicatorId === "poc-auction-suite") {
-    return {
-      ...normalizedInstance,
-      settings: {
-        ...normalizePocAuctionSuiteSettings({
-          ...defaultIndicatorSettings("poc-auction-suite"),
           ...(normalizedInstance.settings ?? {}),
         }),
       },
@@ -4200,15 +4110,6 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
       ...normalizedInstance,
       settings: normalizeSessionMarkerSettings({
         ...defaultIndicatorSettings("session-marker"),
-        ...(normalizedInstance.settings ?? {}),
-      }),
-    };
-  }
-  if (normalizedInstance.indicatorId === "session-imbalance") {
-    return {
-      ...normalizedInstance,
-      settings: normalizeSessionImbalanceSettings({
-        ...defaultIndicatorSettings("session-imbalance"),
         ...(normalizedInstance.settings ?? {}),
       }),
     };

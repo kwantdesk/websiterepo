@@ -27,7 +27,6 @@ import { IchimokuCloudPrimitive } from "@/lib/ichimokuCloudPrimitive";
 import { SwingPointLevelPrimitive } from "@/lib/swingPointLevelPrimitive";
 import { TextOnChartPrimitive } from "@/lib/textOnChartPrimitive";
 import { OverlayTimeframeHighlightPrimitive } from "@/lib/overlayTimeframeHighlightPrimitive";
-import { ShiftCandlePrimitive } from "@/lib/shiftCandlePrimitive";
 import { buildChartSpeedOfTapeFrame, normalizeSpeedOfTapeSettings as normalizeSimpleSpeedOfTapeSettings, chartSpeedOfTapeSeries } from "@/lib/speedOfTape";
 import { useChartIndicatorAlertDelivery } from "@/components/useChartIndicatorAlertDelivery";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
@@ -254,11 +253,6 @@ import {
 } from "@/lib/candleStyle";
 import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import {
-  buildSessionImbalanceLevels,
-  normalizeSessionImbalanceSettings,
-  type SessionImbalanceRole,
-} from "@/lib/sessionImbalance";
-import {
   calculateMarketStatistics,
   normalizeMarketStatisticsSettings,
   type MarketStatisticsFrame,
@@ -350,15 +344,6 @@ import {
   type LiquidityStopSweepHit,
   type LiquidityStopSweepPrimitiveData,
 } from "@/lib/liquidityStopSweepPrimitive";
-import {
-  PocAuctionSuiteEngine,
-  normalizePocAuctionSuiteSettings,
-  type PocAuctionFrame,
-} from "@/lib/pocAuctionSuite";
-import {
-  PocAuctionPrimitive,
-  type PocAuctionHit,
-} from "@/lib/pocAuctionPrimitive";
 import {
   buildUnfinishedAuctionFrame,
   normalizeUnfinishedAuctionSettings,
@@ -3396,7 +3381,6 @@ function Chart({
     swingPointLevelPrimitive?: SwingPointLevelPrimitive;
     textOnChartPrimitive?: TextOnChartPrimitive;
     overlayTimeframeHighlightPrimitive?: OverlayTimeframeHighlightPrimitive;
-    shiftCandlePrimitive?: ShiftCandlePrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -3411,7 +3395,6 @@ function Chart({
     optionsSignature: string;
   }>>([]);
   const superTrendPlotBuffersRef = useRef(new Map<string, SuperTrendPlotBuffer>());
-  const shiftCandleAlertSeedRef = useRef(new Map<string, number>());
   const superTrendPaintQueueRef = useRef(new Map<string, { instanceId: string; series: CalculatedIndicatorSeries }>());
   const superTrendPaintFrameRef = useRef<number | null>(null);
   useEffect(() => () => {
@@ -3424,7 +3407,6 @@ function Chart({
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
   const fixedPriceLevelLabelsRef = useRef<FixedPriceLevelLabelsPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
-  const sessionImbalanceAlertIdsRef = useRef(new Set<string>());
   const imbalanceZonesPrimitiveRef = useRef<ImbalanceZonesPrimitive | null>(null);
   const auctionGapPrimitiveRef = useRef<AuctionGapPrimitive | null>(null);
   const auctionGapModelsRef = useRef<AuctionGapPlotModel[]>([]);
@@ -3482,7 +3464,6 @@ function Chart({
   const cumulativeStopEngineRef = useRef(new LiquidityStopSweepDetectorEngine());
   const cumulativeStopReferencesRef = useRef<SweepReferenceLevel[]>([]);
   const cumulativeIcebergStopAlertKeysRef = useRef(new Set<string>());
-  const pocAuctionPrimitiveRef = useRef<PocAuctionPrimitive | null>(null);
   const unfinishedAuctionPrimitiveRef = useRef<UnfinishedAuctionPrimitive | null>(null);
   const barPocPrimitiveRef = useRef<BarPocPrimitive | null>(null);
   const dynamicPocBuildCacheRef = useRef<FootprintBuildCache | null>(null);
@@ -3507,9 +3488,6 @@ function Chart({
   const deepVTrackerAlertBaselineReadyRef = useRef(false);
   const tapeSpeedPrimitiveRef = useRef<TapeSpeedOrderFlowBurstPrimitive | null>(null);
   const tapeSpeedAlertIdsRef = useRef(new Set<string>());
-  const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
-  const pocAuctionAlertIdsRef = useRef(new Set<string>());
-  const pocAuctionLastReactPublishRef = useRef(0);
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const bounceLevelsPrimitiveRef = useRef<BounceLevelsPrimitive | null>(null);
   const [bounceAlertMarkers, setBounceAlertMarkers] = useState<{ id: string; time: number; price: number; label: string }[]>([]);
@@ -3553,10 +3531,9 @@ function Chart({
   const liveFootprintProfileBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const footprintBarsBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const footprintProfileBuildCacheRef = useRef<FootprintBuildCache | null>(null);
-  const pocAuctionBuildCacheRef = useRef<FootprintBuildCache | null>(null);
+  const rawOrderFlowBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const barPocBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const marketStatisticsBuildCacheRef = useRef<FootprintBuildCache | null>(null);
-  const shiftCandleBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
   /**
    * The order labels are DOM, not canvas, because they have to sit above the
@@ -4235,11 +4212,8 @@ function Chart({
   const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useReplayFrameState<LiquidityStopSweepHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [cumulativeIcebergStopStreamStatus, setCumulativeIcebergStopStreamStatus] = useState<RithmicLiquidityStatus>("checking");
   const [cumulativeIcebergStopFrame, setCumulativeIcebergStopFrame] = useReplayFrameState<CumulativeIcebergStopFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [pocAuctionFrame, setPocAuctionFrame] = useReplayFrameState<PocAuctionFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const pocAuctionReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
   const stackedImbalanceReplayScopeRef = useRef<{ clock: number | null; scope: string }>({ clock: null, scope: "" });
   const [marketStatisticsFrame, setMarketStatisticsFrame] = useReplayFrameState<MarketStatisticsFrame | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
-  const [pocAuctionTooltip, setPocAuctionTooltip] = useReplayFrameState<PocAuctionHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useReplayFrameState<TapeSpeedHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaTooltip, setNetGammaTooltip] = useReplayFrameState<NetGammaExposureHit | null>(replayTimestampMs, null, `${instrument}:${timeframe}`);
@@ -5876,10 +5850,6 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "stacked-imbalance-suite") ?? null,
     [indicatorSignature, indicators],
   );
-  const pocAuctionIndicator = useMemo(
-    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "poc-auction-suite") ?? null,
-    [indicatorSignature, indicators],
-  );
   const unfinishedAuctionIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "unfinished-auction") ?? null,
     [indicatorSignature, indicators],
@@ -6163,10 +6133,6 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "market-statistics") ?? null,
     [indicatorSignature, indicators],
   );
-  const shiftCandleIndicator = useMemo(
-    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "shift-candle") ?? null,
-    [indicatorSignature, indicators],
-  );
   const cumulativeIcebergStopIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cumulative-iceberg-stop") ?? null,
     [indicatorSignature, indicators],
@@ -6296,7 +6262,7 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.ladderFontSize ?? 8)), 6, 14),
     };
   }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator ?? deepProfileSwingIndicator ?? deepProfileValuesIndicator
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator ?? deepProfileSwingIndicator ?? deepProfileValuesIndicator
     ?? (deltaLadderSide ? deltaBarIndicator : null);
   const volumeAtPriceConsumer = footprintDataConsumer ?? dynamicPocIndicator;
   const footprintCandles = useMemo(
@@ -6566,14 +6532,14 @@ function Chart({
     ),
     [footprintDataKey, footprintRenderBars, replayTimestampMs],
   );
-  const rawPocAuctionBars = useMemo(() => {
-    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !deepProfileValuesIndicator && !deepPatternBuilderNeedsOrderFlow) || !footprintSourceCandles.length) return [];
-    return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
+  const rawOrderFlowBars = useMemo(() => {
+    if ((!unfinishedAuctionIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !deepProfileValuesIndicator && !deepPatternBuilderNeedsOrderFlow) || !footprintSourceCandles.length) return [];
+    return buildFootprintBarsCached(rawOrderFlowBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [deepPatternBuilderNeedsOrderFlow, deepProfileSwingIndicator, deepProfileValuesIndicator, deepVTrackerIndicator, deepWallIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
+  }, [deepPatternBuilderNeedsOrderFlow, deepProfileSwingIndicator, deepProfileValuesIndicator, deepVTrackerIndicator, deepWallIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
   const rawBarPocBars = useMemo(() => {
     if (!barPocIndicator || !footprintSourceCandles.length) return [];
     const normalized = normalizeBarPocSettings(barPocIndicator.settings);
@@ -6595,16 +6561,6 @@ function Chart({
       showEmptyPriceRows: false,
     });
   }, [footprintBuildSettings, indicatorMarketTrades, indicatorWindowCandles, marketStatisticsIndicator]);
-  const shiftCandleBars = useMemo(() => {
-    if (!shiftCandleIndicator || !indicatorWindowCandles.length) return [];
-    return buildFootprintBarsCached(shiftCandleBuildCacheRef, indicatorWindowCandles, indicatorMarketTrades, {
-      ...footprintBuildSettings,
-      groupTicks: 1,
-      minimumTradeVolume: 0,
-      maximumTradeVolume: 0,
-      showEmptyPriceRows: false,
-    });
-  }, [footprintBuildSettings, indicatorMarketTrades, indicatorWindowCandles, shiftCandleIndicator]);
   useEffect(() => {
     if (!footprintDataConsumer) {
       retainedFootprintBarsRef.current = null;
@@ -6954,19 +6910,6 @@ function Chart({
     if (!normalized.useThemeColors) return normalized;
     return { ...normalized, askColor: settings.upColor, bidColor: settings.downColor, neutralColor: settings.gridColor };
   }, [settings.downColor, settings.gridColor, settings.upColor, stackedImbalanceIndicator]);
-  const pocAuctionSettings = useMemo(() => {
-    const normalized = normalizePocAuctionSuiteSettings(pocAuctionIndicator?.settings);
-    if (!normalized.useThemeColors) return normalized;
-    return {
-      ...normalized,
-      barPocColor: settings.borderUpColor,
-      sessionPocColor: settings.upColor,
-      nakedPocColor: settings.borderDownColor,
-      excessHighColor: settings.downColor,
-      excessLowColor: settings.upColor,
-      neutralColor: settings.gridColor,
-    };
-  }, [pocAuctionIndicator, settings.borderDownColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
   const unfinishedAuctionSettings = useMemo(() => {
     const normalized = normalizeUnfinishedAuctionSettings(unfinishedAuctionIndicator?.settings);
     if (!normalized.useThemeColors) return normalized;
@@ -7150,13 +7093,13 @@ function Chart({
     }
     const frame = buildUnfinishedAuctionFrame(
       liveFootprintRenderBars,
-      rawPocAuctionBars,
+      rawOrderFlowBars,
       instrument,
       priceFormat.minMove,
       unfinishedAuctionSettings,
     );
     unfinishedAuctionPrimitiveRef.current?.update({ frame, settings: unfinishedAuctionSettings });
-  }, [instrument, liveFootprintRenderBars, priceFormat.minMove, rawPocAuctionBars, unfinishedAuctionIndicator, unfinishedAuctionSettings]);
+  }, [instrument, liveFootprintRenderBars, priceFormat.minMove, rawOrderFlowBars, unfinishedAuctionIndicator, unfinishedAuctionSettings]);
 
   useEffect(() => {
     if (!barPocIndicator) {
@@ -7198,7 +7141,7 @@ function Chart({
       deepPatternBuilderAlertBaselineRef.current = false;
       return;
     }
-    const signals = buildDeepPatternSignals(indicatorWindowCandles, rawPocAuctionBars, deepPatternBuilderSettings, priceFormat.minMove);
+    const signals = buildDeepPatternSignals(indicatorWindowCandles, rawOrderFlowBars, deepPatternBuilderSettings, priceFormat.minMove);
     deepPatternBuilderPrimitiveRef.current?.update({
       signals,
       settings: deepPatternBuilderSettings,
@@ -7217,7 +7160,7 @@ function Chart({
         } }));
       }
     }
-  }, [deepPatternBuilderIndicator, deepPatternBuilderSettings, indicatorWindowCandles, instrument, priceFormat.minMove, rawPocAuctionBars, settings.backgroundColor]);
+  }, [deepPatternBuilderIndicator, deepPatternBuilderSettings, indicatorWindowCandles, instrument, priceFormat.minMove, rawOrderFlowBars, settings.backgroundColor]);
 
   useEffect(() => {
     if (!ratioHighlightIndicator) {
@@ -7225,13 +7168,13 @@ function Chart({
       ratioHighlightLastReactPublishRef.current = 0;
       return;
     }
-    const frame = buildRatioHighlightFrame(rawPocAuctionBars, instrument, ratioHighlightSettings);
+    const frame = buildRatioHighlightFrame(rawOrderFlowBars, instrument, ratioHighlightSettings);
     ratioHighlightPrimitiveRef.current?.update({ frame, settings: ratioHighlightSettings });
     const now = performance.now();
     if (replayTimestampMs != null || ratioHighlightLastReactPublishRef.current === 0 || now - ratioHighlightLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       ratioHighlightLastReactPublishRef.current = now;
     }
-  }, [instrument, ratioHighlightIndicator, ratioHighlightSettings, rawPocAuctionBars]);
+  }, [instrument, ratioHighlightIndicator, ratioHighlightSettings, rawOrderFlowBars]);
 
   useEffect(() => {
     if (!stopSpotterIndicator) {
@@ -7241,13 +7184,13 @@ function Chart({
       stopSpotterAlertBaselineReadyRef.current = false;
       return;
     }
-    const frame = buildStopSpotterFrame(rawPocAuctionBars, instrument, priceFormat.minMove, stopSpotterSettings, replayTimestampMs ?? Date.now(), timeframeToMs(timeframe));
+    const frame = buildStopSpotterFrame(rawOrderFlowBars, instrument, priceFormat.minMove, stopSpotterSettings, replayTimestampMs ?? Date.now(), timeframeToMs(timeframe));
     stopSpotterPrimitiveRef.current?.update({ frame, settings: stopSpotterSettings });
     const now = performance.now();
     if (replayTimestampMs != null || stopSpotterLastReactPublishRef.current === 0 || now - stopSpotterLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       stopSpotterLastReactPublishRef.current = now;
     }
-    const recentCutoff = rawPocAuctionBars.at(-2)?.startTime ?? rawPocAuctionBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
+    const recentCutoff = rawOrderFlowBars.at(-2)?.startTime ?? rawOrderFlowBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
     if (!stopSpotterAlertBaselineReadyRef.current) {
       for (const marker of frame.markers) stopSpotterSeenMarkerIdsRef.current.add(marker.id);
       stopSpotterAlertBaselineReadyRef.current = true;
@@ -7267,7 +7210,7 @@ function Chart({
         } }));
       }
     }
-  }, [instrument, priceFormat.minMove, rawPocAuctionBars, replayTimestampMs, stopSpotterIndicator, stopSpotterSettings, timeframe]);
+  }, [instrument, priceFormat.minMove, rawOrderFlowBars, replayTimestampMs, stopSpotterIndicator, stopSpotterSettings, timeframe]);
 
   useEffect(() => {
     if (!deepWallIndicator) {
@@ -7277,13 +7220,13 @@ function Chart({
       deepWallAlertBaselineReadyRef.current = false;
       return;
     }
-    const frame = buildDeepWallFrame(rawPocAuctionBars, instrument, priceFormat.minMove, deepWallSettings);
+    const frame = buildDeepWallFrame(rawOrderFlowBars, instrument, priceFormat.minMove, deepWallSettings);
     deepWallPrimitiveRef.current?.update({ frame, settings: deepWallSettings });
     const now = performance.now();
     if (replayTimestampMs != null || deepWallLastReactPublishRef.current === 0 || now - deepWallLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       deepWallLastReactPublishRef.current = now;
     }
-    const recentCutoff = rawPocAuctionBars.at(-3)?.startTime ?? rawPocAuctionBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
+    const recentCutoff = rawOrderFlowBars.at(-3)?.startTime ?? rawOrderFlowBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
     if (!deepWallAlertBaselineReadyRef.current) {
       for (const marker of frame.markers) deepWallSeenMarkerIdsRef.current.add(marker.id);
       deepWallAlertBaselineReadyRef.current = true;
@@ -7300,7 +7243,7 @@ function Chart({
         } }));
       }
     }
-  }, [deepWallIndicator, deepWallSettings, instrument, priceFormat.minMove, rawPocAuctionBars]);
+  }, [deepWallIndicator, deepWallSettings, instrument, priceFormat.minMove, rawOrderFlowBars]);
 
   useEffect(() => {
     if (!deepVTrackerIndicator) {
@@ -7310,14 +7253,14 @@ function Chart({
       deepVTrackerAlertBaselineReadyRef.current = false;
       return;
     }
-    const frame = buildDeepVTrackerFrame(rawPocAuctionBars, instrument, priceFormat.minMove, deepVTrackerSettings);
+    const frame = buildDeepVTrackerFrame(rawOrderFlowBars, instrument, priceFormat.minMove, deepVTrackerSettings);
     deepVTrackerPrimitiveRef.current?.update({ frame, settings: deepVTrackerSettings });
     const now = performance.now();
     if (replayTimestampMs != null || deepVTrackerLastReactPublishRef.current === 0 || now - deepVTrackerLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
       deepVTrackerLastReactPublishRef.current = now;
     }
     const events = [...frame.patterns, ...frame.levels];
-    const recentCutoff = rawPocAuctionBars.at(-3)?.startTime ?? rawPocAuctionBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
+    const recentCutoff = rawOrderFlowBars.at(-3)?.startTime ?? rawOrderFlowBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
     if (!deepVTrackerAlertBaselineReadyRef.current) {
       for (const event of events) deepVTrackerSeenEventIdsRef.current.add(event.id);
       deepVTrackerAlertBaselineReadyRef.current = true;
@@ -7334,67 +7277,8 @@ function Chart({
         } }));
       }
     }
-  }, [deepVTrackerIndicator, deepVTrackerSettings, instrument, priceFormat.minMove, rawPocAuctionBars]);
+  }, [deepVTrackerIndicator, deepVTrackerSettings, instrument, priceFormat.minMove, rawOrderFlowBars]);
 
-  useEffect(() => {
-    if (!pocAuctionIndicator) {
-      pocAuctionEngineRef.current.reset();
-      pocAuctionAlertIdsRef.current.clear();
-      pocAuctionPrimitiveRef.current?.update(null);
-      setPocAuctionFrame(null);
-      setPocAuctionTooltip(null);
-      return;
-    }
-    const replayScope = `${instrument}:${timeframe}:${pocAuctionIndicator.instanceId}:${resolvedFootprintGroupTicks}`;
-    if (pocAuctionReplayScopeRef.current.scope !== replayScope || replayRetentionMustReset(pocAuctionReplayScopeRef.current.clock, replayTimestampMs)) pocAuctionEngineRef.current.reset();
-    pocAuctionReplayScopeRef.current = { clock: replayTimestampMs, scope: replayScope };
-    const frame = pocAuctionEngineRef.current.update(
-      liveFootprintRenderBars,
-      rawPocAuctionBars,
-      instrument,
-      priceFormat.minMove,
-      resolvedFootprintGroupTicks,
-      pocAuctionSettings,
-    );
-    const now = performance.now();
-    if (replayTimestampMs != null || now - pocAuctionLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
-      pocAuctionLastReactPublishRef.current = now;
-      setPocAuctionFrame(frame);
-    }
-    pocAuctionPrimitiveRef.current?.update({ frame, settings: pocAuctionSettings, backgroundColor: settings.backgroundColor });
-    if (pocAuctionSettings.alertsEnabled) for (const alert of frame.alerts) {
-      if (pocAuctionAlertIdsRef.current.has(alert.id)) continue;
-      pocAuctionAlertIdsRef.current.add(alert.id);
-      if (pocAuctionAlertIdsRef.current.size > 2_000) pocAuctionAlertIdsRef.current = new Set([...pocAuctionAlertIdsRef.current].slice(-1_000));
-      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
-        indicatorId: "poc-auction-suite",
-        instanceId: pocAuctionIndicator.instanceId,
-        instrument,
-        title: alert.type.replaceAll("-", " "),
-        event: alert,
-      } }));
-    }
-  }, [instrument, liveFootprintRenderBars, pocAuctionIndicator, pocAuctionSettings, priceFormat.minMove, rawPocAuctionBars, resolvedFootprintGroupTicks, settings.backgroundColor]);
-
-  useEffect(() => {
-    const container = chartContainerRef.current;
-    if (!container || !pocAuctionIndicator || !pocAuctionSettings.showTooltips) return;
-    let frameId: number | null = null;
-    let pending: PointerEvent | null = null;
-    const flush = () => {
-      frameId = null;
-      const event = pending;
-      pending = null;
-      if (!event) return;
-      const rect = container.getBoundingClientRect();
-      setPocAuctionTooltip(pocAuctionPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
-    };
-    const move = (event: PointerEvent) => { pending = event; if (frameId === null) frameId = window.requestAnimationFrame(flush); };
-    const leave = () => { pending = null; if (frameId !== null) window.cancelAnimationFrame(frameId); frameId = null; setPocAuctionTooltip(null); };
-    container.addEventListener("pointermove", move, { passive: true });
-    container.addEventListener("pointerleave", leave);
-    return () => { container.removeEventListener("pointermove", move); container.removeEventListener("pointerleave", leave); if (frameId !== null) window.cancelAnimationFrame(frameId); };
-  }, [pocAuctionIndicator, pocAuctionSettings.showTooltips]);
 
   useEffect(() => {
     if (!stackedImbalanceIndicator) {
@@ -7911,7 +7795,7 @@ function Chart({
         { instrument, timeframe, tickSize: priceFormat.minMove, replayTimestampMs,
           ...(instance.indicatorId === "average-daily-range-target" && adrHistoryKey
             ? { adrDailyCandles, adrAsOfMs: adrAsOf } : {}),
-          footprintBars: instance.indicatorId === "shift-candle" ? shiftCandleBars : undefined },
+        },
       ).map((series) => ({ ...series, groupKey: instance.instanceId }));
     }),
     [
@@ -7935,7 +7819,6 @@ function Chart({
       settings.downColor,
       settings.gridColor,
       settings.upColor,
-      shiftCandleBars,
     ],
   );
   // The Delta surface changes at most once per refresh interval, while the
@@ -8175,32 +8058,6 @@ function Chart({
       }];
     }),
   ], [chartAlignedIndicatorSeries, candles, indicators, ivRankByInstance, optionsDeltaSeries, replayTimestampMs, settings.borderUpColor, settings.downColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
-  useEffect(() => {
-    const activeIds = new Set(indicators.filter((instance) => instance.enabled && instance.indicatorId === "shift-candle").map((instance) => instance.instanceId));
-    for (const id of shiftCandleAlertSeedRef.current.keys()) if (!activeIds.has(id)) shiftCandleAlertSeedRef.current.delete(id);
-    for (const instance of indicators) {
-      if (!instance.enabled || instance.indicatorId !== "shift-candle") continue;
-      const signals = baseCalculatedIndicatorSeries
-        .filter((series) => series.groupKey === instance.instanceId && series.shiftCandle)
-        .flatMap((series) => series.shiftCandle?.signals ?? [])
-        .sort((left, right) => left.time - right.time);
-      const latest = signals.at(-1);
-      if (!latest) continue;
-      const previous = shiftCandleAlertSeedRef.current.get(instance.instanceId);
-      shiftCandleAlertSeedRef.current.set(instance.instanceId, latest.time);
-      if (previous === undefined || latest.time <= previous || marketIsActive !== true || replayTimestampMs != null) continue;
-      const latestBarTime = indicatorCandles.at(-1)?.timestamp;
-      if (latestBarTime == null || Math.abs(latestBarTime / 1_000 - latest.time) > 1) continue;
-      const title = String(instance.settings?.alertName ?? "Signal Trigger");
-      if (instance.settings?.alertEnabled === true) window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
-        indicatorId: "shift-candle", instanceId: instance.instanceId, instrument,
-        title: `${title} · ${latest.direction.toUpperCase()}`, event: latest,
-      } }));
-      if (instance.settings?.popupEnabled === true && typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(title, { body: `${String(instance.settings?.popupMessage ?? "Signal Trigger")} · ${instrument} ${latest.direction.toUpperCase()}` });
-      }
-    }
-  }, [baseCalculatedIndicatorSeries, indicatorCandles, indicatorSignature, indicators, instrument, marketIsActive, replayTimestampMs]);
   const historicalCalculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
@@ -12388,11 +12245,6 @@ function Chart({
       candidate.enabled && candidate.indicatorId === "session-marker") ?? null,
     [indicatorSignature, indicators],
   );
-  const sessionImbalanceIndicator = useMemo(
-    () => indicators.find((candidate) =>
-      candidate.enabled && candidate.indicatorId === "session-imbalance") ?? null,
-    [indicatorSignature, indicators],
-  );
   const initialBalanceIndicator = useMemo(
     () => indicators.find((candidate) =>
       candidate.enabled && candidate.indicatorId === "ib-levels") ?? null,
@@ -12471,74 +12323,6 @@ function Chart({
     ),
     [candleIntervalMs, sessionMarkerSettings, sessionMarkerWindows],
   );
-  const sessionImbalanceSettings = useMemo(
-    () => normalizeSessionImbalanceSettings(sessionImbalanceIndicator?.settings ?? {}),
-    [sessionImbalanceIndicator],
-  );
-  const sessionImbalanceLevels = useMemo(
-    () => sessionImbalanceIndicator
-      ? buildSessionImbalanceLevels(
-          initialBalanceCandles ?? indicatorCandles,
-          sessionImbalanceSettings,
-          initialBalanceCandles ? 60_000 : candleIntervalMs ?? 60_000,
-        )
-      : [],
-    [candleIntervalMs, indicatorCandles, initialBalanceCandles, sessionImbalanceIndicator, sessionImbalanceSettings],
-  );
-  useEffect(() => {
-    if (!sessionImbalanceIndicator || indicatorCandles.length < 2 || !sessionImbalanceLevels.length) return;
-    const previous = indicatorCandles.at(-2)!;
-    const current = indicatorCandles.at(-1)!;
-    // Opening a historical chart must never emit a wall of stale alerts.
-    const liveTolerance = Math.max(candleIntervalMs ?? 60_000, 60_000) + 5_000;
-    if (Math.abs(Date.now() - current.timestamp) > liveTolerance) return;
-    for (const level of sessionImbalanceLevels) {
-      const crossed = (previous.close < level.price && current.close >= level.price)
-        || (previous.close > level.price && current.close <= level.price);
-      if (!crossed) continue;
-      const group = level.role === "high" || level.role === "low"
-        ? "hhll"
-        : level.role === "upper50" || level.role === "lower50" ? "level50" : "level100";
-      if (level.role === "mid") continue;
-      const popupEnabled = sessionImbalanceSettings[`${group}EnableAlertPopup`] === true;
-      const soundEnabled = sessionImbalanceSettings[`${group}EnableAlertSound`] === true;
-      if (!popupEnabled && !soundEnabled) continue;
-      const alertId = `${level.id}:${current.timestamp}`;
-      if (sessionImbalanceAlertIdsRef.current.has(alertId)) continue;
-      sessionImbalanceAlertIdsRef.current.add(alertId);
-      if (sessionImbalanceAlertIdsRef.current.size > 500) {
-        sessionImbalanceAlertIdsRef.current = new Set([...sessionImbalanceAlertIdsRef.current].slice(-250));
-      }
-      const title = `${instrument} reached ${level.label.replace(" · BUILDING", "")}`;
-      if (popupEnabled) {
-        window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
-          indicatorId: "session-imbalance",
-          instanceId: sessionImbalanceIndicator.instanceId,
-          instrument,
-          title,
-          event: { price: level.price, role: level.role, timestamp: current.timestamp },
-        } }));
-        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-          new Notification("Session Imbalance", { body: title });
-        }
-      }
-      if (soundEnabled) {
-        const AudioContextCtor = window.AudioContext
-          || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (AudioContextCtor) {
-          const audio = new AudioContextCtor();
-          const oscillator = audio.createOscillator();
-          const gain = audio.createGain();
-          oscillator.frequency.value = 660;
-          gain.gain.setValueAtTime(0.04, audio.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.15);
-          oscillator.connect(gain); gain.connect(audio.destination);
-          oscillator.start(); oscillator.stop(audio.currentTime + 0.15);
-          oscillator.addEventListener("ended", () => void audio.close(), { once: true });
-        }
-      }
-    }
-  }, [candleIntervalMs, indicatorCandles, instrument, sessionImbalanceIndicator, sessionImbalanceLevels, sessionImbalanceSettings]);
   const sessionHighLowRenderData = useMemo<SessionHighLowRenderLevel[]>(() => {
     const sessionTheme = visibleIndicatorTheme(settings);
     const opacity = clamp(Number(sessionHighLowSettings.lineOpacity ?? 82) / 100, 0.05, 1);
@@ -12704,37 +12488,7 @@ function Chart({
       labelAnchor: "start",
     }));
     const imbalanceTheme = visibleIndicatorTheme(settings);
-    const imbalanceUsesTheme = sessionImbalanceSettings.useThemeColors !== false;
-    const imbalanceColor = (role: SessionImbalanceRole) => {
-      if (imbalanceUsesTheme) {
-        if (role === "high") return imbalanceTheme.positive;
-        if (role === "low") return imbalanceTheme.negative;
-        if (role === "mid") return imbalanceTheme.secondary;
-        if (role === "upper50" || role === "lower50") return imbalanceTheme.muted;
-        return imbalanceTheme.secondary;
-      }
-      if (role === "high") return String(sessionImbalanceSettings.highColor);
-      if (role === "low") return String(sessionImbalanceSettings.lowColor);
-      if (role === "mid") return String(sessionImbalanceSettings.midColor);
-      if (role === "upper50" || role === "lower50") return String(sessionImbalanceSettings.level50Color);
-      return String(sessionImbalanceSettings.level100Color);
-    };
-    const imbalanceLevels: SessionHighLowRenderLevel[] = sessionImbalanceLevels.map((level) => ({
-      id: level.id,
-      startTime: markerChartTime(level.startTimestamp),
-      endTime: markerChartTime(level.endTimestamp),
-      price: level.price,
-      label: sessionImbalanceSettings.showLabels === false ? "" : level.label,
-      color: imbalanceColor(level.role),
-      opacity: clamp(Number(sessionImbalanceSettings.lineOpacity) / 100, 0.05, 1),
-      lineWidth: clamp(Number(sessionImbalanceSettings.lineWidth), 0.5, 4),
-      lineStyle: sessionImbalanceSettings.lineStyle,
-      fontSize: clamp(Number(sessionImbalanceSettings.textSize), 6, 32),
-      precision: priceFormat.precision,
-      showPriceInLabel: false,
-      labelAnchor: sessionImbalanceSettings.textAlignment === "left" ? "start" : "end",
-    }));
-    return [...previousLevels, ...ibLevels, ...fibLevels, ...markerLevels, ...imbalanceLevels];
+    return [...previousLevels, ...ibLevels, ...fibLevels, ...markerLevels];
   }, [
     chartReadyRevision,
     initialBalanceLevels,
@@ -12744,8 +12498,6 @@ function Chart({
     sessionMarkerLevels,
     sessionMarkerSettings,
     sessionMarkerWindows,
-    sessionImbalanceLevels,
-    sessionImbalanceSettings,
     sessionHighLowSettings,
     settings.downColor,
     settings.borderDownColor,
@@ -15006,9 +14758,6 @@ function Chart({
     const liquidityStopSweepPrimitive = new LiquidityStopSweepPrimitive();
     candleSeries.attachPrimitive(liquidityStopSweepPrimitive);
     liquidityStopSweepPrimitiveRef.current = liquidityStopSweepPrimitive;
-    const pocAuctionPrimitive = new PocAuctionPrimitive();
-    candleSeries.attachPrimitive(pocAuctionPrimitive);
-    pocAuctionPrimitiveRef.current = pocAuctionPrimitive;
     const unfinishedAuctionPrimitive = new UnfinishedAuctionPrimitive();
     candleSeries.attachPrimitive(unfinishedAuctionPrimitive);
     unfinishedAuctionPrimitiveRef.current = unfinishedAuctionPrimitive;
@@ -16156,9 +15905,6 @@ function Chart({
         if (candleSeriesRef.current && liquidityStopSweepPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(liquidityStopSweepPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
-        if (candleSeriesRef.current && pocAuctionPrimitiveRef.current) {
-          try { candleSeriesRef.current.detachPrimitive(pocAuctionPrimitiveRef.current); } catch { /* chart may already be disposed */ }
-        }
         if (candleSeriesRef.current && unfinishedAuctionPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(unfinishedAuctionPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
@@ -16210,7 +15956,6 @@ function Chart({
       absorptionPrimitiveRef.current = null;
       stackedImbalancePrimitiveRef.current = null;
       liquidityStopSweepPrimitiveRef.current = null;
-      pocAuctionPrimitiveRef.current = null;
       unfinishedAuctionPrimitiveRef.current = null;
       barPocPrimitiveRef.current = null;
       dynamicPocPrimitiveRef.current = null;
@@ -17045,7 +16790,7 @@ function Chart({
       primitive.setModels([]);
       return;
     }
-    const frame = buildDeepProfileSwingFrame(rawPocAuctionBars, instrument, contractSymbol ?? instrument, priceFormat.minMove, deepProfileSwingSettings, footprintMarketTrades);
+    const frame = buildDeepProfileSwingFrame(rawOrderFlowBars, instrument, contractSymbol ?? instrument, priceFormat.minMove, deepProfileSwingSettings, footprintMarketTrades);
     const lastCandleTime = volumeProfileLastCandleTimestamp === null ? null : Math.floor(volumeProfileLastCandleTimestamp / 1_000);
     const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
     const linesOnly = deepProfileSwingSettings.displayMode === "lines-only";
@@ -17100,7 +16845,7 @@ function Chart({
       },
     }));
     primitive.setModels(models);
-  }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileSwingIndicator, deepProfileSwingSettings, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
+  }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileSwingIndicator, deepProfileSwingSettings, footprintMarketTrades, instrument, priceFormat.minMove, rawOrderFlowBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
 
   useEffect(() => {
     const primitive = deepProfileValuesPrimitiveRef.current;
@@ -17115,7 +16860,7 @@ function Chart({
       ? { startMs: visible.from * 1_000, endMs: visible.to * 1_000 }
       : null;
     const frame = buildDeepProfileValuesFrame(
-      rawPocAuctionBars,
+      rawOrderFlowBars,
       instrument,
       contractSymbol ?? instrument,
       priceFormat.minMove,
@@ -17204,7 +16949,7 @@ function Chart({
       },
     }));
     primitive.setModels(models);
-  }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileValuesIndicator, deepProfileValuesSettings, deepProfileValuesViewportRevision, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
+  }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileValuesIndicator, deepProfileValuesSettings, deepProfileValuesViewportRevision, footprintMarketTrades, instrument, priceFormat.minMove, rawOrderFlowBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
 
   useEffect(() => {
     const hasDrawingLayer = chartingDrawings.length > 0 || drawings.length > 0 || drawTool !== "cursor";
@@ -17657,7 +17402,6 @@ function Chart({
         if (definition.swingPointLevels) existing.swingPointLevelPrimitive?.update(definition.data, definition.swingPointLevels);
         if (definition.textOnChart) existing.textOnChartPrimitive?.update(definition.textOnChart);
         if (definition.overlayTimeframeHighlight) existing.overlayTimeframeHighlightPrimitive?.update(definition.overlayTimeframeHighlight);
-        if (definition.shiftCandle) existing.shiftCandlePrimitive?.update(definition.shiftCandle);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -17733,11 +17477,6 @@ function Chart({
         series.attachPrimitive(overlayTimeframeHighlightPrimitive);
         overlayTimeframeHighlightPrimitive.update(definition.overlayTimeframeHighlight);
       }
-      const shiftCandlePrimitive = definition.shiftCandle ? new ShiftCandlePrimitive() : undefined;
-      if (shiftCandlePrimitive && definition.shiftCandle) {
-        series.attachPrimitive(shiftCandlePrimitive);
-        shiftCandlePrimitive.update(definition.shiftCandle);
-      }
       return {
         superTrendLabels,
         pivotPointLabels,
@@ -17747,7 +17486,6 @@ function Chart({
         swingPointLevelPrimitive,
         textOnChartPrimitive,
         overlayTimeframeHighlightPrimitive,
-        shiftCandlePrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,
@@ -19184,38 +18922,6 @@ function Chart({
                 <span style={{ color: marketStatisticsSettings.deviationColor }}>Dev: {range.deviation.toFixed(range.deviation < 10 ? 1 : 0)}</span>
               </div>
             ))}
-        </div>
-      ) : null}
-      {pocAuctionTooltip ? (
-        <div
-          className="pointer-events-none absolute z-[73] min-w-[260px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
-          style={{ left: Math.min(Math.max(8, pocAuctionTooltip.x + 14), Math.max(8, overlaySize.width - 280)), top: Math.min(Math.max(34, pocAuctionTooltip.y + 14), Math.max(34, overlaySize.height - 260)) }}
-        >
-          {pocAuctionTooltip.kind === "poc" && "metricValue" in pocAuctionTooltip.item ? (
-            <>
-              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>POC</span><span>{pocAuctionTooltip.item.scope.toUpperCase()} · {pocAuctionTooltip.item.state.toUpperCase()}</span></div>
-              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
-                <span>Price / band</span><span className="text-foreground">{(pocAuctionTooltip.item.centreTick * (pocAuctionFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)} · {pocAuctionTooltip.item.lowTick}–{pocAuctionTooltip.item.highTick}t</span>
-                <span>Metric / value</span><span className="text-foreground">{pocAuctionTooltip.item.metric.replaceAll("-", " ")} / {Math.round(pocAuctionTooltip.item.metricValue).toLocaleString()}</span>
-                <span>Bid / ask</span><span className="text-foreground">{Math.round(pocAuctionTooltip.item.bidVolume).toLocaleString()} / {Math.round(pocAuctionTooltip.item.askVolume).toLocaleString()}</span>
-                <span>Delta / trades</span><span className="text-foreground">{Math.round(pocAuctionTooltip.item.delta).toLocaleString()} / {Math.round(pocAuctionTooltip.item.tradeCount).toLocaleString()}</span>
-                <span>Migration</span><span className="text-foreground">{pocAuctionTooltip.item.migrationTicks.toFixed(1)}t · {pocAuctionTooltip.item.migrationVelocityTicksPerMinute.toFixed(1)}t/min</span>
-                <span>Touches / accepted</span><span className="text-foreground">{pocAuctionTooltip.item.touchCount} / {Math.round(pocAuctionTooltip.item.acceptedVolumeAfterTouch).toLocaleString()}</span>
-              </div>
-            </>
-          ) : pocAuctionTooltip.kind === "auction" && "completionState" in pocAuctionTooltip.item ? (
-            <>
-              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Auction extreme</span><span>{pocAuctionTooltip.item.extremeSide.toUpperCase()} · {pocAuctionTooltip.item.completionState.toUpperCase()}</span></div>
-              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
-                <span>Price</span><span className="text-foreground">{(pocAuctionTooltip.item.extremeTick * (pocAuctionFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}</span>
-                <span>Lifecycle</span><span className="text-foreground">{pocAuctionTooltip.item.lifecycleState.replaceAll("-", " ")}</span>
-                <span>Bid / ask</span><span className="text-foreground">{Math.round(pocAuctionTooltip.item.bidVolume).toLocaleString()} / {Math.round(pocAuctionTooltip.item.askVolume).toLocaleString()}</span>
-                <span>Trades / volume</span><span className="text-foreground">{pocAuctionTooltip.item.bidTradeCount + pocAuctionTooltip.item.askTradeCount} / {Math.round(pocAuctionTooltip.item.totalVolume).toLocaleString()}</span>
-                <span>Taper / score</span><span className="text-foreground">{pocAuctionTooltip.item.taperStepCount} / {pocAuctionTooltip.item.score}</span>
-                <span>Revisits</span><span className="text-foreground">{pocAuctionTooltip.item.revisitCount}</span>
-              </div>
-            </>
-          ) : null}
         </div>
       ) : null}
       {liquidityStopSweepTooltip ? (

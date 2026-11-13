@@ -854,14 +854,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "lineStyle",
     "referenceTimeframe"
   ],
-  "poc-auction-suite": [
-    "auctionExtremeSource",
-    "auctionResolutionMode",
-    "groupingMode",
-    "metric",
-    "pocBandMode",
-    "tieBreakMode"
-  ],
   "price-movement-levels": [
     "levelBasedOn",
     "stepMode"
@@ -905,12 +897,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "showLondon",
     "showNewYork",
     "showTokyo"
-  ],
-  "session-imbalance": [
-    "customStartTime",
-    "extendMode",
-    "lineStyle",
-    "textAlignment"
   ],
   "session-marker": [
     "allowSessionOverlap",
@@ -1001,17 +987,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "showLondon",
     "showNewYork",
     "showTokyo"
-  ],
-  "shift-candle": [
-    "alertEnabled",
-    "alertName",
-    "autoCenter",
-    "freshZonesEnabled",
-    "imbalanceEnabled",
-    "markerShape",
-    "plotPrice",
-    "popupEnabled",
-    "popupMessage"
   ],
   "speed-of-tape": [
     "database"

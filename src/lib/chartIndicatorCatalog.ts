@@ -89,8 +89,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Dynamic POC", "Order Flow", "Tracks the developing point of control.", true),
   indicator("Speed of Tape (Instant)", "Order Flow", "Low-latency transaction-speed signal.", true),
   indicator("Big Contracts", "Order Flow", "Instant Big contracts markers and Deep contracts price boxes from exact aggressive executions.", true, "Reference", "Big Trades"),
-  indicator("Session Imbalance", "Order Flow", "Aggregates imbalance behaviour across a session.", true),
-  indicator("POC & Auction Suite", "Order Flow", "Professional bar, session, rolling and anchored POC analysis with naked-level lifecycle, finished and unfinished auctions, excess and migration.", true, "Kwantify", undefined, "Auction"),
   indicator("Speed of Tape", "Order Flow", "Book Speed replacement. Shows executed volume or trade count over a rolling seconds window.", true),
   indicator("DOM Pro", "Order Flow", "High-DPI Rithmic MBO ladder with resting depth, aggressor trades, order counts, queue-aware capability states and configurable professional columns.", true, "Kwantify", "Depth of Market"),
   indicator("Mini DOM", "Order Flow", "The resting book drawn on the chart itself, pinned beside the price scale with every row at its own price so depth lines up with the candles.", true, "Kwantify"),
@@ -127,7 +125,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("IB Levels", "Market Structure", "Developing initial-balance high and low for each enabled session, frozen after 15, 30, 45 or 60 minutes.", false, "Kwantify"),
   indicator("Classic GEX Profile", "Market Structure", "Live call and put gamma exposure ladder anchored to the NQ/MNQ chart price scale.", false, "Kwantify"),
   indicator("Session Marker", "Market Structure", "Marks configurable market sessions."),
-  indicator("Shift Candle", "Market Structure", "Execution-confirmed reversal markers with POC, delta, imbalance and fresh-zone filters.", true),
 
   indicator("Moving Average", "Trend", "Configurable moving-average overlay."),
   indicator("Ichimoku Indicator", "Trend", "Ichimoku cloud, conversion and base lines."),

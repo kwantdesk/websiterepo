@@ -250,7 +250,6 @@ test("live indicator summaries cannot reconcile the chart tree at packet cadence
   );
   assert.doesNotMatch(chart, /elapsed >= 200/);
   assert.match(chart, /stackedImbalanceLastReactPublishRef/);
-  assert.match(chart, /pocAuctionLastReactPublishRef/);
 });
 
 test("liquidity sweep discovery is disabled when hidden and bounded when visible", () => {

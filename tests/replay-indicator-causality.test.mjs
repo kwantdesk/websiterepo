@@ -23,7 +23,7 @@ const candles = Array.from({length:360},(_,i)=>({timestamp:start+i*60_000,open:2
 const count=300, prefix=candles.slice(0,count), clock=prefix.at(-1).timestamp;
 const poisoned=[...prefix,...candles.slice(count).map(c=>({...c,close:1e9,high:1e10,volume:1e12,askVolume:1e12,delta:1e12}))];
 
-test('catalogue inventory is explicit; new indicators require another causality audit',()=>assert.equal(CHART_INDICATOR_CATALOG.length,127));
+test('catalogue inventory is explicit; new indicators require another causality audit',()=>assert.equal(CHART_INDICATOR_CATALOG.length,80));
 for(const definition of CHART_INDICATOR_CATALOG){
   test(`${definition.id}: future-tail poisoning and rewind prefix are isolated`,()=>{
     const instance={instanceId:definition.id,indicatorId:definition.id,enabled:true,settings:{...defaultIndicatorSettings(definition.id),...(definition.id==='source-code-indicator'?{source:'//@version=6\nindicator("Causal source",overlay=true)\nplot(ta.sma(close,5))',sourceLanguage:'pine'}:{})}};
@@ -139,7 +139,6 @@ test('Footprint/cache foundation used by order-flow studies rewinds to the same 
   const early=replayCausalTrades([trade,{...trade,timestamp:at+5000,volume:100,askVolume:100,recordIndex:2}],at+1000);
   assert.deepEqual(buildFootprintBarsCached(cache,[candle],early,settings),buildFootprintBars([candle],early,settings));
   const chart=fs.readFileSync(new URL('../src/components/Chart.tsx',import.meta.url),'utf8');
-  assert.match(chart,/replayRetentionMustReset\(pocAuctionReplayScopeRef.current.clock, replayTimestampMs\)\) pocAuctionEngineRef.current.reset\(\)/);
   assert.match(chart,/replayRetentionMustReset\(stackedImbalanceReplayScopeRef.current.clock, replayTimestampMs\)\) stackedImbalanceEngineRef.current.reset\(\)/);
   assert.match(chart,/const throttledHit = replayTimestampMs == null/);
   assert.match(chart,/replayTimestampMs == null && cached/);

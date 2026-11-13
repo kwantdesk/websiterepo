@@ -100,7 +100,6 @@ import { zeroGammaSourceChoices } from "@/lib/zeroGammaLine";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
 import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
 import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
-import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
 import { cciThemeColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
@@ -457,10 +456,6 @@ const OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS = new Set([
   "targetEnabled", "targetLineStyle", "extendLineLeft", "showTargetText",
   "summaryEnabled", "volumeSummary", "tradeSummary",
 ]);
-const SHIFT_CANDLE_MANAGED_SETTINGS = new Set([
-  "plotPrice", "markerShape", "imbalanceEnabled", "freshZonesEnabled", "autoCenter",
-  "alertEnabled", "alertName", "popupEnabled", "popupMessage", "shiftCandleSettingsVersion",
-]);
 const SPEED_OF_TAPE_MANAGED_SETTINGS = new Set(["database", "speedOfTapeSettingsVersion"]);
 const SESSIONS_MANAGED_SETTINGS = new Set([
   "showTokyo", "showLondon", "showNewYork", "allowSessionOverlap", "sessionsSettingsVersion",
@@ -494,7 +489,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "average-daily-range-target",
   "volume-delta-sprint",
   "overlay-timeframe-highlight",
-  "shift-candle",
   "speed-of-tape",
   "monthly-volume-profile",
   "session-volume-profile",
@@ -528,7 +522,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "absorption-detector",
   "stacked-imbalance-suite",
   "liquidity-stop-sweep-detector",
-  "poc-auction-suite",
   "tape-speed-order-flow-burst",
   "speed-of-tape-instant",
   "auction-gap-tracker",
@@ -570,7 +563,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "sessions",
   "session-highs-lows",
   "session-marker",
-  "session-imbalance",
   "ib-levels",
   "big-trades",
   "depth-of-market",
@@ -759,16 +751,6 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       ["markerPositiveColor", visible.positive],
       ["markerNegativeColor", visible.negative],
     ])) as Record<string, string>;
-  }
-  if (indicatorId === "session-imbalance") {
-    const visible = visibleIndicatorTheme(chartSettings);
-    return {
-      highColor: visible.positive,
-      lowColor: visible.negative,
-      midColor: visible.secondary,
-      level50Color: visible.muted,
-      level100Color: visible.secondary,
-    };
   }
   if (indicatorId === "average-daily-range-target") {
     const visible = visibleIndicatorTheme(chartSettings);
@@ -1358,7 +1340,6 @@ export default function ChartIndicatorsControl({
         "macd-indicator": ["macd"],
         "average-true-range-atr": ["atr"],
         "commodity-channel-index-cci": ["cci"],
-        "poc-auction-suite": ["poc"],
         "big-trades": ["big prints", "blocks"],
         "deep-print-footprint": ["fp", "footprint"],
         "gamma-heatmap": ["heat", "gex heat"],
@@ -6060,29 +6041,6 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {settingsDefinition.id === "poc-auction-suite" ? (
-                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
-                  <div>
-                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">POC & auction preset</div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {Object.entries(POC_AUCTION_PRESETS).map(([preset, presetSettings]) => (
-                        <button key={preset} type="button" onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...presetSettings, preset } }))} className={`min-h-8 border px-2 text-[7px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}>
-                          {preset.replaceAll("-", " ")}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>POC metric</span><KwantSelect value={String(settingsInstance.settings?.metric ?? "total-volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), metric: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="total-volume">Total volume</option><option value="bid-volume">Bid volume</option><option value="ask-volume">Ask volume</option><option value="absolute-delta">Absolute delta</option><option value="trade-count">Trade count</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Grouping</span><KwantSelect value={String(settingsInstance.settings?.groupingMode ?? "follow-footprint")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), groupingMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="follow-footprint">Follow Footprint</option><option value="raw-exchange-tick">Raw exchange tick</option><option value="custom-ticks">Custom ticks</option><option value="automatic">Automatic</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Tie break</span><KwantSelect value={String(settingsInstance.settings?.tieBreakMode ?? "follow-shared-profile-engine")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), tieBreakMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="follow-shared-profile-engine">Shared profile engine</option><option value="closest-to-volume-weighted-price">Closest to VWAP</option><option value="closest-to-close">Closest to close</option><option value="highest-price">Highest price</option><option value="lowest-price">Lowest price</option><option value="first-achieved">First achieved</option><option value="last-achieved">Last achieved</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>POC band</span><KwantSelect value={String(settingsInstance.settings?.pocBandMode ?? "single-price-group")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), pocBandMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="single-price-group">Single price group</option><option value="percentage-of-maximum">Percentage of maximum</option><option value="top-n-contiguous-groups">Top contiguous groups</option><option value="custom-ticks">Custom ticks</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Auction source</span><KwantSelect value={String(settingsInstance.settings?.auctionExtremeSource ?? "raw-exchange-tick")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), auctionExtremeSource: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="raw-exchange-tick">Raw one-tick executions</option><option value="displayed-group">Displayed group approximation</option></KwantSelect></label>
-                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Resolution</span><KwantSelect value={String(settingsInstance.settings?.auctionResolutionMode ?? "first-touch")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), auctionResolutionMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="first-touch">First touch</option><option value="trade-through">Trade through</option><option value="minimum-volume-at-level">Minimum volume at level</option><option value="new-finished-extreme">New finished extreme</option><option value="combined">Combined</option></KwantSelect></label>
-                  </div>
-                  <p className="text-[8px] leading-4 text-muted">Uses the shared Footprint execution stream. Auction extremes use exact one-tick rows when available and never fabricate bid/ask behaviour from OHLC bars.</p>
-                </div>
-              ) : null}
 
               {settingsDefinition.id === "speed-of-tape-instant" ? (
                 <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
@@ -7895,31 +7853,6 @@ export default function ChartIndicatorsControl({
                 }))}
               />
 
-              {settingsDefinition.id === "shift-candle" ? (() => {
-                const update = (patch: Record<string, string | number | boolean>) => replace(settingsInstance.instanceId, (current) => ({
-                  ...current, settings: { ...(current.settings ?? {}), ...patch },
-                }));
-                const toggle = (label: string, key: string, fallback: boolean) => {
-                  const on = settingsInstance.settings?.[key] === undefined ? fallback : settingsInstance.settings?.[key] === true;
-                  return <button key={key} type="button" aria-pressed={on} onClick={() => update({ [key]: !on })} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
-                };
-                return (
-                  <div data-settings-section="Signal" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Plot price</span><KwantSelect value={String(settingsInstance.settings?.plotPrice ?? "high-low")} onChange={(event) => update({ plotPrice: event.target.value })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Shift Candle plot price"><option value="high-low">High / low</option><option value="open">Open</option><option value="close">Close</option><option value="poc">Footprint POC</option></KwantSelect></label>
-                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Marker shape</span><KwantSelect value={String(settingsInstance.settings?.markerShape ?? "square")} onChange={(event) => update({ markerShape: event.target.value })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Shift Candle marker shape"><option value="square">Square</option><option value="circle">Circle</option><option value="diamond">Diamond</option></KwantSelect></label>
-                      {toggle("Require footprint imbalance", "imbalanceEnabled", true)}
-                      {toggle("Fresh zones", "freshZonesEnabled", true)}
-                      {toggle("Include markers in auto scale", "autoCenter", true)}
-                      {toggle("Alert", "alertEnabled", false)}
-                      {toggle("Popup", "popupEnabled", false)}
-                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Alert name</span><input value={String(settingsInstance.settings?.alertName ?? "Signal Trigger")} onChange={(event) => update({ alertName: event.target.value })} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/45" /></label>
-                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Popup message</span><input value={String(settingsInstance.settings?.popupMessage ?? "Signal Trigger")} onChange={(event) => update({ popupMessage: event.target.value })} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/45" /></label>
-                    </div>
-                    <p className="text-[8px] leading-4 text-muted">Uses exact execution-derived delta, POC and footprint imbalance rows. Historical signals are confirmed without look-ahead; when exact order flow is unavailable the study stays empty instead of estimating it from candle direction.</p>
-                  </div>
-                );
-              })() : null}
 
 
               {settingsDefinition.id === "speed-of-tape" ? (
@@ -8061,42 +7994,6 @@ export default function ChartIndicatorsControl({
               ) : null}
 
 
-              {settingsDefinition.id === "session-imbalance" ? (
-                <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>Custom start time · Chicago exchange time</span>
-                      <KwantDateTimeInput
-                        type="time"
-                        step={60}
-                        disabled={settingsInstance.settings?.useCustomStartTime !== true}
-                        value={String(settingsInstance.settings?.customStartTime ?? "17:00")}
-                        onValueChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customStartTime: nextValue } }))}
-                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none disabled:opacity-45"
-                      />
-                    </label>
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>Line style</span>
-                      <KwantSelect value={String(settingsInstance.settings?.lineStyle ?? "solid")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), lineStyle: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Session Imbalance line style">
-                        <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
-                      </KwantSelect>
-                    </label>
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>Text alignment</span>
-                      <KwantSelect value={String(settingsInstance.settings?.textAlignment ?? "right")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), textAlignment: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Session Imbalance text alignment">
-                        <option value="right">Right edge</option><option value="left">Start</option>
-                      </KwantSelect>
-                    </label>
-                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>Extend</span>
-                      <KwantSelect value={String(settingsInstance.settings?.extendMode ?? "next-session")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), extendMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Session Imbalance extension mode">
-                        <option value="next-session">Until next session</option><option value="none">Formation only</option>
-                      </KwantSelect>
-                    </label>
-                  </div>
-                  <p className="text-[8px] leading-4 text-muted">The range develops from real chart candles for the selected opening window. High, low and midpoint are fixed when formation ends; optional 50% and 100% levels are exact extensions of that range.</p>
-                </div>
-              ) : null}
 
 
               {/*
@@ -8192,7 +8089,7 @@ export default function ChartIndicatorsControl({
                 const entries = Object.entries(settingsInstance.settings ?? {})
                   .filter(([key]) => !["showSource", "stableFootprintRows", "sessionSelectionArmed"].includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "gamma-heatmap" && key === "showStatus"))
-                  .filter(([key]) => !(["poc-auction-suite", "net-gamma-exposure-by-strike", "gex-interval-map", "pulling-stacking", "absorption-detector", "liquidity-stop-sweep-detector"].includes(settingsDefinition.id) && key === "showHeader"))
+                  .filter(([key]) => !(["net-gamma-exposure-by-strike", "gex-interval-map", "pulling-stacking", "absorption-detector", "liquidity-stop-sweep-detector"].includes(settingsDefinition.id) && key === "showHeader"))
                   .filter(([key]) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(key))
                   .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
                   .filter(([key]) => {
@@ -8220,7 +8117,6 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "average-daily-range-target" && ADR_TARGET_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "volume-delta-sprint" && VOLUME_DELTA_SPRINT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "overlay-timeframe-highlight" && OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS.has(key))
-                    && !(settingsDefinition.id === "shift-candle" && SHIFT_CANDLE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "speed-of-tape" && SPEED_OF_TAPE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "sessions" && SESSIONS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "session-highs-lows" && SESSION_HIGH_LOW_MANAGED_SETTINGS.has(key))

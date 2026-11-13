@@ -27,9 +27,6 @@ import { calculateAverageDailyRangeTarget } from "@/lib/averageDailyRangeTarget"
 import { calculateVolumeDeltaSprint } from "@/lib/volumeDeltaSprint";
 import { calculateOverlayTimeframeHighlight } from "@/lib/overlayTimeframeHighlight";
 import type { OverlayTimeframeHighlightModel } from "@/lib/overlayTimeframeHighlight";
-import { calculateShiftCandleSeries } from "@/lib/shiftCandle";
-import type { ShiftCandlePrimitiveModel } from "@/lib/shiftCandle";
-import type { FootprintBarModel } from "@/lib/footprintTypes";
 import type { TextOnChartOptions } from "@/lib/textOnChartPrimitive";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
@@ -65,7 +62,6 @@ export type CalculatedIndicatorSeries = {
   superTrendStyleKey?: string;
   kstPresentation?: KstPanePresentation;
   overlayTimeframeHighlight?: OverlayTimeframeHighlightModel;
-  shiftCandle?: ShiftCandlePrimitiveModel;
   key: string;
   groupKey?: string;
   label: string;
@@ -424,7 +420,6 @@ type IndicatorCalculationContext = {
   instrument?: string;
   timeframe?: string;
   tickSize?: number;
-  footprintBars?: readonly FootprintBarModel[];
   replayTimestampMs?: number | null;
   adrDailyCandles?: readonly Candle[];
   adrAsOfMs?: number;
@@ -439,11 +434,8 @@ export function calculateIndicatorSeries(
   const clock = context.replayTimestampMs;
   const [safeInstance] = replaySafeIndicators([instance], clock);
   if (!safeInstance.enabled) return [];
-  const safeContext = clock == null ? context : { ...context,
-    footprintBars: context.footprintBars?.filter(bar => bar.timestamp <= clock),
-  };
   return applyMomentumPlacement(safeInstance, clipReplayIndicatorSeries(calculateUnclippedIndicatorSeries(safeInstance,
-    replayCausalCandles(candles, clock), theme, safeContext), clock));
+    replayCausalCandles(candles, clock), theme, context), clock));
 }
 
 function calculateUnclippedIndicatorSeries(
@@ -530,7 +522,6 @@ function computeIndicatorSeries(
   if (key === "average-daily-range-target") return calculateAverageDailyRangeTarget(candles, instance.settings ?? {}, theme, context);
   if (key === "volume-delta-sprint") return calculateVolumeDeltaSprint(candles, instance.settings ?? {}, theme);
   if (key === "overlay-timeframe-highlight") return calculateOverlayTimeframeHighlight(candles, instance.settings ?? {}, theme);
-  if (key === "shift-candle") return calculateShiftCandleSeries(candles, context.footprintBars ?? [], instance.settings ?? {}, theme, context.tickSize);
   if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
   // Options execution bars own their external-data primitive, never OHLC math.

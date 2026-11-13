@@ -1073,7 +1073,6 @@ type WorkspaceToolKind =
   | "tool-absorption-indicator"
   | "tool-stacked-imbalance-suite"
   | "tool-liquidity-stop-sweep-detector"
-  | "tool-poc-auction-suite"
   | "tool-tape-speed-order-flow-burst"
   | "tool-queue-position-tracking"
   | "tool-size-modification-tracking"
@@ -1489,7 +1488,6 @@ const LEGACY_WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKin
   { id: "tool-absorption-indicator", label: "ABSORPTION DETECTOR", description: "Price-time absorption, replenishment, confirmed zones, retests and breaks", icon: Eye, indicatorId: "absorption-detector" },
   { id: "tool-stacked-imbalance-suite", label: "STACKED IMBALANCE SUITE", description: "Diagonal and horizontal execution imbalance, stacks, scored zones, retests and breaks", icon: Layers3, indicatorId: "stacked-imbalance-suite" },
   { id: "tool-liquidity-stop-sweep-detector", label: "LIQUIDITY SWEEP / STOP SWEEP DETECTOR", description: "Direct multi-level aggressive sweeps, reference-level stop-sweep inference, continuation and rejection", icon: Waves, indicatorId: "liquidity-stop-sweep-detector" },
-  { id: "tool-poc-auction-suite", label: "POC & AUCTION", description: "Bar, session and rolling POC, naked levels, migration, finished and unfinished auctions, and excess", icon: CircleDot, indicatorId: "poc-auction-suite" },
   { id: "tool-tape-speed-order-flow-burst", label: "TAPE SPEED & ORDER-FLOW BURST", description: "Live tape velocity, directional bursts, churn and post-burst response", icon: Zap, indicatorId: "tape-speed-order-flow-burst" },
   { id: "tool-queue-position-tracking", label: "QUEUE POSITION TRACKING", description: "Order priority and queue movement by price", icon: List },
   { id: "tool-size-modification-tracking", label: "SIZE MODIFICATION TRACKING", description: "Resting size added, reduced and replaced", icon: Repeat },

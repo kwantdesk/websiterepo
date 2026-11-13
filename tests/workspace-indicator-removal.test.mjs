@@ -108,3 +108,12 @@ test("first successful account read retains a hide clicked before the request st
   assert.deepEqual(JSON.parse(applied.values[key])[pane], [{ ...atr, enabled: false }, vwap]);
   assert.equal(retainInitialIndicatorEdits(base, base, received).values[key], received.values[key]);
 });
+
+test("retired studies are omitted from restored panes", async () => {
+  const { normalizePaneIndicatorState } = await import("../src/lib/chartIndicatorConfig.ts");
+  const retired = ["poc-auction-suite", "session-imbalance", "shift-candle"].map(indicatorId => ({
+    instanceId: indicatorId, indicatorId, enabled: true,
+  }));
+  const restored = normalizePaneIndicatorState({ [pane]: [...retired, vwap] });
+  assert.deepEqual(restored[pane].map(instance => instance.indicatorId), [vwap.indicatorId]);
+});

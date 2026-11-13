@@ -56,13 +56,6 @@ export function alignIndicatorSeriesToEventBars(
       if (chartTime !== pointTime) moved = true;
       return [{ ...point, time: chartTime }];
     });
-    const shiftCandle = definition.shiftCandle ? {
-      ...definition.shiftCandle,
-      signals: definition.shiftCandle.signals.flatMap((signal) => {
-        const time = alignTime(signal.time);
-        return time == null ? [] : [{ ...signal, time }];
-      }),
-    } : undefined;
     const gapZones = definition.gapZones ? {
       ...definition.gapZones,
       zones: definition.gapZones.zones.flatMap((zone) => {
@@ -71,8 +64,8 @@ export function alignIndicatorSeriesToEventBars(
         return startTime == null ? [] : [{ ...zone, startTime, endTime: endTime ?? startTime }];
       }),
     } : undefined;
-    return moved || data.length !== definition.data.length || shiftCandle || gapZones
-      ? { ...definition, data, ...(shiftCandle ? { shiftCandle } : {}), ...(gapZones ? { gapZones } : {}) }
+    return moved || data.length !== definition.data.length || gapZones
+      ? { ...definition, data, ...(gapZones ? { gapZones } : {}) }
       : definition;
   });
 }

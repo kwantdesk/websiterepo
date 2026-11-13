@@ -42,7 +42,7 @@ export function useChartIndicatorAlertDelivery(indicators: readonly ChartIndicat
         if (timeout.current) clearTimeout(timeout.current);
         timeout.current = setTimeout(() => setNotice(null), 6000);
       }
-      if (sound && instance.indicatorId !== "session-imbalance") {
+      if (sound) {
         try {
           audio.current ??= new AudioContext();
           const context = audio.current;

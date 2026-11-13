@@ -47,7 +47,6 @@ const inactiveGuardFiles = [
   "src/lib/gexIntervalMapPrimitive.ts",
   "src/lib/miniDomPrimitive.ts",
   "src/lib/netGammaExposurePrimitive.ts",
-  "src/lib/pocAuctionPrimitive.ts",
   "src/lib/positionCalculatorPrimitive.ts",
   "src/lib/pullingStackingPrimitive.ts",
   "src/lib/ratioHighlightPrimitive.ts",
