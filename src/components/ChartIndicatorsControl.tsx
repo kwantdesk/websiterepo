@@ -578,7 +578,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "macd-indicator",
   "momentum-indicator",
   "commodity-channel-index-cci",
-  "aroon-up-down",
   "aroon-oscillator",
   "awesome-oscillator",
   "stochastic-oscillator",

@@ -269,10 +269,6 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "averageColor", role: "secondary" },
     { key: "levelColor", role: "muted" },
   ],
-  "aroon-up-down": [
-    { key: "upColor", role: "positive" },
-    { key: "downColor", role: "negative" },
-  ],
   "aroon-oscillator": [
     { key: "plotColor", role: "primary", upRole: "positive", downRole: "negative" },
   ],

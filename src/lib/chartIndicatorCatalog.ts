@@ -154,7 +154,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Commodity Channel Index (CCI)", "Momentum", "Deviation from statistical mean price."),
   indicator("Know Sure Thing (KST)", "Momentum", "Multi-horizon smoothed rate-of-change oscillator."),
   indicator("Inverse Cyber Cycle", "Momentum", "Cycle-based oscillator for turning points."),
-  indicator("Aroon Up/Down", "Momentum", "Time since recent highs and lows."),
   indicator("Aroon Oscillator", "Momentum", "Difference between Aroon Up and Down."),
   indicator("Awesome Oscillator", "Momentum", "Median-price momentum across two windows."),
   indicator("Stochastic Oscillator", "Momentum", "Close position within the recent range."),

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { normalizeStoredIndicatorList } from "../src/lib/chartIndicatorConfig.ts";
 import { calculateIndicatorSeries } from "../src/lib/chartIndicatorEngine.ts";
 
 const theme = { primary: "#ffffff", secondary: "#aaaaaa", positive: "#00ff00", negative: "#ff0000", muted: "#888888" };
@@ -16,7 +17,7 @@ const instance = (length, settings = {}) => ({
   instanceId: "aroon-test", indicatorId: "aroon-oscillator", enabled: true, settings: { length, ...settings },
 });
 const source = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-assert.match(source, /const studyCandles = instance\.indicatorId === "aroon-oscillator" \|\| instance\.indicatorId === "aroon-up-down"\s*\? sampledIndicatorCandles/);
+assert.match(source, /const studyCandles = instance\.indicatorId === "aroon-oscillator"\s*\? sampledIndicatorCandles/);
 const loaded = candles;
 
 function expectedAroon(bars, length) {
@@ -74,27 +75,6 @@ assert.deepEqual(calculateIndicatorSeries(streaming, appended, theme, context)[0
 
 console.log("Aroon Oscillator history, rolling extremes, five lookbacks, causal replay and forming candle checks passed.");
 
-for (const length of [2, 14, 25, 100, 500]) {
-  const dual = { ...instance(length), indicatorId: "aroon-up-down" };
-  const [up, down] = calculateIndicatorSeries(dual, loaded, theme, context);
-  assert.equal(up.data.length, loaded.length - length);
-  assert.equal(down.data.length, up.data.length);
-  for (let index = length; index < loaded.length; index += 1) {
-    let high = index - length;
-    let low = index - length;
-    for (let cursor = high + 1; cursor <= index; cursor += 1) {
-      if (loaded[cursor].high >= loaded[high].high) high = cursor;
-      if (loaded[cursor].low <= loaded[low].low) low = cursor;
-    }
-    assert.equal(up.data[index - length].value, ((high - (index - length)) / length) * 100);
-    assert.equal(down.data[index - length].value, ((low - (index - length)) / length) * 100);
-  }
-  const [replayUp, replayDown] = calculateIndicatorSeries(dual, loaded, theme, { ...context, replayTimestampMs: cutoff });
-  assert.deepEqual(replayUp.data, up.data.filter(point => point.time <= cutoff / 1000));
-  assert.deepEqual(replayDown.data, down.data.filter(point => point.time <= cutoff / 1000));
-  const [correctedUp, correctedDown] = calculateIndicatorSeries(dual, correction, theme, context);
-  const [coldUp, coldDown] = calculateIndicatorSeries({ ...dual }, correction, theme, context);
-  assert.deepEqual(correctedUp.data, coldUp.data);
-  assert.deepEqual(correctedDown.data, coldDown.data);
-}
-console.log("Aroon Up/Down full history, both extrema, five lookbacks, replay and corrections passed.");
+const removed = { ...instance(25), indicatorId: "aroon-up-down" };
+assert.deepEqual(calculateIndicatorSeries(removed, loaded, theme, context), []);
+assert.deepEqual(normalizeStoredIndicatorList([removed, instance(14)]).map(entry => entry.indicatorId), ["aroon-oscillator"]);

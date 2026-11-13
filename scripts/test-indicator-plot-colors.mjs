@@ -113,7 +113,6 @@ check("the settings key reads as a label", () => {
   assert.equal(indicatorSeriesColorKey("volume", "volume"), "plotColor");
   assert.equal(indicatorSeriesColorKey("macd-indicator", "macd-indicator-signal"), "signalColor");
   assert.equal(indicatorSeriesColorKey("vwap-envelopes", "vwap-envelopes-upper-1"), "upper1Color");
-  assert.equal(indicatorSeriesColorKey("aroon-up-down", "aroon-up-down-up"), "upColor");
 });
 
 check("every indicator that plots is colour-configurable", () => {

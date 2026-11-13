@@ -8538,7 +8538,7 @@ function Chart({
       ) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
       // Aroon uses candle extrema and a linear rolling window across loaded history.
-      const studyCandles = instance.indicatorId === "aroon-oscillator" || instance.indicatorId === "aroon-up-down"
+      const studyCandles = instance.indicatorId === "aroon-oscillator"
         ? sampledIndicatorCandles
         : instance.indicatorId === "volume" || instance.indicatorId === "chaikin-accumulation-distribution"
         ? replayIndicatorCandles(sampledIndicatorCandles, sampledIndicatorCandles.length, replayTimestampMs)
@@ -18464,7 +18464,7 @@ function Chart({
             } : {}),
           };
       const data = lightweightIndicatorData(definition);
-      const correctionTrackedPoints = definition.key === "aroon-oscillator" || definition.key.startsWith("aroon-up-down-")
+      const correctionTrackedPoints = definition.key === "aroon-oscillator"
         || definition.key.startsWith("bollinger-bands-")
         ? definition.data : undefined;
       const previousCorrectionTrackedPoints = existing?.correctionTrackedPoints;

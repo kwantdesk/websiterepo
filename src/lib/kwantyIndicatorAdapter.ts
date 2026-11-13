@@ -8,7 +8,7 @@ import type { Candle } from "@/lib/backtester";
 export const KWANTY_PRICE_STUDIES = new Set([
   "moving-average", "relative-strength-index-rsi", "rate-of-change-roc", "momentum-indicator", "macd-indicator",
   "average-true-range-atr", "standard-deviation", "bollinger-bands", "donchian-channel", "keltner-channel",
-  "commodity-channel-index-cci", "aroon-up-down", "aroon-oscillator", "awesome-oscillator", "stochastic-oscillator",
+  "commodity-channel-index-cci", "aroon-oscillator", "awesome-oscillator", "stochastic-oscillator",
   "williams-r", "average-directional-index-adx", "parabolic-sar", "linear-regression", "regression-channel",
   "inverse-cyber-cycle", "tillson-t3", "know-sure-thing-kst", "super-trend", "super-trend-difference",
   "absolute-levels", "price-movement-levels", "average-daily-range-target", "pivot-points",

@@ -20,7 +20,7 @@ const config={mode:'development',devtool:false,entry:path.join(root,'scripts/aud
   await settle();await page.waitForTimeout(100);
   const coordinate=()=>page.evaluate(()=>window.momentumChartAudit.series.find(x=>x.method==='addCandlestickSeries').series.priceToCoordinate(28000));
   const baseline=await coordinate();
-  const ids=['relative-strength-index-rsi','rate-of-change-roc','macd-indicator','momentum-indicator','commodity-channel-index-cci','know-sure-thing-kst','inverse-cyber-cycle','aroon-up-down','aroon-oscillator','awesome-oscillator','stochastic-oscillator','williams-r','chaikin-accumulation-distribution','average-directional-index-adx'];
+  const ids=['relative-strength-index-rsi','rate-of-change-roc','macd-indicator','momentum-indicator','commodity-channel-index-cci','know-sure-thing-kst','inverse-cyber-cycle','aroon-oscillator','awesome-oscillator','stochastic-oscillator','williams-r','chaikin-accumulation-distribution','average-directional-index-adx'];
   for(const id of ids){
    await page.evaluate(id=>window.setMomentumFixture(id,'chart'),id);await settle();
    await page.waitForFunction(()=>window.momentumChartAudit.series.some(x=>x.method!=='addCandlestickSeries'&&x.series.options().priceScaleId?.startsWith('momentum-')));

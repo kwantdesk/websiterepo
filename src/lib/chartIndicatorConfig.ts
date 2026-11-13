@@ -162,7 +162,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "macd-indicator",
   "momentum-indicator",
   "commodity-channel-index-cci",
-  "aroon-up-down",
   "aroon-oscillator",
   "awesome-oscillator",
   "stochastic-oscillator",
@@ -1532,7 +1531,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "CCI line width", defaultValue: 2, min: 1, max: 4 },
     { key: "averageLineWidth", label: "SMA line width", defaultValue: 1, min: 1, max: 4 },
   ],
-  "aroon-up-down": [{ key: "length", label: "Length", defaultValue: 25, min: 2, max: 500 }],
   "aroon-oscillator": [{ key: "length", label: "Length", defaultValue: AROON_OSCILLATOR_LENGTH, min: 2, max: 500 }],
   "standard-deviation": [{ key: "length", label: "Length", defaultValue: 20, min: 2, max: 500 }],
   "average-true-range-atr": [

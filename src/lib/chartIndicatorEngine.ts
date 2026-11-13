@@ -251,11 +251,11 @@ const aroonDataCache = new WeakMap<ChartIndicatorInstance, {
   candles: Candle[];
   length: number;
   colors?: string;
-  series: CalculatedIndicatorSeries["data"][];
+  series: CalculatedIndicatorSeries["data"];
 }>();
 
-function aroonData(instance: ChartIndicatorInstance, candles: Candle[], length: number, colors?: typeof AROON_OSCILLATOR_COLORS) {
-  const colorKey = colors ? `${colors.positive}/${colors.negative}` : undefined;
+function aroonData(instance: ChartIndicatorInstance, candles: Candle[], length: number, colors: typeof AROON_OSCILLATOR_COLORS) {
+  const colorKey = `${colors.positive}/${colors.negative}`;
   const previous = aroonDataCache.get(instance);
   let matching = 0;
   if (previous?.length === length && previous.colors === colorKey) {
@@ -274,23 +274,14 @@ function aroonData(instance: ChartIndicatorInstance, candles: Candle[], length: 
   const remainder = matching <= length ? candles : candles.slice(matching - length);
   const highs = aroonExtremeAges(remainder.map(bar => bar.high), length, true);
   const lows = aroonExtremeAges(remainder.map(bar => bar.low), length, false);
-  const oscillator = instance.indicatorId === "aroon-oscillator";
-  const series: CalculatedIndicatorSeries["data"][] = matching > length && previous
-    ? previous.series.map(points => points.slice(0, matching - length))
-    : oscillator ? [[]] : [[], []];
+  const series = matching > length && previous ? previous.series.slice(0, matching - length) : [];
   for (let index = firstOutput; index < candles.length; index += 1) {
     const offset = length + index - firstOutput;
     const time = candles[index].timestamp / 1000;
     const up = aroonScore(length, highs[offset]);
     const down = aroonScore(length, lows[offset]);
-    if (oscillator) {
-      const value = up - down;
-      series[0].push({ time, value, color: value > 0 ? colors?.positive
-        : value < 0 ? colors?.negative : "transparent" });
-    } else {
-      series[0].push({ time, value: up });
-      series[1].push({ time, value: down });
-    }
+    const value = up - down;
+    series.push({ time, value, color: value > 0 ? colors.positive : value < 0 ? colors.negative : "transparent" });
   }
   aroonDataCache.set(instance, { candles, length, colors: colorKey, series });
   return series;
@@ -1125,17 +1116,8 @@ function computeIndicatorSeries(
       histogramBarWidth: 3,
       showZeroLine: true,
       includeZeroInScale: true,
-      data: aroonData(instance, candles, length, theme)[0],
+      data: aroonData(instance, candles, length, theme),
     }];
-  }
-
-  if (key === "aroon-up-down") {
-    const length = Math.max(2, Math.round(settingNumber(instance, "length", 25)));
-    const [up, down] = aroonData(instance, candles, length);
-    return [
-      { key: `${key}-up`, label: "Aroon Up", kind: "line", placement: "pane", color: theme.positive, lineWidth: 2, data: up },
-      { key: `${key}-down`, label: "Aroon Down", kind: "line", placement: "pane", color: theme.negative, lineWidth: 2, data: down },
-    ];
   }
 
   const closes = candles.map((candle) => candle.close);
