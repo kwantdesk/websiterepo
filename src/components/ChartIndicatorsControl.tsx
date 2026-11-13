@@ -1748,7 +1748,7 @@ export default function ChartIndicatorsControl({
                           {displayName}
                         </div>
                         <div className="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-muted/70">
-                          {definition.category} · live
+                          {definition.category}
                         </div>
                       </div>
                       <button
@@ -2087,7 +2087,7 @@ export default function ChartIndicatorsControl({
             >
               <div className="min-w-0">
                 <div className="truncate text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
-                <div className="mt-0.5 truncate text-[11px] text-muted">{settingsDefinition.category} · live calculation</div>
+                <div className="mt-0.5 truncate text-[11px] text-muted">{settingsDefinition.category}</div>
               </div>
               {unsavedSettingsPrompt ? (
                 <div className="absolute inset-0 z-[60] flex items-center justify-center rounded-xl bg-background/85 p-4 backdrop-blur-sm">
