@@ -185,19 +185,6 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
   "delta-cumulative-histogram": [
     { key: "plotColor", role: "primary" },
   ],
-  "vwap": [
-    { key: "mainColor", role: "primary" },
-    { key: "upper1Color", role: "secondary" },
-    { key: "lower1Color", role: "secondary" },
-    { key: "upper2Color", role: "secondary" },
-    { key: "lower2Color", role: "secondary" },
-    { key: "upper3Color", role: "secondary" },
-    { key: "lower3Color", role: "secondary" },
-    { key: "upper4Color", role: "secondary" },
-    { key: "lower4Color", role: "secondary" },
-    { key: "upper5Color", role: "secondary" },
-    { key: "lower5Color", role: "secondary" },
-  ],
   "vwap-envelopes": [
     { key: "mainColor", role: "primary" },
     { key: "upper1Color", role: "secondary" },

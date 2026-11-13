@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { calculateIndicatorSeries } from "../src/lib/chartIndicatorEngine.ts";
-import { defaultIndicatorSettings } from "../src/lib/chartIndicatorConfig.ts";
+import { CHART_INDICATOR_BY_ID } from "../src/lib/chartIndicatorCatalog.ts";
+import { defaultIndicatorSettings, normalizeStoredIndicatorList } from "../src/lib/chartIndicatorConfig.ts";
 
 const theme = {
   primary: "#00ff00",
@@ -23,7 +24,7 @@ const candles = Array.from({ length: 300 }, (_, index) => {
 });
 
 let passed = 0;
-for (const indicatorId of ["vwap", "vwap-envelopes", "rolling-vwap"]) {
+for (const indicatorId of ["vwap-envelopes", "rolling-vwap"]) {
   const series = calculateIndicatorSeries(
     {
       instanceId: `test-${indicatorId}`,
@@ -45,3 +46,18 @@ for (const indicatorId of ["vwap", "vwap-envelopes", "rolling-vwap"]) {
 }
 
 console.log(`\nVWAP price tabs: ${passed}/${passed} indicator families passed`);
+
+const envelopes = { instanceId: "envelopes", indicatorId: "vwap-envelopes", enabled: true, settings: {} };
+const legacy = { ...envelopes, instanceId: "old-vwap", indicatorId: "vwap" };
+assert.equal(CHART_INDICATOR_BY_ID.has("vwap"), false);
+assert.deepEqual(normalizeStoredIndicatorList([legacy, envelopes]).map(instance => instance.instanceId), ["envelopes"]);
+const draw = (settings) => calculateIndicatorSeries(
+  normalizeStoredIndicatorList([{ ...envelopes, settings }])[0], candles, theme,
+);
+const all = draw({});
+assert.equal(all.length, 7);
+assert.deepEqual(draw({ showVwapLine: false }), all.slice(1), "hiding the center line leaves every band value intact");
+assert.deepEqual(draw({ showVwapBands: false }), all.slice(0, 1), "hiding bands leaves the center line intact");
+assert.deepEqual(draw({ showVwapLine: false, showVwapBands: false }), []);
+assert.deepEqual(draw({ showVwapLine: false, band2Enabled: false }), all.slice(1).filter(series => !series.key.endsWith("-2")));
+console.log("VWAP Envelopes visibility and legacy VWAP removal passed.");

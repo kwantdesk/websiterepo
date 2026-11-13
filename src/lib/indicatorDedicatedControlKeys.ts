@@ -1,5 +1,6 @@
 /** Settings with a dedicated editor in ChartIndicatorsControl. Keep generic editors from repeating them. */
 export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]> = {
+  "vwap-envelopes": ["showVwapLine", "showVwapBands"],
   "absorption-detector": [
     "aggregationMode",
     "breakMode",

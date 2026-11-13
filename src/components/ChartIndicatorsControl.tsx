@@ -537,7 +537,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "deep-profile-values",
   "market-statistics",
   "moving-average",
-  "vwap",
   "vwap-envelopes",
   "rolling-vwap",
   "relative-strength-index-rsi",
@@ -1306,7 +1305,6 @@ export default function ChartIndicatorsControl({
         "depth-of-market": ["dom", "ladder"],
         "mini-dom": ["dom", "ladder", "book", "depth", "mini"],
         "ib-levels": ["ib", "initial balance"],
-        "vwap": ["vwap"],
         "rolling-vwap": ["vwap", "rvwap"],
         "vwap-envelopes": ["vwap"],
         "relative-strength-index-rsi": ["rsi"],
@@ -7014,8 +7012,30 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {["vwap", "vwap-envelopes", "rolling-vwap"].includes(settingsDefinition.id) ? (
+              {["vwap-envelopes", "rolling-vwap"].includes(settingsDefinition.id) ? (
                 <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {settingsDefinition.id === "vwap-envelopes" ? (
+                    [
+                      ["showVwapLine", "Show VWAP line"],
+                      ["showVwapBands", "Show bands"],
+                    ].map(([key, label]) => (
+                      <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[10px] text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={settingsInstance.settings?.[key] !== false}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: { ...current.settings, [key]: checked },
+                            }));
+                          }}
+                          className="accent-primary"
+                        />
+                        {label}
+                      </label>
+                    ))
+                  ) : null}
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Price source</span>
                     <KwantSelect
@@ -7047,8 +7067,6 @@ export default function ChartIndicatorsControl({
                       {settingsDefinition.id === "rolling-vwap" ? <option value="bars">Bars</option> : null}
                       <option value="days">Trading days</option>
                       <option value="minutes">Minutes</option>
-                      {settingsDefinition.id === "vwap" ? <option value="seconds">Seconds</option> : null}
-                      {settingsDefinition.id === "vwap" ? <option value="orders">Orders</option> : null}
                     </KwantSelect>
                   </label>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
@@ -7097,9 +7115,7 @@ export default function ChartIndicatorsControl({
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
                     {settingsDefinition.id === "vwap-envelopes"
                       ? "Continuous VWAP Envelopes replace observations outside the selected rolling window; they do not reset at midnight or the CME reopen."
-                      : settingsDefinition.id === "rolling-vwap"
-                        ? "Rolling VWAP is continuous across sessions and evicts only observations outside the selected bars, minutes, or days window."
-                        : "VWAP resets on the selected trading-day, minute, second, or order-count period. Trading days use the 17:00 Chicago CME boundary."}
+                      : "Rolling VWAP is continuous across sessions and evicts only observations outside the selected bars, minutes, or days window."}
                   </p>
                 </div>
               ) : null}

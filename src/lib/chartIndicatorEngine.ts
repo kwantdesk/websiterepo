@@ -45,7 +45,6 @@ import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicato
 import { cciThemeColors, AROON_OSCILLATOR_COLORS, AROON_OSCILLATOR_LENGTH, applyIndicatorPlotColors, defaultIndicatorPlotColors } from "@/lib/indicatorPlotColors";
 import { calculateDeepDeltaBars, normalizeDeepDeltaSettings } from "@/lib/deepDelta";
 import {
-  calculatePeriodVwap,
   calculateRollingVwap,
   vwapEnvelopeOffset,
   type VwapEnvelopeMode,
@@ -1511,27 +1510,21 @@ function computeIndicatorSeries(
     return series;
   }
 
-  if (key === "vwap" || key === "vwap-envelopes") {
+  if (key === "vwap-envelopes") {
     if (!volumeAvailable(candles)) return [];
+    const showLine = settingBoolean(instance, "showVwapLine", true);
+    const showBands = settingBoolean(instance, "showVwapBands", true);
+    if (!showLine && !showBands) return [];
     const source = settingString(instance, "source", "hlc3") as VwapSource;
     const envelopeMode = settingString(instance, "envelopeMode", "standard-deviation") as VwapEnvelopeMode;
     const periodValue = Math.max(1, Math.round(settingNumber(instance, "periodValue", 1)));
-    const periodMode = settingString(instance, "periodMode", key === "vwap-envelopes" ? "days" : "days");
-    const rows = key === "vwap-envelopes"
-      ? calculateRollingVwap(candles, {
-        source,
-        periodMode: periodMode === "minutes" ? "minutes" : "days",
-        periodValue,
-      })
-      : calculatePeriodVwap(candles, {
-        source,
-        periodMode: ["days", "minutes", "seconds", "orders"].includes(periodMode)
-          ? periodMode as "days" | "minutes" | "seconds" | "orders"
-          : "days",
-        periodValue,
-        sessionStartHour: settingNumber(instance, "sessionStartHour", 17),
-      });
-    const series: CalculatedIndicatorSeries[] = [{
+    const periodMode = settingString(instance, "periodMode", "days");
+    const rows = calculateRollingVwap(candles, {
+      source,
+      periodMode: periodMode === "minutes" ? "minutes" : "days",
+      periodValue,
+    });
+    const series: CalculatedIndicatorSeries[] = showLine ? [{
       key: `${key}-main`,
       label: "VWAP",
       kind: "line",
@@ -1541,10 +1534,10 @@ function computeIndicatorSeries(
       lineStyle: vwapLineStyle(instance, "lineStyle", "solid"),
       lastValueVisible: settingBoolean(instance, "showCurrentValue", false),
       data: rows.map(({ time, value, breakBefore }) => ({ time, value, breakBefore })),
-    }];
+    }] : [];
+    if (!showBands) return series;
     [1, 2, 3, 4, 5].forEach((bandNumber, index) => {
-      const defaultEnabled = key === "vwap-envelopes" && bandNumber <= 3;
-      const enabled = settingBoolean(instance, `band${bandNumber}Enabled`, defaultEnabled);
+      if (!settingBoolean(instance, "band" + bandNumber + "Enabled", bandNumber <= 3)) return;
       const factor = Math.max(0, settingNumber(instance, `band${bandNumber}`, bandNumber));
       const suffix = envelopeMode === "price-percentage" ? "%" : "σ";
       series.push(
@@ -1557,11 +1550,11 @@ function computeIndicatorSeries(
             lineWidth: vwapLineWidth(instance, "bandLineWidth", 1),
             lineStyle: vwapLineStyle(instance, "bandLineStyle", "dotted"),
             lastValueVisible: false,
-            data: enabled ? rows.map(({ time, value, deviation, breakBefore }) => ({
+            data: rows.map(({ time, value, deviation, breakBefore }) => ({
               time,
               value: value + vwapEnvelopeOffset({ value, deviation }, factor, envelopeMode),
               breakBefore,
-            })) : [],
+            })),
           },
           {
             key: `${key}-lower-${bandNumber}`,
@@ -1572,11 +1565,11 @@ function computeIndicatorSeries(
             lineWidth: vwapLineWidth(instance, "bandLineWidth", 1),
             lineStyle: vwapLineStyle(instance, "bandLineStyle", "dotted"),
             lastValueVisible: false,
-            data: enabled ? rows.map(({ time, value, deviation, breakBefore }) => ({
+            data: rows.map(({ time, value, deviation, breakBefore }) => ({
               time,
               value: value - vwapEnvelopeOffset({ value, deviation }, factor, envelopeMode),
               breakBefore,
-            })) : [],
+            })),
           },
       );
     });
