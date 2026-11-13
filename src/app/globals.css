@@ -2248,7 +2248,7 @@ body .gex-map-replay .gex-map-replay-play:not(:disabled) {
 }
 
 .gex-map-full-strike-row {
-  grid-template-columns: minmax(78px, max-content) minmax(0, 1fr) minmax(94px, max-content);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   column-gap: 6px;
 }
 
@@ -2256,12 +2256,16 @@ body .gex-map-replay .gex-map-replay-play:not(:disabled) {
   overflow: visible;
 }
 
+.gex-map-full-strike-row > :nth-child(2) {
+  text-align: center;
+  white-space: nowrap;
+}
+
 /* Read the zoomed ladder width. At high zoom both change figures need a
    separate line to stay clear of the signed exposure. */
 @container gex-map-panel (width > 300px) {
-  @container gex-map-ladder (max-width: 265px) {
+  @container gex-map-ladder (max-width: 345px) {
     .gex-map-full-strike-row[data-gex-strike-node] {
-      grid-template-columns: minmax(0, 1fr) max-content;
       height: auto;
       min-height: 29px;
       padding-block: 2px;
@@ -2270,6 +2274,18 @@ body .gex-map-replay .gex-map-replay-play:not(:disabled) {
     .gex-map-full-strike-row[data-gex-strike-node] > .gex-map-change-column {
       grid-column: 1 / -1;
       flex-wrap: wrap;
+    }
+  }
+}
+
+@container gex-map-panel (width > 300px) {
+  @container gex-map-ladder (max-width: 180px) {
+    .gex-map-full-strike-row[data-gex-strike-node] > :first-child {
+      grid-column: 1 / -1;
+    }
+
+    .gex-map-full-strike-row[data-gex-strike-node] > :nth-child(2) {
+      grid-column: 2;
     }
   }
 }
@@ -2327,6 +2343,14 @@ body .gex-map-replay .gex-map-replay-play:not(:disabled) {
 
   .gex-star-badge-label {
     display: none;
+  }
+}
+
+@container gex-map-panel (max-width: 300px) {
+  .gex-map-strike-row.gex-map-full-strike-row {
+    grid-template-columns: 42% minmax(0, 1fr);
+    column-gap: 0;
+    margin-inline: 0;
   }
 }
 

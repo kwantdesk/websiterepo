@@ -1035,7 +1035,7 @@ function ExposurePanel({
                     ) : null}
                   </span>
                   <span
-                    className="truncate text-right font-semibold drop-shadow-sm"
+                    className="truncate font-semibold drop-shadow-sm"
                     style={{ color: "var(--gex-row-text)" }}
                   >
                     {formatRowValue(row.net)}
