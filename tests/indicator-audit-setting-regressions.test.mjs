@@ -25,7 +25,6 @@ test("saved indicator templates migrate removed or duplicate inputs to supported
     ["speed-of-tape", "database", "order", "volume"],
     ["market-statistics", "dataType", "order", "volume"],
     ["deep-profile-values", "inputData", "order", "volume"],
-    ["confluence-identifier", "inputData", "order", "volume"],
     ["bar-poc-indicator", "inputData", "aggregate-trades", "volume"],
     ["bar-poc-indicator", "inputData", "order", "order"],
     ["deep-delta", "inputData", "order", "trades"],

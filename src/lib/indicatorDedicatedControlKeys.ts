@@ -203,20 +203,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "vwapLineWidth",
     "widthMode"
   ],
-  "confluence-identifier": [
-    "enableRetracement382",
-    "enableRetracement50",
-    "enableRetracement618",
-    "enableRetracement75",
-    "enableRetracements",
-    "enableZigZagSwing",
-    "excludePreviousRetracements",
-    "includeSwingBeforeMidTrend",
-    "showDevelopingLines",
-    "showLabels",
-    "showSourceLines",
-    "startDateMs"
-  ],
   "cumulative-iceberg-stop": [
     "alertIcebergEnabled",
     "alertIcebergShowMessage",
