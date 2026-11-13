@@ -523,8 +523,9 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "firstEnvelope", label: "First envelope deviation", defaultValue: 1, min: 0.25, max: 100, step: 0.25 },
     { key: "secondEnvelope", label: "Second envelope deviation", defaultValue: 2, min: 0.25, max: 100, step: 0.25 },
     { key: "thirdEnvelope", label: "Third envelope deviation", defaultValue: 3, min: 0.25, max: 100, step: 0.25 },
-    { key: "lineWidth", label: "VPOC line width", defaultValue: 2, min: 0.5, max: 8, step: 0.5 },
+    { key: "lineWidth", label: "VPOC line width", defaultValue: DEFAULT_DYNAMIC_POC_SETTINGS.lineWidth, min: 0.5, max: 8, step: 0.5 },
     { key: "envelopeLineWidth", label: "Envelope line width", defaultValue: 1, min: 0.5, max: 8, step: 0.5 },
+    { key: "envelopeOpacity", label: "Envelope opacity (%)", defaultValue: 60, min: 0, max: 100, step: 1 },
   ],
   "bar-poc-indicator": [
     { key: "daysToLoad", label: "Days to load", defaultValue: 5, min: 1, max: 365, step: 1 },

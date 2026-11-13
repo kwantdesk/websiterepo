@@ -21,6 +21,9 @@ export type DynamicPocSettings = {
   thirdEnvelopeColor: string;
   lineWidth: number;
   envelopeLineWidth: number;
+  pocLineStyle: "solid" | "dashed" | "dotted";
+  envelopeLineStyle: "solid" | "dashed" | "dotted";
+  envelopeOpacity: number;
   useThemeColors: boolean;
 };
 
@@ -53,12 +56,15 @@ export const DEFAULT_DYNAMIC_POC_SETTINGS: DynamicPocSettings = {
   firstEnvelopeColor: "#A3E635",
   secondEnvelopeColor: "#F59E0B",
   thirdEnvelopeColor: "#EF4444",
-  lineWidth: 2,
+  lineWidth: 1,
   envelopeLineWidth: 1,
+  pocLineStyle: "solid",
+  envelopeLineStyle: "dashed",
+  envelopeOpacity: 60,
   useThemeColors: true,
 };
 
-const finite = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const finite = (value: unknown, fallback: number) => value != null && value !== "" && Number.isFinite(Number(value)) ? Number(value) : fallback;
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
 
 export function normalizeDynamicPocSettings(input?: Record<string, unknown> | null): DynamicPocSettings {
@@ -69,16 +75,21 @@ export function normalizeDynamicPocSettings(input?: Record<string, unknown> | nu
   settings.firstEnvelope = clamp(finite(source.firstEnvelope, 1), 0.25, 100);
   settings.secondEnvelope = clamp(finite(source.secondEnvelope, 2), 0.25, 100);
   settings.thirdEnvelope = clamp(finite(source.thirdEnvelope, 3), 0.25, 100);
-  settings.lineWidth = clamp(finite(source.lineWidth, 2), 0.5, 8);
+  settings.lineWidth = clamp(finite(source.lineWidth, DEFAULT_DYNAMIC_POC_SETTINGS.lineWidth), 0.5, 8);
   settings.envelopeLineWidth = clamp(finite(source.envelopeLineWidth, 1), 0.5, 8);
   if (!(new Set(["daily", "minute", "bars", "last-days", "last-minutes"]) as Set<unknown>).has(settings.periodMode)) settings.periodMode = "bars";
   if (!(new Set(["standard-deviation", "price-percentage"]) as Set<unknown>).has(settings.envelopeMode)) settings.envelopeMode = "standard-deviation";
+  settings.envelopeOpacity = clamp(finite(source.envelopeOpacity, 60), 0, 100);
+  for (const key of ["pocLineStyle", "envelopeLineStyle"] as const) {
+    if (!["solid", "dashed", "dotted"].includes(settings[key])) settings[key] = DEFAULT_DYNAMIC_POC_SETTINGS[key];
+  }
   return settings;
 }
 
 type WindowState = { volumes: Map<number, number>; total: number; weighted: number; weightedSquare: number };
 const state = (): WindowState => ({ volumes: new Map(), total: 0, weighted: 0, weightedSquare: 0 });
 function applyBar(target: WindowState, bar: FootprintBar, sign: 1 | -1) {
+  if (!bar.hasPriceLevelFlow) return;
   for (const row of bar.rows) {
     const volume = row.bidVolume + row.askVolume + row.unknownVolume;
     if (!(volume > 0)) continue;
@@ -92,13 +103,19 @@ function applyBar(target: WindowState, bar: FootprintBar, sign: 1 | -1) {
 
 function values(target: WindowState, closeTick: number, settings: DynamicPocSettings): { poc: number; envelopes: [number, number, number] } | null {
   if (!(target.total > 0) || !target.volumes.size) return null;
-  const max = Math.max(...target.volumes.values());
   const meanTick = target.weighted / target.total;
-  const tied = [...target.volumes.entries()].filter(([, value]) => value === max)
-    .sort((a, b) => Math.abs(a[0] - meanTick) - Math.abs(b[0] - meanTick) || Math.abs(a[0] - closeTick) - Math.abs(b[0] - closeTick) || a[0] - b[0]);
-  const poc = tied[0][0];
+  let poc = 0;
+  let max = 0;
+  for (const [tick, volume] of target.volumes) {
+    const proximity = Math.abs(tick - meanTick) - Math.abs(poc - meanTick)
+      || Math.abs(tick - closeTick) - Math.abs(poc - closeTick) || tick - poc;
+    if (volume > max || (volume === max && proximity < 0)) {
+      poc = tick;
+      max = volume;
+    }
+  }
   const offsets = [settings.firstEnvelope, settings.secondEnvelope, settings.thirdEnvelope] as const;
-  if (settings.envelopeMode === "price-percentage") return { poc, envelopes: offsets.map((offset) => poc * offset / 100) as [number, number, number] };
+  if (settings.envelopeMode === "price-percentage") return { poc, envelopes: offsets.map((offset) => Math.abs(poc) * offset / 100) as [number, number, number] };
   const varianceAboutPoc = Math.max(0, (target.weightedSquare - 2 * poc * target.weighted + poc * poc * target.total) / target.total);
   const deviation = Math.sqrt(varianceAboutPoc);
   return { poc, envelopes: offsets.map((offset) => deviation * offset) as [number, number, number] };
@@ -123,10 +140,10 @@ export function buildDynamicPocFrame(barsInput: FootprintBar[], instrument: stri
       while (left < index - settings.periodValue + 1) { applyBar(window, bars[left], -1); left += 1; }
     } else if (settings.periodMode === "last-minutes" || settings.periodMode === "last-days") {
       const duration = settings.periodValue * (settings.periodMode === "last-minutes" ? 60_000 : 86_400_000);
-      while (left < index && bars[left].endTime < bar.endTime - duration) { applyBar(window, bars[left], -1); left += 1; }
+      while (left < index && bars[left].startTime <= bar.startTime - duration) { applyBar(window, bars[left], -1); left += 1; }
     }
-    const result = values(window, bar.closeTick, settings);
-    points.push({ timestamp: bar.endTime, pocTick: result?.poc ?? null, envelopes: result?.envelopes ?? null });
+    const result = bar.hasPriceLevelFlow ? values(window, bar.closeTick, settings) : null;
+    points.push({ timestamp: bar.startTime, pocTick: result?.poc ?? null, envelopes: result?.envelopes ?? null });
   }
   const latest = bars.at(-1);
   return { instrument, tickSize, status: latest && !latest.isClosed ? "LIVE" : "HISTORICAL", points };

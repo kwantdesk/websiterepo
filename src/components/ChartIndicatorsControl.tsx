@@ -846,11 +846,12 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
     } as Record<string, string>;
   }
   if (indicatorId === "dynamic-poc") {
+    const theme = visibleIndicatorTheme(chartSettings);
     return {
-      pocColor: chartSettings.upColor,
-      firstEnvelopeColor: chartSettings.borderUpColor,
-      secondEnvelopeColor: chartSettings.gridColor,
-      thirdEnvelopeColor: chartSettings.downColor,
+      pocColor: theme.primary,
+      firstEnvelopeColor: theme.secondary,
+      secondEnvelopeColor: theme.muted,
+      thirdEnvelopeColor: theme.negative,
     } as Record<string, string>;
   }
   if (indicatorId === "ratio-highlight") {
@@ -7691,7 +7692,14 @@ export default function ChartIndicatorsControl({
                       <option value="standard-deviation">Standard deviation</option><option value="price-percentage">Price percentage</option>
                     </KwantSelect>
                   </label>
-                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">The VPOC and all enabled envelopes recalculate from exact Rithmic volume-at-price rows as the rolling window advances.</p>
+                  {([["POC line style", "pocLineStyle", "solid"], ["Envelope line style", "envelopeLineStyle", "dashed"]] as const).map(([label, key, fallback]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <KwantSelect value={String(settingsInstance.settings?.[key] ?? fallback)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value } }))} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={label}>
+                        <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+                      </KwantSelect>
+                    </label>
+                  ))}
                 </div>
               ) : null}
 
@@ -8224,6 +8232,7 @@ export default function ChartIndicatorsControl({
                   : INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
                   .filter((setting) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(setting.key))
                   .filter(({ key }) => {
+                    if (settingsDefinition.id === "dynamic-poc" && key === "periodValue") return settingsInstance.settings?.periodMode !== "daily";
                     if (settingsDefinition.id !== "delta-bar") return true;
                     const side = ["left", "right"].includes(String(settingsInstance.settings?.displayMode));
                     return side ? key.startsWith("ladder")

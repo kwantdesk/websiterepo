@@ -548,7 +548,9 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
   ],
   "dynamic-poc": [
     "envelopeMode",
-    "periodMode"
+    "periodMode",
+    "pocLineStyle",
+    "envelopeLineStyle"
   ],
   "expected-move": [
     "mappingSource",

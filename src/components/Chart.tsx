@@ -3505,6 +3505,7 @@ function Chart({
   const pocAuctionPrimitiveRef = useRef<PocAuctionPrimitive | null>(null);
   const unfinishedAuctionPrimitiveRef = useRef<UnfinishedAuctionPrimitive | null>(null);
   const barPocPrimitiveRef = useRef<BarPocPrimitive | null>(null);
+  const dynamicPocBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const dynamicPocPrimitiveRef = useRef<DynamicPocPrimitive | null>(null);
   const ratioHighlightPrimitiveRef = useRef<RatioHighlightPrimitive | null>(null);
   const ratioHighlightLastReactPublishRef = useRef(0);
@@ -6498,14 +6499,15 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.ladderFontSize ?? 8)), 6, 14),
     };
   }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator ?? deepProfileSwingIndicator ?? deepProfileValuesIndicator
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator ?? deepProfileSwingIndicator ?? deepProfileValuesIndicator
     ?? (deltaLadderSide ? deltaBarIndicator : null);
+  const volumeAtPriceConsumer = footprintDataConsumer ?? dynamicPocIndicator;
   const footprintCandles = useMemo(
-    () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
-    [footprintDataConsumer, indicatorHistoryLimit, sampledIndicatorCandles],
+    () => volumeAtPriceConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
+    [volumeAtPriceConsumer, indicatorHistoryLimit, sampledIndicatorCandles],
   );
   useEffect(() => {
-    if (!footprintDataConsumer) {
+    if (!volumeAtPriceConsumer) {
       footprintViewportCoverageRef.current = null;
       return;
     }
@@ -6530,7 +6532,7 @@ function Chart({
         setFootprintViewportVersion((current) => current + 1);
       });
     });
-  }, [candles.length, chartFrameWorkKey, footprintCandles.length, footprintDataConsumer, viewportVersion]);
+  }, [candles.length, chartFrameWorkKey, footprintCandles.length, volumeAtPriceConsumer, viewportVersion]);
   useEffect(() => () => {
     footprintViewportCoverageRef.current = null;
     cancelChartFrameWork(`footprint-viewport:${chartFrameWorkKey}`);
@@ -6540,7 +6542,7 @@ function Chart({
     [footprintIndicator],
   );
   const footprintVisibleCandles = useMemo(() => {
-    if (!footprintDataConsumer || !footprintCandles.length) {
+    if (!volumeAtPriceConsumer || !footprintCandles.length) {
       footprintViewportCoverageRef.current = null;
       return [];
     }
@@ -6570,11 +6572,11 @@ function Chart({
     // footprint somewhere off screen to the right and left it stale for the
     // next refresh too.
     return first < last ? footprintCandles.slice(first, last) : [];
-  }, [candles.length, footprintCandles, footprintDataConsumer, footprintViewportVersion]);
+  }, [candles.length, footprintCandles, volumeAtPriceConsumer, footprintViewportVersion]);
   const footprintSourceCandles = useMemo(() => {
-    if (!footprintDataConsumer) return [];
+    if (!volumeAtPriceConsumer) return [];
     return footprintVisibleCandles;
-  }, [footprintDataConsumer, footprintVisibleCandles]);
+  }, [volumeAtPriceConsumer, footprintVisibleCandles]);
   const exactFootprintHistory = useExactFootprintHistory(contractSymbol,
     footprintSourceCandles, timeframeToMs(timeframe), Boolean(footprintDataConsumer),
     marketIsActive === true, Number(footprintSettings.minimumTradeVolume ?? 0), Number(footprintSettings.maximumTradeVolume ?? 0), replayTimestampMs);
@@ -6768,13 +6770,13 @@ function Chart({
     [footprintDataKey, footprintRenderBars, replayTimestampMs],
   );
   const rawPocAuctionBars = useMemo(() => {
-    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !deepProfileValuesIndicator && !deepPatternBuilderNeedsOrderFlow) || !footprintSourceCandles.length) return [];
+    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !deepProfileValuesIndicator && !deepPatternBuilderNeedsOrderFlow) || !footprintSourceCandles.length) return [];
     return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [deepPatternBuilderNeedsOrderFlow, deepProfileSwingIndicator, deepProfileValuesIndicator, deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
+  }, [deepPatternBuilderNeedsOrderFlow, deepProfileSwingIndicator, deepProfileValuesIndicator, deepVTrackerIndicator, deepWallIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
   const rawBarPocBars = useMemo(() => {
     if (!barPocIndicator || !footprintSourceCandles.length) return [];
     const normalized = normalizeBarPocSettings(barPocIndicator.settings);
@@ -7235,8 +7237,37 @@ function Chart({
   const dynamicPocSettings = useMemo(() => {
     const normalized = normalizeDynamicPocSettings(dynamicPocIndicator?.settings);
     if (!normalized.useThemeColors) return normalized;
-    return { ...normalized, pocColor: settings.upColor, firstEnvelopeColor: settings.borderUpColor, secondEnvelopeColor: settings.gridColor, thirdEnvelopeColor: settings.downColor };
-  }, [dynamicPocIndicator, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+    const theme = visibleIndicatorTheme(settings);
+    return { ...normalized, pocColor: theme.primary, firstEnvelopeColor: theme.secondary, secondEnvelopeColor: theme.muted, thirdEnvelopeColor: theme.negative };
+  }, [dynamicPocIndicator, settings]);
+  const dynamicPocIntervalMs = timeframeToMs(timeframe);
+  const dynamicPocCandles = useMemo(() => {
+    if (!dynamicPocIndicator || !footprintVisibleCandles.length) return [];
+    const coverage = footprintViewportCoverageRef.current;
+    if (!coverage) return [];
+    const last = coverage.last;
+    // Warm up before the viewport while staying within the archive request limit.
+    const earliest = footprintCandles[last - 1].timestamp - 9 * 86_400_000;
+    let first = Math.max(0, last - 1_000);
+    while (first < last - 1 && footprintCandles[first].timestamp < earliest) first += 1;
+    return footprintCandles.slice(first, last);
+  }, [dynamicPocIndicator, footprintCandles, footprintVisibleCandles]);
+  const dynamicPocHistory = useExactFootprintHistory(contractSymbol, dynamicPocCandles, dynamicPocIntervalMs,
+    Boolean(dynamicPocIndicator), marketIsActive === true, 0, 0, replayTimestampMs);
+  const dynamicPocBars = useMemo(() => {
+    if (!dynamicPocCandles.length) {
+      dynamicPocBuildCacheRef.current = null;
+      return [];
+    }
+    const trades = mergeFootprintHistoryRecords(dynamicPocHistory.records,
+      sampledIndicatorMarketTrades, dynamicPocCandles, dynamicPocIntervalMs);
+    return buildFootprintBarsCached(dynamicPocBuildCacheRef, dynamicPocCandles, trades, {
+      tickSize: priceFormat.minMove, groupTicks: 1, inputType: "volume", instrument,
+      minimumTradeVolume: 0, maximumTradeVolume: 0,
+      imbalanceMode: "diagonal", minimumImbalancePercent: 300, minimumDelta: 0, includeZero: false,
+    });
+  }, [dynamicPocCandles, dynamicPocHistory.records, dynamicPocIntervalMs, instrument,
+    priceFormat.minMove, sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion]);
   const ratioHighlightSettings = useMemo(() => {
     const normalized = normalizeRatioHighlightSettings(ratioHighlightIndicator?.settings);
     if (!normalized.useThemeColors) return normalized;
@@ -7394,10 +7425,13 @@ function Chart({
       setDynamicPocFrame(null);
       return;
     }
-    const frame = buildDynamicPocFrame(rawPocAuctionBars, instrument, priceFormat.minMove, dynamicPocSettings);
-    dynamicPocPrimitiveRef.current?.update({ frame, settings: dynamicPocSettings });
+    const frame = buildDynamicPocFrame(dynamicPocBars, instrument, priceFormat.minMove, dynamicPocSettings);
+    dynamicPocPrimitiveRef.current?.update({
+      frame, settings: dynamicPocSettings,
+      chartTime: (timestamp) => (eventChartTimeBySourceTimeRef.current.get(timestamp) ?? Math.floor(timestamp / 1_000)) as Time,
+    });
     startTransition(() => setDynamicPocFrame(frame));
-  }, [dynamicPocIndicator, dynamicPocSettings, instrument, priceFormat.minMove, rawPocAuctionBars]);
+  }, [chartReadyRevision, dynamicPocBars, dynamicPocIndicator, dynamicPocSettings, instrument, priceFormat.minMove]);
 
   useEffect(() => {
     if (!deepMIVBIndicator) {
