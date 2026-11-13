@@ -21,7 +21,9 @@ function parseState(raw: string | undefined): IndicatorState | null {
 
 /** A removed instance stays removed even if a peer edited its settings. */
 export function mergeWorkspaceIndicatorState(baseRaw?: string, localRaw?: string, remoteRaw?: string): string | undefined {
-  const base = parseState(baseRaw);
+  // Older accounts may have no indicator key until their first edit.
+  // An absent baseline has no instances that either device could delete.
+  const base = baseRaw === undefined ? {} : parseState(baseRaw);
   const local = parseState(localRaw);
   const remote = parseState(remoteRaw);
   if (!base || !local || !remote) return undefined;

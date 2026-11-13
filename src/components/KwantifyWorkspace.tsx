@@ -15057,18 +15057,21 @@ export default function KwantifyWorkspace({
       const changed = (key: string) => !keys || keys.includes(key);
       const scope = chartWorkspaceScopeRef.current;
       const activePaneKey = workspaceScopeStorageKey(scope, "olisa-chart-workspace-active-pane");
+      const indicatorKey = workspaceScopeStorageKey(scope, CHART_INDICATORS_STORAGE_KEY);
       const remote = detail?.source === "remote";
       // Focus is local to a mounted screen. A desktop click must not replace
       // the phone's only visible chart; the saved focus still seeds new mounts.
-      const workspaceChanged = !keys || keys.some(key => !(remote && key === activePaneKey) && (scope !== "charts"
+      const workspaceChanged = !keys || keys.some(key => key !== indicatorKey && !(remote && key === activePaneKey) && (scope !== "charts"
         ? key.startsWith(workspaceStoragePrefix(scope))
-        : key.startsWith("olisa-chart-workspace-") || key === CHART_INDICATORS_STORAGE_KEY
+        : key.startsWith("olisa-chart-workspace-")
           || key === CHART_WORKSPACE_SETTINGS_STORAGE_KEY
           || key === WORKSPACE_PRESETS_STORAGE_KEY || key === ACTIVE_WORKSPACE_PRESET_STORAGE_KEY
           || key === CHART_SETTINGS_STORAGE_KEY || key === CHART_TEMPLATES_STORAGE_KEY));
-      if (workspaceChanged) {
+      const indicatorsChanged = changed(indicatorKey);
+      const next = workspaceChanged || indicatorsChanged ? loadChartWorkspaceRuntime(scope) : null;
+      if (next && indicatorsChanged) setPaneIndicators(next.indicators);
+      if (next && workspaceChanged) {
         workspaceScopeHydratingRef.current = true;
-        const next = loadChartWorkspaceRuntime(scope);
         const available = new Set([...collectWorkspacePaneIds(next.tree), ...next.floatingWindows.map(item => item.paneId)]);
         const focusedPane = remote && available.has(activePaneIdRef.current)
           ? next.panes.find(item => item.id === activePaneIdRef.current) : undefined;
@@ -15078,7 +15081,7 @@ export default function KwantifyWorkspace({
         setWorkspacePanes(current => JSON.stringify(current) === JSON.stringify(next.panes) ? current : next.panes);
         setWorkspaceTree(next.tree); setWorkspaceFloatingWindows(next.floatingWindows);
         setWorkspacePresets(next.presets); setActiveWorkspacePresetId(next.activePresetId);
-        setActivePaneId(pane.id); setPaneIndicators(next.indicators);
+        setActivePaneId(pane.id);
         setLinkedViewportPaneIds(new Set(next.linkedPaneIds));
         setChartSettings(next.chartSettings); setDraftChartSettings(next.chartSettings);
         setChartSettingsSnapshot(next.chartSettings); setTemplates(next.templates);
@@ -15658,10 +15661,11 @@ export default function KwantifyWorkspace({
   const setIndicatorsForPane = useCallback((paneId: string, next: ChartIndicatorInstance[]) => {
     setChartIndicatorsSuppressed(false);
     const previous = paneIndicatorsRef.current[paneId] ?? [];
-    // Write list changes in the click handler. A reload or account response
-    // can land before the debounced writer for ordinary style edits runs.
+    // Membership and visibility are explicit chart actions. Publish them
+    // before an account response can land during the settings debounce.
     const listChanged = previous.length !== next.length
-      || previous.some((instance, index) => instance.instanceId !== next[index]?.instanceId);
+      || previous.some((instance, index) => instance.instanceId !== next[index]?.instanceId
+        || instance.enabled !== next[index]?.enabled);
     setPaneIndicators((current) => ({
       ...current,
       [paneId]: next.map((instance) => ({

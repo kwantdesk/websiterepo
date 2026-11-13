@@ -36,3 +36,13 @@ test("an empty active list survives sync and explicitly reapplying the saved ind
   assert.equal(mergeAccountPreferenceChanges(saved, removed, saved).values[key], removed.values[key]);
   assert.equal(mergeAccountPreferenceChanges(removed, saved, removed).values[key], saved.values[key]);
 });
+
+test("first indicator adds from two devices survive when there is no saved indicator key", () => {
+  const key = CHART_INDICATORS_STORAGE_KEY;
+  const base = { ...snapshot(key, []), values: { [presetKey]: preset } };
+  const bollinger = { instanceId: "bb-1", indicatorId: "bollinger-bands", enabled: true };
+  const local = snapshot(key, [bollinger]);
+  const remote = snapshot(key, [vwap]);
+  const { values } = mergeAccountPreferenceChanges(base, local, remote);
+  assert.deepEqual(JSON.parse(values[key])[pane], [bollinger, vwap]);
+});
