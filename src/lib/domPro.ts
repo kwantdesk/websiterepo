@@ -84,6 +84,7 @@ export type DomProCapabilities = {
 
 export type DomProState = {
   tickSize: number;
+  contractSymbol: string | null;
   levels: Map<number, DomProLevel>;
   orders: Map<string, DomProOrder>;
   trades: DomProTrade[];
@@ -219,6 +220,7 @@ export function domProPreset(
 export function createDomProState(tickSize = 0.25): DomProState {
   return {
     tickSize,
+    contractSymbol: null,
     levels: new Map(),
     orders: new Map(),
     trades: [],
@@ -332,8 +334,16 @@ export function applyDomProSnapshot(
   snapshot: RithmicLiquiditySnapshot,
   now = Date.now(),
 ): DomProState {
-  const tickSize = snapshot.tickSize > 0 ? snapshot.tickSize : previous.tickSize;
+  const tickSize = Number.isFinite(snapshot.tickSize) && snapshot.tickSize > 0 ? snapshot.tickSize : previous.tickSize;
+  const sameBook = previous.contractSymbol === snapshot.contractSymbol && previous.tickSize === tickSize;
+  const bestBid = snapshot.bestBid;
+  const bestAsk = snapshot.bestAsk;
+  if (!(snapshot.depthBookValid ?? snapshot.bookValid) || (bestBid != null && bestAsk != null && bestBid >= bestAsk)) {
+    const retained = sameBook ? previous : createDomProState(tickSize);
+    return { ...retained, contractSymbol: snapshot.contractSymbol, staleReason: "Waiting for a valid exchange snapshot" };
+  }
   const next = createDomProState(tickSize);
+  next.contractSymbol = snapshot.contractSymbol;
   next.capabilities = {
     fullDepth: Boolean(snapshot.fullDepth),
     mbo: Boolean(snapshot.individualOrders),
@@ -341,8 +351,7 @@ export function applyDomProSnapshot(
     ownOrders: false,
     trading: false,
   };
-  next.snapshotComplete = Boolean(snapshot.bookValid);
-  next.staleReason = snapshot.bookValid ? null : "Waiting for a valid exchange snapshot";
+  next.snapshotComplete = true;
   for (const input of snapshot.levels) {
     const tick = Math.round(input.price / tickSize);
     const level = getLevel(next, tick);
@@ -359,7 +368,7 @@ export function applyDomProSnapshot(
     }
   }
   const mergedTrades = [
-    ...previous.trades.filter((trade) => now - trade.timestamp <= 60_000),
+    ...(sameBook ? previous.trades : []),
     ...(snapshot.trades ?? []).map((trade) => ({
       ...trade,
       tick: Math.round(trade.price / tickSize),
@@ -376,10 +385,14 @@ export function applyDomProSnapshot(
     if (trade.side === "BUY") level.buyVolume += trade.size;
     else level.sellVolume += trade.size;
   }
-  next.lastTick = snapshot.lastPrice == null ? previous.lastTick : Math.round(snapshot.lastPrice / tickSize);
+  next.lastTick = snapshot.lastPrice == null ? (sameBook ? previous.lastTick : null) : Math.round(snapshot.lastPrice / tickSize);
   next.bestBidTick = snapshot.bestBid == null ? null : Math.round(snapshot.bestBid / tickSize);
   next.bestAskTick = snapshot.bestAsk == null ? null : Math.round(snapshot.bestAsk / tickSize);
   if (next.bestBidTick === null || next.bestAskTick === null) rebuildInsideMarket(next);
+  if (next.bestBidTick !== null && next.bestAskTick !== null && next.bestBidTick >= next.bestAskTick) {
+    const retained = sameBook ? previous : createDomProState(tickSize);
+    return { ...retained, contractSymbol: snapshot.contractSymbol, staleReason: "Waiting for a valid exchange snapshot" };
+  }
   // The gateway's aggregate snapshot remains authoritative. Lifecycle events
   // are consumed by applyDomProOrderEvent in event/replay mode; applying them
   // on top of an already-current aggregate snapshot would double-count depth.

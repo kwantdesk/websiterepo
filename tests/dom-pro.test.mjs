@@ -118,3 +118,23 @@ test("settings migration validates columns and presets deterministically", () =>
     ["bid", "price", "ask"],
   );
 });
+
+test("DOM holds verified depth on a crossed book and isolates contract changes", () => {
+  const snapshot = {
+    asOf: new Date(1000).toISOString(), contractSymbol: "NQZ6", tickSize: 0.25,
+    fullDepth: true, bookValid: true, individualOrders: true, ageMs: 0,
+    levels: [], bestBid: 100, bestAsk: 100.25, lastPrice: 100.25,
+    trades: [{ id: 1, timestamp: 1000, price: 100.25, size: 5, side: "BUY" }],
+  };
+  const valid = applyDomProSnapshot(createDomProState(), snapshot, 1000);
+  const crossed = applyDomProSnapshot(valid, { ...snapshot, bestBid: 100.5 }, 1000);
+  assert.equal(crossed.bestBidTick, 400);
+  assert.equal(crossed.bestAskTick, 401);
+  assert.ok(crossed.staleReason);
+  const rolled = applyDomProSnapshot(crossed, {
+    ...snapshot, contractSymbol: "NQH7", lastPrice: null, trades: [],
+  }, 1000);
+  assert.equal(rolled.lastTick, null);
+  assert.deepEqual(rolled.trades, []);
+  assert.equal(rolled.staleReason, null);
+});

@@ -48,10 +48,8 @@ function compact(value: number, enabled: boolean) {
 }
 
 function decimalPlaces(tickSize: number) {
-  if (tickSize >= 1) return 0;
-  if (tickSize >= 0.1) return 1;
-  if (tickSize >= 0.01) return 2;
-  return 3;
+  const [mantissa, exponent = "0"] = String(tickSize).split("e");
+  return Math.max(0, (mantissa.split(".")[1]?.length ?? 0) - Number(exponent));
 }
 
 function cssColor(styles: CSSStyleDeclaration, name: string, fallback: string) {
@@ -73,7 +71,7 @@ function alpha(color: string, opacity: number) {
 function statusLabel(status: RithmicLiquidityStatus, state: DomProState) {
   if (state.staleReason) return "STALE";
   if (status === "connected" && state.snapshotComplete) return state.capabilities.mbo ? "LIVE MBO" : "LIVE L2";
-  if (status === "checking") return "SYNCING";
+  if (status === "checking" || status === "connected") return "SYNCING";
   return "OFFLINE";
 }
 
@@ -88,8 +86,10 @@ function drawDom(args: {
   const { canvas, state, settings, palette, offsetTicks, width, height, dpr } = args;
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx || width <= 0 || height <= 0) return;
-  canvas.width = Math.max(1, Math.round(width * dpr));
-  canvas.height = Math.max(1, Math.round(height * dpr));
+  const pixelWidth = Math.max(1, Math.round(width * dpr));
+  const pixelHeight = Math.max(1, Math.round(height * dpr));
+  if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+  if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -98,17 +98,18 @@ function drawDom(args: {
 
   const columns = settings.columns.filter((column) => column.enabled);
   const preferredWidth = columns.reduce((sum, column) => sum + column.width, 0);
-  const scale = Math.min(1, width / Math.max(1, preferredWidth));
-  const widths = columns.map((column) => Math.max(34, column.width * scale));
+  const minWidth = Math.min(30, width / Math.max(1, columns.length));
+  const extraWidth = Math.max(0, width - minWidth * columns.length);
+  const widths = columns.map((column) => minWidth + extraWidth * column.width / preferredWidth);
   const totalWidth = widths.reduce((sum, value) => sum + value, 0);
   const xStart = Math.max(0, width - totalWidth);
   const headerHeight = 25;
   const availableRows = Math.max(1, Math.floor((height - headerHeight) / settings.rowHeight));
-  const rows = visibleDomProRows({
+  const rows = state.snapshotComplete ? visibleDomProRows({
     state, rowCount: Math.min(settings.rows, availableRows), offsetTicks,
     recentWindowMs: settings.recentWindowMs,
     cumulative: settings.showCumulative,
-  });
+  }) : [];
   const maxDepth = Math.max(1, settings.depthScaleCap, ...rows.flatMap((row) => [row.bidSize, row.askSize]));
   const maxTrade = Math.max(1, ...rows.flatMap((row) => [row.buyVolume, row.sellVolume]));
   const precision = decimalPlaces(state.tickSize);
@@ -135,7 +136,8 @@ function drawDom(args: {
     const y = headerHeight + rowIndex * settings.rowHeight;
     if (row.atLast) {
       ctx.fillStyle = alpha(palette.primary, 0.13); ctx.fillRect(xStart, y, totalWidth, settings.rowHeight);
-      ctx.strokeStyle = alpha(palette.primary, 0.72); ctx.strokeRect(xStart + 0.5, y + 0.5, totalWidth - 1, settings.rowHeight - 1);
+      ctx.strokeStyle = alpha(palette.primary, 0.6);
+      ctx.beginPath(); ctx.roundRect(xStart + 1.5, y + 1.5, Math.max(0, totalWidth - 3), settings.rowHeight - 3, 5); ctx.stroke();
     } else if (row.atBid || row.atAsk) {
       ctx.fillStyle = alpha(row.atBid ? palette.bid : palette.ask, 0.055);
       ctx.fillRect(xStart, y, totalWidth, settings.rowHeight);
@@ -166,7 +168,7 @@ function drawDom(args: {
         const barWidth = Math.max(1, (columnWidth - 4) * Math.min(1, numeric / denominator));
         ctx.fillStyle = alpha(color, 0.22);
         const rightAligned = column.id === "buy" || column.id === "bid";
-        ctx.fillRect(rightAligned ? x + columnWidth - barWidth - 2 : x + 2, y + 2, barWidth, settings.rowHeight - 4);
+        ctx.beginPath(); ctx.roundRect(rightAligned ? x + columnWidth - barWidth - 2 : x + 2, y + 2, barWidth, settings.rowHeight - 4, 3); ctx.fill();
       }
       if (value) {
         ctx.font = `${column.id === "price" ? 650 : 560} ${settings.fontSize}px Aleph, monospace`;
@@ -178,7 +180,11 @@ function drawDom(args: {
   });
 }
 
-export default function DepthOfMarketPanel({
+export default function DepthOfMarketPanel(props: Props) {
+  return <DomProLadder key={JSON.stringify([props.instrument, props.contractSymbol])} {...props} />;
+}
+
+function DomProLadder({
   instrument, contractSymbol, latestPrice, indicator, chartSettings, onUpdateSetting, standalone = false,
   settingsOpenRequest = 0,
 }: Props) {
@@ -188,7 +194,7 @@ export default function DepthOfMarketPanel({
   const [collapsed, setCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [offsetTicks, setOffsetTicks] = useState(0);
-  const [followingLive, setFollowingLive] = useState(true);
+  const [followingLive, setFollowingLive] = useState(settings.autoCenter);
   const [status, setStatus] = useState<RithmicLiquidityStatus>("checking");
   const [bookState, setBookState] = useState<DomProState>(() => createDomProState());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -207,7 +213,10 @@ export default function DepthOfMarketPanel({
     previousSettingsOpenRequestRef.current = settingsOpenRequest;
     setSettingsOpen(true);
   }, [settingsOpenRequest]);
-  const commitSnapshot = useCallback((snapshot: RithmicLiquiditySnapshot) => {
+  const commitSnapshot = useCallback(() => {
+    const snapshot = pendingSnapshotRef.current;
+    if (!snapshot) return;
+    pendingSnapshotRef.current = null;
     setBookState((current) => applyDomProSnapshot(current, snapshot));
     lastFrameAtRef.current = Date.now();
   }, []);
@@ -216,16 +225,19 @@ export default function DepthOfMarketPanel({
     const unsubscribe = subscribeRithmicLiquidity({
       root: instrument, contractSymbol, exchange: futuresVenue(instrument),
       onSnapshot: (snapshot) => {
-        pendingSnapshotRef.current = snapshot;
+        const pending = pendingSnapshotRef.current;
+        pendingSnapshotRef.current = pending?.contractSymbol === snapshot.contractSymbol && pending.trades?.length
+          ? { ...snapshot, trades: [...pending.trades, ...(snapshot.trades ?? [])] }
+          : snapshot;
         const remaining = settings.refreshRateMs - (Date.now() - lastFrameAtRef.current);
         if (remaining <= 0) {
           if (publishTimerRef.current !== null) window.clearTimeout(publishTimerRef.current);
-          publishTimerRef.current = null; commitSnapshot(snapshot); return;
+          publishTimerRef.current = null; commitSnapshot(); return;
         }
         if (publishTimerRef.current !== null) return;
         publishTimerRef.current = window.setTimeout(() => {
           publishTimerRef.current = null;
-          if (pendingSnapshotRef.current) commitSnapshot(pendingSnapshotRef.current);
+          commitSnapshot();
         }, remaining);
       },
       onStatus: setStatus,
@@ -291,13 +303,17 @@ export default function DepthOfMarketPanel({
   const depthTotal = allLevels.reduce((sum, level) => sum + level.bidSize + level.askSize, 0);
   const bidTotal = allLevels.reduce((sum, level) => sum + level.bidSize, 0);
   const imbalance = depthTotal > 0 ? (bidTotal / depthTotal - 0.5) * 200 : 0;
-  const spread = bookState.bestBidTick !== null && bookState.bestAskTick !== null ? Math.max(0, bookState.bestAskTick - bookState.bestBidTick) : null;
+  const spread = bookState.bestBidTick !== null && bookState.bestAskTick !== null ? bookState.bestAskTick - bookState.bestBidTick : null;
+  const bookStatus = statusLabel(status, bookState);
+  const statusStyle = bookStatus === "STALE" || bookStatus === "OFFLINE"
+    ? "border-danger/40 text-danger"
+    : bookStatus.startsWith("LIVE") ? "border-primary/35 text-primary" : "border-border";
 
   if (collapsed && !standalone) return (
     <aside className="relative flex h-full w-10 shrink-0 flex-col items-center border-l border-border bg-background py-2">
-      <button type="button" onClick={() => setCollapsed(false)} className="flex h-7 w-7 items-center justify-center border border-border text-primary" title="Expand DOM Pro"><ChevronsLeft className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={() => setCollapsed(false)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-primary" title="Expand DOM Pro"><ChevronsLeft className="h-3.5 w-3.5" /></button>
       <DatabaseZap className="mt-3 h-3.5 w-3.5 text-primary" />
-      <span className="mt-3 [writing-mode:vertical-rl] font-mono text-[8px] font-bold tracking-[0.18em] text-muted">DOM PRO</span>
+      <span className="mt-3 [writing-mode:vertical-rl] text-[10px] font-bold tracking-[0.18em] text-muted">DOM PRO</span>
     </aside>
   );
 
@@ -326,22 +342,22 @@ export default function DepthOfMarketPanel({
         <DatabaseZap className="h-3.5 w-3.5 text-primary" />
         <div className="min-w-0"><div className="truncate font-mono text-[10px] font-bold tracking-[0.12em] text-foreground">DOM PRO</div><div className="truncate font-mono text-[7px] uppercase tracking-[0.08em] text-muted">{bookState.capabilities.mbo ? "MBO · exact order count" : bookState.capabilities.fullDepth ? "Full depth · L2 fallback" : "Waiting for exchange book"}</div></div>
         <div className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={recenter} className={`flex h-6 items-center gap-1 border px-2 font-mono text-[7px] ${followingLive ? "border-primary/45 bg-primary/10 text-primary" : "border-border text-muted"}`} title="Return to live price"><LocateFixed className="h-3 w-3" />LIVE</button>
-          <button type="button" onClick={() => setSettingsOpen(true)} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="DOM Pro settings"><Settings2 className="h-3 w-3" /></button>
+          <button type="button" onClick={recenter} className={`flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-semibold ${followingLive ? "border-primary/45 bg-primary/10 text-primary" : "border-border text-muted"}`} title="Return to live price"><LocateFixed className="h-3 w-3" />LIVE</button>
+          <button type="button" onClick={() => setSettingsOpen(true)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-foreground" title="DOM Pro settings"><Settings2 className="h-3 w-3" /></button>
           {!standalone ? <>
-            <button type="button" onClick={() => setRuntimeWidth((value) => Math.max(240, value - 50))} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Narrower"><Minus className="h-3 w-3" /></button>
-            <button type="button" onClick={() => setRuntimeWidth((value) => Math.min(1_100, value + 50))} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Wider"><Plus className="h-3 w-3" /></button>
-            <button type="button" onClick={() => setCollapsed(true)} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Collapse"><ChevronsRight className="h-3 w-3" /></button>
+            <button type="button" onClick={() => setRuntimeWidth((value) => Math.max(240, value - 50))} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-foreground" title="Narrower"><Minus className="h-3 w-3" /></button>
+            <button type="button" onClick={() => setRuntimeWidth((value) => Math.min(1_100, value + 50))} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-foreground" title="Wider"><Plus className="h-3 w-3" /></button>
+            <button type="button" onClick={() => setCollapsed(true)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-foreground" title="Collapse"><ChevronsRight className="h-3 w-3" /></button>
           </> : null}
         </div>
       </header> : null}
-      {settings.showHeaderStats ? <div className="grid h-8 shrink-0 grid-cols-4 border-b border-border bg-surface/25 font-mono">
-        <div className="flex items-center justify-between border-r border-border px-2 text-[7px]"><span className="text-muted">SPREAD</span><b>{spread ?? "—"}T</b></div>
-        <div className="flex items-center justify-between border-r border-border px-2 text-[7px]"><span className="text-muted">ROWS</span><b>{settings.rows}</b></div>
-        <div className="flex items-center justify-between border-r border-border px-2 text-[7px]"><span className="text-muted">BOOK</span><b>{compact(depthTotal, true) || "0"}</b></div>
-        <div className="flex items-center justify-between px-2 text-[7px]"><span className="text-muted">IMB</span><b style={{ color: imbalance >= 0 ? chartSettings.upColor : chartSettings.downColor }}>{imbalance >= 0 ? "+" : ""}{imbalance.toFixed(0)}%</b></div>
+      {settings.showHeaderStats ? <div className={`grid shrink-0 gap-1.5 p-2 ${settings.showImbalance ? "grid-cols-4" : "grid-cols-3"}`}>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-1 rounded-lg border border-border bg-surface/50 px-2 py-1 text-[10px] tabular-nums"><span className="text-muted">SPREAD</span><b>{spread === null ? "—" : `${spread}t`}</b></div>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-1 rounded-lg border border-border bg-surface/50 px-2 py-1 text-[10px] tabular-nums"><span className="text-muted">ROWS</span><b>{settings.rows}</b></div>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-1 rounded-lg border border-border bg-surface/50 px-2 py-1 text-[10px] tabular-nums"><span className="text-muted">BOOK</span><b>{bookState.snapshotComplete ? integerFormatter.format(depthTotal) : "—"}</b></div>
+        {settings.showImbalance ? <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-1 rounded-lg border border-border bg-surface/50 px-2 py-1 text-[10px] tabular-nums"><span className="text-muted">IMB</span><b style={{ color: imbalance >= 0 ? chartSettings.upColor : chartSettings.downColor }}>{depthTotal > 0 ? `${imbalance >= 0 ? "+" : ""}${imbalance.toFixed(0)}%` : "—"}</b></div> : null}
       </div> : null}
-      <div ref={canvasHostRef} className="relative min-h-0 flex-1 cursor-ns-resize touch-none select-none overflow-hidden" onWheel={(event) => {
+      <div ref={canvasHostRef} className="relative mx-2 min-h-0 flex-1 cursor-ns-resize touch-none select-none overflow-hidden rounded-xl border border-border" onWheel={(event) => {
         event.preventDefault(); event.stopPropagation(); setFollowingLive(false);
         const step = Math.max(1, Math.round(Math.abs(event.deltaY) / 75)); setOffsetTicks((current) => current + (event.deltaY > 0 ? -step : step));
       }} onPointerDown={(event) => { panRef.current = { startY: event.clientY, startOffset: offsetTicks }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => {
@@ -349,33 +365,32 @@ export default function DepthOfMarketPanel({
       }} onPointerUp={(event) => { panRef.current = null; event.currentTarget.releasePointerCapture(event.pointerId); }} onDoubleClick={recenter}>
         <canvas ref={canvasRef} className="block h-full w-full" />
         {!bookState.snapshotComplete ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-[2px]"><div className="flex flex-col items-center gap-2 font-mono"><DatabaseZap className={`h-5 w-5 ${status === "unavailable" ? "text-danger" : "animate-pulse text-primary"}`} /><span className="text-[9px] font-semibold tracking-[0.12em] text-foreground">{status === "unavailable" ? "DOM FEED UNAVAILABLE" : "LOADING DOM PRO"}</span><span className="text-[7px] text-muted">{status === "unavailable" ? "Waiting for the authenticated Rithmic book to reconnect" : bookState.staleReason || "Restoring the authenticated Rithmic book"}</span></div></div> : null}
-        {!followingLive ? <button type="button" onClick={recenter} className="absolute bottom-3 right-3 flex h-7 items-center gap-1.5 border border-primary/50 bg-background px-2 font-mono text-[8px] font-semibold text-primary shadow-lg"><LocateFixed className="h-3 w-3" />GO LIVE</button> : null}
+        {!followingLive ? <button type="button" onClick={recenter} className="absolute bottom-3 right-3 flex h-7 items-center gap-1.5 rounded-lg border border-primary/50 bg-background px-2 text-[10px] font-semibold text-primary shadow-lg"><LocateFixed className="h-3 w-3" />GO LIVE</button> : null}
       </div>
-      <footer className="flex h-7 shrink-0 items-center gap-2 border-t border-border bg-surface/25 px-2 font-mono text-[7px] text-muted">
-        <Activity className={`h-3 w-3 ${status === "connected" ? "text-primary" : "text-muted"}`} /><span>{contractSymbol || instrument}</span>
+      <footer className="flex h-9 shrink-0 items-center gap-2 px-3 text-[10px] font-medium text-muted">
+        <Activity className={`h-3 w-3 ${status === "connected" ? "text-primary" : "text-muted"}`} /><span>{bookState.contractSymbol || contractSymbol || instrument}</span>
         <span className="ml-auto">{bookState.capabilities.mbo ? "MBO" : bookState.capabilities.fullDepth ? "L2 FALLBACK" : "NO BOOK"}</span>
-        <span className={`border px-1.5 py-0.5 font-bold ${bookState.staleReason ? "border-danger/40 text-danger" : status === "connected" ? "border-primary/35 text-primary" : "border-border"}`}>{statusLabel(status, bookState)}</span>
+        <span className={`rounded-full border px-2 py-0.5 font-semibold ${statusStyle}`}>{bookStatus}</span>
       </footer>
       <FloatingSettingsWindow
         open={settingsOpen}
         title="DOM Pro Settings"
-        subtitle="Live ladder preview · drag this window anywhere"
         onClose={() => setSettingsOpen(false)}
-        widthClassName="w-[min(460px,calc(100vw-24px))]"
+        widthClassName="w-[min(480px,calc(100vw-24px))] rounded-2xl"
         contentClassName="space-y-4 p-3"
       >
-          <section><div className="mb-2 font-mono text-[8px] uppercase tracking-[0.13em] text-muted">Preset</div><div className="grid grid-cols-3 gap-1.5">{(["scalper", "order-flow", "minimal"] as const).map((preset) => <button key={preset} type="button" onClick={() => saveSettings(domProPreset(preset, settings))} className={`h-8 border font-mono text-[8px] uppercase ${settings.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border text-muted"}`}>{preset}</button>)}</div></section>
-          <section className="space-y-2"><div className="font-mono text-[8px] uppercase tracking-[0.13em] text-muted">Ladder</div>{[
+          <section><div className="mb-2 text-[10px] uppercase tracking-[0.13em] text-muted">Preset</div><div className="grid grid-cols-3 gap-1.5">{(["scalper", "order-flow", "minimal"] as const).map((preset) => <button key={preset} type="button" onClick={() => saveSettings(domProPreset(preset, settings))} className={`h-9 rounded-lg border text-[10px] font-semibold uppercase ${settings.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border text-muted"}`}>{preset}</button>)}</div></section>
+          <section className="space-y-2"><div className="text-[10px] uppercase tracking-[0.13em] text-muted">Ladder</div>{[
             ["Visible rows", "rows", settings.rows, 10, 120, 1], ["Row height", "rowHeight", settings.rowHeight, 16, 42, 1],
             ["Text size", "fontSize", settings.fontSize, 7, 13, 1], ["Refresh ms", "refreshRateMs", settings.refreshRateMs, 16, 1000, 1],
-          ].map(([label, key, value, min, max, step]) => <label key={String(key)} className="grid grid-cols-[90px_1fr_42px] items-center gap-2 text-[8px] text-muted"><span>{String(label)}</span><input type="range" min={Number(min)} max={Number(max)} step={Number(step)} value={Number(value)} onChange={(event) => persist(String(key), Number(event.target.value))} className="accent-primary" /><span className="text-right font-mono text-foreground">{String(value)}</span></label>)}</section>
-          <section className="space-y-1.5"><div className="font-mono text-[8px] uppercase tracking-[0.13em] text-muted">Columns</div>{settings.columns.map((column) => <div key={column.id} className="grid grid-cols-[1fr_42px_120px] items-center gap-2 border border-border bg-background px-2 py-1.5"><label className="flex items-center gap-2 font-mono text-[8px] text-foreground"><input type="checkbox" checked={column.enabled} onChange={(event) => saveSettings({ ...settings, preset: "custom", columns: settings.columns.map((item) => item.id === column.id ? { ...item, enabled: event.target.checked } : item) })} className="accent-primary" />{column.label}</label><span className="text-right font-mono text-[7px] text-muted">{column.width}px</span><input type="range" min="54" max="260" value={column.width} onChange={(event) => saveSettings({ ...settings, preset: "custom", columns: settings.columns.map((item) => item.id === column.id ? { ...item, width: Number(event.target.value) } : item) })} className="accent-primary" /></div>)}</section>
+          ].map(([label, key, value, min, max, step]) => <label key={String(key)} className="grid grid-cols-[90px_1fr_42px] items-center gap-2 text-[11px] text-muted"><span>{String(label)}</span><input type="range" min={Number(min)} max={Number(max)} step={Number(step)} value={Number(value)} onChange={(event) => persist(String(key), Number(event.target.value))} className="accent-primary" /><span className="text-right font-mono text-foreground">{String(value)}</span></label>)}</section>
+          <section className="space-y-1.5"><div className="text-[10px] uppercase tracking-[0.13em] text-muted">Columns</div>{settings.columns.map((column) => <div key={column.id} className="grid grid-cols-[1fr_42px_120px] items-center gap-2 rounded-lg border border-border bg-surface/45 px-2.5 py-2"><label className="flex items-center gap-2 text-[10px] text-foreground"><input type="checkbox" checked={column.enabled} onChange={(event) => saveSettings({ ...settings, preset: "custom", columns: settings.columns.map((item) => item.id === column.id ? { ...item, enabled: event.target.checked } : item) })} className="accent-primary" />{column.label}</label><span className="text-right font-mono text-[7px] text-muted">{column.width}px</span><input type="range" min="54" max="260" value={column.width} onChange={(event) => saveSettings({ ...settings, preset: "custom", columns: settings.columns.map((item) => item.id === column.id ? { ...item, width: Number(event.target.value) } : item) })} className="accent-primary" /></div>)}</section>
           <section className="space-y-1.5">{[
             { key: "showDepthHistogram", label: "Depth histograms", value: settings.showHistogram }, { key: "showHeaderStats", label: "Header statistics", value: settings.showHeaderStats },
             { key: "showImbalance", label: "Book imbalance", value: settings.showImbalance }, { key: "compactNumbers", label: "Compact large numbers", value: settings.compactNumbers },
             { key: "useThemeColors", label: "Use KwantDesk theme colours", value: settings.useThemeColors },
-          ].map((item) => <label key={item.key} className="flex items-center justify-between border border-border bg-background px-2.5 py-2 text-[8px] text-muted"><span>{item.label}</span><input type="checkbox" checked={item.value} onChange={(event) => persist(item.key, event.target.checked)} className="accent-primary" /></label>)}</section>
-          <div className="flex gap-2 border border-border bg-background p-2 text-[7px] leading-4 text-muted"><CircleHelp className="mt-0.5 h-3 w-3 shrink-0 text-primary" /><span>Order entry is read-only until KwantDesk&apos;s authenticated order service explicitly grants trading capability. The browser never opens a second Rithmic session.</span></div>
+          ].map((item) => <label key={item.key} className="flex items-center justify-between rounded-lg border border-border bg-surface/45 px-2.5 py-2 text-[11px] text-muted"><span>{item.label}</span><input type="checkbox" checked={item.value} onChange={(event) => persist(item.key, event.target.checked)} className="accent-primary" /></label>)}</section>
+          <div className="flex gap-2 rounded-lg border border-border bg-surface/45 p-2.5 text-[10px] leading-4 text-muted"><CircleHelp className="mt-0.5 h-3 w-3 shrink-0 text-primary" /><span>Order entry is read-only until KwantDesk&apos;s authenticated order service explicitly grants trading capability. The browser never opens a second Rithmic session.</span></div>
       </FloatingSettingsWindow>
     </aside>
   );

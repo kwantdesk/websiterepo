@@ -18820,7 +18820,13 @@ export default function KwantifyWorkspace({
             ...current,
             [pane.id]: [
               ...(current[pane.id] ?? []).filter((instance) => instance.indicatorId !== "depth-of-market"),
-              { ...domIndicator, settings: { ...(domIndicator.settings ?? {}), [key]: value } },
+              {
+                ...domIndicator,
+                settings: {
+                  ...(current[pane.id]?.find((instance) => instance.indicatorId === "depth-of-market") ?? domIndicator).settings,
+                  [key]: value,
+                },
+              },
             ],
           }));
         };
