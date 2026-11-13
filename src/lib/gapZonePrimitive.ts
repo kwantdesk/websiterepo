@@ -1,6 +1,14 @@
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import type { ISeriesPrimitive, ISeriesPrimitivePaneView, SeriesAttachedParameter, Time } from "@/lib/lightweightChartsCompat";
-import type { GapZone } from "@/lib/gapDetector";
+export type GapZone = {
+  direction: "up" | "down";
+  startTime: number;
+  endTime: number;
+  low: number;
+  high: number;
+  /** Open zones can paint to the pane edge without adding synthetic chart time. */
+  extendToRight?: boolean;
+};
 
 export type GapZoneRenderOptions = { zones: readonly GapZone[]; opacity: number; borderWidth?: number };
 

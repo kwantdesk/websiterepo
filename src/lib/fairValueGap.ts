@@ -1,6 +1,6 @@
 import type { Candle } from "@/lib/backtester";
 import type { CalculatedIndicatorSeries, IndicatorTheme } from "@/lib/chartIndicatorEngine";
-import type { GapZone } from "@/lib/gapDetector";
+import type { GapZone } from "@/lib/gapZonePrimitive";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 
 export const FAIR_VALUE_GAP_DEFAULTS = {

@@ -9,7 +9,6 @@ import { BIG_BLOCKS_OPTIONS_DEFAULTS } from "@/lib/bigBlocksOptions";
 import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors, normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
 import { PIVOT_POINT_DEFAULTS } from "@/lib/pivotPoints";
-import { GAP_DETECTOR_DEFAULTS } from "@/lib/gapDetector";
 import { ZIG_ZAG_DEFAULTS, ZIG_ZAG_NUMERIC_SETTINGS, normalizeZigZagSettings } from "@/lib/zigZag";
 import { INVERSE_CYBER_CYCLE_DEFAULTS, normalizeInverseCyberCycleSettings } from "@/lib/inverseCyberCycle";
 import { ICHIMOKU_DEFAULTS, normalizeIchimokuSettings } from "@/lib/ichimoku";
@@ -116,7 +115,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "shift-candle",
   "important-levels",
   "pivot-points",
-  "gap-detector",
   "fvg-identifier",
   "gamma-environment",
   "vix-environment",
@@ -376,11 +374,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
     { key: "periodsToShow", label: "Periods to show", defaultValue: 1, min: 1, max: 30, step: 1 },
     { key: "referenceValue", label: "Reference timeframe value", defaultValue: 1, min: 1, max: 10000, step: 1 },
-  ],
-  "gap-detector": [
-    { key: "percentValue", label: "Percentage value", defaultValue: 1, min: 0, max: 100, step: 0.01 },
-    { key: "tickValue", label: "Tick value", defaultValue: 20, min: 0, max: 100000, step: 1 },
-    { key: "backgroundOpacity", label: "Background opacity", defaultValue: 40, min: 0, max: 100, step: 1 },
   ],
   "fvg-identifier": [
     { key: "minNumTicks", label: "Min num ticks", defaultValue: 10, min: 0, max: 1000000, step: 1 },
@@ -1652,7 +1645,6 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
   } : {}),
   ...(indicatorId === "pivot-points" ? PIVOT_POINT_DEFAULTS : {}),
-  ...(indicatorId === "gap-detector" ? GAP_DETECTOR_DEFAULTS : {}),
   ...(indicatorId === "fvg-identifier" ? FAIR_VALUE_GAP_DEFAULTS : {}),
   ...(indicatorId === "zig-zag" ? {
     ...ZIG_ZAG_DEFAULTS,

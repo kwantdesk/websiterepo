@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import { GapZonePrimitive } from "../src/lib/gapZonePrimitive.ts";
 
 import { auditIndicatorLibrary } from "../scripts/audit-indicator-library.mjs";
 import { defaultIndicatorSettings, LIVE_CHART_INDICATOR_IDS, normalizePaneIndicatorState } from "../src/lib/chartIndicatorConfig.ts";
@@ -124,4 +125,25 @@ test("chart engine skips missing minutes and confirms the third candle before dr
   assert.equal(zones(confirmed, { timeframe: "500v" }).length, 1);
   assert.equal(zones([...rows.slice(0, 2), { ...rows[2], timestamp: close }], { timeframe: "1m" }).length, 0);
   assert.equal(zones(rows.map((bar, index) => ({ ...bar, sourceContractSymbol: index < 2 ? "NQU6" : "NQZ6" })), { timeframe: "1m" }).length, 0);
+});
+
+test("canvas primitive projects zones in chart time and price space", () => {
+  const painted = [];
+  const primitive = new GapZonePrimitive();
+  primitive.attached({
+    chart: { timeScale: () => ({ timeToCoordinate: (time) => Number(time) }) },
+    series: { priceToCoordinate: (price) => price * 2 }, requestUpdate() {},
+  });
+  primitive.update({ zones: [{ direction: "up", startTime: 10, endTime: 30, low: 20, high: 25 }], opacity: 0.4 }, "#abcdef");
+  const context = {
+    save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    fillRect: (...args) => painted.push(args), set globalAlpha(_) {}, set fillStyle(_) {},
+  };
+  primitive.paneViews()[0].renderer().draw({ useMediaCoordinateSpace: (draw) => draw({ context, mediaSize: { width: 100, height: 100 } }) });
+  assert.deepEqual(painted, [[10, 40, 20, 10]]);
+});
+
+test("saved charts discard Gap Detector and keep FVG Identifier", () => {
+  const saved = { pane: ["gap-detector", "fvg-identifier"].map(indicatorId => ({ instanceId: indicatorId, indicatorId, enabled: true, settings: {} })) };
+  assert.deepEqual(normalizePaneIndicatorState(saved).pane.map(item => item.indicatorId), ["fvg-identifier"]);
 });

@@ -406,8 +406,6 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
     : indicatorId === "pivot-points"
       ? ["fontSize", "lineWidth", "periodsToShow"].includes(key) ? "Plot settings" : "Custom reference"
-    : indicatorId === "gap-detector"
-      ? key === "backgroundOpacity" || /Color$/.test(key) || key === "useThemeColors" ? "Color settings" : "General"
     : indicatorId === "fvg-identifier"
       ? /^(minNumTicks|maxNumTicks)$/.test(key) ? "General"
         : /^(lineWidth|backgroundOpacity|upColor|downColor|useThemeColors)$/.test(key) ? "Plot settings" : "Extension"
@@ -433,7 +431,6 @@ const PIVOT_POINT_MANAGED_SETTINGS = new Set([
   "customReferenceEnabled", "referenceTimeframe", "customSessionEnabled",
   "customSessionStart", "customSessionEnd", "lineStyle", "labelAlign",
 ]);
-const GAP_DETECTOR_MANAGED_SETTINGS = new Set(["upColor", "downColor"]);
 const FVG_MANAGED_SETTINGS = new Set(["upColor", "downColor"]);
 const INVERSE_CYBER_CYCLE_MANAGED_SETTINGS = new Set([
   "cycleAAutoColor", "cycleBAutoColor", "cycleALineStyle", "cycleBLineStyle",
@@ -497,7 +494,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "average-directional-index-adx",
   "absolute-levels",
   "pivot-points",
-  "gap-detector",
   "fvg-identifier",
   "price-movement-levels",
   "average-daily-range-target",
@@ -6948,33 +6944,6 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {settingsDefinition.id === "gap-detector" ? (
-                <div data-settings-section="General" className="grid gap-3 sm:grid-cols-2">
-                  <label className="block space-y-1 text-[10px] text-muted">
-                    <span>Gap mode</span>
-                    <KwantSelect value={String(settingsInstance.settings?.gapMode ?? "day-begin")}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                        ...current, settings: { ...(current.settings ?? {}), gapMode: event.target.value },
-                      }))} menuLabel="Gap detection mode"
-                      className="h-9 w-full border border-border bg-background px-3 text-foreground">
-                      <option value="day-begin">Day begin</option>
-                      <option value="always">Always</option>
-                    </KwantSelect>
-                  </label>
-                  <label className="block space-y-1 text-[10px] text-muted">
-                    <span>Calculation mode</span>
-                    <KwantSelect value={String(settingsInstance.settings?.calculationMode ?? "tick")}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                        ...current, settings: { ...(current.settings ?? {}), calculationMode: event.target.value },
-                      }))} menuLabel="Gap threshold calculation mode"
-                      className="h-9 w-full border border-border bg-background px-3 text-foreground">
-                      <option value="tick">Tick</option>
-                      <option value="percent">Percentual</option>
-                    </KwantSelect>
-                  </label>
-                </div>
-              ) : null}
-
               {settingsDefinition.id === "zig-zag" ? (
                 <div data-settings-section="Zig Zag settings" className="grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-1 text-[10px] text-muted">
@@ -8296,7 +8265,6 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "deep-profile-values" && DEEP_PROFILE_VALUES_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "market-statistics" && MARKET_STATISTICS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "pivot-points" && PIVOT_POINT_MANAGED_SETTINGS.has(key))
-                    && !(settingsDefinition.id === "gap-detector" && GAP_DETECTOR_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "fvg-identifier" && FVG_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "inverse-cyber-cycle" && INVERSE_CYBER_CYCLE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "ichimoku-indicator" && ICHIMOKU_MANAGED_SETTINGS.has(key))
@@ -8397,7 +8365,7 @@ export default function ChartIndicatorsControl({
                   ];
                 });
               })()}
-              <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : "General"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
+              <div data-settings-section={settingsDefinition.id === "fvg-identifier" ? "Plot settings" : "General"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
                 {settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.gexMapMirror !== false ? (
                   <>Linked Bounce Levels uses the GEX Map colour scale. Open <span className="text-foreground">GEX Map view, nodes &amp; colours</span> above to change the shared palette.</>
                 ) : (

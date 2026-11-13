@@ -1,6 +1,6 @@
 import type { Candle } from "@/lib/backtester";
 import type { CalculatedIndicatorSeries, IndicatorTheme } from "@/lib/chartIndicatorEngine";
-import type { GapZone } from "@/lib/gapDetector";
+import type { GapZone } from "@/lib/gapZonePrimitive";
 import type { FootprintBarModel, FootprintPriceLevel } from "@/lib/footprintTypes";
 import { publicFacingTerminology } from "@/lib/privateTerminology";
 

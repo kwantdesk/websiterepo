@@ -574,10 +574,6 @@ export const INDICATOR_DEDICATED_CONTROL_KEYS: Record<string, readonly string[]>
     "conversion",
     "lineStyle"
   ],
-  "gap-detector": [
-    "calculationMode",
-    "gapMode"
-  ],
   "gex-interval-map": [
     "aggregationMode",
     "aggregationPeriod",
