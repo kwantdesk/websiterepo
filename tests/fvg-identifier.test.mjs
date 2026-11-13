@@ -22,18 +22,18 @@ test("official defaults and safe bounds are retained", () => {
 });
 
 test("three-candle bullish and bearish gaps use the instrument tick size", () => {
-  const bullish = from([[99, 100, 98, 99], [100, 104, 99, 103], [106, 108, 105, 107]]);
+  const bullish = from([[99, 100, 98, 99], [100, 106, 99, 105], [106, 108, 105, 107]]);
   assert.deepEqual(detectFairValueGaps(bullish, { minNumTicks: 20 }, 0.25).zones.map(({ direction, low, high }) => ({ direction, low, high })), [
     { direction: "up", low: 100, high: 105 },
   ]);
-  const bearish = from([[111, 112, 110, 111], [109, 111, 104, 105], [103, 104, 102, 103]]);
+  const bearish = from([[111, 112, 110, 111], [110, 111, 103, 104], [103, 104, 102, 103]]);
   assert.deepEqual(detectFairValueGaps(bearish, { minNumTicks: 20 }, 0.25).zones.map(({ direction, low, high }) => ({ direction, low, high })), [
     { direction: "down", low: 104, high: 110 },
   ]);
 });
 
 test("minimum and zero-as-unlimited maximum filters follow the public contract", () => {
-  const rows = from([[99, 100, 98, 99], [101, 104, 100, 103], [106, 108, 105, 107]]);
+  const rows = from([[99, 100, 98, 99], [100, 106, 100, 105], [106, 108, 105, 107]]);
   assert.equal(detectFairValueGaps(rows, { minNumTicks: 21 }, 0.25).zones.length, 0);
   assert.equal(detectFairValueGaps(rows, { minNumTicks: 1, maxNumTicks: 19 }, 0.25).zones.length, 0);
   assert.equal(detectFairValueGaps(rows, { minNumTicks: 1, maxNumTicks: 0 }, 0.25).zones.length, 1);
@@ -41,7 +41,7 @@ test("minimum and zero-as-unlimited maximum filters follow the public contract",
 
 test("wick versus close mitigation and breakout percentage terminate at the correct bar", () => {
   const rows = from([
-    [99, 100, 98, 99], [101, 104, 100, 103], [106, 108, 105, 107],
+    [99, 100, 98, 99], [100, 106, 100, 105], [106, 108, 105, 107],
     [106, 107, 103, 106], [103, 104, 99, 100],
   ]);
   const body = detectFairValueGaps(rows, { minNumTicks: 1, breakoutPercent: 35, removeOnShadowTriggered: false }, 0.25).zones[0];
@@ -51,28 +51,28 @@ test("wick versus close mitigation and breakout percentage terminate at the corr
 });
 
 test("maximum extension and trading-day reset stop zones without inventing future time", () => {
-  const rows = from([[99, 100, 98, 99], [101, 104, 100, 103], [106, 108, 105, 107], [107, 109, 106, 108], [108, 110, 107, 109]]);
+  const rows = from([[99, 100, 98, 99], [100, 106, 100, 105], [106, 108, 105, 107], [107, 109, 106, 108], [108, 110, 107, 109]]);
   const limited = detectFairValueGaps(rows, { minNumTicks: 1, maxBarsExtension: 1 }, 0.25).zones[0];
   assert.equal(limited.endTime, rows[3].timestamp / 1000);
   assert.equal(limited.extendToRight, false);
 
-  const aroundReset = from([[99, 100, 98, 99], [101, 104, 100, 103], [106, 108, 105, 107], [107, 109, 106, 108]], Date.parse("2026-09-08T21:57:00Z"));
+  const aroundReset = from([[99, 100, 98, 99], [100, 106, 100, 105], [106, 108, 105, 107], [107, 109, 106, 108]], Date.parse("2026-09-08T21:57:00Z"));
   const reset = detectFairValueGaps(aroundReset, { minNumTicks: 1, resetStartDay: true }, 0.25).zones[0];
   assert.equal(reset.endTime, aroundReset[2].timestamp / 1000);
   assert.equal(reset.extendToRight, false);
 });
 
 test("invalid and out-of-order candles are hard boundaries", () => {
-  const rows = from([[99, 100, 98, 99], [101, 104, 100, 103], [106, 108, 105, 107], [107, 109, 106, 108]]);
+  const rows = from([[99, 100, 98, 99], [100, 106, 100, 105], [106, 108, 105, 107], [107, 109, 106, 108]]);
   rows[1] = { ...rows[1], high: Number.NaN };
   assert.equal(detectFairValueGaps(rows, { minNumTicks: 1 }, 0.25).zones.length, 0);
-  const reversed = from([[99, 100, 98, 99], [101, 104, 100, 103], [106, 108, 105, 107]]);
+  const reversed = from([[99, 100, 98, 99], [100, 106, 100, 105], [106, 108, 105, 107]]);
   reversed[1] = { ...reversed[1], timestamp: reversed[0].timestamp };
   assert.equal(detectFairValueGaps(reversed, { minNumTicks: 1 }, 0.25).zones.length, 0);
 });
 
 test("theme and custom colours survive normalization and reach both plots", () => {
-  const candles = from([[99, 100, 98, 99], [101, 104, 100, 103], [106, 108, 105, 107]]);
+  const candles = from([[99, 100, 98, 99], [100, 106, 100, 105], [106, 108, 105, 107]]);
   const instance = { instanceId: "fvg", indicatorId: "fvg-identifier", enabled: true, settings: defaultIndicatorSettings("fvg-identifier") };
   assert.deepEqual(calculateIndicatorSeries(instance, candles, theme, { tickSize: 0.25 }).map(series => series.color), [theme.positive, theme.negative]);
   const restored = normalizePaneIndicatorState({ pane: [{ ...instance, settings: { ...instance.settings, useThemeColors: false, upColor: "#123456", downColor: "#abcdef" } }] }).pane[0];
@@ -97,4 +97,31 @@ test("twenty thousand bars remain bounded", () => {
   const started = performance.now();
   detectFairValueGaps(candles, { minNumTicks: 1, resetStartDay: false }, 0.25);
   assert.ok(performance.now() - started < 300);
+});
+
+test("wick overlap, equal wicks, and wick-only middle displacement never form an FVG", () => {
+  const settings = { minNumTicks: 0 };
+  const noGap = [
+    [[99, 100, 98, 99], [99, 106, 99, 105], [102, 108, 99, 107]],
+    [[99, 100, 98, 99], [99, 106, 99, 105], [102, 108, 100, 107]],
+    [[99, 100, 98, 99], [101, 106, 99, 105], [106, 108, 105, 107]],
+    [[111, 112, 110, 111], [109, 111, 103, 104], [103, 104, 102, 103]],
+    [[99, 100, 98, 99], [100, 106, 99, 105], [101, 108, 100.01, 107]],
+  ];
+  for (const rows of noGap) assert.equal(detectFairValueGaps(from(rows), settings, 0.25).zones.length, 0);
+});
+
+test("chart engine skips missing minutes and confirms the third candle before drawing", () => {
+  const rows = from([[99, 100, 98, 99], [100, 106, 99, 105], [106, 108, 105, 107]]);
+  const instance = { instanceId: "fvg", indicatorId: "fvg-identifier", enabled: true, settings: { minNumTicks: 1 } };
+  const zones = (bars, context) => calculateIndicatorSeries(instance, bars, theme, { tickSize: 0.25, ...context })
+    .flatMap(series => series.gapZones.zones);
+  const close = rows[2].timestamp + 60_000;
+  assert.equal(zones(rows, { timeframe: "1m", replayTimestampMs: close - 1 }).length, 0);
+  assert.equal(zones(rows, { timeframe: "1m", replayTimestampMs: close }).length, 1);
+  assert.equal(zones(rows, { timeframe: "500v" }).length, 0);
+  const confirmed = [...rows, { ...rows[2], timestamp: close }];
+  assert.equal(zones(confirmed, { timeframe: "500v" }).length, 1);
+  assert.equal(zones([...rows.slice(0, 2), { ...rows[2], timestamp: close }], { timeframe: "1m" }).length, 0);
+  assert.equal(zones(rows.map((bar, index) => ({ ...bar, sourceContractSymbol: index < 2 ? "NQU6" : "NQZ6" })), { timeframe: "1m" }).length, 0);
 });

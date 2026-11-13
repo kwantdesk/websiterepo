@@ -84,14 +84,16 @@ function valid(candle: Candle) {
 
 type Segment = { candles: Candle[]; reachesLiveTail: boolean };
 
-function continuitySegments(candles: readonly Candle[], resetStartDay: boolean): Segment[] {
+function continuitySegments(candles: readonly Candle[], resetStartDay: boolean, intervalMs: number | null): Segment[] {
   const segments: Segment[] = [];
   let current: Candle[] = [];
   let priorTime = Number.NEGATIVE_INFINITY;
   let priorDay = "";
+  let priorContract: string | undefined;
   const flush = (reachesLiveTail: boolean) => {
     if (current.length) segments.push({ candles: current, reachesLiveTail });
     current = [];
+    priorContract = undefined;
   };
   candles.forEach((candle, index) => {
     if (!valid(candle) || candle.timestamp <= priorTime) {
@@ -100,33 +102,55 @@ function continuitySegments(candles: readonly Candle[], resetStartDay: boolean):
       priorDay = "";
       return;
     }
-    const day = tradingDayKey(candle.timestamp);
-    if (current.length && resetStartDay && day !== priorDay) flush(false);
+    const day = resetStartDay ? tradingDayKey(candle.timestamp) : "";
+    const contract = candle.sourceContractSymbol;
+    if (current.length && (
+      (resetStartDay && day !== priorDay)
+      || (intervalMs !== null && candle.timestamp - priorTime !== intervalMs)
+      || (contract && priorContract && contract !== priorContract)
+    )) flush(false);
     current.push(candle);
     priorTime = candle.timestamp;
+    priorContract = contract ?? priorContract;
     priorDay = day;
     if (index === candles.length - 1) flush(true);
   });
   return segments;
 }
 
-export function detectFairValueGaps(candles: readonly Candle[], raw: Record<string, unknown>, tickSize = 0.25) {
+type FvgTiming = { intervalMs?: number | null; asOfMs?: number; requireNextBar?: boolean };
+
+export function detectFairValueGaps(candles: readonly Candle[], raw: Record<string, unknown>, tickSize = 0.25, timing: FvgTiming = {}) {
   const settings = normalizeFairValueGapSettings(raw);
   const tick = Number.isFinite(tickSize) && tickSize > 0 ? tickSize : 0.25;
   const zones: GapZone[] = [];
 
-  for (const segment of continuitySegments(candles, settings.resetStartDay)) {
+  // Daily and longer bars are separated by exchange closures and calendar boundaries.
+  const intradayInterval = timing.intervalMs && timing.intervalMs < 86_400_000 ? timing.intervalMs : null;
+  const lastCandle = candles.at(-1);
+  const isForming = timing.requireNextBar || (lastCandle && timing.intervalMs && timing.asOfMs !== undefined
+    && lastCandle.timestamp + timing.intervalMs > timing.asOfMs);
+  const resetStartDay = settings.resetStartDay && (!timing.intervalMs || intradayInterval !== null);
+
+  for (const segment of continuitySegments(candles, resetStartDay, intradayInterval)) {
     if (segment.candles.length < 3) continue;
     const lowTree = buildTree(segment.candles.map((candle) => settings.removeOnShadowTriggered ? candle.low : candle.close), "min");
     const highTree = buildTree(segment.candles.map((candle) => settings.removeOnShadowTriggered ? candle.high : candle.close), "max");
     for (let index = 2; index < segment.candles.length; index += 1) {
       const first = segment.candles[index - 2];
+      const middle = segment.candles[index - 1];
       const current = segment.candles[index];
+      if (isForming && current === lastCandle) continue;
       const direction = current.low > first.high ? "up" : current.high < first.low ? "down" : null;
       if (!direction) continue;
       const low = direction === "up" ? first.high : current.high;
       const high = direction === "up" ? current.low : first.low;
+      // The middle candle must displace through the entire outer-wick gap.
+      const [bodyStart, bodyEnd] = direction === "up" ? [middle.open, middle.close] : [middle.close, middle.open];
+      const tolerance = tick * 1e-9;
+      if (bodyStart > low + tolerance || bodyEnd < high - tolerance) continue;
       const gapTicks = (high - low) / tick;
+      if (gapTicks + 1e-9 < 1) continue;
       if (gapTicks + 1e-9 < settings.minNumTicks) continue;
       if (settings.maxNumTicks > 0 && gapTicks - 1e-9 > settings.maxNumTicks) continue;
 
@@ -151,9 +175,9 @@ export function detectFairValueGaps(candles: readonly Candle[], raw: Record<stri
 }
 
 export function calculateFairValueGaps(
-  candles: readonly Candle[], raw: Record<string, unknown>, theme: IndicatorTheme, tickSize?: number,
+  candles: readonly Candle[], raw: Record<string, unknown>, theme: IndicatorTheme, tickSize?: number, timing?: FvgTiming,
 ): CalculatedIndicatorSeries[] {
-  const { zones, settings } = detectFairValueGaps(candles, raw, tickSize);
+  const { zones, settings } = detectFairValueGaps(candles, raw, tickSize, timing);
   return (["up", "down"] as const).map((direction) => {
     const sideZones = zones.filter((zone) => zone.direction === direction);
     const color = settings.useThemeColors
