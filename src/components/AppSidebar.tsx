@@ -342,7 +342,7 @@ function AppSidebar({
       </Link>
       <nav className="kwant-primary-workspace-nav absolute inset-y-0 flex items-center overflow-x-auto overflow-y-clip" aria-label="Primary workspace">
         <div className="kwant-primary-workspace-nav-track flex min-w-max items-center gap-1">
-          {navItems.filter(item => !isWorkspaceFeatureArchived(item.key)).map(({ key, href, label, title, icon: Icon }) => {
+          {navItems.filter(item => item.key !== "algo" && !isWorkspaceFeatureArchived(item.key)).map(({ key, href, label, title, icon: Icon }) => {
             const active = activeItem === key;
             return (
               <Link
