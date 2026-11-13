@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';import test from 'node:test';
-import {calculateOptionsVwap} from '../src/lib/optionsVwap.ts';
+import {calculateOptionsVwap,optionsVwapEnvelopeSeries} from '../src/lib/optionsVwap.ts';
 const start=Date.UTC(2026,10,6,14,30),bar=(timestamp,volume=999999)=>({timestamp,open:1,high:1,low:1,close:1,volume});
 const event=(offset,price,size,side=1,received=start+offset)=>[start+offset,price,size,side,received];
 test('weights the reported UNDERLYING by executed option size, not candle/futures volume',()=>{const bars=[bar(start),bar(start+60000)];const events=[event(1,100,1),event(2,200,3,-1),event(60001,300,4)];const result=calculateOptionsVwap(events,bars);assert.equal(result[0].value,175);assert.equal(result[1].value,237.5);assert.deepEqual(calculateOptionsVwap(events,bars.map(b=>({...b,volume:0,close:90000}))),result);});
@@ -63,4 +63,28 @@ test('band switches, multipliers, colour, widths and styles persist in saved stu
  const settings={...defaultIndicatorSettings('options-vwap'),band1Enabled:false,band5Enabled:true,band5:2.5,bandLineWidth:3,bandLineStyle:'dashed',envelopeMode:'price-percentage',upper5Color:'#ff3300',lower5Color:'#00ff00'};
  const restored=normalizeStoredIndicator({instanceId:'bands',indicatorId:'options-vwap',enabled:true,settings});
  for(const key of ['band1Enabled','band5Enabled','band5','bandLineWidth','bandLineStyle','envelopeMode','upper5Color','lower5Color'])assert.equal(restored.settings[key],settings[key]);
+});
+
+test('a sampled VWAP remains visible between prints without rolling into a session with no data', () => {
+ const nextDay=start+3*86400000;
+ const bars=[bar(start),bar(start+60000),bar(start+120000),bar(nextDay)];
+ const tape=[event(15_000,100,2),event(125_000,130,1)];
+ const points=calculateOptionsVwap(tape,bars,{},null,nextDay+60000,60000);
+ assert.deepEqual(points.map(point=>point.value),[100,100,110]);
+ assert.deepEqual(calculateOptionsVwap(tape,bars,{},start+120000,undefined,60000).map(point=>point.value),[100,100,100]);
+});
+
+test('legacy and fresh Options VWAP settings draw the line and three bands with independent visibility', () => {
+ const points=calculateOptionsVwap([event(1,100,1),event(2,200,1)],[bar(start)]);
+ const theme={primary:'#ddd',secondary:'#a86',positive:'#0f0',negative:'#f00',muted:'#888'};
+ const stock=optionsVwapEnvelopeSeries('test',points,{},theme);
+ assert.equal(stock.length,7);
+ assert.equal(stock[0].pointMarkersVisible,true);
+ assert.equal(stock[0].data[0].value,150);
+ assert.deepEqual(stock.slice(1,3).map(line=>line.data[0].value),[200,100]);
+ assert.equal(stock[0].color,theme.primary);
+ assert.equal(stock[1].color,theme.secondary);
+ assert.deepEqual(optionsVwapEnvelopeSeries('test',points,{showVwapBands:false},theme),stock.slice(0,1));
+ assert.deepEqual(optionsVwapEnvelopeSeries('test',points,{showVwapLine:false},theme),stock.slice(1));
+ assert.deepEqual(optionsVwapEnvelopeSeries('test',[],{},theme),[]);
 });

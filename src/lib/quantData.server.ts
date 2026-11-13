@@ -5499,7 +5499,7 @@ export async function getGexFlowPayload(args: {
     if (error instanceof QuantDataError) throw error;
     throw new QuantDataError("Raw options tape is unavailable for this entitlement.", 422, null);
   }
-  if (!rows.length && !consolidatedAvailable && !rawAvailable) {
+  if (!rows.length && !(wantsConsolidated && consolidatedAvailable) && !(wantsRaw && rawAvailable)) {
     const error = consolidatedResult.status === "rejected" ? consolidatedResult.reason : rawResult.status === "rejected" ? rawResult.reason : null;
     if (error instanceof QuantDataError) throw error;
     throw new QuantDataError("No GEX FLOW data is available for this request.", 422, null);

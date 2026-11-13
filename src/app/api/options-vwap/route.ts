@@ -16,7 +16,10 @@ export async function GET(request:NextRequest){
   const origin=origins.find(value=>new URL(value).hostname==='feed.kwantdesk.com')??origins[0];
   if(!origin||!marketDataGatewayToken())throw Error('Archive not configured');
   const response=await fetchWithDeadline(origin+'/v1/market-data/options-vwap?'+new URLSearchParams(query),{cache:'no-store',headers:{Authorization:'Bearer '+marketDataGatewayToken(),...(request.headers.get('if-none-match')?{'If-None-Match':request.headers.get('if-none-match')!}:{})}},10000);
-  if(response.status===202)return NextResponse.json({status:'PREPARING_RECORDED_OPTIONS'},{status:202,headers:{'Cache-Control':'private, no-store','Retry-After':'2'}});
+  if(response.status===202 || response.status===429){
+   await response.body?.cancel();
+   return NextResponse.json({status:'PREPARING_RECORDED_OPTIONS'},{status:202,headers:{'Cache-Control':'private, no-store','Retry-After':response.status===429?'4':'2'}});
+  }
   if(response.status===304)return new NextResponse(null,{status:304,headers:{'Cache-Control':'private, no-store',ETag:response.headers.get('etag')||''}});
   if(!response.ok){await response.body?.cancel();return NextResponse.json({error:'Recorded options volume is temporarily unavailable.'},{status:503});}
   const reader=response.body!.getReader(),chunks:Uint8Array[]=[];let length=0;try{for(;;){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>10000000)throw Error('Too large');chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}

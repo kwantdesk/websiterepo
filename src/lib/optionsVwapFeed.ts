@@ -28,8 +28,8 @@ export function subscribeOptionsVwap(symbol:string,from:string,to:string,listene
      const received=Date.parse(payload.asOf);
      for(const row of payload.rows){
       if(row.ticker!==symbol||row.parentId)continue;
-      if(/CANCEL/i.test(row.tradeType)){ledger.cancel(row.id);continue;}
-      if(!row.stockPrice||row.stockPrice<=0||!Number.isInteger(row.size)||row.size<=0||row.contractType==='UNKNOWN')continue;
+      if(/CANCEL/i.test(row.tradeType)){ledger.cancel(row.originalTradeId ?? row.id);continue;}
+      if(!Number.isFinite(received)||!row.stockPrice||row.stockPrice<=0||!Number.isInteger(row.size)||row.size<=0||row.contractType==='UNKNOWN')continue;
       const event:OptionsVwapEvent=[row.tradeTime,row.stockPrice,row.size,row.contractType==='CALL'?1:-1,Math.max(row.tradeTime,received)];
       ledger.upsert(row.id,event);
      }
@@ -40,7 +40,7 @@ export function subscribeOptionsVwap(symbol:string,from:string,to:string,listene
    },{refreshMs:15000});
    if(stopLive&&!currentSession(to)){stopLive();stopLive=undefined;}
    const r=await fetch('/api/options-vwap?'+new URLSearchParams({symbol,from,to}),{credentials:'same-origin',cache:'no-store',headers:etag?{'If-None-Match':etag}:{},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(12000)])});
-   if(r.status===202){delay=2000;return;}
+   if(r.status===202){delay=Math.max(2000,Math.min(15000,(Number(r.headers.get('Retry-After'))||2)*1000));return;}
    if(r.status===304){failures=0;return;}
    const payload=await r.json();if(!r.ok)throw Error(payload.error||'Options VWAP history unavailable');
    if(payload.schemaVersion!==1||payload.symbol!==symbol||payload.from!==from||payload.to!==to||payload.coverage?.kind!=='observed-options-contracts'||!Array.isArray(payload.events)||payload.events.length>100000||!Array.isArray(payload.ids)||payload.ids.length!==payload.events.length||payload.ids.some((id:unknown)=>typeof id!=='string'||id.length>200)||payload.events.some((e:unknown)=>!Array.isArray(e)||e.length!==5||!e.every(Number.isFinite)))throw Error('Invalid recorded options data');

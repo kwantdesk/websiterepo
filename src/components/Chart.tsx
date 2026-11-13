@@ -289,7 +289,7 @@ import {
   type NativeVolumeProfileModel,
 } from "@/lib/nativeVolumeProfilePrimitive";
 import { useOptionsVwapHistory } from "@/components/useOptionsVwapHistory";
-import { calculateOptionsVwap } from "@/lib/optionsVwap";
+import { calculateOptionsVwap, optionsVwapEnvelopeSeries } from "@/lib/optionsVwap";
 import { buildTpoProfiles } from "@/lib/tpo/engine";
 import { requestTpoProfileBuild, cancelTpoProfileBuild } from "@/lib/tpo/workerClient";
 import { tpoCalculationSettingsKey, validateTpoSettings } from "@/lib/tpo/settings";
@@ -7630,9 +7630,31 @@ function Chart({
       });
     } });
 
-  const optionsVwapState = useOptionsVwapHistory(indicators.some(item=>item.enabled && item.indicatorId === "options-vwap"), instrument,
-    sampledIndicatorCandles[0]?.timestamp ?? NaN, sampledIndicatorCandles.at(-1)?.timestamp ?? NaN,replayTimestampMs !== null);
-  const optionsVwapHistory = optionsVwapState.payload;
+  const optionsVwapEnabled = indicators.some(item => item.enabled && item.indicatorId === "options-vwap");
+  const optionsVwapSymbol = instrument.trim().toUpperCase();
+  const optionsVwapCandles = useMemo(() => {
+    if (!optionsVwapEnabled) return [];
+    return replayTimestampMs != null ? sampledIndicatorCandles
+      : mergeLiveIndicatorTail(observedSourceCandles, pendingLiveVolumeCandleRef.current);
+  }, [optionsVwapEnabled, observedSourceCandles, replayTimestampMs, sampledIndicatorCandles]);
+  const { payload: optionsVwapHistory } = useOptionsVwapHistory(optionsVwapEnabled, optionsVwapSymbol,
+    optionsVwapCandles[0]?.timestamp ?? NaN, optionsVwapCandles.at(-1)?.timestamp ?? NaN, replayTimestampMs != null);
+  const optionsVwapSeries = useMemo(() => {
+    if (!optionsVwapEnabled || optionsVwapHistory?.symbol !== optionsVwapSymbol || !optionsVwapCandles.length) return [];
+    const interval = timeframeToMs(timeframe) ?? undefined;
+    const first = optionsVwapCandles[0].timestamp;
+    const last = optionsVwapCandles.at(-1)!;
+    const end = interval === undefined ? (last.sourceEndTimestamp ?? last.timestamp) + 1 : last.timestamp + interval;
+    const theme = visibleIndicatorTheme(settings);
+    return indicators.flatMap(instance => {
+      if (!instance.enabled || instance.indicatorId !== "options-vwap") return [];
+      const config = instance.settings ?? {};
+      const from = indicatorHistoryStart(config, first, replayTimestampMs ?? last.timestamp);
+      const points = calculateOptionsVwap(optionsVwapHistory.events, optionsVwapCandles, config, replayTimestampMs, end, interval)
+        .filter(point => point.time * 1_000 >= from);
+      return optionsVwapEnvelopeSeries(instance.instanceId, points, config, theme);
+    });
+  }, [indicators, optionsVwapCandles, optionsVwapEnabled, optionsVwapHistory, optionsVwapSymbol, replayTimestampMs, settings, timeframe]);
   const adrHost = sampledIndicatorCandles.at(-1);
   const adrIntervalMs = timeframeToMs(timeframe);
   const adrCoarseHost = adrIntervalMs === null || adrIntervalMs > 60_000;
@@ -7672,30 +7694,7 @@ function Chart({
   }, [indicators, instrument, observedSourceCandles, replayTimestampMs, sampledIndicatorCandles, settings, timeframe]);
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
-      if (instance.indicatorId === "options-vwap") {
-        if (!instance.enabled || !optionsVwapHistory || optionsVwapHistory.symbol !== instrument) return [];
-        const config=instance.settings ?? {};
-        const theme=visibleIndicatorTheme(settings);
-        const from = indicatorHistoryStart(config, sampledIndicatorCandles[0]?.timestamp, replayTimestampMs ?? sampledIndicatorCandles.at(-1)?.timestamp ?? 0);
-        const points=calculateOptionsVwap(optionsVwapHistory.events,sampledIndicatorCandles,config,replayTimestampMs,(sampledIndicatorCandles.at(-1)?.timestamp ?? 0)+(timeframeToMs(timeframe) ?? inferCandleIntervalMs(sampledIndicatorCandles) ?? 60000)).filter(point => point.time * 1_000 >= from);
-        const style=(value:unknown): "solid"|"dashed"|"dotted"=>value==="dashed"||value==="dotted"?value:"solid";
-        const width=(value:unknown,fallback:number)=>Math.max(1,Math.min(4,Number(value)||fallback)) as 1|2|3|4;
-        const lines:CalculatedIndicatorSeries[]=[{key:instance.instanceId+"-options-vwap",groupKey:instance.instanceId,label:"Options VWAP · observed contracts",kind:"line",placement:"overlay",
-          color:config.useThemeColors !== false ? theme.primary : String(config.plotColor ?? config.lineColor ?? "#22D3EE"),
-          lineWidth:width(config.lineWidth,2),lineStyle:style(config.lineStyle),lastValueVisible:config.showCurrentValue === true,data:points}];
-        for(let i=1;i<=5;i++){
-          if(config['band'+i+'Enabled']!==true)continue;
-          const multiplier=Math.max(.1,Math.min(10,Number(config['band'+i])||i));
-          for(const direction of [1,-1]){
-            const colourKey=(direction===1?'upper':'lower')+i+'Color';
-            lines.push({key:instance.instanceId+'-options-vwap-'+colourKey,groupKey:instance.instanceId,label:'Options VWAP '+(direction===1?'+':'−')+multiplier+(config.envelopeMode==='price-percentage'?'%':'σ'),kind:'line',placement:'overlay',
-              color:config.useThemeColors!==false?theme.secondary:String(config[colourKey]??theme.secondary),lineWidth:width(config.bandLineWidth,1),lineStyle:style(config.bandLineStyle??'dotted'),lastValueVisible:config.showCurrentValue===true,
-              data:points.map(point=>({...point,value:point.value+direction*multiplier*(config.envelopeMode==='price-percentage'?point.value/100:point.deviation)}))});
-          }
-        }
-        return lines;
-      }
-      if (instance.indicatorId === "vwap-envelopes"
+      if (instance.indicatorId === "options-vwap" || instance.indicatorId === "vwap-envelopes"
         || isLivePriceStudy(instance.indicatorId) || isFullHistoryPriceStudy(instance.indicatorId)) return [];
       if (instance.indicatorId === "average-daily-range-target" && adrHistoryKey && !adrDailyCandles) return [];
       if (
@@ -7719,8 +7718,6 @@ function Chart({
       indicatorCandles,
       deltaPaneCandles,
       indicatorSignature,
-      sampledIndicatorCandles,
-      optionsVwapHistory,
       adrAsOf,
       adrDailyCandles,
       adrHistoryKey,
@@ -7859,6 +7856,7 @@ function Chart({
       ...liveChaikinOverlays.flatMap(group => group.series),
       ...priceStudySeries,
       ...vwapEnvelopeSeries,
+      ...optionsVwapSeries,
       ...cciGroups.filter(group => group.settings?.chartArea !== "chart").flatMap(group => group.series),
       ...liveCciOverlays.flatMap(group => group.series),
     ], replayTimestampMs);
@@ -7879,7 +7877,7 @@ function Chart({
       ...series.filter(usesSourceTime),
     ];
   }, [baseCalculatedIndicatorSeries, liveChaikinOverlays, priceStudySeries, cciGroups, liveCciOverlays,
-    eventChartIndicatorTimeMap, replayTimestampMs, vwapEnvelopeSeries]);
+    eventChartIndicatorTimeMap, replayTimestampMs, vwapEnvelopeSeries, optionsVwapSeries]);
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
@@ -17204,6 +17202,7 @@ function Chart({
       const correctionTrackedPoints = definition.key === "aroon-oscillator"
         || definition.key.startsWith("bollinger-bands-")
         || definition.key.startsWith("vwap-envelopes-")
+        || (definition.groupKey !== undefined && definition.key.startsWith(`${definition.groupKey}-options-vwap`))
         ? definition.data : undefined;
       const previousCorrectionTrackedPoints = existing?.correctionTrackedPoints;
       // A late candle can change an interior study window with the tail intact.

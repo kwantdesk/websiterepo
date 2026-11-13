@@ -3988,6 +3988,28 @@ export default function ChartIndicatorsControl({
 
               {settingsDefinition.id === "options-vwap" ? (
                 <div className="grid gap-3 border border-border p-3 text-[10px] sm:grid-cols-2">
+                  {
+                    [
+                      ["showVwapLine", "Show VWAP line"],
+                      ["showVwapBands", "Show bands"],
+                    ].map(([key, label]) => (
+                      <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[10px] text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={settingsInstance.settings?.[key] !== false}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: { ...current.settings, [key]: checked },
+                            }));
+                          }}
+                          className="accent-primary"
+                        />
+                        {label}
+                      </label>
+                    ))
+                  }
                   <label className="space-y-2"><span>Options volume</span><KwantSelect value={String(settingsInstance.settings?.side ?? "both")} onChange={event=>replace(settingsInstance.instanceId,current=>({...current,settings:{...current.settings,side:event.target.value}}))} menuLabel="Options VWAP volume"><option value="both">Calls + puts</option><option value="calls">Calls only</option><option value="puts">Puts only</option></KwantSelect></label>
                   <label className="space-y-2"><span>Reset</span><KwantSelect value={String(settingsInstance.settings?.reset ?? "session")} onChange={event=>replace(settingsInstance.instanceId,current=>({...current,settings:{...current.settings,reset:event.target.value}}))} menuLabel="Options VWAP reset"><option value="session">New York session</option><option value="week">New York week</option></KwantSelect></label>
                   {[['envelopeMode','Envelope calculation'],['lineStyle','VWAP line'],['bandLineStyle','Envelope lines']].map(([key,label])=>(
@@ -8089,6 +8111,7 @@ export default function ChartIndicatorsControl({
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "pulling-stacking" && (key === "includeOwnOrders" || key === "includeImpliedOrders"))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
+                    && !(settingsDefinition.id === "options-vwap" && (key === "showVwapLine" || key === "showVwapBands"))
                     && !(settingsDefinition.id === "awesome-oscillator" && key === "plotColor")
                     && !(settingsDefinition.id === "deep-m-effort-nq" && ["showNameLabel", "nameBackground", "valueBackground", "enableAlertSound", "enableMessage"].includes(key))
                     && (typeof value === "boolean" || isColourSetting(key, value)))
