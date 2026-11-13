@@ -4,9 +4,9 @@ type Point = { x: number; y: number; value: number; color?: string; breakBefore?
 type Bounds = { left: number; top: number; right: number; bottom: number };
 
 /** KST-only painter: other established pane studies keep their existing path. */
-export default function KstPanePlot({ series, points, bounds, vertical = false, nameRow = 0, referenceCoordinate }: {
+export default function KstPanePlot({ series, points, bounds, vertical = false, nameRow = 0, hideName = false, referenceCoordinate }: {
   series: KstSeries; points: Point[]; bounds: Bounds; vertical?: boolean;
-  nameRow?: number; referenceCoordinate?: number;
+  nameRow?: number; hideName?: boolean; referenceCoordinate?: number;
 }) {
   const { left, top, right, bottom } = bounds;
   const dash = series.lineStyle === "dashed" ? "6 4" : series.lineStyle === "dotted" ? "2 3" : undefined;
@@ -53,7 +53,7 @@ export default function KstPanePlot({ series, points, bounds, vertical = false, 
   return <svg x={left} y={top} width={right - left} height={bottom - top} viewBox={`${left} ${top} ${right - left} ${bottom - top}`} overflow="hidden" data-kst-plot={series.key}>
     {series.lineVisible !== false ? segments.map((s, i) => <path key={i} d={s.path} fill="none" stroke={s.color} strokeWidth={strokeWidth} strokeDasharray={dash} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />) : null}
     {[...dots].map(([color, paths]) => <path key={color} data-kst-points="true" d={paths.join("")} stroke={color} strokeWidth={strokeWidth + 2} strokeLinecap="round" fill="none" vectorEffect="non-scaling-stroke" />)}
-    {labels?.nameLabel ? label(series.label, left + 2, top + 12 + nameRow * 15, labels.nameBackground, "name") : null}
+    {labels?.nameLabel && !hideName ? label(series.label, left + 2, top + 12 + nameRow * 15, labels.nameBackground, "name") : null}
     {lastVisible && labels?.valueLabel ? label(last.value.toLocaleString("en-US", { maximumFractionDigits: 2 }), vertical ? last.x : right - 100, vertical ? bottom - 3 : last.y, labels.valueBackground, "value") : null}
   </svg>;
 }

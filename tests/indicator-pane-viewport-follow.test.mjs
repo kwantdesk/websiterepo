@@ -267,3 +267,32 @@ test('every catalog study emitting numeric pane data uses the shared graduated a
     h.dispose();
   }
 });
+
+test("shared pane legends omit repeated headings and retain distinct plot names", () => {
+  const h = harness();
+  try {
+    const series = (key, label) => ({ key, label, placement: "pane", kind: "line",
+      color: "#123abc", data: [{ time: 1, value: 10 }, { time: 2, value: 12 }] });
+    const title = "Cumulative Delta Candlestick";
+    h.props.groups = [{
+      key: "delta", title, indicatorId: "delta-cumulative-candlestick",
+      series: [series("main", title), series("average", "Average"), series("repeat", " average ")],
+    }];
+    const labels = () => h.descendants(h.tree(), n => n.type === "text").map(n => n.props.children);
+    assert.equal(labels().filter(label => label === title).length, 1);
+    assert.equal(labels().filter(label => String(label).trim().toLowerCase() === "average").length, 1);
+
+    h.props.groups = [{
+      key: "adx", title: "ADX (14)", indicatorId: "average-directional-index-adx",
+      series: [series("adx", "ADX"), series("plus", "+DI"), series("minus", "-DI")],
+    }];
+    assert.equal(labels().includes("ADX"), false);
+    assert.ok(labels().includes("ADX (14)"));
+    assert.ok(labels().includes("+DI"));
+    assert.ok(labels().includes("-DI"));
+    h.props.groups[0].showHeader = false;
+    assert.ok(labels().includes("ADX"), "keep the legend name when the heading is hidden");
+  } finally {
+    h.dispose();
+  }
+});

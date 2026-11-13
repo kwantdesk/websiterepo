@@ -1,13 +1,14 @@
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 
-export default function SuperTrendPaneLabels({ series, points, bounds, rightInset = 0 }: {
+export default function SuperTrendPaneLabels({ series, points, bounds, rightInset = 0, hideName = false }: {
   series: CalculatedIndicatorSeries;
   points: Array<{ x: number; y: number; value: number; color?: string }>;
   bounds: { left: number; top: number; right: number; bottom: number };
   rightInset?: number;
+  hideName?: boolean;
 }) {
   const s = series.superTrendLabels;
-  if (!s || (!s.nameLabel && !s.valueLabel)) return null;
+  if (!s || ((hideName || !s.nameLabel) && !s.valueLabel)) return null;
   const { left, top, right, bottom } = bounds;
   let last: (typeof points)[number] | undefined;
   for (let i = points.length - 1; i >= 0; i -= 1) {
@@ -22,7 +23,7 @@ export default function SuperTrendPaneLabels({ series, points, bounds, rightInse
   const color = last.color ?? series.color;
   const labelRight = Math.max(left + 1, right - Math.max(0, rightInset));
   const labels = [
-    ...(s.nameLabel ? [{ key: "name", text: s.name, background: s.nameBackground }] : []),
+    ...(s.nameLabel && !hideName ? [{ key: "name", text: s.name, background: s.nameBackground }] : []),
     ...(s.valueLabel ? [{ key: "value", text: last.value.toLocaleString("en-US", { maximumFractionDigits: 2 }), background: s.valueBackground }] : []),
   ];
   const baseY = Math.max(top + 12, Math.min(bottom - labels.length * 17, last.y - labels.length * 17));

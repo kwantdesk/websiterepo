@@ -56,6 +56,27 @@ type IndicatorPaneLayoutMap = Record<string, IndicatorPanePlacement>;
 
 type IndicatorPaneDomain = { min: number; max: number };
 
+function paneLabelKey(label = "") {
+  return label.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function paneTitleMatchesLabel(title: string, label: string) {
+  const key = paneLabelKey(label);
+  const heading = paneLabelKey(title.split(" · ", 1)[0]);
+  return key === paneLabelKey(title) || key === heading || key === heading.replace(/ \(\d+\)$/, "");
+}
+
+function paneLegendSeries(group: IndicatorPaneGroup) {
+  const seen = new Set<string>();
+  return group.series.filter(({ label, superTrendLabels }) => {
+    if (superTrendLabels?.nameLabel && paneLabelKey(superTrendLabels.name) === paneLabelKey(label)) return false;
+    const key = paneLabelKey(label);
+    if (!key || seen.has(key) || (group.showHeader !== false && paneTitleMatchesLabel(group.title, label))) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function compact(value: number) {
   const absolute = Math.abs(value);
   if (absolute >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -379,6 +400,8 @@ function ChartIndicatorPaneSurface({
         const zeroY = zeroSeries ? yFor(0, zeroSeries) : null;
         const clipId = `indicator-pane-${group.key.replace(/[^a-z0-9-]/gi, "")}-${groupIndex}`;
         const stats = group.stats;
+        const legend = !collapsed && !stats && group.showLegend !== false && width >= 620
+          ? paneLegendSeries(group) : [];
         const statsHeaderWidth = stats?.showHeader ? 72 : 0;
         const statsInnerTop = top + 24;
         const statsRowHeight = stats?.metrics.length
@@ -579,6 +602,7 @@ function ChartIndicatorPaneSurface({
               {group.series.map((definition, seriesIndex) => {
                 if (group.indicatorId === "know-sure-thing-kst") {
                   return <KstPanePlot key={definition.key} series={definition} nameRow={seriesIndex}
+                    hideName={group.showHeader !== false && paneTitleMatchesLabel(group.title, definition.label)}
                     bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                     referenceCoordinate={definition.horizontalPriceLine ? yFor(definition.data[0]?.value ?? NaN, definition) : undefined}
                     points={sampledPanePoints(definition, xForTime, plotWidth, visibleWindow).map(p => ({ ...p, y: yFor(p.value, definition) }))} />;
@@ -718,6 +742,7 @@ function ChartIndicatorPaneSurface({
             </g> : null}
             {!collapsed && (group.indicatorId === "super-trend-difference" || group.indicatorId === "super-trend") ? group.series.map(definition => (
               <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition} rightInset={28}
+                hideName={group.showHeader !== false && paneTitleMatchesLabel(group.title, definition.superTrendLabels?.name ?? definition.label)}
                 bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                 points={sampledPanePoints(definition, xForTime, plotWidth, visibleWindow).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
             )) : null}
@@ -748,8 +773,8 @@ function ChartIndicatorPaneSurface({
                 </text>
               </>
             ) : null}
-            {!collapsed && !stats && group.showLegend !== false && width >= 620 ? <g transform={`translate(${Math.min(plotWidth - 8, group.indicatorId === "cumulative-volume-delta" ? 210 : group.percentageAxis ? 330 : 190)}, ${top + 9})`}>
-              {group.series.slice(group.indicatorId === "cumulative-volume-delta" ? 1 : 0).map((definition, index) => (
+            {legend.length > 0 ? <g transform={`translate(${Math.min(plotWidth - 8, group.indicatorId === "cumulative-volume-delta" ? 210 : group.percentageAxis ? 330 : 190)}, ${top + 9})`}>
+              {legend.map((definition, index) => (
                 <g key={definition.key} transform={`translate(${index * 88}, 0)`}>
                   <line x1="0" y1="3" x2="12" y2="3" stroke={definition.color} strokeWidth={definition.lineWidth ?? 2} />
                   <text x="16" y="6" fill="var(--muted)" fontSize="8" fontFamily="Aleph, monospace">
@@ -1259,6 +1284,7 @@ function ChartVerticalIndicatorPaneSurface({
                   {group.series.map((definition, seriesIndex) => {
                     if (group.indicatorId === "know-sure-thing-kst") {
                       return <KstPanePlot key={definition.key} series={definition} nameRow={seriesIndex} vertical
+                        hideName={paneTitleMatchesLabel(group.title, definition.label)}
                         bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
                         referenceCoordinate={definition.horizontalPriceLine ? xForValue(definition.data[0]?.value ?? NaN, definition) : undefined}
                         points={sampledVerticalPanePoints(definition, yForTime, plotHeight, visibleWindow).map(p => ({ ...p, x: xForValue(p.value, definition), y: p.y + plotTop }))} />;
@@ -1355,6 +1381,7 @@ function ChartVerticalIndicatorPaneSurface({
                   })}
                   {group.indicatorId === "super-trend-difference" || group.indicatorId === "super-trend" ? group.series.map(definition => (
                     <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition}
+                      hideName={paneTitleMatchesLabel(group.title, definition.superTrendLabels?.name ?? definition.label)}
                       bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
                       points={sampledVerticalPanePoints(definition, yForTime, plotHeight, visibleWindow).map(point => ({ ...point, x: xForValue(point.value, definition), y: point.y + plotTop }))} />
                   )) : null}
