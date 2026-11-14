@@ -19,7 +19,7 @@ test('embedded loader safely renders the standard themed progress bar, without m
     showWorkspaceLoading(target,'Loading chart');assert.equal(creates,1);
     assert.equal(target.firstElementChild.attributes['aria-label'],'Loading chart');
     const css=read('public/workspace-loading.css');
-    for(const token of ['height: 5px','kwant-workspace-loading 1.45s ease-in-out infinite','--site-background','prefers-reduced-motion: reduce'])assert.ok(css.includes(token));
+    for(const token of ['height: 5px','transform-origin: left center','scaleX(.94)','forwards','background: var(--site-primary, var(--primary, currentColor))','--site-background','prefers-reduced-motion: reduce'])assert.ok(css.includes(token));
   }finally{globalThis.document=original;}
 });
 

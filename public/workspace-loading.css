@@ -41,15 +41,15 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: color-mix(in srgb, var(--site-primary, var(--primary, currentColor)) 70%, currentColor);
-  transform: translateX(-28%) scaleX(.44);
-  animation: kwant-workspace-loading 1.45s ease-in-out infinite;
+  background: var(--site-primary, var(--primary, currentColor));
+  transform-origin: left center;
+  transform: scaleX(.06);
+  animation: kwant-workspace-loading 16s cubic-bezier(.16, .56, .37, 1) forwards;
 }
 
 @keyframes kwant-workspace-loading {
-  0% { transform: translateX(-52%) scaleX(.12); }
-  46% { transform: translateX(-6%) scaleX(.62); }
-  100% { transform: translateX(55%) scaleX(.14); }
+  from { transform: scaleX(.06); }
+  to { transform: scaleX(.94); }
 }
 
 @media (prefers-reduced-motion: reduce) {
