@@ -44,7 +44,7 @@
   background: var(--site-primary, var(--primary, currentColor));
   transform-origin: left center;
   transform: scaleX(.06);
-  animation: kwant-workspace-loading 16s cubic-bezier(.16, .56, .37, 1) forwards;
+  animation: kwant-workspace-loading 16s cubic-bezier(.16, .56, .37, 1) var(--kwant-loader-delay, 0ms) forwards;
 }
 
 @keyframes kwant-workspace-loading {

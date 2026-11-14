@@ -1,5 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import type { CSSProperties } from "react";
+import { startWorkspaceLoading } from "../../public/gex-data-app/workspace-load-timeline.js";
+
+function resumeLoading(node: HTMLDivElement | null) {
+  if (node) return startWorkspaceLoading(node);
+}
 
 type KwantLoaderProps = {
   title: string;
@@ -48,6 +53,7 @@ export default function KwantLoader({
       aria-live="polite"
       aria-label={title}
       aria-busy="true"
+      ref={screen ? resumeLoading : undefined}
       className={`kwant-loader relative flex min-h-0 items-center justify-center overflow-hidden bg-background text-center ${
         page ? "h-full w-full grow self-stretch" : ""
       } ${className}`}
