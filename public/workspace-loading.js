@@ -1,9 +1,9 @@
-import { startWorkspaceLoading } from "./gex-data-app/workspace-load-timeline.js?v=1";
+import { startWorkspaceLoading } from "./gex-data-app/workspace-load-timeline.js?v=2";
 
 const stopLoading = new WeakMap();
 
-export function hideWorkspaceLoading(target) {
-  stopLoading.get(target)?.();
+export function hideWorkspaceLoading(target, complete = true) {
+  stopLoading.get(target)?.(complete);
   stopLoading.delete(target);
 }
 
@@ -15,7 +15,7 @@ export function showWorkspaceLoading(target, title = "Loading workspace", contin
     return;
   }
 
-  hideWorkspaceLoading(target);
+  hideWorkspaceLoading(target, false);
   const loader = document.createElement("div");
   loader.className = "site-workspace-loader";
   loader.setAttribute("role", "status");

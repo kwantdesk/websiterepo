@@ -1,1 +1,1 @@
-export function startWorkspaceLoading(loader: HTMLElement): () => void;
+export function startWorkspaceLoading(loader: HTMLElement): (complete?: boolean) => void;
