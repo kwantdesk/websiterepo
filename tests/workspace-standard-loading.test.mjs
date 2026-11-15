@@ -5,7 +5,7 @@ import test from 'node:test';
 import {showWorkspaceLoading} from '../public/workspace-loading.js';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('embedded loader safely renders the standard themed progress bar, without mounting repeatedly',()=>{
+test('embedded loader safely renders the standard themed spinner, without mounting repeatedly',()=>{
   const original=globalThis.document;let creates=0;
   globalThis.document={createElement:()=>{creates++;return {className:'',attributes:{},title:{},setAttribute(key,value){this.attributes[key]=value;},querySelector(){return this.title;},classList:{contains:()=>true}};}};
   try{
@@ -14,12 +14,12 @@ test('embedded loader safely renders the standard themed progress bar, without m
     assert.equal(target.firstElementChild.attributes['aria-label'],'Loading <example>');
     assert.doesNotMatch(target.firstElementChild.innerHTML,/<example>/);
     assert.equal(target.firstElementChild.attributes['aria-busy'],'true');
-    assert.match(target.firstElementChild.innerHTML,/kwant-loader-track.*kwant-loader-fill/);
+    assert.match(target.firstElementChild.innerHTML,/kwant-loader-spinner/);
     showWorkspaceLoading(target,'Loading <example>');assert.equal(creates,1);
     showWorkspaceLoading(target,'Loading chart');assert.equal(creates,1);
     assert.equal(target.firstElementChild.attributes['aria-label'],'Loading chart');
     const css=read('public/workspace-loading.css');
-    for(const token of ['height: 5px','transform-origin: left center','scaleX(.94)','forwards','background: var(--site-primary, var(--primary, currentColor))','--site-background','prefers-reduced-motion: reduce'])assert.ok(css.includes(token));
+    for(const token of ['border-radius: 50%','rotate(360deg)','linear infinite','border-top-color: var(--site-primary, var(--primary, currentColor))','--site-background','prefers-reduced-motion: reduce'])assert.ok(css.includes(token));
   }finally{globalThis.document=original;}
 });
 
