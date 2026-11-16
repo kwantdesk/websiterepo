@@ -19,6 +19,7 @@ test('embedded loader safely renders the standard themed spinner, without mounti
     showWorkspaceLoading(target,'Loading chart');assert.equal(creates,1);
     assert.equal(target.firstElementChild.attributes['aria-label'],'Loading chart');
     const css=read('public/workspace-loading.css');
+    assert.match(css,/prefers-reduced-motion: reduce\)\s*\{\s*\.kwant-loader-spinner\s*\{\s*animation-duration:\s*2400ms/);
     for(const token of ['border-radius: 50%','rotate(360deg)','linear infinite','border-top-color: var(--site-primary, var(--primary, currentColor))','--site-background','prefers-reduced-motion: reduce'])assert.ok(css.includes(token));
   }finally{globalThis.document=original;}
 });

@@ -32,16 +32,17 @@
   box-sizing: border-box;
   width: 24px;
   height: 24px;
-  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border: 2px solid color-mix(in srgb, currentColor 16%, transparent);
   border-top-color: var(--site-primary, var(--primary, currentColor));
   border-radius: 50%;
   animation: kwant-loader-spin 800ms linear infinite;
 }
 
 @keyframes kwant-loader-spin {
+  from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kwant-loader-spinner { animation: none; }
+  .kwant-loader-spinner { animation-duration: 2400ms; }
 }
