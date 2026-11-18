@@ -1328,16 +1328,7 @@ const DEFAULT_GAMMA_WORKSPACE_PANES: WorkspacePane[] = [
   { id: "gex-standard-qqq", symbol: "QQQ", broker: "Market Index", timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey("QQQ", "Market Index"), content: "charts", locked: false },
 ];
 
-/**
- * The GEX VUE "charts + GEX Map at 35%" layouts are presets, not just
- * geometry: picking one stocks the charts and the embedded map with the desk's
- * standard options surface so the workspace is usable the moment it appears.
- * The four-chart layout is the one the desk runs; the three-chart layout takes
- * the first three of the same roster so the two stay consistent. Keep this
- * roster in replay order so every requested options underlying receives the
- * same shared clock without silently duplicating another symbol.
- */
-const GEX_MAP_AUTO_CHART_SYMBOLS = ["SPXW", "NDX", "SPY", "QQQ"] as const;
+const GEX_VUE_AUTO_CHART_SYMBOLS = DEFAULT_GAMMA_WORKSPACE_PANES.map(({ symbol }) => symbol);
 const GEX_MAP_AUTO_CHART_TIMEFRAME = "5m";
 /** One synchronized GEX column for every underlying in the replay roster. */
 const GEX_MAP_AUTO_MAP_PANELS = [
@@ -1420,9 +1411,7 @@ function createGexStandardPreset(chartSettings: ChartSettings): WorkspacePreset 
 }
 
 function createGexQuadMapPreset(chartSettings: ChartSettings): WorkspacePreset {
-  // Screenshot order: SPXW / NDX above QQQ / SPY, with the map at right.
-  const symbols = ["SPXW", "NDX", "QQQ", "SPY"];
-  const panes: WorkspacePane[] = symbols.map(symbol => ({
+  const panes: WorkspacePane[] = GEX_VUE_AUTO_CHART_SYMBOLS.map(symbol => ({
     id: `gex-quad-map-${symbol.toLowerCase()}`, symbol, broker: "Market Index",
     timeframe: "5m", period: DEFAULT_CHART_LOAD_PERIOD, watchlistKey: makeWatchlistKey(symbol, "Market Index"),
     content: "charts", locked: false,
@@ -16173,7 +16162,8 @@ export default function KwantifyWorkspace({
         : layout === "columns-3" ? 3
           : layout === "single" ? 1 : 2;
     const nextPanes = [...workspacePanes];
-    const scopedDefaults = defaultWorkspacePanes(chartWorkspaceScopeRef.current);
+    const scope = chartWorkspaceScopeRef.current;
+    const scopedDefaults = defaultWorkspacePanes(scope);
     // Panes that did not exist before this click. Only these may start empty;
     // everything already on the desk keeps whatever the trader put in it.
     const freshPaneIds = new Set<string>();
@@ -16190,43 +16180,33 @@ export default function KwantifyWorkspace({
       nextPanes.push({ ...source, id });
       freshPaneIds.add(id);
     }
-    // A layout button changes the geometry and nothing else.
-    //
-    // It used to hoist the ACTIVE pane to the front, so picking a layout while
-    // focused on the right-hand chart moved that chart to the left and shuffled
-    // the others past it — the charts appeared to be swapped or thrown away.
-    // And any pane not in the current tree had its content blanked, so a chart
-    // the trader had set up and then hidden behind a smaller layout came back
-    // empty. Keeping the on-screen order and every pane's content means the
-    // walls move and the contents stay where they were put.
+    // Keep the pane order and hidden panes when switching geometry. GEX Vue's
+    // automatic layouts stock only their visible chart slots.
     let orderedPanes = orderPanesForLayout<WorkspacePane, WorkspacePanelKind | null>(
       collectWorkspacePaneIds(workspaceTree),
       nextPanes,
       freshPaneIds,
       null,
     );
-    if (gexMapAutoChartCount) {
-      // The auto layouts fix content AND the instruments, not just geometry:
-      // the stock options surface on the left, the embedded GEX Map on the
-      // right 35% carrying the matching exposure columns.
+    if (scope === "gamma" || gexMapAutoChartCount) {
+      const chartCount = gexMapAutoChartCount || requiredPaneCount;
       orderedPanes = orderedPanes.map((pane, index): WorkspacePane => {
-        if (index < gexMapAutoChartCount) {
-          const symbol = (layout === "gexmap-quad" ? ["SPXW", "NDX", "QQQ", "SPY"] : GEX_MAP_AUTO_CHART_SYMBOLS)[index]
-            ?? GEX_MAP_AUTO_CHART_SYMBOLS[GEX_MAP_AUTO_CHART_SYMBOLS.length - 1];
+        const symbol = index < chartCount ? GEX_VUE_AUTO_CHART_SYMBOLS[index] : undefined;
+        if (symbol) {
+          const timeframe = !gexMapAutoChartCount && supportsChartInterval(pane.timeframe, "Market Index", symbol)
+            ? pane.timeframe : GEX_MAP_AUTO_CHART_TIMEFRAME;
           return {
             ...pane,
-            content: "charts" as WorkspacePanelKind,
+            content: "charts",
             symbol,
-            // SPXW/SPY/NDX/QQQ are cash-index instruments: they must ride the
-            // Market Index feed, never the CME broker the pane may have held.
             broker: "Market Index",
-            timeframe: GEX_MAP_AUTO_CHART_TIMEFRAME,
-            period: DEFAULT_CHART_LOAD_PERIOD,
-            preferFiveDayHistory: false,
+            timeframe,
+            period: gexMapAutoChartCount ? DEFAULT_CHART_LOAD_PERIOD : pane.period,
+            preferFiveDayHistory: gexMapAutoChartCount ? false : pane.preferFiveDayHistory,
             watchlistKey: makeWatchlistKey(symbol, "Market Index"),
           };
         }
-        if (index === gexMapAutoChartCount) {
+        if (gexMapAutoChartCount && index === gexMapAutoChartCount) {
           return {
             ...pane,
             content: "gexmap" as WorkspacePanelKind,
