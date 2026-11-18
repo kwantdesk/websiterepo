@@ -11,7 +11,8 @@ import {themeBootstrapScript} from '../src/lib/theme.ts';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const loaderSource=read('src/components/KwantLoader.tsx'),workspace=read('src/components/KwantifyWorkspace.tsx'),chart=read('src/components/Chart.tsx');
 const code=ts.transpileModule(loaderSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-const exports={};new Function('require','exports',code)(createRequire(import.meta.url),exports);
+const exports={}, requireFromLoader=createRequire(new URL('../src/components/KwantLoader.tsx',import.meta.url));
+new Function('require','exports',code)(requireFromLoader,exports);
 const render=props=>renderToStaticMarkup(React.createElement(exports.default,{title:'Loading chart',detail:'Internal startup detail',...props}));
 
 test('quiet startup renders only an accessible theme surface, with no visual animation or backdrop',()=>{

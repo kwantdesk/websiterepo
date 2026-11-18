@@ -3,7 +3,7 @@ import {orderflowMajorLevels} from './orderflow-major-levels.js?v=20261104';
 import {LIVE_SNAPSHOT_INTERVAL_MS,FAILED_SNAPSHOT_INTERVAL_MS} from './cadence.js';
 import {themePaint,themeIsLight} from './site-theme.js';
 import {mountWorkspaceChrome,arrangeWorkspacePanels,reorderWorkspacePanels} from './workspace-chrome.js?v=2';
-import {showWorkspaceLoading} from '../workspace-loading.js?v=6';
+import {hideWorkspaceLoading, showWorkspaceLoading} from '../workspace-loading.js?v=8';
 import {syncThemeSettings} from './theme-settings.js';
 import {botStorage,botFetch,botTheme,botTimeZone,botPriceHistory,botSubscribePrice,botWorkspaceReplay} from './site-runtime.js?v=2';
 import {createReplayPrefixReader} from './replay-cursor.js?v=1';
@@ -23,7 +23,7 @@ import {RetainedSnapshots} from './retention.js';
 import {drawProfile,PROFILE_COLORS,sourceTooltipNumber} from './profile-chart.js?v=20261106';
 import {renderOrderflow,ORDERFLOW_METRICS,createOrderflowModel} from './orderflow-chart.js?v=7';
 import {mountSettingsEditor} from './settings-editor.js?v=5';
-import {createOverlayEditor} from './overlay-editor.js?v=8';
+import {createOverlayEditor} from './overlay-editor.js?v=9';
 import {finite,mergeSnapshots,sourceDate,sourceTime,expiryLabel,profileHistoryRecords,seekSnapshot,exposureSummary,exposureSummaryUnit,toggleExpiry,closeOrderPanel,restoreOrderPanel,ORDERFLOW_WINDOWS} from './models.js?v=3';
 
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -164,7 +164,7 @@ function syncShell(){
  $('#ticker').value=state.ticker;const root=state.ticker==='ES_SPX'?'SPX':state.ticker==='NQ_NDX'?'NDX':state.ticker;const future=root==='SPX'?'ES_SPX':root==='NDX'?'NQ_NDX':null;$('#futureMode').disabled=!future||!catalog?.tickers.includes(future);$('#futureMode').textContent=future||'futures';$('#futureMode').classList.toggle('selected',state.ticker.includes('_'));$('#spotMode').classList.toggle('selected',!state.ticker.includes('_'));
  $('#liveButton').classList.toggle('selected',state.auto&&!state.historyMode&&state.replayIndex===null);$('#addStateChart').hidden=state.package!=='state';$('#statePanelControls').hidden=state.package!=='state';syncActiveChartControls();tickerShortcuts.render();if(state.package==='orderflow')renderOrderControls();if(state.package==='state'){renderStateControls();renderSummary();updateLabels();}workspaceChrome?.sync();
 }
-function renderChartEmpty(){const target=$('#chartEmpty');target.hidden=state.package==='state'?state.statePanels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):state.package==='orderflow'?state.panels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):state.classicPanels?.length?state.classicPanels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):Boolean(selectedPayload())||priceState().points.length>0;if(state.sourceError)target.textContent='Data unavailable.';else showWorkspaceLoading(target,'Loading KWANTY');}
+function renderChartEmpty(){const target=$('#chartEmpty');const ready=state.package==='state'?state.statePanels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):state.package==='orderflow'?state.panels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):state.classicPanels?.length?state.classicPanels.some(panel=>selectedPayload(panel)||priceState(panel).points.length):Boolean(selectedPayload())||priceState().points.length>0;if(ready){hideWorkspaceLoading(target);return;}target.hidden=false;if(state.sourceError)target.textContent='Data unavailable.';else showWorkspaceLoading(target,'Loading KWANTY');}
 function resetSelection(){captureClassicPanel();invalidateRequests();state.payload=null;state.envelope=null;state.historyMode=masterReplay?.sessionDate||false;state.historyError=null;state.sourceError=null;state.replayIndex=null;state.auto=!masterReplay;stopReplay();$('#summary').replaceChildren();renderChartEmpty();state.records=masterReplay?[]:collections.get(identity())||[];views=new Map();syncShell();syncTimeline();buildCharts();load();persist()}
 function selectPackage(pkg){if(pkg===state.package)return;saveScope();state.package=pkg;Object.assign(state,scopes[pkg]||{gexCategory:'gex_full',greek:null,greekExpiry:'zero'});$('#settingsDialog').close();overlays.close();location.hash=pkg;resetSelection()}
 async function load(){

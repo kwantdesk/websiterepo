@@ -1,5 +1,8 @@
+"use client";
+
 import type { LucideIcon } from "lucide-react";
-import type { CSSProperties } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { prepareWorkspaceLoadingExit, syncWorkspaceSpinner } from "../../public/workspace-loading.js";
 
 type KwantLoaderProps = {
   title: string;
@@ -27,6 +30,21 @@ export default function KwantLoader({
   page = false,
   style,
 }: KwantLoaderProps) {
+  const loaderRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const loader = loaderRef.current;
+    if (!loader || quiet) return;
+    syncWorkspaceSpinner(loader);
+    const mountedAt = performance.now();
+    return () => {
+      if (performance.now() - mountedAt < 40) return;
+      const finish = prepareWorkspaceLoadingExit(loader);
+      if (finish) queueMicrotask(() => {
+        if (!loader.isConnected) finish();
+      });
+    };
+  }, [quiet]);
+
   if (quiet) {
     return (
       <div
@@ -44,6 +62,7 @@ export default function KwantLoader({
   }
   return (
     <div
+      ref={loaderRef}
       role="status"
       aria-live="polite"
       aria-label={title}

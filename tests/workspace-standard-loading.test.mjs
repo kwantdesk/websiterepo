@@ -19,14 +19,14 @@ test('embedded loader safely renders the standard themed spinner, without mounti
     showWorkspaceLoading(target,'Loading chart');assert.equal(creates,1);
     assert.equal(target.firstElementChild.attributes['aria-label'],'Loading chart');
     const css=read('public/workspace-loading.css');
-    assert.match(css,/prefers-reduced-motion: reduce\)\s*\{\s*\.kwant-loader-spinner\s*\{\s*animation-duration:\s*2400ms/);
-    for(const token of ['border-radius: 50%','rotate(360deg)','linear infinite','border-top-color: var(--site-primary, var(--primary, currentColor))','--site-background','prefers-reduced-motion: reduce'])assert.ok(css.includes(token));
+    assert.match(css,/prefers-reduced-motion: reduce\)\s*\{\s*\.kwant-loader-spinner\s*\{\s*--kwant-loader-turn:\s*2400ms/);
+    for(const token of ['border-radius: 50%','rotate(360deg)','linear var(--kwant-loader-phase, 0ms) infinite','kwant-loader-reveal 140ms','var(--site-primary, var(--primary, currentColor))','--site-background','prefers-reduced-motion: reduce'])assert.ok(css.includes(token));
   }finally{globalThis.document=original;}
 });
 
 test('KWANTY hides the loader for real data and replaces it with genuine errors',()=>{
   const app=read('public/kwanty-app/app.js'),code=app.slice(app.indexOf('function renderChartEmpty()'),app.indexOf('function resetSelection()'));
-  const target={hidden:false,textContent:''},context={state:{payload:null,sourceError:null},$:()=>target,selectedPayload:()=>context.state.payload,priceState:()=>({points:[]}),showWorkspaceLoading:(_,title)=>target.textContent=title};
+  const target={hidden:false,textContent:''},context={state:{payload:null,sourceError:null},$:()=>target,selectedPayload:()=>context.state.payload,priceState:()=>({points:[]}),showWorkspaceLoading:(_,title)=>target.textContent=title,hideWorkspaceLoading:element=>{element.hidden=true;}};
   vm.runInNewContext(code+';globalThis.render=renderChartEmpty;',context);
   context.render();assert.equal(target.textContent,'Loading KWANTY');assert.equal(target.hidden,false);
   context.state.payload={real:true};context.render();assert.equal(target.hidden,true);

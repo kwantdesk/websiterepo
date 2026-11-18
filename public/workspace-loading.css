@@ -29,13 +29,16 @@
 }
 
 .kwant-loader-spinner {
+  --kwant-loader-turn: 800ms;
   box-sizing: border-box;
   width: 24px;
   height: 24px;
   border: 2px solid color-mix(in srgb, currentColor 16%, transparent);
-  border-top-color: var(--site-primary, var(--primary, currentColor));
+  border-top-color: currentColor;
+  border-top-color: color-mix(in srgb, var(--site-primary, var(--primary, currentColor)) 65%, currentColor);
   border-radius: 50%;
-  animation: kwant-loader-spin 800ms linear infinite;
+  will-change: transform;
+  animation: kwant-loader-spin var(--kwant-loader-turn) linear var(--kwant-loader-phase, 0ms) infinite;
 }
 
 @keyframes kwant-loader-spin {
@@ -44,5 +47,20 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kwant-loader-spinner { animation-duration: 2400ms; }
+  .kwant-loader-spinner { --kwant-loader-turn: 2400ms; }
+}
+
+/* Keep the outgoing loading paint above the newly ready surface only while it fades. */
+.kwant-loader-exit {
+  pointer-events: none;
+  animation: kwant-loader-reveal 140ms ease-out both;
+}
+
+@keyframes kwant-loader-reveal {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kwant-loader-exit { animation-duration: 80ms; }
 }
