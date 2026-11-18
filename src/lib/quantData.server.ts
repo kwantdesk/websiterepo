@@ -2821,50 +2821,44 @@ async function buildGexMapPanel(
     throw error;
   };
 
-  const [exposureResult, candleResult] = await Promise.all([
-    quantDataPost("/options/tool/exposure-by-strike", {
+  // Exposure determines the front expiry. Start interval history as soon as
+  // that dependency is ready, while the independent stock candles are loading.
+  const loadExposure = async () => {
+    const exposureResult = await quantDataPost("/options/tool/exposure-by-strike", {
       sessionDate,
       greekMode: greekModeInput,
       representationMode: representation,
       filter: { ticker: providerTicker },
-    }, endpointTtl),
+    }, endpointTtl);
+    const fullExposure = parseExposure(exposureResult.payload, providerTicker, greekModeInput, undefined, representation);
+    const expirations = fullExposure?.expiries.map((row) => row.expiration).filter(Boolean).sort() ?? [];
+    const expiration = expirations.find((value) => value >= sessionDate) ?? expirations[0];
+    if (!expiration) {
+      throw new QuantDataError(`No ${greekModeInput} exposure is available for ${symbol} on ${sessionDate}.`, 422, exposureResult.remaining);
+    }
+    const selectedExposure = expiryScope === "ALL_EXPIRIES"
+      ? fullExposure
+      : parseExposure(exposureResult.payload, providerTicker, greekModeInput, expiration, representation);
+    const intervalResult = headOnly && selectedExposure?.strikes.length ? { payload: null, remaining: null } : await quantDataPost("/options/tool/interval-map", {
+      sessionDate,
+      aggregationPeriod: "1m",
+      greekMode: greekModeInput,
+      representationMode: representation,
+      filter: expiryScope === "ALL_EXPIRIES"
+        ? { ticker: providerTicker }
+        : { ticker: providerTicker, expirationDate: expiration },
+    }, endpointTtl).catch(openingHistory);
+    return { exposureResult, expirations, expiration, selectedExposure, intervalResult };
+  };
+
+  const [{ exposureResult, expirations, expiration, selectedExposure, intervalResult }, candleResult] = await Promise.all([
+    loadExposure(),
     quantDataPost("/equities/tool/stock-price-over-time", {
       sessionDate,
       aggregationPeriod: "1m",
       filter: { ticker: providerTicker },
     }, historical ? 300_000 : 2_000).catch(openingHistory),
   ]);
-
-  const fullExposure = parseExposure(
-    exposureResult.payload,
-    providerTicker,
-    greekModeInput,
-    undefined,
-    representation,
-  );
-  const expirations = fullExposure?.expiries
-    .map((row) => row.expiration)
-    .filter(Boolean)
-    .sort() ?? [];
-  const expiration = expirations.filter((value) => value >= sessionDate)[0]
-    ?? expirations[0]
-    ?? null;
-  if (!expiration) {
-    throw new QuantDataError(`No ${greekModeInput} exposure is available for ${symbol} on ${sessionDate}.`, 422, exposureResult.remaining);
-  }
-
-  const selectedExposure = expiryScope === "ALL_EXPIRIES"
-    ? fullExposure
-    : parseExposure(exposureResult.payload, providerTicker, greekModeInput, expiration, representation);
-  const intervalResult = headOnly && selectedExposure?.strikes.length ? { payload: null, remaining: null } : await quantDataPost("/options/tool/interval-map", {
-    sessionDate,
-    aggregationPeriod: "1m",
-    greekMode: greekModeInput,
-    representationMode: representation,
-    filter: expiryScope === "ALL_EXPIRIES"
-      ? { ticker: providerTicker }
-      : { ticker: providerTicker, expirationDate: expiration },
-  }, endpointTtl).catch(openingHistory);
   const frames = expiryScope === "ALL_EXPIRIES"
     ? parseFullChainGexMapFrames(intervalResult.payload)
     : parseGexMapFrames(intervalResult.payload, expiration);

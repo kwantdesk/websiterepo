@@ -74,14 +74,26 @@ export function useBounceGexMapMirror(input: {
       } catch { bootstrappedDate = ""; historyRetryAfter = Date.now() + 60_000; }
       finally { historyRequestInFlight = false; }
     }
+    const matchesScope = (p: GexMapPanelPayload | null) =>
+      (!sessionDate || !p?.compact) && isGexMapSurfaceFor(p, {
+        symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate,
+      });
     const accept = (p: GexMapPanelPayload) => {
-      if (cancelled || (sessionDate && p.compact) || !isGexMapSurfaceFor(p, { symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate })) return;
+      if (cancelled || !matchesScope(p)) return;
       setState((current) => current.key === key && current.payload === p ? current : { key, payload: p });
       setError(null); setLoading(false);
       void ensureHistory(p);
     };
     const unsubscribe = subscribeGexMapSurface(key, accept);
-    const cached = readWorkspaceData<GexMapPanelPayload>(key); if (cached) accept(cached);
+    const canUseHead = !sessionDate && model === "STRUCTURAL_OI";
+    const headKey = key + ":head";
+    const cached = readWorkspaceData<GexMapPanelPayload>(key);
+    const cachedHead = canUseHead ? readWorkspaceData<GexMapPanelPayload>(headKey) : null;
+    const matchingCache = cached && matchesScope(cached) ? cached : null;
+    const initial = cachedHead && matchesScope(cachedHead)
+      && (!matchingCache || Date.parse(cachedHead.asOf) > Date.parse(matchingCache.asOf))
+      ? cachedHead : matchingCache;
+    if (initial) accept(initial);
     const load = async () => {
       if (cancelled) return;
       if (document.visibilityState === "hidden") { timer = setTimeout(load, 5000); return; }
@@ -91,15 +103,12 @@ export function useBounceGexMapMirror(input: {
         // interval map. Its history is restored independently by ensureHistory.
         // Head results have a separate cache identity and are never published
         // as a complete shared Map surface.
-        const headOnly = !sessionDate && model === "STRUCTURAL_OI" && (stateRef.current.key !== key || !stateRef.current.payload);
+        const headOnly = canUseHead && (stateRef.current.key !== key || !stateRef.current.payload);
         const query = new URLSearchParams({ symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation,
           ...(model === "DEALER_INVENTORY" ? { model } : {}), ...(sessionDate ? { sessionDate } : { compact: "1" }), ...(headOnly ? { head: "1" } : {}) });
-        const payload = await fetchWorkspaceData<GexMapPanelPayload>(headOnly ? key + ":head" : key, "/api/gex-map?" + query, {
+        const payload = await fetchWorkspaceData<GexMapPanelPayload>(headOnly ? headKey : key, "/api/gex-map?" + query, {
           maxAgeMs: sessionDate ? gexMapReplayCacheMaxAge(sessionDate) : 5000, timeoutMs: 45000,
-          validate: (value) => {
-            const p = value as GexMapPanelPayload;
-            return (!sessionDate || p?.compact !== true) && isGexMapSurfaceFor(p, { symbol, greekMode: greek, scope: profile.expiryScope, representation: profile.representation, model, sessionDate });
-          }, invalidMessage: "The selected GEX Map surface is unavailable.",
+          validate: (value) => matchesScope(value as GexMapPanelPayload), invalidMessage: "The selected GEX Map surface is unavailable.",
         });
         if (!cancelled) { accept(payload); if (!headOnly) publishGexMapSurface(key, payload); }
       } catch (e) { if (!cancelled) { setError(e instanceof Error ? e.message : "The selected GEX Map surface is unavailable."); setLoading(false); } }
