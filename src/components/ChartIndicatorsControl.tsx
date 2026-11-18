@@ -1054,6 +1054,11 @@ export default function ChartIndicatorsControl({
     onCandleSettingsChange?.({ ...(candleSettings ?? {}), [key]: value });
   };
   const [search, setSearch] = useState("");
+  const openLibrary = () => {
+    setSearch("");
+    setLibraryOpen(true);
+    setOpen(false);
+  };
   const [category, setCategory] = useState<
     "All" | typeof INDICATOR_LIBRARY_FAVORITES_CATEGORY | ChartIndicatorCategory
   >("All");
@@ -1655,10 +1660,7 @@ export default function ChartIndicatorsControl({
               <div className="text-[12px] font-semibold text-foreground">Chart indicators</div>
               <button
                 type="button"
-                onClick={() => {
-                  setLibraryOpen(true);
-                  setOpen(false);
-                }}
+                onClick={openLibrary}
                 className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[10px] font-semibold text-on-primary"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -1784,10 +1786,7 @@ export default function ChartIndicatorsControl({
               <div className="p-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setLibraryOpen(true);
-                    setOpen(false);
-                  }}
+                  onClick={openLibrary}
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface/30 px-4 py-5 text-[11px] font-medium text-muted hover:border-primary/30 hover:text-foreground"
                 >
                   <Plus className="h-4 w-4 text-primary" />
