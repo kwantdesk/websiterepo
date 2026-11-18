@@ -51,11 +51,12 @@ test("a remounted index pane immediately receives the retained shared frame", ()
 });
 
 test("market-index history failure cannot schedule the Databento-only reconciler", () => {
-  const catchStart = workspace.indexOf("const loadFailure = loadError instanceof Error");
+  const catchStart = workspace.indexOf("const retryingIndexHistory = recoverIndexHistory");
   const catchEnd = workspace.indexOf("const reconcileTail = async", catchStart);
   const failedLoad = workspace.slice(catchStart, catchEnd);
 
   assert.ok(catchStart >= 0 && catchEnd > catchStart);
   assert.match(failedLoad, /const willRetry = pane\.broker === "Databento"/);
+  assert.match(failedLoad, /if \(retryingIndexHistory\) return;/);
   assert.match(failedLoad, /setLoading\(willRetry\)/);
 });

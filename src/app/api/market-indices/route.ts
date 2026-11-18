@@ -11,18 +11,13 @@ import {
   hasIntradayMarketIndexHistoryAccess,
 } from "@/lib/marketIndices.server";
 import { conditionalJson } from "@/lib/conditionalJson";
+import { getQuantDataHttpError } from "@/lib/quantData.server";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// A single COLD session restore from the underlying-history provider was
-// measured at 33 seconds; a multi-day (5D) request walks several sessions.
-// With the previous 30s ceiling Vercel killed exactly those cold restores, so
-// charts never received the provider's real OHLC and silently kept their
-// locally cached quote-built candles — bars with no wicks that looked nothing
-// like the true session (the "suspicious historical data" report). Same
-// failure class and fix as the zero-gamma-line route.
-export const maxDuration = 300;
+// Read only the recorded archive for candles.
+export const maxDuration = 30;
 
 const MAX_HISTORY_DAYS = 370;
 const CBOE_VIX_HISTORY_START = Date.UTC(1990, 0, 1);
@@ -39,75 +34,6 @@ const SNAPSHOT_CACHE_TTL_MS = 10_000;
  * of identical requests several panes make on load.
  */
 const INDEX_HISTORY_MAX_AGE_MS = 10_000;
-
-type IndexHistoryCandle = {
-  timestamp: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function indexHistoryCandles(payload: unknown): IndexHistoryCandle[] {
-  if (!isRecord(payload) || !Array.isArray(payload.candles)) return [];
-  return payload.candles.flatMap((value): IndexHistoryCandle[] => {
-    if (!isRecord(value)) return [];
-    const timestamp = Number(value.timestamp);
-    const open = Number(value.open);
-    const high = Number(value.high);
-    const low = Number(value.low);
-    const close = Number(value.close);
-    const volume = Number(value.volume ?? 0);
-    if (![timestamp, open, high, low, close].every(Number.isFinite)) return [];
-    return [{ timestamp, open, high, low, close, volume: Number.isFinite(volume) ? volume : 0 }];
-  });
-}
-
-function newYorkDateKey(timestamp: number) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(timestamp));
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((item) => item.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")}`;
-}
-
-function newYorkCashSessionHasStarted(timestamp: number) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(timestamp));
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((item) => item.type === type)?.value ?? "";
-  const weekday = part("weekday");
-  const minute = Number(part("hour")) * 60 + Number(part("minute"));
-  return weekday !== "Sat" && weekday !== "Sun" && minute >= 9 * 60 + 30;
-}
-
-function needsCurrentSessionRepair(candles: IndexHistoryCandle[], from: number, to: number, now: number) {
-  if (!newYorkCashSessionHasStarted(now)) return false;
-  const today = newYorkDateKey(now);
-  if (newYorkDateKey(to) !== today || from >= now) return false;
-  const latest = candles.at(-1);
-  return !latest || newYorkDateKey(latest.timestamp) !== today;
-}
-
-function mergeIndexHistoryCandles(...groups: IndexHistoryCandle[][]) {
-  return [...new Map(
-    groups.flat().map((candle) => [candle.timestamp, candle] as const),
-  ).values()].sort((left, right) => left.timestamp - right.timestamp);
-}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -207,8 +133,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "This instrument has no recorded data at the selected interval." }, { status: 400 });
   }
   const now = Date.now();
-  const requestedFrom = Number(url.searchParams.get("from"));
-  const requestedTo = Number(url.searchParams.get("to"));
+  const requestedFrom = Number(url.searchParams.get("from") ?? NaN);
+  const requestedTo = Number(url.searchParams.get("to") ?? NaN);
   const usingCboeVixArchive = symbol === "VIX" && !hasIntradayMarketIndexHistoryAccess();
   const earliest = usingCboeVixArchive
     ? CBOE_VIX_HISTORY_START
@@ -216,90 +142,11 @@ export async function GET(request: Request) {
   const from = Number.isFinite(requestedFrom) ? Math.max(earliest, requestedFrom) : now - 8 * 24 * 60 * 60_000;
   const to = Number.isFinite(requestedTo) ? Math.min(now, requestedTo) : now;
 
+  if (from > to) {
+    return NextResponse.json({ error: "Invalid chart history range." }, { status: 400 });
+  }
+
   try {
-    const definition = getMarketIndexDefinition(symbol);
-    if (definition?.providerKind === "INDEX" && isInstitutionalMarketDataConfigured()) {
-      try {
-        const params = new URLSearchParams({
-          symbol,
-          timeframe,
-          from: String(from),
-          to: String(to),
-        });
-        const upstream = await fetchInstitutionalMarketData(
-          `v1/market-data/index-history?${params.toString()}`,
-          { method: "GET" },
-          20_000,
-        );
-        const payload = await upstream.json().catch(() => null) as unknown;
-        if (!upstream.ok) {
-          const message = payload && typeof payload === "object" && "error" in payload
-            ? String((payload as { error?: unknown }).error || "VPS index history failed.")
-            : "VPS index history failed.";
-          throw new Error(message);
-        }
-        let responsePayload = payload;
-        const historicalCandles = indexHistoryCandles(payload);
-        if (needsCurrentSessionRepair(historicalCandles, from, to, now)) {
-          // Massive can return completed sessions but omit today's NDX bars
-          // when a multi-day aggregate crosses a weekend. The same provider
-          // returns the live session correctly when it is requested alone.
-          // Repair that stale tail here so the chart does not jump from
-          // Friday history to only the few quote-built candles held by the
-          // browser.
-          try {
-            const today = newYorkDateKey(now);
-            const currentSessionFrom = Date.parse(`${today}T00:00:00.000Z`);
-            const currentParams = new URLSearchParams({
-              symbol,
-              timeframe,
-              from: String(currentSessionFrom),
-              to: String(to),
-            });
-            const currentUpstream = await fetchInstitutionalMarketData(
-              `v1/market-data/index-history?${currentParams.toString()}`,
-              { method: "GET" },
-              20_000,
-            );
-            const currentPayload = await currentUpstream.json().catch(() => null) as unknown;
-            let currentCandles = currentUpstream.ok ? indexHistoryCandles(currentPayload) : [];
-            if (!currentCandles.length) {
-              currentCandles = (await fetchMarketIndexCandles({
-                symbol,
-                timeframe,
-                from: currentSessionFrom,
-                to,
-              })).map((candle) => ({ ...candle, volume: candle.volume ?? 0 }));
-            }
-            if (currentCandles.length && isRecord(payload)) {
-              responsePayload = {
-                ...payload,
-                candles: mergeIndexHistoryCandles(historicalCandles, currentCandles),
-                source: `${String(payload.source || "VPS index history")} + current session`,
-              };
-            }
-          } catch {
-            // Keep the valid completed-session history. The local provider
-            // chain below remains the fallback when the primary request
-            // itself fails.
-          }
-        }
-        const availableCandles = indexHistoryCandles(responsePayload);
-        if (isRecord(responsePayload)) responsePayload = { ...responsePayload, historyCoverage: {
-          partial: responsePayload.truncated === true, requestedFrom: from, requestedTo: to,
-          availableFrom: availableCandles[0]?.timestamp ?? null, availableTo: availableCandles.at(-1)?.timestamp ?? null,
-        } };
-        return conditionalJson(request, responsePayload, {
-          identity: `${historyIdentity(availableCandles)}::${isRecord(responsePayload) && responsePayload.truncated === true}`,
-          maxAgeMs: INDEX_HISTORY_MAX_AGE_MS,
-        });
-      } catch {
-        // The VPS history proxy lost its Massive entitlement. Fall through to
-        // the local provider chain — KwantData session history for options
-        // underlyings and the official Cboe archive for VIX — instead of
-        // handing the chart the upstream refusal.
-      }
-    }
     const candles = await fetchMarketIndexCandles({ symbol, timeframe, from, to });
     return conditionalJson(
       request,
@@ -307,9 +154,7 @@ export async function GET(request: Request) {
         candles,
         historyCoverage: candles.historyCoverage,
         symbol,
-        source: symbol === "VIX" && !hasIntradayMarketIndexHistoryAccess()
-          ? "CBOE EOD"
-          : "US market data",
+        source: "VPS recorded live quotes",
         from,
         to,
       },
@@ -319,9 +164,11 @@ export async function GET(request: Request) {
       },
     );
   } catch (error) {
+    const problem = getQuantDataHttpError(error);
+    const status = problem.status >= 500 ? 503 : problem.status;
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Market-index history failed." },
-      { status: 502 },
+      { error: status === 503 ? "Recorded chart history is temporarily unavailable." : problem.message },
+      { status },
     );
   }
 }

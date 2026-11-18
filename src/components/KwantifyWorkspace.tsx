@@ -4114,12 +4114,12 @@ async function fetchWorkspaceCandles(
     // covers headers, body and the bounded transport retry. Internal deadlines
     // remain TimeoutError; they must not look like a cancelled pane request.
     const windowQuantumMs = 15_000;
-    const windowFrom = Math.floor(from / windowQuantumMs) * windowQuantumMs;
-    const windowTo = Math.floor(to / windowQuantumMs) * windowQuantumMs;
+    const windowFrom = historicalRange ? from : Math.floor(from / windowQuantumMs) * windowQuantumMs;
+    const windowTo = historicalRange ? to : Math.floor(to / windowQuantumMs) * windowQuantumMs;
     const attempt = async () => {
       const { response, payload } = await fetchJsonWithBudget<WorkspaceHistoryPayload>(
         `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${windowFrom}&to=${windowTo}`,
-        25_000,
+        10_000,
       );
       if (!response.ok) throw new MarketDataResponseError(response.status);
       return Object.assign(sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe), {
@@ -6756,11 +6756,12 @@ function WorkspaceChartPaneComponent({
     skipInheritedFlowRef.current = Boolean(inherited?.orderFlowReady);
     workspaceDuplicateSeeds.discard(chartInstanceId);
     const requestController = new AbortController();
-    const indexHistoryRecovery = new ChartHistoryRecovery();
+    const indexHistoryRecovery = new ChartHistoryRecovery(1);
     const recoverIndexHistory = (error: unknown, retry: () => Promise<void>) => {
       if (pane.broker === "Market Index" && !cancelled && isTransientHistoryFailure(error)) {
-        indexHistoryRecovery.schedule(() => { if (!cancelled) void retry(); });
+        return indexHistoryRecovery.schedule(() => { if (!cancelled) void retry(); });
       }
+      return false;
     };
     const eventHistory = pane.broker === "Databento" && isEventBasedChartInterval(pane.timeframe);
     eventHistoryTailRef.current = !inherited && !replayHistoryRange && eventHistory
@@ -6855,11 +6856,12 @@ function WorkspaceChartPaneComponent({
           setLoading(false);
         } catch (loadError) {
           if (cancelled || requestController.signal.aborted) return;
-          recoverIndexHistory(loadError, loadReplaySession);
+          if (recoverIndexHistory(loadError, loadReplaySession)) return;
           historyHydratedRef.current = false;
           setLoading(false);
-          setError(loadError instanceof Error
-            ? loadError.message
+          setError(isTransientHistoryFailure(loadError)
+            ? "Historical replay data is temporarily unavailable. Try refreshing this chart."
+            : loadError instanceof Error ? loadError.message
             : "Historical replay data is temporarily unavailable.");
           setSettledChartRequestKey(requestedChartHydrationKey);
         }
@@ -6953,7 +6955,7 @@ function WorkspaceChartPaneComponent({
       : Promise.resolve([] as Candle[]);
     // Start authoritative OHLC before IndexedDB/tape hydration. Previously a
     // 12s optional seam request ran BEFORE the main history request even began.
-    const earlyBaseHistory = pane.broker === "Databento"
+    const earlyBaseHistory = (pane.broker === "Databento" || (pane.broker === "Market Index" && !hasImmediateHistory))
       && !isEventBasedChartInterval(pane.timeframe)
       && !immediateHistoryIsHydrated
       ? beginChartHistoryRead(() => fetchWorkspaceCandles(
@@ -7069,6 +7071,7 @@ function WorkspaceChartPaneComponent({
       });
     }
 
+    let earlyRequestAvailable = true;
     const loadHistory = async () => {
       if (inherited) return;
       const [cached, storedTape] = await Promise.all([
@@ -7279,8 +7282,10 @@ function WorkspaceChartPaneComponent({
       }
 
       try {
-        const nextCandles = earlyBaseHistory && !needsOrderFlowHistory
-          ? await earlyBaseHistory()
+        const firstRead = earlyBaseHistory && !needsOrderFlowHistory && earlyRequestAvailable ? earlyBaseHistory : null;
+        earlyRequestAvailable = false;
+        const nextCandles = firstRead
+          ? await firstRead()
           : await fetchWorkspaceCandles(
           pane.symbol,
           pane.timeframe,
@@ -7401,7 +7406,7 @@ function WorkspaceChartPaneComponent({
         if (cancelled) return;
         eventHistoryTailRef.current = null;
         if (requestController.signal.aborted) return;
-        recoverIndexHistory(loadError, loadHistory);
+        const retryingIndexHistory = recoverIndexHistory(loadError, loadHistory);
         /*
          * The route's own words, when it has any.
          *
@@ -7410,7 +7415,9 @@ function WorkspaceChartPaneComponent({
          * actually wrong, where a fixed "temporarily unavailable" tells them
          * to keep waiting for something that is not coming back on its own.
          */
-        const loadFailure = loadError instanceof Error && loadError.message
+        const loadFailure = pane.broker === "Market Index" && isTransientHistoryFailure(loadError)
+          ? "Recorded chart history is temporarily unavailable. Try refreshing this chart."
+          : loadError instanceof Error && loadError.message
           ? loadError.message
           : "CME history is unavailable right now.";
         const tailNeedsReconciliation = cmeChartTailNeedsReconciliation(
@@ -7434,10 +7441,11 @@ function WorkspaceChartPaneComponent({
         const willRetry = pane.broker === "Databento"
           && tailNeedsReconciliation
           && !isEventBasedChartInterval(pane.timeframe);
-        if (visibleHistoryReady) {
+        if (visibleHistoryReady || (pane.broker === "Market Index" && latestCandlesRef.current.length)) {
           setLoading(false);
           return;
         }
+        if (retryingIndexHistory) return;
         historyHydratedRef.current = false;
         setLoading(willRetry);
         if (!willRetry) {
@@ -14644,13 +14652,17 @@ export default function KwantifyWorkspace({
     }
 
     if (activeChartBrokerLabel === "Market Index") {
-      const response = await fetch(
-        `/api/market-indices?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&from=${from}&to=${to}`,
-        { cache: "no-store", signal },
-      );
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? `${selectedInstrument} index history is unavailable.`);
-      return sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument, selectedTimeframe);
+      try {
+        return await fetchWorkspaceCandles(
+          selectedInstrument, selectedTimeframe, activeChartBrokerLabel, period, 500,
+          false, signal, false, false, undefined, { fromMs: from, toMs: to, key: `chart-history:${from}:${to}` },
+        );
+      } catch (error) {
+        if (!signal?.aborted && isTransientHistoryFailure(error)) {
+          throw new Error("Recorded chart history is temporarily unavailable. Try refreshing this chart.");
+        }
+        throw error;
+      }
     }
 
     try {

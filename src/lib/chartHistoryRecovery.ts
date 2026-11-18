@@ -15,8 +15,14 @@ export class ChartHistoryRecovery {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
 
+  private readonly maxAttempts: number;
+
+  constructor(maxAttempts = 3) {
+    this.maxAttempts = maxAttempts;
+  }
+
   schedule(retry: () => void): boolean {
-    if (this.disposed || this.timer !== null || this.attempts >= 3) return false;
+    if (this.disposed || this.timer !== null || this.attempts >= this.maxAttempts) return false;
     const delay = 2_000 * 2 ** this.attempts++;
     this.timer = setTimeout(() => {
       this.timer = null;
