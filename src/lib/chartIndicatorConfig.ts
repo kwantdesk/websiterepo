@@ -2003,7 +2003,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     visualStrengthBasis: "percent-of-king",
     rollDetectionEnabled: true,
     rollVisualizationEnabled: false,
-    tooltipsEnabled: true,
+    showHoverInfoPopups: false,
     enableAlerts: false,
     alertLevelApproach: true,
     alertLevelTouch: true,
@@ -3451,6 +3451,9 @@ const normalizeStoredIndicatorCore = (instance: ChartIndicatorInstance): ChartIn
     const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("bounce-levels");
     const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
     delete settings.showRocArrows;
+    // The old flag was stored as true by default, so it cannot record opt-in.
+    delete settings.tooltipsEnabled;
+    settings.showHoverInfoPopups = settings.showHoverInfoPopups === true;
     if (normalizedInstance.settings?.topExposurePercent === undefined) {
       const legacyMinimumPercentile = Number(normalizedInstance.settings?.minimumExposurePercentile ?? 90);
       settings.topExposurePercent = Math.max(1, Math.min(100, 100 - legacyMinimumPercentile));

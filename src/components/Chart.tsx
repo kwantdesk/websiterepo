@@ -9082,6 +9082,7 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "bounce-levels") ?? null,
     [indicators],
   );
+  const bounceHoverInfoEnabled = bounceLevelsIndicator?.settings?.showHoverInfoPopups === true;
   const bounceMirrorEnabled = Boolean(bounceLevelsIndicator && bounceLevelsIndicator.settings?.gexMapMirror !== false);
   const bounceMirrorEod = !replayTimestampMs && bounceLevelsIndicator?.settings?.linkGexMapSettings === false && bounceLevelsIndicator?.settings?.priceMode === "eod"
     ? newYorkSessionTimestamp(latestCompletedNewYorkSession(), 16 * 60) : null;
@@ -9559,7 +9560,7 @@ function Chart({
   }, [bounceAlertMarkers, bounceLevelsIndicator, chartReadyRevision, replayTimestampMs]);
   useEffect(() => {
     const container = chartContainerRef.current;
-    if (!container || !bounceLevelsIndicator || bounceLevelsIndicator.settings?.tooltipsEnabled === false) { setBounceLevelsTooltip(null); return; }
+    if (!container || !bounceHoverInfoEnabled) { setBounceLevelsTooltip(null); return; }
     let frame: number | null = null;
     const move = (event: PointerEvent) => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -9574,7 +9575,7 @@ function Chart({
     container.addEventListener("pointermove", move, { passive: true });
     container.addEventListener("pointerleave", leave, { passive: true });
     return () => { if (frame !== null) window.cancelAnimationFrame(frame); container.removeEventListener("pointermove", move); container.removeEventListener("pointerleave", leave); };
-  }, [bounceLevelsIndicator]);
+  }, [bounceHoverInfoEnabled]);
   useEffect(() => {
     if (!bounceLevelsIndicator || !bounceLevelsSnapshot || bounceLevelsIndicator.settings?.enableAlerts !== true) return;
     let state = bounceLevelsAlertStateRef.current;
@@ -18869,7 +18870,7 @@ function Chart({
           </div>
         </div>
       ) : null}
-      {bounceLevelsTooltip ? (
+      {bounceHoverInfoEnabled && bounceLevelsTooltip ? (
         <div
           className="pointer-events-none absolute z-[64] min-w-[300px] max-w-[410px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
           style={{ left: Math.min(Math.max(8, bounceLevelsTooltip.x + 14), Math.max(8, overlaySize.width - 430)), top: Math.min(Math.max(34, bounceLevelsTooltip.y + 14), Math.max(34, overlaySize.height - 300)) }}

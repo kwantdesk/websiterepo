@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { resolveBounceGexMapColumn } from "../src/lib/bounceGexMapSource.ts";
 import { DEFAULT_LINKED_GEX_MAP_SETTINGS } from "../src/lib/gexMapLinkedSettings.ts";
-import { linkPaneIndicatorStateToTheme } from "../src/lib/chartIndicatorConfig.ts";
+import { defaultIndicatorSettings, linkPaneIndicatorStateToTheme, normalizeStoredIndicatorList } from "../src/lib/chartIndicatorConfig.ts";
 
 const controls = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
 const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
@@ -111,4 +111,21 @@ test("linked Bounce Levels without a matching map column requests the metric sho
   assert.equal(resolveBounceGexMapColumn("NQ", settings, { ...config, linkGexMapSettings: false }).greek, "CHARM");
   const withColumn = { ...settings, panels: [...settings.panels, { id: "ndx", symbol: "NDX", greekMode: "DELTA" }] };
   assert.equal(resolveBounceGexMapColumn("NQ", withColumn, { ...config, mapColumnId: "ndx" }).greek, "DELTA");
+});
+
+test("Bounce hover popups default off and require a saved opt-in", () => {
+  const normalize = (settings) => normalizeStoredIndicatorList([
+    { instanceId: "bounce", indicatorId: "bounce-levels", enabled: true, settings },
+  ])[0].settings;
+  assert.equal(defaultIndicatorSettings("bounce-levels").showHoverInfoPopups, false);
+  assert.equal(normalize({}).showHoverInfoPopups, false);
+  assert.equal(normalize({ tooltipsEnabled: true }).showHoverInfoPopups, false);
+  assert.equal(normalize({ tooltipsEnabled: true }).tooltipsEnabled, undefined);
+  assert.equal(normalize(normalize({ showHoverInfoPopups: true })).showHoverInfoPopups, true);
+  assert.equal(normalize({ showHoverInfoPopups: false }).showHoverInfoPopups, false);
+  assert.equal(defaultIndicatorSettings("gex-interval-map").tooltipsEnabled, true);
+  assert.match(controls, /checked=\{settingsInstance.settings\?\.showHoverInfoPopups === true\}/);
+  assert.match(controls, /showHoverInfoPopups: event.target.checked/);
+  assert.ok(chart.includes("if (!container || !bounceHoverInfoEnabled) { setBounceLevelsTooltip(null); return; }"));
+  assert.ok(chart.includes("{bounceHoverInfoEnabled && bounceLevelsTooltip ? ("));
 });

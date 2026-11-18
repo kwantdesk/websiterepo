@@ -4131,9 +4131,9 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "bounce-levels" ? (
                 <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-background p-3 text-[12px] text-foreground">
                   <input type="checkbox" className="h-3.5 w-3.5 shrink-0 accent-primary"
-                    checked={settingsInstance.settings?.tooltipsEnabled !== false}
+                    checked={settingsInstance.settings?.showHoverInfoPopups === true}
                     onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                      ...current, settings: { ...(current.settings ?? {}), tooltipsEnabled: event.target.checked },
+                      ...current, settings: { ...(current.settings ?? {}), showHoverInfoPopups: event.target.checked },
                     }))} />
                   <span>Show hover info popups</span>
                 </label>
@@ -8078,7 +8078,7 @@ export default function ChartIndicatorsControl({
                   .filter(([key]) => !(settingsDefinition.id === "gamma-heatmap" && key === "showStatus"))
                   .filter(([key]) => !(["net-gamma-exposure-by-strike", "gex-interval-map", "pulling-stacking", "absorption-detector", "liquidity-stop-sweep-detector"].includes(settingsDefinition.id) && key === "showHeader"))
                   .filter(([key]) => !INDICATOR_DEDICATED_CONTROL_KEYS[settingsDefinition.id]?.includes(key))
-                  .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && key === "tooltipsEnabled"))
+                  .filter(([key]) => !(settingsDefinition.id === "bounce-levels" && ["tooltipsEnabled", "showHoverInfoPopups"].includes(key)))
                   .filter(([key]) => {
                     if (settingsDefinition.id !== "delta-bar") return true;
                     const side = ["left", "right"].includes(String(settingsInstance.settings?.displayMode));
